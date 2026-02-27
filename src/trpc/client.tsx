@@ -41,7 +41,7 @@ export function TRPCClientProvider({
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider client={trpcClient} queryClient={queryClient}>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
         {children}
       </TRPCProvider>
     </QueryClientProvider>
