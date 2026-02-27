@@ -10,10 +10,18 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useFlowStore } from "@/stores/flow-store";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { nodeTypes } from "./node-types";
 import { VECTOR_CATALOG } from "@/lib/vector/catalog";
 
-export function FlowCanvas() {
+interface FlowCanvasProps {
+  onSave?: () => void;
+  onExport?: () => void;
+  onImport?: () => void;
+}
+
+export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
+  useKeyboardShortcuts({ onSave, onExport, onImport });
   const nodes = useFlowStore((s) => s.nodes);
   const edges = useFlowStore((s) => s.edges);
   const onNodesChange = useFlowStore((s) => s.onNodesChange);
