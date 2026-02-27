@@ -40,4 +40,6 @@ export const requireRole = (minRole: Role) =>
     return next({ ctx: { session: ctx.session } });
   });
 
+export const middleware = t.middleware;
+
 export { roleLevel };

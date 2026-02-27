@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
+import { VrlEditor } from "@/components/vrl-editor/vrl-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
