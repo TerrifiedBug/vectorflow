@@ -20,12 +20,6 @@ COPY . .
 RUN npx prisma generate
 RUN pnpm build
 
-# Install prisma CLI into an isolated directory so we can copy
-# a clean, self-contained tree into the runner stage.
-RUN mkdir -p /prisma-cli && cd /prisma-cli && \
-    npm init -y && \
-    npm install prisma@7.4.2 dotenv@17
-
 # ---- Stage 3: Production runner ----
 FROM node:22-alpine AS runner
 WORKDIR /app
@@ -46,8 +40,10 @@ COPY --from=build /app/public ./public
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./prisma.config.ts
 
-# Copy isolated prisma CLI with all dependencies
-COPY --from=build /prisma-cli/node_modules ./node_modules_prisma
+# Copy full node_modules for prisma migrate deploy.
+# Next.js standalone already includes its own minimal node_modules,
+# but prisma CLI needs the full dependency tree at runtime.
+COPY --from=build /app/node_modules ./node_modules
 
 # Copy entrypoint script
 COPY docker/entrypoint.sh ./entrypoint.sh
