@@ -7,10 +7,22 @@ import { cn } from "@/lib/utils";
 import type { VectorComponentDef, DataType } from "@/lib/vector/types";
 import { getIcon } from "./node-icon";
 
+type NodeMetrics = {
+  eventsPerSec: number;
+  status: string;
+};
+
 type SourceNodeData = {
   componentDef: VectorComponentDef;
   componentKey: string;
   config: Record<string, unknown>;
+  metrics?: NodeMetrics;
+};
+
+const statusColors: Record<string, string> = {
+  healthy: "bg-green-500",
+  degraded: "bg-yellow-500",
+  unreachable: "bg-red-500",
 };
 
 type SourceNodeType = Node<SourceNodeData, "source">;
@@ -40,7 +52,7 @@ function getConfigSummary(config: Record<string, unknown>): string | null {
 }
 
 function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
-  const { componentDef, componentKey, config } = data;
+  const { componentDef, componentKey, config, metrics } = data;
   const Icon = getIcon(componentDef.icon);
   const configSummary = getConfigSummary(config);
 
@@ -84,6 +96,21 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
           ))}
         </div>
       </div>
+
+      {/* Monitoring overlay */}
+      {metrics && (
+        <div className="flex items-center gap-2 border-t px-3 py-1.5 text-xs">
+          <span
+            className={cn(
+              "h-2 w-2 rounded-full",
+              statusColors[metrics.status] ?? "bg-gray-400"
+            )}
+          />
+          <span className="text-muted-foreground">
+            {metrics.eventsPerSec} events/s
+          </span>
+        </div>
+      )}
 
       {/* Output handle on RIGHT */}
       <Handle

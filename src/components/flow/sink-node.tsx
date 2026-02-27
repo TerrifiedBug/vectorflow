@@ -7,10 +7,22 @@ import { cn } from "@/lib/utils";
 import type { VectorComponentDef, DataType } from "@/lib/vector/types";
 import { getIcon } from "./node-icon";
 
+type NodeMetrics = {
+  eventsPerSec: number;
+  status: string;
+};
+
 type SinkNodeData = {
   componentDef: VectorComponentDef;
   componentKey: string;
   config: Record<string, unknown>;
+  metrics?: NodeMetrics;
+};
+
+const statusColors: Record<string, string> = {
+  healthy: "bg-green-500",
+  degraded: "bg-yellow-500",
+  unreachable: "bg-red-500",
 };
 
 type SinkNodeType = Node<SinkNodeData, "sink">;
@@ -40,7 +52,7 @@ function getConfigSummary(config: Record<string, unknown>): string | null {
 }
 
 function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
-  const { componentDef, componentKey, config } = data;
+  const { componentDef, componentKey, config, metrics } = data;
   const Icon = getIcon(componentDef.icon);
   const configSummary = getConfigSummary(config);
 
@@ -91,6 +103,21 @@ function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
           ))}
         </div>
       </div>
+
+      {/* Monitoring overlay */}
+      {metrics && (
+        <div className="flex items-center gap-2 border-t px-3 py-1.5 text-xs">
+          <span
+            className={cn(
+              "h-2 w-2 rounded-full",
+              statusColors[metrics.status] ?? "bg-gray-400"
+            )}
+          />
+          <span className="text-muted-foreground">
+            {metrics.eventsPerSec} events/s
+          </span>
+        </div>
+      )}
     </div>
   );
 }
