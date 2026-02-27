@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Shield } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -15,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,6 +24,17 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [oidcStatus, setOidcStatus] = useState<{
+    enabled: boolean;
+    displayName: string;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/oidc-status")
+      .then((res) => res.json())
+      .then((data) => setOidcStatus(data))
+      .catch(() => setOidcStatus({ enabled: false, displayName: "SSO" }));
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,6 +59,10 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleSsoLogin() {
+    signIn("oidc", { callbackUrl: "/" });
   }
 
   return (
@@ -93,6 +110,26 @@ export default function LoginPage() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Signing in..." : "Sign in"}
           </Button>
+
+          {oidcStatus?.enabled && (
+            <>
+              <div className="flex w-full items-center gap-3">
+                <Separator className="flex-1" />
+                <span className="text-xs text-muted-foreground">or</span>
+                <Separator className="flex-1" />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleSsoLogin}
+              >
+                <Shield className="mr-2 h-4 w-4" />
+                Sign in with {oidcStatus.displayName}
+              </Button>
+            </>
+          )}
+
           <p className="text-center text-sm text-muted-foreground">
             First time?{" "}
             <Link href="/setup" className="text-primary underline-offset-4 hover:underline">
