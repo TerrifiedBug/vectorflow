@@ -2,7 +2,7 @@
 set -e
 
 echo "Running database migrations..."
-npx prisma migrate deploy
+NODE_PATH=/app/node_modules_prisma node /app/node_modules_prisma/prisma/build/index.js migrate deploy
 
 echo "Starting VectorFlow..."
 exec node server.js
