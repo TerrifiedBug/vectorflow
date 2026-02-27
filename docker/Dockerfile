@@ -52,10 +52,11 @@ COPY --from=build /app/public ./public
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./prisma.config.ts
 
-# Copy prisma CLI and its dependencies for migrate deploy
-COPY --from=build /app/node_modules/prisma ./node_modules/prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=build /app/node_modules/dotenv ./node_modules/dotenv
+# Install prisma CLI with all its dependencies for migrate deploy.
+# This is done as a separate npm install rather than cherry-picking
+# packages, because prisma has deep transitive deps (@prisma/engines,
+# @prisma/config, dotenv, etc.) that are hard to copy individually.
+RUN npm install --no-save prisma@7.4.2
 
 # Copy entrypoint script
 COPY docker/entrypoint.sh ./entrypoint.sh
