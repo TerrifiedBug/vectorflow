@@ -142,7 +142,7 @@ export default function SetupPage() {
               />
             </div>
           </CardContent>
-          <CardFooter>
+          <CardFooter className="pt-2">
             <Button type="submit" className="w-full">
               Continue
             </Button>
@@ -169,7 +169,7 @@ export default function SetupPage() {
               />
             </div>
           </CardContent>
-          <CardFooter className="flex gap-3">
+          <CardFooter className="flex gap-3 pt-2">
             <Button
               type="button"
               variant="outline"
