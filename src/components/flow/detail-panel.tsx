@@ -25,6 +25,39 @@ const kindVariant: Record<string, string> = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Helper: filter out VRL-managed fields from the schema              */
+/* ------------------------------------------------------------------ */
+
+const VRL_FIELDS: Record<string, string[]> = {
+  remap: ["source"],
+  filter: ["condition"],
+  route: ["route"],
+};
+
+function filterSchema(
+  schema: {
+    type?: string;
+    properties?: Record<string, Record<string, unknown>>;
+    required?: string[];
+  },
+  componentType: string,
+): typeof schema {
+  const fieldsToExclude = VRL_FIELDS[componentType];
+  if (!fieldsToExclude || !schema.properties) return schema;
+
+  const filtered = { ...schema.properties };
+  for (const field of fieldsToExclude) {
+    delete filtered[field];
+  }
+
+  return {
+    ...schema,
+    properties: filtered,
+    required: schema.required?.filter((r) => !fieldsToExclude.includes(r)),
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -116,12 +149,68 @@ export function DetailPanel() {
           {/* ---- Configuration ---- */}
           <div className="space-y-4">
             <h3 className="text-sm font-semibold">Configuration</h3>
+
+            {/* VRL Editor for remap source field */}
+            {componentDef.type === "remap" && (
+              <div className="space-y-2">
+                <Label>VRL Source</Label>
+                <VrlEditor
+                  value={(config.source as string) ?? ""}
+                  onChange={(v) => handleConfigChange({ ...config, source: v })}
+                />
+              </div>
+            )}
+
+            {/* VRL Editor for filter condition field */}
+            {componentDef.type === "filter" && (
+              <div className="space-y-2">
+                <Label>VRL Condition</Label>
+                <VrlEditor
+                  value={(config.condition as string) ?? ""}
+                  onChange={(v) => handleConfigChange({ ...config, condition: v })}
+                />
+              </div>
+            )}
+
+            {/* VRL Editors for route conditions */}
+            {componentDef.type === "route" && (
+              <div className="space-y-3">
+                <Label>Route Conditions</Label>
+                {Object.entries(
+                  (config.route as Record<string, string>) ?? {},
+                ).map(([routeName, condition]) => (
+                  <div key={routeName} className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">
+                      {routeName}
+                    </Label>
+                    <VrlEditor
+                      value={condition ?? ""}
+                      onChange={(v) =>
+                        handleConfigChange({
+                          ...config,
+                          route: {
+                            ...((config.route as Record<string, string>) ?? {}),
+                            [routeName]: v,
+                          },
+                        })
+                      }
+                      height="120px"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Standard schema form for remaining fields (exclude VRL-managed fields) */}
             <SchemaForm
-              schema={componentDef.configSchema as {
-                type?: string;
-                properties?: Record<string, Record<string, unknown>>;
-                required?: string[];
-              }}
+              schema={filterSchema(
+                componentDef.configSchema as {
+                  type?: string;
+                  properties?: Record<string, Record<string, unknown>>;
+                  required?: string[];
+                },
+                componentDef.type,
+              )}
               values={config}
               onChange={handleConfigChange}
             />
