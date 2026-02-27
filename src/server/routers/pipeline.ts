@@ -3,6 +3,12 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { ComponentKind } from "@/generated/prisma";
+import {
+  createVersion,
+  listVersions,
+  getVersion,
+  rollback,
+} from "@/server/services/pipeline-version";
 
 const nodeSchema = z.object({
   id: z.string().optional(),
@@ -193,5 +199,53 @@ export const pipelineRouter = router({
           },
         });
       });
+    }),
+
+  versions: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .query(async ({ input }) => {
+      return listVersions(input.pipelineId);
+    }),
+
+  createVersion: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        configYaml: z.string().min(1),
+        changelog: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user?.id;
+      if (!userId) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+      return createVersion(
+        input.pipelineId,
+        input.configYaml,
+        userId,
+        input.changelog,
+      );
+    }),
+
+  getVersion: protectedProcedure
+    .input(z.object({ versionId: z.string() }))
+    .query(async ({ input }) => {
+      return getVersion(input.versionId);
+    }),
+
+  rollback: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        targetVersionId: z.string(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user?.id;
+      if (!userId) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+      return rollback(input.pipelineId, input.targetVersionId, userId);
     }),
 });
