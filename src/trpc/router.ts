@@ -9,6 +9,7 @@ import { deployRouter } from "@/server/routers/deploy";
 import { vrlRouter } from "@/server/routers/vrl";
 import { templateRouter } from "@/server/routers/template";
 import { settingsRouter } from "@/server/routers/settings";
+import { dashboardRouter } from "@/server/routers/dashboard";
 
 export const appRouter = router({
   team: teamRouter,
@@ -21,6 +22,7 @@ export const appRouter = router({
   vrl: vrlRouter,
   template: templateRouter,
   settings: settingsRouter,
+  dashboard: dashboardRouter,
 });
 
 export type AppRouter = typeof appRouter;
