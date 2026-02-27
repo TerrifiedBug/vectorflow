@@ -1,0 +1,210 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String?
+  image        String?
+  passwordHash String?
+  authMethod   AuthMethod   @default(LOCAL)
+  memberships  TeamMember[]
+  accounts     Account[]
+  auditLogs    AuditLog[]
+  createdAt    DateTime     @default(now())
+}
+
+enum AuthMethod {
+  LOCAL
+  OIDC
+  BOTH
+}
+
+model Team {
+  id           String        @id @default(cuid())
+  name         String
+  members      TeamMember[]
+  environments Environment[]
+  templates    Template[]
+  createdAt    DateTime      @default(now())
+}
+
+model TeamMember {
+  id     String @id @default(cuid())
+  userId String
+  teamId String
+  role   Role
+  user   User   @relation(fields: [userId], references: [id])
+  team   Team   @relation(fields: [teamId], references: [id])
+
+  @@unique([userId, teamId])
+}
+
+enum Role {
+  VIEWER
+  EDITOR
+  ADMIN
+}
+
+model Environment {
+  id         String       @id @default(cuid())
+  name       String
+  teamId     String
+  team       Team         @relation(fields: [teamId], references: [id])
+  nodes      VectorNode[]
+  pipelines  Pipeline[]
+  deployMode DeployMode   @default(API_RELOAD)
+  gitRepo    String?
+  gitBranch  String?
+  createdAt  DateTime     @default(now())
+}
+
+enum DeployMode {
+  API_RELOAD
+  GITOPS
+}
+
+model VectorNode {
+  id            String      @id @default(cuid())
+  name          String
+  host          String
+  apiPort       Int         @default(8686)
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id])
+  status        NodeStatus  @default(UNKNOWN)
+  lastSeen      DateTime?
+  metadata      Json?
+  createdAt     DateTime    @default(now())
+}
+
+enum NodeStatus {
+  HEALTHY
+  DEGRADED
+  UNREACHABLE
+  UNKNOWN
+}
+
+model Pipeline {
+  id            String            @id @default(cuid())
+  name          String
+  description   String?
+  environmentId String
+  environment   Environment       @relation(fields: [environmentId], references: [id])
+  nodes         PipelineNode[]
+  edges         PipelineEdge[]
+  versions      PipelineVersion[]
+  isDraft       Boolean           @default(true)
+  deployedAt    DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+model PipelineNode {
+  id            String        @id @default(cuid())
+  pipelineId    String
+  pipeline      Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  componentKey  String
+  componentType String
+  kind          ComponentKind
+  config        Json
+  positionX     Float
+  positionY     Float
+}
+
+enum ComponentKind {
+  SOURCE
+  TRANSFORM
+  SINK
+}
+
+model PipelineEdge {
+  id           String   @id @default(cuid())
+  pipelineId   String
+  pipeline     Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  sourceNodeId String
+  targetNodeId String
+  sourcePort   String?
+}
+
+model PipelineVersion {
+  id          String   @id @default(cuid())
+  pipelineId  String
+  pipeline    Pipeline @relation(fields: [pipelineId], references: [id])
+  version     Int
+  configYaml  String
+  configToml  String?
+  createdById String
+  changelog   String?
+  createdAt   DateTime @default(now())
+}
+
+model Template {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  category    String
+  teamId      String?
+  team        Team?    @relation(fields: [teamId], references: [id])
+  nodes       Json
+  edges       Json
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  diff       Json?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model SystemSettings {
+  id String @id @default("singleton")
+
+  oidcIssuer       String?
+  oidcClientId     String?
+  oidcClientSecret String?
+  oidcDisplayName  String? @default("SSO")
+
+  fleetPollIntervalMs     Int @default(15000)
+  fleetUnhealthyThreshold Int @default(3)
+
+  gitopsCommitAuthor String? @default("VectorFlow <vectorflow@company.com>")
+  gitopsSshKey       Bytes?
+
+  defaultDeployMode DeployMode @default(API_RELOAD)
+
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
