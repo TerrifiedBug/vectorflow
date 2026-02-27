@@ -28,6 +28,7 @@ services:
       DATABASE_URL: postgresql://vectorflow:${POSTGRES_PASSWORD:-vectorflow}@postgres:5432/vectorflow
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       NEXTAUTH_URL: http://localhost:3000
+      AUTH_TRUST_HOST: "true"
     env_file:
       - path: .env
         required: false

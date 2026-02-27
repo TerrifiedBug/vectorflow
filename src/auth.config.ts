@@ -29,9 +29,10 @@ export const authConfig: NextAuthConfig = {
         nextUrl.pathname.startsWith("/setup");
       const isApiAuth = nextUrl.pathname.startsWith("/api/auth");
       const isHealth = nextUrl.pathname.startsWith("/api/health");
+      const isSetupApi = nextUrl.pathname.startsWith("/api/setup");
 
-      // Always allow auth pages, auth API, and health check
-      if (isAuthPage || isApiAuth || isHealth) return true;
+      // Always allow auth pages, auth API, health check, and setup API
+      if (isAuthPage || isApiAuth || isHealth || isSetupApi) return true;
 
       // Redirect unauthenticated users to login
       if (!isLoggedIn) return false;
