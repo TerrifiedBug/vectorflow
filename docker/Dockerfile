@@ -55,6 +55,7 @@ COPY --from=build /app/prisma.config.ts ./prisma.config.ts
 # Copy prisma CLI and its dependencies for migrate deploy
 COPY --from=build /app/node_modules/prisma ./node_modules/prisma
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=build /app/node_modules/dotenv ./node_modules/dotenv
 
 # Copy entrypoint script
 COPY docker/entrypoint.sh ./entrypoint.sh
