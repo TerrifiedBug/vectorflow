@@ -6,6 +6,8 @@ import { pipelineRouter } from "@/server/routers/pipeline";
 import { validatorRouter } from "@/server/routers/validator";
 import { auditRouter } from "@/server/routers/audit";
 import { deployRouter } from "@/server/routers/deploy";
+import { vrlRouter } from "@/server/routers/vrl";
+import { templateRouter } from "@/server/routers/template";
 
 export const appRouter = router({
   team: teamRouter,
@@ -15,6 +17,8 @@ export const appRouter = router({
   validator: validatorRouter,
   audit: auditRouter,
   deploy: deployRouter,
+  vrl: vrlRouter,
+  template: templateRouter,
 });
 
 export type AppRouter = typeof appRouter;
