@@ -10,6 +10,7 @@ export const auditRouter = router({
         userId: z.string().optional(),
         entityType: z.string().optional(),
         search: z.string().optional(),
+        teamId: z.string().optional(),
         startDate: z.string().optional(),
         endDate: z.string().optional(),
         cursor: z.string().optional(),
@@ -39,6 +40,10 @@ export const auditRouter = router({
 
       if (entityType) {
         where.entityType = entityType;
+      }
+
+      if (input.teamId) {
+        where.teamId = input.teamId;
       }
 
       if (startDate || endDate) {

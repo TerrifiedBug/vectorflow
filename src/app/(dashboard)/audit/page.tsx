@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTeamStore } from "@/stores/team-store";
 
 const ALL_VALUE = "__all__";
 
@@ -63,6 +64,7 @@ function getActionColor(action: string): string {
 
 export default function AuditPage() {
   const trpc = useTRPC();
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
   // Filter state
   const [actionFilter, setActionFilter] = useState<string>("");
@@ -85,6 +87,7 @@ export default function AuditPage() {
     ...(startDate ? { startDate } : {}),
     ...(endDate ? { endDate } : {}),
     ...(search ? { search } : {}),
+    ...(selectedTeamId ? { teamId: selectedTeamId } : {}),
   };
 
   // Infinite query for cursor-based pagination
@@ -314,31 +317,53 @@ export default function AuditPage() {
                         {entry.entityId}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
-                        {truncate(entry.diff ?? entry.metadata)}
+                        {truncate(
+                          entry.diff ??
+                          (entry.metadata as any)?.input ??
+                          entry.metadata
+                        )}
                       </TableCell>
                     </TableRow>
                     {isExpanded && hasDetails && (
                       <TableRow className="bg-muted/30 hover:bg-muted/30">
                         <TableCell colSpan={8} className="p-4">
                           <div className="space-y-3">
-                            {hasDiff && (
-                              <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-1">
-                                  Diff
-                                </p>
-                                <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-[300px]">
-                                  {JSON.stringify(entry.diff, null, 2)}
-                                </pre>
-                              </div>
-                            )}
                             {hasMetadata && (
                               <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-1">
-                                  Metadata
-                                </p>
-                                <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-[300px]">
-                                  {JSON.stringify(entry.metadata, null, 2)}
-                                </pre>
+                                <p className="text-xs font-medium text-muted-foreground mb-2">Details</p>
+                                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+                                  {Object.entries(entry.metadata as Record<string, unknown>).map(([key, value]) => (
+                                    <Fragment key={key}>
+                                      <span className="font-medium text-muted-foreground capitalize">
+                                        {key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").trim()}
+                                      </span>
+                                      <span className="font-mono">
+                                        {typeof value === "object" && value !== null
+                                          ? JSON.stringify(value, null, 2)
+                                          : String(value ?? "\u2014")}
+                                      </span>
+                                    </Fragment>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {hasDiff && (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-2">Changes</p>
+                                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+                                  {Object.entries(entry.diff as Record<string, unknown>).map(([key, value]) => (
+                                    <Fragment key={key}>
+                                      <span className="font-medium text-muted-foreground capitalize">
+                                        {key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").trim()}
+                                      </span>
+                                      <span className="font-mono">
+                                        {typeof value === "object" && value !== null
+                                          ? JSON.stringify(value, null, 2)
+                                          : String(value ?? "\u2014")}
+                                      </span>
+                                    </Fragment>
+                                  ))}
+                                </div>
                               </div>
                             )}
                           </div>

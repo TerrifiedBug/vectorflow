@@ -10,6 +10,7 @@ export async function writeAuditLog(params: {
   ipAddress?: string | null;
   userEmail?: string | null;
   userName?: string | null;
+  teamId?: string | null;
 }) {
   return prisma.auditLog.create({ data: params });
 }
