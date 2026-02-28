@@ -141,6 +141,10 @@ export const pipelineRouter = router({
     .mutation(async ({ input }) => {
       const existing = await prisma.pipeline.findUnique({
         where: { id: input.id },
+        include: {
+          environment: true,
+          versions: { orderBy: { version: "desc" }, take: 1 },
+        },
       });
       if (!existing) {
         throw new TRPCError({
@@ -148,6 +152,18 @@ export const pipelineRouter = router({
           message: "Pipeline not found",
         });
       }
+
+      // If pipeline was deployed (has versions), try to remove config from git
+      // TODO: Implement git cleanup (clone repo, delete config file, commit, push).
+      // Git cleanup is best-effort and should not block deletion.
+      if (existing.versions.length > 0 && existing.environment.gitRepo) {
+        try {
+          // Future: remove pipeline config file from the git repository
+        } catch {
+          // Ignore git cleanup errors — DB deletion should still proceed
+        }
+      }
+
       return prisma.pipeline.delete({
         where: { id: input.id },
       });
