@@ -6,6 +6,7 @@ export interface VectorComponentDef {
   displayName: string;
   description: string;
   category: string;
+  status?: "stable" | "beta" | "deprecated";
   inputTypes?: DataType[];
   outputTypes: DataType[];
   configSchema: object;

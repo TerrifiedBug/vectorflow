@@ -1,4 +1,4 @@
-import { VECTOR_CATALOG } from "./catalog";
+import { findComponentDef } from "./catalog";
 import type { VectorComponentDef } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -36,7 +36,7 @@ export interface BuiltinTemplate {
 /* ------------------------------------------------------------------ */
 
 function findDef(type: string): VectorComponentDef | undefined {
-  return VECTOR_CATALOG.find((c) => c.type === type);
+  return findComponentDef(type);
 }
 
 function node(

@@ -1,0 +1,101 @@
+import type { VectorComponentDef } from "../../types";
+import {
+  tlsSchema,
+  batchSchema,
+  bufferSchema,
+  requestSchema,
+  compressionSchema,
+  datadogCommonSchema,
+} from "../shared";
+
+export const datadogSinks: VectorComponentDef[] = [
+  {
+    type: "datadog_logs",
+    kind: "sink",
+    displayName: "Datadog Logs",
+    description: "Send log events to Datadog",
+    category: "Observability",
+    inputTypes: ["log"],
+    outputTypes: ["log"],
+    icon: "Send",
+    configSchema: {
+      type: "object",
+      properties: {
+        ...datadogCommonSchema(),
+        ...compressionSchema(["gzip", "none"], "gzip"),
+        ...tlsSchema(),
+        ...batchSchema({ max_bytes: "5MB", timeout_secs: "5" }),
+        ...bufferSchema(),
+        ...requestSchema(),
+      },
+      required: ["default_api_key"],
+    },
+  },
+  {
+    type: "datadog_metrics",
+    kind: "sink",
+    displayName: "Datadog Metrics",
+    description: "Send metric events to Datadog",
+    category: "Observability",
+    inputTypes: ["metric"],
+    outputTypes: ["metric"],
+    icon: "Send",
+    configSchema: {
+      type: "object",
+      properties: {
+        ...datadogCommonSchema(),
+        default_namespace: {
+          type: "string",
+          description: "Default namespace prefix for metrics",
+        },
+        ...tlsSchema(),
+        ...batchSchema({ max_bytes: "512KB", timeout_secs: "2" }),
+        ...bufferSchema(),
+        ...requestSchema(),
+      },
+      required: ["default_api_key"],
+    },
+  },
+  {
+    type: "datadog_events",
+    kind: "sink",
+    displayName: "Datadog Events",
+    description: "Send events to the Datadog Events API",
+    category: "Observability",
+    inputTypes: ["log"],
+    outputTypes: ["log"],
+    icon: "Send",
+    configSchema: {
+      type: "object",
+      properties: {
+        ...datadogCommonSchema(),
+        ...tlsSchema(),
+        ...bufferSchema(),
+        ...requestSchema(),
+      },
+      required: ["default_api_key"],
+    },
+  },
+  {
+    type: "datadog_traces",
+    kind: "sink",
+    displayName: "Datadog Traces",
+    description: "Send trace events to Datadog APM",
+    category: "Observability",
+    inputTypes: ["trace"],
+    outputTypes: ["trace"],
+    icon: "Send",
+    configSchema: {
+      type: "object",
+      properties: {
+        ...datadogCommonSchema(),
+        ...compressionSchema(["gzip", "none"], "gzip"),
+        ...tlsSchema(),
+        ...batchSchema({ max_bytes: "3MB", timeout_secs: "5" }),
+        ...bufferSchema(),
+        ...requestSchema(),
+      },
+      required: ["default_api_key"],
+    },
+  },
+];
