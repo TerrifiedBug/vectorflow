@@ -22,36 +22,36 @@ export interface GitWorkspace {
  * with the simple-git instance, directory path, and a cleanup function.
  */
 export async function cloneRepo(config: GitConfig): Promise<GitWorkspace> {
-  const dir = await mkdtemp(join(tmpdir(), "vectorflow-gitops-"));
+  // Create a temp base dir; clone into a "repo" subdirectory so the
+  // base dir can hold auxiliary files (SSH key) without polluting the
+  // clone target — git clone requires the destination to be empty.
+  const tmpBase = await mkdtemp(join(tmpdir(), "vectorflow-gitops-"));
+  const dir = join(tmpBase, "repo");
 
   // Determine the effective URL (inject HTTPS token if applicable)
   let effectiveUrl = config.repoUrl;
 
   if (config.httpsToken && config.repoUrl.startsWith("https://")) {
-    // Inject token as password: https://oauth2:TOKEN@host/path
     const url = new URL(config.repoUrl);
     url.username = "oauth2";
     url.password = config.httpsToken;
     effectiveUrl = url.toString();
   }
 
-  // Write SSH key to temp file if provided and URL is not HTTPS
+  // Write SSH key to temp base (outside clone target) if provided
   let sshKeyPath: string | undefined;
   if (config.sshKey && !config.repoUrl.startsWith("https://")) {
-    sshKeyPath = join(dir, ".deploy-key");
+    sshKeyPath = join(tmpBase, ".deploy-key");
     await writeFile(sshKeyPath, config.sshKey, { mode: 0o600 });
     await chmod(sshKeyPath, 0o600);
   }
 
-  // Build environment variables for git
   const gitEnv: Record<string, string> = {};
   if (sshKeyPath) {
     gitEnv.GIT_SSH_COMMAND = `ssh -i ${sshKeyPath} -o StrictHostKeyChecking=no`;
   }
 
-  const git = simpleGit({ baseDir: dir });
-
-  // Set env before clone
+  const git = simpleGit();
   if (Object.keys(gitEnv).length > 0) {
     git.env(gitEnv);
   }
@@ -64,10 +64,7 @@ export async function cloneRepo(config: GitConfig): Promise<GitWorkspace> {
     "1",
   ]);
 
-  // Re-initialize git in the cloned directory
   const repoGit = simpleGit({ baseDir: dir });
-
-  // Preserve env for push operations
   if (Object.keys(gitEnv).length > 0) {
     repoGit.env(gitEnv);
   }
@@ -90,7 +87,7 @@ export async function cloneRepo(config: GitConfig): Promise<GitWorkspace> {
     git: repoGit,
     dir,
     cleanup: async () => {
-      await rm(dir, { recursive: true, force: true });
+      await rm(tmpBase, { recursive: true, force: true });
     },
   };
 }
