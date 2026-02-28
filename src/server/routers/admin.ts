@@ -139,4 +139,19 @@ export const adminRouter = router({
 
       return { id: user.id, email: user.email, name: user.name };
     }),
+
+  /** Remove a user from a specific team */
+  removeFromTeam: protectedProcedure
+    .use(requireSuperAdmin())
+    .input(z.object({ userId: z.string(), teamId: z.string() }))
+    .mutation(async ({ input }) => {
+      const member = await prisma.teamMember.findUnique({
+        where: { userId_teamId: { userId: input.userId, teamId: input.teamId } },
+      });
+      if (!member) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Team membership not found" });
+      }
+      await prisma.teamMember.delete({ where: { id: member.id } });
+      return { removed: true };
+    }),
 });

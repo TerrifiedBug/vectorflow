@@ -21,6 +21,7 @@ import {
   Crown,
   Layers,
   Plus,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -569,12 +570,12 @@ function TeamSettings() {
     trpc.team.addMember.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: trpc.team.get.queryKey() });
-        toast.success("Member invited successfully");
+        toast.success("Member added");
         setInviteEmail("");
         setInviteRole("VIEWER");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to invite member");
+        toast.error(error.message || "Failed to add member");
       },
     })
   );
@@ -870,9 +871,9 @@ function TeamSettings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Invite Member</CardTitle>
+          <CardTitle>Add Member</CardTitle>
           <CardDescription>
-            Add a new member to the team by their email address.
+            Add an existing user to the team by their email address.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -910,10 +911,10 @@ function TeamSettings() {
               {addMemberMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Inviting...
+                  Adding...
                 </>
               ) : (
-                "Invite"
+                "Add"
               )}
             </Button>
           </form>
@@ -1008,6 +1009,16 @@ function UsersSettings() {
     })
   );
 
+  const removeFromTeamMutation = useMutation(
+    trpc.admin.removeFromTeam.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
+        toast.success("User removed from team");
+      },
+      onError: (error) => toast.error(error.message),
+    })
+  );
+
   if (usersQuery.isLoading) {
     return (
       <div className="space-y-4">
@@ -1069,8 +1080,18 @@ function UsersSettings() {
                         <span className="text-xs text-muted-foreground">No teams</span>
                       )}
                       {user.memberships.map((m) => (
-                        <Badge key={m.team.id} variant="outline" className="text-xs">
+                        <Badge key={m.team.id} variant="outline" className="text-xs flex items-center gap-1">
                           {m.team.name} ({m.role.charAt(0) + m.role.slice(1).toLowerCase()})
+                          <button
+                            type="button"
+                            className="ml-0.5 rounded-full hover:bg-muted p-0.5"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFromTeamMutation.mutate({ userId: user.id, teamId: m.team.id });
+                            }}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
                         </Badge>
                       ))}
                     </div>
