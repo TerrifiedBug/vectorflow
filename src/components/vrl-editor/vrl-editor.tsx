@@ -109,8 +109,7 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
 
   return (
     <div className="space-y-3">
-      <div className="flex overflow-hidden rounded border">
-        <div className="flex-1">
+      <div className="overflow-hidden rounded border">
           <Editor
             height={height}
             language="plaintext"
@@ -128,11 +127,11 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
               automaticLayout: true,
             }}
           />
-        </div>
-        {showSnippets && (
-          <VrlSnippetDrawer onInsert={handleInsertSnippet} />
-        )}
       </div>
+
+      {showSnippets && (
+        <VrlSnippetDrawer onInsert={handleInsertSnippet} />
+      )}
 
       <div className="flex gap-2">
         <Button
