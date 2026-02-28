@@ -5,6 +5,7 @@ import { signOut } from "next-auth/react";
 import { LogOut, User } from "lucide-react";
 
 import { AppSidebar } from "@/components/app-sidebar";
+import { EnvironmentSelector } from "@/components/environment-selector";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
@@ -52,6 +53,7 @@ export default function DashboardLayout({
           <Separator orientation="vertical" className="mr-2 h-4" />
           <h1 className="text-sm font-medium">{pageTitle}</h1>
           <div className="ml-auto flex items-center gap-2">
+            <EnvironmentSelector />
             <ThemeToggle />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
