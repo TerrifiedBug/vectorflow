@@ -922,6 +922,32 @@ function TeamSettings() {
 // ─── Main Settings Page ────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const trpc = useTRPC();
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const teamRoleQuery = useQuery(
+    trpc.team.teamRole.queryOptions(
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId },
+    ),
+  );
+  const isSuperAdmin = teamRoleQuery.data?.isSuperAdmin ?? false;
+  const isTeamAdmin = teamRoleQuery.data?.role === "ADMIN";
+
+  if (teamRoleQuery.isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
+          <p className="text-muted-foreground">
+            Manage system configuration and team settings
+          </p>
+        </div>
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -931,33 +957,55 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="auth">
+      <Tabs defaultValue={isTeamAdmin ? "team" : isSuperAdmin ? "auth" : "team"}>
         <TabsList>
-          <TabsTrigger value="auth">
-            <Shield className="mr-2 h-4 w-4" />
-            Auth
-          </TabsTrigger>
-          <TabsTrigger value="fleet">
-            <Server className="mr-2 h-4 w-4" />
-            Fleet
-          </TabsTrigger>
-          <TabsTrigger value="team">
-            <Users className="mr-2 h-4 w-4" />
-            Team
-          </TabsTrigger>
+          {isTeamAdmin && (
+            <TabsTrigger value="team">
+              <Users className="mr-2 h-4 w-4" />
+              Team
+            </TabsTrigger>
+          )}
+          {isSuperAdmin && (
+            <>
+              <TabsTrigger value="auth">
+                <Shield className="mr-2 h-4 w-4" />
+                Auth
+              </TabsTrigger>
+              <TabsTrigger value="fleet">
+                <Server className="mr-2 h-4 w-4" />
+                Fleet
+              </TabsTrigger>
+              <TabsTrigger value="users">
+                <Users className="mr-2 h-4 w-4" />
+                Users
+              </TabsTrigger>
+            </>
+          )}
         </TabsList>
 
-        <TabsContent value="auth" className="mt-6">
-          <AuthSettings />
-        </TabsContent>
+        {isTeamAdmin && (
+          <TabsContent value="team" className="mt-6">
+            <TeamSettings />
+          </TabsContent>
+        )}
 
-        <TabsContent value="fleet" className="mt-6">
-          <FleetSettings />
-        </TabsContent>
-
-        <TabsContent value="team" className="mt-6">
-          <TeamSettings />
-        </TabsContent>
+        {isSuperAdmin && (
+          <>
+            <TabsContent value="auth" className="mt-6">
+              <AuthSettings />
+            </TabsContent>
+            <TabsContent value="fleet" className="mt-6">
+              <FleetSettings />
+            </TabsContent>
+            <TabsContent value="users" className="mt-6">
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                  <p className="text-muted-foreground">Users management coming soon</p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </>
+        )}
       </Tabs>
     </div>
   );
