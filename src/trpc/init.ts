@@ -84,6 +84,121 @@ export const requireRole = (minRole: Role) =>
     });
   });
 
+export const requireSuperAdmin = () =>
+  t.middleware(async ({ ctx, next }) => {
+    if (!ctx.session?.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+
+    const userId = ctx.session.user.id;
+    if (!userId) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+
+    if (!user?.isSuperAdmin) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "This action requires super admin access",
+      });
+    }
+
+    return next({
+      ctx: { session: ctx.session, userRole: "ADMIN" as Role },
+    });
+  });
+
+/**
+ * Team-scoped authorization middleware.
+ * Resolves teamId from procedure input, validates membership, checks role.
+ * Super admins bypass the membership check.
+ */
+export const withTeamAccess = (minRole: Role) =>
+  t.middleware(async ({ ctx, getRawInput, next }) => {
+    if (!ctx.session?.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+
+    const userId = ctx.session.user.id;
+    if (!userId) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+
+    const rawInput = (await getRawInput()) as Record<string, unknown> | undefined;
+
+    // Resolve teamId: directly from input, or via environmentId/pipelineId lookup
+    let teamId: string | undefined = rawInput?.teamId as string | undefined;
+
+    if (!teamId && rawInput?.environmentId) {
+      const env = await prisma.environment.findUnique({
+        where: { id: rawInput.environmentId as string },
+        select: { teamId: true },
+      });
+      if (!env) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Environment not found" });
+      }
+      teamId = env.teamId;
+    }
+
+    if (!teamId && rawInput?.pipelineId) {
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: rawInput.pipelineId as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (!pipeline) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+      teamId = pipeline.environment.teamId;
+    }
+
+    if (!teamId) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Cannot resolve team context from input",
+      });
+    }
+
+    // Super admins bypass membership check
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+
+    if (user?.isSuperAdmin) {
+      return next({
+        ctx: { ...ctx, teamId, userRole: "ADMIN" as Role },
+      });
+    }
+
+    // Check membership and role in this specific team
+    const membership = await prisma.teamMember.findUnique({
+      where: { userId_teamId: { userId, teamId } },
+      select: { role: true },
+    });
+
+    if (!membership) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "You are not a member of this team",
+      });
+    }
+
+    if (roleLevel[membership.role] < roleLevel[minRole]) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: `This action requires ${minRole} role or higher in this team`,
+      });
+    }
+
+    return next({
+      ctx: { ...ctx, teamId, userRole: membership.role },
+    });
+  });
+
 export const middleware = t.middleware;
 
 export { roleLevel };
