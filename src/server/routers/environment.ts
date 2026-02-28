@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "@/trpc/init";
+import { router, protectedProcedure, requireRole } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { encrypt, decrypt } from "@/server/services/crypto";
+import { createHash } from "crypto";
 import { withAudit } from "@/server/middleware/audit";
 
 export const environmentRouter = router({
@@ -34,7 +36,24 @@ export const environmentRouter = router({
           message: "Environment not found",
         });
       }
-      return environment;
+
+      let sshKeyFingerprint: string | null = null;
+      if (environment.gitSshKey) {
+        try {
+          const hash = createHash("sha256").update(environment.gitSshKey).digest("base64");
+          sshKeyFingerprint = `SHA256:${hash}`;
+        } catch {}
+      }
+
+      return {
+        ...environment,
+        hasSshKey: !!environment.gitSshKey,
+        hasHttpsToken: !!environment.gitHttpsToken,
+        sshKeyFingerprint,
+        // Never expose raw credentials
+        gitSshKey: undefined,
+        gitHttpsToken: undefined,
+      };
     }),
 
   create: protectedProcedure
@@ -42,7 +61,6 @@ export const environmentRouter = router({
       z.object({
         name: z.string().min(1).max(100),
         teamId: z.string(),
-        deployMode: z.enum(["API_RELOAD", "GITOPS"]),
         gitRepo: z.string().optional(),
         gitBranch: z.string().optional(),
       })
@@ -64,7 +82,6 @@ export const environmentRouter = router({
         data: {
           name: input.name,
           teamId: input.teamId,
-          deployMode: input.deployMode,
           gitRepo: input.gitRepo,
           gitBranch: input.gitBranch,
         },
@@ -76,9 +93,9 @@ export const environmentRouter = router({
       z.object({
         id: z.string(),
         name: z.string().min(1).max(100).optional(),
-        deployMode: z.enum(["API_RELOAD", "GITOPS"]).optional(),
         gitRepo: z.string().nullable().optional(),
         gitBranch: z.string().nullable().optional(),
+        gitCommitAuthor: z.string().nullable().optional(),
       })
     )
     .use(withAudit("environment.updated", "Environment"))
@@ -114,6 +131,36 @@ export const environmentRouter = router({
       }
       return prisma.environment.delete({
         where: { id: input.id },
+      });
+    }),
+
+  uploadSshKey: protectedProcedure
+    .use(requireRole("EDITOR"))
+    .input(z.object({ environmentId: z.string(), keyBase64: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      const keyBuffer = Buffer.from(input.keyBase64, "base64");
+      const keyText = keyBuffer.toString("utf8");
+      if (!keyText.includes("PRIVATE KEY")) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This does not appear to be a private key. Upload the private key file (not .pub).",
+        });
+      }
+      const encryptedKey = encrypt(keyText);
+      return prisma.environment.update({
+        where: { id: input.environmentId },
+        data: { gitSshKey: Buffer.from(encryptedKey, "utf8") },
+      });
+    }),
+
+  updateHttpsToken: protectedProcedure
+    .use(requireRole("EDITOR"))
+    .input(z.object({ environmentId: z.string(), token: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      const encryptedToken = encrypt(input.token);
+      return prisma.environment.update({
+        where: { id: input.environmentId },
+        data: { gitHttpsToken: encryptedToken },
       });
     }),
 });

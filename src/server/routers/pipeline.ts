@@ -42,6 +42,7 @@ export const pipelineRouter = router({
           isDraft: true,
           deployedAt: true,
           updatedAt: true,
+          updatedBy: { select: { name: true, email: true } },
           _count: { select: { nodes: true, edges: true } },
         },
         orderBy: { updatedAt: "desc" },
@@ -114,7 +115,7 @@ export const pipelineRouter = router({
       })
     )
     .use(withAudit("pipeline.updated", "Pipeline"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
       const existing = await prisma.pipeline.findUnique({
         where: { id },
@@ -127,7 +128,10 @@ export const pipelineRouter = router({
       }
       return prisma.pipeline.update({
         where: { id },
-        data,
+        data: {
+          ...data,
+          updatedById: ctx.session.user?.id,
+        },
       });
     }),
 
@@ -157,7 +161,7 @@ export const pipelineRouter = router({
         edges: z.array(edgeSchema),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const existing = await prisma.pipeline.findUnique({
         where: { id: input.pipelineId },
       });
@@ -169,6 +173,11 @@ export const pipelineRouter = router({
       }
 
       return prisma.$transaction(async (tx) => {
+        await tx.pipeline.update({
+          where: { id: input.pipelineId },
+          data: { updatedById: ctx.session.user?.id },
+        });
+
         await tx.pipelineEdge.deleteMany({
           where: { pipelineId: input.pipelineId },
         });

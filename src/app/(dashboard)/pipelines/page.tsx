@@ -112,6 +112,11 @@ export default function PipelinesPage() {
                 </TableCell>
                 <TableCell>
                   {new Date(pipeline.updatedAt).toLocaleDateString()}
+                  {pipeline.updatedBy && (
+                    <span className="text-xs text-muted-foreground">
+                      {" "}by {pipeline.updatedBy.name || pipeline.updatedBy.email}
+                    </span>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
