@@ -16,6 +16,9 @@ model User {
   authMethod   AuthMethod   @default(LOCAL)
   memberships  TeamMember[]
   accounts     Account[]
+  lockedAt         DateTime?
+  lockedBy         String?
+  isSuperAdmin     Boolean      @default(false)
   auditLogs        AuditLog[]
   pipelinesUpdated Pipeline[]   @relation("PipelineUpdatedBy")
   createdAt        DateTime     @default(now())
@@ -168,6 +171,7 @@ model AuditLog {
   ipAddress  String?
   userEmail  String?
   userName   String?
+  teamId     String?
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
