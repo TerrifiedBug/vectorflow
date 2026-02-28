@@ -6,6 +6,16 @@ import bcrypt from "bcryptjs";
 import { withAudit } from "@/server/middleware/audit";
 
 export const userRouter = router({
+  /** Returns current user's auth method for client-side feature gating */
+  me: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session.user!.id!;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { authMethod: true },
+    });
+    return { authMethod: user?.authMethod ?? "LOCAL" };
+  }),
+
   changePassword: protectedProcedure
     .use(withAudit("user.password_changed", "User"))
     .input(
@@ -64,6 +74,16 @@ export const userRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user!.id!;
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { authMethod: true },
+      });
+      if (user?.authMethod === "OIDC") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Profile editing is not available for SSO users",
+        });
+      }
       return prisma.user.update({
         where: { id: userId },
         data: { name: input.name },

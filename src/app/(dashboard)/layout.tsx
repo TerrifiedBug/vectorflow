@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
+import { useQuery } from "@tanstack/react-query";
 import { LogOut, KeyRound, User } from "lucide-react";
 
+import { useTRPC } from "@/trpc/client";
 import { AppSidebar } from "@/components/app-sidebar";
 import { EnvironmentSelector } from "@/components/environment-selector";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -50,6 +52,10 @@ export default function DashboardLayout({
   const pageTitle = getPageTitle(pathname);
 
   const { data: session } = useSession();
+  const trpc = useTRPC();
+  const { data: me } = useQuery(trpc.user.me.queryOptions());
+  const isLocalUser = me?.authMethod !== "OIDC";
+
   const userName = session?.user?.name;
   const userEmail = session?.user?.email;
   const userImage = session?.user?.image;
@@ -98,14 +104,18 @@ export default function DashboardLayout({
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setProfileDialogOpen(true)}>
-                  <User className="mr-2 h-4 w-4" />
-                  Edit Profile
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setPasswordDialogOpen(true)}>
-                  <KeyRound className="mr-2 h-4 w-4" />
-                  Change Password
-                </DropdownMenuItem>
+                {isLocalUser && (
+                  <>
+                    <DropdownMenuItem onClick={() => setProfileDialogOpen(true)}>
+                      <User className="mr-2 h-4 w-4" />
+                      Edit Profile
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setPasswordDialogOpen(true)}>
+                      <KeyRound className="mr-2 h-4 w-4" />
+                      Change Password
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuItem
                   onClick={() => signOut({ callbackUrl: "/login" })}
                 >

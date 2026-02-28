@@ -27,7 +27,6 @@ model User {
 enum AuthMethod {
   LOCAL
   OIDC
-  BOTH
 }
 
 model Team {
