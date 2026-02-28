@@ -52,6 +52,16 @@ export const settingsRouter = router({
         oidcAdminGroups: settings.oidcAdminGroups,
         oidcEditorGroups: settings.oidcEditorGroups,
         oidcTokenEndpointAuthMethod: settings.oidcTokenEndpointAuthMethod ?? "client_secret_post",
+        oidcTeamMappings: (() => {
+          try {
+            return settings.oidcTeamMappings
+              ? JSON.parse(settings.oidcTeamMappings) as Array<{group: string; teamId: string; role: string}>
+              : [];
+          } catch {
+            return [];
+          }
+        })(),
+        oidcDefaultTeamId: settings.oidcDefaultTeamId,
         fleetPollIntervalMs: settings.fleetPollIntervalMs,
         fleetUnhealthyThreshold: settings.fleetUnhealthyThreshold,
         updatedAt: settings.updatedAt,
@@ -109,6 +119,59 @@ export const settingsRouter = router({
           oidcGroupsClaim: input.groupsClaim,
           oidcAdminGroups: input.adminGroups || null,
           oidcEditorGroups: input.editorGroups || null,
+        },
+      });
+    }),
+
+  updateOidcTeamMappings: protectedProcedure
+    .use(requireSuperAdmin())
+    .input(z.object({
+      mappings: z.array(z.object({
+        group: z.string().min(1),
+        teamId: z.string(),
+        role: z.enum(["VIEWER", "EDITOR", "ADMIN"]),
+      })),
+      defaultTeamId: z.string().optional(),
+      defaultRole: z.enum(["VIEWER", "EDITOR", "ADMIN"]),
+      groupsClaim: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      await getOrCreateSettings();
+
+      // Validate all teamIds exist
+      if (input.mappings.length > 0) {
+        const teamIds = [...new Set(input.mappings.map((m) => m.teamId))];
+        const teams = await prisma.team.findMany({
+          where: { id: { in: teamIds } },
+          select: { id: true },
+        });
+        const foundIds = new Set(teams.map((t) => t.id));
+        const missing = teamIds.filter((id) => !foundIds.has(id));
+        if (missing.length > 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Teams not found: ${missing.join(", ")}`,
+          });
+        }
+      }
+
+      if (input.defaultTeamId) {
+        const team = await prisma.team.findUnique({ where: { id: input.defaultTeamId } });
+        if (!team) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Default team not found" });
+        }
+      }
+
+      return prisma.systemSettings.update({
+        where: { id: SETTINGS_ID },
+        data: {
+          oidcTeamMappings: JSON.stringify(input.mappings),
+          oidcDefaultTeamId: input.defaultTeamId || null,
+          oidcDefaultRole: input.defaultRole,
+          oidcGroupsClaim: input.groupsClaim,
+          // Clear legacy fields when saving new team mappings
+          oidcAdminGroups: null,
+          oidcEditorGroups: null,
         },
       });
     }),

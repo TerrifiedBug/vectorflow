@@ -50,6 +50,7 @@ const credentialsProvider = Credentials({
     });
 
     if (!user?.passwordHash) return null;
+    if (user.lockedAt) return null;
 
     const valid = await bcrypt.compare(
       credentials.password as string,
@@ -101,24 +102,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user, account, profile }) {
       // For OIDC sign-ins, auto-create user and team membership with role mapping
       if (account?.provider === "oidc" && user.email) {
-        // Load role mapping settings
         const settings = await prisma.systemSettings.findUnique({
           where: { id: "singleton" },
         });
-        const defaultRole = settings?.oidcDefaultRole ?? "VIEWER";
         const groupsClaim = settings?.oidcGroupsClaim ?? "groups";
-        const adminGroups = settings?.oidcAdminGroups?.split(",").map((g) => g.trim()).filter(Boolean) ?? [];
-        const editorGroups = settings?.oidcEditorGroups?.split(",").map((g) => g.trim()).filter(Boolean) ?? [];
-
-        // Determine role from OIDC groups claim
         const profileData = profile as Record<string, unknown> | undefined;
         const userGroups = (profileData?.[groupsClaim] as string[] | undefined) ?? [];
-        let assignedRole: "VIEWER" | "EDITOR" | "ADMIN" = defaultRole as "VIEWER" | "EDITOR" | "ADMIN";
-        if (adminGroups.length > 0 && userGroups.some((g) => adminGroups.includes(g))) {
-          assignedRole = "ADMIN";
-        } else if (editorGroups.length > 0 && userGroups.some((g) => editorGroups.includes(g))) {
-          assignedRole = "EDITOR";
-        }
 
         // Ensure user exists in the database
         let dbUser = await prisma.user.findUnique({
@@ -139,22 +128,81 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           });
         }
 
-        // Auto-add to the first team with mapped role, or update existing role
-        const teams = await prisma.team.findMany({ take: 1 });
-        if (teams.length > 0) {
-          const membership = await prisma.teamMember.findUnique({
-            where: { userId_teamId: { userId: dbUser.id, teamId: teams[0].id } },
-          });
-          if (!membership) {
-            await prisma.teamMember.create({
-              data: { userId: dbUser.id, teamId: teams[0].id, role: assignedRole },
+        // Parse team mappings (new system)
+        const teamMappings: Array<{group: string; teamId: string; role: string}> =
+          settings?.oidcTeamMappings ? (() => { try { return JSON.parse(settings.oidcTeamMappings!); } catch { return []; } })() : [];
+
+        if (teamMappings.length > 0) {
+          // New team mapping logic
+          const matchedMappings = teamMappings.filter((m) => userGroups.includes(m.group));
+
+          if (matchedMappings.length > 0) {
+            // Group by teamId, take highest role per team
+            const roleLevel: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
+            const teamRoleMap = new Map<string, string>();
+            for (const m of matchedMappings) {
+              const current = teamRoleMap.get(m.teamId);
+              if (!current || (roleLevel[m.role] ?? 0) > (roleLevel[current] ?? 0)) {
+                teamRoleMap.set(m.teamId, m.role);
+              }
+            }
+
+            // Create or update memberships for matched teams
+            for (const [teamId, role] of teamRoleMap) {
+              const membership = await prisma.teamMember.findUnique({
+                where: { userId_teamId: { userId: dbUser.id, teamId } },
+              });
+              if (!membership) {
+                await prisma.teamMember.create({
+                  data: { userId: dbUser.id, teamId, role: role as "VIEWER" | "EDITOR" | "ADMIN" },
+                });
+              } else {
+                await prisma.teamMember.update({
+                  where: { id: membership.id },
+                  data: { role: role as "VIEWER" | "EDITOR" | "ADMIN" },
+                });
+              }
+            }
+          } else if (settings?.oidcDefaultTeamId) {
+            // No mappings matched — assign to default team with default role
+            const defaultRole = settings.oidcDefaultRole ?? "VIEWER";
+            const membership = await prisma.teamMember.findUnique({
+              where: { userId_teamId: { userId: dbUser.id, teamId: settings.oidcDefaultTeamId } },
             });
-          } else if (adminGroups.length > 0 || editorGroups.length > 0) {
-            // Update role on each login if group mapping is configured
-            await prisma.teamMember.update({
-              where: { id: membership.id },
-              data: { role: assignedRole },
+            if (!membership) {
+              await prisma.teamMember.create({
+                data: { userId: dbUser.id, teamId: settings.oidcDefaultTeamId, role: defaultRole },
+              });
+            }
+          }
+        } else {
+          // Legacy fallback: use oidcAdminGroups/oidcEditorGroups (backward compat)
+          const defaultRole = settings?.oidcDefaultRole ?? "VIEWER";
+          const adminGroups = settings?.oidcAdminGroups?.split(",").map((g) => g.trim()).filter(Boolean) ?? [];
+          const editorGroups = settings?.oidcEditorGroups?.split(",").map((g) => g.trim()).filter(Boolean) ?? [];
+
+          let assignedRole: "VIEWER" | "EDITOR" | "ADMIN" = defaultRole as "VIEWER" | "EDITOR" | "ADMIN";
+          if (adminGroups.length > 0 && userGroups.some((g) => adminGroups.includes(g))) {
+            assignedRole = "ADMIN";
+          } else if (editorGroups.length > 0 && userGroups.some((g) => editorGroups.includes(g))) {
+            assignedRole = "EDITOR";
+          }
+
+          const teams = await prisma.team.findMany({ take: 1 });
+          if (teams.length > 0) {
+            const membership = await prisma.teamMember.findUnique({
+              where: { userId_teamId: { userId: dbUser.id, teamId: teams[0].id } },
             });
+            if (!membership) {
+              await prisma.teamMember.create({
+                data: { userId: dbUser.id, teamId: teams[0].id, role: assignedRole },
+              });
+            } else if (adminGroups.length > 0 || editorGroups.length > 0) {
+              await prisma.teamMember.update({
+                where: { id: membership.id },
+                data: { role: assignedRole },
+              });
+            }
           }
         }
 

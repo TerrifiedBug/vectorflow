@@ -191,6 +191,8 @@ model SystemSettings {
   oidcAdminGroups  String? // Comma-separated group names → ADMIN role
   oidcEditorGroups String? // Comma-separated group names → EDITOR role
   oidcTokenEndpointAuthMethod String? @default("client_secret_post")
+  oidcTeamMappings  String?  // JSON: [{group, teamId, role}]
+  oidcDefaultTeamId String?  // Fallback team for unmatched users
 
   fleetPollIntervalMs     Int @default(15000)
   fleetUnhealthyThreshold Int @default(3)
