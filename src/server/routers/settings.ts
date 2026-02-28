@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, requireRole } from "@/trpc/init";
+import { router, protectedProcedure, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
 
@@ -27,7 +27,7 @@ async function getOrCreateSettings() {
 
 export const settingsRouter = router({
   get: protectedProcedure
-    .use(requireRole("ADMIN"))
+    .use(requireSuperAdmin())
     .query(async () => {
       const settings = await getOrCreateSettings();
 
@@ -59,7 +59,7 @@ export const settingsRouter = router({
     }),
 
   updateOidc: protectedProcedure
-    .use(requireRole("ADMIN"))
+    .use(requireSuperAdmin())
     .input(
       z.object({
         issuer: z.string().url().min(1),
@@ -90,7 +90,7 @@ export const settingsRouter = router({
     }),
 
   updateOidcRoleMapping: protectedProcedure
-    .use(requireRole("ADMIN"))
+    .use(requireSuperAdmin())
     .input(
       z.object({
         defaultRole: z.enum(["VIEWER", "EDITOR", "ADMIN"]),
@@ -114,7 +114,7 @@ export const settingsRouter = router({
     }),
 
   updateFleet: protectedProcedure
-    .use(requireRole("ADMIN"))
+    .use(requireSuperAdmin())
     .input(
       z.object({
         pollIntervalMs: z.number().int().min(1000).max(300000),
@@ -134,7 +134,7 @@ export const settingsRouter = router({
     }),
 
   testOidc: protectedProcedure
-    .use(requireRole("ADMIN"))
+    .use(requireSuperAdmin())
     .input(
       z.object({
         issuer: z.string().url().min(1),
