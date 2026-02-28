@@ -179,6 +179,11 @@ model SystemSettings {
   oidcClientId     String?
   oidcClientSecret String?
   oidcDisplayName  String? @default("SSO")
+  oidcDefaultRole  Role    @default(VIEWER)
+  oidcGroupsClaim  String? @default("groups")
+  oidcAdminGroups  String? // Comma-separated group names → ADMIN role
+  oidcEditorGroups String? // Comma-separated group names → EDITOR role
+  oidcTokenEndpointAuthMethod String? @default("client_secret_post")
 
   fleetPollIntervalMs     Int @default(15000)
   fleetUnhealthyThreshold Int @default(3)
