@@ -133,6 +133,12 @@ export const deployRouter = router({
         }
       }
 
+      // Log credential status for debugging
+      console.log(`GitOps deploy: URL scheme=${isHttps ? "HTTPS" : "SSH"}, hasKey=${!!sshKey}, hasToken=${!!httpsToken}`);
+      if (sshKey) {
+        console.log(`SSH key: ${sshKey.length} chars, starts with "${sshKey.substring(0, 30)}..."`);
+      }
+
       // Validate credentials match the URL scheme
       if (isHttps && !httpsToken) {
         throw new TRPCError({
