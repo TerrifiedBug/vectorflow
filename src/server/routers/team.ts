@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, requireRole } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
@@ -42,10 +42,13 @@ export const teamRouter = router({
 
   list: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session.user!.id!;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+
     return prisma.team.findMany({
-      where: {
-        members: { some: { userId } },
-      },
+      where: user?.isSuperAdmin ? {} : { members: { some: { userId } } },
       include: {
         _count: { select: { members: true, environments: true } },
       },
@@ -72,7 +75,7 @@ export const teamRouter = router({
     }),
 
   create: protectedProcedure
-    .use(requireRole("ADMIN"))
+    .use(requireSuperAdmin())
     .input(z.object({ name: z.string().min(1).max(100) }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user!.id!;
@@ -88,7 +91,7 @@ export const teamRouter = router({
     }),
 
   rename: protectedProcedure
-    .use(requireRole("ADMIN"))
+    .use(withTeamAccess("ADMIN"))
     .input(z.object({ teamId: z.string(), name: z.string().min(1).max(100) }))
     .mutation(async ({ input }) => {
       const team = await prisma.team.findUnique({ where: { id: input.teamId } });
@@ -102,6 +105,7 @@ export const teamRouter = router({
     }),
 
   addMember: protectedProcedure
+    .use(withTeamAccess("ADMIN"))
     .input(
       z.object({
         teamId: z.string(),
@@ -141,7 +145,7 @@ export const teamRouter = router({
     }),
 
   removeMember: protectedProcedure
-    .use(requireRole("ADMIN"))
+    .use(withTeamAccess("ADMIN"))
     .input(
       z.object({
         teamId: z.string(),
@@ -149,7 +153,7 @@ export const teamRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      if (input.userId === ctx.session.user!.id!) {
+      if (input.userId === ctx.session!.user!.id!) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot remove yourself from the team" });
       }
       const member = await prisma.teamMember.findUnique({
@@ -167,6 +171,7 @@ export const teamRouter = router({
     }),
 
   updateMemberRole: protectedProcedure
+    .use(withTeamAccess("ADMIN"))
     .input(
       z.object({
         teamId: z.string(),
@@ -192,10 +197,10 @@ export const teamRouter = router({
     }),
 
   lockMember: protectedProcedure
-    .use(requireRole("ADMIN"))
+    .use(withTeamAccess("ADMIN"))
     .input(z.object({ teamId: z.string(), userId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const adminId = ctx.session.user!.id!;
+      const adminId = ctx.session!.user!.id!;
       if (input.userId === adminId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot lock your own account" });
       }
@@ -213,7 +218,7 @@ export const teamRouter = router({
     }),
 
   unlockMember: protectedProcedure
-    .use(requireRole("ADMIN"))
+    .use(withTeamAccess("ADMIN"))
     .input(z.object({ teamId: z.string(), userId: z.string() }))
     .mutation(async ({ input }) => {
       const member = await prisma.teamMember.findUnique({
@@ -229,7 +234,7 @@ export const teamRouter = router({
     }),
 
   resetMemberPassword: protectedProcedure
-    .use(requireRole("ADMIN"))
+    .use(withTeamAccess("ADMIN"))
     .input(z.object({ teamId: z.string(), userId: z.string() }))
     .mutation(async ({ input }) => {
       const member = await prisma.teamMember.findUnique({
