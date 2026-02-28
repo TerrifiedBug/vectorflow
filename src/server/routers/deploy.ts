@@ -112,24 +112,39 @@ export const deployRouter = router({
         where: { id: "singleton" },
       });
 
+      const { decrypt } = await import("@/server/services/crypto");
+      const isHttps = input.repoUrl.startsWith("https://");
+
       let sshKey: string | undefined;
       if (settings?.gitopsSshKey) {
         try {
-          const { decrypt } = await import("@/server/services/crypto");
           sshKey = decrypt(Buffer.from(settings.gitopsSshKey).toString("utf8"));
-        } catch {
-          // Key decryption failed, proceed without
+        } catch (err) {
+          console.error("Failed to decrypt SSH key:", err);
         }
       }
 
       let httpsToken: string | undefined;
       if (settings?.gitopsHttpsToken) {
         try {
-          const { decrypt } = await import("@/server/services/crypto");
           httpsToken = decrypt(settings.gitopsHttpsToken);
-        } catch {
-          // Token decryption failed
+        } catch (err) {
+          console.error("Failed to decrypt HTTPS token:", err);
         }
+      }
+
+      // Validate credentials match the URL scheme
+      if (isHttps && !httpsToken) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "HTTPS repository requires a personal access token. Configure one in Settings → GitOps → HTTPS Token.",
+        });
+      }
+      if (!isHttps && !sshKey) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "SSH repository requires a deploy key. Upload one in Settings → GitOps → SSH Key.",
+        });
       }
 
       return deployGitOps(input.pipelineId, input.environmentId, userId, {
