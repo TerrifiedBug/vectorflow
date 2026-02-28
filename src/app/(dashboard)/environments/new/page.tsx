@@ -147,10 +147,13 @@ export default function NewEnvironmentPage() {
                   <Label htmlFor="gitRepo">Git Repository</Label>
                   <Input
                     id="gitRepo"
-                    placeholder="e.g., https://github.com/org/vector-configs"
+                    placeholder="https://github.com/org/repo.git or git@github.com:org/repo.git"
                     value={gitRepo}
                     onChange={(e) => setGitRepo(e.target.value)}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Use HTTPS with a token (Settings &rarr; GitOps) or SSH with a deploy key
+                  </p>
                 </div>
 
                 <div className="space-y-2">
