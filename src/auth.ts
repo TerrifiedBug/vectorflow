@@ -122,9 +122,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
           });
         } else if (dbUser.authMethod === "LOCAL") {
+          // SSO takeover: convert local user to OIDC (removes local login)
           await prisma.user.update({
             where: { id: dbUser.id },
-            data: { authMethod: "BOTH" },
+            data: { authMethod: "OIDC", passwordHash: null },
           });
         }
 

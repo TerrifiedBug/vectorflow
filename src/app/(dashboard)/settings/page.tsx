@@ -809,9 +809,6 @@ function TeamSettings() {
                       {member.user.authMethod === "OIDC" && (
                         <Badge variant="secondary">SSO</Badge>
                       )}
-                      {member.user.authMethod === "BOTH" && (
-                        <Badge variant="secondary">SSO + Local</Badge>
-                      )}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -1148,9 +1145,6 @@ function UsersSettings() {
                     )}
                     {user.authMethod === "OIDC" && (
                       <Badge variant="secondary">SSO</Badge>
-                    )}
-                    {user.authMethod === "BOTH" && (
-                      <Badge variant="secondary">SSO + Local</Badge>
                     )}
                   </TableCell>
                   <TableCell>
