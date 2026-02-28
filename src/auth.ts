@@ -84,6 +84,7 @@ if (oidcSettings) {
     issuer: oidcSettings.issuer,
     clientId: oidcSettings.clientId,
     clientSecret: oidcSettings.clientSecret,
+    allowDangerousEmailAccountLinking: true,
     client: {
       token_endpoint_auth_method: oidcSettings.tokenEndpointAuthMethod,
     },
