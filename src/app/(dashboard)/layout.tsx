@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
-import { LogOut, User } from "lucide-react";
+import { signOut, useSession } from "next-auth/react";
+import { LogOut, KeyRound, User } from "lucide-react";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { EnvironmentSelector } from "@/components/environment-selector";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ChangePasswordDialog } from "@/components/change-password-dialog";
+import { EditProfileDialog } from "@/components/edit-profile-dialog";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -14,9 +17,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
@@ -44,6 +49,25 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const pageTitle = getPageTitle(pathname);
 
+  const { data: session } = useSession();
+  const userName = session?.user?.name;
+  const userEmail = session?.user?.email;
+  const userImage = session?.user?.image;
+
+  // Extract initials
+  const initials = (() => {
+    if (userName) {
+      const parts = userName.trim().split(/\s+/);
+      if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      return parts[0][0].toUpperCase();
+    }
+    if (userEmail) return userEmail[0].toUpperCase();
+    return "U";
+  })();
+
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -59,11 +83,29 @@ export default function DashboardLayout({
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full">
                   <Avatar size="sm">
-                    <AvatarFallback>U</AvatarFallback>
+                    {userImage && <AvatarImage src={userImage} alt={userName ?? "User"} />}
+                    <AvatarFallback>{initials}</AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{userName ?? "User"}</p>
+                    {userEmail && (
+                      <p className="text-xs leading-none text-muted-foreground">{userEmail}</p>
+                    )}
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setProfileDialogOpen(true)}>
+                  <User className="mr-2 h-4 w-4" />
+                  Edit Profile
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setPasswordDialogOpen(true)}>
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  Change Password
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => signOut({ callbackUrl: "/login" })}
                 >
@@ -74,6 +116,8 @@ export default function DashboardLayout({
             </DropdownMenu>
           </div>
         </header>
+        <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} />
+        <EditProfileDialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen} />
         <div className="flex-1 p-6">{children}</div>
       </SidebarInset>
     </SidebarProvider>
