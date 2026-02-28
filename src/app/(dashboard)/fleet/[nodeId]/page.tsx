@@ -180,12 +180,10 @@ export default function NodeDetailPage() {
                 <p className="text-sm font-medium">{node.environment.name}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Host</p>
-                <p className="text-sm font-mono">{node.host}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">API Port</p>
-                <p className="text-sm font-mono">{node.apiPort}</p>
+                <p className="text-sm text-muted-foreground">Vector Version</p>
+                <p className="text-sm font-mono">
+                  {((node.metadata as Record<string, unknown> | null)?.vectorVersion as string)?.split(" ")[0] ?? "Unknown"}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Last Seen</p>
