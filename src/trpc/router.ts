@@ -11,6 +11,8 @@ import { templateRouter } from "@/server/routers/template";
 import { settingsRouter } from "@/server/routers/settings";
 import { dashboardRouter } from "@/server/routers/dashboard";
 import { metricsRouter } from "@/server/routers/metrics";
+import { userRouter } from "@/server/routers/user";
+import { adminRouter } from "@/server/routers/admin";
 
 export const appRouter = router({
   team: teamRouter,
@@ -25,6 +27,8 @@ export const appRouter = router({
   settings: settingsRouter,
   dashboard: dashboardRouter,
   metrics: metricsRouter,
+  user: userRouter,
+  admin: adminRouter,
 });
 
 export type AppRouter = typeof appRouter;

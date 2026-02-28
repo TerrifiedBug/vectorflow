@@ -17,6 +17,8 @@ import {
   Unlock,
   KeyRound,
   Copy,
+  UserPlus,
+  Crown,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -919,6 +921,318 @@ function TeamSettings() {
   );
 }
 
+// ─── Users Tab (Super Admin) ────────────────────────────────────────────────────
+
+function UsersSettings() {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const usersQuery = useQuery(trpc.admin.listUsers.queryOptions());
+  const teamsQuery = useQuery(trpc.admin.listTeams.queryOptions());
+
+  const [assignDialog, setAssignDialog] = useState<{ userId: string; userName: string } | null>(null);
+  const [assignTeamId, setAssignTeamId] = useState("");
+  const [assignRole, setAssignRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
+  const [deleteDialog, setDeleteDialog] = useState<{ userId: string; userName: string } | null>(null);
+
+  const assignMutation = useMutation(
+    trpc.admin.assignToTeam.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
+        toast.success("User assigned to team");
+        setAssignDialog(null);
+        setAssignTeamId("");
+        setAssignRole("VIEWER");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to assign user to team");
+      },
+    })
+  );
+
+  const toggleSuperAdminMutation = useMutation(
+    trpc.admin.toggleSuperAdmin.mutationOptions({
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
+        toast.success(
+          data.isSuperAdmin ? "User promoted to super admin" : "Super admin status removed"
+        );
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to toggle super admin status");
+      },
+    })
+  );
+
+  const deleteUserMutation = useMutation(
+    trpc.admin.deleteUser.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
+        toast.success("User deleted");
+        setDeleteDialog(null);
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to delete user");
+      },
+    })
+  );
+
+  if (usersQuery.isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  const users = usersQuery.data ?? [];
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Platform Users</CardTitle>
+          <CardDescription>
+            Manage all users across the platform. Assign users to teams, manage super admin access, and delete users.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Auth Method</TableHead>
+                <TableHead>Teams</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="w-[180px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.map((user) => (
+                <TableRow key={user.id}>
+                  <TableCell className="font-medium">
+                    {user.name || "Unnamed"}
+                  </TableCell>
+                  <TableCell>{user.email}</TableCell>
+                  <TableCell>
+                    {user.authMethod === "LOCAL" && (
+                      <Badge variant="outline">Local</Badge>
+                    )}
+                    {user.authMethod === "OIDC" && (
+                      <Badge variant="secondary">SSO</Badge>
+                    )}
+                    {user.authMethod === "BOTH" && (
+                      <Badge variant="secondary">SSO + Local</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {user.memberships.length === 0 && (
+                        <span className="text-xs text-muted-foreground">No teams</span>
+                      )}
+                      {user.memberships.map((m) => (
+                        <Badge key={m.team.id} variant="outline" className="text-xs">
+                          {m.team.name} ({m.role.charAt(0) + m.role.slice(1).toLowerCase()})
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {user.isSuperAdmin && (
+                        <Badge className="text-xs">
+                          <Crown className="mr-1 h-3 w-3" />
+                          Super Admin
+                        </Badge>
+                      )}
+                      {user.lockedAt && (
+                        <Badge variant="destructive" className="text-xs">
+                          <Lock className="mr-1 h-3 w-3" />
+                          Locked
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {new Date(user.createdAt).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        title="Assign to team"
+                        onClick={() =>
+                          setAssignDialog({
+                            userId: user.id,
+                            userName: user.name || user.email,
+                          })
+                        }
+                      >
+                        <UserPlus className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        title={user.isSuperAdmin ? "Remove super admin" : "Make super admin"}
+                        disabled={toggleSuperAdminMutation.isPending}
+                        onClick={() =>
+                          toggleSuperAdminMutation.mutate({
+                            userId: user.id,
+                            isSuperAdmin: !user.isSuperAdmin,
+                          })
+                        }
+                      >
+                        <Shield className={`h-4 w-4 ${user.isSuperAdmin ? "text-primary" : ""}`} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        title="Delete user"
+                        onClick={() =>
+                          setDeleteDialog({
+                            userId: user.id,
+                            userName: user.name || user.email,
+                          })
+                        }
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Assign to Team Dialog */}
+      <Dialog open={!!assignDialog} onOpenChange={(open) => {
+        if (!open) {
+          setAssignDialog(null);
+          setAssignTeamId("");
+          setAssignRole("VIEWER");
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign to Team</DialogTitle>
+            <DialogDescription>
+              Assign <span className="font-medium">{assignDialog?.userName}</span> to a team with a specific role.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="assign-team">Team</Label>
+              <Select value={assignTeamId} onValueChange={setAssignTeamId}>
+                <SelectTrigger id="assign-team" className="w-full">
+                  <SelectValue placeholder="Select a team" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(teamsQuery.data ?? []).map((team) => (
+                    <SelectItem key={team.id} value={team.id}>
+                      {team.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="assign-role">Role</Label>
+              <Select
+                value={assignRole}
+                onValueChange={(val: "VIEWER" | "EDITOR" | "ADMIN") => setAssignRole(val)}
+              >
+                <SelectTrigger id="assign-role" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="VIEWER">Viewer</SelectItem>
+                  <SelectItem value="EDITOR">Editor</SelectItem>
+                  <SelectItem value="ADMIN">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAssignDialog(null);
+                setAssignTeamId("");
+                setAssignRole("VIEWER");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={assignMutation.isPending || !assignTeamId}
+              onClick={() => {
+                if (!assignDialog) return;
+                assignMutation.mutate({
+                  userId: assignDialog.userId,
+                  teamId: assignTeamId,
+                  role: assignRole,
+                });
+              }}
+            >
+              {assignMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Assigning...
+                </>
+              ) : (
+                "Assign"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <Dialog open={!!deleteDialog} onOpenChange={(open) => !open && setDeleteDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete user?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete <span className="font-medium">{deleteDialog?.userName}</span> and all their data. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialog(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteUserMutation.isPending}
+              onClick={() => {
+                if (!deleteDialog) return;
+                deleteUserMutation.mutate({ userId: deleteDialog.userId });
+              }}
+            >
+              {deleteUserMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete User"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ─── Main Settings Page ────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -998,11 +1312,7 @@ export default function SettingsPage() {
               <FleetSettings />
             </TabsContent>
             <TabsContent value="users" className="mt-6">
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                  <p className="text-muted-foreground">Users management coming soon</p>
-                </CardContent>
-              </Card>
+              <UsersSettings />
             </TabsContent>
           </>
         )}
