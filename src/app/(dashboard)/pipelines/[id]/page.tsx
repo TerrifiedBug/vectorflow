@@ -1,18 +1,29 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   ReactFlowProvider,
   type Node,
   type Edge,
 } from "@xyflow/react";
+import { Trash2 } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { useFlowStore } from "@/stores/flow-store";
 import { findComponentDef } from "@/lib/vector/catalog";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { ComponentPalette } from "@/components/flow/component-palette";
 import { FlowCanvas } from "@/components/flow/flow-canvas";
 import { FlowToolbar } from "@/components/flow/flow-toolbar";
@@ -80,8 +91,10 @@ function dbEdgesToFlowEdges(
 
 function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const trpc = useTRPC();
+  const router = useRouter();
   const [deployOpen, setDeployOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const loadGraph = useFlowStore((s) => s.loadGraph);
 
@@ -107,6 +120,19 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       },
       onError: (error) => {
         toast.error(error.message || "Failed to save pipeline");
+      },
+    })
+  );
+
+  // Delete mutation
+  const deleteMutation = useMutation(
+    trpc.pipeline.delete.mutationOptions({
+      onSuccess: () => {
+        toast.success("Pipeline deleted");
+        router.push("/pipelines");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to delete pipeline");
       },
     })
   );
@@ -155,7 +181,41 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
 
   return (
     <div className="-m-6 flex h-[calc(100vh-3.5rem)] flex-col">
-      <FlowToolbar pipelineId={pipelineId} onSave={handleSave} isSaving={saveMutation.isPending} onDeploy={() => setDeployOpen(true)} onSaveAsTemplate={() => setTemplateOpen(true)} />
+      <div className="flex items-center">
+        <div className="flex-1">
+          <FlowToolbar pipelineId={pipelineId} onSave={handleSave} isSaving={saveMutation.isPending} onDeploy={() => setDeployOpen(true)} onSaveAsTemplate={() => setTemplateOpen(true)} />
+        </div>
+        <div className="flex items-center border-b px-3 h-10">
+          <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <DialogTrigger asChild>
+              <Button variant="destructive" size="sm" className="h-7 gap-1.5 px-2.5 text-xs">
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete pipeline?</DialogTitle>
+                <DialogDescription>
+                  This will permanently delete this pipeline and all its versions, nodes, and edges. This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => deleteMutation.mutate({ id: pipelineId })}
+                  disabled={deleteMutation.isPending}
+                >
+                  {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
       <div className="flex flex-1 overflow-hidden">
         <ComponentPalette />
         <div className="flex-1">

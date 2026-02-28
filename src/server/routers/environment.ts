@@ -12,7 +12,14 @@ export const environmentRouter = router({
     .query(async ({ input }) => {
       return prisma.environment.findMany({
         where: { teamId: input.teamId },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          teamId: true,
+          gitRepo: true,
+          gitBranch: true,
+          gitCommitAuthor: true,
+          createdAt: true,
           _count: { select: { nodes: true, pipelines: true } },
         },
         orderBy: { createdAt: "desc" },
@@ -45,14 +52,14 @@ export const environmentRouter = router({
         } catch {}
       }
 
+      // Destructure to exclude raw credential fields (Bytes can't serialize)
+      const { gitSshKey, gitHttpsToken, ...safe } = environment;
+
       return {
-        ...environment,
-        hasSshKey: !!environment.gitSshKey,
-        hasHttpsToken: !!environment.gitHttpsToken,
+        ...safe,
+        hasSshKey: !!gitSshKey,
+        hasHttpsToken: !!gitHttpsToken,
         sshKeyFingerprint,
-        // Never expose raw credentials
-        gitSshKey: undefined,
-        gitHttpsToken: undefined,
       };
     }),
 
