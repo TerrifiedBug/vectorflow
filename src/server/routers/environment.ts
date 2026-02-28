@@ -131,6 +131,7 @@ export const environmentRouter = router({
     .mutation(async ({ input }) => {
       const existing = await prisma.environment.findUnique({
         where: { id: input.id },
+        include: { pipelines: { select: { id: true } } },
       });
       if (!existing) {
         throw new TRPCError({
@@ -138,9 +139,14 @@ export const environmentRouter = router({
           message: "Environment not found",
         });
       }
-      return prisma.environment.delete({
-        where: { id: input.id },
-      });
+      const pipelineIds = existing.pipelines.map((p) => p.id);
+      return prisma.$transaction([
+        // PipelineVersion lacks onDelete: Cascade, clean up explicitly
+        prisma.pipelineVersion.deleteMany({ where: { pipelineId: { in: pipelineIds } } }),
+        prisma.pipeline.deleteMany({ where: { environmentId: input.id } }),
+        prisma.vectorNode.deleteMany({ where: { environmentId: input.id } }),
+        prisma.environment.delete({ where: { id: input.id } }),
+      ]);
     }),
 
   uploadSshKey: protectedProcedure
