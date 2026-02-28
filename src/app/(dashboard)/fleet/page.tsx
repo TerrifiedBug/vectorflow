@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Plus } from "lucide-react";
 import { useState } from "react";
+import { useEnvironmentStore } from "@/stores/environment-store";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -62,7 +63,7 @@ export default function FleetPage() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedEnvId, setSelectedEnvId] = useState<string>("");
+  const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
   const [newNode, setNewNode] = useState({
     name: "",
     host: "",
@@ -83,7 +84,7 @@ export default function FleetPage() {
   const environments = environmentsQuery.data ?? [];
 
   // Pick the first environment if none is selected yet
-  const activeEnvId = selectedEnvId || environments[0]?.id || "";
+  const activeEnvId = selectedEnvironmentId || environments[0]?.id || "";
 
   const nodesQuery = useQuery(
     trpc.fleet.list.queryOptions(
@@ -185,7 +186,7 @@ export default function FleetPage() {
               <div className="space-y-2">
                 <Label htmlFor="node-env">Environment</Label>
                 <Select
-                  value={newNode.environmentId || activeEnvId}
+                  value={activeEnvId}
                   onValueChange={(value) =>
                     setNewNode((prev) => ({ ...prev, environmentId: value }))
                   }
@@ -213,24 +214,6 @@ export default function FleetPage() {
           </DialogContent>
         </Dialog>
       </div>
-
-      {environments.length > 1 && (
-        <div className="flex items-center gap-2">
-          <Label className="text-sm text-muted-foreground">Environment:</Label>
-          <Select value={activeEnvId} onValueChange={setSelectedEnvId}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Select environment" />
-            </SelectTrigger>
-            <SelectContent>
-              {environments.map((env) => (
-                <SelectItem key={env.id} value={env.id}>
-                  {env.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
 
       {isLoading ? (
         <div className="space-y-3">

@@ -1,20 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Plus } from "lucide-react";
+import { useEnvironmentStore } from "@/stores/environment-store";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -27,7 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function PipelinesPage() {
   const trpc = useTRPC();
-  const [selectedEnvId, setSelectedEnvId] = useState<string>("");
+  const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
 
   // Fetch teams first
   const teamsQuery = useQuery(trpc.team.list.queryOptions());
@@ -42,7 +35,7 @@ export default function PipelinesPage() {
   );
 
   const environments = environmentsQuery.data ?? [];
-  const effectiveEnvId = selectedEnvId || environments[0]?.id || "";
+  const effectiveEnvId = selectedEnvironmentId || environments[0]?.id || "";
 
   // Fetch pipelines for the selected environment
   const pipelinesQuery = useQuery(
@@ -74,30 +67,6 @@ export default function PipelinesPage() {
           </Link>
         </Button>
       </div>
-
-      {/* Environment selector */}
-      {environments.length > 0 && (
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-muted-foreground">
-            Environment
-          </label>
-          <Select
-            value={effectiveEnvId}
-            onValueChange={setSelectedEnvId}
-          >
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Select environment" />
-            </SelectTrigger>
-            <SelectContent>
-              {environments.map((env) => (
-                <SelectItem key={env.id} value={env.id}>
-                  {env.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
 
       {isLoading ? (
         <div className="space-y-3">
