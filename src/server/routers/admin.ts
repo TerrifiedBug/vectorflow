@@ -63,15 +63,17 @@ export const adminRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
       }
 
-      // Clean up references before deleting
-      await prisma.auditLog.deleteMany({ where: { userId: input.userId } });
-      await prisma.pipeline.updateMany({
-        where: { updatedById: input.userId },
-        data: { updatedById: null },
-      });
-      await prisma.teamMember.deleteMany({ where: { userId: input.userId } });
-      await prisma.account.deleteMany({ where: { userId: input.userId } });
-      await prisma.user.delete({ where: { id: input.userId } });
+      // Clean up references and delete user atomically
+      await prisma.$transaction([
+        prisma.auditLog.deleteMany({ where: { userId: input.userId } }),
+        prisma.pipeline.updateMany({
+          where: { updatedById: input.userId },
+          data: { updatedById: null },
+        }),
+        prisma.teamMember.deleteMany({ where: { userId: input.userId } }),
+        prisma.account.deleteMany({ where: { userId: input.userId } }),
+        prisma.user.delete({ where: { id: input.userId } }),
+      ]);
 
       return { deleted: true };
     }),
