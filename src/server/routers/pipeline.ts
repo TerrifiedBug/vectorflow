@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { ComponentKind } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
@@ -11,6 +11,7 @@ import {
   rollback,
 } from "@/server/services/pipeline-version";
 import { encryptNodeConfig, decryptNodeConfig } from "@/server/services/config-crypto";
+import { removeFromGit } from "@/server/services/deploy-gitops";
 
 const nodeSchema = z.object({
   id: z.string().optional(),
@@ -32,6 +33,7 @@ const edgeSchema = z.object({
 export const pipelineRouter = router({
   list: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return prisma.pipeline.findMany({
         where: { environmentId: input.environmentId },
@@ -85,6 +87,7 @@ export const pipelineRouter = router({
         environmentId: z.string(),
       })
     )
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.created", "Pipeline"))
     .mutation(async ({ input }) => {
       const environment = await prisma.environment.findUnique({
@@ -158,9 +161,9 @@ export const pipelineRouter = router({
       // Git cleanup is best-effort and should not block deletion.
       if (existing.versions.length > 0 && existing.environment.gitRepo) {
         try {
-          // Future: remove pipeline config file from the git repository
+          await removeFromGit(input.id);
         } catch {
-          // Ignore git cleanup errors — DB deletion should still proceed
+          // Best-effort: git cleanup failures should not block DB deletion
         }
       }
 
@@ -177,6 +180,7 @@ export const pipelineRouter = router({
         edges: z.array(edgeSchema),
       })
     )
+    .use(withTeamAccess("EDITOR"))
     .mutation(async ({ input, ctx }) => {
       const existing = await prisma.pipeline.findUnique({
         where: { id: input.pipelineId },
@@ -254,6 +258,7 @@ export const pipelineRouter = router({
 
   versions: protectedProcedure
     .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return listVersions(input.pipelineId);
     }),
@@ -266,6 +271,7 @@ export const pipelineRouter = router({
         changelog: z.string().optional(),
       })
     )
+    .use(withTeamAccess("EDITOR"))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) {

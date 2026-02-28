@@ -170,7 +170,7 @@ export const withTeamAccess = (minRole: Role) =>
 
     if (user?.isSuperAdmin) {
       return next({
-        ctx: { ...ctx, teamId, userRole: "ADMIN" as Role },
+        ctx: { session: ctx.session, teamId, userRole: "ADMIN" as Role },
       });
     }
 
@@ -195,7 +195,7 @@ export const withTeamAccess = (minRole: Role) =>
     }
 
     return next({
-      ctx: { ...ctx, teamId, userRole: membership.role },
+      ctx: { session: ctx.session, teamId, userRole: membership.role },
     });
   });
 
