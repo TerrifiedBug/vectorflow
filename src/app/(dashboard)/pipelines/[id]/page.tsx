@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
@@ -10,13 +10,15 @@ import {
 } from "@xyflow/react";
 import { useTRPC } from "@/trpc/client";
 import { useFlowStore } from "@/stores/flow-store";
-import { VECTOR_CATALOG } from "@/lib/vector/catalog";
+import { findComponentDef } from "@/lib/vector/catalog";
 import { toast } from "sonner";
 
 import { ComponentPalette } from "@/components/flow/component-palette";
 import { FlowCanvas } from "@/components/flow/flow-canvas";
 import { FlowToolbar } from "@/components/flow/flow-toolbar";
 import { DetailPanel } from "@/components/flow/detail-panel";
+import { DeployDialog } from "@/components/flow/deploy-dialog";
+import { SaveTemplateDialog } from "@/components/flow/save-template-dialog";
 
 /**
  * Convert database PipelineNode rows into React Flow nodes.
@@ -34,15 +36,16 @@ function dbNodesToFlowNodes(
   }>
 ): Node[] {
   return dbNodes.map((n) => {
-    const componentDef = VECTOR_CATALOG.find((c) => c.type === n.componentType);
+    const kind = n.kind.toLowerCase() as "source" | "transform" | "sink";
+    const componentDef = findComponentDef(n.componentType, kind);
     return {
       id: n.id,
-      type: n.kind.toLowerCase(),
+      type: kind,
       position: { x: n.positionX, y: n.positionY },
       data: {
         componentDef: componentDef ?? {
           type: n.componentType,
-          kind: n.kind.toLowerCase() as "source" | "transform" | "sink",
+          kind,
           displayName: n.componentType,
           description: "",
           category: "Unknown",
@@ -77,6 +80,8 @@ function dbEdgesToFlowEdges(
 
 function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const trpc = useTRPC();
+  const [deployOpen, setDeployOpen] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
 
   const loadGraph = useFlowStore((s) => s.loadGraph);
 
@@ -150,7 +155,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
 
   return (
     <div className="-m-6 flex h-[calc(100vh-3.5rem)] flex-col">
-      <FlowToolbar onSave={handleSave} isSaving={saveMutation.isPending} />
+      <FlowToolbar pipelineId={pipelineId} onSave={handleSave} isSaving={saveMutation.isPending} onDeploy={() => setDeployOpen(true)} onSaveAsTemplate={() => setTemplateOpen(true)} />
       <div className="flex flex-1 overflow-hidden">
         <ComponentPalette />
         <div className="flex-1">
@@ -158,6 +163,8 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         </div>
         <DetailPanel />
       </div>
+      <DeployDialog pipelineId={pipelineId} open={deployOpen} onOpenChange={setDeployOpen} />
+      <SaveTemplateDialog open={templateOpen} onOpenChange={setTemplateOpen} />
     </div>
   );
 }

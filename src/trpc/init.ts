@@ -1,6 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
 import type { Role } from "@/generated/prisma";
 
 export const createContext = async () => {
@@ -37,7 +38,40 @@ export const requireRole = (minRole: Role) =>
     if (!ctx.session?.user) {
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }
-    return next({ ctx: { session: ctx.session } });
+
+    const userId = ctx.session.user.id;
+    if (!userId) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+
+    // Get the user's highest role across all team memberships
+    const memberships = await prisma.teamMember.findMany({
+      where: { userId },
+      select: { role: true },
+    });
+
+    if (memberships.length === 0) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "You are not a member of any team",
+      });
+    }
+
+    const highestRole = memberships.reduce<Role>((best, m) =>
+      roleLevel[m.role] > roleLevel[best] ? m.role : best,
+      memberships[0].role,
+    );
+
+    if (roleLevel[highestRole] < roleLevel[minRole]) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: `This action requires ${minRole} role or higher`,
+      });
+    }
+
+    return next({
+      ctx: { session: ctx.session, userRole: highestRole },
+    });
   });
 
 export const middleware = t.middleware;

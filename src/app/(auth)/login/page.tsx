@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Shield } from "lucide-react";
 import {
   Card,
@@ -28,13 +27,25 @@ export default function LoginPage() {
     enabled: boolean;
     displayName: string;
   } | null>(null);
+  const [checkingSetup, setCheckingSetup] = useState(true);
 
   useEffect(() => {
-    fetch("/api/auth/oidc-status")
-      .then((res) => res.json())
-      .then((data) => setOidcStatus(data))
-      .catch(() => setOidcStatus({ enabled: false, displayName: "SSO" }));
-  }, []);
+    Promise.all([
+      fetch("/api/setup")
+        .then((res) => res.json())
+        .catch(() => ({ setupRequired: false })),
+      fetch("/api/auth/oidc-status")
+        .then((res) => res.json())
+        .catch(() => ({ enabled: false, displayName: "SSO" })),
+    ]).then(([setup, oidc]) => {
+      if ((setup as { setupRequired: boolean }).setupRequired) {
+        router.replace("/setup");
+        return;
+      }
+      setOidcStatus(oidc as { enabled: boolean; displayName: string });
+      setCheckingSetup(false);
+    });
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -63,6 +74,10 @@ export default function LoginPage() {
 
   function handleSsoLogin() {
     signIn("oidc", { callbackUrl: "/" });
+  }
+
+  if (checkingSetup) {
+    return null;
   }
 
   return (
@@ -129,13 +144,6 @@ export default function LoginPage() {
               </Button>
             </>
           )}
-
-          <p className="text-center text-sm text-muted-foreground">
-            First time?{" "}
-            <Link href="/setup" className="text-primary underline-offset-4 hover:underline">
-              Run setup wizard
-            </Link>
-          </p>
         </CardFooter>
       </form>
     </Card>

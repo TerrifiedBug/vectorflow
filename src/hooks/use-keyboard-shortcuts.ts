@@ -13,7 +13,9 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
   const undo = useFlowStore((s) => s.undo);
   const redo = useFlowStore((s) => s.redo);
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
+  const selectedEdgeId = useFlowStore((s) => s.selectedEdgeId);
   const removeNode = useFlowStore((s) => s.removeNode);
+  const removeEdge = useFlowStore((s) => s.removeEdge);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -47,11 +49,18 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
         return;
       }
 
-      // Delete / Backspace → Delete selected node
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedNodeId) {
-        e.preventDefault();
-        removeNode(selectedNodeId);
-        return;
+      // Delete / Backspace → Delete selected node or edge
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedNodeId) {
+          e.preventDefault();
+          removeNode(selectedNodeId);
+          return;
+        }
+        if (selectedEdgeId) {
+          e.preventDefault();
+          removeEdge(selectedEdgeId);
+          return;
+        }
       }
 
       // Cmd+E → Export YAML
@@ -71,5 +80,5 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [undo, redo, selectedNodeId, removeNode, onSave, onExport, onImport]);
+  }, [undo, redo, selectedNodeId, selectedEdgeId, removeNode, removeEdge, onSave, onExport, onImport]);
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import Link from "next/link";
 import {
   Save,
   Undo2,
@@ -11,6 +12,10 @@ import {
   Pencil,
   Activity,
   FileDown,
+  Trash2,
+  Rocket,
+  BookTemplate,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -33,7 +38,10 @@ import { useTRPC } from "@/trpc/client";
 import { useMutation } from "@tanstack/react-query";
 
 interface FlowToolbarProps {
+  pipelineId?: string;
   onSave: () => void;
+  onDeploy?: () => void;
+  onSaveAsTemplate?: () => void;
   isSaving?: boolean;
   monitorMode?: boolean;
   onToggleMonitor?: (enabled: boolean) => void;
@@ -50,7 +58,10 @@ function downloadFile(content: string, filename: string) {
 }
 
 export function FlowToolbar({
+  pipelineId,
   onSave,
+  onDeploy,
+  onSaveAsTemplate,
   isSaving,
   monitorMode = false,
   onToggleMonitor,
@@ -61,6 +72,10 @@ export function FlowToolbar({
   const redo = useFlowStore((s) => s.redo);
   const nodes = useFlowStore((s) => s.nodes);
   const edges = useFlowStore((s) => s.edges);
+  const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
+  const selectedEdgeId = useFlowStore((s) => s.selectedEdgeId);
+  const removeNode = useFlowStore((s) => s.removeNode);
+  const removeEdge = useFlowStore((s) => s.removeEdge);
   const loadGraph = useFlowStore((s) => s.loadGraph);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -161,6 +176,24 @@ export function FlowToolbar({
           <TooltipContent>Redo (Cmd+Shift+Z)</TooltipContent>
         </Tooltip>
 
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (selectedNodeId) removeNode(selectedNodeId);
+                else if (selectedEdgeId) removeEdge(selectedEdgeId);
+              }}
+              disabled={!selectedNodeId && !selectedEdgeId}
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Delete selected (Del)</TooltipContent>
+        </Tooltip>
+
         <Separator orientation="vertical" className="mx-1 h-5" />
 
         <Tooltip>
@@ -202,6 +235,52 @@ export function FlowToolbar({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onSaveAsTemplate}
+              disabled={nodes.length === 0}
+              className="h-7 w-7 p-0"
+            >
+              <BookTemplate className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Save as template</TooltipContent>
+        </Tooltip>
+
+        {pipelineId && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" asChild>
+                <Link href={`/pipelines/${pipelineId}/versions`}>
+                  <History className="h-4 w-4" />
+                </Link>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Version history &amp; rollback</TooltipContent>
+          </Tooltip>
+        )}
+
+        <Separator orientation="vertical" className="mx-1 h-5" />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={onDeploy}
+              disabled={nodes.length === 0}
+              className="h-7 gap-1.5 px-2.5 text-xs"
+            >
+              <Rocket className="h-3.5 w-3.5" />
+              Deploy
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Deploy pipeline to environment</TooltipContent>
+        </Tooltip>
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 

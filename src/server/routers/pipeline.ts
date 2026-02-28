@@ -3,12 +3,14 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { ComponentKind } from "@/generated/prisma";
+import { withAudit } from "@/server/middleware/audit";
 import {
   createVersion,
   listVersions,
   getVersion,
   rollback,
 } from "@/server/services/pipeline-version";
+import { encryptNodeConfig, decryptNodeConfig } from "@/server/services/config-crypto";
 
 const nodeSchema = z.object({
   id: z.string().optional(),
@@ -62,7 +64,16 @@ export const pipelineRouter = router({
           message: "Pipeline not found",
         });
       }
-      return pipeline;
+      return {
+        ...pipeline,
+        nodes: pipeline.nodes.map((n) => ({
+          ...n,
+          config: decryptNodeConfig(
+            n.componentType,
+            (n.config as Record<string, unknown>) ?? {},
+          ),
+        })),
+      };
     }),
 
   create: protectedProcedure
@@ -73,6 +84,7 @@ export const pipelineRouter = router({
         environmentId: z.string(),
       })
     )
+    .use(withAudit("pipeline.created", "Pipeline"))
     .mutation(async ({ input }) => {
       const environment = await prisma.environment.findUnique({
         where: { id: input.environmentId },
@@ -101,6 +113,7 @@ export const pipelineRouter = router({
         description: z.string().nullable().optional(),
       })
     )
+    .use(withAudit("pipeline.updated", "Pipeline"))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
       const existing = await prisma.pipeline.findUnique({
@@ -120,6 +133,7 @@ export const pipelineRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withAudit("pipeline.deleted", "Pipeline"))
     .mutation(async ({ input }) => {
       const existing = await prisma.pipeline.findUnique({
         where: { id: input.id },
@@ -166,11 +180,12 @@ export const pipelineRouter = router({
           input.nodes.map((node) =>
             tx.pipelineNode.create({
               data: {
+                ...(node.id ? { id: node.id } : {}),
                 pipelineId: input.pipelineId,
                 componentKey: node.componentKey,
                 componentType: node.componentType,
                 kind: node.kind,
-                config: node.config,
+                config: encryptNodeConfig(node.componentType, node.config) as unknown as typeof node.config,
                 positionX: node.positionX,
                 positionY: node.positionY,
               },
@@ -182,6 +197,7 @@ export const pipelineRouter = router({
           input.edges.map((edge) =>
             tx.pipelineEdge.create({
               data: {
+                ...(edge.id ? { id: edge.id } : {}),
                 pipelineId: input.pipelineId,
                 sourceNodeId: edge.sourceNodeId,
                 targetNodeId: edge.targetNodeId,
@@ -191,13 +207,23 @@ export const pipelineRouter = router({
           )
         );
 
-        return tx.pipeline.findUniqueOrThrow({
+        const saved = await tx.pipeline.findUniqueOrThrow({
           where: { id: input.pipelineId },
           include: {
             nodes: true,
             edges: true,
           },
         });
+        return {
+          ...saved,
+          nodes: saved.nodes.map((n) => ({
+            ...n,
+            config: decryptNodeConfig(
+              n.componentType,
+              (n.config as Record<string, unknown>) ?? {},
+            ),
+          })),
+        };
       });
     }),
 
