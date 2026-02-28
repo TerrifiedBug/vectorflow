@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Plus } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
+import { useTeamStore } from "@/stores/team-store";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,15 +23,13 @@ export default function PipelinesPage() {
   const trpc = useTRPC();
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
 
-  // Fetch teams first
-  const teamsQuery = useQuery(trpc.team.list.queryOptions());
-  const firstTeamId = teamsQuery.data?.[0]?.id;
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
-  // Then fetch environments for that team
+  // Fetch environments for the selected team
   const environmentsQuery = useQuery(
     trpc.environment.list.queryOptions(
-      { teamId: firstTeamId! },
-      { enabled: !!firstTeamId }
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId }
     )
   );
 
@@ -47,7 +46,6 @@ export default function PipelinesPage() {
 
   const pipelines = pipelinesQuery.data ?? [];
   const isLoading =
-    teamsQuery.isLoading ||
     environmentsQuery.isLoading ||
     pipelinesQuery.isLoading;
 

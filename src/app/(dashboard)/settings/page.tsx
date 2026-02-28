@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
+import { useTeamStore } from "@/stores/team-store";
 import { toast } from "sonner";
 import {
   Shield,
@@ -12,6 +13,10 @@ import {
   CheckCircle2,
   XCircle,
   Trash2,
+  Lock,
+  Unlock,
+  KeyRound,
+  Copy,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -43,6 +48,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // ─── Auth Tab ──────────────────────────────────────────────────────────────────
 
@@ -507,13 +520,12 @@ function TeamSettings() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  const teamsQuery = useQuery(trpc.team.list.queryOptions());
-  const firstTeamId = teamsQuery.data?.[0]?.id;
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
   const teamQuery = useQuery(
     trpc.team.get.queryOptions(
-      { id: firstTeamId! },
-      { enabled: !!firstTeamId }
+      { id: selectedTeamId! },
+      { enabled: !!selectedTeamId }
     )
   );
 
@@ -563,6 +575,40 @@ function TeamSettings() {
     })
   );
 
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [tempPassword, setTempPassword] = useState("");
+  const [removeMember, setRemoveMember] = useState<{ userId: string; name: string } | null>(null);
+
+  const lockMutation = useMutation(
+    trpc.team.lockMember.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.team.get.queryKey({ id: selectedTeamId! }) });
+        toast.success("User locked");
+      },
+      onError: (error) => toast.error(error.message),
+    })
+  );
+
+  const unlockMutation = useMutation(
+    trpc.team.unlockMember.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.team.get.queryKey({ id: selectedTeamId! }) });
+        toast.success("User unlocked");
+      },
+      onError: (error) => toast.error(error.message),
+    })
+  );
+
+  const resetPasswordMutation = useMutation(
+    trpc.team.resetMemberPassword.mutationOptions({
+      onSuccess: (data) => {
+        setTempPassword(data.temporaryPassword);
+        setResetPasswordOpen(true);
+      },
+      onError: (error) => toast.error(error.message),
+    })
+  );
+
   const renameMutation = useMutation(
     trpc.team.rename.mutationOptions({
       onSuccess: () => {
@@ -578,8 +624,8 @@ function TeamSettings() {
 
   const handleRename = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firstTeamId || !teamName.trim()) return;
-    renameMutation.mutate({ teamId: firstTeamId, name: teamName.trim() });
+    if (!selectedTeamId || !teamName.trim()) return;
+    renameMutation.mutate({ teamId: selectedTeamId, name: teamName.trim() });
   };
 
   // Sync team name state when data loads
@@ -589,15 +635,15 @@ function TeamSettings() {
 
   const handleInvite = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firstTeamId || !inviteEmail) return;
+    if (!selectedTeamId || !inviteEmail) return;
     addMemberMutation.mutate({
-      teamId: firstTeamId,
+      teamId: selectedTeamId,
       email: inviteEmail,
       role: inviteRole,
     });
   };
 
-  if (teamsQuery.isLoading || teamQuery.isLoading) {
+  if (teamQuery.isLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-48" />
@@ -660,7 +706,8 @@ function TeamSettings() {
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead className="w-[100px]">Actions</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-[150px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -705,19 +752,53 @@ function TeamSettings() {
                     </Select>
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        removeMemberMutation.mutate({
-                          teamId: team.id,
-                          userId: member.user.id,
-                        })
-                      }
-                      disabled={removeMemberMutation.isPending}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    {member.user.lockedAt && (
+                      <Badge variant="destructive" className="text-xs">Locked</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      {member.user.lockedAt ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => unlockMutation.mutate({ teamId: team.id, userId: member.user.id })}
+                          disabled={unlockMutation.isPending}
+                        >
+                          <Unlock className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => lockMutation.mutate({ teamId: team.id, userId: member.user.id })}
+                          disabled={lockMutation.isPending}
+                        >
+                          <Lock className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {member.user.authMethod !== "OIDC" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => resetPasswordMutation.mutate({ teamId: team.id, userId: member.user.id })}
+                          disabled={resetPasswordMutation.isPending}
+                        >
+                          <KeyRound className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => setRemoveMember({ userId: member.user.id, name: member.user.name || member.user.email })}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -725,6 +806,63 @@ function TeamSettings() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={resetPasswordOpen} onOpenChange={setResetPasswordOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Temporary Password</DialogTitle>
+            <DialogDescription>
+              Share this temporary password with the user. It will only be shown once.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2">
+            <Input value={tempPassword} readOnly className="font-mono" />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                navigator.clipboard.writeText(tempPassword);
+                toast.success("Copied to clipboard");
+              }}
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setResetPasswordOpen(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!removeMember} onOpenChange={(open) => !open && setRemoveMember(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove team member?</DialogTitle>
+            <DialogDescription>
+              This will remove <span className="font-medium">{removeMember?.name}</span> from the team. They will lose access to all environments and pipelines.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveMember(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={removeMemberMutation.isPending}
+              onClick={() => {
+                if (!removeMember) return;
+                removeMemberMutation.mutate(
+                  { teamId: team.id, userId: removeMember.userId },
+                  { onSuccess: () => setRemoveMember(null) },
+                );
+              }}
+            >
+              {removeMemberMutation.isPending ? "Removing..." : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
+import { useTeamStore } from "@/stores/team-store";
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,18 +20,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function EnvironmentsPage() {
   const trpc = useTRPC();
 
-  const teamsQuery = useQuery(trpc.team.list.queryOptions());
-
-  const firstTeamId = teamsQuery.data?.[0]?.id;
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
   const environmentsQuery = useQuery(
     trpc.environment.list.queryOptions(
-      { teamId: firstTeamId! },
-      { enabled: !!firstTeamId }
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId }
     )
   );
 
-  const isLoading = teamsQuery.isLoading || environmentsQuery.isLoading;
+  const isLoading = environmentsQuery.isLoading;
   const environments = environmentsQuery.data ?? [];
 
   return (

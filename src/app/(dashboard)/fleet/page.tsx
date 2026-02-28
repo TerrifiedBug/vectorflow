@@ -6,6 +6,7 @@ import { useTRPC } from "@/trpc/client";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { useEnvironmentStore } from "@/stores/environment-store";
+import { useTeamStore } from "@/stores/team-store";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -71,13 +72,12 @@ export default function FleetPage() {
     environmentId: "",
   });
 
-  const teamsQuery = useQuery(trpc.team.list.queryOptions());
-  const firstTeamId = teamsQuery.data?.[0]?.id;
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
   const environmentsQuery = useQuery(
     trpc.environment.list.queryOptions(
-      { teamId: firstTeamId! },
-      { enabled: !!firstTeamId }
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId }
     )
   );
 
@@ -104,7 +104,6 @@ export default function FleetPage() {
   );
 
   const isLoading =
-    teamsQuery.isLoading ||
     environmentsQuery.isLoading ||
     nodesQuery.isLoading;
 
