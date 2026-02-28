@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import bcrypt from "bcryptjs";
 import { router, protectedProcedure, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 
@@ -101,5 +102,41 @@ export const adminRouter = router({
         select: { id: true, name: true },
         orderBy: { name: "asc" },
       });
+    }),
+
+  /** Create a local user account */
+  createUser: protectedProcedure
+    .use(requireSuperAdmin())
+    .input(z.object({
+      email: z.string().email(),
+      name: z.string().min(1).max(100),
+      password: z.string().min(8),
+      teamId: z.string().optional(),
+      role: z.enum(["VIEWER", "EDITOR", "ADMIN"]).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const existing = await prisma.user.findUnique({ where: { email: input.email } });
+      if (existing) {
+        throw new TRPCError({ code: "CONFLICT", message: "A user with this email already exists" });
+      }
+
+      const passwordHash = await bcrypt.hash(input.password, 12);
+
+      const user = await prisma.user.create({
+        data: {
+          email: input.email,
+          name: input.name,
+          passwordHash,
+          authMethod: "LOCAL",
+        },
+      });
+
+      if (input.teamId && input.role) {
+        await prisma.teamMember.create({
+          data: { userId: user.id, teamId: input.teamId, role: input.role },
+        });
+      }
+
+      return { id: user.id, email: user.email, name: user.name };
     }),
 });
