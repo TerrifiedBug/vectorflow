@@ -515,6 +515,7 @@ function GitOpsSettings() {
   const settings = settingsQuery.data;
 
   const [commitAuthor, setCommitAuthor] = useState("");
+  const [httpsToken, setHttpsToken] = useState("");
 
   useEffect(() => {
     if (settings) {
@@ -548,6 +549,23 @@ function GitOpsSettings() {
       },
     })
   );
+
+  const saveTokenMutation = useMutation(
+    trpc.settings.updateGitopsHttpsToken.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
+        toast.success("HTTPS token saved");
+        setHttpsToken("");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to save token");
+      },
+    })
+  );
+
+  const handleSaveToken = () => {
+    saveTokenMutation.mutate({ token: httpsToken });
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -659,6 +677,48 @@ function GitOpsSettings() {
               Accepted formats: PEM, OpenSSH private key
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>HTTPS Token</CardTitle>
+          <CardDescription>
+            Personal access token for HTTPS git repositories. Used when the
+            repository URL starts with https://.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {settings?.hasHttpsToken && (
+            <div className="flex items-center gap-2 rounded-md border p-3">
+              <KeyRound className="h-4 w-4 text-muted-foreground" />
+              <span className="font-mono text-sm">Token configured</span>
+              <Badge variant="secondary" className="ml-auto">Active</Badge>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="https-token">
+              {settings?.hasHttpsToken ? "Replace Token" : "Set Token"}
+            </Label>
+            <Input
+              id="https-token"
+              type="password"
+              placeholder="ghp_xxxx or glpat-xxxx"
+              value={httpsToken}
+              onChange={(e) => setHttpsToken(e.target.value)}
+              className="max-w-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              For Gitea, GitHub, GitLab: use a personal access token with repo write access
+            </p>
+          </div>
+          <Button
+            onClick={handleSaveToken}
+            disabled={!httpsToken || saveTokenMutation.isPending}
+            size="sm"
+          >
+            {saveTokenMutation.isPending ? "Saving..." : "Save Token"}
+          </Button>
         </CardContent>
       </Card>
     </div>

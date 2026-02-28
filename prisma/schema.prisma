@@ -190,6 +190,7 @@ model SystemSettings {
 
   gitopsCommitAuthor String? @default("VectorFlow <vectorflow@company.com>")
   gitopsSshKey       Bytes?
+  gitopsHttpsToken   String?  // Personal access token for HTTPS git repos (stored encrypted)
 
   defaultDeployMode DeployMode @default(API_RELOAD)
 
