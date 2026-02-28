@@ -10,9 +10,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  Rocket,
   GitBranch,
-  Server,
   Loader2,
 } from "lucide-react";
 
@@ -27,16 +25,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { DiffViewer } from "@/components/deploy/diff-viewer";
-import { DeployStatus } from "@/components/deploy/deploy-status";
-
-type NodeResult = {
-  nodeId: string;
-  nodeName: string;
-  host: string;
-  success: boolean;
-  error?: string;
-  healthAfter?: boolean;
-};
 
 export default function DeployPage() {
   const params = useParams<{ id: string }>();
@@ -48,7 +36,6 @@ export default function DeployPage() {
     success: boolean;
     versionId?: string;
     versionNumber?: number;
-    nodeResults?: NodeResult[];
     commitHash?: string;
     error?: string;
   } | null>(null);
@@ -66,25 +53,6 @@ export default function DeployPage() {
   // Fetch environment info
   const envQuery = useQuery(
     trpc.deploy.environmentInfo.queryOptions({ pipelineId }),
-  );
-
-  // API Reload mutation
-  const apiReloadMutation = useMutation(
-    trpc.deploy.apiReload.mutationOptions({
-      onSuccess: (data) => {
-        setDeployResult(data);
-        if (data.success) {
-          toast.success(
-            `Deployed version ${data.versionNumber} successfully`,
-          );
-        } else {
-          toast.error("Deployment had failures");
-        }
-      },
-      onError: (err) => {
-        toast.error(err.message || "Deployment failed");
-      },
-    }),
   );
 
   // GitOps mutation
@@ -112,34 +80,28 @@ export default function DeployPage() {
     }),
   );
 
-  const isDeploying = apiReloadMutation.isPending || gitopsMutation.isPending;
+  const isDeploying = gitopsMutation.isPending;
   const isLoading =
     pipelineQuery.isLoading || previewQuery.isLoading || envQuery.isLoading;
 
   const handleDeploy = () => {
     if (!envQuery.data) return;
 
+    if (!envQuery.data.gitRepo || !envQuery.data.gitBranch) {
+      toast.error(
+        "GitOps is not configured for this environment. Set a git repo and branch first.",
+      );
+      return;
+    }
+
     setDeployResult(null);
 
-    if (envQuery.data.deployMode === "API_RELOAD") {
-      apiReloadMutation.mutate({
-        pipelineId,
-        environmentId: envQuery.data.environmentId,
-      });
-    } else if (envQuery.data.deployMode === "GITOPS") {
-      if (!envQuery.data.gitRepo || !envQuery.data.gitBranch) {
-        toast.error(
-          "GitOps is not configured for this environment. Set a git repo and branch first.",
-        );
-        return;
-      }
-      gitopsMutation.mutate({
-        pipelineId,
-        environmentId: envQuery.data.environmentId,
-        repoUrl: envQuery.data.gitRepo,
-        branch: envQuery.data.gitBranch,
-      });
-    }
+    gitopsMutation.mutate({
+      pipelineId,
+      environmentId: envQuery.data.environmentId,
+      repoUrl: envQuery.data.gitRepo,
+      branch: envQuery.data.gitBranch,
+    });
   };
 
   if (isLoading) {
@@ -266,57 +228,26 @@ export default function DeployPage() {
                 </p>
               </div>
               <div>
-                <p className="text-sm font-medium">Deploy Mode</p>
+                <p className="text-sm font-medium">Deploy Method</p>
                 <div className="flex items-center gap-1.5">
-                  {envQuery.data.deployMode === "API_RELOAD" ? (
-                    <Server className="h-3.5 w-3.5 text-muted-foreground" />
-                  ) : (
-                    <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
-                  )}
+                  <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">
-                    {envQuery.data.deployMode === "API_RELOAD"
-                      ? "API Reload"
-                      : "GitOps"}
+                    GitOps
                   </span>
                 </div>
               </div>
-              {envQuery.data.deployMode === "API_RELOAD" && (
-                <div className="col-span-2">
-                  <p className="text-sm font-medium">
-                    Target Nodes ({envQuery.data.nodes.length})
-                  </p>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {envQuery.data.nodes.map((node) => (
-                      <Badge key={node.id} variant="outline">
-                        <Server className="mr-1 h-3 w-3" />
-                        {node.name} ({node.host}:{node.apiPort})
-                        {node.status === "HEALTHY" && (
-                          <CheckCircle2 className="ml-1 h-3 w-3 text-green-500" />
-                        )}
-                        {node.status === "UNREACHABLE" && (
-                          <XCircle className="ml-1 h-3 w-3 text-red-500" />
-                        )}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {envQuery.data.deployMode === "GITOPS" && (
-                <>
-                  <div>
-                    <p className="text-sm font-medium">Repository</p>
-                    <p className="text-sm text-muted-foreground font-mono">
-                      {envQuery.data.gitRepo || "Not configured"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Branch</p>
-                    <p className="text-sm text-muted-foreground font-mono">
-                      {envQuery.data.gitBranch || "Not configured"}
-                    </p>
-                  </div>
-                </>
-              )}
+              <div>
+                <p className="text-sm font-medium">Repository</p>
+                <p className="text-sm text-muted-foreground font-mono">
+                  {envQuery.data.gitRepo || "Not configured"}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm font-medium">Branch</p>
+                <p className="text-sm text-muted-foreground font-mono">
+                  {envQuery.data.gitBranch || "Not configured"}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -360,24 +291,13 @@ export default function DeployPage() {
               </>
             ) : (
               <>
-                <Rocket className="mr-2 h-4 w-4" />
-                {envQuery.data?.deployMode === "GITOPS"
-                  ? "Push to Git"
-                  : "Deploy via API Reload"}
+                <GitBranch className="mr-2 h-4 w-4" />
+                Push to Git
               </>
             )}
           </Button>
         </div>
       </div>
-
-      {/* Real-time deployment status per node (API reload only) */}
-      {envQuery.data?.deployMode === "API_RELOAD" &&
-        (isDeploying || deployResult?.nodeResults) && (
-          <DeployStatus
-            nodeResults={deployResult?.nodeResults ?? null}
-            isDeploying={isDeploying}
-          />
-        )}
 
       {/* Success summary with links */}
       {deployResult?.success && (

@@ -1,16 +1,18 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowLeft, Pencil, Trash2, Server, GitBranch } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, GitBranch, KeyRound, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import {
   Card,
   CardContent,
@@ -35,13 +37,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const statusColors: Record<string, string> = {
@@ -67,9 +62,13 @@ export default function EnvironmentDetailPage({
   const [editing, setEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editName, setEditName] = useState("");
-  const [editDeployMode, setEditDeployMode] = useState("");
   const [editGitRepo, setEditGitRepo] = useState("");
   const [editGitBranch, setEditGitBranch] = useState("");
+
+  // Git credential state
+  const [commitAuthor, setCommitAuthor] = useState("");
+  const [httpsToken, setHttpsToken] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const updateMutation = useMutation(
     trpc.environment.update.mutationOptions({
@@ -86,10 +85,37 @@ export default function EnvironmentDetailPage({
     })
   );
 
+  const uploadSshKeyMutation = useMutation(
+    trpc.environment.uploadSshKey.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.environment.get.queryKey({ id }) });
+        toast.success("SSH key uploaded successfully");
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to upload SSH key");
+      },
+    })
+  );
+
+  const updateHttpsTokenMutation = useMutation(
+    trpc.environment.updateHttpsToken.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.environment.get.queryKey({ id }) });
+        toast.success("HTTPS token saved");
+        setHttpsToken("");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to save token");
+      },
+    })
+  );
+
   function startEditing() {
     if (!env) return;
     setEditName(env.name);
-    setEditDeployMode(env.deployMode);
     setEditGitRepo(env.gitRepo ?? "");
     setEditGitBranch(env.gitBranch ?? "");
     setEditing(true);
@@ -99,11 +125,42 @@ export default function EnvironmentDetailPage({
     updateMutation.mutate({
       id,
       name: editName,
-      deployMode: editDeployMode as "API_RELOAD" | "GITOPS",
       gitRepo: editGitRepo || null,
       gitBranch: editGitBranch || null,
     });
   }
+
+  function handleSaveCommitAuthor(e: React.FormEvent) {
+    e.preventDefault();
+    updateMutation.mutate({
+      id,
+      gitCommitAuthor: commitAuthor || null,
+    });
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = btoa(result);
+      uploadSshKeyMutation.mutate({ environmentId: id, keyBase64: base64 });
+    };
+    reader.readAsText(file);
+  }
+
+  function handleSaveHttpsToken() {
+    updateHttpsTokenMutation.mutate({ environmentId: id, token: httpsToken });
+  }
+
+  // Sync commit author from environment data
+  useEffect(() => {
+    if (env?.gitCommitAuthor !== undefined) {
+      setCommitAuthor(env.gitCommitAuthor ?? "");
+    }
+  }, [env?.gitCommitAuthor]);
 
   if (envQuery.isLoading) {
     return (
@@ -138,8 +195,7 @@ export default function EnvironmentDetailPage({
           <div>
             <h2 className="text-2xl font-bold tracking-tight">{env.name}</h2>
             <p className="text-muted-foreground">
-              {env.team.name} &middot;{" "}
-              {env.deployMode === "API_RELOAD" ? "API Reload" : "GitOps"}
+              {env.team.name} &middot; GitOps
             </p>
           </div>
         </div>
@@ -196,42 +252,26 @@ export default function EnvironmentDetailPage({
               />
             </div>
             <div className="space-y-2">
-              <Label>Deploy Mode</Label>
-              <Select value={editDeployMode} onValueChange={setEditDeployMode}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="API_RELOAD">API Reload</SelectItem>
-                  <SelectItem value="GITOPS">GitOps</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="edit-git-repo">Git Repository</Label>
+              <Input
+                id="edit-git-repo"
+                value={editGitRepo}
+                onChange={(e) => setEditGitRepo(e.target.value)}
+                placeholder="https://github.com/org/repo.git or git@github.com:org/repo.git"
+              />
+              <p className="text-xs text-muted-foreground">
+                Use HTTPS with a token (Settings &rarr; GitOps) or SSH with a deploy key
+              </p>
             </div>
-            {editDeployMode === "GITOPS" && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-git-repo">Git Repository</Label>
-                  <Input
-                    id="edit-git-repo"
-                    value={editGitRepo}
-                    onChange={(e) => setEditGitRepo(e.target.value)}
-                    placeholder="https://github.com/org/repo.git or git@github.com:org/repo.git"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Use HTTPS with a token (Settings &rarr; GitOps) or SSH with a deploy key
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-git-branch">Git Branch</Label>
-                  <Input
-                    id="edit-git-branch"
-                    value={editGitBranch}
-                    onChange={(e) => setEditGitBranch(e.target.value)}
-                    placeholder="main"
-                  />
-                </div>
-              </>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="edit-git-branch">Git Branch</Label>
+              <Input
+                id="edit-git-branch"
+                value={editGitBranch}
+                onChange={(e) => setEditGitBranch(e.target.value)}
+                placeholder="main"
+              />
+            </div>
             <div className="flex gap-2">
               <Button onClick={handleSave} disabled={updateMutation.isPending}>
                 {updateMutation.isPending ? "Saving..." : "Save"}
@@ -248,17 +288,13 @@ export default function EnvironmentDetailPage({
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Deploy Mode</CardDescription>
+            <CardDescription>Git Repository</CardDescription>
             <CardTitle className="flex items-center gap-2 text-lg">
-              {env.deployMode === "GITOPS" ? (
-                <GitBranch className="h-4 w-4" />
-              ) : (
-                <Server className="h-4 w-4" />
-              )}
-              {env.deployMode === "API_RELOAD" ? "API Reload" : "GitOps"}
+              <GitBranch className="h-4 w-4" />
+              GitOps
             </CardTitle>
           </CardHeader>
-          {env.deployMode === "GITOPS" && env.gitRepo && (
+          {env.gitRepo && (
             <CardContent>
               <p className="truncate text-xs text-muted-foreground">
                 {env.gitRepo}
@@ -341,6 +377,132 @@ export default function EnvironmentDetailPage({
               </TableBody>
             </Table>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Git Credentials */}
+      <Separator />
+      <h3 className="text-lg font-semibold">Git Credentials</h3>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Commit Author</CardTitle>
+          <CardDescription>
+            Git author string used for automated commits in this environment.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveCommitAuthor} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="env-commit-author">Author</Label>
+              <Input
+                id="env-commit-author"
+                placeholder="VectorFlow <vectorflow@company.com>"
+                value={commitAuthor}
+                onChange={(e) => setCommitAuthor(e.target.value)}
+                className="max-w-md"
+              />
+              <p className="text-xs text-muted-foreground">
+                Format: Name &lt;email&gt;
+              </p>
+            </div>
+            <Button type="submit" disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>SSH Key</CardTitle>
+          <CardDescription>
+            Upload a private SSH key for Git repository authentication. The key
+            is encrypted at rest.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {env.hasSshKey && (
+            <div className="flex items-center gap-2 rounded-md border p-3">
+              <KeyRound className="h-4 w-4 text-muted-foreground" />
+              <span className="font-mono text-sm">
+                {env.sshKeyFingerprint ?? "Key uploaded"}
+              </span>
+              <Badge variant="secondary" className="ml-auto">
+                Configured
+              </Badge>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="env-ssh-key-upload">
+              {env.hasSshKey ? "Replace SSH Key" : "Upload SSH Key"}
+            </Label>
+            <div className="flex items-center gap-3">
+              <Input
+                ref={fileInputRef}
+                id="env-ssh-key-upload"
+                type="file"
+                onChange={handleFileUpload}
+                className="max-w-sm"
+              />
+              {uploadSshKeyMutation.isPending && (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Accepted formats: PEM, OpenSSH private key
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>HTTPS Token</CardTitle>
+          <CardDescription>
+            Personal access token for HTTPS git repositories. Used when the
+            repository URL starts with https://.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {env.hasHttpsToken && (
+            <div className="flex items-center gap-2 rounded-md border p-3">
+              <KeyRound className="h-4 w-4 text-muted-foreground" />
+              <span className="font-mono text-sm">Token configured</span>
+              <Badge variant="secondary" className="ml-auto">Active</Badge>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="env-https-token">
+              {env.hasHttpsToken ? "Replace Token" : "Set Token"}
+            </Label>
+            <Input
+              id="env-https-token"
+              type="password"
+              placeholder="ghp_xxxx or glpat-xxxx"
+              value={httpsToken}
+              onChange={(e) => setHttpsToken(e.target.value)}
+              className="max-w-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              For Gitea, GitHub, GitLab: use a personal access token with repo write access
+            </p>
+          </div>
+          <Button
+            onClick={handleSaveHttpsToken}
+            disabled={!httpsToken || updateHttpsTokenMutation.isPending}
+            size="sm"
+          >
+            {updateHttpsTokenMutation.isPending ? "Saving..." : "Save Token"}
+          </Button>
         </CardContent>
       </Card>
 

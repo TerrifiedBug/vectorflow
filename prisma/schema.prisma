@@ -16,8 +16,9 @@ model User {
   authMethod   AuthMethod   @default(LOCAL)
   memberships  TeamMember[]
   accounts     Account[]
-  auditLogs    AuditLog[]
-  createdAt    DateTime     @default(now())
+  auditLogs        AuditLog[]
+  pipelinesUpdated Pipeline[]   @relation("PipelineUpdatedBy")
+  createdAt        DateTime     @default(now())
 }
 
 enum AuthMethod {
@@ -59,15 +60,12 @@ model Environment {
   team       Team         @relation(fields: [teamId], references: [id])
   nodes      VectorNode[]
   pipelines  Pipeline[]
-  deployMode DeployMode   @default(API_RELOAD)
-  gitRepo    String?
-  gitBranch  String?
-  createdAt  DateTime     @default(now())
-}
-
-enum DeployMode {
-  API_RELOAD
-  GITOPS
+  gitRepo         String?
+  gitBranch       String?
+  gitSshKey       Bytes?
+  gitHttpsToken   String?
+  gitCommitAuthor String?
+  createdAt       DateTime     @default(now())
 }
 
 model VectorNode {
@@ -101,6 +99,8 @@ model Pipeline {
   versions      PipelineVersion[]
   isDraft       Boolean           @default(true)
   deployedAt    DateTime?
+  updatedById   String?
+  updatedBy     User?             @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 }
@@ -165,6 +165,9 @@ model AuditLog {
   entityId   String
   diff       Json?
   metadata   Json?
+  ipAddress  String?
+  userEmail  String?
+  userName   String?
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
@@ -187,12 +190,6 @@ model SystemSettings {
 
   fleetPollIntervalMs     Int @default(15000)
   fleetUnhealthyThreshold Int @default(3)
-
-  gitopsCommitAuthor String? @default("VectorFlow <vectorflow@company.com>")
-  gitopsSshKey       Bytes?
-  gitopsHttpsToken   String?  // Personal access token for HTTPS git repos (stored encrypted)
-
-  defaultDeployMode DeployMode @default(API_RELOAD)
 
   updatedAt DateTime @updatedAt
 }

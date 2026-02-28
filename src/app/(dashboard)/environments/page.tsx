@@ -6,7 +6,6 @@ import { useTRPC } from "@/trpc/client";
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -69,7 +68,6 @@ export default function EnvironmentsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Deploy Mode</TableHead>
               <TableHead>Nodes</TableHead>
               <TableHead>Created</TableHead>
             </TableRow>
@@ -84,11 +82,6 @@ export default function EnvironmentsPage() {
                   >
                     {env.name}
                   </Link>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">
-                    {env.deployMode === "API_RELOAD" ? "API Reload" : "GitOps"}
-                  </Badge>
                 </TableCell>
                 <TableCell>{env._count.nodes}</TableCell>
                 <TableCell>

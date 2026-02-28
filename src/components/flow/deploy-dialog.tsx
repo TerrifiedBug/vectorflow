@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
-import { Rocket, CheckCircle, XCircle, Loader2, Server, GitBranch } from "lucide-react";
+import { Rocket, CheckCircle, XCircle, Loader2, GitBranch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,43 +37,6 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     ...trpc.deploy.environmentInfo.queryOptions({ pipelineId }),
     enabled: open,
   });
-
-  const apiReloadMutation = useMutation(
-    trpc.deploy.apiReload.mutationOptions({
-      onSuccess: (result) => {
-        setDeploying(false);
-        queryClient.invalidateQueries();
-
-        if (!result.success) {
-          const failedNodes = result.nodeResults?.filter((n) => !n.success) ?? [];
-          const errorMsg = result.validationErrors?.map((e) => e.message).join("; ")
-            || failedNodes.map((n) => `${n.nodeName}: ${n.error}`).join("; ")
-            || "Unknown error";
-          toast.error("Deploy failed", { description: errorMsg });
-          return;
-        }
-
-        const healthyNodes = result.nodeResults?.filter((n) => n.healthAfter).length ?? 0;
-        const totalNodes = result.nodeResults?.length ?? 0;
-        const version = result.versionNumber ? `v${result.versionNumber}` : "";
-
-        if (result.configWritten) {
-          toast.success(`Config deployed ${version}`, {
-            description: `Written to ${result.configPath}. ${healthyNodes}/${totalNodes} node(s) healthy.`,
-          });
-        } else {
-          toast.success(`Version ${version} created`, {
-            description: `${healthyNodes}/${totalNodes} node(s) healthy. Set VECTOR_CONFIG_DIR to enable config file push.`,
-          });
-        }
-        onOpenChange(false);
-      },
-      onError: (err) => {
-        setDeploying(false);
-        toast.error("Deploy failed", { description: err.message });
-      },
-    })
-  );
 
   const gitopsMutation = useMutation(
     trpc.deploy.gitops.mutationOptions({
@@ -109,22 +72,15 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   const isValid = preview?.validation?.valid ?? false;
 
   function handleDeploy() {
-    if (!env) return;
+    if (!env || !env.gitRepo || !env.gitBranch) return;
     setDeploying(true);
 
-    if (env.deployMode === "GITOPS" && env.gitRepo && env.gitBranch) {
-      gitopsMutation.mutate({
-        pipelineId,
-        environmentId: env.environmentId,
-        repoUrl: env.gitRepo,
-        branch: env.gitBranch,
-      });
-    } else {
-      apiReloadMutation.mutate({
-        pipelineId,
-        environmentId: env.environmentId,
-      });
-    }
+    gitopsMutation.mutate({
+      pipelineId,
+      environmentId: env.environmentId,
+      repoUrl: env.gitRepo,
+      branch: env.gitBranch,
+    });
   }
 
   return (
@@ -152,25 +108,10 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">{env.environmentName}</span>
                   <Badge variant="secondary" className="text-xs">
-                    {env.deployMode === "GITOPS" ? (
-                      <><GitBranch className="mr-1 h-3 w-3" />GitOps</>
-                    ) : (
-                      <><Server className="mr-1 h-3 w-3" />API Reload</>
-                    )}
+                    <GitBranch className="mr-1 h-3 w-3" />GitOps
                   </Badge>
                 </div>
-                {env.deployMode === "API_RELOAD" && (
-                  env.nodes.length > 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      {env.nodes.length} node(s): {env.nodes.map((n) => n.name).join(", ")}
-                    </p>
-                  ) : (
-                    <div className="rounded-md bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
-                      No fleet nodes registered in this environment. Go to Fleet to add Vector nodes, or switch to GitOps deploy mode.
-                    </div>
-                  )
-                )}
-                {env.deployMode === "GITOPS" && env.gitRepo && (
+                {env.gitRepo && (
                   <p className="text-xs text-muted-foreground truncate">
                     {env.gitRepo} ({env.gitBranch ?? "main"})
                   </p>
@@ -228,12 +169,12 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
           </Button>
           <Button
             onClick={handleDeploy}
-            disabled={isLoading || !isValid || deploying || !env || (env?.deployMode === "API_RELOAD" && env?.nodes.length === 0)}
+            disabled={isLoading || !isValid || deploying || !env || !env?.gitRepo || !env?.gitBranch}
           >
             {deploying ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Deploying...</>
             ) : (
-              <><Rocket className="mr-2 h-4 w-4" />Deploy</>
+              <><GitBranch className="mr-2 h-4 w-4" />Push to Git</>
             )}
           </Button>
         </DialogFooter>
