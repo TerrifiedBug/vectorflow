@@ -64,7 +64,7 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
 
     // Register VRL snippet completions
     monaco.languages.registerCompletionItemProvider("plaintext", {
-      provideCompletionItems(model, position) {
+      provideCompletionItems(model: any, position: any) {
         const word = model.getWordUntilPosition(position);
         const range = {
           startLineNumber: position.lineNumber,
