@@ -21,6 +21,7 @@ export async function completeSetup(input: {
         name: input.name,
         passwordHash,
         authMethod: "LOCAL",
+        isSuperAdmin: true,
       },
     });
 
