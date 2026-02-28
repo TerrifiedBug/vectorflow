@@ -45,7 +45,7 @@ export default function NewPipelinePage() {
 
   const templatesQuery = useQuery(
     trpc.template.list.queryOptions(
-      { teamId: firstTeamId },
+      { teamId: firstTeamId! },
       { enabled: !!firstTeamId }
     )
   );

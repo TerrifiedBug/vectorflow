@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
+import { useEnvironmentStore } from "@/stores/environment-store";
 import {
   FileText,
-  Layers,
-  Play,
   Trash2,
   ArrowRight,
   Database,
@@ -15,6 +13,7 @@ import {
   Radio,
   Cpu,
   Terminal,
+  Play,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -27,15 +26,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
 
 /* ------------------------------------------------------------------ */
 /*  Category icon mapping                                              */
@@ -70,33 +61,23 @@ export default function TemplatesPage() {
   const trpc = useTRPC();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [selectedEnvId, setSelectedEnvId] = useState<string>("");
+  const selectedEnvironmentId = useEnvironmentStore(
+    (s) => s.selectedEnvironmentId,
+  );
 
   // Fetch teams
   const teamsQuery = useQuery(trpc.team.list.queryOptions());
   const firstTeamId = teamsQuery.data?.[0]?.id;
 
-  // Fetch environments
-  const environmentsQuery = useQuery(
-    trpc.environment.list.queryOptions(
-      { teamId: firstTeamId! },
-      { enabled: !!firstTeamId },
-    ),
-  );
-  const environments = environmentsQuery.data ?? [];
-  const effectiveEnvId = selectedEnvId || environments[0]?.id || "";
-
-  // Fetch all templates (built-in + team's custom)
+  // Fetch templates for the team
   const templatesQuery = useQuery(
     trpc.template.list.queryOptions(
-      { teamId: firstTeamId },
+      { teamId: firstTeamId! },
       { enabled: !!firstTeamId },
     ),
   );
 
   const templates = templatesQuery.data ?? [];
-  const builtinTemplates = templates.filter((t) => t.isBuiltin);
-  const teamTemplates = templates.filter((t) => !t.isBuiltin);
 
   // Create pipeline from template
   const createPipelineMutation = useMutation(
@@ -125,7 +106,7 @@ export default function TemplatesPage() {
   );
 
   const handleUseTemplate = async (templateId: string) => {
-    if (!effectiveEnvId) return;
+    if (!selectedEnvironmentId) return;
 
     // Get the full template data
     const template = await queryClient.fetchQuery(
@@ -136,7 +117,7 @@ export default function TemplatesPage() {
     const pipeline = await createPipelineMutation.mutateAsync({
       name: `${template.name} Pipeline`,
       description: `Created from template: ${template.description}`,
-      environmentId: effectiveEnvId,
+      environmentId: selectedEnvironmentId,
     });
 
     // Map template nodes to pipeline nodes
@@ -198,166 +179,97 @@ export default function TemplatesPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Templates</h2>
           <p className="text-muted-foreground">
-            Start from a pre-built pipeline template or create your own
+            Create pipelines from saved templates
           </p>
         </div>
       </div>
 
-      {/* Environment selector */}
-      {environments.length > 0 && (
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-muted-foreground">
-            Target Environment
-          </label>
-          <Select value={effectiveEnvId} onValueChange={setSelectedEnvId}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Select environment" />
-            </SelectTrigger>
-            <SelectContent>
-              {environments.map((env) => (
-                <SelectItem key={env.id} value={env.id}>
-                  {env.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      {/* Environment notice */}
+      {!selectedEnvironmentId && (
+        <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+          Select an environment from the header to use templates
         </div>
       )}
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 5 }).map((_, i) => (
+          {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-48 w-full" />
           ))}
         </div>
+      ) : templates.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
+          <Terminal className="h-10 w-10 text-muted-foreground mb-3" />
+          <p className="text-muted-foreground">
+            No templates yet. Save a pipeline as a template to get started.
+          </p>
+        </div>
       ) : (
-        <>
-          {/* Built-in Templates */}
-          <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Layers className="h-5 w-5 text-muted-foreground" />
-              <h3 className="text-lg font-semibold">Built-in Templates</h3>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {builtinTemplates.map((template) => (
-                <Card key={template.id} className="flex flex-col">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base">
-                        {template.name}
-                      </CardTitle>
-                      <Badge
-                        variant="secondary"
-                        className={categoryColors[template.category] ?? ""}
-                      >
-                        {categoryIcons[template.category]}
-                        <span className="ml-1">{template.category}</span>
-                      </Badge>
-                    </div>
-                    <CardDescription className="text-xs">
-                      {template.description}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex-1 pb-3">
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Database className="h-3 w-3" />
-                        {template.nodeCount} nodes
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" />
-                        {template.edgeCount} edges
-                      </span>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="pt-0">
-                    <Button
-                      size="sm"
-                      className="w-full"
-                      disabled={!effectiveEnvId || isCreating}
-                      onClick={() => handleUseTemplate(template.id)}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Terminal className="h-5 w-5 text-muted-foreground" />
+            <h3 className="text-lg font-semibold">Templates</h3>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {templates.map((template) => (
+              <Card key={template.id} className="flex flex-col">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-base">
+                      {template.name}
+                    </CardTitle>
+                    <Badge
+                      variant="outline"
+                      className={categoryColors[template.category] ?? ""}
                     >
-                      {isCreating ? "Creating..." : "Use Template"}
-                    </Button>
-                  </CardFooter>
-                </Card>
-              ))}
-            </div>
-          </section>
-
-          <Separator />
-
-          {/* Team Templates */}
-          <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Terminal className="h-5 w-5 text-muted-foreground" />
-              <h3 className="text-lg font-semibold">Team Templates</h3>
-            </div>
-
-            {teamTemplates.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-                <p className="text-muted-foreground">
-                  No custom templates yet
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Save a pipeline as a template from the pipeline builder to
-                  create reusable configurations.
-                </p>
-              </div>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {teamTemplates.map((template) => (
-                  <Card key={template.id} className="flex flex-col">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-base">
-                          {template.name}
-                        </CardTitle>
-                        <Badge variant="outline">{template.category}</Badge>
-                      </div>
-                      <CardDescription className="text-xs">
-                        {template.description}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex-1 pb-3">
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Database className="h-3 w-3" />
-                          {template.nodeCount} nodes
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <ArrowRight className="h-3 w-3" />
-                          {template.edgeCount} edges
-                        </span>
-                      </div>
-                    </CardContent>
-                    <CardFooter className="flex gap-2 pt-0">
-                      <Button
-                        size="sm"
-                        className="flex-1"
-                        disabled={!effectiveEnvId || isCreating}
-                        onClick={() => handleUseTemplate(template.id)}
-                      >
-                        {isCreating ? "Creating..." : "Use Template"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() =>
-                          deleteTemplateMutation.mutate({ id: template.id })
-                        }
-                        disabled={deleteTemplateMutation.isPending}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </section>
-        </>
+                      {categoryIcons[template.category] ?? null}
+                      <span className={categoryIcons[template.category] ? "ml-1" : ""}>
+                        {template.category}
+                      </span>
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs">
+                    {template.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex-1 pb-3">
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Database className="h-3 w-3" />
+                      {template.nodeCount} nodes
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <ArrowRight className="h-3 w-3" />
+                      {template.edgeCount} edges
+                    </span>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex gap-2 pt-0">
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    disabled={!selectedEnvironmentId || isCreating}
+                    onClick={() => handleUseTemplate(template.id)}
+                  >
+                    {isCreating ? "Creating..." : "Use Template"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() =>
+                      deleteTemplateMutation.mutate({ id: template.id })
+                    }
+                    disabled={deleteTemplateMutation.isPending}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );

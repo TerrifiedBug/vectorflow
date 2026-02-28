@@ -2,7 +2,6 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, requireRole } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { BUILTIN_TEMPLATES } from "@/lib/vector/builtin-templates";
 
 const templateNodeSchema = z.object({
   id: z.string(),
@@ -22,88 +21,33 @@ const templateEdgeSchema = z.object({
 });
 
 export const templateRouter = router({
-  /** List all templates: built-in + team's custom templates */
+  /** List all templates for a team */
   list: protectedProcedure
-    .input(z.object({ teamId: z.string().optional() }).optional())
+    .input(z.object({ teamId: z.string() }))
     .query(async ({ input }) => {
-      const builtins = BUILTIN_TEMPLATES.map((t) => ({
+      const templates = await prisma.template.findMany({
+        where: { teamId: input.teamId },
+        orderBy: { createdAt: "desc" },
+      });
+      return templates.map((t) => ({
         id: t.id,
         name: t.name,
         description: t.description,
         category: t.category,
-        isBuiltin: true as const,
-        nodeCount: t.nodes.length,
-        edgeCount: t.edges.length,
-        createdAt: null as Date | null,
+        nodeCount: Array.isArray(t.nodes) ? (t.nodes as unknown[]).length : 0,
+        edgeCount: Array.isArray(t.edges) ? (t.edges as unknown[]).length : 0,
+        createdAt: t.createdAt,
       }));
-
-      let custom: Array<{
-        id: string;
-        name: string;
-        description: string;
-        category: string;
-        isBuiltin: false;
-        nodeCount: number;
-        edgeCount: number;
-        createdAt: Date | null;
-      }> = [];
-
-      if (input?.teamId) {
-        const dbTemplates = await prisma.template.findMany({
-          where: { teamId: input.teamId },
-          orderBy: { createdAt: "desc" },
-        });
-
-        custom = dbTemplates.map((t) => ({
-          id: t.id,
-          name: t.name,
-          description: t.description,
-          category: t.category,
-          isBuiltin: false as const,
-          nodeCount: Array.isArray(t.nodes) ? (t.nodes as unknown[]).length : 0,
-          edgeCount: Array.isArray(t.edges) ? (t.edges as unknown[]).length : 0,
-          createdAt: t.createdAt,
-        }));
-      }
-
-      return [...builtins, ...custom];
     }),
 
-  /** List only built-in templates */
-  builtins: protectedProcedure.query(() => {
-    return BUILTIN_TEMPLATES.map((t) => ({
-      id: t.id,
-      name: t.name,
-      description: t.description,
-      category: t.category,
-      nodeCount: t.nodes.length,
-      edgeCount: t.edges.length,
-    }));
-  }),
-
-  /** Get a single template by ID (built-in or custom) */
+  /** Get a single template by ID */
   get: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
-      // Check built-ins first
-      const builtin = BUILTIN_TEMPLATES.find((t) => t.id === input.id);
-      if (builtin) {
-        return {
-          id: builtin.id,
-          name: builtin.name,
-          description: builtin.description,
-          category: builtin.category,
-          isBuiltin: true,
-          nodes: builtin.nodes,
-          edges: builtin.edges,
-        };
-      }
-
-      // Check custom templates
-      const custom = await prisma.template.findUnique({
+      const template = await prisma.template.findUnique({
         where: { id: input.id },
       });
-      if (!custom) {
+      if (!template) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Template not found",
@@ -111,13 +55,12 @@ export const templateRouter = router({
       }
 
       return {
-        id: custom.id,
-        name: custom.name,
-        description: custom.description,
-        category: custom.category,
-        isBuiltin: false,
-        nodes: custom.nodes as unknown[],
-        edges: custom.edges as unknown[],
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        category: template.category,
+        nodes: template.nodes as unknown[],
+        edges: template.edges as unknown[],
       };
     }),
 
@@ -158,20 +101,11 @@ export const templateRouter = router({
       });
     }),
 
-  /** Delete a custom template */
+  /** Delete a template */
   delete: protectedProcedure
     .use(requireRole("EDITOR"))
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
-      // Don't allow deleting built-in templates
-      const isBuiltin = BUILTIN_TEMPLATES.some((t) => t.id === input.id);
-      if (isBuiltin) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Cannot delete built-in templates",
-        });
-      }
-
       const existing = await prisma.template.findUnique({
         where: { id: input.id },
       });
