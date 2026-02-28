@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { VECTOR_CATALOG } from "@/lib/vector/catalog";
 import type { VectorComponentDef } from "@/lib/vector/types";
@@ -38,7 +37,7 @@ function DraggableItem({ def }: { def: VectorComponentDef }) {
   function handleDragStart(event: React.DragEvent<HTMLDivElement>) {
     event.dataTransfer.setData(
       "application/vectorflow-component",
-      def.type
+      `${def.kind}:${def.type}`
     );
     event.dataTransfer.effectAllowed = "move";
   }
@@ -78,6 +77,43 @@ function DraggableItem({ def }: { def: VectorComponentDef }) {
   );
 }
 
+function CategoryGroup({
+  category,
+  items,
+}: {
+  category: string;
+  items: VectorComponentDef[];
+}) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-1 px-1 py-1 text-[11px] font-medium text-muted-foreground/70 transition-colors hover:text-muted-foreground"
+      >
+        {open ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
+        {category}
+        <span className="ml-auto font-normal tabular-nums text-[10px]">
+          {items.length}
+        </span>
+      </button>
+      {open && (
+        <div className="space-y-1.5 pb-1 pl-1">
+          {items.map((def) => (
+            <DraggableItem key={def.type} def={def} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CollapsibleSection({
   kind,
   items,
@@ -88,7 +124,19 @@ function CollapsibleSection({
   const [open, setOpen] = useState(true);
   const meta = kindMeta[kind];
 
+  const grouped = useMemo(() => {
+    const map = new Map<string, VectorComponentDef[]>();
+    for (const def of items) {
+      const group = map.get(def.category) ?? [];
+      group.push(def);
+      map.set(def.category, group);
+    }
+    return Array.from(map.entries());
+  }, [items]);
+
   if (items.length === 0) return null;
+
+  const needsSubGroups = grouped.length > 1 && items.length > 8;
 
   return (
     <div>
@@ -107,9 +155,17 @@ function CollapsibleSection({
       </button>
       {open && (
         <div className="space-y-1.5 pb-3">
-          {items.map((def) => (
-            <DraggableItem key={def.type} def={def} />
-          ))}
+          {needsSubGroups
+            ? grouped.map(([category, defs]) => (
+                <CategoryGroup
+                  key={category}
+                  category={category}
+                  items={defs}
+                />
+              ))
+            : items.map((def) => (
+                <DraggableItem key={def.type} def={def} />
+              ))}
         </div>
       )}
     </div>
@@ -146,7 +202,7 @@ export function ComponentPalette() {
   );
 
   return (
-    <aside className="flex h-full w-[280px] shrink-0 flex-col border-r bg-background">
+    <aside className="flex h-full w-[280px] shrink-0 flex-col overflow-hidden border-r bg-background">
       {/* Search */}
       <div className="border-b p-3">
         <div className="relative">
@@ -161,7 +217,7 @@ export function ComponentPalette() {
       </div>
 
       {/* Component list */}
-      <ScrollArea className="flex-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-1 p-3">
           <CollapsibleSection kind="source" items={sources} />
           <CollapsibleSection kind="transform" items={transforms} />
@@ -173,7 +229,7 @@ export function ComponentPalette() {
             </p>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </aside>
   );
 }

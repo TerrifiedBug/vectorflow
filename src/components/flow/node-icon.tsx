@@ -18,6 +18,16 @@ import {
   Link as LinkIcon,
   Gauge,
   Box,
+  Activity,
+  Container,
+  MessageSquare,
+  Zap,
+  Shield,
+  Layers,
+  Timer,
+  Shuffle,
+  ArrowDownToLine,
+  Webhook,
   type LucideIcon,
 } from "lucide-react";
 
@@ -40,6 +50,16 @@ const iconMap: Record<string, LucideIcon> = {
   Send,
   LinkIcon,
   Gauge,
+  Activity,
+  Container,
+  MessageSquare,
+  Zap,
+  Shield,
+  Layers,
+  Timer,
+  Shuffle,
+  ArrowDownToLine,
+  Webhook,
 };
 
 /**

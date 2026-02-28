@@ -1,6 +1,6 @@
 import yaml from "js-yaml";
 import type { Node, Edge } from "@xyflow/react";
-import { VECTOR_CATALOG } from "@/lib/vector/catalog";
+import { findComponentDef } from "@/lib/vector/catalog";
 import Dagre from "@dagrejs/dagre";
 
 /**
@@ -35,7 +35,7 @@ export function importVectorConfig(
       const componentType: string = value.type || key;
 
       // Try to resolve against the catalog; fall back to a minimal definition
-      const componentDef = VECTOR_CATALOG.find((c) => c.type === componentType) ?? {
+      const componentDef = findComponentDef(componentType, kind) ?? {
         type: componentType,
         kind,
         displayName: componentType,

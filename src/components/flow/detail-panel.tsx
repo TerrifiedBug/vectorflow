@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback } from "react";
+import { Trash2 } from "lucide-react";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
 import { VrlEditor } from "@/components/vrl-editor/vrl-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import type { VectorComponentDef } from "@/lib/vector/types";
 
 /* ------------------------------------------------------------------ */
@@ -66,6 +67,7 @@ export function DetailPanel() {
   const nodes = useFlowStore((s) => s.nodes);
   const updateNodeConfig = useFlowStore((s) => s.updateNodeConfig);
   const updateNodeKey = useFlowStore((s) => s.updateNodeKey);
+  const removeNode = useFlowStore((s) => s.removeNode);
 
   const selectedNode = selectedNodeId
     ? nodes.find((n) => n.id === selectedNodeId)
@@ -89,6 +91,12 @@ export function DetailPanel() {
     [selectedNodeId, updateNodeKey],
   );
 
+  const handleDelete = useCallback(() => {
+    if (selectedNodeId) {
+      removeNode(selectedNodeId);
+    }
+  }, [selectedNodeId, removeNode]);
+
   // ---- Empty state ----
   if (!selectedNode) {
     return (
@@ -108,7 +116,7 @@ export function DetailPanel() {
 
   return (
     <div className="flex h-full w-80 shrink-0 flex-col border-l bg-background">
-      <ScrollArea className="flex-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-6 p-4">
           {/* ---- Header ---- */}
           <Card className="gap-4 py-4">
@@ -117,12 +125,22 @@ export function DetailPanel() {
                 <CardTitle className="truncate text-base">
                   {componentDef.displayName}
                 </CardTitle>
-                <Badge
-                  variant="secondary"
-                  className={kindVariant[componentDef.kind] ?? ""}
-                >
-                  {componentDef.kind}
-                </Badge>
+                <div className="flex items-center gap-1.5">
+                  <Badge
+                    variant="secondary"
+                    className={kindVariant[componentDef.kind] ?? ""}
+                  >
+                    {componentDef.kind}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={handleDelete}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -216,7 +234,7 @@ export function DetailPanel() {
             />
           </div>
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }

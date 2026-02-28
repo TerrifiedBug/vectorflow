@@ -24,6 +24,8 @@ interface FieldSchema {
   properties?: Record<string, FieldSchema>;
   required?: string[];
   default?: unknown;
+  sensitive?: boolean;
+  dependsOn?: { field: string; value: string | string[] };
 }
 
 export interface FieldRendererProps {
@@ -32,6 +34,7 @@ export interface FieldRendererProps {
   value: unknown;
   onChange: (value: unknown) => void;
   required?: boolean;
+  parentValues?: Record<string, unknown>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -62,8 +65,20 @@ export function FieldRenderer({
   value,
   onChange,
   required,
+  parentValues,
 }: FieldRendererProps) {
   const label = toTitleCase(name);
+
+  // Check conditional visibility
+  if (schema.dependsOn && parentValues) {
+    const depValue = parentValues[schema.dependsOn.field];
+    const allowedValues = Array.isArray(schema.dependsOn.value)
+      ? schema.dependsOn.value
+      : [schema.dependsOn.value];
+    if (!allowedValues.includes(depValue as string)) {
+      return null;
+    }
+  }
 
   // ---- Enum select ----
   if (schema.enum && schema.enum.length > 0) {
@@ -204,6 +219,7 @@ export function FieldRenderer({
                 onChange({ ...objValue, [key]: fieldValue })
               }
               required={requiredFields.includes(key)}
+              parentValues={objValue}
             />
           ))}
         </div>
@@ -213,6 +229,7 @@ export function FieldRenderer({
 
   // ---- String (default) ----
   const isMultiline = isMultilineName(name);
+  const isSensitive = schema.sensitive === true || /password|secret|token|api_key/i.test(name);
   return (
     <div className="space-y-2">
       <Label>
@@ -230,6 +247,7 @@ export function FieldRenderer({
         />
       ) : (
         <Input
+          type={isSensitive ? "password" : "text"}
           value={(value as string) ?? ""}
           onChange={(e) => onChange(e.target.value)}
           placeholder={

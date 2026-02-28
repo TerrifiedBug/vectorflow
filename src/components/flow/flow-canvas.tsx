@@ -1,23 +1,36 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   useReactFlow,
+  type ReactFlowInstance,
+  type Edge,
+  type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useFlowStore } from "@/stores/flow-store";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { nodeTypes } from "./node-types";
-import { VECTOR_CATALOG } from "@/lib/vector/catalog";
+import { findComponentDef } from "@/lib/vector/catalog";
+import type { VectorComponentDef, DataType } from "@/lib/vector/types";
 
 interface FlowCanvasProps {
   onSave?: () => void;
   onExport?: () => void;
   onImport?: () => void;
+}
+
+function getNodeDataTypes(node: { data: Record<string, unknown> }, direction: "output" | "input"): DataType[] {
+  const def = node.data.componentDef as VectorComponentDef | undefined;
+  if (!def) return [];
+  return direction === "output" ? (def.outputTypes ?? []) : (def.inputTypes ?? def.outputTypes ?? []);
+}
+
+function hasOverlappingTypes(a: DataType[], b: DataType[]): boolean {
+  return a.some((t) => b.includes(t));
 }
 
 export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
@@ -28,26 +41,56 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange);
   const onConnect = useFlowStore((s) => s.onConnect);
   const addNode = useFlowStore((s) => s.addNode);
+  const hasFitRef = useRef(false);
 
   const reactFlowInstance = useReactFlow();
+
+  const onInit = useCallback((instance: ReactFlowInstance) => {
+    if (!hasFitRef.current) {
+      instance.fitView({ padding: 0.2 });
+      hasFitRef.current = true;
+    }
+  }, []);
 
   const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
   }, []);
 
+  const isValidConnection = useCallback(
+    (connection: Edge | Connection) => {
+      const sourceNode = nodes.find((n) => n.id === connection.source);
+      const targetNode = nodes.find((n) => n.id === connection.target);
+      if (!sourceNode || !targetNode) return false;
+
+      // Prevent self-connections
+      if (connection.source === connection.target) return false;
+
+      // Enforce DataType compatibility
+      const sourceTypes = getNodeDataTypes(sourceNode as { data: Record<string, unknown> }, "output");
+      const targetTypes = getNodeDataTypes(targetNode as { data: Record<string, unknown> }, "input");
+
+      if (sourceTypes.length === 0 || targetTypes.length === 0) return true;
+      return hasOverlappingTypes(sourceTypes, targetTypes);
+    },
+    [nodes],
+  );
+
   const onDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
 
-      const componentType = event.dataTransfer.getData(
+      const raw = event.dataTransfer.getData(
         "application/vectorflow-component"
       );
-      if (!componentType) return;
+      if (!raw) return;
 
-      const componentDef = VECTOR_CATALOG.find(
-        (def) => def.type === componentType
-      );
+      // Format: "kind:type" (e.g., "source:kafka") or legacy "type"
+      const colonIdx = raw.indexOf(":");
+      const kind = colonIdx > 0 ? raw.slice(0, colonIdx) as VectorComponentDef["kind"] : undefined;
+      const componentType = colonIdx > 0 ? raw.slice(colonIdx + 1) : raw;
+
+      const componentDef = findComponentDef(componentType, kind);
       if (!componentDef) return;
 
       const position = reactFlowInstance.screenToFlowPosition({
@@ -70,17 +113,13 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
         onConnect={onConnect}
         onDrop={onDrop}
         onDragOver={onDragOver}
+        onInit={onInit}
+        isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}
-        fitView
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={16} size={1} />
-        <Controls />
-        <MiniMap
-          zoomable
-          pannable
-          className="!bg-background !border-border"
-        />
+        <Controls className="!bg-card !border-border !shadow-md [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-accent" />
       </ReactFlow>
     </div>
   );
