@@ -49,7 +49,7 @@ export function VrlSnippetDrawer({ onInsert }: VrlSnippetDrawerProps) {
   };
 
   return (
-    <div className="flex h-full w-52 flex-col border-l bg-muted/20">
+    <div className="flex max-h-64 w-full flex-col rounded border bg-muted/20">
       <div className="border-b p-2">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
