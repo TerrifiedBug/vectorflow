@@ -148,7 +148,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
             {preview?.configYaml && (
               <div className="space-y-1">
                 <span className="text-xs font-medium text-muted-foreground">Generated Config</span>
-                <pre className="max-h-48 overflow-auto rounded-md bg-muted p-3 text-xs">
+                <pre className="max-h-48 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all">
                   {preview.configYaml}
                 </pre>
               </div>
@@ -159,6 +159,15 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
               <p className="text-xs text-muted-foreground">
                 Current deployed version: v{preview.currentVersion}
               </p>
+            )}
+
+            {/* Git config warning */}
+            {env && (!env.gitRepo || !env.gitBranch) && (
+              <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-xs text-yellow-700 dark:text-yellow-400">
+                Git repository is not configured for this environment. Go to{" "}
+                <span className="font-medium">Environments &rarr; {env.environmentName} &rarr; Git Credentials</span>{" "}
+                to set up a repository and branch.
+              </div>
             )}
           </div>
         )}

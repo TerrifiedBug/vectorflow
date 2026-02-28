@@ -61,7 +61,7 @@ export function VrlSnippetDrawer({ onInsert }: VrlSnippetDrawerProps) {
           />
         </div>
       </div>
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-1">
           {grouped.size === 0 && (
             <p className="p-3 text-center text-xs text-muted-foreground">
