@@ -13,6 +13,8 @@ import {
   Settings,
 } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
+import { TeamSelector } from "@/components/team-selector";
+import { useTeamStore } from "@/stores/team-store";
 
 import {
   Sidebar,
@@ -39,11 +41,19 @@ const navItems = [
 export function AppSidebar() {
   const pathname = usePathname();
   const trpc = useTRPC();
-  const roleQuery = useQuery(trpc.team.myRole.queryOptions());
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const roleQuery = useQuery(
+    trpc.team.teamRole.queryOptions(
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId },
+    ),
+  );
   const userRole = roleQuery.data?.role;
+  const isSuperAdmin = roleQuery.data?.isSuperAdmin ?? false;
 
   const visibleItems = navItems.filter((item) => {
     if (!item.requiredRole) return true;
+    if (isSuperAdmin) return true;
     if (!userRole) return false;
     const roleLevel: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
     return (roleLevel[userRole] ?? 0) >= (roleLevel[item.requiredRole] ?? 0);
@@ -60,6 +70,9 @@ export function AppSidebar() {
             VectorFlow
           </span>
         </Link>
+        <div className="px-2 pb-2">
+          <TeamSelector />
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
