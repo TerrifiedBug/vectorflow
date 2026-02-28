@@ -10,6 +10,7 @@ import { vrlRouter } from "@/server/routers/vrl";
 import { templateRouter } from "@/server/routers/template";
 import { settingsRouter } from "@/server/routers/settings";
 import { dashboardRouter } from "@/server/routers/dashboard";
+import { metricsRouter } from "@/server/routers/metrics";
 
 export const appRouter = router({
   team: teamRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   template: templateRouter,
   settings: settingsRouter,
   dashboard: dashboardRouter,
+  metrics: metricsRouter,
 });
 
 export type AppRouter = typeof appRouter;
