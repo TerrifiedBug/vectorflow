@@ -215,8 +215,11 @@ export default function EnvironmentDetailPage({
                     id="edit-git-repo"
                     value={editGitRepo}
                     onChange={(e) => setEditGitRepo(e.target.value)}
-                    placeholder="https://github.com/org/repo"
+                    placeholder="https://github.com/org/repo.git or git@github.com:org/repo.git"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Use HTTPS with a token (Settings &rarr; GitOps) or SSH with a deploy key
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-git-branch">Git Branch</Label>
