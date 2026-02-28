@@ -64,6 +64,11 @@ export const settingsRouter = router({
         oidcClientId: settings.oidcClientId,
         oidcClientSecret: maskedClientSecret,
         oidcDisplayName: settings.oidcDisplayName,
+        oidcDefaultRole: settings.oidcDefaultRole,
+        oidcGroupsClaim: settings.oidcGroupsClaim,
+        oidcAdminGroups: settings.oidcAdminGroups,
+        oidcEditorGroups: settings.oidcEditorGroups,
+        oidcTokenEndpointAuthMethod: settings.oidcTokenEndpointAuthMethod ?? "client_secret_post",
         fleetPollIntervalMs: settings.fleetPollIntervalMs,
         fleetUnhealthyThreshold: settings.fleetUnhealthyThreshold,
         gitopsCommitAuthor: settings.gitopsCommitAuthor,
@@ -82,20 +87,49 @@ export const settingsRouter = router({
         clientId: z.string().min(1),
         clientSecret: z.string().min(1),
         displayName: z.string().min(1).default("SSO"),
+        tokenEndpointAuthMethod: z.enum(["client_secret_post", "client_secret_basic"]).default("client_secret_post"),
       })
     )
     .mutation(async ({ input }) => {
       await getOrCreateSettings();
 
-      const encryptedSecret = encrypt(input.clientSecret);
+      const data: Record<string, unknown> = {
+        oidcIssuer: input.issuer,
+        oidcClientId: input.clientId,
+        oidcDisplayName: input.displayName,
+        oidcTokenEndpointAuthMethod: input.tokenEndpointAuthMethod,
+      };
+
+      if (input.clientSecret !== "unchanged") {
+        data.oidcClientSecret = encrypt(input.clientSecret);
+      }
+
+      return prisma.systemSettings.update({
+        where: { id: SETTINGS_ID },
+        data,
+      });
+    }),
+
+  updateOidcRoleMapping: protectedProcedure
+    .use(requireRole("ADMIN"))
+    .input(
+      z.object({
+        defaultRole: z.enum(["VIEWER", "EDITOR", "ADMIN"]),
+        groupsClaim: z.string().min(1).default("groups"),
+        adminGroups: z.string().optional(),
+        editorGroups: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      await getOrCreateSettings();
 
       return prisma.systemSettings.update({
         where: { id: SETTINGS_ID },
         data: {
-          oidcIssuer: input.issuer,
-          oidcClientId: input.clientId,
-          oidcClientSecret: encryptedSecret,
-          oidcDisplayName: input.displayName,
+          oidcDefaultRole: input.defaultRole,
+          oidcGroupsClaim: input.groupsClaim,
+          oidcAdminGroups: input.adminGroups || null,
+          oidcEditorGroups: input.editorGroups || null,
         },
       });
     }),

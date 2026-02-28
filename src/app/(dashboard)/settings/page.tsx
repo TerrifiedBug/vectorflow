@@ -60,12 +60,14 @@ function AuthSettings() {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [displayName, setDisplayName] = useState("SSO");
+  const [tokenAuthMethod, setTokenAuthMethod] = useState<"client_secret_post" | "client_secret_basic">("client_secret_post");
 
   useEffect(() => {
     if (settings) {
       setIssuer(settings.oidcIssuer ?? "");
       setClientId(settings.oidcClientId ?? "");
       setDisplayName(settings.oidcDisplayName ?? "SSO");
+      setTokenAuthMethod((settings.oidcTokenEndpointAuthMethod as "client_secret_post" | "client_secret_basic") ?? "client_secret_post");
       // Don't populate clientSecret - it's masked
     }
   }, [settings]);
@@ -105,6 +107,7 @@ function AuthSettings() {
       clientId,
       clientSecret: clientSecret || "unchanged",
       displayName,
+      tokenEndpointAuthMethod: tokenAuthMethod,
     });
   };
 
@@ -114,6 +117,42 @@ function AuthSettings() {
       return;
     }
     testOidcMutation.mutate({ issuer });
+  };
+
+  const [defaultRole, setDefaultRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
+  const [groupsClaim, setGroupsClaim] = useState("groups");
+  const [adminGroups, setAdminGroups] = useState("");
+  const [editorGroups, setEditorGroups] = useState("");
+
+  useEffect(() => {
+    if (settings) {
+      setDefaultRole((settings.oidcDefaultRole as "VIEWER" | "EDITOR" | "ADMIN") ?? "VIEWER");
+      setGroupsClaim(settings.oidcGroupsClaim ?? "groups");
+      setAdminGroups(settings.oidcAdminGroups ?? "");
+      setEditorGroups(settings.oidcEditorGroups ?? "");
+    }
+  }, [settings]);
+
+  const updateRoleMappingMutation = useMutation(
+    trpc.settings.updateOidcRoleMapping.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
+        toast.success("OIDC role mapping saved");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to save role mapping");
+      },
+    })
+  );
+
+  const handleSaveRoleMapping = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateRoleMappingMutation.mutate({
+      defaultRole,
+      groupsClaim,
+      adminGroups: adminGroups || undefined,
+      editorGroups: editorGroups || undefined,
+    });
   };
 
   if (settingsQuery.isLoading) {
@@ -126,6 +165,7 @@ function AuthSettings() {
   }
 
   return (
+    <div className="space-y-6">
     <Card>
       <CardHeader>
         <CardTitle>OIDC / SSO Configuration</CardTitle>
@@ -198,6 +238,25 @@ function AuthSettings() {
             </p>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="oidc-auth-method">Token Auth Method</Label>
+            <Select
+              value={tokenAuthMethod}
+              onValueChange={(val: "client_secret_post" | "client_secret_basic") => setTokenAuthMethod(val)}
+            >
+              <SelectTrigger id="oidc-auth-method" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="client_secret_post">client_secret_post (default)</SelectItem>
+                <SelectItem value="client_secret_basic">client_secret_basic</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              How the client secret is sent to the token endpoint. Most providers use client_secret_post.
+            </p>
+          </div>
+
           <Separator />
 
           <div className="flex items-center gap-3">
@@ -245,6 +304,95 @@ function AuthSettings() {
         </form>
       </CardContent>
     </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle>OIDC Role Mapping</CardTitle>
+        <CardDescription>
+          Map OIDC groups to VectorFlow roles. When a user signs in via SSO,
+          their role is determined by their group membership.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSaveRoleMapping} className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="oidc-default-role">Default Role</Label>
+            <Select
+              value={defaultRole}
+              onValueChange={(val: "VIEWER" | "EDITOR" | "ADMIN") => setDefaultRole(val)}
+            >
+              <SelectTrigger id="oidc-default-role" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="VIEWER">Viewer</SelectItem>
+                <SelectItem value="EDITOR">Editor</SelectItem>
+                <SelectItem value="ADMIN">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Role assigned to SSO users who don&apos;t match any group mapping
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="oidc-groups-claim">Groups Claim</Label>
+            <Input
+              id="oidc-groups-claim"
+              placeholder="groups"
+              value={groupsClaim}
+              onChange={(e) => setGroupsClaim(e.target.value)}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              The OIDC token claim that contains group names (usually
+              &quot;groups&quot;)
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="oidc-admin-groups">Admin Groups</Label>
+            <Input
+              id="oidc-admin-groups"
+              placeholder="vectorflow-admins, platform-admins"
+              value={adminGroups}
+              onChange={(e) => setAdminGroups(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Comma-separated group names that grant Admin role
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="oidc-editor-groups">Editor Groups</Label>
+            <Input
+              id="oidc-editor-groups"
+              placeholder="vectorflow-editors, developers"
+              value={editorGroups}
+              onChange={(e) => setEditorGroups(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Comma-separated group names that grant Editor role
+            </p>
+          </div>
+
+          <Button
+            type="submit"
+            disabled={updateRoleMappingMutation.isPending}
+          >
+            {updateRoleMappingMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save Role Mapping"
+            )}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+    </div>
   );
 }
 
@@ -500,7 +648,6 @@ function GitOpsSettings() {
                 ref={fileInputRef}
                 id="ssh-key-upload"
                 type="file"
-                accept=".pem,.key,id_rsa,id_ed25519"
                 onChange={handleFileUpload}
                 className="max-w-sm"
               />
@@ -536,6 +683,7 @@ function TeamSettings() {
 
   const team = teamQuery.data;
 
+  const [teamName, setTeamName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">(
     "VIEWER"
@@ -579,13 +727,36 @@ function TeamSettings() {
     })
   );
 
+  const renameMutation = useMutation(
+    trpc.team.rename.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.team.get.queryKey() });
+        queryClient.invalidateQueries({ queryKey: trpc.team.list.queryKey() });
+        toast.success("Team renamed");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to rename team");
+      },
+    })
+  );
+
+  const handleRename = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!firstTeamId || !teamName.trim()) return;
+    renameMutation.mutate({ teamId: firstTeamId, name: teamName.trim() });
+  };
+
+  // Sync team name state when data loads
+  useEffect(() => {
+    if (team?.name && !teamName) setTeamName(team.name);
+  }, [team?.name]);
+
   const handleInvite = (e: React.FormEvent) => {
     e.preventDefault();
     if (!firstTeamId || !inviteEmail) return;
-    // For now, we pass the email as userId - in a real system, you'd look up the user first
     addMemberMutation.mutate({
       teamId: firstTeamId,
-      userId: inviteEmail,
+      email: inviteEmail,
       role: inviteRole,
     });
   };
@@ -611,6 +782,34 @@ function TeamSettings() {
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Organization</CardTitle>
+          <CardDescription>
+            Manage your team name and settings.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleRename} className="flex items-end gap-3">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="team-name">Team Name</Label>
+              <Input
+                id="team-name"
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                placeholder="Team name"
+              />
+            </div>
+            <Button
+              type="submit"
+              disabled={renameMutation.isPending || teamName.trim() === team.name}
+            >
+              Save
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Team Members</CardTitle>
@@ -687,7 +886,7 @@ function TeamSettings() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleInvite} className="flex items-end gap-3">
-            <div className="flex-1 space-y-2">
+            <div className="min-w-0 flex-1 space-y-2">
               <Label htmlFor="invite-email">Email</Label>
               <Input
                 id="invite-email"
@@ -706,7 +905,7 @@ function TeamSettings() {
                   setInviteRole(val)
                 }
               >
-                <SelectTrigger id="invite-role" className="w-[120px]">
+                <SelectTrigger id="invite-role" className="h-9 w-[120px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -716,7 +915,7 @@ function TeamSettings() {
                 </SelectContent>
               </Select>
             </div>
-            <Button type="submit" disabled={addMemberMutation.isPending}>
+            <Button type="submit" className="h-9" disabled={addMemberMutation.isPending}>
               {addMemberMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
