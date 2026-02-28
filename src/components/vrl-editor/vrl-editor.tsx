@@ -129,10 +129,6 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
           />
       </div>
 
-      {showSnippets && (
-        <VrlSnippetDrawer onInsert={handleInsertSnippet} />
-      )}
-
       <div className="flex gap-2">
         <Button
           variant="outline"
@@ -150,6 +146,10 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
           {showTest ? "Hide Test" : "Test"}
         </Button>
       </div>
+
+      {showSnippets && (
+        <VrlSnippetDrawer onInsert={handleInsertSnippet} />
+      )}
 
       {showTest && (
         <div className="space-y-3 rounded border p-3">
