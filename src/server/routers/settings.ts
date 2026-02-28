@@ -184,7 +184,17 @@ export const settingsRouter = router({
       await getOrCreateSettings();
 
       const keyBuffer = Buffer.from(input.keyBase64, "base64");
-      const encryptedKey = encrypt(keyBuffer.toString("utf8"));
+      const keyText = keyBuffer.toString("utf8");
+
+      // Validate it looks like a private key
+      if (!keyText.includes("PRIVATE KEY")) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This does not appear to be a private key. Please upload the private key file (not the .pub file).",
+        });
+      }
+
+      const encryptedKey = encrypt(keyText);
 
       return prisma.systemSettings.update({
         where: { id: SETTINGS_ID },

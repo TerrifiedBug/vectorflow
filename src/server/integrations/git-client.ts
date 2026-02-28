@@ -42,7 +42,9 @@ export async function cloneRepo(config: GitConfig): Promise<GitWorkspace> {
   let sshKeyPath: string | undefined;
   if (config.sshKey && !config.repoUrl.startsWith("https://")) {
     sshKeyPath = join(tmpBase, ".deploy-key");
-    await writeFile(sshKeyPath, config.sshKey, { mode: 0o600 });
+    // SSH requires the key file to end with a newline
+    const keyContent = config.sshKey.endsWith("\n") ? config.sshKey : config.sshKey + "\n";
+    await writeFile(sshKeyPath, keyContent, { mode: 0o600 });
     await chmod(sshKeyPath, 0o600);
   }
 
