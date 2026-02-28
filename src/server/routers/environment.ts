@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, requireRole } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { createHash } from "crypto";
@@ -9,6 +9,7 @@ import { withAudit } from "@/server/middleware/audit";
 export const environmentRouter = router({
   list: protectedProcedure
     .input(z.object({ teamId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return prisma.environment.findMany({
         where: { teamId: input.teamId },
@@ -72,6 +73,7 @@ export const environmentRouter = router({
         gitBranch: z.string().optional(),
       })
     )
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("environment.created", "Environment"))
     .mutation(async ({ input }) => {
       // Verify team exists
@@ -142,8 +144,8 @@ export const environmentRouter = router({
     }),
 
   uploadSshKey: protectedProcedure
-    .use(requireRole("EDITOR"))
     .input(z.object({ environmentId: z.string(), keyBase64: z.string().min(1) }))
+    .use(withTeamAccess("EDITOR"))
     .mutation(async ({ input }) => {
       const keyBuffer = Buffer.from(input.keyBase64, "base64");
       const keyText = keyBuffer.toString("utf8");
@@ -161,8 +163,8 @@ export const environmentRouter = router({
     }),
 
   updateHttpsToken: protectedProcedure
-    .use(requireRole("EDITOR"))
     .input(z.object({ environmentId: z.string(), token: z.string().min(1) }))
+    .use(withTeamAccess("EDITOR"))
     .mutation(async ({ input }) => {
       const encryptedToken = encrypt(input.token);
       return prisma.environment.update({

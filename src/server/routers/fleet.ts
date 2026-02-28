@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 
 export const fleetRouter = router({
   list: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return prisma.vectorNode.findMany({
         where: { environmentId: input.environmentId },
@@ -44,6 +45,7 @@ export const fleetRouter = router({
         environmentId: z.string(),
       })
     )
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("fleet.node.created", "VectorNode"))
     .mutation(async ({ input }) => {
       const environment = await prisma.environment.findUnique({

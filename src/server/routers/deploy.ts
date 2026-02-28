@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { deployGitOps } from "@/server/services/deploy-gitops";
+import { deployGitOps, removeFromGit } from "@/server/services/deploy-gitops";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { validateConfig } from "@/server/services/validator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
@@ -15,6 +15,7 @@ export const deployRouter = router({
    */
   preview: protectedProcedure
     .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const pipeline = await prisma.pipeline.findUnique({
         where: { id: input.pipelineId },
@@ -80,6 +81,7 @@ export const deployRouter = router({
         commitAuthor: z.string().optional(),
       }),
     )
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("deploy.gitops", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
@@ -140,10 +142,22 @@ export const deployRouter = router({
     }),
 
   /**
+   * Undeploy — remove pipeline config from git repo.
+   */
+  undeploy: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("deploy.undeploy", "Pipeline"))
+    .mutation(async ({ input }) => {
+      return removeFromGit(input.pipelineId);
+    }),
+
+  /**
    * Get environment info for the deploy wizard.
    */
   environmentInfo: protectedProcedure
     .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const pipeline = await prisma.pipeline.findUnique({
         where: { id: input.pipelineId },
