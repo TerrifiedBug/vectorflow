@@ -6,10 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { VectorComponentDef, DataType } from "@/lib/vector/types";
 import { getIcon } from "./node-icon";
+import { NodeSparkline } from "./node-sparkline";
 
 type NodeMetrics = {
   eventsPerSec: number;
   status: string;
+  samples?: import("@/server/services/metric-store").MetricSample[];
 };
 
 type SourceNodeData = {
@@ -109,6 +111,9 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
           <span className="text-muted-foreground">
             {metrics.eventsPerSec} events/s
           </span>
+          {metrics.samples && metrics.samples.length > 1 && (
+            <NodeSparkline samples={metrics.samples} />
+          )}
         </div>
       )}
 
