@@ -1,19 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
 import {
   Shield,
   Server,
-  GitBranch,
   Users,
   Loader2,
   CheckCircle2,
   XCircle,
-  Upload,
-  KeyRound,
   Trash2,
 } from "lucide-react";
 
@@ -504,227 +501,6 @@ function FleetSettings() {
   );
 }
 
-// ─── GitOps Tab ────────────────────────────────────────────────────────────────
-
-function GitOpsSettings() {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const settingsQuery = useQuery(trpc.settings.get.queryOptions());
-  const settings = settingsQuery.data;
-
-  const [commitAuthor, setCommitAuthor] = useState("");
-  const [httpsToken, setHttpsToken] = useState("");
-
-  useEffect(() => {
-    if (settings) {
-      setCommitAuthor(settings.gitopsCommitAuthor ?? "");
-    }
-  }, [settings]);
-
-  const updateGitopsMutation = useMutation(
-    trpc.settings.updateGitops.mutationOptions({
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
-        toast.success("GitOps settings saved successfully");
-      },
-      onError: (error) => {
-        toast.error(error.message || "Failed to save GitOps settings");
-      },
-    })
-  );
-
-  const uploadSshKeyMutation = useMutation(
-    trpc.settings.uploadSshKey.mutationOptions({
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
-        toast.success("SSH key uploaded successfully");
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
-      },
-      onError: (error) => {
-        toast.error(error.message || "Failed to upload SSH key");
-      },
-    })
-  );
-
-  const saveTokenMutation = useMutation(
-    trpc.settings.updateGitopsHttpsToken.mutationOptions({
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
-        toast.success("HTTPS token saved");
-        setHttpsToken("");
-      },
-      onError: (error) => {
-        toast.error(error.message || "Failed to save token");
-      },
-    })
-  );
-
-  const handleSaveToken = () => {
-    saveTokenMutation.mutate({ token: httpsToken });
-  };
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateGitopsMutation.mutate({ commitAuthor });
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Convert to base64
-      const base64 = btoa(result);
-      uploadSshKeyMutation.mutate({ keyBase64: base64 });
-    };
-    reader.readAsText(file);
-  };
-
-  if (settingsQuery.isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>GitOps Configuration</CardTitle>
-          <CardDescription>
-            Configure how VectorFlow commits pipeline configurations to Git
-            repositories.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSave} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="commit-author">Commit Author</Label>
-              <Input
-                id="commit-author"
-                placeholder="VectorFlow <vectorflow@company.com>"
-                value={commitAuthor}
-                onChange={(e) => setCommitAuthor(e.target.value)}
-                required
-              />
-              <p className="text-xs text-muted-foreground">
-                Git author string used for automated commits (format: Name
-                &lt;email&gt;)
-              </p>
-            </div>
-
-            <Button type="submit" disabled={updateGitopsMutation.isPending}>
-              {updateGitopsMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                "Save GitOps Settings"
-              )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>SSH Key</CardTitle>
-          <CardDescription>
-            Upload a private SSH key for Git repository authentication. The key
-            is encrypted at rest.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {settings?.hasSshKey && (
-            <div className="flex items-center gap-2 rounded-md border p-3">
-              <KeyRound className="h-4 w-4 text-muted-foreground" />
-              <span className="font-mono text-sm">
-                {settings.sshKeyFingerprint ?? "Key uploaded"}
-              </span>
-              <Badge variant="secondary" className="ml-auto">
-                Configured
-              </Badge>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="ssh-key-upload">
-              {settings?.hasSshKey ? "Replace SSH Key" : "Upload SSH Key"}
-            </Label>
-            <div className="flex items-center gap-3">
-              <Input
-                ref={fileInputRef}
-                id="ssh-key-upload"
-                type="file"
-                onChange={handleFileUpload}
-                className="max-w-sm"
-              />
-              {uploadSshKeyMutation.isPending && (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Accepted formats: PEM, OpenSSH private key
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>HTTPS Token</CardTitle>
-          <CardDescription>
-            Personal access token for HTTPS git repositories. Used when the
-            repository URL starts with https://.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {settings?.hasHttpsToken && (
-            <div className="flex items-center gap-2 rounded-md border p-3">
-              <KeyRound className="h-4 w-4 text-muted-foreground" />
-              <span className="font-mono text-sm">Token configured</span>
-              <Badge variant="secondary" className="ml-auto">Active</Badge>
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="https-token">
-              {settings?.hasHttpsToken ? "Replace Token" : "Set Token"}
-            </Label>
-            <Input
-              id="https-token"
-              type="password"
-              placeholder="ghp_xxxx or glpat-xxxx"
-              value={httpsToken}
-              onChange={(e) => setHttpsToken(e.target.value)}
-              className="max-w-sm"
-            />
-            <p className="text-xs text-muted-foreground">
-              For Gitea, GitHub, GitLab: use a personal access token with repo write access
-            </p>
-          </div>
-          <Button
-            onClick={handleSaveToken}
-            disabled={!httpsToken || saveTokenMutation.isPending}
-            size="sm"
-          >
-            {saveTokenMutation.isPending ? "Saving..." : "Save Token"}
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 // ─── Team Tab ──────────────────────────────────────────────────────────────────
 
 function TeamSettings() {
@@ -893,7 +669,20 @@ function TeamSettings() {
                   <TableCell className="font-medium">
                     {member.user.name || "Unnamed"}
                   </TableCell>
-                  <TableCell>{member.user.email}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {member.user.email}
+                      {member.user.authMethod === "LOCAL" && (
+                        <Badge variant="outline">Local</Badge>
+                      )}
+                      {member.user.authMethod === "OIDC" && (
+                        <Badge variant="secondary">SSO</Badge>
+                      )}
+                      {member.user.authMethod === "BOTH" && (
+                        <Badge variant="secondary">SSO + Local</Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <Select
                       value={member.role}
@@ -1014,10 +803,6 @@ export default function SettingsPage() {
             <Server className="mr-2 h-4 w-4" />
             Fleet
           </TabsTrigger>
-          <TabsTrigger value="gitops">
-            <GitBranch className="mr-2 h-4 w-4" />
-            GitOps
-          </TabsTrigger>
           <TabsTrigger value="team">
             <Users className="mr-2 h-4 w-4" />
             Team
@@ -1030,10 +815,6 @@ export default function SettingsPage() {
 
         <TabsContent value="fleet" className="mt-6">
           <FleetSettings />
-        </TabsContent>
-
-        <TabsContent value="gitops" className="mt-6">
-          <GitOpsSettings />
         </TabsContent>
 
         <TabsContent value="team" className="mt-6">

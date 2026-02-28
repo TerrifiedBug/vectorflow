@@ -1,12 +1,22 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
+import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { Role } from "@/generated/prisma";
 
 export const createContext = async () => {
   const session = await auth();
-  return { session };
+  let ipAddress: string | null = null;
+  try {
+    const hdrs = await headers();
+    ipAddress = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim()
+      || hdrs.get("x-real-ip")
+      || null;
+  } catch {
+    // headers() may fail outside request context
+  }
+  return { session, ipAddress };
 };
 
 type Context = Awaited<ReturnType<typeof createContext>>;

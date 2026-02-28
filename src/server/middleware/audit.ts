@@ -29,6 +29,9 @@ export function withAudit(action: string, entityType: string) {
           entityType,
           entityId,
           metadata: { timestamp: new Date().toISOString() },
+          ipAddress: (ctx as any).ipAddress ?? null,
+          userEmail: ctx.session?.user?.email ?? null,
+          userName: ctx.session?.user?.name ?? null,
         }).catch(() => {});
       }
     }

@@ -3,7 +3,6 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, requireRole } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
-import { createHash } from "crypto";
 
 const SETTINGS_ID = "singleton";
 
@@ -12,12 +11,6 @@ function maskSecret(value: string | null | undefined): string | null {
   if (!value) return null;
   if (value.length <= 4) return "****";
   return "****" + value.slice(-4);
-}
-
-/** Compute SSH key fingerprint (SHA-256) from raw key bytes */
-function sshKeyFingerprint(keyBytes: Buffer): string {
-  const hash = createHash("sha256").update(keyBytes).digest("base64");
-  return `SHA256:${hash}`;
 }
 
 async function getOrCreateSettings() {
@@ -49,16 +42,6 @@ export const settingsRouter = router({
         }
       }
 
-      // Compute SSH key fingerprint if present
-      let sshKeyFingerPrint: string | null = null;
-      if (settings.gitopsSshKey) {
-        try {
-          sshKeyFingerPrint = sshKeyFingerprint(Buffer.from(settings.gitopsSshKey));
-        } catch {
-          sshKeyFingerPrint = null;
-        }
-      }
-
       return {
         oidcIssuer: settings.oidcIssuer,
         oidcClientId: settings.oidcClientId,
@@ -71,11 +54,6 @@ export const settingsRouter = router({
         oidcTokenEndpointAuthMethod: settings.oidcTokenEndpointAuthMethod ?? "client_secret_post",
         fleetPollIntervalMs: settings.fleetPollIntervalMs,
         fleetUnhealthyThreshold: settings.fleetUnhealthyThreshold,
-        gitopsCommitAuthor: settings.gitopsCommitAuthor,
-        sshKeyFingerprint: sshKeyFingerPrint,
-        hasSshKey: !!settings.gitopsSshKey,
-        hasHttpsToken: !!settings.gitopsHttpsToken,
-        defaultDeployMode: settings.defaultDeployMode,
         updatedAt: settings.updatedAt,
       };
     }),
@@ -152,67 +130,6 @@ export const settingsRouter = router({
           fleetPollIntervalMs: input.pollIntervalMs,
           fleetUnhealthyThreshold: input.unhealthyThreshold,
         },
-      });
-    }),
-
-  updateGitops: protectedProcedure
-    .use(requireRole("ADMIN"))
-    .input(
-      z.object({
-        commitAuthor: z.string().min(1),
-      })
-    )
-    .mutation(async ({ input }) => {
-      await getOrCreateSettings();
-
-      return prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data: {
-          gitopsCommitAuthor: input.commitAuthor,
-        },
-      });
-    }),
-
-  uploadSshKey: protectedProcedure
-    .use(requireRole("ADMIN"))
-    .input(
-      z.object({
-        keyBase64: z.string().min(1),
-      })
-    )
-    .mutation(async ({ input }) => {
-      await getOrCreateSettings();
-
-      const keyBuffer = Buffer.from(input.keyBase64, "base64");
-      const keyText = keyBuffer.toString("utf8");
-
-      // Validate it looks like a private key
-      if (!keyText.includes("PRIVATE KEY")) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "This does not appear to be a private key. Please upload the private key file (not the .pub file).",
-        });
-      }
-
-      const encryptedKey = encrypt(keyText);
-
-      return prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data: {
-          gitopsSshKey: Buffer.from(encryptedKey, "utf8"),
-        },
-      });
-    }),
-
-  updateGitopsHttpsToken: protectedProcedure
-    .use(requireRole("ADMIN"))
-    .input(z.object({ token: z.string().min(1) }))
-    .mutation(async ({ input }) => {
-      await getOrCreateSettings();
-      const encryptedToken = encrypt(input.token);
-      return prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data: { gitopsHttpsToken: encryptedToken },
       });
     }),
 

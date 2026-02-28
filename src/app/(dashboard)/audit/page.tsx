@@ -254,6 +254,7 @@ export default function AuditPage() {
                 <TableHead className="w-[30px]" />
                 <TableHead>Timestamp</TableHead>
                 <TableHead>User</TableHead>
+                <TableHead>IP Address</TableHead>
                 <TableHead>Action</TableHead>
                 <TableHead>Entity Type</TableHead>
                 <TableHead>Entity ID</TableHead>
@@ -290,8 +291,11 @@ export default function AuditPage() {
                       </TableCell>
                       <TableCell>
                         <span className="text-sm">
-                          {entry.user.name || entry.user.email}
+                          {entry.userName || entry.userEmail || entry.user?.name || entry.user?.email}
                         </span>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        {entry.ipAddress || "\u2014"}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -315,7 +319,7 @@ export default function AuditPage() {
                     </TableRow>
                     {isExpanded && hasDetails && (
                       <TableRow className="bg-muted/30 hover:bg-muted/30">
-                        <TableCell colSpan={7} className="p-4">
+                        <TableCell colSpan={8} className="p-4">
                           <div className="space-y-3">
                             {hasDiff && (
                               <div>
