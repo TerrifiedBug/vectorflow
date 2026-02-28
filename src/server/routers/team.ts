@@ -90,6 +90,42 @@ export const teamRouter = router({
       });
     }),
 
+  delete: protectedProcedure
+    .use(requireSuperAdmin())
+    .input(z.object({ teamId: z.string() }))
+    .mutation(async ({ input }) => {
+      const team = await prisma.team.findUnique({
+        where: { id: input.teamId },
+        include: {
+          environments: { select: { name: true } },
+        },
+      });
+      if (!team) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Team not found" });
+      }
+      if (team.environments.length > 0) {
+        const names = team.environments.map((e) => e.name).join(", ");
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `Cannot delete team with environments. Remove these first: ${names}`,
+        });
+      }
+      const teamCount = await prisma.team.count();
+      if (teamCount <= 1) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot delete the last remaining team",
+        });
+      }
+      await prisma.$transaction([
+        prisma.auditLog.deleteMany({ where: { teamId: input.teamId } }),
+        prisma.template.deleteMany({ where: { teamId: input.teamId } }),
+        prisma.teamMember.deleteMany({ where: { teamId: input.teamId } }),
+        prisma.team.delete({ where: { id: input.teamId } }),
+      ]);
+      return { deleted: true };
+    }),
+
   rename: protectedProcedure
     .use(withTeamAccess("ADMIN"))
     .input(z.object({ teamId: z.string(), name: z.string().min(1).max(100) }))
