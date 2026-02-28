@@ -936,6 +936,14 @@ function UsersSettings() {
   const [assignTeamId, setAssignTeamId] = useState("");
   const [assignRole, setAssignRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
   const [deleteDialog, setDeleteDialog] = useState<{ userId: string; userName: string } | null>(null);
+  const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserTeamId, setNewUserTeamId] = useState("");
+  const [newUserRole, setNewUserRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
+  const [showCreatedPassword, setShowCreatedPassword] = useState(false);
+  const [createdPassword, setCreatedPassword] = useState("");
 
   const assignMutation = useMutation(
     trpc.admin.assignToTeam.mutationOptions({
@@ -979,6 +987,27 @@ function UsersSettings() {
     })
   );
 
+  const createUserMutation = useMutation(
+    trpc.admin.createUser.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
+        toast.success("User created");
+        // Show the password if it was auto-generated
+        if (newUserPassword) {
+          setCreatedPassword(newUserPassword);
+          setShowCreatedPassword(true);
+        }
+        setCreateUserOpen(false);
+        setNewUserEmail("");
+        setNewUserName("");
+        setNewUserPassword("");
+        setNewUserTeamId("");
+        setNewUserRole("VIEWER");
+      },
+      onError: (error) => toast.error(error.message),
+    })
+  );
+
   if (usersQuery.isLoading) {
     return (
       <div className="space-y-4">
@@ -993,11 +1022,15 @@ function UsersSettings() {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle>Platform Users</CardTitle>
-          <CardDescription>
-            Manage all users across the platform. Assign users to teams, manage super admin access, and delete users.
-          </CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle>Platform Users</CardTitle>
+            <CardDescription>Manage all users across the platform.</CardDescription>
+          </div>
+          <Button onClick={() => setCreateUserOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create User
+          </Button>
         </CardHeader>
         <CardContent>
           <Table>
@@ -1228,6 +1261,161 @@ function UsersSettings() {
                 "Delete User"
               )}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create User Dialog */}
+      <Dialog open={createUserOpen} onOpenChange={(open) => {
+        setCreateUserOpen(open);
+        if (!open) {
+          setNewUserEmail("");
+          setNewUserName("");
+          setNewUserPassword("");
+          setNewUserTeamId("");
+          setNewUserRole("VIEWER");
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create User</DialogTitle>
+            <DialogDescription>
+              Create a new local user account.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            createUserMutation.mutate({
+              email: newUserEmail,
+              name: newUserName,
+              password: newUserPassword,
+              ...(newUserTeamId ? { teamId: newUserTeamId, role: newUserRole } : {}),
+            });
+          }} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-user-email">Email</Label>
+              <Input
+                id="new-user-email"
+                type="email"
+                value={newUserEmail}
+                onChange={(e) => setNewUserEmail(e.target.value)}
+                placeholder="user@example.com"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-user-name">Name</Label>
+              <Input
+                id="new-user-name"
+                value={newUserName}
+                onChange={(e) => setNewUserName(e.target.value)}
+                placeholder="Full name"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-user-password">Password</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="new-user-password"
+                  type="text"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  placeholder="Minimum 8 characters"
+                  required
+                  minLength={8}
+                  className="font-mono"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const array = new Uint8Array(12);
+                    crypto.getRandomValues(array);
+                    const password = btoa(String.fromCharCode(...array)).replace(/[+/=]/g, "").slice(0, 16);
+                    setNewUserPassword(password);
+                  }}
+                >
+                  Generate
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-user-team">Team (optional)</Label>
+                <Select value={newUserTeamId} onValueChange={setNewUserTeamId}>
+                  <SelectTrigger id="new-user-team">
+                    <SelectValue placeholder="No team" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(teamsQuery?.data ?? []).map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-user-role">Role</Label>
+                <Select value={newUserRole} onValueChange={(val: "VIEWER" | "EDITOR" | "ADMIN") => setNewUserRole(val)}>
+                  <SelectTrigger id="new-user-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="VIEWER">Viewer</SelectItem>
+                    <SelectItem value="EDITOR">Editor</SelectItem>
+                    <SelectItem value="ADMIN">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateUserOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createUserMutation.isPending}>
+                {createUserMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create User"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Password Display Dialog */}
+      <Dialog open={showCreatedPassword} onOpenChange={setShowCreatedPassword}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>User Created</DialogTitle>
+            <DialogDescription>
+              Share this password with the user. It will only be shown once.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2">
+            <Input value={createdPassword} readOnly className="font-mono" />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                navigator.clipboard.writeText(createdPassword);
+                toast.success("Copied to clipboard");
+              }}
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => {
+              setShowCreatedPassword(false);
+              setCreatedPassword("");
+            }}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
