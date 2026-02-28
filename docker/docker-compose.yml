@@ -29,9 +29,6 @@ services:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       NEXTAUTH_URL: http://localhost:3000
       AUTH_TRUST_HOST: "true"
-      VECTOR_CONFIG_DIR: /vector-configs
-    volumes:
-      - vector-configs:/vector-configs
     env_file:
       - path: .env
         required: false
@@ -51,4 +48,3 @@ services:
 
 volumes:
   pgdata:
-  vector-configs:

@@ -2,7 +2,6 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { deployApiReload } from "@/server/services/deploy";
 import { deployGitOps } from "@/server/services/deploy-gitops";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { validateConfig } from "@/server/services/validator";
@@ -69,25 +68,6 @@ export const deployRouter = router({
     }),
 
   /**
-   * Deploy via API reload to all Vector nodes in the environment.
-   */
-  apiReload: protectedProcedure
-    .input(
-      z.object({
-        pipelineId: z.string(),
-        environmentId: z.string(),
-      }),
-    )
-    .use(withAudit("deploy.api_reload", "Pipeline"))
-    .mutation(async ({ input, ctx }) => {
-      const userId = ctx.session.user?.id;
-      if (!userId) {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
-      }
-      return deployApiReload(input.pipelineId, input.environmentId, userId);
-    }),
-
-  /**
    * Deploy via GitOps — commit config to a git repo.
    */
   gitops: protectedProcedure
@@ -107,56 +87,53 @@ export const deployRouter = router({
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
-      // Load git credentials from system settings
-      const settings = await prisma.systemSettings.findUnique({
-        where: { id: "singleton" },
+      // Load git credentials from the pipeline's environment
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        include: { environment: true },
       });
+      if (!pipeline) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
 
       const { decrypt } = await import("@/server/services/crypto");
       const isHttps = input.repoUrl.startsWith("https://");
 
       let sshKey: string | undefined;
-      if (settings?.gitopsSshKey) {
+      if (pipeline.environment.gitSshKey) {
         try {
-          sshKey = decrypt(Buffer.from(settings.gitopsSshKey).toString("utf8"));
+          sshKey = decrypt(Buffer.from(pipeline.environment.gitSshKey).toString("utf8"));
         } catch (err) {
           console.error("Failed to decrypt SSH key:", err);
         }
       }
 
       let httpsToken: string | undefined;
-      if (settings?.gitopsHttpsToken) {
+      if (pipeline.environment.gitHttpsToken) {
         try {
-          httpsToken = decrypt(settings.gitopsHttpsToken);
+          httpsToken = decrypt(pipeline.environment.gitHttpsToken);
         } catch (err) {
           console.error("Failed to decrypt HTTPS token:", err);
         }
       }
 
-      // Log credential status for debugging
-      console.log(`GitOps deploy: URL scheme=${isHttps ? "HTTPS" : "SSH"}, hasKey=${!!sshKey}, hasToken=${!!httpsToken}`);
-      if (sshKey) {
-        console.log(`SSH key: ${sshKey.length} chars, starts with "${sshKey.substring(0, 30)}..."`);
-      }
-
-      // Validate credentials match the URL scheme
       if (isHttps && !httpsToken) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "HTTPS repository requires a personal access token. Configure one in Settings → GitOps → HTTPS Token.",
+          message: "HTTPS repository requires a personal access token. Configure one in Environment Settings.",
         });
       }
       if (!isHttps && !sshKey) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "SSH repository requires a deploy key. Upload one in Settings → GitOps → SSH Key.",
+          message: "SSH repository requires a deploy key. Upload one in Environment Settings.",
         });
       }
 
       return deployGitOps(input.pipelineId, input.environmentId, userId, {
         repoUrl: input.repoUrl,
         branch: input.branch,
-        commitAuthor: input.commitAuthor || settings?.gitopsCommitAuthor || undefined,
+        commitAuthor: input.commitAuthor || pipeline.environment.gitCommitAuthor || undefined,
         sshKey,
         httpsToken,
       });
@@ -197,7 +174,6 @@ export const deployRouter = router({
       return {
         environmentId: pipeline.environment.id,
         environmentName: pipeline.environment.name,
-        deployMode: pipeline.environment.deployMode,
         gitRepo: pipeline.environment.gitRepo,
         gitBranch: pipeline.environment.gitBranch,
         nodes: pipeline.environment.nodes,

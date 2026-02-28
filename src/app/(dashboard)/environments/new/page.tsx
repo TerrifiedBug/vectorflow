@@ -24,15 +24,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type DeployMode = "API_RELOAD" | "GITOPS";
-
 export default function NewEnvironmentPage() {
   const router = useRouter();
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
   const [name, setName] = useState("");
-  const [deployMode, setDeployMode] = useState<DeployMode>("API_RELOAD");
   const [gitRepo, setGitRepo] = useState("");
   const [gitBranch, setGitBranch] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
@@ -67,9 +64,8 @@ export default function NewEnvironmentPage() {
     createMutation.mutate({
       name,
       teamId: effectiveTeamId,
-      deployMode,
-      ...(deployMode === "GITOPS" && gitRepo ? { gitRepo } : {}),
-      ...(deployMode === "GITOPS" && gitBranch ? { gitBranch } : {}),
+      gitRepo,
+      gitBranch,
     });
   };
 
@@ -126,52 +122,34 @@ export default function NewEnvironmentPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="deployMode">Deploy Mode</Label>
-              <Select
-                value={deployMode}
-                onValueChange={(val) => setDeployMode(val as DeployMode)}
-              >
-                <SelectTrigger id="deployMode" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="API_RELOAD">API Reload</SelectItem>
-                  <SelectItem value="GITOPS">GitOps</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="gitRepo">Git Repository</Label>
+              <Input
+                id="gitRepo"
+                placeholder="https://github.com/org/repo.git or git@github.com:org/repo.git"
+                value={gitRepo}
+                onChange={(e) => setGitRepo(e.target.value)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Use HTTPS with a token (Settings &rarr; GitOps) or SSH with a deploy key
+              </p>
             </div>
 
-            {deployMode === "GITOPS" && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="gitRepo">Git Repository</Label>
-                  <Input
-                    id="gitRepo"
-                    placeholder="https://github.com/org/repo.git or git@github.com:org/repo.git"
-                    value={gitRepo}
-                    onChange={(e) => setGitRepo(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Use HTTPS with a token (Settings &rarr; GitOps) or SSH with a deploy key
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="gitBranch">Git Branch</Label>
-                  <Input
-                    id="gitBranch"
-                    placeholder="e.g., main"
-                    value={gitBranch}
-                    onChange={(e) => setGitBranch(e.target.value)}
-                  />
-                </div>
-              </>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="gitBranch">Git Branch</Label>
+              <Input
+                id="gitBranch"
+                placeholder="e.g., main"
+                value={gitBranch}
+                onChange={(e) => setGitBranch(e.target.value)}
+                required
+              />
+            </div>
 
             <div className="flex gap-3">
               <Button
                 type="submit"
-                disabled={createMutation.isPending || !name || !effectiveTeamId}
+                disabled={createMutation.isPending || !name || !effectiveTeamId || !gitRepo || !gitBranch}
               >
                 {createMutation.isPending ? "Creating..." : "Create Environment"}
               </Button>
