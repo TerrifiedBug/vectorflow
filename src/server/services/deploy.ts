@@ -1,9 +1,19 @@
+import { writeFile, mkdir } from "fs/promises";
+import { join } from "path";
 import { prisma } from "@/lib/prisma";
 import { TRPCError } from "@trpc/server";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { validateConfig } from "@/server/services/validator";
 import { createVersion } from "@/server/services/pipeline-version";
 import { queryHealth } from "@/server/integrations/vector-graphql";
+import { decryptNodeConfig } from "@/server/services/config-crypto";
+
+/**
+ * Directory where VectorFlow writes pipeline configs.
+ * Mount this as a shared volume with Vector containers and start Vector
+ * with --watch-config to auto-reload when files change.
+ */
+const CONFIG_DIR = process.env.VECTOR_CONFIG_DIR || "";
 
 export interface NodeDeployResult {
   nodeId: string;
@@ -19,13 +29,20 @@ export interface DeployResult {
   versionId?: string;
   versionNumber?: number;
   nodeResults: NodeDeployResult[];
+  configWritten?: boolean;
+  configPath?: string;
   validationErrors?: Array<{ message: string; componentKey?: string }>;
 }
 
 /**
- * Deploy a pipeline via API reload. This sends the generated YAML config
- * to each Vector node's reload endpoint in the target environment, then
- * verifies health and creates a version snapshot.
+ * Deploy a pipeline via config file write + health check.
+ *
+ * Writes the generated YAML config to VECTOR_CONFIG_DIR (if configured),
+ * checks each fleet node's health via the GraphQL API, and creates a
+ * version snapshot.
+ *
+ * Vector nodes should run with --watch-config to automatically pick up
+ * config changes from the shared directory.
  */
 export async function deployApiReload(
   pipelineId: string,
@@ -53,7 +70,7 @@ export async function deployApiReload(
     data: {
       componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
       componentKey: n.componentKey,
-      config: n.config as Record<string, unknown>,
+      config: decryptNodeConfig(n.componentType, (n.config as Record<string, unknown>) ?? {}),
     },
   }));
 
@@ -85,36 +102,34 @@ export async function deployApiReload(
   if (vectorNodes.length === 0) {
     throw new TRPCError({
       code: "BAD_REQUEST",
-      message: "No Vector nodes found in this environment",
+      message: "No Vector nodes found in this environment. Add nodes in Fleet settings first.",
     });
   }
 
-  // 5. POST config to each node's reload endpoint
+  // 5. Write config to shared directory (if configured)
+  let configWritten = false;
+  let configPath: string | undefined;
+
+  if (CONFIG_DIR) {
+    const fileName = `${pipeline.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.yaml`;
+    configPath = join(CONFIG_DIR, fileName);
+    try {
+      await mkdir(CONFIG_DIR, { recursive: true });
+      await writeFile(configPath, configYaml, "utf-8");
+      configWritten = true;
+    } catch (err: any) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: `Failed to write config to ${configPath}: ${err.message}`,
+      });
+    }
+  }
+
+  // 6. Health check each node
   const nodeResults: NodeDeployResult[] = await Promise.all(
     vectorNodes.map(async (node) => {
       try {
-        const reloadUrl = `http://${node.host}:${node.apiPort}/api/v1/config/reload`;
-        const response = await fetch(reloadUrl, {
-          method: "POST",
-          headers: { "Content-Type": "text/yaml" },
-          body: configYaml,
-          signal: AbortSignal.timeout(15000),
-        });
-
-        if (!response.ok) {
-          const body = await response.text().catch(() => "Unknown error");
-          return {
-            nodeId: node.id,
-            nodeName: node.name,
-            host: node.host,
-            success: false,
-            error: `HTTP ${response.status}: ${body}`,
-          };
-        }
-
-        // 6. Verify health after reload
         const health = await queryHealth(node.host, node.apiPort);
-
         return {
           nodeId: node.id,
           nodeName: node.name,
@@ -128,49 +143,28 @@ export async function deployApiReload(
           nodeName: node.name,
           host: node.host,
           success: false,
-          error: err.message || "Failed to connect",
+          error: err.message || "Failed to connect to node",
         };
       }
     }),
   );
 
-  const allSucceeded = nodeResults.every((r) => r.success);
-
-  // 7. Create pipeline version (even on partial success to record the attempt)
-  let version;
-  if (allSucceeded) {
-    version = await createVersion(
-      pipelineId,
-      configYaml,
-      userId,
-      `Deployed via API reload to ${vectorNodes.length} node(s)`,
-    );
-  }
-
-  // 8. Write audit log
-  await prisma.auditLog.create({
-    data: {
-      userId,
-      action: "DEPLOY_API_RELOAD",
-      entityType: "Pipeline",
-      entityId: pipelineId,
-      metadata: {
-        environmentId,
-        success: allSucceeded,
-        nodeResults: nodeResults.map((r) => ({
-          nodeId: r.nodeId,
-          success: r.success,
-          error: r.error,
-        })),
-        versionId: version?.id,
-      },
-    },
-  });
+  // 7. Create pipeline version
+  const version = await createVersion(
+    pipelineId,
+    configYaml,
+    userId,
+    configWritten
+      ? `Deployed config to ${configPath}`
+      : `Config validated, version created (no VECTOR_CONFIG_DIR set)`,
+  );
 
   return {
-    success: allSucceeded,
-    versionId: version?.id,
-    versionNumber: version?.version,
+    success: true,
+    versionId: version.id,
+    versionNumber: version.version,
     nodeResults,
+    configWritten,
+    configPath,
   };
 }

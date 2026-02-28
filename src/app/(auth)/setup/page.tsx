@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -16,9 +16,23 @@ import { Label } from "@/components/ui/label";
 
 export default function SetupPage() {
   const router = useRouter();
+  const [ready, setReady] = useState(false);
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/setup")
+      .then((res) => res.json())
+      .then((data: { setupRequired: boolean }) => {
+        if (!data.setupRequired) {
+          router.replace("/login");
+        } else {
+          setReady(true);
+        }
+      })
+      .catch(() => router.replace("/login"));
+  }, [router]);
 
   // Step 1 fields
   const [email, setEmail] = useState("");
@@ -70,6 +84,10 @@ export default function SetupPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (!ready) {
+    return null;
   }
 
   return (
@@ -169,17 +187,17 @@ export default function SetupPage() {
               />
             </div>
           </CardContent>
-          <CardFooter className="flex gap-3 pt-2">
+          <CardFooter className="gap-3 pt-2">
             <Button
               type="button"
               variant="outline"
-              className="w-full"
+              className="flex-1"
               onClick={() => setStep(1)}
               disabled={loading}
             >
               Back
             </Button>
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="flex-1" disabled={loading}>
               {loading ? "Setting up..." : "Complete setup"}
             </Button>
           </CardFooter>

@@ -24,12 +24,15 @@ export async function queryHealth(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        query: `{ health }`,
+        query: `{ health meta { versionString } }`,
       }),
       signal: AbortSignal.timeout(5000),
     });
     const data = await res.json();
-    return { healthy: data.data?.health === true };
+    return {
+      healthy: data.data?.health === true,
+      version: data.data?.meta?.versionString ?? undefined,
+    };
   } catch {
     return { healthy: false };
   }

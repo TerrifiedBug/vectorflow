@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
+import { createTwoFilesPatch } from "diff";
 import {
   ArrowLeft,
   Clock,
@@ -34,10 +35,55 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+
+/* ------------------------------------------------------------------ */
+/*  Diff rendering                                                     */
+/* ------------------------------------------------------------------ */
+
+function DiffView({ oldYaml, newYaml, oldLabel, newLabel }: {
+  oldYaml: string;
+  newYaml: string;
+  oldLabel: string;
+  newLabel: string;
+}) {
+  const patch = createTwoFilesPatch(oldLabel, newLabel, oldYaml, newYaml, "", "", { context: 3 });
+  const lines = patch.split("\n");
+
+  // Skip the first two header lines (--- and +++)
+  const headerEnd = lines.findIndex((l, i) => i > 0 && l.startsWith("@@"));
+  const displayLines = headerEnd > 0 ? lines.slice(headerEnd) : lines.slice(2);
+
+  return (
+    <pre className="p-4 text-xs font-mono leading-5">
+      {displayLines.map((line, i) => {
+        let className = "";
+        if (line.startsWith("+") && !line.startsWith("+++")) {
+          className = "bg-green-500/15 text-green-700 dark:text-green-400";
+        } else if (line.startsWith("-") && !line.startsWith("---")) {
+          className = "bg-red-500/15 text-red-700 dark:text-red-400";
+        } else if (line.startsWith("@@")) {
+          className = "text-blue-600 dark:text-blue-400 font-semibold";
+        } else {
+          className = "text-muted-foreground";
+        }
+        return (
+          <div key={i} className={className}>
+            {line || "\n"}
+          </div>
+        );
+      })}
+    </pre>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Page                                                               */
+/* ------------------------------------------------------------------ */
 
 export default function VersionHistoryPage() {
   const params = useParams<{ id: string }>();
@@ -50,7 +96,12 @@ export default function VersionHistoryPage() {
     version: number;
     yaml: string;
   } | null>(null);
-  const [rollingBack, setRollingBack] = useState<string | null>(null);
+
+  const [rollbackTarget, setRollbackTarget] = useState<{
+    id: string;
+    version: number;
+    yaml: string;
+  } | null>(null);
 
   // Fetch pipeline info
   const pipelineQuery = useQuery(
@@ -69,24 +120,22 @@ export default function VersionHistoryPage() {
         toast.success(
           `Rolled back to version ${newVersion.version}`,
         );
-        setRollingBack(null);
-        // Invalidate versions list
+        setRollbackTarget(null);
         queryClient.invalidateQueries({
           queryKey: trpc.pipeline.versions.queryKey({ pipelineId }),
         });
       },
       onError: (err) => {
         toast.error(err.message || "Rollback failed");
-        setRollingBack(null);
       },
     }),
   );
 
-  const handleRollback = (versionId: string) => {
-    setRollingBack(versionId);
+  const handleRollback = () => {
+    if (!rollbackTarget) return;
     rollbackMutation.mutate({
       pipelineId,
-      targetVersionId: versionId,
+      targetVersionId: rollbackTarget.id,
     });
   };
 
@@ -147,10 +196,10 @@ export default function VersionHistoryPage() {
               variant="outline"
               className="mt-4"
               onClick={() =>
-                router.push(`/pipelines/${pipelineId}/deploy`)
+                router.push(`/pipelines/${pipelineId}`)
               }
             >
-              Go to Deploy
+              Go to Pipeline Editor
             </Button>
           </CardContent>
         </Card>
@@ -227,14 +276,14 @@ export default function VersionHistoryPage() {
                               title="Rollback to this version"
                               disabled={rollbackMutation.isPending}
                               onClick={() =>
-                                handleRollback(version.id)
+                                setRollbackTarget({
+                                  id: version.id,
+                                  version: version.version,
+                                  yaml: version.configYaml,
+                                })
                               }
                             >
-                              {rollingBack === version.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <RotateCcw className="h-4 w-4" />
-                              )}
+                              <RotateCcw className="h-4 w-4" />
                             </Button>
                           )}
                         </div>
@@ -269,6 +318,65 @@ export default function VersionHistoryPage() {
               {viewingConfig?.yaml}
             </pre>
           </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rollback Confirmation Dialog with Diff */}
+      <Dialog
+        open={rollbackTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !rollbackMutation.isPending) setRollbackTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5" />
+              Rollback to v{rollbackTarget?.version}
+            </DialogTitle>
+            <DialogDescription>
+              Review the changes that will be applied. This creates a new version
+              with the target config — no history is lost.
+            </DialogDescription>
+          </DialogHeader>
+
+          {rollbackTarget && latestVersion && (
+            <ScrollArea className="h-[400px] rounded-md border bg-muted/30">
+              {rollbackTarget.yaml === latestVersion.configYaml ? (
+                <div className="flex items-center justify-center h-full p-8 text-sm text-muted-foreground">
+                  No differences — configs are identical.
+                </div>
+              ) : (
+                <DiffView
+                  oldYaml={latestVersion.configYaml}
+                  newYaml={rollbackTarget.yaml}
+                  oldLabel={`v${latestVersion.version} (current)`}
+                  newLabel={`v${rollbackTarget.version} (rollback target)`}
+                />
+              )}
+            </ScrollArea>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRollbackTarget(null)}
+              disabled={rollbackMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRollback}
+              disabled={rollbackMutation.isPending}
+            >
+              {rollbackMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Rolling back...</>
+              ) : (
+                <><RotateCcw className="mr-2 h-4 w-4" />Confirm Rollback</>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

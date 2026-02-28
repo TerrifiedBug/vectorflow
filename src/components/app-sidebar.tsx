@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Workflow,
@@ -11,6 +12,7 @@ import {
   ScrollText,
   Settings,
 } from "lucide-react";
+import { useTRPC } from "@/trpc/client";
 
 import {
   Sidebar,
@@ -31,11 +33,21 @@ const navItems = [
   { title: "Environments", href: "/environments", icon: Layers },
   { title: "Templates", href: "/templates", icon: FileText },
   { title: "Audit Log", href: "/audit", icon: ScrollText },
-  { title: "Settings", href: "/settings", icon: Settings },
+  { title: "Settings", href: "/settings", icon: Settings, requiredRole: "ADMIN" as const },
 ];
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const trpc = useTRPC();
+  const roleQuery = useQuery(trpc.team.myRole.queryOptions());
+  const userRole = roleQuery.data?.role;
+
+  const visibleItems = navItems.filter((item) => {
+    if (!item.requiredRole) return true;
+    if (!userRole) return false;
+    const roleLevel: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
+    return (roleLevel[userRole] ?? 0) >= (roleLevel[item.requiredRole] ?? 0);
+  });
 
   return (
     <Sidebar>
@@ -54,7 +66,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => {
+              {visibleItems.map((item) => {
                 const isActive =
                   item.href === "/"
                     ? pathname === "/"

@@ -29,9 +29,26 @@ services:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       NEXTAUTH_URL: http://localhost:3000
       AUTH_TRUST_HOST: "true"
+      VECTOR_CONFIG_DIR: /vector-configs
+    volumes:
+      - vector-configs:/vector-configs
     env_file:
       - path: .env
         required: false
 
+  # Optional: add a Vector instance for local testing.
+  # Uncomment to run Vector alongside VectorFlow.
+  # vector:
+  #   image: timberio/vector:0.43.1-alpine
+  #   command: ["vector", "--config-dir", "/etc/vector/configs", "--watch-config"]
+  #   ports:
+  #     - "8686:8686"
+  #   volumes:
+  #     - vector-configs:/etc/vector/configs:ro
+  #   environment:
+  #     VECTOR_API_ENABLED: "true"
+  #     VECTOR_API_ADDRESS: "0.0.0.0:8686"
+
 volumes:
   pgdata:
+  vector-configs:

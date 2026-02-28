@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { withAudit } from "@/server/middleware/audit";
 
 export const fleetRouter = router({
   list: protectedProcedure
@@ -43,6 +44,7 @@ export const fleetRouter = router({
         environmentId: z.string(),
       })
     )
+    .use(withAudit("fleet.node.created", "VectorNode"))
     .mutation(async ({ input }) => {
       const environment = await prisma.environment.findUnique({
         where: { id: input.environmentId },
@@ -76,6 +78,7 @@ export const fleetRouter = router({
         apiPort: z.number().int().min(1).max(65535).optional(),
       })
     )
+    .use(withAudit("fleet.node.updated", "VectorNode"))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
       const existing = await prisma.vectorNode.findUnique({
@@ -98,6 +101,7 @@ export const fleetRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withAudit("fleet.node.deleted", "VectorNode"))
     .mutation(async ({ input }) => {
       const existing = await prisma.vectorNode.findUnique({
         where: { id: input.id },

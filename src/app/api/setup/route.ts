@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import { isSetupRequired, completeSetup } from "@/server/services/setup";
 
+export async function GET() {
+  try {
+    const setupRequired = await isSetupRequired();
+    return NextResponse.json({ setupRequired });
+  } catch {
+    return NextResponse.json({ setupRequired: false });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const setupRequired = await isSetupRequired();

@@ -1,4 +1,4 @@
-import { writeFile, unlink, mkdtemp } from "fs/promises";
+import { writeFile, rm, mkdtemp } from "fs/promises";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { join } from "path";
@@ -29,7 +29,7 @@ export async function validateConfig(
     try {
       const { stderr } = await execFileAsync(
         "vector",
-        ["validate", tmpFile],
+        ["validate", "--no-environment", tmpFile],
         { timeout: 10000 },
       );
 
@@ -37,11 +37,18 @@ export async function validateConfig(
       const warnings = parseVectorWarnings(stderr || "");
       return { valid: true, errors: [], warnings };
     } catch (err: any) {
-      // Parse stderr for errors, try to map to component keys
-      const errors = parseVectorErrors(err.stderr || err.message || "");
+      // If vector binary is not installed, fall back to structural validation
+      if (err.code === "ENOENT") {
+        return basicStructuralValidation(yamlContent);
+      }
+      // Parse stdout+stderr for errors, try to map to component keys
+      const output = [err.stdout, err.stderr, err.message]
+        .filter(Boolean)
+        .join("\n");
+      const errors = parseVectorErrors(output);
       return { valid: false, errors, warnings: [] };
     } finally {
-      await unlink(tmpFile).catch(() => {});
+      await rm(tmpDir, { recursive: true }).catch(() => {});
     }
   } catch {
     // Fallback: basic structural validation

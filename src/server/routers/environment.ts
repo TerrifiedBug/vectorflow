@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { withAudit } from "@/server/middleware/audit";
 
 export const environmentRouter = router({
   list: protectedProcedure
@@ -46,6 +47,7 @@ export const environmentRouter = router({
         gitBranch: z.string().optional(),
       })
     )
+    .use(withAudit("environment.created", "Environment"))
     .mutation(async ({ input }) => {
       // Verify team exists
       const team = await prisma.team.findUnique({
@@ -79,6 +81,7 @@ export const environmentRouter = router({
         gitBranch: z.string().nullable().optional(),
       })
     )
+    .use(withAudit("environment.updated", "Environment"))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
       const existing = await prisma.environment.findUnique({
@@ -98,6 +101,7 @@ export const environmentRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withAudit("environment.deleted", "Environment"))
     .mutation(async ({ input }) => {
       const existing = await prisma.environment.findUnique({
         where: { id: input.id },

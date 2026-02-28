@@ -256,6 +256,7 @@ export default function FleetPage() {
               <TableHead>Name</TableHead>
               <TableHead>Host:Port</TableHead>
               <TableHead>Environment</TableHead>
+              <TableHead>Version</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Last Seen</TableHead>
             </TableRow>
@@ -276,6 +277,9 @@ export default function FleetPage() {
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary">{node.environment.name}</Badge>
+                </TableCell>
+                <TableCell className="font-mono text-sm text-muted-foreground">
+                  {((node.metadata as Record<string, unknown> | null)?.vectorVersion as string)?.split(" ")[0] ?? "—"}
                 </TableCell>
                 <TableCell>
                   <Badge

@@ -26,6 +26,7 @@ export interface FlowState {
   nodes: Node[];
   edges: Edge[];
   selectedNodeId: string | null;
+  selectedEdgeId: string | null;
 
   // React Flow callbacks
   onNodesChange: OnNodesChange;
@@ -39,6 +40,7 @@ export interface FlowState {
     position: { x: number; y: number },
   ) => void;
   removeNode: (id: string) => void;
+  removeEdge: (id: string) => void;
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void;
   updateNodeKey: (id: string, key: string) => void;
 
@@ -87,6 +89,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   nodes: [],
   edges: [],
   selectedNodeId: null,
+  selectedEdgeId: null,
 
   _past: [],
   _future: [],
@@ -116,9 +119,26 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   },
 
   onEdgesChange: (changes) => {
-    set((state) => ({
-      edges: applyEdgeChanges(changes, state.edges),
-    }));
+    set((state) => {
+      const edges = applyEdgeChanges(changes, state.edges);
+
+      // Track edge selection
+      let selectedEdgeId = state.selectedEdgeId;
+      for (const change of changes) {
+        if (change.type === "select") {
+          if (change.selected) {
+            selectedEdgeId = change.id;
+          } else if (selectedEdgeId === change.id) {
+            selectedEdgeId = null;
+          }
+        }
+        if (change.type === "remove" && selectedEdgeId === change.id) {
+          selectedEdgeId = null;
+        }
+      }
+
+      return { edges, selectedEdgeId };
+    });
   },
 
   onConnect: (connection) => {
@@ -171,6 +191,18 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     });
   },
 
+  removeEdge: (id) => {
+    set((state) => {
+      const history = pushSnapshot(state);
+      return {
+        ...history,
+        edges: state.edges.filter((e) => e.id !== id),
+        selectedEdgeId:
+          state.selectedEdgeId === id ? null : state.selectedEdgeId,
+      };
+    });
+  },
+
   updateNodeConfig: (id, config) => {
     set((state) => {
       const history = pushSnapshot(state);
@@ -200,6 +232,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       nodes,
       edges,
       selectedNodeId: null,
+      selectedEdgeId: null,
       _past: [],
       _future: [],
       canUndo: false,
@@ -212,6 +245,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       nodes: [],
       edges: [],
       selectedNodeId: null,
+      selectedEdgeId: null,
       _past: [],
       _future: [],
       canUndo: false,

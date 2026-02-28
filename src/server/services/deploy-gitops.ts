@@ -10,6 +10,7 @@ import {
   commitAndPush,
   type GitConfig,
 } from "@/server/integrations/git-client";
+import { decryptNodeConfig } from "@/server/services/config-crypto";
 
 export interface GitOpsDeployResult {
   success: boolean;
@@ -52,7 +53,7 @@ export async function deployGitOps(
     data: {
       componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
       componentKey: n.componentKey,
-      config: n.config as Record<string, unknown>,
+      config: decryptNodeConfig(n.componentType, (n.config as Record<string, unknown>) ?? {}),
     },
   }));
 
@@ -107,30 +108,13 @@ export async function deployGitOps(
       gitConfig.branch,
     );
 
-    // 6. Create pipeline version + audit log
+    // 6. Create pipeline version
     const version = await createVersion(
       pipelineId,
       configYaml,
       userId,
       `Deployed via GitOps to ${gitConfig.branch} (${commitHash.slice(0, 8)})`,
     );
-
-    await prisma.auditLog.create({
-      data: {
-        userId,
-        action: "DEPLOY_GITOPS",
-        entityType: "Pipeline",
-        entityId: pipelineId,
-        metadata: {
-          environmentId,
-          success: true,
-          commitHash,
-          branch: gitConfig.branch,
-          repoUrl: gitConfig.repoUrl,
-          versionId: version.id,
-        },
-      },
-    });
 
     return {
       success: true,
@@ -139,23 +123,6 @@ export async function deployGitOps(
       versionNumber: version.version,
     };
   } catch (err: any) {
-    // Log failed attempt
-    await prisma.auditLog.create({
-      data: {
-        userId,
-        action: "DEPLOY_GITOPS",
-        entityType: "Pipeline",
-        entityId: pipelineId,
-        metadata: {
-          environmentId,
-          success: false,
-          error: err.message,
-          branch: gitConfig.branch,
-          repoUrl: gitConfig.repoUrl,
-        },
-      },
-    });
-
     return {
       success: false,
       error: `GitOps deploy failed: ${err.message}`,
