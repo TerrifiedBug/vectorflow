@@ -134,41 +134,47 @@ function AuthSettings() {
     testOidcMutation.mutate({ issuer });
   };
 
+  const [teamMappings, setTeamMappings] = useState<Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>>([]);
+  const [defaultTeamId, setDefaultTeamId] = useState("");
   const [defaultRole, setDefaultRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
   const [groupsClaim, setGroupsClaim] = useState("groups");
-  const [adminGroups, setAdminGroups] = useState("");
-  const [editorGroups, setEditorGroups] = useState("");
+
+  const teamsQuery = useQuery(trpc.admin.listTeams.queryOptions());
 
   useEffect(() => {
     if (settings) {
       setDefaultRole((settings.oidcDefaultRole as "VIEWER" | "EDITOR" | "ADMIN") ?? "VIEWER");
       setGroupsClaim(settings.oidcGroupsClaim ?? "groups");
-      setAdminGroups(settings.oidcAdminGroups ?? "");
-      setEditorGroups(settings.oidcEditorGroups ?? "");
+      setTeamMappings((settings.oidcTeamMappings ?? []) as Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>);
+      setDefaultTeamId(settings.oidcDefaultTeamId ?? "");
     }
   }, [settings]);
 
-  const updateRoleMappingMutation = useMutation(
-    trpc.settings.updateOidcRoleMapping.mutationOptions({
+  const updateTeamMappingMutation = useMutation(
+    trpc.settings.updateOidcTeamMappings.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
-        toast.success("OIDC role mapping saved");
+        toast.success("OIDC team mapping saved");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to save role mapping");
+        toast.error(error.message || "Failed to save team mapping");
       },
     })
   );
 
-  const handleSaveRoleMapping = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateRoleMappingMutation.mutate({
-      defaultRole,
-      groupsClaim,
-      adminGroups: adminGroups || undefined,
-      editorGroups: editorGroups || undefined,
-    });
-  };
+  function addMapping() {
+    setTeamMappings([...teamMappings, { group: "", teamId: "", role: "VIEWER" }]);
+  }
+
+  function removeMapping(index: number) {
+    setTeamMappings(teamMappings.filter((_, i) => i !== index));
+  }
+
+  function updateMapping(index: number, field: keyof typeof teamMappings[number], value: string) {
+    setTeamMappings(teamMappings.map((m, i) =>
+      i === index ? { ...m, [field]: value } as typeof m : m
+    ));
+  }
 
   if (settingsQuery.isLoading) {
     return (
@@ -322,34 +328,22 @@ function AuthSettings() {
 
     <Card>
       <CardHeader>
-        <CardTitle>OIDC Role Mapping</CardTitle>
+        <CardTitle>OIDC Team & Role Mapping</CardTitle>
         <CardDescription>
-          Map OIDC groups to VectorFlow roles. When a user signs in via SSO,
-          their role is determined by their group membership.
+          Map OIDC groups to specific teams and roles. Users are assigned to teams
+          based on their group membership when signing in via SSO.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSaveRoleMapping} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="oidc-default-role">Default Role</Label>
-            <Select
-              value={defaultRole}
-              onValueChange={(val: "VIEWER" | "EDITOR" | "ADMIN") => setDefaultRole(val)}
-            >
-              <SelectTrigger id="oidc-default-role" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="VIEWER">Viewer</SelectItem>
-                <SelectItem value="EDITOR">Editor</SelectItem>
-                <SelectItem value="ADMIN">Admin</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Role assigned to SSO users who don&apos;t match any group mapping
-            </p>
-          </div>
-
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          updateTeamMappingMutation.mutate({
+            mappings: teamMappings.filter((m) => m.group && m.teamId),
+            defaultTeamId: defaultTeamId || undefined,
+            defaultRole,
+            groupsClaim,
+          });
+        }} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="oidc-groups-claim">Groups Claim</Label>
             <Input
@@ -360,48 +354,133 @@ function AuthSettings() {
               required
             />
             <p className="text-xs text-muted-foreground">
-              The OIDC token claim that contains group names (usually
-              &quot;groups&quot;)
+              The OIDC token claim that contains group names (usually &quot;groups&quot;)
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="oidc-admin-groups">Admin Groups</Label>
-            <Input
-              id="oidc-admin-groups"
-              placeholder="vectorflow-admins, platform-admins"
-              value={adminGroups}
-              onChange={(e) => setAdminGroups(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Comma-separated group names that grant Admin role
-            </p>
+          <div className="space-y-3">
+            <Label>Group Mappings</Label>
+            {teamMappings.length > 0 && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Group Name</TableHead>
+                    <TableHead>Team</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {teamMappings.map((mapping, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <Input
+                          value={mapping.group}
+                          onChange={(e) => updateMapping(index, "group", e.target.value)}
+                          placeholder="e.g., vectorflow-admins"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={mapping.teamId}
+                          onValueChange={(val) => updateMapping(index, "teamId", val)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select team" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(teamsQuery.data ?? []).map((t) => (
+                              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={mapping.role}
+                          onValueChange={(val) => updateMapping(index, "role", val)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="VIEWER">Viewer</SelectItem>
+                            <SelectItem value="EDITOR">Editor</SelectItem>
+                            <SelectItem value="ADMIN">Admin</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeMapping(index)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+            <Button type="button" variant="outline" size="sm" onClick={addMapping}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Mapping
+            </Button>
+            {teamMappings.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No mappings configured. SSO users will be assigned to the default team with the default role.
+              </p>
+            )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="oidc-editor-groups">Editor Groups</Label>
-            <Input
-              id="oidc-editor-groups"
-              placeholder="vectorflow-editors, developers"
-              value={editorGroups}
-              onChange={(e) => setEditorGroups(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Comma-separated group names that grant Editor role
-            </p>
+          <Separator />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="oidc-default-team">Default Team</Label>
+              <Select value={defaultTeamId} onValueChange={setDefaultTeamId}>
+                <SelectTrigger id="oidc-default-team">
+                  <SelectValue placeholder="Select default team" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(teamsQuery.data ?? []).map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Fallback team for users who don&apos;t match any group mapping
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="oidc-default-role">Default Role</Label>
+              <Select
+                value={defaultRole}
+                onValueChange={(val: "VIEWER" | "EDITOR" | "ADMIN") => setDefaultRole(val)}
+              >
+                <SelectTrigger id="oidc-default-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="VIEWER">Viewer</SelectItem>
+                  <SelectItem value="EDITOR">Editor</SelectItem>
+                  <SelectItem value="ADMIN">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <Button
-            type="submit"
-            disabled={updateRoleMappingMutation.isPending}
-          >
-            {updateRoleMappingMutation.isPending ? (
+          <Button type="submit" disabled={updateTeamMappingMutation.isPending}>
+            {updateTeamMappingMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Saving...
               </>
             ) : (
-              "Save Role Mapping"
+              "Save Team Mapping"
             )}
           </Button>
         </form>
