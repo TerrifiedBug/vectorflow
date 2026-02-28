@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma";
 import {
   queryHealth,
   queryComponents,
   type VectorComponentMetrics,
 } from "@/server/integrations/vector-graphql";
+import { metricStore } from "./metric-store";
 
 export type { VectorComponentMetrics };
 
@@ -58,11 +60,27 @@ class FleetPoller {
 
       // Also fetch component metrics
       const components = await queryComponents(node.host, node.apiPort);
+
+      for (const comp of components) {
+        metricStore.recordTotals(node.id, comp.componentId, {
+          receivedEventsTotal: comp.receivedEventsTotal,
+          sentEventsTotal: comp.sentEventsTotal,
+          receivedBytesTotal: comp.receivedBytesTotal,
+          sentBytesTotal: comp.sentBytesTotal,
+        });
+      }
+
       this.storeMetrics(node.id, components);
 
       await prisma.vectorNode.update({
         where: { id: node.id },
-        data: { status: "HEALTHY", lastSeen: new Date() },
+        data: {
+          status: "HEALTHY",
+          lastSeen: new Date(),
+          ...(health.version && {
+            metadata: { vectorVersion: health.version } as Prisma.InputJsonValue,
+          }),
+        },
       });
     } else {
       const newFailCount = failCount + 1;
