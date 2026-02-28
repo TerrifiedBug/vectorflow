@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
+import { useTeamStore } from "@/stores/team-store";
 import {
   FileText,
   Trash2,
@@ -65,15 +66,13 @@ export default function TemplatesPage() {
     (s) => s.selectedEnvironmentId,
   );
 
-  // Fetch teams
-  const teamsQuery = useQuery(trpc.team.list.queryOptions());
-  const firstTeamId = teamsQuery.data?.[0]?.id;
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
-  // Fetch templates for the team
+  // Fetch templates for the selected team
   const templatesQuery = useQuery(
     trpc.template.list.queryOptions(
-      { teamId: firstTeamId! },
-      { enabled: !!firstTeamId },
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId },
     ),
   );
 
@@ -168,7 +167,7 @@ export default function TemplatesPage() {
     });
   };
 
-  const isLoading = teamsQuery.isLoading || templatesQuery.isLoading;
+  const isLoading = templatesQuery.isLoading;
   const isCreating =
     createPipelineMutation.isPending || saveGraphMutation.isPending;
 

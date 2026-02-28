@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
+import { useTeamStore } from "@/stores/team-store";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -16,14 +17,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-
 export default function NewEnvironmentPage() {
   const router = useRouter();
   const trpc = useTRPC();
@@ -32,13 +25,8 @@ export default function NewEnvironmentPage() {
   const [name, setName] = useState("");
   const [gitRepo, setGitRepo] = useState("");
   const [gitBranch, setGitBranch] = useState("");
-  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
 
-  const teamsQuery = useQuery(trpc.team.list.queryOptions());
-  const teams = teamsQuery.data ?? [];
-
-  // Auto-select first team when teams load
-  const effectiveTeamId = selectedTeamId || teams[0]?.id || "";
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
   const createMutation = useMutation(
     trpc.environment.create.mutationOptions({
@@ -56,14 +44,14 @@ export default function NewEnvironmentPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!effectiveTeamId) {
+    if (!selectedTeamId) {
       toast.error("Please select a team");
       return;
     }
 
     createMutation.mutate({
       name,
-      teamId: effectiveTeamId,
+      teamId: selectedTeamId,
       gitRepo,
       gitBranch,
     });
@@ -100,27 +88,6 @@ export default function NewEnvironmentPage() {
               />
             </div>
 
-            {teams.length > 1 && (
-              <div className="space-y-2">
-                <Label htmlFor="team">Team</Label>
-                <Select
-                  value={effectiveTeamId}
-                  onValueChange={setSelectedTeamId}
-                >
-                  <SelectTrigger id="team" className="w-full">
-                    <SelectValue placeholder="Select a team" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teams.map((team) => (
-                      <SelectItem key={team.id} value={team.id}>
-                        {team.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
             <div className="space-y-2">
               <Label htmlFor="gitRepo">Git Repository</Label>
               <Input
@@ -149,7 +116,7 @@ export default function NewEnvironmentPage() {
             <div className="flex gap-3">
               <Button
                 type="submit"
-                disabled={createMutation.isPending || !name || !effectiveTeamId || !gitRepo || !gitBranch}
+                disabled={createMutation.isPending || !name || !selectedTeamId || !gitRepo || !gitBranch}
               >
                 {createMutation.isPending ? "Creating..." : "Create Environment"}
               </Button>

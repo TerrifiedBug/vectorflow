@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
+import { useTeamStore } from "@/stores/team-store";
 import {
   Select,
   SelectContent,
@@ -17,15 +18,12 @@ export function EnvironmentSelector() {
   const trpc = useTRPC();
   const { selectedEnvironmentId, setSelectedEnvironmentId } =
     useEnvironmentStore();
-
-  // Fetch teams to get the teamId needed for environment.list
-  const teamsQuery = useQuery(trpc.team.list.queryOptions());
-  const firstTeamId = teamsQuery.data?.[0]?.id;
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
   const envsQuery = useQuery(
     trpc.environment.list.queryOptions(
-      { teamId: firstTeamId! },
-      { enabled: !!firstTeamId },
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId },
     ),
   );
   const environments = envsQuery.data ?? [];

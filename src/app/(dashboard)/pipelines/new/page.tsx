@@ -7,6 +7,7 @@ import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
 import { FileText, Workflow } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
+import { useTeamStore } from "@/stores/team-store";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,21 +33,19 @@ export default function NewPipelinePage() {
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
-  // Fetch teams first, then environments
-  const teamsQuery = useQuery(trpc.team.list.queryOptions());
-  const firstTeamId = teamsQuery.data?.[0]?.id;
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
   const environmentsQuery = useQuery(
     trpc.environment.list.queryOptions(
-      { teamId: firstTeamId! },
-      { enabled: !!firstTeamId }
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId }
     )
   );
 
   const templatesQuery = useQuery(
     trpc.template.list.queryOptions(
-      { teamId: firstTeamId! },
-      { enabled: !!firstTeamId }
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId }
     )
   );
 

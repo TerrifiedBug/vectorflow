@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
+import { useTeamStore } from "@/stores/team-store";
 import { toast } from "sonner";
 import { useFlowStore } from "@/stores/flow-store";
 import { Button } from "@/components/ui/button";
@@ -31,8 +32,7 @@ export function SaveTemplateDialog({ open, onOpenChange }: SaveTemplateDialogPro
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("Custom");
 
-  const teamsQuery = useQuery(trpc.team.list.queryOptions());
-  const teamId = teamsQuery.data?.[0]?.id;
+  const teamId = useTeamStore((s) => s.selectedTeamId);
 
   const createMutation = useMutation(
     trpc.template.create.mutationOptions({
