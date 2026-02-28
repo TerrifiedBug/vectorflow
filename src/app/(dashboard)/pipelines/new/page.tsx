@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
 import { FileText, Workflow } from "lucide-react";
+import { useEnvironmentStore } from "@/stores/environment-store";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,13 +19,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -35,7 +29,7 @@ export default function NewPipelinePage() {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [selectedEnvId, setSelectedEnvId] = useState<string>("");
+  const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   // Fetch teams first, then environments
@@ -58,7 +52,7 @@ export default function NewPipelinePage() {
 
   const environments = environmentsQuery.data ?? [];
   const templates = templatesQuery.data ?? [];
-  const effectiveEnvId = selectedEnvId || environments[0]?.id || "";
+  const effectiveEnvId = selectedEnvironmentId || environments[0]?.id || "";
 
   const createMutation = useMutation(
     trpc.pipeline.create.mutationOptions({
@@ -249,22 +243,13 @@ export default function NewPipelinePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="environment">Environment</Label>
-              <Select
-                value={effectiveEnvId}
-                onValueChange={setSelectedEnvId}
-              >
-                <SelectTrigger id="environment" className="w-full">
-                  <SelectValue placeholder="Select an environment" />
-                </SelectTrigger>
-                <SelectContent>
-                  {environments.map((env) => (
-                    <SelectItem key={env.id} value={env.id}>
-                      {env.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Environment</Label>
+              <p className="text-sm">
+                {environments.find((e) => e.id === effectiveEnvId)?.name ?? "No environment selected"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Change the environment using the selector in the header
+              </p>
             </div>
 
             <div className="flex gap-3">
