@@ -13,11 +13,17 @@ export const vrlRouter = router({
     .input(
       z.object({
         source: z.string().min(1),
-        input: z.string().min(1),
+        input: z.string(),
       }),
     )
     .mutation(async ({ input }) => {
       const start = performance.now();
+
+      const effectiveInput = input.input.trim() || JSON.stringify({
+        message: "test event",
+        timestamp: new Date().toISOString(),
+        host: "localhost",
+      });
 
       let tmpDir: string;
       try {
@@ -35,7 +41,7 @@ export const vrlRouter = router({
 
       try {
         await writeFile(programPath, input.source);
-        await writeFile(inputPath, input.input);
+        await writeFile(inputPath, effectiveInput);
 
         const { stdout, stderr } = await execFileAsync(
           "vector",
