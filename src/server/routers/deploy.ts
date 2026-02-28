@@ -6,6 +6,8 @@ import { deployApiReload } from "@/server/services/deploy";
 import { deployGitOps } from "@/server/services/deploy-gitops";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { validateConfig } from "@/server/services/validator";
+import { decryptNodeConfig } from "@/server/services/config-crypto";
+import { withAudit } from "@/server/middleware/audit";
 
 export const deployRouter = router({
   /**
@@ -34,7 +36,7 @@ export const deployRouter = router({
         data: {
           componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
           componentKey: n.componentKey,
-          config: n.config as Record<string, unknown>,
+          config: decryptNodeConfig(n.componentType, (n.config as Record<string, unknown>) ?? {}),
         },
       }));
 
@@ -76,6 +78,7 @@ export const deployRouter = router({
         environmentId: z.string(),
       }),
     )
+    .use(withAudit("deploy.api_reload", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) {
@@ -97,15 +100,44 @@ export const deployRouter = router({
         commitAuthor: z.string().optional(),
       }),
     )
+    .use(withAudit("deploy.gitops", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) {
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
+
+      // Load git credentials from system settings
+      const settings = await prisma.systemSettings.findUnique({
+        where: { id: "singleton" },
+      });
+
+      let sshKey: string | undefined;
+      if (settings?.gitopsSshKey) {
+        try {
+          const { decrypt } = await import("@/server/services/crypto");
+          sshKey = decrypt(Buffer.from(settings.gitopsSshKey).toString("utf8"));
+        } catch {
+          // Key decryption failed, proceed without
+        }
+      }
+
+      let httpsToken: string | undefined;
+      if (settings?.gitopsHttpsToken) {
+        try {
+          const { decrypt } = await import("@/server/services/crypto");
+          httpsToken = decrypt(settings.gitopsHttpsToken);
+        } catch {
+          // Token decryption failed
+        }
+      }
+
       return deployGitOps(input.pipelineId, input.environmentId, userId, {
         repoUrl: input.repoUrl,
         branch: input.branch,
-        commitAuthor: input.commitAuthor,
+        commitAuthor: input.commitAuthor || settings?.gitopsCommitAuthor || undefined,
+        sshKey,
+        httpsToken,
       });
     }),
 

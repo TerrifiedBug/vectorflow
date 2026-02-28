@@ -1,5 +1,5 @@
 import simpleGit, { type SimpleGit } from "simple-git";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdtemp, rm, writeFile, chmod } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -8,6 +8,7 @@ export interface GitConfig {
   branch: string;
   commitAuthor?: string;
   sshKey?: string;
+  httpsToken?: string;
 }
 
 export interface GitWorkspace {
@@ -23,14 +24,39 @@ export interface GitWorkspace {
 export async function cloneRepo(config: GitConfig): Promise<GitWorkspace> {
   const dir = await mkdtemp(join(tmpdir(), "vectorflow-gitops-"));
 
-  const gitOptions: Record<string, string> = {};
-  if (config.sshKey) {
-    gitOptions["core.sshCommand"] = `ssh -i ${config.sshKey} -o StrictHostKeyChecking=no`;
+  // Determine the effective URL (inject HTTPS token if applicable)
+  let effectiveUrl = config.repoUrl;
+
+  if (config.httpsToken && config.repoUrl.startsWith("https://")) {
+    // Inject token as password: https://oauth2:TOKEN@host/path
+    const url = new URL(config.repoUrl);
+    url.username = "oauth2";
+    url.password = config.httpsToken;
+    effectiveUrl = url.toString();
+  }
+
+  // Write SSH key to temp file if provided and URL is not HTTPS
+  let sshKeyPath: string | undefined;
+  if (config.sshKey && !config.repoUrl.startsWith("https://")) {
+    sshKeyPath = join(dir, ".deploy-key");
+    await writeFile(sshKeyPath, config.sshKey, { mode: 0o600 });
+    await chmod(sshKeyPath, 0o600);
+  }
+
+  // Build environment variables for git
+  const gitEnv: Record<string, string> = {};
+  if (sshKeyPath) {
+    gitEnv.GIT_SSH_COMMAND = `ssh -i ${sshKeyPath} -o StrictHostKeyChecking=no`;
   }
 
   const git = simpleGit({ baseDir: dir });
 
-  await git.clone(config.repoUrl, dir, [
+  // Set env before clone
+  if (Object.keys(gitEnv).length > 0) {
+    git.env(gitEnv);
+  }
+
+  await git.clone(effectiveUrl, dir, [
     "--branch",
     config.branch,
     "--single-branch",
@@ -40,6 +66,11 @@ export async function cloneRepo(config: GitConfig): Promise<GitWorkspace> {
 
   // Re-initialize git in the cloned directory
   const repoGit = simpleGit({ baseDir: dir });
+
+  // Preserve env for push operations
+  if (Object.keys(gitEnv).length > 0) {
+    repoGit.env(gitEnv);
+  }
 
   if (config.commitAuthor) {
     const match = config.commitAuthor.match(/^(.+?)\s*<(.+?)>$/);

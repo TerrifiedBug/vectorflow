@@ -74,6 +74,7 @@ export const settingsRouter = router({
         gitopsCommitAuthor: settings.gitopsCommitAuthor,
         sshKeyFingerprint: sshKeyFingerPrint,
         hasSshKey: !!settings.gitopsSshKey,
+        hasHttpsToken: !!settings.gitopsHttpsToken,
         defaultDeployMode: settings.defaultDeployMode,
         updatedAt: settings.updatedAt,
       };
@@ -190,6 +191,18 @@ export const settingsRouter = router({
         data: {
           gitopsSshKey: Buffer.from(encryptedKey, "utf8"),
         },
+      });
+    }),
+
+  updateGitopsHttpsToken: protectedProcedure
+    .use(requireRole("ADMIN"))
+    .input(z.object({ token: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      await getOrCreateSettings();
+      const encryptedToken = encrypt(input.token);
+      return prisma.systemSettings.update({
+        where: { id: SETTINGS_ID },
+        data: { gitopsHttpsToken: encryptedToken },
       });
     }),
 
