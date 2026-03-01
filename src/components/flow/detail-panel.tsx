@@ -11,6 +11,13 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { VectorComponentDef } from "@/lib/vector/types";
 
 /* ------------------------------------------------------------------ */
@@ -62,12 +69,16 @@ function filterSchema(
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
+const LOG_LEVELS = ["trace", "debug", "info", "warn", "error"] as const;
+
 export function DetailPanel() {
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
   const nodes = useFlowStore((s) => s.nodes);
   const updateNodeConfig = useFlowStore((s) => s.updateNodeConfig);
   const updateNodeKey = useFlowStore((s) => s.updateNodeKey);
   const removeNode = useFlowStore((s) => s.removeNode);
+  const globalConfig = useFlowStore((s) => s.globalConfig);
+  const updateGlobalConfig = useFlowStore((s) => s.updateGlobalConfig);
 
   const selectedNode = selectedNodeId
     ? nodes.find((n) => n.id === selectedNodeId)
@@ -97,13 +108,44 @@ export function DetailPanel() {
     }
   }, [selectedNodeId, removeNode]);
 
-  // ---- Empty state ----
+  // ---- Empty state: show global config ----
   if (!selectedNode) {
+    const currentLogLevel = (globalConfig?.log_level as string) ?? "";
+
     return (
-      <div className="flex h-full w-80 shrink-0 items-center justify-center border-l bg-muted/30 p-6">
-        <p className="text-sm text-muted-foreground">
-          Select a node to edit
-        </p>
+      <div className="flex h-full w-80 shrink-0 flex-col border-l bg-muted/30">
+        <div className="space-y-6 p-4">
+          <h3 className="text-sm font-semibold">Pipeline Settings</h3>
+
+          <div className="space-y-2">
+            <Label htmlFor="log-level">Log Level</Label>
+            <Select
+              value={currentLogLevel || "info"}
+              onValueChange={(value) =>
+                updateGlobalConfig("log_level", value === "info" ? undefined : value)
+              }
+            >
+              <SelectTrigger id="log-level" className="w-full">
+                <SelectValue placeholder="info" />
+              </SelectTrigger>
+              <SelectContent>
+                {LOG_LEVELS.map((level) => (
+                  <SelectItem key={level} value={level}>
+                    {level}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Controls Vector&apos;s log verbosity. Default is info.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-1 items-center justify-center p-6">
+          <p className="text-sm text-muted-foreground">
+            Select a node to edit its configuration
+          </p>
+        </div>
       </div>
     );
   }
