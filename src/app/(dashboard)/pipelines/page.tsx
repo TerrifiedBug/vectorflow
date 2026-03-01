@@ -1,14 +1,23 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { Plus } from "lucide-react";
+import { toast } from "sonner";
+import { Plus, MoreHorizontal, Copy, Trash2 } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -18,6 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 export default function PipelinesPage() {
   const trpc = useTRPC();
@@ -45,6 +55,33 @@ export default function PipelinesPage() {
   );
 
   const pipelines = pipelinesQuery.data ?? [];
+
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const cloneMutation = useMutation(
+    trpc.pipeline.clone.mutationOptions({
+      onSuccess: (data) => {
+        toast.success(`Cloned as "${data.name}"`);
+        queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
+        router.push(`/pipelines/${data.id}`);
+      },
+      onError: (err) => toast.error(err.message || "Failed to clone pipeline"),
+    })
+  );
+
+  const deleteMutation = useMutation(
+    trpc.pipeline.delete.mutationOptions({
+      onSuccess: () => {
+        toast.success("Pipeline deleted");
+        queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
+      },
+      onError: (err) => toast.error(err.message || "Failed to delete pipeline"),
+    })
+  );
+
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+
   const isLoading =
     environmentsQuery.isLoading ||
     pipelinesQuery.isLoading;
@@ -87,6 +124,8 @@ export default function PipelinesPage() {
               <TableHead>Status</TableHead>
               <TableHead>Components</TableHead>
               <TableHead>Last Updated</TableHead>
+              <TableHead>Updated By</TableHead>
+              <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -108,19 +147,65 @@ export default function PipelinesPage() {
                 <TableCell>
                   {pipeline._count.nodes} nodes, {pipeline._count.edges} edges
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-sm text-muted-foreground">
                   {new Date(pipeline.updatedAt).toLocaleDateString()}
-                  {pipeline.updatedBy && (
-                    <span className="text-xs text-muted-foreground">
-                      {" "}by {pipeline.updatedBy.name || pipeline.updatedBy.email}
-                    </span>
-                  )}
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {pipeline.updatedBy
+                    ? pipeline.updatedBy.name || pipeline.updatedBy.email
+                    : "—"}
+                </TableCell>
+                <TableCell>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => cloneMutation.mutate({ pipelineId: pipeline.id })}
+                        disabled={cloneMutation.isPending}
+                      >
+                        <Copy className="mr-2 h-4 w-4" />
+                        Clone
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => setDeleteTarget({ id: pipeline.id, name: pipeline.name })}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete pipeline?"
+        description={
+          <>
+            This will permanently delete &quot;{deleteTarget?.name}&quot; and all its versions. This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        isPending={deleteMutation.isPending}
+        pendingLabel="Deleting..."
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate({ id: deleteTarget.id });
+            setDeleteTarget(null);
+          }
+        }}
+      />
     </div>
   );
 }
