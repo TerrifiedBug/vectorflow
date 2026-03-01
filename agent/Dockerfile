@@ -22,5 +22,5 @@ COPY --from=builder /vf-agent /usr/local/bin/vf-agent
 COPY --from=vector /usr/local/bin/vector /usr/local/bin/vector
 ENV VF_VECTOR_BIN=/usr/local/bin/vector
 ENV VF_DATA_DIR=/var/lib/vf-agent
-RUN mkdir -p /var/lib/vf-agent
+RUN mkdir -p /var/lib/vf-agent /var/lib/vector
 ENTRYPOINT ["vf-agent"]
