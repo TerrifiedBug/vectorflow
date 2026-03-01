@@ -11,6 +11,7 @@ import {
   addEdge,
 } from "@xyflow/react";
 import type { VectorComponentDef } from "@/lib/vector/types";
+import { findComponentDef } from "@/lib/vector/catalog";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -42,6 +43,7 @@ export interface FlowState {
   edges: Edge[];
   globalConfig: Record<string, unknown> | null;
   selectedNodeId: string | null;
+  selectedNodeIds: Set<string>;
   selectedEdgeId: string | null;
   clipboard: ClipboardData | null;
   isDirty: boolean;
@@ -53,6 +55,9 @@ export interface FlowState {
 
   // Actions
   setSelectedNodeId: (id: string | null) => void;
+  setSelectedNodeIds: (ids: Set<string>) => void;
+  toggleNodeSelection: (id: string) => void;
+  clearSelection: () => void;
   addNode: (
     componentDef: VectorComponentDef,
     position: { x: number; y: number },
@@ -71,6 +76,8 @@ export interface FlowState {
   copyNode: (id: string) => void;
   pasteNode: () => void;
   duplicateNode: (id: string) => void;
+  copySelectedNodes: () => void;
+  pasteFromSession: () => void;
 
   // Dirty tracking
   markClean: () => void;
@@ -121,6 +128,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   edges: [],
   globalConfig: null,
   selectedNodeId: null,
+  selectedNodeIds: new Set<string>(),
   selectedEdgeId: null,
   clipboard: null,
   isDirty: false,
@@ -135,20 +143,24 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   onNodesChange: (changes) => {
     set((state) => {
       const nodes = applyNodeChanges(changes, state.nodes);
-
-      // Track selection changes
+      const newSelectedIds = new Set(state.selectedNodeIds);
       let selectedNodeId = state.selectedNodeId;
+
       for (const change of changes) {
         if (change.type === "select") {
           if (change.selected) {
+            newSelectedIds.add(change.id);
             selectedNodeId = change.id;
-          } else if (selectedNodeId === change.id) {
-            selectedNodeId = null;
+          } else {
+            newSelectedIds.delete(change.id);
+            if (selectedNodeId === change.id) {
+              selectedNodeId = null;
+            }
           }
         }
       }
 
-      return { nodes, selectedNodeId };
+      return { nodes, selectedNodeId, selectedNodeIds: newSelectedIds };
     });
   },
 
@@ -189,6 +201,26 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
 
   setSelectedNodeId: (id) => {
     set({ selectedNodeId: id });
+  },
+
+  setSelectedNodeIds: (ids) => {
+    set({ selectedNodeIds: ids });
+  },
+
+  toggleNodeSelection: (id) => {
+    set((state) => {
+      const newIds = new Set(state.selectedNodeIds);
+      if (newIds.has(id)) {
+        newIds.delete(id);
+      } else {
+        newIds.add(id);
+      }
+      return { selectedNodeIds: newIds, selectedNodeId: id };
+    });
+  },
+
+  clearSelection: () => {
+    set({ selectedNodeIds: new Set(), selectedNodeId: null });
   },
 
   addNode: (componentDef, position) => {
@@ -394,6 +426,170 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     });
   },
 
+  copySelectedNodes: () => {
+    const state = get();
+    let selectedIds = new Set(state.selectedNodeIds);
+    // Fall back to single-node for backward compat
+    if (selectedIds.size === 0 && state.selectedNodeId) {
+      selectedIds = new Set([state.selectedNodeId]);
+    }
+    if (selectedIds.size === 0) return;
+
+    const selectedNodes = state.nodes.filter((n) => selectedIds.has(n.id));
+    const cx = selectedNodes.reduce((s, n) => s + n.position.x, 0) / selectedNodes.length;
+    const cy = selectedNodes.reduce((s, n) => s + n.position.y, 0) / selectedNodes.length;
+
+    const selectedEdges = state.edges.filter(
+      (e) => selectedIds.has(e.source) && selectedIds.has(e.target)
+    );
+
+    const payload = {
+      nodes: selectedNodes.map((n) => ({
+        componentKey: (n.data as any).componentKey as string,
+        componentType: ((n.data as any).componentDef as any).type as string,
+        kind: ((n.data as any).componentDef as any).kind as string,
+        config: (n.data as any).config as Record<string, unknown>,
+        disabled: !!(n.data as any).disabled,
+        relativePosition: { x: n.position.x - cx, y: n.position.y - cy },
+      })),
+      edges: selectedEdges.map((e) => {
+        const sn = state.nodes.find((n) => n.id === e.source);
+        const tn = state.nodes.find((n) => n.id === e.target);
+        return {
+          sourceKey: sn ? ((sn.data as any).componentKey as string) : "",
+          targetKey: tn ? ((tn.data as any).componentKey as string) : "",
+          sourcePort: (e.sourceHandle as string) ?? null,
+        };
+      }),
+      copiedAt: new Date().toISOString(),
+    };
+
+    try {
+      sessionStorage.setItem("vf:clipboard", JSON.stringify(payload));
+    } catch {
+      // sessionStorage unavailable
+    }
+
+    // Also update the legacy single-node clipboard for backward compat
+    if (selectedNodes.length === 1) {
+      const node = selectedNodes[0];
+      set({
+        clipboard: {
+          componentDef: (node.data as any).componentDef,
+          componentKey: (node.data as any).componentKey,
+          config: { ...(node.data as any).config },
+          position: { x: node.position.x, y: node.position.y },
+        },
+      });
+    }
+  },
+
+  pasteFromSession: () => {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem("vf:clipboard");
+    } catch {
+      return;
+    }
+    if (!raw) return;
+
+    let payload: {
+      nodes: Array<{
+        componentKey: string;
+        componentType: string;
+        kind: string;
+        config: Record<string, unknown>;
+        disabled: boolean;
+        relativePosition: { x: number; y: number };
+      }>;
+      edges: Array<{
+        sourceKey: string;
+        targetKey: string;
+        sourcePort: string | null;
+      }>;
+    };
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (!payload.nodes || payload.nodes.length === 0) return;
+
+    const state = get() as InternalState;
+    const history = pushSnapshot(state);
+
+    // Place at center of viewport area (approximate)
+    const cx = 400;
+    const cy = 300;
+
+    const existingKeys = new Set(state.nodes.map((n) => (n.data as any).componentKey as string));
+    const keyMap = new Map<string, string>();
+
+    const newNodes: Node[] = payload.nodes.map((pn) => {
+      let key = pn.componentKey;
+      while (existingKeys.has(key)) {
+        key = `${pn.componentKey}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+      }
+      existingKeys.add(key);
+      keyMap.set(pn.componentKey, key);
+
+      const componentDef = findComponentDef(pn.componentType, pn.kind as "source" | "transform" | "sink");
+      return {
+        id: generateId(),
+        type: pn.kind,
+        position: {
+          x: cx + pn.relativePosition.x,
+          y: cy + pn.relativePosition.y,
+        },
+        data: {
+          componentDef: componentDef ?? {
+            type: pn.componentType,
+            kind: pn.kind,
+            displayName: pn.componentType,
+            description: "",
+            category: "Unknown",
+            outputTypes: [],
+            configSchema: {},
+          },
+          componentKey: key,
+          config: pn.config,
+          disabled: pn.disabled,
+        },
+        selected: true,
+      };
+    });
+
+    const newEdges: Edge[] = payload.edges
+      .map((pe) => {
+        const sourceNode = newNodes.find(
+          (n) => (n.data as any).componentKey === keyMap.get(pe.sourceKey)
+        );
+        const targetNode = newNodes.find(
+          (n) => (n.data as any).componentKey === keyMap.get(pe.targetKey)
+        );
+        if (!sourceNode || !targetNode) return null;
+        return {
+          id: generateId(),
+          source: sourceNode.id,
+          target: targetNode.id,
+          ...(pe.sourcePort ? { sourceHandle: pe.sourcePort } : {}),
+        };
+      })
+      .filter(Boolean) as Edge[];
+
+    set({
+      ...history,
+      nodes: [
+        ...state.nodes.map((n) => ({ ...n, selected: false })),
+        ...newNodes,
+      ],
+      edges: [...state.edges, ...newEdges],
+      selectedNodeIds: new Set(newNodes.map((n) => n.id)),
+      selectedNodeId: newNodes[0]?.id ?? null,
+      isDirty: true,
+    });
+  },
+
   /* ---- Dirty tracking ---- */
 
   markClean: () => {
@@ -408,6 +604,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       edges,
       globalConfig: globalConfig ?? null,
       selectedNodeId: null,
+      selectedNodeIds: new Set(),
       selectedEdgeId: null,
       isDirty: false,
       _past: [],
@@ -423,6 +620,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       edges: [],
       globalConfig: null,
       selectedNodeId: null,
+      selectedNodeIds: new Set(),
       selectedEdgeId: null,
       isDirty: false,
       _past: [],
