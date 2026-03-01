@@ -31,6 +31,7 @@ const nodeSchema = z.object({
   config: z.record(z.string(), z.any()),
   positionX: z.number(),
   positionY: z.number(),
+  disabled: z.boolean().default(false),
 });
 
 const edgeSchema = z.object({
@@ -104,6 +105,7 @@ export const pipelineRouter = router({
               componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
               componentKey: n.componentKey,
               config: n.config as Record<string, unknown>,
+              disabled: n.disabled,
             },
           }));
           const flowEdges = pipeline.edges.map((e) => ({
@@ -253,6 +255,7 @@ export const pipelineRouter = router({
               config: node.config ?? {},
               positionX: node.positionX,
               positionY: node.positionY,
+              disabled: node.disabled,
             },
           });
           nodeIdMap.set(node.id, created.id);
@@ -329,6 +332,7 @@ export const pipelineRouter = router({
                 config: encryptNodeConfig(node.componentType, node.config) as unknown as typeof node.config,
                 positionX: node.positionX,
                 positionY: node.positionY,
+                disabled: node.disabled,
               },
             })
           )

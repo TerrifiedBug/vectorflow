@@ -11,15 +11,28 @@ import type { Node, Edge } from "@xyflow/react";
  *
  * Transforms and sinks get an `inputs` array built from incoming edges.
  */
-export function generateVectorYaml(nodes: Node[], edges: Edge[]): string {
-  const config: Record<string, Record<string, any>> = {
+export function generateVectorYaml(
+  nodes: Node[],
+  edges: Edge[],
+  globalConfig?: Record<string, unknown> | null,
+): string {
+  // Filter out disabled nodes and their edges
+  const enabledNodes = nodes.filter((n) => !(n.data as any).disabled);
+  const enabledNodeIds = new Set(enabledNodes.map((n) => n.id));
+  const enabledEdges = edges.filter(
+    (e) => enabledNodeIds.has(e.source) && enabledNodeIds.has(e.target),
+  );
+
+  const config: Record<string, any> = {
+    // Inject global config sections first (api, enrichment_tables, etc.)
+    ...(globalConfig ?? {}),
     sources: {},
     transforms: {},
     sinks: {},
   };
 
   // Group nodes by kind
-  for (const node of nodes) {
+  for (const node of enabledNodes) {
     const { componentDef, componentKey, config: nodeConfig } = node.data as any;
     const section =
       componentDef.kind === "source"
@@ -35,10 +48,10 @@ export function generateVectorYaml(nodes: Node[], edges: Edge[]): string {
 
     // For transforms and sinks, build inputs array from incoming edges
     if (componentDef.kind !== "source") {
-      const inputs = edges
+      const inputs = enabledEdges
         .filter((e) => e.target === node.id)
         .map((e) => {
-          const sourceNode = nodes.find((n) => n.id === e.source);
+          const sourceNode = enabledNodes.find((n) => n.id === e.source);
           return sourceNode ? (sourceNode.data as any).componentKey : null;
         })
         .filter(Boolean);

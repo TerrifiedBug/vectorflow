@@ -12,14 +12,25 @@ import type { Node, Edge } from "@xyflow/react";
  * arrays, and one level of nested objects which covers the vast majority
  * of Vector component configs.
  */
-export function generateVectorToml(nodes: Node[], edges: Edge[]): string {
+export function generateVectorToml(
+  nodes: Node[],
+  edges: Edge[],
+  globalConfig?: Record<string, unknown> | null,
+): string {
+  // Filter out disabled nodes and their edges
+  const enabledNodes = nodes.filter((n) => !(n.data as any).disabled);
+  const enabledNodeIds = new Set(enabledNodes.map((n) => n.id));
+  const enabledEdges = edges.filter(
+    (e) => enabledNodeIds.has(e.source) && enabledNodeIds.has(e.target),
+  );
+
   const config: Record<string, Record<string, any>> = {
     sources: {},
     transforms: {},
     sinks: {},
   };
 
-  for (const node of nodes) {
+  for (const node of enabledNodes) {
     const { componentDef, componentKey, config: nodeConfig } = node.data as any;
     const section =
       componentDef.kind === "source"
@@ -34,10 +45,10 @@ export function generateVectorToml(nodes: Node[], edges: Edge[]): string {
     };
 
     if (componentDef.kind !== "source") {
-      const inputs = edges
+      const inputs = enabledEdges
         .filter((e) => e.target === node.id)
         .map((e) => {
-          const sourceNode = nodes.find((n) => n.id === e.source);
+          const sourceNode = enabledNodes.find((n) => n.id === e.source);
           return sourceNode ? (sourceNode.data as any).componentKey : null;
         })
         .filter(Boolean);
@@ -50,6 +61,21 @@ export function generateVectorToml(nodes: Node[], edges: Edge[]): string {
   }
 
   const lines: string[] = [];
+
+  // Emit global config sections first (api, enrichment_tables, etc.)
+  if (globalConfig) {
+    for (const [section, value] of Object.entries(globalConfig)) {
+      if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+        lines.push(`[${section}]`);
+        for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+          formatTomlValue(lines, key, val);
+        }
+        lines.push("");
+      } else {
+        formatTomlValue(lines, section, value);
+      }
+    }
+  }
 
   for (const [section, components] of Object.entries(config)) {
     if (Object.keys(components).length === 0) continue;
