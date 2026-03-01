@@ -30,6 +30,13 @@ export interface ClipboardData {
   position: { x: number; y: number };
 }
 
+export interface NodeMetricsData {
+  eventsPerSec: number;
+  bytesPerSec: number;
+  status: string;
+  samples?: import("@/server/services/metric-store").MetricSample[];
+}
+
 export interface FlowState {
   nodes: Node[];
   edges: Edge[];
@@ -54,6 +61,8 @@ export interface FlowState {
   removeEdge: (id: string) => void;
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void;
   updateNodeKey: (id: string, key: string) => void;
+  toggleNodeDisabled: (id: string) => void;
+  updateNodeMetrics: (metricsMap: Map<string, NodeMetricsData>) => void;
 
   // Global config
   updateGlobalConfig: (key: string, value: unknown) => void;
@@ -252,6 +261,39 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
           ? { ...n, data: { ...n.data, componentKey: key } }
           : n,
       ),
+    }));
+  },
+
+  toggleNodeDisabled: (id) => {
+    set((state) => {
+      const history = pushSnapshot(state);
+      return {
+        ...history,
+        nodes: state.nodes.map((n) =>
+          n.id === id
+            ? { ...n, data: { ...n.data, disabled: !n.data.disabled } }
+            : n,
+        ),
+        isDirty: true,
+      };
+    });
+  },
+
+  updateNodeMetrics: (metricsMap) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) => {
+        const key = n.data.componentKey as string;
+        const m = metricsMap.get(key);
+        if (m) {
+          return { ...n, data: { ...n.data, metrics: m } };
+        }
+        // Clear stale metrics if no longer reported
+        if (n.data.metrics) {
+          return { ...n, data: { ...n.data, metrics: undefined } };
+        }
+        return n;
+      }),
+      // Do NOT set isDirty — metrics are ephemeral, not user edits
     }));
   },
 

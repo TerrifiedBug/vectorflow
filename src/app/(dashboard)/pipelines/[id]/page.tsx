@@ -31,9 +31,7 @@ import { FlowToolbar } from "@/components/flow/flow-toolbar";
 import { DetailPanel } from "@/components/flow/detail-panel";
 import { DeployDialog } from "@/components/flow/deploy-dialog";
 import { SaveTemplateDialog } from "@/components/flow/save-template-dialog";
-import { DeploymentStatus } from "@/components/pipeline/deployment-status";
 import { PipelineMetricsChart } from "@/components/pipeline/metrics-chart";
-import { PipelineLogs } from "@/components/pipeline/pipeline-logs";
 
 /**
  * Convert database PipelineNode rows into React Flow nodes.
@@ -48,6 +46,7 @@ function dbNodesToFlowNodes(
     config: unknown;
     positionX: number;
     positionY: number;
+    disabled?: boolean;
   }>
 ): Node[] {
   return dbNodes.map((n) => {
@@ -69,6 +68,7 @@ function dbNodesToFlowNodes(
         },
         componentKey: n.componentKey,
         config: (n.config as Record<string, unknown>) ?? {},
+        disabled: n.disabled ?? false,
       },
     };
   });
@@ -99,6 +99,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const [deployOpen, setDeployOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [metricsOpen, setMetricsOpen] = useState(false);
 
   const loadGraph = useFlowStore((s) => s.loadGraph);
   const isDirty = useFlowStore((s) => s.isDirty);
@@ -220,6 +221,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         config: ((n.data as Record<string, unknown>).config as Record<string, unknown>) ?? {},
         positionX: n.position.x,
         positionY: n.position.y,
+        disabled: !!((n.data as Record<string, unknown>).disabled),
       })),
       edges: state.edges.map((e) => ({
         id: e.id,
@@ -316,6 +318,8 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             deployedAt={pipelineQuery.data?.deployedAt}
             hasConfigChanges={pipelineQuery.data?.hasConfigChanges}
             isDirty={isDirty}
+            metricsOpen={metricsOpen}
+            onToggleMetrics={() => setMetricsOpen((v) => !v)}
           />
         </div>
         <div className="flex items-center px-3">
@@ -356,11 +360,13 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         </div>
         <DetailPanel />
       </div>
+      {metricsOpen && (
+        <div className="shrink-0 border-t">
+          <PipelineMetricsChart pipelineId={pipelineId} />
+        </div>
+      )}
       <DeployDialog pipelineId={pipelineId} open={deployOpen} onOpenChange={setDeployOpen} />
       <SaveTemplateDialog open={templateOpen} onOpenChange={setTemplateOpen} />
-      <DeploymentStatus pipelineId={pipelineId} />
-      <PipelineMetricsChart pipelineId={pipelineId} />
-      <PipelineLogs pipelineId={pipelineId} />
     </div>
   );
 }

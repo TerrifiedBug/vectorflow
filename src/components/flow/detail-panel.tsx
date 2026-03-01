@@ -10,14 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { VectorComponentDef } from "@/lib/vector/types";
 
 /* ------------------------------------------------------------------ */
@@ -69,16 +63,13 @@ function filterSchema(
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-const LOG_LEVELS = ["trace", "debug", "info", "warn", "error"] as const;
-
 export function DetailPanel() {
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
   const nodes = useFlowStore((s) => s.nodes);
   const updateNodeConfig = useFlowStore((s) => s.updateNodeConfig);
   const updateNodeKey = useFlowStore((s) => s.updateNodeKey);
+  const toggleNodeDisabled = useFlowStore((s) => s.toggleNodeDisabled);
   const removeNode = useFlowStore((s) => s.removeNode);
-  const globalConfig = useFlowStore((s) => s.globalConfig);
-  const updateGlobalConfig = useFlowStore((s) => s.updateGlobalConfig);
 
   const selectedNode = selectedNodeId
     ? nodes.find((n) => n.id === selectedNodeId)
@@ -108,39 +99,10 @@ export function DetailPanel() {
     }
   }, [selectedNodeId, removeNode]);
 
-  // ---- Empty state: show global config ----
+  // ---- Empty state ----
   if (!selectedNode) {
-    const currentLogLevel = (globalConfig?.log_level as string) ?? "";
-
     return (
       <div className="flex h-full w-80 shrink-0 flex-col border-l bg-muted/30">
-        <div className="space-y-6 p-4">
-          <h3 className="text-sm font-semibold">Pipeline Settings</h3>
-
-          <div className="space-y-2">
-            <Label htmlFor="log-level">Log Level</Label>
-            <Select
-              value={currentLogLevel || "info"}
-              onValueChange={(value) =>
-                updateGlobalConfig("log_level", value === "info" ? undefined : value)
-              }
-            >
-              <SelectTrigger id="log-level" className="w-full">
-                <SelectValue placeholder="info" />
-              </SelectTrigger>
-              <SelectContent>
-                {LOG_LEVELS.map((level) => (
-                  <SelectItem key={level} value={level}>
-                    {level}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Controls Vector&apos;s log verbosity. Default is info.
-            </p>
-          </div>
-        </div>
         <div className="flex flex-1 items-center justify-center p-6">
           <p className="text-sm text-muted-foreground">
             Select a node to edit its configuration
@@ -150,10 +112,11 @@ export function DetailPanel() {
     );
   }
 
-  const { componentDef, componentKey, config } = selectedNode.data as {
+  const { componentDef, componentKey, config, disabled } = selectedNode.data as {
     componentDef: VectorComponentDef;
     componentKey: string;
     config: Record<string, unknown>;
+    disabled?: boolean;
   };
 
   return (
@@ -193,6 +156,18 @@ export function DetailPanel() {
                   id="component-key"
                   value={componentKey}
                   onChange={(e) => handleKeyChange(e.target.value)}
+                />
+              </div>
+
+              {/* Enabled toggle */}
+              <div className="flex items-center justify-between">
+                <Label htmlFor="node-enabled">Enabled</Label>
+                <Switch
+                  id="node-enabled"
+                  checked={!disabled}
+                  onCheckedChange={() => {
+                    if (selectedNodeId) toggleNodeDisabled(selectedNodeId);
+                  }}
                 />
               </div>
 
