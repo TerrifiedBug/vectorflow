@@ -168,6 +168,7 @@ export const pipelineRouter = router({
         description: z.string().nullable().optional(),
       })
     )
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.updated", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
@@ -194,6 +195,7 @@ export const pipelineRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.deleted", "Pipeline"))
     .mutation(async ({ input }) => {
       const existing = await prisma.pipeline.findUnique({

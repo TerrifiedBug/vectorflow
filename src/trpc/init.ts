@@ -155,6 +155,47 @@ export const withTeamAccess = (minRole: Role) =>
       teamId = pipeline.environment.teamId;
     }
 
+    // Fallback: try input.id as various entity types
+    if (!teamId && rawInput?.id) {
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: rawInput.id as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (pipeline) {
+        teamId = pipeline.environment.teamId;
+      }
+    }
+
+    if (!teamId && rawInput?.id) {
+      const env = await prisma.environment.findUnique({
+        where: { id: rawInput.id as string },
+        select: { teamId: true },
+      });
+      if (env) {
+        teamId = env.teamId;
+      }
+    }
+
+    if (!teamId && rawInput?.id) {
+      const node = await prisma.vectorNode.findUnique({
+        where: { id: rawInput.id as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (node) {
+        teamId = node.environment.teamId;
+      }
+    }
+
+    if (!teamId && rawInput?.id) {
+      const template = await prisma.template.findUnique({
+        where: { id: rawInput.id as string },
+        select: { teamId: true },
+      });
+      if (template?.teamId) {
+        teamId = template.teamId;
+      }
+    }
+
     if (!teamId) {
       throw new TRPCError({
         code: "BAD_REQUEST",

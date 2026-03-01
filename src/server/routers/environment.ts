@@ -85,6 +85,7 @@ export const environmentRouter = router({
         secretBackendConfig: z.any().optional(),
       })
     )
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("environment.updated", "Environment"))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
@@ -105,6 +106,7 @@ export const environmentRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("ADMIN"))
     .use(withAudit("environment.deleted", "Environment"))
     .mutation(async ({ input }) => {
       const existing = await prisma.environment.findUnique({
