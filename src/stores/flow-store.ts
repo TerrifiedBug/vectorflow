@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { generateId } from "@/lib/utils";
 import {
   type Node,
   type Edge,
@@ -22,11 +23,21 @@ interface Snapshot {
 
 const MAX_HISTORY = 50;
 
+export interface ClipboardData {
+  componentDef: VectorComponentDef;
+  componentKey: string;
+  config: Record<string, unknown>;
+  position: { x: number; y: number };
+}
+
 export interface FlowState {
   nodes: Node[];
   edges: Edge[];
+  globalConfig: Record<string, unknown> | null;
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
+  clipboard: ClipboardData | null;
+  isDirty: boolean;
 
   // React Flow callbacks
   onNodesChange: OnNodesChange;
@@ -44,8 +55,19 @@ export interface FlowState {
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void;
   updateNodeKey: (id: string, key: string) => void;
 
+  // Global config
+  updateGlobalConfig: (key: string, value: unknown) => void;
+
+  // Copy / Paste
+  copyNode: (id: string) => void;
+  pasteNode: () => void;
+  duplicateNode: (id: string) => void;
+
+  // Dirty tracking
+  markClean: () => void;
+
   // Serialization
-  loadGraph: (nodes: Node[], edges: Edge[]) => void;
+  loadGraph: (nodes: Node[], edges: Edge[], globalConfig?: Record<string, unknown> | null) => void;
   clearGraph: () => void;
 
   // Undo / Redo
@@ -88,8 +110,11 @@ function pushSnapshot(state: InternalState): Partial<InternalState> {
 export const useFlowStore = create<InternalState>()((set, get) => ({
   nodes: [],
   edges: [],
+  globalConfig: null,
   selectedNodeId: null,
   selectedEdgeId: null,
+  clipboard: null,
+  isDirty: false,
 
   _past: [],
   _future: [],
@@ -144,9 +169,10 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   onConnect: (connection) => {
     set((state) => ({
       edges: addEdge(
-        { ...connection, id: crypto.randomUUID() },
+        { ...connection, id: generateId() },
         state.edges,
       ),
+      isDirty: true,
     }));
   },
 
@@ -160,7 +186,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     set((state) => {
       const history = pushSnapshot(state);
       const newNode: Node = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         type: componentDef.kind,
         position,
         data: {
@@ -172,6 +198,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       return {
         ...history,
         nodes: [...state.nodes, newNode],
+        isDirty: true,
       };
     });
   },
@@ -187,6 +214,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         ),
         selectedNodeId:
           state.selectedNodeId === id ? null : state.selectedNodeId,
+        isDirty: true,
       };
     });
   },
@@ -199,6 +227,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         edges: state.edges.filter((e) => e.id !== id),
         selectedEdgeId:
           state.selectedEdgeId === id ? null : state.selectedEdgeId,
+        isDirty: true,
       };
     });
   },
@@ -211,6 +240,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         nodes: state.nodes.map((n) =>
           n.id === id ? { ...n, data: { ...n.data, config } } : n,
         ),
+        isDirty: true,
       };
     });
   },
@@ -225,14 +255,119 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     }));
   },
 
+  /* ---- Global config ---- */
+
+  updateGlobalConfig: (key, value) => {
+    set((state) => {
+      const current = state.globalConfig ?? {};
+      const updated = { ...current };
+      if (value === undefined || value === "" || value === null) {
+        delete updated[key];
+      } else {
+        updated[key] = value;
+      }
+      return {
+        globalConfig: Object.keys(updated).length > 0 ? updated : null,
+        isDirty: true,
+      };
+    });
+  },
+
+  /* ---- Copy / Paste ---- */
+
+  copyNode: (id) => {
+    const state = get();
+    const node = state.nodes.find((n) => n.id === id);
+    if (!node) return;
+    set({
+      clipboard: {
+        componentDef: node.data.componentDef as VectorComponentDef,
+        componentKey: node.data.componentKey as string,
+        config: { ...(node.data.config as Record<string, unknown>) },
+        position: { x: node.position.x, y: node.position.y },
+      },
+    });
+  },
+
+  pasteNode: () => {
+    const state = get() as InternalState;
+    if (!state.clipboard) return;
+    const history = pushSnapshot(state);
+    const offset = 40;
+    const newNode: Node = {
+      id: generateId(),
+      type: state.clipboard.componentDef.kind,
+      position: {
+        x: state.clipboard.position.x + offset,
+        y: state.clipboard.position.y + offset,
+      },
+      data: {
+        componentDef: state.clipboard.componentDef,
+        componentKey: `${state.clipboard.componentDef.type}_${Date.now()}`,
+        config: { ...state.clipboard.config },
+      },
+      selected: true,
+    };
+    set({
+      ...history,
+      nodes: [
+        ...state.nodes.map((n) => ({ ...n, selected: false })),
+        newNode,
+      ],
+      selectedNodeId: newNode.id,
+      isDirty: true,
+      // Update clipboard position so next paste offsets again
+      clipboard: { ...state.clipboard, position: newNode.position },
+    });
+  },
+
+  duplicateNode: (id) => {
+    const state = get() as InternalState;
+    const node = state.nodes.find((n) => n.id === id);
+    if (!node) return;
+    const history = pushSnapshot(state);
+    const offset = 40;
+    const newNode: Node = {
+      id: generateId(),
+      type: node.type,
+      position: {
+        x: node.position.x + offset,
+        y: node.position.y + offset,
+      },
+      data: {
+        componentDef: node.data.componentDef,
+        componentKey: `${(node.data.componentDef as VectorComponentDef).type}_${Date.now()}`,
+        config: { ...(node.data.config as Record<string, unknown>) },
+      },
+      selected: true,
+    };
+    set({
+      ...history,
+      nodes: [
+        ...state.nodes.map((n) => ({ ...n, selected: false })),
+        newNode,
+      ],
+      selectedNodeId: newNode.id,
+      isDirty: true,
+    });
+  },
+
+  /* ---- Dirty tracking ---- */
+
+  markClean: () => {
+    set({ isDirty: false });
+  },
+
   /* ---- Serialization ---- */
 
-  loadGraph: (nodes, edges) => {
+  loadGraph: (nodes, edges, globalConfig) => {
     set({
       nodes,
       edges,
+      globalConfig: globalConfig ?? null,
       selectedNodeId: null,
       selectedEdgeId: null,
+      isDirty: false,
       _past: [],
       _future: [],
       canUndo: false,
@@ -244,8 +379,10 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     set({
       nodes: [],
       edges: [],
+      globalConfig: null,
       selectedNodeId: null,
       selectedEdgeId: null,
+      isDirty: false,
       _past: [],
       _future: [],
       canUndo: false,
@@ -270,6 +407,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       _future: [currentSnapshot, ...state._future].slice(0, MAX_HISTORY),
       canUndo: newPast.length > 0,
       canRedo: true,
+      isDirty: true,
     });
   },
 
@@ -288,6 +426,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       _future: newFuture,
       canUndo: true,
       canRedo: newFuture.length > 0,
+      isDirty: true,
     });
   },
 }));
