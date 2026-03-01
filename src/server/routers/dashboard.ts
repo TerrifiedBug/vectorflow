@@ -50,12 +50,12 @@ export const dashboardRouter = router({
         select: {
           id: true,
           name: true,
-          hostname: true,
+          host: true,
           status: true,
-          lastSeenAt: true,
+          lastSeen: true,
           environment: { select: { name: true } },
         },
-        orderBy: { lastSeenAt: "desc" },
+        orderBy: { lastSeen: "desc" },
         take: 10,
       }),
 

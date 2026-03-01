@@ -241,7 +241,7 @@ export default function DashboardPage() {
                   className="flex items-center justify-between rounded-md border p-3 hover:bg-accent transition-colors"
                 >
                   <div>
-                    <div className="font-medium">{node.name || node.hostname}</div>
+                    <div className="font-medium">{node.name || node.host}</div>
                     <div className="text-xs text-muted-foreground">{node.environment?.name}</div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -258,7 +258,7 @@ export default function DashboardPage() {
                       {node.status}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
-                      {formatRelativeTime(node.lastSeenAt)}
+                      {formatRelativeTime(node.lastSeen)}
                     </span>
                   </div>
                 </Link>
