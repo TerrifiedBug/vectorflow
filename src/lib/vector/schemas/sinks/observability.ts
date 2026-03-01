@@ -6,7 +6,6 @@ import {
   requestSchema,
   encodingSchema,
   compressionSchema,
-  authBasicBearerSchema,
 } from "../shared";
 
 export const observabilitySinks: VectorComponentDef[] = [
@@ -33,21 +32,25 @@ export const observabilitySinks: VectorComponentDef[] = [
         },
         api: {
           type: "string",
-          enum: ["logs", "metrics", "events"],
-          description: "New Relic API to use (default: logs)",
+          enum: ["events", "logs", "metrics"],
+          description: "New Relic API endpoint to use",
         },
         region: {
           type: "string",
           enum: ["us", "eu"],
-          description: "New Relic region (default: us)",
+          description: "New Relic region",
+          default: "us",
         },
-        ...compressionSchema(["gzip", "none"], "gzip"),
+        ...compressionSchema(
+          ["gzip", "none", "snappy", "zlib", "zstd"],
+          "gzip",
+        ),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "1MB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["license_key"],
+      required: ["license_key", "account_id", "api"],
     },
   },
   {
@@ -71,8 +74,18 @@ export const observabilitySinks: VectorComponentDef[] = [
           type: "string",
           description: "Honeycomb dataset name",
         },
+        endpoint: {
+          type: "string",
+          description:
+            "Honeycomb API endpoint URL (default: https://api.honeycomb.io)",
+          default: "https://api.honeycomb.io",
+        },
+        ...compressionSchema(
+          ["gzip", "none", "snappy", "zlib", "zstd"],
+          "zstd",
+        ),
         ...tlsSchema(),
-        ...batchSchema({ max_bytes: "5MB", timeout_secs: "1" }),
+        ...batchSchema({ max_bytes: "100KB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
       },
@@ -102,13 +115,18 @@ export const observabilitySinks: VectorComponentDef[] = [
         },
         org_id: {
           type: "string",
-          description: "Axiom organization ID",
+          description:
+            "Axiom organization ID (only required when using personal tokens)",
         },
         url: {
           type: "string",
           description: "Axiom API URL (default: https://api.axiom.co)",
+          default: "https://api.axiom.co",
         },
-        ...compressionSchema(["gzip", "none", "zstd"], "gzip"),
+        ...compressionSchema(
+          ["gzip", "none", "snappy", "zlib", "zstd"],
+          "zstd",
+        ),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
         ...bufferSchema(),
@@ -136,11 +154,16 @@ export const observabilitySinks: VectorComponentDef[] = [
         },
         endpoint: {
           type: "string",
-          description: "AppSignal API endpoint (default: https://appsignal-endpoint.net)",
+          description:
+            "AppSignal API endpoint (default: https://appsignal-endpoint.net)",
+          default: "https://appsignal-endpoint.net",
         },
-        ...compressionSchema(["gzip", "none"], "gzip"),
+        ...compressionSchema(
+          ["gzip", "none", "snappy", "zlib", "zstd"],
+          "gzip",
+        ),
         ...tlsSchema(),
-        ...batchSchema({ max_bytes: "5MB", timeout_secs: "1" }),
+        ...batchSchema({ max_bytes: "450KB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
       },
@@ -166,7 +189,24 @@ export const observabilitySinks: VectorComponentDef[] = [
         },
         hostname: {
           type: "string",
-          description: "Hostname to attach to events",
+          description: "Hostname to attach to each batch of events",
+        },
+        endpoint: {
+          type: "string",
+          description:
+            "HTTP endpoint for log delivery (default: https://logs.mezmo.com/)",
+          default: "https://logs.mezmo.com/",
+        },
+        default_app: {
+          type: "string",
+          description:
+            "Default app name for events without a file or app field",
+          default: "vector",
+        },
+        default_env: {
+          type: "string",
+          description: "Default environment for events without an env field",
+          default: "production",
         },
         mac: {
           type: "string",
@@ -186,7 +226,7 @@ export const observabilitySinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["api_key"],
+      required: ["api_key", "hostname"],
     },
   },
   {
@@ -209,11 +249,13 @@ export const observabilitySinks: VectorComponentDef[] = [
         region: {
           type: "string",
           enum: ["us", "eu"],
-          description: "Sematext region (default: us)",
+          description: "Sematext region",
+          default: "us",
         },
         endpoint: {
           type: "string",
-          description: "Custom Sematext endpoint URL",
+          description:
+            "Custom Sematext endpoint URL (overrides region setting)",
         },
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
@@ -243,18 +285,25 @@ export const observabilitySinks: VectorComponentDef[] = [
         region: {
           type: "string",
           enum: ["us", "eu"],
-          description: "Sematext region (default: us)",
+          description: "Sematext region",
+          default: "us",
         },
         default_namespace: {
           type: "string",
-          description: "Default metric namespace",
+          description:
+            "Default namespace for any metrics sent (used as prefix to metric names)",
+        },
+        endpoint: {
+          type: "string",
+          description:
+            "Custom Sematext endpoint URL (overrides region setting)",
         },
         ...tlsSchema(),
-        ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
+        ...batchSchema({ timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["token"],
+      required: ["token", "default_namespace"],
     },
   },
   {
@@ -276,7 +325,9 @@ export const observabilitySinks: VectorComponentDef[] = [
         },
         endpoint: {
           type: "string",
-          description: "Humio endpoint URL (default: https://cloud.humio.com)",
+          description:
+            "Humio endpoint URL (default: https://cloud.humio.com)",
+          default: "https://cloud.humio.com",
         },
         source: {
           type: "string",
@@ -284,20 +335,48 @@ export const observabilitySinks: VectorComponentDef[] = [
         },
         event_type: {
           type: "string",
-          description: "Event type (template-enabled)",
+          description:
+            "Event type used as the parser name in Humio (template-enabled)",
         },
         host_key: {
           type: "string",
-          description: "Field for the host value",
+          description:
+            "Field for the host value (default: .host)",
+          default: ".host",
+        },
+        index: {
+          type: "string",
+          description:
+            "Optional repository name to ingest into (template-enabled)",
+        },
+        indexed_fields: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Event fields to be added to Humio's extra fields",
+        },
+        timestamp_key: {
+          type: "string",
+          description: "Field for the timestamp value (default: .timestamp)",
+          default: ".timestamp",
+        },
+        timestamp_nanos_key: {
+          type: "string",
+          description:
+            "Field for the nanosecond timestamp value (default: @timestamp.nanos)",
+          default: "@timestamp.nanos",
         },
         ...encodingSchema(["json", "text"]),
-        ...compressionSchema(["gzip", "none"], "gzip"),
+        ...compressionSchema(
+          ["gzip", "none", "snappy", "zlib", "zstd"],
+          "none",
+        ),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "1MB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["token"],
+      required: ["token", "encoding"],
     },
   },
   {
@@ -319,17 +398,51 @@ export const observabilitySinks: VectorComponentDef[] = [
         },
         endpoint: {
           type: "string",
-          description: "Humio endpoint URL (default: https://cloud.humio.com)",
+          description:
+            "Humio endpoint URL (default: https://cloud.humio.com)",
+          default: "https://cloud.humio.com",
         },
         source: {
           type: "string",
           description: "Event source value (template-enabled)",
         },
+        event_type: {
+          type: "string",
+          description:
+            "Event type used as the parser name in Humio (template-enabled)",
+        },
         host_key: {
           type: "string",
           description: "Field for the host value",
+          default: "host",
         },
-        ...compressionSchema(["gzip", "none"], "gzip"),
+        host_tag: {
+          type: "string",
+          description:
+            "Name of the tag in the metric to use for the source host",
+        },
+        index: {
+          type: "string",
+          description:
+            "Optional repository name to ingest into (template-enabled)",
+        },
+        indexed_fields: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Event fields to be added to Humio's extra fields",
+        },
+        metric_tag_values: {
+          type: "string",
+          enum: ["full", "single"],
+          description:
+            "Controls how metric tag values are encoded (default: single)",
+          default: "single",
+        },
+        ...compressionSchema(
+          ["gzip", "none", "snappy", "zlib", "zstd"],
+          "none",
+        ),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "1MB", timeout_secs: "1" }),
         ...bufferSchema(),
@@ -359,13 +472,15 @@ export const observabilitySinks: VectorComponentDef[] = [
         endpoint: {
           type: "string",
           description: "Keep API endpoint URL",
+          default:
+            "http://localhost:8080/alerts/event/vectordev?provider_id=test",
         },
         ...tlsSchema(),
-        ...batchSchema({ max_bytes: "5MB", timeout_secs: "1" }),
+        ...batchSchema({ max_bytes: "100KB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["api_key", "endpoint"],
+      required: ["api_key"],
     },
   },
 ];
