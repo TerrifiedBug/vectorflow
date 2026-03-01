@@ -29,7 +29,8 @@ export const networkSinks: VectorComponentDef[] = [
         method: {
           type: "string",
           enum: ["get", "post", "put", "patch", "delete", "head", "options"],
-          description: "HTTP method (default: post)",
+          description: "HTTP method",
+          default: "post",
         },
         headers: {
           type: "object",
@@ -45,7 +46,22 @@ export const networkSinks: VectorComponentDef[] = [
           description: "JSON suffix for payload body",
         },
         ...authBasicBearerSchema(),
-        ...encodingSchema(["json", "ndjson", "text", "logfmt", "csv", "avro", "raw_message"]),
+        ...encodingSchema([
+          "json",
+          "ndjson",
+          "text",
+          "logfmt",
+          "csv",
+          "avro",
+          "raw_message",
+          "native",
+          "native_json",
+          "gelf",
+          "cef",
+          "syslog",
+          "otlp",
+          "protobuf",
+        ]),
         ...compressionSchema(["none", "gzip", "snappy", "zlib", "zstd"]),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
@@ -69,18 +85,51 @@ export const networkSinks: VectorComponentDef[] = [
       properties: {
         address: {
           type: "string",
-          description: "Socket address to connect to (e.g., 127.0.0.1:9000)",
+          description:
+            "Socket address to connect to (e.g., 92.12.333.224:5000). Required for tcp and udp modes.",
         },
         mode: {
           type: "string",
-          enum: ["tcp", "udp", "unix"],
-          description: "Socket mode",
+          enum: ["tcp", "udp", "unix_datagram", "unix_stream"],
+          description: "The type of socket to use",
         },
         path: {
           type: "string",
-          description: "Unix socket path (for unix mode)",
+          description:
+            "Unix socket path (absolute path, required for unix_stream and unix_datagram modes)",
         },
-        ...encodingSchema(["json", "text", "raw_message"]),
+        keepalive: {
+          type: "object",
+          properties: {
+            time_secs: {
+              type: "number",
+              description:
+                "The time to wait before starting to send TCP keepalive probes on an idle connection",
+            },
+          },
+          description: "TCP keepalive settings (relevant when mode = tcp)",
+        },
+        send_buffer_bytes: {
+          type: "number",
+          description:
+            "Configures the send buffer size (SO_SNDBUF) for the socket. Relevant for tcp and udp modes.",
+        },
+        ...encodingSchema([
+          "json",
+          "text",
+          "raw_message",
+          "ndjson",
+          "logfmt",
+          "csv",
+          "avro",
+          "native",
+          "native_json",
+          "gelf",
+          "cef",
+          "syslog",
+          "otlp",
+          "protobuf",
+        ]),
         ...tlsSchema(),
         ...bufferSchema(),
       },
@@ -104,13 +153,15 @@ export const networkSinks: VectorComponentDef[] = [
           type: "string",
           description: "WebSocket URI to connect to (ws:// or wss://)",
         },
-        ping_interval_secs: {
+        ping_interval: {
           type: "number",
-          description: "Ping interval in seconds",
+          description:
+            "Interval in seconds for sending Ping frames to remote peer. If unset, pings are not sent automatically.",
         },
-        ping_timeout_secs: {
+        ping_timeout: {
           type: "number",
-          description: "Pong timeout in seconds",
+          description:
+            "Maximum wait time in seconds for Pong responses. Connection re-establishes on timeout. Ignored unless ping_interval is set.",
         },
         headers: {
           type: "object",
@@ -118,7 +169,22 @@ export const networkSinks: VectorComponentDef[] = [
           description: "Custom headers for the WebSocket handshake",
         },
         ...authBasicBearerSchema(),
-        ...encodingSchema(["json", "text", "raw_message"]),
+        ...encodingSchema([
+          "json",
+          "text",
+          "raw_message",
+          "ndjson",
+          "logfmt",
+          "csv",
+          "avro",
+          "native",
+          "native_json",
+          "gelf",
+          "cef",
+          "syslog",
+          "otlp",
+          "protobuf",
+        ]),
         ...tlsSchema(),
         ...bufferSchema(),
       },
@@ -140,13 +206,28 @@ export const networkSinks: VectorComponentDef[] = [
       properties: {
         address: {
           type: "string",
-          description: "Address to listen on (default: 0.0.0.0:9000)",
+          description: "Address to listen on (must include port, e.g., 0.0.0.0:80)",
         },
-        ...encodingSchema(["json", "text", "raw_message"]),
+        ...encodingSchema([
+          "json",
+          "text",
+          "raw_message",
+          "ndjson",
+          "logfmt",
+          "csv",
+          "avro",
+          "native",
+          "native_json",
+          "gelf",
+          "cef",
+          "syslog",
+          "otlp",
+          "protobuf",
+        ]),
         ...tlsSchema(),
         ...bufferSchema(),
       },
-      required: [],
+      required: ["address"],
     },
   },
   {
@@ -163,14 +244,14 @@ export const networkSinks: VectorComponentDef[] = [
       properties: {
         address: {
           type: "string",
-          description: "Vector destination address (e.g., 127.0.0.1:6000)",
+          description:
+            "The downstream Vector address to connect to (must include port, e.g., 127.0.0.1:6000)",
         },
-        version: {
-          type: "string",
-          enum: ["1", "2"],
-          description: "Vector protocol version (default: 2)",
+        compression: {
+          type: "boolean",
+          description: "Enable gzip compression for data sent to the downstream Vector instance",
+          default: false,
         },
-        ...compressionSchema(["none", "gzip", "snappy", "zlib", "zstd"]),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
         ...bufferSchema(),
@@ -193,13 +274,30 @@ export const networkSinks: VectorComponentDef[] = [
       properties: {
         path: {
           type: "string",
-          description: "File path template (e.g., /tmp/vector-%Y-%m-%d.log)",
+          description:
+            "File path template (e.g., /tmp/vector-%Y-%m-%d.log). Compression format extension must be explicit.",
         },
         idle_timeout_secs: {
           type: "number",
-          description: "Seconds of inactivity before closing a file (default: 30)",
+          description: "Seconds of inactivity before flushing and closing a file",
+          default: 30,
         },
-        ...encodingSchema(["json", "ndjson", "text", "csv", "raw_message"]),
+        ...encodingSchema([
+          "json",
+          "ndjson",
+          "text",
+          "csv",
+          "raw_message",
+          "logfmt",
+          "avro",
+          "native",
+          "native_json",
+          "gelf",
+          "cef",
+          "syslog",
+          "otlp",
+          "protobuf",
+        ]),
         ...compressionSchema(["gzip", "none", "zstd"], "none"),
         ...bufferSchema(),
       },
@@ -220,11 +318,14 @@ export const networkSinks: VectorComponentDef[] = [
       properties: {
         print_interval_secs: {
           type: "number",
-          description: "Interval to print throughput stats (0 to disable, default: 1)",
+          description:
+            "The interval between reporting a summary of activity (0 to disable)",
+          default: 0,
         },
         rate: {
           type: "number",
-          description: "Limit events per second (0 = unlimited)",
+          description:
+            "Maximum events per second the sink can consume (default: unlimited)",
         },
       },
       required: [],
@@ -242,7 +343,28 @@ export const networkSinks: VectorComponentDef[] = [
     configSchema: {
       type: "object",
       properties: {
-        ...encodingSchema(["json", "text", "logfmt"]),
+        target: {
+          type: "string",
+          enum: ["stdout", "stderr"],
+          description: "The standard stream to write to",
+          default: "stdout",
+        },
+        ...encodingSchema([
+          "json",
+          "text",
+          "logfmt",
+          "csv",
+          "avro",
+          "raw_message",
+          "native",
+          "native_json",
+          "gelf",
+          "cef",
+          "syslog",
+          "otlp",
+          "protobuf",
+        ]),
+        ...bufferSchema(),
       },
       required: [],
     },
@@ -262,18 +384,36 @@ export const networkSinks: VectorComponentDef[] = [
       properties: {
         endpoint: {
           type: "string",
-          description: "WebHDFS namenode endpoint (e.g., http://namenode:9870)",
+          description:
+            "WebHDFS namenode endpoint (e.g., http://127.0.0.1:9870)",
+        },
+        root: {
+          type: "string",
+          description:
+            "Base directory path for WebHDFS. Final file path follows format: {root}/{prefix}{suffix}.",
         },
         prefix: {
           type: "string",
-          description: "HDFS path prefix template",
+          description:
+            "Directory prefix for organizing stored objects (template-enabled, should end with /)",
         },
-        user: {
-          type: "string",
-          description: "HDFS user name",
-        },
-        ...encodingSchema(["json", "ndjson", "text", "csv", "raw_message"]),
-        ...compressionSchema(["gzip", "none", "zstd"], "none"),
+        ...encodingSchema([
+          "json",
+          "ndjson",
+          "text",
+          "csv",
+          "raw_message",
+          "logfmt",
+          "avro",
+          "native",
+          "native_json",
+          "gelf",
+          "cef",
+          "syslog",
+          "otlp",
+          "protobuf",
+        ]),
+        ...compressionSchema(["gzip", "none", "snappy", "zlib", "zstd"], "gzip"),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "300" }),
         ...bufferSchema(),
         ...requestSchema(),
