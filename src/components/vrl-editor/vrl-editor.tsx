@@ -16,7 +16,9 @@ import {
 import { vrlTheme } from "./vrl-theme";
 import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
 import { VrlSnippetDrawer } from "@/components/flow/vrl-snippet-drawer";
-import type { Monaco } from "@monaco-editor/react";
+import type { Monaco, OnMount } from "@monaco-editor/react";
+
+type EditorInstance = Parameters<OnMount>[0];
 
 const Editor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
   ssr: false,
@@ -49,7 +51,7 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
   const [showTest, setShowTest] = useState(false);
   const [showSnippets, setShowSnippets] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const editorRef = useRef<unknown>(null);
+  const editorRef = useRef<EditorInstance | null>(null);
 
   const testMutation = useMutation(
     trpc.vrl.test.mutationOptions({
