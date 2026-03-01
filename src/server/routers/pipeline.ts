@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { ComponentKind } from "@/generated/prisma";
+import { ComponentKind, LogLevel } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import {
   createVersion,
@@ -210,6 +210,71 @@ export const pipelineRouter = router({
 
       return prisma.pipeline.delete({
         where: { id: input.id },
+      });
+    }),
+
+  clone: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.cloned", "Pipeline"))
+    .mutation(async ({ input, ctx }) => {
+      const source = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        include: { nodes: true, edges: true },
+      });
+      if (!source) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Pipeline not found",
+        });
+      }
+
+      return prisma.$transaction(async (tx) => {
+        // Create the new pipeline as a draft
+        const cloned = await tx.pipeline.create({
+          data: {
+            name: `${source.name} (Copy)`,
+            description: source.description,
+            environmentId: source.environmentId,
+            globalConfig: source.globalConfig ?? undefined,
+            updatedById: ctx.session.user?.id,
+          },
+        });
+
+        // Build old→new node ID mapping
+        const nodeIdMap = new Map<string, string>();
+        for (const node of source.nodes) {
+          const created = await tx.pipelineNode.create({
+            data: {
+              pipelineId: cloned.id,
+              componentKey: node.componentKey,
+              componentType: node.componentType,
+              kind: node.kind,
+              config: node.config ?? {},
+              positionX: node.positionX,
+              positionY: node.positionY,
+            },
+          });
+          nodeIdMap.set(node.id, created.id);
+        }
+
+        // Copy edges, remapping source/target to new node IDs
+        for (const edge of source.edges) {
+          const newSource = nodeIdMap.get(edge.sourceNodeId);
+          const newTarget = nodeIdMap.get(edge.targetNodeId);
+          if (newSource && newTarget) {
+            await tx.pipelineEdge.create({
+              data: {
+                pipelineId: cloned.id,
+                sourceNodeId: newSource,
+                targetNodeId: newTarget,
+                sourcePort: edge.sourcePort,
+              },
+            });
+          }
+        }
+
+        return { id: cloned.id, name: cloned.name };
       });
     }),
 
@@ -438,25 +503,45 @@ export const pipelineRouter = router({
     }),
 
   logs: protectedProcedure
-    .input(z.object({ pipelineId: z.string() }))
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        cursor: z.string().optional(),
+        limit: z.number().min(1).max(500).default(200),
+        levels: z.array(z.nativeEnum(LogLevel)).optional(),
+        nodeId: z.string().optional(),
+      }),
+    )
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      const statuses = await prisma.nodePipelineStatus.findMany({
-        where: { pipelineId: input.pipelineId },
-        select: {
-          nodeId: true,
-          recentLogs: true,
+      const { pipelineId, cursor, limit, levels, nodeId } = input;
+      const take = limit;
+
+      const where: Record<string, unknown> = { pipelineId };
+      if (levels && levels.length > 0) {
+        where.level = { in: levels };
+      }
+      if (nodeId) {
+        where.nodeId = nodeId;
+      }
+
+      const items = await prisma.pipelineLog.findMany({
+        where,
+        orderBy: { timestamp: "desc" },
+        take: take + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        include: {
           node: { select: { name: true } },
+          pipeline: { select: { name: true } },
         },
       });
 
-      const logs: Array<{ nodeName: string; lines: string[] }> = [];
-      for (const s of statuses) {
-        const lines = Array.isArray(s.recentLogs) ? (s.recentLogs as string[]) : [];
-        if (lines.length > 0) {
-          logs.push({ nodeName: s.node.name, lines });
-        }
+      let nextCursor: string | undefined;
+      if (items.length > take) {
+        const nextItem = items.pop();
+        nextCursor = nextItem?.id;
       }
-      return logs;
+
+      return { items, nextCursor };
     }),
 });
