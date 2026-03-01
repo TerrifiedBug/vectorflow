@@ -1,17 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, KeyRound, User } from "lucide-react";
+import { LogOut, User } from "lucide-react";
 
 import { useTRPC } from "@/trpc/client";
 import { AppSidebar } from "@/components/app-sidebar";
 import { EnvironmentSelector } from "@/components/environment-selector";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
-import { EditProfileDialog } from "@/components/edit-profile-dialog";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ const pageTitles: Record<string, string> = {
   "/templates": "Templates",
   "/audit": "Audit Log",
   "/settings": "Settings",
+  "/profile": "Profile",
 };
 
 function getPageTitle(pathname: string): string {
@@ -55,8 +56,6 @@ export default function DashboardLayout({
   const { data: session } = useSession();
   const trpc = useTRPC();
   const { data: me } = useQuery(trpc.user.me.queryOptions());
-  const isLocalUser = me?.authMethod !== "OIDC";
-
   const userName = session?.user?.name;
   const userEmail = session?.user?.email;
   const userImage = session?.user?.image;
@@ -73,8 +72,6 @@ export default function DashboardLayout({
   })();
 
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
-  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
-
   // Force password change dialog when mustChangePassword is set
   useEffect(() => {
     if (me?.mustChangePassword) {
@@ -120,18 +117,12 @@ export default function DashboardLayout({
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {isLocalUser && (
-                  <>
-                    <DropdownMenuItem onClick={() => setProfileDialogOpen(true)}>
-                      <User className="mr-2 h-4 w-4" />
-                      Edit Profile
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setPasswordDialogOpen(true)}>
-                      <KeyRound className="mr-2 h-4 w-4" />
-                      Change Password
-                    </DropdownMenuItem>
-                  </>
-                )}
+                <DropdownMenuItem asChild>
+                  <Link href="/profile">
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => signOut({ callbackUrl: "/login" })}
                 >
@@ -143,7 +134,6 @@ export default function DashboardLayout({
           </div>
         </header>
         <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
-        <EditProfileDialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen} />
         <div className="flex-1 p-6">{children}</div>
       </SidebarInset>
     </SidebarProvider>
