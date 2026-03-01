@@ -64,7 +64,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { TotpSetupCard } from "@/components/totp-setup-card";
+
 
 // ─── Auth Tab ──────────────────────────────────────────────────────────────────
 
@@ -2112,9 +2112,6 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {me && (
-        <TotpSetupCard totpEnabled={me.totpEnabled} authMethod={me.authMethod} />
-      )}
 
       <Tabs defaultValue={isTeamAdmin ? "team" : isSuperAdmin ? "auth" : "team"}>
         <TabsList>
