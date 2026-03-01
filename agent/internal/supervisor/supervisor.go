@@ -21,6 +21,7 @@ type ProcessInfo struct {
 	Status     string // RUNNING, STARTING, STOPPED, CRASHED
 	StartedAt  time.Time
 	APIPort    int
+	LogLevel   string
 	Secrets    map[string]string
 	cmd        *exec.Cmd
 	configPath string
@@ -51,7 +52,7 @@ func (s *Supervisor) nextPort() int {
 }
 
 // Start spawns a new Vector process for a pipeline.
-func (s *Supervisor) Start(pipelineID, configPath string, version int, secrets map[string]string) error {
+func (s *Supervisor) Start(pipelineID, configPath string, version int, logLevel string, secrets map[string]string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -60,10 +61,10 @@ func (s *Supervisor) Start(pipelineID, configPath string, version int, secrets m
 	}
 
 	port := s.nextPort()
-	return s.startProcess(pipelineID, configPath, version, secrets, port)
+	return s.startProcess(pipelineID, configPath, version, logLevel, secrets, port)
 }
 
-func (s *Supervisor) startProcess(pipelineID, configPath string, version int, secrets map[string]string, port int) error {
+func (s *Supervisor) startProcess(pipelineID, configPath string, version int, logLevel string, secrets map[string]string, port int) error {
 	// Inject api: block into the config file so the agent can scrape metrics
 	// via Vector's GraphQL endpoint. The env var VECTOR_API_ENABLED doesn't
 	// exist — it must be in the config file.
@@ -75,8 +76,11 @@ func (s *Supervisor) startProcess(pipelineID, configPath string, version int, se
 		"--config", configPath,
 	)
 
-	// Inject secrets as environment variables
+	// Inject environment variables
 	cmd.Env = os.Environ()
+	if logLevel != "" {
+		cmd.Env = append(cmd.Env, "VECTOR_LOG="+logLevel)
+	}
 	for k, v := range secrets {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
@@ -96,6 +100,7 @@ func (s *Supervisor) startProcess(pipelineID, configPath string, version int, se
 		Status:     "STARTING",
 		StartedAt:  time.Now(),
 		APIPort:    port,
+		LogLevel:   logLevel,
 		Secrets:    secrets,
 		cmd:        cmd,
 		configPath: configPath,
@@ -151,7 +156,7 @@ func (s *Supervisor) monitor(info *ProcessInfo, port int) {
 			// Check it hasn't been stopped/replaced while we waited
 			if current, ok := s.processes[info.PipelineID]; ok && current == info {
 				delete(s.processes, info.PipelineID)
-				s.startProcess(info.PipelineID, info.configPath, info.Version, info.Secrets, port)
+				s.startProcess(info.PipelineID, info.configPath, info.Version, info.LogLevel, info.Secrets, port)
 			}
 		}()
 	} else {
@@ -195,14 +200,14 @@ func (s *Supervisor) stopProcess(info *ProcessInfo) error {
 }
 
 // Restart stops and starts a pipeline with new config.
-func (s *Supervisor) Restart(pipelineID, configPath string, version int, secrets map[string]string) error {
+func (s *Supervisor) Restart(pipelineID, configPath string, version int, logLevel string, secrets map[string]string) error {
 	s.Stop(pipelineID)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	port := s.nextPort()
-	return s.startProcess(pipelineID, configPath, version, secrets, port)
+	return s.startProcess(pipelineID, configPath, version, logLevel, secrets, port)
 }
 
 // UpdateVersion updates the reported version for a pipeline without restarting.

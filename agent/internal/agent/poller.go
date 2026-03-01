@@ -46,6 +46,7 @@ type PipelineAction struct {
 	Name       string
 	Version    int
 	ConfigPath string
+	LogLevel   string
 	Secrets    map[string]string
 }
 
@@ -94,6 +95,7 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 				Name:       pc.PipelineName,
 				Version:    pc.Version,
 				ConfigPath: configPath,
+				LogLevel:   pc.LogLevel,
 				Secrets:    pc.Secrets,
 			})
 		} else if prev.checksum != pc.Checksum {
@@ -108,6 +110,7 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 				Name:       pc.PipelineName,
 				Version:    pc.Version,
 				ConfigPath: configPath,
+				LogLevel:   pc.LogLevel,
 				Secrets:    pc.Secrets,
 			})
 		} else if prev.version != pc.Version {

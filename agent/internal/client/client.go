@@ -82,6 +82,7 @@ type PipelineConfig struct {
 	Version      int               `json:"version"`
 	ConfigYaml   string            `json:"configYaml"`
 	Checksum     string            `json:"checksum"`
+	LogLevel     string            `json:"logLevel,omitempty"`
 	Secrets      map[string]string `json:"secrets,omitempty"`
 	CertFiles    []CertFile        `json:"certFiles,omitempty"`
 }

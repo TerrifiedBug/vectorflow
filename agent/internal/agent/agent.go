@@ -101,12 +101,12 @@ func (a *Agent) pollAndApply() {
 		switch action.Action {
 		case ActionStart:
 			slog.Info("starting pipeline", "name", action.Name, "version", action.Version)
-			if err := a.supervisor.Start(action.PipelineID, action.ConfigPath, action.Version, action.Secrets); err != nil {
+			if err := a.supervisor.Start(action.PipelineID, action.ConfigPath, action.Version, action.LogLevel, action.Secrets); err != nil {
 				slog.Error("failed to start pipeline", "pipeline", action.PipelineID, "error", err)
 			}
 		case ActionRestart:
 			slog.Info("restarting pipeline", "name", action.Name, "version", action.Version, "reason", "config changed")
-			if err := a.supervisor.Restart(action.PipelineID, action.ConfigPath, action.Version, action.Secrets); err != nil {
+			if err := a.supervisor.Restart(action.PipelineID, action.ConfigPath, action.Version, action.LogLevel, action.Secrets); err != nil {
 				slog.Error("failed to restart pipeline", "pipeline", action.PipelineID, "error", err)
 			}
 		case ActionStop:

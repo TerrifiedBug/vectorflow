@@ -63,8 +63,10 @@ export function generateVectorToml(
   const lines: string[] = [];
 
   // Emit global config sections first (api, enrichment_tables, etc.)
+  // Skip log_level — it's a VectorFlow UI key, not a valid Vector config field.
   if (globalConfig) {
     for (const [section, value] of Object.entries(globalConfig)) {
+      if (section === "log_level") continue;
       if (typeof value === "object" && value !== null && !Array.isArray(value)) {
         lines.push(`[${section}]`);
         for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
