@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
+import { copyToClipboard } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Shield,
@@ -53,6 +54,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -61,6 +63,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { TotpSetupCard } from "@/components/totp-setup-card";
 
 // ─── Auth Tab ──────────────────────────────────────────────────────────────────
 
@@ -501,11 +505,13 @@ function FleetSettings() {
 
   const [pollIntervalSec, setPollIntervalSec] = useState(15);
   const [unhealthyThreshold, setUnhealthyThreshold] = useState(3);
+  const [metricsRetentionDays, setMetricsRetentionDays] = useState(7);
 
   useEffect(() => {
     if (settings) {
       setPollIntervalSec(Math.round(settings.fleetPollIntervalMs / 1000));
       setUnhealthyThreshold(settings.fleetUnhealthyThreshold);
+      if (settings.metricsRetentionDays) setMetricsRetentionDays(settings.metricsRetentionDays);
     }
   }, [settings]);
 
@@ -526,6 +532,7 @@ function FleetSettings() {
     updateFleetMutation.mutate({
       pollIntervalMs: pollIntervalSec * 1000,
       unhealthyThreshold,
+      metricsRetentionDays,
     });
   };
 
@@ -579,6 +586,22 @@ function FleetSettings() {
             <p className="text-xs text-muted-foreground">
               Number of consecutive failed polls before marking a node as
               unhealthy
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="metrics-retention">Metrics Retention (days)</Label>
+            <Input
+              id="metrics-retention"
+              type="number"
+              min={1}
+              max={365}
+              value={metricsRetentionDays}
+              onChange={(e) => setMetricsRetentionDays(Number(e.target.value))}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              How long to keep pipeline metrics data (1-365 days)
             </p>
           </div>
 
@@ -661,6 +684,8 @@ function TeamSettings() {
 
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [tempPassword, setTempPassword] = useState("");
+  const [resetPasswordConfirm, setResetPasswordConfirm] = useState<{ userId: string; name: string } | null>(null);
+  const [lockConfirm, setLockConfirm] = useState<{ userId: string; name: string; action: "lock" | "unlock" } | null>(null);
   const [removeMember, setRemoveMember] = useState<{ userId: string; name: string } | null>(null);
 
   const lockMutation = useMutation(
@@ -702,6 +727,18 @@ function TeamSettings() {
       },
       onError: (error) => {
         toast.error(error.message || "Failed to rename team");
+      },
+    })
+  );
+
+  const requireTwoFactorMutation = useMutation(
+    trpc.team.updateRequireTwoFactor.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.team.get.queryKey() });
+        toast.success("2FA requirement updated");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to update 2FA requirement");
       },
     })
   );
@@ -778,6 +815,40 @@ function TeamSettings() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            Security
+          </CardTitle>
+          <CardDescription>
+            Security settings for {team.name}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Require Two-Factor Authentication</Label>
+              <p className="text-xs text-muted-foreground">
+                Members without 2FA enabled will be prompted to set it up on login.
+              </p>
+            </div>
+            <Switch
+              checked={team.requireTwoFactor}
+              onCheckedChange={(checked) => {
+                if (selectedTeamId) {
+                  requireTwoFactorMutation.mutate({
+                    teamId: selectedTeamId,
+                    requireTwoFactor: checked,
+                  });
+                }
+              }}
+              disabled={requireTwoFactorMutation.isPending}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Team Members</CardTitle>
           <CardDescription>
             Manage members and their roles for {team.name}.
@@ -790,6 +861,7 @@ function TeamSettings() {
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>2FA</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-[150px]">Actions</TableHead>
               </TableRow>
@@ -833,8 +905,25 @@ function TeamSettings() {
                     </Select>
                   </TableCell>
                   <TableCell>
-                    {member.user.lockedAt && (
-                      <Badge variant="destructive" className="text-xs">Locked</Badge>
+                    {member.user.totpEnabled ? (
+                      <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+                        <Shield className="mr-1 h-3 w-3" />
+                        Enabled
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {member.user.lockedAt ? (
+                      <Badge variant="destructive" className="text-xs">
+                        <Lock className="mr-1 h-3 w-3" />
+                        Locked
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+                        Active
+                      </Badge>
                     )}
                   </TableCell>
                   <TableCell>
@@ -844,8 +933,8 @@ function TeamSettings() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() => unlockMutation.mutate({ teamId: team.id, userId: member.user.id })}
-                          disabled={unlockMutation.isPending}
+                          title="Unlock user"
+                          onClick={() => setLockConfirm({ userId: member.user.id, name: member.user.name || member.user.email, action: "unlock" })}
                         >
                           <Unlock className="h-4 w-4" />
                         </Button>
@@ -854,8 +943,8 @@ function TeamSettings() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() => lockMutation.mutate({ teamId: team.id, userId: member.user.id })}
-                          disabled={lockMutation.isPending}
+                          title="Lock user"
+                          onClick={() => setLockConfirm({ userId: member.user.id, name: member.user.name || member.user.email, action: "lock" })}
                         >
                           <Lock className="h-4 w-4" />
                         </Button>
@@ -865,8 +954,8 @@ function TeamSettings() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() => resetPasswordMutation.mutate({ teamId: team.id, userId: member.user.id })}
-                          disabled={resetPasswordMutation.isPending}
+                          title="Reset password"
+                          onClick={() => setResetPasswordConfirm({ userId: member.user.id, name: member.user.name || member.user.email })}
                         >
                           <KeyRound className="h-4 w-4" />
                         </Button>
@@ -888,30 +977,106 @@ function TeamSettings() {
         </CardContent>
       </Card>
 
-      <Dialog open={resetPasswordOpen} onOpenChange={setResetPasswordOpen}>
+      {/* Reset Password Confirmation Dialog */}
+      <Dialog open={!!resetPasswordConfirm} onOpenChange={(open) => {
+        if (!open) {
+          setResetPasswordConfirm(null);
+        }
+      }}>
         <DialogContent className="sm:max-w-md">
+          {resetPasswordOpen && tempPassword ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Temporary Password</DialogTitle>
+                <DialogDescription>
+                  Share this temporary password with the user. They will be required to change it on next login.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center gap-2">
+                <Input value={tempPassword} readOnly className="font-mono" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    copyToClipboard(tempPassword);
+                    toast.success("Copied to clipboard");
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => {
+                  setResetPasswordConfirm(null);
+                  setResetPasswordOpen(false);
+                  setTempPassword("");
+                }}>Done</Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Reset password?</DialogTitle>
+                <DialogDescription>
+                  This will generate a new temporary password for <span className="font-medium">{resetPasswordConfirm?.name}</span>. They will be required to change it on next login.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setResetPasswordConfirm(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  disabled={resetPasswordMutation.isPending}
+                  onClick={() => {
+                    if (!resetPasswordConfirm) return;
+                    resetPasswordMutation.mutate({ teamId: team.id, userId: resetPasswordConfirm.userId });
+                  }}
+                >
+                  {resetPasswordMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Resetting...
+                    </>
+                  ) : (
+                    "Reset Password"
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Lock/Unlock Confirmation Dialog */}
+      <Dialog open={!!lockConfirm} onOpenChange={(open) => !open && setLockConfirm(null)}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Temporary Password</DialogTitle>
+            <DialogTitle>{lockConfirm?.action === "lock" ? "Lock user?" : "Unlock user?"}</DialogTitle>
             <DialogDescription>
-              Share this temporary password with the user. It will only be shown once.
+              {lockConfirm?.action === "lock"
+                ? <><span className="font-medium">{lockConfirm?.name}</span> will be unable to log in until unlocked.</>
+                : <><span className="font-medium">{lockConfirm?.name}</span> will be able to log in again.</>}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex items-center gap-2">
-            <Input value={tempPassword} readOnly className="font-mono" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLockConfirm(null)}>
+              Cancel
+            </Button>
             <Button
-              type="button"
-              variant="outline"
-              size="icon"
+              variant={lockConfirm?.action === "lock" ? "destructive" : "default"}
+              disabled={lockMutation.isPending || unlockMutation.isPending}
               onClick={() => {
-                navigator.clipboard.writeText(tempPassword);
-                toast.success("Copied to clipboard");
+                if (!lockConfirm) return;
+                if (lockConfirm.action === "lock") {
+                  lockMutation.mutate({ teamId: team.id, userId: lockConfirm.userId }, { onSuccess: () => setLockConfirm(null) });
+                } else {
+                  unlockMutation.mutate({ teamId: team.id, userId: lockConfirm.userId }, { onSuccess: () => setLockConfirm(null) });
+                }
               }}
             >
-              <Copy className="h-4 w-4" />
+              {lockConfirm?.action === "lock" ? "Lock" : "Unlock"}
             </Button>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setResetPasswordOpen(false)}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1013,10 +1178,11 @@ function UsersSettings() {
   const [assignTeamId, setAssignTeamId] = useState("");
   const [assignRole, setAssignRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
   const [deleteDialog, setDeleteDialog] = useState<{ userId: string; userName: string } | null>(null);
+  const [removeFromTeamConfirm, setRemoveFromTeamConfirm] = useState<{ userId: string; userName: string; teamId: string; teamName: string } | null>(null);
+  const [toggleSuperAdminConfirm, setToggleSuperAdminConfirm] = useState<{ userId: string; userName: string; isSuperAdmin: boolean } | null>(null);
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
-  const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserTeamId, setNewUserTeamId] = useState("");
   const [newUserRole, setNewUserRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
   const [showCreatedPassword, setShowCreatedPassword] = useState(false);
@@ -1044,6 +1210,7 @@ function UsersSettings() {
         toast.success(
           data.isSuperAdmin ? "User promoted to super admin" : "Super admin status removed"
         );
+        setToggleSuperAdminConfirm(null);
       },
       onError: (error) => {
         toast.error(error.message || "Failed to toggle super admin status");
@@ -1066,18 +1233,14 @@ function UsersSettings() {
 
   const createUserMutation = useMutation(
     trpc.admin.createUser.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
         toast.success("User created");
-        // Show the password if it was auto-generated
-        if (newUserPassword) {
-          setCreatedPassword(newUserPassword);
-          setShowCreatedPassword(true);
-        }
+        setCreatedPassword(data.generatedPassword);
+        setShowCreatedPassword(true);
         setCreateUserOpen(false);
         setNewUserEmail("");
         setNewUserName("");
-        setNewUserPassword("");
         setNewUserTeamId("");
         setNewUserRole("VIEWER");
       },
@@ -1090,6 +1253,41 @@ function UsersSettings() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
         toast.success("User removed from team");
+        setRemoveFromTeamConfirm(null);
+      },
+      onError: (error) => toast.error(error.message),
+    })
+  );
+
+  const lockUserMutation = useMutation(
+    trpc.admin.lockUser.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
+        toast.success("User locked");
+      },
+      onError: (error) => toast.error(error.message),
+    })
+  );
+
+  const unlockUserMutation = useMutation(
+    trpc.admin.unlockUser.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
+        toast.success("User unlocked");
+      },
+      onError: (error) => toast.error(error.message),
+    })
+  );
+
+  const [resetPasswordDialog, setResetPasswordDialog] = useState<{ userId: string; userName: string } | null>(null);
+  const [resetPasswordResult, setResetPasswordResult] = useState("");
+  const [lockDialog, setLockDialog] = useState<{ userId: string; userName: string; action: "lock" | "unlock" } | null>(null);
+
+  const resetPasswordMutation = useMutation(
+    trpc.admin.resetPassword.mutationOptions({
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
+        setResetPasswordResult(data.temporaryPassword);
       },
       onError: (error) => toast.error(error.message),
     })
@@ -1127,6 +1325,8 @@ function UsersSettings() {
                 <TableHead>Email</TableHead>
                 <TableHead>Auth Method</TableHead>
                 <TableHead>Teams</TableHead>
+                <TableHead>Super Admin</TableHead>
+                <TableHead>2FA</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="w-[180px]">Actions</TableHead>
@@ -1160,7 +1360,7 @@ function UsersSettings() {
                             className="ml-0.5 rounded-full hover:bg-muted p-0.5"
                             onClick={(e) => {
                               e.stopPropagation();
-                              removeFromTeamMutation.mutate({ userId: user.id, teamId: m.team.id });
+                              setRemoveFromTeamConfirm({ userId: user.id, userName: user.name ?? user.email, teamId: m.team.id, teamName: m.team.name });
                             }}
                           >
                             <X className="h-3 w-3" />
@@ -1170,20 +1370,36 @@ function UsersSettings() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {user.isSuperAdmin && (
-                        <Badge className="text-xs">
-                          <Crown className="mr-1 h-3 w-3" />
-                          Super Admin
-                        </Badge>
-                      )}
-                      {user.lockedAt && (
-                        <Badge variant="destructive" className="text-xs">
-                          <Lock className="mr-1 h-3 w-3" />
-                          Locked
-                        </Badge>
-                      )}
-                    </div>
+                    {user.isSuperAdmin ? (
+                      <Badge className="text-xs">
+                        <Crown className="mr-1 h-3 w-3" />
+                        Yes
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {user.totpEnabled ? (
+                      <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+                        <Shield className="mr-1 h-3 w-3" />
+                        Enabled
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {user.lockedAt ? (
+                      <Badge variant="destructive" className="text-xs">
+                        <Lock className="mr-1 h-3 w-3" />
+                        Locked
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+                        Active
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(user.createdAt).toLocaleDateString()}
@@ -1208,11 +1424,47 @@ function UsersSettings() {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
+                        title={user.lockedAt ? "Unlock user" : "Lock user"}
+                        onClick={() =>
+                          setLockDialog({
+                            userId: user.id,
+                            userName: user.name || user.email,
+                            action: user.lockedAt ? "unlock" : "lock",
+                          })
+                        }
+                      >
+                        {user.lockedAt ? (
+                          <Unlock className="h-4 w-4" />
+                        ) : (
+                          <Lock className="h-4 w-4" />
+                        )}
+                      </Button>
+                      {user.authMethod !== "OIDC" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Reset password"
+                          onClick={() =>
+                            setResetPasswordDialog({
+                              userId: user.id,
+                              userName: user.name || user.email,
+                            })
+                          }
+                        >
+                          <KeyRound className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
                         title={user.isSuperAdmin ? "Remove super admin" : "Make super admin"}
                         disabled={toggleSuperAdminMutation.isPending}
                         onClick={() =>
-                          toggleSuperAdminMutation.mutate({
+                          setToggleSuperAdminConfirm({
                             userId: user.id,
+                            userName: user.name ?? user.email,
                             isSuperAdmin: !user.isSuperAdmin,
                           })
                         }
@@ -1325,6 +1577,39 @@ function UsersSettings() {
         </DialogContent>
       </Dialog>
 
+      {/* Lock/Unlock Confirmation Dialog */}
+      <Dialog open={!!lockDialog} onOpenChange={(open) => !open && setLockDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{lockDialog?.action === "lock" ? "Lock user?" : "Unlock user?"}</DialogTitle>
+            <DialogDescription>
+              {lockDialog?.action === "lock"
+                ? <><span className="font-medium">{lockDialog?.userName}</span> will be unable to log in until unlocked.</>
+                : <><span className="font-medium">{lockDialog?.userName}</span> will be able to log in again.</>}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLockDialog(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant={lockDialog?.action === "lock" ? "destructive" : "default"}
+              disabled={lockUserMutation.isPending || unlockUserMutation.isPending}
+              onClick={() => {
+                if (!lockDialog) return;
+                if (lockDialog.action === "lock") {
+                  lockUserMutation.mutate({ userId: lockDialog.userId }, { onSuccess: () => setLockDialog(null) });
+                } else {
+                  unlockUserMutation.mutate({ userId: lockDialog.userId }, { onSuccess: () => setLockDialog(null) });
+                }
+              }}
+            >
+              {lockDialog?.action === "lock" ? "Lock" : "Unlock"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete User Dialog */}
       <Dialog open={!!deleteDialog} onOpenChange={(open) => !open && setDeleteDialog(null)}>
         <DialogContent>
@@ -1365,7 +1650,6 @@ function UsersSettings() {
         if (!open) {
           setNewUserEmail("");
           setNewUserName("");
-          setNewUserPassword("");
           setNewUserTeamId("");
           setNewUserRole("VIEWER");
         }
@@ -1382,7 +1666,6 @@ function UsersSettings() {
             createUserMutation.mutate({
               email: newUserEmail,
               name: newUserName,
-              password: newUserPassword,
               ...(newUserTeamId ? { teamId: newUserTeamId, role: newUserRole } : {}),
             });
           }} className="space-y-4">
@@ -1406,34 +1689,6 @@ function UsersSettings() {
                 placeholder="Full name"
                 required
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-user-password">Password</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="new-user-password"
-                  type="text"
-                  value={newUserPassword}
-                  onChange={(e) => setNewUserPassword(e.target.value)}
-                  placeholder="Minimum 8 characters"
-                  required
-                  minLength={8}
-                  className="font-mono"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const array = new Uint8Array(12);
-                    crypto.getRandomValues(array);
-                    const password = btoa(String.fromCharCode(...array)).replace(/[+/=]/g, "").slice(0, 16);
-                    setNewUserPassword(password);
-                  }}
-                >
-                  Generate
-                </Button>
-              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1482,6 +1737,77 @@ function UsersSettings() {
         </DialogContent>
       </Dialog>
 
+      {/* Reset Password Confirmation Dialog */}
+      <Dialog open={!!resetPasswordDialog} onOpenChange={(open) => {
+        if (!open) {
+          setResetPasswordDialog(null);
+          setResetPasswordResult("");
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          {resetPasswordResult ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Temporary Password</DialogTitle>
+                <DialogDescription>
+                  Share this temporary password with the user. They will be required to change it on first login.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center gap-2">
+                <Input value={resetPasswordResult} readOnly className="font-mono" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    copyToClipboard(resetPasswordResult);
+                    toast.success("Copied to clipboard");
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => {
+                  setResetPasswordDialog(null);
+                  setResetPasswordResult("");
+                }}>Done</Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Reset password?</DialogTitle>
+                <DialogDescription>
+                  This will generate a new temporary password for <span className="font-medium">{resetPasswordDialog?.userName}</span>. They will be required to change it on next login.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setResetPasswordDialog(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  disabled={resetPasswordMutation.isPending}
+                  onClick={() => {
+                    if (!resetPasswordDialog) return;
+                    resetPasswordMutation.mutate({ userId: resetPasswordDialog.userId });
+                  }}
+                >
+                  {resetPasswordMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Resetting...
+                    </>
+                  ) : (
+                    "Reset Password"
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Password Display Dialog */}
       <Dialog open={showCreatedPassword} onOpenChange={setShowCreatedPassword}>
         <DialogContent className="sm:max-w-md">
@@ -1498,7 +1824,7 @@ function UsersSettings() {
               variant="outline"
               size="icon"
               onClick={() => {
-                navigator.clipboard.writeText(createdPassword);
+                copyToClipboard(createdPassword);
                 toast.success("Copied to clipboard");
               }}
             >
@@ -1513,6 +1839,39 @@ function UsersSettings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Remove from team confirmation */}
+      <ConfirmDialog
+        open={!!removeFromTeamConfirm}
+        onOpenChange={(open) => !open && setRemoveFromTeamConfirm(null)}
+        title="Remove from team?"
+        description={<>Remove <span className="font-medium">{removeFromTeamConfirm?.userName}</span> from <span className="font-medium">{removeFromTeamConfirm?.teamName}</span>? They will lose access to all environments and pipelines in this team.</>}
+        confirmLabel="Remove"
+        isPending={removeFromTeamMutation.isPending}
+        pendingLabel="Removing..."
+        onConfirm={() => {
+          if (!removeFromTeamConfirm) return;
+          removeFromTeamMutation.mutate({ userId: removeFromTeamConfirm.userId, teamId: removeFromTeamConfirm.teamId });
+        }}
+      />
+
+      {/* Toggle super admin confirmation */}
+      <ConfirmDialog
+        open={!!toggleSuperAdminConfirm}
+        onOpenChange={(open) => !open && setToggleSuperAdminConfirm(null)}
+        title={toggleSuperAdminConfirm?.isSuperAdmin ? "Grant super admin?" : "Remove super admin?"}
+        description={toggleSuperAdminConfirm?.isSuperAdmin
+          ? <><span className="font-medium">{toggleSuperAdminConfirm?.userName}</span> will get full platform access including all teams, user management, and system settings.</>
+          : <><span className="font-medium">{toggleSuperAdminConfirm?.userName}</span> will lose platform-wide admin access and only see teams they are a member of.</>
+        }
+        confirmLabel={toggleSuperAdminConfirm?.isSuperAdmin ? "Grant" : "Remove"}
+        variant={toggleSuperAdminConfirm?.isSuperAdmin ? "default" : "destructive"}
+        isPending={toggleSuperAdminMutation.isPending}
+        onConfirm={() => {
+          if (!toggleSuperAdminConfirm) return;
+          toggleSuperAdminMutation.mutate({ userId: toggleSuperAdminConfirm.userId, isSuperAdmin: toggleSuperAdminConfirm.isSuperAdmin });
+        }}
+      />
     </div>
   );
 }
@@ -1715,6 +2074,7 @@ function TeamsManagement() {
 
 export default function SettingsPage() {
   const trpc = useTRPC();
+
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   const teamRoleQuery = useQuery(
     trpc.team.teamRole.queryOptions(
@@ -1724,6 +2084,9 @@ export default function SettingsPage() {
   );
   const isSuperAdmin = teamRoleQuery.data?.isSuperAdmin ?? false;
   const isTeamAdmin = teamRoleQuery.data?.role === "ADMIN";
+
+  const meQuery = useQuery(trpc.user.me.queryOptions());
+  const me = meQuery.data;
 
   if (teamRoleQuery.isLoading) {
     return (
@@ -1748,6 +2111,10 @@ export default function SettingsPage() {
           Manage system configuration and team settings
         </p>
       </div>
+
+      {me && (
+        <TotpSetupCard totpEnabled={me.totpEnabled} authMethod={me.authMethod} />
+      )}
 
       <Tabs defaultValue={isTeamAdmin ? "team" : isSuperAdmin ? "auth" : "team"}>
         <TabsList>
