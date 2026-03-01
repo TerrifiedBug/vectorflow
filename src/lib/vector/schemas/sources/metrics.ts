@@ -1,5 +1,5 @@
 import type { VectorComponentDef } from "../../types";
-import { tlsSchema, authAwsSchema, authBasicBearerSchema } from "../shared";
+import { tlsSchema, authBasicBearerSchema } from "../shared";
 
 export const metricSources: VectorComponentDef[] = [
   {
@@ -25,6 +25,7 @@ export const metricSources: VectorComponentDef[] = [
               "host",
               "memory",
               "network",
+              "process",
               "cgroups",
             ],
           },
@@ -32,11 +33,13 @@ export const metricSources: VectorComponentDef[] = [
         },
         scrape_interval_secs: {
           type: "number",
-          description: "How often to collect metrics in seconds",
+          description: "How often to collect metrics in seconds (default: 15)",
+          default: 15,
         },
         namespace: {
           type: "string",
           description: "Namespace for metric names (default: host)",
+          default: "host",
         },
       },
       required: [],
@@ -55,16 +58,24 @@ export const metricSources: VectorComponentDef[] = [
       properties: {
         scrape_interval_secs: {
           type: "number",
-          description: "How often to collect internal metrics (default: 2)",
+          description: "How often to collect internal metrics (default: 1)",
+          default: 1,
         },
         namespace: {
           type: "string",
           description: "Namespace for metric names (default: vector)",
+          default: "vector",
         },
         tags: {
           type: "object",
-          additionalProperties: { type: "string" },
-          description: "Additional tags to add to all metrics",
+          properties: {
+            host_key: {
+              type: "string",
+              description:
+                "Tag name for the peer host address added to each metric",
+            },
+          },
+          description: "Tag configuration for internal metrics",
         },
       },
       required: [],
@@ -85,6 +96,7 @@ export const metricSources: VectorComponentDef[] = [
         interval_secs: {
           type: "number",
           description: "Emit interval in seconds (default: 1)",
+          default: 1,
         },
         metrics: {
           type: "array",
@@ -140,10 +152,12 @@ export const metricSources: VectorComponentDef[] = [
         scrape_interval_secs: {
           type: "number",
           description: "Scrape interval in seconds (default: 15)",
+          default: 15,
         },
         namespace: {
           type: "string",
           description: "Namespace for metric names (default: apache)",
+          default: "apache",
         },
       },
       required: ["endpoints"],
@@ -169,10 +183,12 @@ export const metricSources: VectorComponentDef[] = [
         scrape_interval_secs: {
           type: "number",
           description: "Scrape interval in seconds (default: 15)",
+          default: 15,
         },
         namespace: {
           type: "string",
           description: "Namespace for metric names (default: nginx)",
+          default: "nginx",
         },
         ...tlsSchema(),
         ...authBasicBearerSchema(),
@@ -200,10 +216,12 @@ export const metricSources: VectorComponentDef[] = [
         scrape_interval_secs: {
           type: "number",
           description: "Scrape interval in seconds (default: 15)",
+          default: 15,
         },
         namespace: {
           type: "string",
           description: "Namespace for metric names (default: mongodb)",
+          default: "mongodb",
         },
         ...tlsSchema(),
       },
@@ -240,10 +258,12 @@ export const metricSources: VectorComponentDef[] = [
         scrape_interval_secs: {
           type: "number",
           description: "Scrape interval in seconds (default: 15)",
+          default: 15,
         },
         namespace: {
           type: "string",
           description: "Namespace for metric names (default: postgresql)",
+          default: "postgresql",
         },
         ...tlsSchema(),
       },
@@ -264,18 +284,17 @@ export const metricSources: VectorComponentDef[] = [
         endpoint: {
           type: "string",
           description: "EventStoreDB stats endpoint (default: https://localhost:2113/stats)",
+          default: "https://localhost:2113/stats",
         },
         scrape_interval_secs: {
           type: "number",
           description: "Scrape interval in seconds (default: 15)",
-        },
-        namespace: {
-          type: "string",
-          description: "Namespace for metric names (default: eventstoredb)",
+          default: 15,
         },
         default_namespace: {
           type: "string",
-          description: "Default namespace prefix",
+          description: "Namespace for metric names (default: eventstoredb)",
+          default: "eventstoredb",
         },
         ...tlsSchema(),
       },
@@ -300,15 +319,17 @@ export const metricSources: VectorComponentDef[] = [
         version: {
           type: "string",
           enum: ["v2", "v3", "v4"],
-          description: "ECS metadata endpoint version (default: v4)",
+          description: "ECS metadata endpoint version (default: v2)",
+          default: "v2",
         },
         scrape_interval_secs: {
           type: "number",
           description: "Scrape interval in seconds (default: 15)",
+          default: 15,
         },
         namespace: {
           type: "string",
-          description: "Namespace for metric names (default: awsecs)",
+          description: "Namespace for metric names",
         },
       },
       required: [],
@@ -333,6 +354,12 @@ export const metricSources: VectorComponentDef[] = [
         scrape_interval_secs: {
           type: "number",
           description: "Scrape interval in seconds (default: 15)",
+          default: 15,
+        },
+        scrape_timeout_secs: {
+          type: "number",
+          description: "Timeout for each scrape request in seconds (default: 5)",
+          default: 5,
         },
         instance_tag: {
           type: "string",
@@ -345,6 +372,7 @@ export const metricSources: VectorComponentDef[] = [
         honor_labels: {
           type: "boolean",
           description: "Honor labels from the scraped metrics (default: false)",
+          default: false,
         },
         query: {
           type: "object",
@@ -370,12 +398,12 @@ export const metricSources: VectorComponentDef[] = [
       properties: {
         address: {
           type: "string",
-          description: "Address to listen on (default: 0.0.0.0:9090)",
+          description: "Address to listen on (e.g., 0.0.0.0:9090)",
         },
         ...authBasicBearerSchema(),
         ...tlsSchema(),
       },
-      required: [],
+      required: ["address"],
     },
   },
   {
@@ -392,11 +420,11 @@ export const metricSources: VectorComponentDef[] = [
       properties: {
         address: {
           type: "string",
-          description: "Address to listen on (default: 0.0.0.0:9091)",
+          description: "Address to listen on (e.g., 0.0.0.0:9091)",
         },
         ...tlsSchema(),
       },
-      required: [],
+      required: ["address"],
     },
   },
 ];
