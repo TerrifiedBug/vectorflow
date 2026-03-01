@@ -29,6 +29,32 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
+function formatCount(n: number | bigint): string {
+  const v = Number(n);
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+  return String(v);
+}
+
+function formatBytes(n: number | bigint): string {
+  const v = Number(n);
+  if (v >= 1_073_741_824) return `${(v / 1_073_741_824).toFixed(1)} GB`;
+  if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB`;
+  if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB`;
+  return `${v} B`;
+}
+
+function sumNodeStatuses(statuses: Array<{ eventsIn: bigint; eventsOut: bigint; bytesIn: bigint; bytesOut: bigint }>) {
+  let eventsIn = BigInt(0), eventsOut = BigInt(0), bytesIn = BigInt(0), bytesOut = BigInt(0);
+  for (const s of statuses) {
+    eventsIn += BigInt(s.eventsIn);
+    eventsOut += BigInt(s.eventsOut);
+    bytesIn += BigInt(s.bytesIn);
+    bytesOut += BigInt(s.bytesOut);
+  }
+  return { eventsIn, eventsOut, bytesIn, bytesOut };
+}
+
 export default function PipelinesPage() {
   const trpc = useTRPC();
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
@@ -122,14 +148,18 @@ export default function PipelinesPage() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead className="text-right">Events In / Out</TableHead>
+              <TableHead className="text-right">Bytes In / Out</TableHead>
               <TableHead>Components</TableHead>
               <TableHead>Last Updated</TableHead>
-              <TableHead>Updated By</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pipelines.map((pipeline) => (
+            {pipelines.map((pipeline) => {
+              const hasStats = pipeline.nodeStatuses.length > 0;
+              const totals = hasStats ? sumNodeStatuses(pipeline.nodeStatuses) : null;
+              return (
               <TableRow key={pipeline.id}>
                 <TableCell className="font-medium">
                   <Link
@@ -144,16 +174,21 @@ export default function PipelinesPage() {
                     {pipeline.isDraft ? "Draft" : "Deployed"}
                   </Badge>
                 </TableCell>
+                <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                  {totals
+                    ? `${formatCount(totals.eventsIn)} / ${formatCount(totals.eventsOut)}`
+                    : "—"}
+                </TableCell>
+                <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                  {totals
+                    ? `${formatBytes(totals.bytesIn)} / ${formatBytes(totals.bytesOut)}`
+                    : "—"}
+                </TableCell>
                 <TableCell>
                   {pipeline._count.nodes} nodes, {pipeline._count.edges} edges
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {new Date(pipeline.updatedAt).toLocaleDateString()}
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {pipeline.updatedBy
-                    ? pipeline.updatedBy.name || pipeline.updatedBy.email
-                    : "—"}
                 </TableCell>
                 <TableCell>
                   <DropdownMenu>
@@ -181,7 +216,8 @@ export default function PipelinesPage() {
                   </DropdownMenu>
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       )}

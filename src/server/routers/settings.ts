@@ -66,6 +66,7 @@ export const settingsRouter = router({
         fleetPollIntervalMs: settings.fleetPollIntervalMs,
         fleetUnhealthyThreshold: settings.fleetUnhealthyThreshold,
         metricsRetentionDays: settings.metricsRetentionDays,
+        logsRetentionDays: settings.logsRetentionDays,
         updatedAt: settings.updatedAt,
       };
     }),
@@ -188,6 +189,7 @@ export const settingsRouter = router({
         pollIntervalMs: z.number().int().min(1000).max(300000),
         unhealthyThreshold: z.number().int().min(1).max(100),
         metricsRetentionDays: z.number().int().min(1).max(365).optional(),
+        logsRetentionDays: z.number().int().min(1).max(30).optional(),
       })
     )
     .use(withAudit("settings.fleet_updated", "SystemSettings"))
@@ -200,6 +202,7 @@ export const settingsRouter = router({
           fleetPollIntervalMs: input.pollIntervalMs,
           fleetUnhealthyThreshold: input.unhealthyThreshold,
           ...(input.metricsRetentionDays !== undefined ? { metricsRetentionDays: input.metricsRetentionDays } : {}),
+          ...(input.logsRetentionDays !== undefined ? { logsRetentionDays: input.logsRetentionDays } : {}),
         },
       });
     }),

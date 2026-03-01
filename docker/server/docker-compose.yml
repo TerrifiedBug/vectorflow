@@ -1,0 +1,41 @@
+services:
+  postgres:
+    container_name: vectorflow-postgres
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: vectorflow
+      POSTGRES_USER: vectorflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vectorflow}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vectorflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  vectorflow:
+    container_name: vectorflow-server
+    image: ghcr.io/terrifiedbug/vectorflow-server:latest
+    build:
+      context: ../..
+      dockerfile: docker/server/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://vectorflow:${POSTGRES_PASSWORD:-vectorflow}@postgres:5432/vectorflow
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      AUTH_TRUST_HOST: "true"
+    env_file:
+      - path: .env
+        required: false
+
+volumes:
+  pgdata:
+    name: vectorflow-pgdata
+    external: true

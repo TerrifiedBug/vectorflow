@@ -141,9 +141,28 @@ type PipelineStatus struct {
 	RecentLogs    []string `json:"recentLogs,omitempty"`
 }
 
+// HostMetrics holds system-level metrics from the Vector host
+type HostMetrics struct {
+	MemoryTotalBytes  int64   `json:"memoryTotalBytes"`
+	MemoryUsedBytes   int64   `json:"memoryUsedBytes"`
+	MemoryFreeBytes   int64   `json:"memoryFreeBytes"`
+	CpuSecondsTotal   float64 `json:"cpuSecondsTotal"`
+	LoadAvg1          float64 `json:"loadAvg1"`
+	LoadAvg5          float64 `json:"loadAvg5"`
+	LoadAvg15         float64 `json:"loadAvg15"`
+	FsTotalBytes      int64   `json:"fsTotalBytes"`
+	FsUsedBytes       int64   `json:"fsUsedBytes"`
+	FsFreeBytes       int64   `json:"fsFreeBytes"`
+	DiskReadBytes     int64   `json:"diskReadBytes"`
+	DiskWrittenBytes  int64   `json:"diskWrittenBytes"`
+	NetRxBytes        int64   `json:"netRxBytes"`
+	NetTxBytes        int64   `json:"netTxBytes"`
+}
+
 // HeartbeatRequest is sent to POST /api/agent/heartbeat
 type HeartbeatRequest struct {
 	Pipelines     []PipelineStatus `json:"pipelines"`
+	HostMetrics   *HostMetrics     `json:"hostMetrics,omitempty"`
 	AgentVersion  string           `json:"agentVersion,omitempty"`
 	VectorVersion string           `json:"vectorVersion,omitempty"`
 }

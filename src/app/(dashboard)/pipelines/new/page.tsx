@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { FileText, Workflow } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
+import { generateId } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -106,7 +107,7 @@ export default function NewPipelinePage() {
 
         const idMap = new Map<string, string>();
         const pipelineNodes = templateNodes.map((n) => {
-          const newId = crypto.randomUUID();
+          const newId = generateId();
           idMap.set(n.id, newId);
           return {
             id: newId,
@@ -120,7 +121,7 @@ export default function NewPipelinePage() {
         });
 
         const pipelineEdges = templateEdges.map((edge) => ({
-          id: crypto.randomUUID(),
+          id: generateId(),
           sourceNodeId: idMap.get(edge.sourceNodeId) ?? edge.sourceNodeId,
           targetNodeId: idMap.get(edge.targetNodeId) ?? edge.targetNodeId,
           sourcePort: edge.sourcePort,

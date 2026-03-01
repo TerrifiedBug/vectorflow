@@ -9,13 +9,14 @@ import {
   Upload,
   Download,
   CheckCircle,
-  Pencil,
-  Activity,
+  CircleCheck,
+  CircleX,
   FileDown,
   Trash2,
   Rocket,
   BookTemplate,
   History,
+  BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml, generateVectorToml, importVectorConfig } from "@/lib/config-generator";
 import { useTRPC } from "@/trpc/client";
@@ -41,10 +49,15 @@ interface FlowToolbarProps {
   pipelineId?: string;
   onSave: () => void;
   onDeploy?: () => void;
+  onUndeploy?: () => void;
   onSaveAsTemplate?: () => void;
   isSaving?: boolean;
-  monitorMode?: boolean;
-  onToggleMonitor?: (enabled: boolean) => void;
+  isDraft?: boolean;
+  deployedAt?: Date | string | null;
+  hasConfigChanges?: boolean;
+  isDirty?: boolean;
+  metricsOpen?: boolean;
+  onToggleMetrics?: () => void;
 }
 
 function downloadFile(content: string, filename: string) {
@@ -61,11 +74,19 @@ export function FlowToolbar({
   pipelineId,
   onSave,
   onDeploy,
+  onUndeploy,
   onSaveAsTemplate,
   isSaving,
-  monitorMode = false,
-  onToggleMonitor,
+  isDraft = true,
+  deployedAt,
+  hasConfigChanges = false,
+  isDirty = false,
+  metricsOpen = false,
+  onToggleMetrics,
 }: FlowToolbarProps) {
+  const globalConfig = useFlowStore((s) => s.globalConfig);
+  const updateGlobalConfig = useFlowStore((s) => s.updateGlobalConfig);
+  const currentLogLevel = (globalConfig?.log_level as string) || "info";
   const canUndo = useFlowStore((s) => s.canUndo);
   const canRedo = useFlowStore((s) => s.canRedo);
   const undo = useFlowStore((s) => s.undo);
@@ -95,13 +116,13 @@ export function FlowToolbar({
   }));
 
   const handleExportYaml = () => {
-    const yaml = generateVectorYaml(nodes, edges);
+    const yaml = generateVectorYaml(nodes, edges, globalConfig);
     downloadFile(yaml, "pipeline.yaml");
     toast.success("Exported as YAML");
   };
 
   const handleExportToml = () => {
-    const toml = generateVectorToml(nodes, edges);
+    const toml = generateVectorToml(nodes, edges, globalConfig);
     downloadFile(toml, "pipeline.toml");
     toast.success("Exported as TOML");
   };
@@ -119,8 +140,8 @@ export function FlowToolbar({
       try {
         const content = reader.result as string;
         const format = file.name.endsWith(".toml") ? "toml" : "yaml";
-        const { nodes: newNodes, edges: newEdges } = importVectorConfig(content, format);
-        loadGraph(newNodes, newEdges);
+        const { nodes: newNodes, edges: newEdges, globalConfig: importedGlobalConfig } = importVectorConfig(content, format);
+        loadGraph(newNodes, newEdges, importedGlobalConfig);
         toast.success(`Imported ${newNodes.length} components from ${file.name}`);
       } catch (err) {
         toast.error("Import failed", { description: String(err) });
@@ -131,13 +152,13 @@ export function FlowToolbar({
   };
 
   const handleValidate = () => {
-    const yaml = generateVectorYaml(nodes, edges);
+    const yaml = generateVectorYaml(nodes, edges, globalConfig);
     validateMutation.mutate({ yaml });
   };
 
   return (
     <TooltipProvider>
-      <div className="flex h-10 items-center gap-1 border-b bg-background px-3">
+      <div className="flex h-10 items-center gap-1 px-3">
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="sm" onClick={onSave} disabled={isSaving} className="h-7 w-7 p-0">
@@ -264,44 +285,138 @@ export function FlowToolbar({
           </Tooltip>
         )}
 
-        <Separator orientation="vertical" className="mx-1 h-5" />
+        {onToggleMetrics && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={metricsOpen ? "secondary" : "ghost"}
+                size="sm"
+                onClick={onToggleMetrics}
+                className="h-7 w-7 p-0"
+              >
+                <BarChart3 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{metricsOpen ? "Hide metrics" : "Show metrics"}</TooltipContent>
+          </Tooltip>
+        )}
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={onDeploy}
-              disabled={nodes.length === 0}
-              className="h-7 gap-1.5 px-2.5 text-xs"
-            >
-              <Rocket className="h-3.5 w-3.5" />
-              Deploy
-            </Button>
+            <div>
+              <Select
+                value={currentLogLevel}
+                onValueChange={(value) =>
+                  updateGlobalConfig("log_level", value === "info" ? undefined : value)
+                }
+              >
+                <SelectTrigger className="h-7 w-[5.5rem] gap-1 border-none bg-transparent px-2 text-xs shadow-none hover:bg-accent">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(["trace", "debug", "info", "warn", "error"] as const).map((level) => (
+                    <SelectItem key={level} value={level}>
+                      {level}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </TooltipTrigger>
-          <TooltipContent>Deploy pipeline to environment</TooltipContent>
+          <TooltipContent>Pipeline log level</TooltipContent>
         </Tooltip>
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={monitorMode ? "default" : "ghost"}
-              size="sm"
-              onClick={() => onToggleMonitor?.(!monitorMode)}
-              className="relative h-7 w-7 p-0"
-            >
-              {monitorMode ? <Activity className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-              {monitorMode && (
-                <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-green-500" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {monitorMode ? "Switch to Edit mode" : "Switch to Monitor mode"}
-          </TooltipContent>
-        </Tooltip>
+        {/* Deploy state buttons */}
+        {(() => {
+          const isDeployed = !isDraft && !!deployedAt;
+          // isDirty = unsaved editor changes; hasConfigChanges = saved config differs from deployed
+          const hasChanges = isDeployed && (isDirty || hasConfigChanges);
+
+          if (!isDeployed) {
+            // Never deployed or undeployed
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={onDeploy}
+                    disabled={nodes.length === 0}
+                    className="h-7 gap-1.5 px-2.5 text-xs"
+                  >
+                    <Rocket className="h-3.5 w-3.5" />
+                    Deploy
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Deploy pipeline to environment</TooltipContent>
+              </Tooltip>
+            );
+          }
+
+          if (hasChanges) {
+            // Deployed but has changes to deploy
+            return (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={onDeploy}
+                      disabled={nodes.length === 0}
+                      className="h-7 gap-1.5 px-2.5 text-xs"
+                    >
+                      <Rocket className="h-3.5 w-3.5" />
+                      Deploy
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Changes detected — deploy to update</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={onUndeploy}
+                      className="h-7 gap-1.5 px-2.5 text-xs text-destructive hover:text-destructive"
+                    >
+                      <CircleX className="h-3.5 w-3.5" />
+                      Undeploy
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Remove deployed config</TooltipContent>
+                </Tooltip>
+              </>
+            );
+          }
+
+          // Deployed and up-to-date — no redeploy needed
+          return (
+            <>
+              <div className="flex items-center gap-1.5 px-2.5 text-xs text-green-600 dark:text-green-400">
+                <CircleCheck className="h-3.5 w-3.5" />
+                <span className="font-medium">Deployed</span>
+              </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onUndeploy}
+                    className="h-7 gap-1.5 px-2.5 text-xs text-destructive hover:text-destructive"
+                  >
+                    <CircleX className="h-3.5 w-3.5" />
+                    Undeploy
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Remove deployed config</TooltipContent>
+              </Tooltip>
+            </>
+          );
+        })()}
+
       </div>
     </TooltipProvider>
   );

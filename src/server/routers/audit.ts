@@ -28,41 +28,48 @@ export const auditRouter = router({
       } = input;
       const take = 50;
 
-      const where: Record<string, any> = {};
+      const conditions: Record<string, any>[] = [];
 
       if (action) {
-        where.action = action;
+        conditions.push({ action });
       }
 
       if (userId) {
-        where.userId = userId;
+        conditions.push({ userId });
       }
 
       if (entityType) {
-        where.entityType = entityType;
+        conditions.push({ entityType });
       }
 
       if (input.teamId) {
-        where.teamId = input.teamId;
+        conditions.push({
+          OR: [{ teamId: input.teamId }, { teamId: null }],
+        });
       }
 
       if (startDate || endDate) {
-        where.createdAt = {};
+        const createdAt: Record<string, any> = {};
         if (startDate) {
-          where.createdAt.gte = new Date(startDate);
+          createdAt.gte = new Date(startDate);
         }
         if (endDate) {
-          where.createdAt.lte = new Date(endDate);
+          createdAt.lte = new Date(endDate);
         }
+        conditions.push({ createdAt });
       }
 
       if (search) {
-        where.OR = [
-          { action: { contains: search, mode: "insensitive" } },
-          { entityType: { contains: search, mode: "insensitive" } },
-          { entityId: { contains: search, mode: "insensitive" } },
-        ];
+        conditions.push({
+          OR: [
+            { action: { contains: search, mode: "insensitive" } },
+            { entityType: { contains: search, mode: "insensitive" } },
+            { entityId: { contains: search, mode: "insensitive" } },
+          ],
+        });
       }
+
+      const where = conditions.length > 0 ? { AND: conditions } : {};
 
       const items = await prisma.auditLog.findMany({
         where,

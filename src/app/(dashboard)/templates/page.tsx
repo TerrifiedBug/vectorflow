@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
+import { generateId } from "@/lib/utils";
 import { useTeamStore } from "@/stores/team-store";
 import {
   FileText,
@@ -28,6 +30,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 /* ------------------------------------------------------------------ */
 /*  Category icon mapping                                              */
@@ -96,10 +99,13 @@ export default function TemplatesPage() {
     }),
   );
 
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+
   const deleteTemplateMutation = useMutation(
     trpc.template.delete.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: trpc.template.list.queryKey() });
+        setDeleteConfirm(null);
       },
     }),
   );
@@ -140,7 +146,7 @@ export default function TemplatesPage() {
     // Generate new IDs for nodes and update edge references
     const idMap = new Map<string, string>();
     const pipelineNodes = templateNodes.map((n) => {
-      const newId = crypto.randomUUID();
+      const newId = generateId();
       idMap.set(n.id, newId);
       return {
         id: newId,
@@ -154,7 +160,7 @@ export default function TemplatesPage() {
     });
 
     const pipelineEdges = templateEdges.map((e) => ({
-      id: crypto.randomUUID(),
+      id: generateId(),
       sourceNodeId: idMap.get(e.sourceNodeId) ?? e.sourceNodeId,
       targetNodeId: idMap.get(e.targetNodeId) ?? e.targetNodeId,
       sourcePort: e.sourcePort,
@@ -257,9 +263,7 @@ export default function TemplatesPage() {
                     size="sm"
                     variant="ghost"
                     className="text-destructive hover:text-destructive"
-                    onClick={() =>
-                      deleteTemplateMutation.mutate({ id: template.id })
-                    }
+                    onClick={() => setDeleteConfirm({ id: template.id, name: template.name })}
                     disabled={deleteTemplateMutation.isPending}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -270,6 +274,19 @@ export default function TemplatesPage() {
           </div>
         </section>
       )}
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        onOpenChange={(open) => !open && setDeleteConfirm(null)}
+        title="Delete template?"
+        description={<>Permanently delete <span className="font-medium">{deleteConfirm?.name}</span>? This action cannot be undone.</>}
+        confirmLabel="Delete"
+        isPending={deleteTemplateMutation.isPending}
+        pendingLabel="Deleting..."
+        onConfirm={() => {
+          if (!deleteConfirm) return;
+          deleteTemplateMutation.mutate({ id: deleteConfirm.id });
+        }}
+      />
     </div>
   );
 }

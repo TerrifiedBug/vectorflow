@@ -63,7 +63,7 @@ export const teamRouter = router({
         where: { id: input.id },
         include: {
           members: {
-            include: { user: { select: { id: true, name: true, email: true, image: true, authMethod: true, lockedAt: true } } },
+            include: { user: { select: { id: true, name: true, email: true, image: true, authMethod: true, totpEnabled: true, lockedAt: true } } },
           },
           _count: { select: { environments: true } },
         },
@@ -76,6 +76,7 @@ export const teamRouter = router({
 
   create: protectedProcedure
     .use(requireSuperAdmin())
+    .use(withAudit("team.created", "Team"))
     .input(z.object({ name: z.string().min(1).max(100) }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user!.id!;
@@ -92,6 +93,7 @@ export const teamRouter = router({
 
   delete: protectedProcedure
     .use(requireSuperAdmin())
+    .use(withAudit("team.deleted", "Team"))
     .input(z.object({ teamId: z.string() }))
     .mutation(async ({ input }) => {
       const team = await prisma.team.findUnique({
@@ -128,6 +130,7 @@ export const teamRouter = router({
 
   rename: protectedProcedure
     .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.renamed", "Team"))
     .input(z.object({ teamId: z.string(), name: z.string().min(1).max(100) }))
     .mutation(async ({ input }) => {
       const team = await prisma.team.findUnique({ where: { id: input.teamId } });
@@ -142,6 +145,7 @@ export const teamRouter = router({
 
   addMember: protectedProcedure
     .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.member_added", "Team"))
     .input(
       z.object({
         teamId: z.string(),
@@ -182,6 +186,7 @@ export const teamRouter = router({
 
   removeMember: protectedProcedure
     .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.member_removed", "Team"))
     .input(
       z.object({
         teamId: z.string(),
@@ -208,6 +213,7 @@ export const teamRouter = router({
 
   updateMemberRole: protectedProcedure
     .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.member_role_updated", "Team"))
     .input(
       z.object({
         teamId: z.string(),
@@ -234,6 +240,7 @@ export const teamRouter = router({
 
   lockMember: protectedProcedure
     .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.member_locked", "User"))
     .input(z.object({ teamId: z.string(), userId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const adminId = ctx.session!.user!.id!;
@@ -255,6 +262,7 @@ export const teamRouter = router({
 
   unlockMember: protectedProcedure
     .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.member_unlocked", "User"))
     .input(z.object({ teamId: z.string(), userId: z.string() }))
     .mutation(async ({ input }) => {
       const member = await prisma.teamMember.findUnique({
@@ -271,6 +279,7 @@ export const teamRouter = router({
 
   resetMemberPassword: protectedProcedure
     .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.member_password_reset", "User"))
     .input(z.object({ teamId: z.string(), userId: z.string() }))
     .mutation(async ({ input }) => {
       const member = await prisma.teamMember.findUnique({
@@ -291,5 +300,17 @@ export const teamRouter = router({
       });
 
       return { temporaryPassword };
+    }),
+
+  updateRequireTwoFactor: protectedProcedure
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.require_2fa_updated", "Team"))
+    .input(z.object({ teamId: z.string(), requireTwoFactor: z.boolean() }))
+    .mutation(async ({ input }) => {
+      return prisma.team.update({
+        where: { id: input.teamId },
+        data: { requireTwoFactor: input.requireTwoFactor },
+        select: { id: true, requireTwoFactor: true },
+      });
     }),
 });

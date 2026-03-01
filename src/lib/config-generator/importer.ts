@@ -1,7 +1,78 @@
 import yaml from "js-yaml";
 import type { Node, Edge } from "@xyflow/react";
 import { findComponentDef } from "@/lib/vector/catalog";
+import { generateId } from "@/lib/utils";
 import Dagre from "@dagrejs/dagre";
+
+/** Top-level keys that represent the pipeline graph — everything else is globalConfig */
+const GRAPH_SECTIONS = new Set(["sources", "transforms", "sinks"]);
+
+/**
+ * Known field renames across Vector versions.
+ * Key: old field name, Value: { newName, kinds (which component kinds it applies to) }
+ */
+const FIELD_RENAMES: Record<string, { newName: string; kinds: Set<string> }> = {
+  fingerprinting: { newName: "fingerprint", kinds: new Set(["source"]) },
+};
+
+/**
+ * Convert request.headers.Authorization bearer/basic tokens into Vector's
+ * canonical `auth` structure so the GUI auth fields are populated correctly.
+ *
+ * Handles:
+ *  - request.headers.Authorization: "Bearer <token>" → auth.strategy=bearer, auth.token=<token>
+ *  - request.headers.Authorization: "Basic <b64>"    → auth.strategy=basic, auth.user/password (decoded)
+ */
+function normaliseAuth(config: Record<string, any>): void {
+  const authHeader = config.request?.headers?.Authorization as string | undefined;
+  if (!authHeader || typeof authHeader !== "string") return;
+
+  // Already has an explicit auth block — don't overwrite
+  if (config.auth?.strategy) return;
+
+  if (authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice("Bearer ".length).trim();
+    config.auth = { strategy: "bearer", token };
+  } else if (authHeader.startsWith("Basic ")) {
+    const decoded = atob(authHeader.slice("Basic ".length).trim());
+    const colonIdx = decoded.indexOf(":");
+    if (colonIdx > -1) {
+      config.auth = {
+        strategy: "basic",
+        user: decoded.slice(0, colonIdx),
+        password: decoded.slice(colonIdx + 1),
+      };
+    }
+  }
+
+  // Remove the Authorization header since auth is now in the dedicated block
+  delete config.request.headers.Authorization;
+  // Clean up empty headers/request objects
+  if (Object.keys(config.request.headers).length === 0) {
+    delete config.request.headers;
+  }
+  if (Object.keys(config.request).length === 0) {
+    delete config.request;
+  }
+}
+
+/**
+ * Rename deprecated Vector config fields to their current names.
+ */
+function normaliseFieldNames(config: Record<string, any>, kind: string): void {
+  for (const [oldName, { newName, kinds }] of Object.entries(FIELD_RENAMES)) {
+    if (kinds.has(kind) && oldName in config && !(newName in config)) {
+      config[newName] = config[oldName];
+      delete config[oldName];
+    }
+  }
+}
+
+export interface ImportResult {
+  nodes: Node[];
+  edges: Edge[];
+  globalConfig: Record<string, any> | null;
+}
 
 /**
  * Parse a Vector YAML (or TOML — YAML-only for now) config string and
@@ -9,14 +80,25 @@ import Dagre from "@dagrejs/dagre";
  *
  * The returned nodes carry `data: { componentDef, componentKey, config }`
  * matching the shape the flow store expects.
+ *
+ * Top-level sections outside sources/transforms/sinks (e.g. enrichment_tables,
+ * api) are returned as `globalConfig` for separate storage.
  */
 export function importVectorConfig(
   content: string,
   format: "yaml" | "toml" = "yaml",
-): { nodes: Node[]; edges: Edge[] } {
+): ImportResult {
   // Currently only YAML is fully supported; TOML parsing could be added
   // later with a TOML library.
   const config = yaml.load(content) as Record<string, any>;
+
+  // Extract global config — everything that isn't sources/transforms/sinks
+  const globalConfig: Record<string, any> = {};
+  for (const key of Object.keys(config)) {
+    if (!GRAPH_SECTIONS.has(key)) {
+      globalConfig[key] = config[key];
+    }
+  }
 
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -48,7 +130,14 @@ export function importVectorConfig(
       // Strip `type` and `inputs` — they are structural, not user config
       const { type: _type, inputs: _inputs, ...nodeConfig } = value;
 
-      const nodeId = crypto.randomUUID();
+      // Normalise deprecated field names (e.g. fingerprinting → fingerprint)
+      normaliseFieldNames(nodeConfig, kind);
+
+      // Normalise auth: convert request.headers.Authorization bearer tokens
+      // into the canonical auth: { strategy, token } structure that the GUI expects
+      normaliseAuth(nodeConfig);
+
+      const nodeId = generateId();
       nodeMap.set(key, nodeId);
 
       nodes.push({
@@ -66,7 +155,7 @@ export function importVectorConfig(
 
         for (const input of inputList) {
           edges.push({
-            id: crypto.randomUUID(),
+            id: generateId(),
             source: input, // temporary — componentKey, resolved after all nodes parsed
             target: nodeId,
           });
@@ -101,5 +190,9 @@ export function importVectorConfig(
     node.position = { x: pos.x - 125, y: pos.y - 60 };
   }
 
-  return { nodes, edges };
+  return {
+    nodes,
+    edges,
+    globalConfig: Object.keys(globalConfig).length > 0 ? globalConfig : null,
+  };
 }

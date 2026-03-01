@@ -57,6 +57,14 @@ export const pipelineRouter = router({
           updatedAt: true,
           updatedBy: { select: { name: true, email: true } },
           _count: { select: { nodes: true, edges: true } },
+          nodeStatuses: {
+            select: {
+              eventsIn: true,
+              eventsOut: true,
+              bytesIn: true,
+              bytesOut: true,
+            },
+          },
         },
         orderBy: { updatedAt: "desc" },
       });

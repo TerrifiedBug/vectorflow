@@ -1,0 +1,17 @@
+services:
+  vf-agent1:
+    container_name: vectorflow-agent1
+    image: ghcr.io/terrifiedbug/vectorflow-agent:latest
+    build:
+      context: ../../agent
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - agent-data:/var/lib/vf-agent
+    network_mode: host
+    restart: unless-stopped
+
+volumes:
+  agent-data:
+    name: vectorflow-agent-data

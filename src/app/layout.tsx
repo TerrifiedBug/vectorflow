@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { AuthSessionProvider } from "@/components/session-provider";
 import { TRPCClientProvider } from "@/trpc/client";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -37,11 +38,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <TRPCClientProvider>
-            <TooltipProvider>
-              {children}
-            </TooltipProvider>
-          </TRPCClientProvider>
+          <AuthSessionProvider>
+            <TRPCClientProvider>
+              <TooltipProvider>
+                {children}
+              </TooltipProvider>
+            </TRPCClientProvider>
+          </AuthSessionProvider>
           <Toaster />
         </ThemeProvider>
       </body>

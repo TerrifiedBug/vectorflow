@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
 import { checkNodeHealth } from "@/server/services/fleet-health";
 import { ingestMetrics } from "@/server/services/metrics-ingest";
+import { ingestLogs } from "@/server/services/log-ingest";
 import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
 
 let lastCleanup = 0;
@@ -22,6 +23,23 @@ interface PipelineStatus {
   recentLogs?: string[];
 }
 
+interface HostMetrics {
+  memoryTotalBytes?: number;
+  memoryUsedBytes?: number;
+  memoryFreeBytes?: number;
+  cpuSecondsTotal?: number;
+  loadAvg1?: number;
+  loadAvg5?: number;
+  loadAvg15?: number;
+  fsTotalBytes?: number;
+  fsUsedBytes?: number;
+  fsFreeBytes?: number;
+  diskReadBytes?: number;
+  diskWrittenBytes?: number;
+  netRxBytes?: number;
+  netTxBytes?: number;
+}
+
 export async function POST(request: Request) {
   const agent = await authenticateAgent(request);
   if (!agent) {
@@ -30,8 +48,9 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { pipelines, agentVersion, vectorVersion } = body as {
+    const { pipelines, hostMetrics, agentVersion, vectorVersion } = body as {
       pipelines: PipelineStatus[];
+      hostMetrics?: HostMetrics;
       agentVersion?: string;
       vectorVersion?: string;
     };
@@ -149,6 +168,32 @@ export async function POST(request: Request) {
       });
     }
 
+    // Store host metrics time-series data
+    if (hostMetrics) {
+      prisma.nodeMetric
+        .create({
+          data: {
+            nodeId: agent.nodeId,
+            timestamp: now,
+            memoryTotalBytes: hostMetrics.memoryTotalBytes ?? 0,
+            memoryUsedBytes: hostMetrics.memoryUsedBytes ?? 0,
+            memoryFreeBytes: hostMetrics.memoryFreeBytes ?? 0,
+            cpuSecondsTotal: hostMetrics.cpuSecondsTotal ?? 0,
+            loadAvg1: hostMetrics.loadAvg1 ?? 0,
+            loadAvg5: hostMetrics.loadAvg5 ?? 0,
+            loadAvg15: hostMetrics.loadAvg15 ?? 0,
+            fsTotalBytes: hostMetrics.fsTotalBytes ?? 0,
+            fsUsedBytes: hostMetrics.fsUsedBytes ?? 0,
+            fsFreeBytes: hostMetrics.fsFreeBytes ?? 0,
+            diskReadBytes: hostMetrics.diskReadBytes ?? 0,
+            diskWrittenBytes: hostMetrics.diskWrittenBytes ?? 0,
+            netRxBytes: hostMetrics.netRxBytes ?? 0,
+            netTxBytes: hostMetrics.netTxBytes ?? 0,
+          },
+        })
+        .catch((err) => console.error("Node metrics insert error:", err));
+    }
+
     // Ingest metrics from pipelines that report counter data
     const metricsData = pipelines
       .filter((p) => p.eventsIn !== undefined)
@@ -167,6 +212,15 @@ export async function POST(request: Request) {
       ingestMetrics(metricsData, prevSnapshots).catch((err) =>
         console.error("Metrics ingestion error:", err),
       );
+    }
+
+    // Persist pipeline logs
+    for (const ps of pipelines) {
+      if (Array.isArray(ps.recentLogs) && ps.recentLogs.length > 0) {
+        ingestLogs(agent.nodeId, ps.pipelineId, ps.recentLogs).catch((err) =>
+          console.error("Log ingestion error:", err),
+        );
+      }
     }
 
     // Check fleet-wide node health

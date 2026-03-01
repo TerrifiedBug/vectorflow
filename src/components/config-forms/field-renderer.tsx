@@ -11,6 +11,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { SecretPickerInput } from "./secret-picker-input";
+import { CertPickerInput, isCertFileField } from "./cert-picker-input";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -22,6 +24,7 @@ interface FieldSchema {
   enum?: string[];
   items?: { type?: string };
   properties?: Record<string, FieldSchema>;
+  additionalProperties?: { type?: string };
   required?: string[];
   default?: unknown;
   sensitive?: boolean;
@@ -195,6 +198,82 @@ export function FieldRenderer({
     );
   }
 
+  // ---- Key-value map (object with additionalProperties, no fixed properties) ----
+  if (
+    schema.type === "object" &&
+    schema.additionalProperties &&
+    !schema.properties
+  ) {
+    const entries = Object.entries(
+      (value as Record<string, string>) ?? {},
+    );
+    return (
+      <div className="space-y-2">
+        <Label>
+          {label}
+          {required && <span className="text-destructive ml-0.5">*</span>}
+        </Label>
+        {schema.description && (
+          <p className="text-xs text-muted-foreground">
+            {schema.description}
+          </p>
+        )}
+        <div className="space-y-2 border-l-2 border-border pl-4">
+          {entries.map(([k, v], i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                className="flex-1"
+                placeholder="Key"
+                value={k}
+                onChange={(e) => {
+                  const obj = { ...((value as Record<string, string>) ?? {}) };
+                  const oldVal = obj[k];
+                  delete obj[k];
+                  if (e.target.value) obj[e.target.value] = oldVal ?? "";
+                  onChange(obj);
+                }}
+              />
+              <Input
+                className="flex-1"
+                placeholder="Value"
+                value={v}
+                onChange={(e) => {
+                  onChange({
+                    ...((value as Record<string, string>) ?? {}),
+                    [k]: e.target.value,
+                  });
+                }}
+              />
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-destructive text-sm px-1"
+                onClick={() => {
+                  const obj = { ...((value as Record<string, string>) ?? {}) };
+                  delete obj[k];
+                  onChange(obj);
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              onChange({
+                ...((value as Record<string, string>) ?? {}),
+                "": "",
+              });
+            }}
+          >
+            + Add entry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ---- Nested object ----
   if (schema.type === "object" && schema.properties) {
     const objValue = (value as Record<string, unknown>) ?? {};
@@ -230,6 +309,9 @@ export function FieldRenderer({
   // ---- String (default) ----
   const isMultiline = isMultilineName(name);
   const isSensitive = schema.sensitive === true || /password|secret|token|api_key/i.test(name);
+  const isCertFile = isCertFileField(name);
+  const placeholder = schema.default !== undefined ? String(schema.default) : undefined;
+
   return (
     <div className="space-y-2">
       <Label>
@@ -240,19 +322,27 @@ export function FieldRenderer({
         <Textarea
           value={(value as string) ?? ""}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={
-            schema.default !== undefined ? String(schema.default) : undefined
-          }
+          placeholder={placeholder}
           rows={4}
+        />
+      ) : isSensitive ? (
+        <SecretPickerInput
+          value={(value as string) ?? ""}
+          onChange={(v) => onChange(v)}
+          placeholder={placeholder}
+        />
+      ) : isCertFile ? (
+        <CertPickerInput
+          fieldName={name}
+          value={(value as string) ?? ""}
+          onChange={(v) => onChange(v)}
         />
       ) : (
         <Input
-          type={isSensitive ? "password" : "text"}
+          type="text"
           value={(value as string) ?? ""}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={
-            schema.default !== undefined ? String(schema.default) : undefined
-          }
+          placeholder={placeholder}
         />
       )}
       {schema.description && (

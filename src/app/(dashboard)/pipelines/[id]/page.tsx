@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { NodeMetricsData } from "@/stores/flow-store";
 import {
   ReactFlowProvider,
   type Node,
@@ -104,6 +105,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const loadGraph = useFlowStore((s) => s.loadGraph);
   const isDirty = useFlowStore((s) => s.isDirty);
   const markClean = useFlowStore((s) => s.markClean);
+  const updateNodeMetrics = useFlowStore((s) => s.updateNodeMetrics);
 
   // Fetch pipeline data
   const pipelineQuery = useQuery(
@@ -132,6 +134,37 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     const flowEdges = dbEdgesToFlowEdges(pipelineQuery.data.edges);
     loadGraph(flowNodes, flowEdges, pipelineQuery.data.globalConfig as Record<string, unknown> | null);
   }, [pipelineQuery.data, loadGraph]);
+
+  // Poll per-component metrics from the in-memory MetricStore
+  const isDeployed = pipelineQuery.data && !pipelineQuery.data.isDraft;
+  const componentMetricsQuery = useQuery(
+    trpc.metrics.getPipelineMetrics.queryOptions(
+      { pipelineId, minutes: 5 },
+      { enabled: !!isDeployed, refetchInterval: 5000 },
+    ),
+  );
+
+  // Merge component metrics into flow node data
+  useEffect(() => {
+    const components = componentMetricsQuery.data?.components;
+    if (!components) return;
+
+    const metricsMap = new Map<string, NodeMetricsData>();
+    for (const [, entry] of Object.entries(components)) {
+      const latest = entry.samples[entry.samples.length - 1];
+      if (!latest) continue;
+      metricsMap.set(entry.componentKey, {
+        eventsPerSec: latest.sentEventsRate,
+        bytesPerSec: latest.sentBytesRate,
+        status: latest.sentEventsRate > 0 ? "healthy" : "degraded",
+        samples: entry.samples,
+      });
+    }
+
+    if (metricsMap.size > 0) {
+      updateNodeMetrics(metricsMap);
+    }
+  }, [componentMetricsQuery.data, updateNodeMetrics]);
 
   // Save mutation
   const saveMutation = useMutation(
