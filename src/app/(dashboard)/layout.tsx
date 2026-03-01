@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
 import { LogOut, KeyRound, User } from "lucide-react";
@@ -49,6 +49,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const pageTitle = getPageTitle(pathname);
 
   const { data: session } = useSession();
@@ -73,6 +74,21 @@ export default function DashboardLayout({
 
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+
+  // Force password change dialog when mustChangePassword is set
+  useEffect(() => {
+    if (me?.mustChangePassword) {
+      setPasswordDialogOpen(true);
+    }
+  }, [me?.mustChangePassword]);
+
+  // Redirect to dedicated 2FA setup page if required but not enabled
+  // Guard: wait for password change to complete first
+  useEffect(() => {
+    if (me && !me.mustChangePassword && me.twoFactorRequired && !me.totpEnabled && me.authMethod !== "OIDC") {
+      router.push("/setup-2fa");
+    }
+  }, [me, router]);
 
   return (
     <SidebarProvider>
@@ -126,7 +142,7 @@ export default function DashboardLayout({
             </DropdownMenu>
           </div>
         </header>
-        <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} />
+        <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
         <EditProfileDialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen} />
         <div className="flex-1 p-6">{children}</div>
       </SidebarInset>
