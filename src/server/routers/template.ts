@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { withAudit } from "@/server/middleware/audit";
 
 const templateNodeSchema = z.object({
   id: z.string(),
@@ -78,6 +79,7 @@ export const templateRouter = router({
       }),
     )
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("template.created", "Template"))
     .mutation(async ({ input }) => {
       // Verify team exists
       const team = await prisma.team.findUnique({
@@ -105,6 +107,7 @@ export const templateRouter = router({
   /** Delete a template */
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withAudit("template.deleted", "Template"))
     .mutation(async ({ input }) => {
       const existing = await prisma.template.findUnique({
         where: { id: input.id },
