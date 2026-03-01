@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -9,11 +9,14 @@ import {
   type ReactFlowInstance,
   type Edge,
   type Connection,
+  type NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useFlowStore } from "@/stores/flow-store";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { nodeTypes } from "./node-types";
+import { NodeContextMenu } from "./node-context-menu";
+import { EdgeContextMenu } from "./edge-context-menu";
 import { findComponentDef } from "@/lib/vector/catalog";
 import type { VectorComponentDef, DataType } from "@/lib/vector/types";
 
@@ -42,6 +45,18 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   const onConnect = useFlowStore((s) => s.onConnect);
   const addNode = useFlowStore((s) => s.addNode);
   const hasFitRef = useRef(false);
+  const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const [edgeContextMenu, setEdgeContextMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
+
+  const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
+    event.preventDefault();
+    setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
+  }, []);
+
+  const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.preventDefault();
+    setEdgeContextMenu({ edgeId: edge.id, x: event.clientX, y: event.clientY });
+  }, []);
 
   const reactFlowInstance = useReactFlow();
 
@@ -114,6 +129,9 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
         onDrop={onDrop}
         onDragOver={onDragOver}
         onInit={onInit}
+        onNodeContextMenu={onNodeContextMenu}
+        onEdgeContextMenu={onEdgeContextMenu}
+        onPaneClick={() => { setContextMenu(null); setEdgeContextMenu(null); }}
         isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}
         proOptions={{ hideAttribution: true }}
@@ -121,6 +139,22 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
         <Background gap={16} size={1} />
         <Controls className="!bg-card !border-border !shadow-md [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-accent" />
       </ReactFlow>
+      {contextMenu && (
+        <NodeContextMenu
+          nodeId={contextMenu.nodeId}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+      {edgeContextMenu && (
+        <EdgeContextMenu
+          edgeId={edgeContextMenu.edgeId}
+          x={edgeContextMenu.x}
+          y={edgeContextMenu.y}
+          onClose={() => setEdgeContextMenu(null)}
+        />
+      )}
     </div>
   );
 }
