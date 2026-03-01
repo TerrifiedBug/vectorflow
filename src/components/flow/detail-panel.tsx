@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { Trash2 } from "lucide-react";
+import { Copy, Trash2 } from "lucide-react";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
 import { VrlEditor } from "@/components/vrl-editor/vrl-editor";
@@ -65,6 +65,8 @@ function filterSchema(
 
 export function DetailPanel() {
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
+  const selectedNodeIds = useFlowStore((s) => s.selectedNodeIds);
+  const copySelectedNodes = useFlowStore((s) => s.copySelectedNodes);
   const nodes = useFlowStore((s) => s.nodes);
   const updateNodeConfig = useFlowStore((s) => s.updateNodeConfig);
   const updateNodeKey = useFlowStore((s) => s.updateNodeKey);
@@ -107,6 +109,41 @@ export function DetailPanel() {
           <p className="text-sm text-muted-foreground">
             Select a node to edit its configuration
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- Multi-select state ----
+  if (selectedNodeIds.size > 1) {
+    return (
+      <div className="flex h-full w-80 shrink-0 flex-col border-l bg-background">
+        <div className="space-y-4 p-4">
+          <h3 className="text-sm font-semibold">
+            {selectedNodeIds.size} components selected
+          </h3>
+          <div className="space-y-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={copySelectedNodes}
+            >
+              <Copy className="mr-2 h-4 w-4" />
+              Copy All
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="w-full"
+              onClick={() => {
+                selectedNodeIds.forEach((id) => removeNode(id));
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete All
+            </Button>
+          </div>
         </div>
       </div>
     );
