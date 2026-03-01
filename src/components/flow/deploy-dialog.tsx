@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
-import { Rocket, CheckCircle, XCircle, Loader2, GitBranch } from "lucide-react";
+import { Rocket, CheckCircle, XCircle, Loader2, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 
 interface DeployDialogProps {
@@ -38,30 +37,28 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     enabled: open,
   });
 
-  const gitopsMutation = useMutation(
-    trpc.deploy.gitops.mutationOptions({
+  const agentMutation = useMutation(
+    trpc.deploy.agent.mutationOptions({
       onSuccess: (result) => {
         setDeploying(false);
         queryClient.invalidateQueries();
 
         if (!result.success) {
-          const errorMsg = result.validationErrors?.map((e) => e.message).join("; ")
+          const errorMsg = result.validationErrors?.map((e: { message: string }) => e.message).join("; ")
             || result.error
             || "Unknown error";
-          toast.error("GitOps deploy failed", { description: errorMsg });
+          toast.error("Deploy failed", { description: errorMsg });
           return;
         }
 
-        toast.success("Config committed via GitOps", {
-          description: result.commitHash
-            ? `Commit ${result.commitHash.slice(0, 8)} (v${result.versionNumber ?? "?"})`
-            : undefined,
+        toast.success("Pipeline published to agents", {
+          description: result.versionNumber ? `Version v${result.versionNumber}` : undefined,
         });
         onOpenChange(false);
       },
       onError: (err) => {
         setDeploying(false);
-        toast.error("GitOps deploy failed", { description: err.message });
+        toast.error("Deploy failed", { description: err.message });
       },
     })
   );
@@ -72,15 +69,8 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   const isValid = preview?.validation?.valid ?? false;
 
   function handleDeploy() {
-    if (!env || !env.gitRepo || !env.gitBranch) return;
     setDeploying(true);
-
-    gitopsMutation.mutate({
-      pipelineId,
-      environmentId: env.environmentId,
-      repoUrl: env.gitRepo,
-      branch: env.gitBranch,
-    });
+    agentMutation.mutate({ pipelineId });
   }
 
   return (
@@ -102,26 +92,19 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Environment info */}
             {env && (
               <div className="rounded-md border p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">{env.environmentName}</span>
-                  <Badge variant="secondary" className="text-xs">
-                    <GitBranch className="mr-1 h-3 w-3" />GitOps
-                  </Badge>
                 </div>
-                {env.gitRepo && (
-                  <p className="text-xs text-muted-foreground truncate">
-                    {env.gitRepo} ({env.gitBranch ?? "main"})
-                  </p>
-                )}
+                <p className="text-xs text-muted-foreground">
+                  {env.nodes.length} node{env.nodes.length !== 1 ? "s" : ""} enrolled — agents will pick up changes on next poll
+                </p>
               </div>
             )}
 
             <Separator />
 
-            {/* Validation status */}
             {preview && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -144,7 +127,6 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
               </div>
             )}
 
-            {/* Config preview */}
             {preview?.configYaml && (
               <div className="space-y-1">
                 <span className="text-xs font-medium text-muted-foreground">Generated Config</span>
@@ -154,20 +136,10 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
               </div>
             )}
 
-            {/* Version info */}
             {preview?.currentVersion !== null && preview?.currentVersion !== undefined && (
               <p className="text-xs text-muted-foreground">
                 Current deployed version: v{preview.currentVersion}
               </p>
-            )}
-
-            {/* Git config warning */}
-            {env && (!env.gitRepo || !env.gitBranch) && (
-              <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-xs text-yellow-700 dark:text-yellow-400">
-                Git repository is not configured for this environment. Go to{" "}
-                <span className="font-medium">Environments &rarr; {env.environmentName} &rarr; Git Credentials</span>{" "}
-                to set up a repository and branch.
-              </div>
             )}
           </div>
         )}
@@ -178,12 +150,12 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
           </Button>
           <Button
             onClick={handleDeploy}
-            disabled={isLoading || !isValid || deploying || !env || !env?.gitRepo || !env?.gitBranch}
+            disabled={isLoading || !isValid || deploying}
           >
             {deploying ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Deploying...</>
             ) : (
-              <><GitBranch className="mr-2 h-4 w-4" />Push to Git</>
+              <><Radio className="mr-2 h-4 w-4" />Publish to Agents</>
             )}
           </Button>
         </DialogFooter>

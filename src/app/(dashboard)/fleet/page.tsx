@@ -1,14 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { Plus } from "lucide-react";
-import { useState } from "react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
 
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -19,23 +16,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { NodeStatus } from "@/generated/prisma";
+import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
 
 const statusColors: Record<NodeStatus, string> = {
   HEALTHY: "bg-green-500/15 text-green-700 dark:text-green-400",
@@ -62,15 +44,7 @@ function formatLastSeen(date: Date | string | null): string {
 
 export default function FleetPage() {
   const trpc = useTRPC();
-  const queryClient = useQueryClient();
-  const [dialogOpen, setDialogOpen] = useState(false);
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
-  const [newNode, setNewNode] = useState({
-    name: "",
-    host: "",
-    apiPort: "8686",
-    environmentId: "",
-  });
 
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
@@ -85,7 +59,6 @@ export default function FleetPage() {
 
   // Pick the first environment if none is selected yet
   const activeEnvId = selectedEnvironmentId || environments[0]?.id || "";
-
   const nodesQuery = useQuery(
     trpc.fleet.list.queryOptions(
       { environmentId: activeEnvId },
@@ -93,33 +66,11 @@ export default function FleetPage() {
     )
   );
 
-  const createMutation = useMutation(
-    trpc.fleet.create.mutationOptions({
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: trpc.fleet.list.queryKey() });
-        setDialogOpen(false);
-        setNewNode({ name: "", host: "", apiPort: "8686", environmentId: "" });
-      },
-    })
-  );
-
   const isLoading =
     environmentsQuery.isLoading ||
     nodesQuery.isLoading;
 
   const nodes = nodesQuery.data ?? [];
-
-  function handleCreateNode(e: React.FormEvent) {
-    e.preventDefault();
-    const envId = newNode.environmentId || activeEnvId;
-    if (!envId) return;
-    createMutation.mutate({
-      name: newNode.name,
-      host: newNode.host,
-      apiPort: parseInt(newNode.apiPort, 10),
-      environmentId: envId,
-    });
-  }
 
   return (
     <div className="space-y-6">
@@ -130,88 +81,6 @@ export default function FleetPage() {
             Manage your Vector node fleet
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Node
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Node</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleCreateNode} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="node-name">Name</Label>
-                <Input
-                  id="node-name"
-                  placeholder="e.g., vector-prod-01"
-                  value={newNode.name}
-                  onChange={(e) =>
-                    setNewNode((prev) => ({ ...prev, name: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="node-host">Host</Label>
-                <Input
-                  id="node-host"
-                  placeholder="e.g., 10.0.1.50"
-                  value={newNode.host}
-                  onChange={(e) =>
-                    setNewNode((prev) => ({ ...prev, host: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="node-port">API Port</Label>
-                <Input
-                  id="node-port"
-                  type="number"
-                  placeholder="8686"
-                  value={newNode.apiPort}
-                  onChange={(e) =>
-                    setNewNode((prev) => ({
-                      ...prev,
-                      apiPort: e.target.value,
-                    }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="node-env">Environment</Label>
-                <Select
-                  value={activeEnvId}
-                  onValueChange={(value) =>
-                    setNewNode((prev) => ({ ...prev, environmentId: value }))
-                  }
-                >
-                  <SelectTrigger id="node-env">
-                    <SelectValue placeholder="Select environment" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {environments.map((env) => (
-                      <SelectItem key={env.id} value={env.id}>
-                        {env.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={createMutation.isPending}
-              >
-                {createMutation.isPending ? "Adding..." : "Add Node"}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
       </div>
 
       {isLoading ? (
@@ -222,14 +91,10 @@ export default function FleetPage() {
         </div>
       ) : nodes.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">No nodes in your fleet yet</p>
-          <Button
-            className="mt-4"
-            variant="outline"
-            onClick={() => setDialogOpen(true)}
-          >
-            Add your first node
-          </Button>
+          <p className="text-muted-foreground">No agents enrolled yet</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Generate an enrollment token in the environment settings to connect agents.
+          </p>
         </div>
       ) : (
         <Table>
@@ -261,7 +126,7 @@ export default function FleetPage() {
                   <Badge variant="secondary">{node.environment.name}</Badge>
                 </TableCell>
                 <TableCell className="font-mono text-sm text-muted-foreground">
-                  {((node.metadata as Record<string, unknown> | null)?.vectorVersion as string)?.split(" ")[0] ?? "—"}
+                  {node.vectorVersion?.split(" ")[1] ?? "—"}
                 </TableCell>
                 <TableCell>
                   <Badge
@@ -278,6 +143,13 @@ export default function FleetPage() {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {activeEnvId && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Pipeline Deployment Matrix</h3>
+          <DeploymentMatrix environmentId={activeEnvId} />
+        </div>
       )}
     </div>
   );

@@ -1,13 +1,14 @@
 "use client";
 
-import { use, useState, useRef, useEffect } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowLeft, Pencil, Trash2, GitBranch, KeyRound, Loader2 } from "lucide-react";
+import { ArrowLeft, Copy, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SecretsSection } from "@/components/environment/secrets-section";
+import { CertificatesSection } from "@/components/environment/certificates-section";
 
 const statusColors: Record<string, string> = {
   HEALTHY: "bg-green-500/15 text-green-700 dark:text-green-400",
@@ -62,13 +65,14 @@ export default function EnvironmentDetailPage({
   const [editing, setEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editName, setEditName] = useState("");
-  const [editGitRepo, setEditGitRepo] = useState("");
-  const [editGitBranch, setEditGitBranch] = useState("");
-
-  // Git credential state
-  const [commitAuthor, setCommitAuthor] = useState("");
-  const [httpsToken, setHttpsToken] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editSecretBackend, setEditSecretBackend] = useState<"BUILTIN" | "VAULT" | "AWS_SM" | "EXEC">("BUILTIN");
+  const [editVaultConfig, setEditVaultConfig] = useState({
+    address: "",
+    authMethod: "token" as "token" | "approle" | "kubernetes",
+    mountPath: "secret/data/vectorflow",
+    role: "",
+  });
+  const [enrollmentToken, setEnrollmentToken] = useState<string | null>(null);
 
   const updateMutation = useMutation(
     trpc.environment.update.mutationOptions({
@@ -85,30 +89,28 @@ export default function EnvironmentDetailPage({
     })
   );
 
-  const uploadSshKeyMutation = useMutation(
-    trpc.environment.uploadSshKey.mutationOptions({
-      onSuccess: () => {
+  const generateTokenMutation = useMutation(
+    trpc.environment.generateEnrollmentToken.mutationOptions({
+      onSuccess: (data) => {
+        setEnrollmentToken(data.token);
         queryClient.invalidateQueries({ queryKey: trpc.environment.get.queryKey({ id }) });
-        toast.success("SSH key uploaded successfully");
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
+        toast.success("Enrollment token generated");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to upload SSH key");
+        toast.error(error.message || "Failed to generate token");
       },
     })
   );
 
-  const updateHttpsTokenMutation = useMutation(
-    trpc.environment.updateHttpsToken.mutationOptions({
+  const revokeTokenMutation = useMutation(
+    trpc.environment.revokeEnrollmentToken.mutationOptions({
       onSuccess: () => {
+        setEnrollmentToken(null);
         queryClient.invalidateQueries({ queryKey: trpc.environment.get.queryKey({ id }) });
-        toast.success("HTTPS token saved");
-        setHttpsToken("");
+        toast.success("Enrollment token revoked");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to save token");
+        toast.error(error.message || "Failed to revoke token");
       },
     })
   );
@@ -116,8 +118,14 @@ export default function EnvironmentDetailPage({
   function startEditing() {
     if (!env) return;
     setEditName(env.name);
-    setEditGitRepo(env.gitRepo ?? "");
-    setEditGitBranch(env.gitBranch ?? "");
+    setEditSecretBackend(env.secretBackend ?? "BUILTIN");
+    const vaultCfg = (env.secretBackendConfig as Record<string, string>) ?? {};
+    setEditVaultConfig({
+      address: vaultCfg.address ?? "",
+      authMethod: (vaultCfg.authMethod as "token" | "approle" | "kubernetes") ?? "token",
+      mountPath: vaultCfg.mountPath ?? "secret/data/vectorflow",
+      role: vaultCfg.role ?? "",
+    });
     setEditing(true);
   }
 
@@ -125,42 +133,14 @@ export default function EnvironmentDetailPage({
     updateMutation.mutate({
       id,
       name: editName,
-      gitRepo: editGitRepo || null,
-      gitBranch: editGitBranch || null,
+      secretBackend: editSecretBackend,
+      ...(editSecretBackend === "VAULT" ? {
+        secretBackendConfig: editVaultConfig,
+      } : editSecretBackend !== "BUILTIN" ? {
+        secretBackendConfig: { backend: editSecretBackend },
+      } : {}),
     });
   }
-
-  function handleSaveCommitAuthor(e: React.FormEvent) {
-    e.preventDefault();
-    updateMutation.mutate({
-      id,
-      gitCommitAuthor: commitAuthor || null,
-    });
-  }
-
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = btoa(result);
-      uploadSshKeyMutation.mutate({ environmentId: id, keyBase64: base64 });
-    };
-    reader.readAsText(file);
-  }
-
-  function handleSaveHttpsToken() {
-    updateHttpsTokenMutation.mutate({ environmentId: id, token: httpsToken });
-  }
-
-  // Sync commit author from environment data
-  useEffect(() => {
-    if (env?.gitCommitAuthor !== undefined) {
-      setCommitAuthor(env.gitCommitAuthor ?? "");
-    }
-  }, [env?.gitCommitAuthor]);
 
   if (envQuery.isLoading) {
     return (
@@ -195,7 +175,7 @@ export default function EnvironmentDetailPage({
           <div>
             <h2 className="text-2xl font-bold tracking-tight">{env.name}</h2>
             <p className="text-muted-foreground">
-              {env.team.name} &middot; GitOps
+              {env.team.name}
             </p>
           </div>
         </div>
@@ -251,27 +231,6 @@ export default function EnvironmentDetailPage({
                 onChange={(e) => setEditName(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-git-repo">Git Repository</Label>
-              <Input
-                id="edit-git-repo"
-                value={editGitRepo}
-                onChange={(e) => setEditGitRepo(e.target.value)}
-                placeholder="https://github.com/org/repo.git or git@github.com:org/repo.git"
-              />
-              <p className="text-xs text-muted-foreground">
-                Use HTTPS with a token (Settings &rarr; GitOps) or SSH with a deploy key
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-git-branch">Git Branch</Label>
-              <Input
-                id="edit-git-branch"
-                value={editGitBranch}
-                onChange={(e) => setEditGitBranch(e.target.value)}
-                placeholder="main"
-              />
-            </div>
             <div className="flex gap-2">
               <Button onClick={handleSave} disabled={updateMutation.isPending}>
                 {updateMutation.isPending ? "Saving..." : "Save"}
@@ -288,20 +247,14 @@ export default function EnvironmentDetailPage({
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Git Repository</CardDescription>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <GitBranch className="h-4 w-4" />
-              GitOps
-            </CardTitle>
+            <CardDescription>Deployment</CardDescription>
+            <CardTitle className="text-lg">Agent</CardTitle>
           </CardHeader>
-          {env.gitRepo && (
-            <CardContent>
-              <p className="truncate text-xs text-muted-foreground">
-                {env.gitRepo}
-                {env.gitBranch ? ` (${env.gitBranch})` : ""}
-              </p>
-            </CardContent>
-          )}
+          <CardContent>
+            <p className="text-xs text-muted-foreground">
+              {env.hasEnrollmentToken ? "Enrollment token configured" : "No enrollment token"}
+            </p>
+          </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
@@ -380,131 +333,184 @@ export default function EnvironmentDetailPage({
         </CardContent>
       </Card>
 
-      {/* Git Credentials */}
+      {/* Agent Enrollment */}
+      <>
+        <Separator />
+          <h3 className="text-lg font-semibold">Agent Enrollment</h3>
+          <Card>
+            <CardHeader>
+              <CardTitle>Enrollment Token</CardTitle>
+              <CardDescription>
+                Generate a token for agents to enroll in this environment.
+                The token is shown once — save it immediately.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {enrollmentToken && (
+                <div className="space-y-2">
+                  <Label>Token (save this — it won&apos;t be shown again)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      readOnly
+                      value={enrollmentToken}
+                      className="font-mono text-xs"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        copyToClipboard(enrollmentToken);
+                        toast.success("Token copied to clipboard");
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {env.hasEnrollmentToken && !enrollmentToken && (
+                <div className="flex items-center gap-2 rounded-md border p-3">
+                  <span className="font-mono text-sm">{env.enrollmentTokenHint}</span>
+                  <Badge variant="secondary" className="ml-auto">Active</Badge>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => generateTokenMutation.mutate({ environmentId: id })}
+                  disabled={generateTokenMutation.isPending}
+                  size="sm"
+                >
+                  {generateTokenMutation.isPending ? "Generating..." : env.hasEnrollmentToken ? "Regenerate Token" : "Generate Token"}
+                </Button>
+                {env.hasEnrollmentToken && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => revokeTokenMutation.mutate({ environmentId: id })}
+                    disabled={revokeTokenMutation.isPending}
+                  >
+                    {revokeTokenMutation.isPending ? "Revoking..." : "Revoke Token"}
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+      </>
+
+      {/* Secret Backend */}
+      <>
+        <Separator className="my-6" />
+          <h3 className="text-lg font-semibold mb-4">Secret Backend</h3>
+          <div className="rounded-lg border">
+            <div className="p-4 space-y-4">
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Choose how pipelines on this environment resolve secret references.
+                </p>
+                {editing ? (
+                  <select
+                    value={editSecretBackend}
+                    onChange={(e) => setEditSecretBackend(e.target.value as "BUILTIN" | "VAULT" | "AWS_SM" | "EXEC")}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="BUILTIN">Built-in (VectorFlow delivers secrets as env vars)</option>
+                    <option value="VAULT">HashiCorp Vault</option>
+                    <option value="AWS_SM">AWS Secrets Manager</option>
+                    <option value="EXEC">Exec (custom script)</option>
+                  </select>
+                ) : (
+                  <Badge variant="secondary">
+                    {env.secretBackend === "VAULT" ? "HashiCorp Vault" :
+                     env.secretBackend === "AWS_SM" ? "AWS Secrets Manager" :
+                     env.secretBackend === "EXEC" ? "Exec (custom script)" :
+                     "Built-in"}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Vault-specific config fields */}
+              {((editing && editSecretBackend === "VAULT") || (!editing && env.secretBackend === "VAULT")) && (
+                <div className="space-y-3 border-t pt-3">
+                  <div>
+                    <label className="text-sm font-medium">Vault Address</label>
+                    {editing ? (
+                      <input
+                        type="text"
+                        value={editVaultConfig.address}
+                        onChange={(e) => setEditVaultConfig(prev => ({ ...prev, address: e.target.value }))}
+                        placeholder="https://vault.internal:8200"
+                        className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      />
+                    ) : (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {(env.secretBackendConfig as Record<string, string>)?.address || "Not configured"}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Auth Method</label>
+                    {editing ? (
+                      <select
+                        value={editVaultConfig.authMethod}
+                        onChange={(e) => setEditVaultConfig(prev => ({ ...prev, authMethod: e.target.value as "token" | "approle" | "kubernetes" }))}
+                        className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="token">Token</option>
+                        <option value="approle">AppRole</option>
+                        <option value="kubernetes">Kubernetes</option>
+                      </select>
+                    ) : (
+                      <p className="mt-1 text-sm text-muted-foreground capitalize">
+                        {(env.secretBackendConfig as Record<string, string>)?.authMethod || "token"}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Mount Path</label>
+                    {editing ? (
+                      <input
+                        type="text"
+                        value={editVaultConfig.mountPath}
+                        onChange={(e) => setEditVaultConfig(prev => ({ ...prev, mountPath: e.target.value }))}
+                        placeholder="secret/data/vectorflow"
+                        className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      />
+                    ) : (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {(env.secretBackendConfig as Record<string, string>)?.mountPath || "secret/data/vectorflow"}
+                      </p>
+                    )}
+                  </div>
+                  {((editing && (editVaultConfig.authMethod === "approle" || editVaultConfig.authMethod === "kubernetes")) ||
+                    (!editing && ((env.secretBackendConfig as Record<string, string>)?.authMethod === "approle" || (env.secretBackendConfig as Record<string, string>)?.authMethod === "kubernetes"))) && (
+                    <div>
+                      <label className="text-sm font-medium">Role</label>
+                      {editing ? (
+                        <input
+                          type="text"
+                          value={editVaultConfig.role}
+                          onChange={(e) => setEditVaultConfig(prev => ({ ...prev, role: e.target.value }))}
+                          placeholder="vectorflow-agent"
+                          className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        />
+                      ) : (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {(env.secretBackendConfig as Record<string, string>)?.role || "\u2014"}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+      </>
+
+      {/* Secrets & Certificates */}
       <Separator />
-      <h3 className="text-lg font-semibold">Git Credentials</h3>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Commit Author</CardTitle>
-          <CardDescription>
-            Git author string used for automated commits in this environment.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSaveCommitAuthor} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="env-commit-author">Author</Label>
-              <Input
-                id="env-commit-author"
-                placeholder="VectorFlow <vectorflow@company.com>"
-                value={commitAuthor}
-                onChange={(e) => setCommitAuthor(e.target.value)}
-                className="max-w-md"
-              />
-              <p className="text-xs text-muted-foreground">
-                Format: Name &lt;email&gt;
-              </p>
-            </div>
-            <Button type="submit" disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                "Save"
-              )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>SSH Key</CardTitle>
-          <CardDescription>
-            Upload a private SSH key for Git repository authentication. The key
-            is encrypted at rest.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {env.hasSshKey && (
-            <div className="flex items-center gap-2 rounded-md border p-3">
-              <KeyRound className="h-4 w-4 text-muted-foreground" />
-              <span className="font-mono text-sm">
-                {env.sshKeyFingerprint ?? "Key uploaded"}
-              </span>
-              <Badge variant="secondary" className="ml-auto">
-                Configured
-              </Badge>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="env-ssh-key-upload">
-              {env.hasSshKey ? "Replace SSH Key" : "Upload SSH Key"}
-            </Label>
-            <div className="flex items-center gap-3">
-              <Input
-                ref={fileInputRef}
-                id="env-ssh-key-upload"
-                type="file"
-                onChange={handleFileUpload}
-                className="max-w-sm"
-              />
-              {uploadSshKeyMutation.isPending && (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Accepted formats: PEM, OpenSSH private key
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>HTTPS Token</CardTitle>
-          <CardDescription>
-            Personal access token for HTTPS git repositories. Used when the
-            repository URL starts with https://.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {env.hasHttpsToken && (
-            <div className="flex items-center gap-2 rounded-md border p-3">
-              <KeyRound className="h-4 w-4 text-muted-foreground" />
-              <span className="font-mono text-sm">Token configured</span>
-              <Badge variant="secondary" className="ml-auto">Active</Badge>
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="env-https-token">
-              {env.hasHttpsToken ? "Replace Token" : "Set Token"}
-            </Label>
-            <Input
-              id="env-https-token"
-              type="password"
-              placeholder="ghp_xxxx or glpat-xxxx"
-              value={httpsToken}
-              onChange={(e) => setHttpsToken(e.target.value)}
-              className="max-w-sm"
-            />
-            <p className="text-xs text-muted-foreground">
-              For Gitea, GitHub, GitLab: use a personal access token with repo write access
-            </p>
-          </div>
-          <Button
-            onClick={handleSaveHttpsToken}
-            disabled={!httpsToken || updateHttpsTokenMutation.isPending}
-            size="sm"
-          >
-            {updateHttpsTokenMutation.isPending ? "Saving..." : "Save Token"}
-          </Button>
-        </CardContent>
-      </Card>
+      <h3 className="text-lg font-semibold">Secrets & Certificates</h3>
+      <SecretsSection environmentId={id} />
+      <CertificatesSection environmentId={id} />
 
       {/* Created info */}
       <p className="text-xs text-muted-foreground">
