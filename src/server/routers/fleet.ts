@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { LogLevel } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
 
 export const fleetRouter = router({
@@ -81,8 +82,6 @@ export const fleetRouter = router({
       z.object({
         id: z.string(),
         name: z.string().min(1).max(100).optional(),
-        host: z.string().min(1).optional(),
-        apiPort: z.number().int().min(1).max(65535).optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
@@ -123,6 +122,84 @@ export const fleetRouter = router({
       }
       return prisma.vectorNode.delete({
         where: { id: input.id },
+      });
+    }),
+
+  nodeLogs: protectedProcedure
+    .input(
+      z.object({
+        nodeId: z.string(),
+        cursor: z.string().optional(),
+        limit: z.number().min(1).max(500).default(200),
+        levels: z.array(z.nativeEnum(LogLevel)).optional(),
+        pipelineId: z.string().optional(),
+      }),
+    )
+    .query(async ({ input }) => {
+      const { nodeId, cursor, limit, levels, pipelineId } = input;
+      const take = limit;
+
+      const where: Record<string, unknown> = { nodeId };
+      if (levels && levels.length > 0) {
+        where.level = { in: levels };
+      }
+      if (pipelineId) {
+        where.pipelineId = pipelineId;
+      }
+
+      const items = await prisma.pipelineLog.findMany({
+        where,
+        orderBy: { timestamp: "desc" },
+        take: take + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        include: {
+          node: { select: { name: true } },
+          pipeline: { select: { name: true } },
+        },
+      });
+
+      let nextCursor: string | undefined;
+      if (items.length > take) {
+        const nextItem = items.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      return { items, nextCursor };
+    }),
+
+  nodeMetrics: protectedProcedure
+    .input(
+      z.object({
+        nodeId: z.string(),
+        hours: z.number().min(1).max(168).default(1),
+      }),
+    )
+    .query(async ({ input }) => {
+      const since = new Date(Date.now() - input.hours * 60 * 60 * 1000);
+
+      return prisma.nodeMetric.findMany({
+        where: {
+          nodeId: input.nodeId,
+          timestamp: { gte: since },
+        },
+        orderBy: { timestamp: "asc" },
+        select: {
+          timestamp: true,
+          memoryTotalBytes: true,
+          memoryUsedBytes: true,
+          memoryFreeBytes: true,
+          cpuSecondsTotal: true,
+          loadAvg1: true,
+          loadAvg5: true,
+          loadAvg15: true,
+          fsTotalBytes: true,
+          fsUsedBytes: true,
+          fsFreeBytes: true,
+          diskReadBytes: true,
+          diskWrittenBytes: true,
+          netRxBytes: true,
+          netTxBytes: true,
+        },
       });
     }),
 
