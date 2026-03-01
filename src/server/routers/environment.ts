@@ -2,9 +2,8 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { encrypt, decrypt } from "@/server/services/crypto";
-import { createHash } from "crypto";
 import { withAudit } from "@/server/middleware/audit";
+import { generateEnrollmentToken } from "@/server/services/agent-token";
 
 export const environmentRouter = router({
   list: protectedProcedure
@@ -17,9 +16,6 @@ export const environmentRouter = router({
           id: true,
           name: true,
           teamId: true,
-          gitRepo: true,
-          gitBranch: true,
-          gitCommitAuthor: true,
           createdAt: true,
           _count: { select: { nodes: true, pipelines: true } },
         },
@@ -45,22 +41,9 @@ export const environmentRouter = router({
         });
       }
 
-      let sshKeyFingerprint: string | null = null;
-      if (environment.gitSshKey) {
-        try {
-          const hash = createHash("sha256").update(environment.gitSshKey).digest("base64");
-          sshKeyFingerprint = `SHA256:${hash}`;
-        } catch {}
-      }
-
-      // Destructure to exclude raw credential fields (Bytes can't serialize)
-      const { gitSshKey, gitHttpsToken, ...safe } = environment;
-
       return {
-        ...safe,
-        hasSshKey: !!gitSshKey,
-        hasHttpsToken: !!gitHttpsToken,
-        sshKeyFingerprint,
+        ...environment,
+        hasEnrollmentToken: !!environment.enrollmentTokenHash,
       };
     }),
 
@@ -69,8 +52,6 @@ export const environmentRouter = router({
       z.object({
         name: z.string().min(1).max(100),
         teamId: z.string(),
-        gitRepo: z.string().optional(),
-        gitBranch: z.string().optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
@@ -91,8 +72,6 @@ export const environmentRouter = router({
         data: {
           name: input.name,
           teamId: input.teamId,
-          gitRepo: input.gitRepo,
-          gitBranch: input.gitBranch,
         },
       });
     }),
@@ -102,9 +81,8 @@ export const environmentRouter = router({
       z.object({
         id: z.string(),
         name: z.string().min(1).max(100).optional(),
-        gitRepo: z.string().nullable().optional(),
-        gitBranch: z.string().nullable().optional(),
-        gitCommitAuthor: z.string().nullable().optional(),
+        secretBackend: z.enum(["BUILTIN", "VAULT", "AWS_SM", "EXEC"]).optional(),
+        secretBackendConfig: z.any().optional(),
       })
     )
     .use(withAudit("environment.updated", "Environment"))
@@ -149,33 +127,49 @@ export const environmentRouter = router({
       ]);
     }),
 
-  uploadSshKey: protectedProcedure
-    .input(z.object({ environmentId: z.string(), keyBase64: z.string().min(1) }))
-    .use(withTeamAccess("EDITOR"))
+  generateEnrollmentToken: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("environment.enrollmentToken.generated", "Environment"))
     .mutation(async ({ input }) => {
-      const keyBuffer = Buffer.from(input.keyBase64, "base64");
-      const keyText = keyBuffer.toString("utf8");
-      if (!keyText.includes("PRIVATE KEY")) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "This does not appear to be a private key. Upload the private key file (not .pub).",
-        });
-      }
-      const encryptedKey = encrypt(keyText);
-      return prisma.environment.update({
+      const env = await prisma.environment.findUnique({
         where: { id: input.environmentId },
-        data: { gitSshKey: Buffer.from(encryptedKey, "utf8") },
       });
+      if (!env) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Environment not found" });
+      }
+      const { token, hash, hint } = await generateEnrollmentToken();
+      await prisma.environment.update({
+        where: { id: input.environmentId },
+        data: {
+          enrollmentTokenHash: hash,
+          enrollmentTokenHint: hint,
+        },
+      });
+
+      return { token, hint };
     }),
 
-  updateHttpsToken: protectedProcedure
-    .input(z.object({ environmentId: z.string(), token: z.string().min(1) }))
-    .use(withTeamAccess("EDITOR"))
+  revokeEnrollmentToken: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("environment.enrollmentToken.revoked", "Environment"))
     .mutation(async ({ input }) => {
-      const encryptedToken = encrypt(input.token);
-      return prisma.environment.update({
+      const env = await prisma.environment.findUnique({
         where: { id: input.environmentId },
-        data: { gitHttpsToken: encryptedToken },
       });
+      if (!env) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Environment not found" });
+      }
+
+      await prisma.environment.update({
+        where: { id: input.environmentId },
+        data: {
+          enrollmentTokenHash: null,
+          enrollmentTokenHint: null,
+        },
+      });
+
+      return { success: true };
     }),
 });

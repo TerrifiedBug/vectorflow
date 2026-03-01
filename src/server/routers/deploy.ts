@@ -2,17 +2,13 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { deployGitOps, removeFromGit } from "@/server/services/deploy-gitops";
+import { deployAgent, undeployAgent } from "@/server/services/deploy-agent";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { validateConfig } from "@/server/services/validator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { withAudit } from "@/server/middleware/audit";
 
 export const deployRouter = router({
-  /**
-   * Preview: generate YAML and validate without deploying.
-   * Returns the generated config and validation result.
-   */
   preview: protectedProcedure
     .input(z.object({ pipelineId: z.string() }))
     .use(withTeamAccess("VIEWER"))
@@ -50,10 +46,10 @@ export const deployRouter = router({
       const configYaml = generateVectorYaml(
         flowNodes as any,
         flowEdges as any,
+        pipeline.globalConfig as Record<string, unknown> | null,
       );
       const validation = await validateConfig(configYaml);
 
-      // Get the currently deployed config (latest version) for diff
       const latestVersion = await prisma.pipelineVersion.findFirst({
         where: { pipelineId: input.pipelineId },
         orderBy: { version: "desc" },
@@ -68,93 +64,35 @@ export const deployRouter = router({
       };
     }),
 
-  /**
-   * Deploy via GitOps — commit config to a git repo.
-   */
-  gitops: protectedProcedure
-    .input(
-      z.object({
-        pipelineId: z.string(),
-        environmentId: z.string(),
-        repoUrl: z.string().min(1),
-        branch: z.string().min(1),
-        commitAuthor: z.string().optional(),
-      }),
-    )
+  agent: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
     .use(withTeamAccess("EDITOR"))
-    .use(withAudit("deploy.gitops", "Pipeline"))
+    .use(withAudit("deploy.agent", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) {
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
-      // Load git credentials from the pipeline's environment
-      const pipeline = await prisma.pipeline.findUnique({
-        where: { id: input.pipelineId },
-        include: { environment: true },
-      });
-      if (!pipeline) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
-      }
-
-      const { decrypt } = await import("@/server/services/crypto");
-      const isHttps = input.repoUrl.startsWith("https://");
-
-      let sshKey: string | undefined;
-      if (pipeline.environment.gitSshKey) {
-        try {
-          sshKey = decrypt(Buffer.from(pipeline.environment.gitSshKey).toString("utf8"));
-        } catch (err) {
-          console.error("Failed to decrypt SSH key:", err);
-        }
-      }
-
-      let httpsToken: string | undefined;
-      if (pipeline.environment.gitHttpsToken) {
-        try {
-          httpsToken = decrypt(pipeline.environment.gitHttpsToken);
-        } catch (err) {
-          console.error("Failed to decrypt HTTPS token:", err);
-        }
-      }
-
-      if (isHttps && !httpsToken) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "HTTPS repository requires a personal access token. Configure one in Environment Settings.",
-        });
-      }
-      if (!isHttps && !sshKey) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "SSH repository requires a deploy key. Upload one in Environment Settings.",
-        });
-      }
-
-      return deployGitOps(input.pipelineId, input.environmentId, userId, {
-        repoUrl: input.repoUrl,
-        branch: input.branch,
-        commitAuthor: input.commitAuthor || pipeline.environment.gitCommitAuthor || undefined,
-        sshKey,
-        httpsToken,
-      });
+      return deployAgent(input.pipelineId, userId);
     }),
 
-  /**
-   * Undeploy — remove pipeline config from git repo.
-   */
   undeploy: protectedProcedure
     .input(z.object({ pipelineId: z.string() }))
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("deploy.undeploy", "Pipeline"))
     .mutation(async ({ input }) => {
-      return removeFromGit(input.pipelineId);
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+      });
+
+      if (!pipeline) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+
+      return undeployAgent(input.pipelineId);
     }),
 
-  /**
-   * Get environment info for the deploy wizard.
-   */
   environmentInfo: protectedProcedure
     .input(z.object({ pipelineId: z.string() }))
     .use(withTeamAccess("VIEWER"))
@@ -188,8 +126,6 @@ export const deployRouter = router({
       return {
         environmentId: pipeline.environment.id,
         environmentName: pipeline.environment.name,
-        gitRepo: pipeline.environment.gitRepo,
-        gitBranch: pipeline.environment.gitBranch,
         nodes: pipeline.environment.nodes,
       };
     }),

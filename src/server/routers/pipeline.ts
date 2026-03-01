@@ -11,7 +11,17 @@ import {
   rollback,
 } from "@/server/services/pipeline-version";
 import { encryptNodeConfig, decryptNodeConfig } from "@/server/services/config-crypto";
-import { removeFromGit } from "@/server/services/deploy-gitops";
+import { generateVectorYaml } from "@/lib/config-generator";
+
+/** Pipeline names must be safe identifiers */
+const pipelineNameSchema = z
+  .string()
+  .min(1)
+  .max(100)
+  .regex(
+    /^[a-zA-Z0-9][a-zA-Z0-9 _-]*$/,
+    "Pipeline name must start with a letter or number and contain only letters, numbers, spaces, hyphens, and underscores",
+  );
 
 const nodeSchema = z.object({
   id: z.string().optional(),
@@ -67,22 +77,63 @@ export const pipelineRouter = router({
           message: "Pipeline not found",
         });
       }
+
+      const decryptedNodes = pipeline.nodes.map((n) => ({
+        ...n,
+        config: decryptNodeConfig(
+          n.componentType,
+          (n.config as Record<string, unknown>) ?? {},
+        ),
+      }));
+
+      // Compare current config against the deployed version
+      let hasConfigChanges = false;
+      if (!pipeline.isDraft && pipeline.deployedAt) {
+        const latestVersion = await prisma.pipelineVersion.findFirst({
+          where: { pipelineId: input.id },
+          orderBy: { version: "desc" },
+          select: { configYaml: true },
+        });
+
+        if (latestVersion) {
+          const flowNodes = decryptedNodes.map((n) => ({
+            id: n.id,
+            type: n.kind.toLowerCase(),
+            position: { x: n.positionX, y: n.positionY },
+            data: {
+              componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
+              componentKey: n.componentKey,
+              config: n.config as Record<string, unknown>,
+            },
+          }));
+          const flowEdges = pipeline.edges.map((e) => ({
+            id: e.id,
+            source: e.sourceNodeId,
+            target: e.targetNodeId,
+            ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
+          }));
+          const currentYaml = generateVectorYaml(
+            flowNodes as Parameters<typeof generateVectorYaml>[0],
+            flowEdges as Parameters<typeof generateVectorYaml>[1],
+            pipeline.globalConfig as Record<string, unknown> | null,
+          );
+          hasConfigChanges = currentYaml !== latestVersion.configYaml;
+        } else {
+          hasConfigChanges = true;
+        }
+      }
+
       return {
         ...pipeline,
-        nodes: pipeline.nodes.map((n) => ({
-          ...n,
-          config: decryptNodeConfig(
-            n.componentType,
-            (n.config as Record<string, unknown>) ?? {},
-          ),
-        })),
+        nodes: decryptedNodes,
+        hasConfigChanges,
       };
     }),
 
   create: protectedProcedure
     .input(
       z.object({
-        name: z.string().min(1).max(100),
+        name: pipelineNameSchema,
         description: z.string().optional(),
         environmentId: z.string(),
       })
@@ -113,7 +164,7 @@ export const pipelineRouter = router({
     .input(
       z.object({
         id: z.string(),
-        name: z.string().min(1).max(100).optional(),
+        name: pipelineNameSchema.optional(),
         description: z.string().nullable().optional(),
       })
     )
@@ -129,13 +180,16 @@ export const pipelineRouter = router({
           message: "Pipeline not found",
         });
       }
-      return prisma.pipeline.update({
+
+      const updated = await prisma.pipeline.update({
         where: { id },
         data: {
           ...data,
           updatedById: ctx.session.user?.id,
         },
       });
+
+      return updated;
     }),
 
   delete: protectedProcedure
@@ -144,27 +198,12 @@ export const pipelineRouter = router({
     .mutation(async ({ input }) => {
       const existing = await prisma.pipeline.findUnique({
         where: { id: input.id },
-        include: {
-          environment: true,
-          versions: { orderBy: { version: "desc" }, take: 1 },
-        },
       });
       if (!existing) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Pipeline not found",
         });
-      }
-
-      // If pipeline was deployed (has versions), try to remove config from git
-      // TODO: Implement git cleanup (clone repo, delete config file, commit, push).
-      // Git cleanup is best-effort and should not block deletion.
-      if (existing.versions.length > 0 && existing.environment.gitRepo) {
-        try {
-          await removeFromGit(input.id);
-        } catch {
-          // Best-effort: git cleanup failures should not block DB deletion
-        }
       }
 
       return prisma.pipeline.delete({
@@ -178,6 +217,7 @@ export const pipelineRouter = router({
         pipelineId: z.string(),
         nodes: z.array(nodeSchema),
         edges: z.array(edgeSchema),
+        globalConfig: z.record(z.string(), z.any()).nullable().optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
@@ -195,7 +235,12 @@ export const pipelineRouter = router({
       return prisma.$transaction(async (tx) => {
         await tx.pipeline.update({
           where: { id: input.pipelineId },
-          data: { updatedById: ctx.session.user?.id },
+          data: {
+            updatedById: ctx.session.user?.id,
+            ...(input.globalConfig !== undefined
+              ? { globalConfig: input.globalConfig ?? undefined }
+              : {}),
+          },
         });
 
         await tx.pipelineEdge.deleteMany({
@@ -304,5 +349,89 @@ export const pipelineRouter = router({
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
       return rollback(input.pipelineId, input.targetVersionId, userId);
+    }),
+
+  deploymentStatus: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        include: {
+          versions: {
+            orderBy: { version: "desc" },
+            take: 1,
+            select: { version: true },
+          },
+        },
+      });
+
+      if (!pipeline) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+
+      const latestVersion = pipeline.versions[0]?.version ?? 0;
+
+      const statuses = await prisma.nodePipelineStatus.findMany({
+        where: { pipelineId: input.pipelineId },
+        include: {
+          node: {
+            select: {
+              id: true,
+              name: true,
+              host: true,
+              status: true,
+              lastHeartbeat: true,
+            },
+          },
+        },
+      });
+
+      return {
+        latestVersion,
+        deployed: !pipeline.isDraft,
+        nodes: statuses.map((s) => ({
+          nodeId: s.node.id,
+          nodeName: s.node.name,
+          nodeHost: s.node.host,
+          nodeStatus: s.node.status,
+          pipelineStatus: s.status,
+          runningVersion: s.version,
+          isLatest: s.version === latestVersion,
+          uptimeSeconds: s.uptimeSeconds,
+          lastUpdated: s.lastUpdated,
+        })),
+      };
+    }),
+
+  metrics: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        hours: z.number().min(1).max(168).default(24),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const since = new Date(Date.now() - input.hours * 60 * 60 * 1000);
+
+      return prisma.pipelineMetric.findMany({
+        where: {
+          pipelineId: input.pipelineId,
+          nodeId: null,
+          timestamp: { gte: since },
+        },
+        orderBy: { timestamp: "asc" },
+        select: {
+          timestamp: true,
+          eventsIn: true,
+          eventsOut: true,
+          eventsDiscarded: true,
+          errorsTotal: true,
+          bytesIn: true,
+          bytesOut: true,
+          utilization: true,
+        },
+      });
     }),
 });
