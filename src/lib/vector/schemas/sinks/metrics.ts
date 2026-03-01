@@ -5,6 +5,7 @@ import {
   bufferSchema,
   requestSchema,
   authBasicBearerSchema,
+  compressionSchema,
 } from "../shared";
 
 export const metricsSinks: VectorComponentDef[] = [
@@ -23,28 +24,43 @@ export const metricsSinks: VectorComponentDef[] = [
         address: {
           type: "string",
           description:
-            "Address to expose the Prometheus endpoint on (e.g., 0.0.0.0:9598)",
+            "The address to expose for scraping. Metrics are served at /metrics.",
+          default: "0.0.0.0:9598",
         },
         default_namespace: {
           type: "string",
-          description: "Default namespace for metrics without one",
+          description:
+            "Default namespace for metrics without one. Used as a prefix separated by an underscore.",
         },
         flush_period_secs: {
           type: "number",
-          description: "How often to flush expired metrics in seconds",
+          description:
+            "Interval in seconds on which metrics are flushed. Metrics not seen since last flush are expired and removed.",
+          default: 60,
         },
         suppress_timestamp: {
           type: "boolean",
-          description: "Suppress timestamp in Prometheus output (default: false)",
+          description:
+            "Suppress timestamps on the Prometheus output. Useful when source timestamps are too far in the past.",
+          default: false,
         },
         distributions_as_summaries: {
           type: "boolean",
-          description: "Convert distributions to summaries (default: false)",
+          description:
+            "Whether to render distributions as aggregated summaries instead of aggregated histograms.",
+          default: false,
         },
         buckets: {
           type: "array",
           items: { type: "number" },
-          description: "Default histogram bucket boundaries",
+          description: "Default buckets for aggregating distribution metrics into histograms.",
+          default: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+        },
+        quantiles: {
+          type: "array",
+          items: { type: "number" },
+          description: "Quantiles for aggregating distribution metrics into summaries.",
+          default: [0.5, 0.75, 0.9, 0.95, 0.99],
         },
         ...tlsSchema(),
       },
@@ -65,24 +81,35 @@ export const metricsSinks: VectorComponentDef[] = [
       properties: {
         endpoint: {
           type: "string",
-          description: "Remote write endpoint URL",
+          description:
+            "The endpoint URL to send data to, including scheme, host, and port.",
         },
         default_namespace: {
           type: "string",
-          description: "Default namespace for metrics without one",
+          description:
+            "Default namespace for metrics without one. Used as a prefix separated by an underscore.",
         },
         buckets: {
           type: "array",
           items: { type: "number" },
-          description: "Default histogram bucket boundaries",
+          description: "Default buckets for aggregating distribution metrics into histograms.",
+          default: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+        },
+        quantiles: {
+          type: "array",
+          items: { type: "number" },
+          description: "Quantiles for aggregating distribution metrics into summaries.",
+          default: [0.5, 0.75, 0.9, 0.95, 0.99],
         },
         tenant_id: {
           type: "string",
-          description: "Tenant ID for multi-tenant remote write endpoints",
+          description:
+            "The tenant ID to send via the X-Scope-OrgID header. Supports template syntax.",
         },
         ...authBasicBearerSchema(),
+        ...compressionSchema(["none", "gzip", "snappy", "zlib", "zstd"], "snappy"),
         ...tlsSchema(),
-        ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
+        ...batchSchema({ timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
       },
@@ -104,19 +131,38 @@ export const metricsSinks: VectorComponentDef[] = [
         mode: {
           type: "string",
           enum: ["tcp", "udp", "unix"],
-          description: "Connection mode (default: udp)",
+          description: "The type of socket to use for sending metrics.",
         },
         address: {
           type: "string",
-          description: "StatsD server address (default: 127.0.0.1:8125)",
+          description:
+            "The address to connect to. Must include a port. Required when mode is tcp or udp.",
+        },
+        path: {
+          type: "string",
+          description:
+            "The unix socket path. Must be an absolute path. Required when mode is unix.",
         },
         default_namespace: {
           type: "string",
-          description: "Default namespace prefix for metrics",
+          description:
+            "Default namespace prefix for metrics. Used as a prefix separated by a period.",
         },
+        send_buffer_size: {
+          type: "number",
+          description: "The size of the socket's send buffer in bytes.",
+        },
+        unix_mode: {
+          type: "string",
+          enum: ["Datagram", "Stream"],
+          description: "Unix socket mode. Only relevant when mode is unix.",
+          default: "Stream",
+        },
+        ...batchSchema({ max_bytes: "1300", timeout_secs: "1" }),
         ...bufferSchema(),
+        ...tlsSchema(),
       },
-      required: [],
+      required: ["mode"],
     },
   },
 ];
