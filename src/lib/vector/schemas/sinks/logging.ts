@@ -24,11 +24,13 @@ export const loggingSinks: VectorComponentDef[] = [
       properties: {
         endpoint: {
           type: "string",
-          description: "Loki endpoint URL (e.g., http://localhost:3100)",
+          description: "The base URL of the Loki instance (e.g., http://localhost:3100)",
         },
         path: {
           type: "string",
-          description: "URL path appended to endpoint (default: /loki/api/v1/push)",
+          description:
+            "The path to use in the URL of the Loki instance",
+          default: "/loki/api/v1/push",
         },
         tenant_id: {
           type: "string",
@@ -37,23 +39,52 @@ export const loggingSinks: VectorComponentDef[] = [
         labels: {
           type: "object",
           additionalProperties: { type: "string" },
-          description: "Labels to attach to log streams (template-enabled)",
+          description:
+            "Labels attached to each batch of events. Both keys and values are templateable",
+        },
+        structured_metadata: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description:
+            "Structured metadata attached to each batch of events (template-enabled)",
         },
         remove_label_fields: {
           type: "boolean",
-          description: "Remove fields used as labels from events (default: false)",
+          description: "Remove fields used as labels from events",
+          default: false,
         },
         remove_timestamp: {
           type: "boolean",
-          description: "Remove timestamp from log line (default: true)",
+          description:
+            "Remove timestamp from the event payload while preserving it for Loki indexing",
+          default: true,
         },
         out_of_order_action: {
           type: "string",
           enum: ["accept", "drop", "rewrite_timestamp"],
-          description: "How to handle out-of-order events (default: accept)",
+          description:
+            "How to handle events with out-of-order timestamps",
+          default: "accept",
         },
-        ...encodingSchema(["json", "text", "logfmt"]),
-        ...compressionSchema(["snappy", "gzip", "none", "zlib", "zstd"], "snappy"),
+        ...encodingSchema([
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "json",
+          "logfmt",
+          "native",
+          "native_json",
+          "otlp",
+          "protobuf",
+          "raw_message",
+          "syslog",
+          "text",
+        ]),
+        ...compressionSchema(
+          ["gzip", "none", "snappy", "zlib", "zstd"],
+          "snappy",
+        ),
         ...authBasicBearerSchema(),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "1MB", timeout_secs: "1" }),
@@ -77,12 +108,43 @@ export const loggingSinks: VectorComponentDef[] = [
       properties: {
         endpoint: {
           type: "string",
-          description: "Papertrail endpoint (e.g., logs.papertrailapp.com:12345)",
+          description:
+            "The TCP endpoint to send logs to (e.g., logs.papertrailapp.com:12345)",
         },
-        ...encodingSchema(["json", "text"]),
+        process: {
+          type: "string",
+          description:
+            "The value to use as the process in Papertrail (template-enabled)",
+          default: "vector",
+        },
+        keepalive: {
+          type: "object",
+          properties: {
+            time_secs: {
+              type: "number",
+              description:
+                "Time in seconds to wait before sending TCP keepalive probes on an idle connection",
+            },
+          },
+          description: "TCP keepalive settings",
+        },
+        ...encodingSchema([
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "json",
+          "logfmt",
+          "native",
+          "native_json",
+          "otlp",
+          "protobuf",
+          "raw_message",
+          "syslog",
+          "text",
+        ]),
         ...tlsSchema(),
         ...bufferSchema(),
-        ...requestSchema(),
       },
       required: ["endpoint"],
     },
@@ -101,16 +163,26 @@ export const loggingSinks: VectorComponentDef[] = [
       properties: {
         endpoint: {
           type: "string",
-          description: "Splunk HEC endpoint URL",
+          description:
+            "The base URL of the Splunk instance. The scheme (http or https) must be specified. No path should be included.",
         },
         default_token: {
           type: "string",
-          description: "Splunk HEC token",
+          description:
+            "Default Splunk HEC token. If an event has a token set in its metadata, it prevails over this one.",
           sensitive: true,
+        },
+        endpoint_target: {
+          type: "string",
+          enum: ["event", "raw"],
+          description:
+            "Splunk HEC endpoint to send events to. 'event' sends metadata directly; 'raw' sends metadata as query parameters.",
+          default: "event",
         },
         index: {
           type: "string",
-          description: "Splunk index name (template-enabled)",
+          description:
+            "Splunk index name. If not specified, the default index defined within Splunk is used (template-enabled).",
         },
         source: {
           type: "string",
@@ -122,23 +194,43 @@ export const loggingSinks: VectorComponentDef[] = [
         },
         host_key: {
           type: "string",
-          description: "Field to use as the host value",
+          description:
+            "Overrides the name of the log field used to retrieve the hostname to send to Splunk HEC",
         },
         indexed_fields: {
           type: "array",
           items: { type: "string" },
-          description: "Fields to index in Splunk",
+          description: "Fields to be added to Splunk index",
         },
         auto_extract_timestamp: {
           type: "boolean",
-          description: "Let Splunk extract timestamp from event (default: false)",
+          description:
+            "Let Splunk extract timestamp from event text. Only relevant for Splunk v8.x+ when endpoint_target is 'event'.",
         },
         timestamp_key: {
           type: "string",
-          description: "Field containing the event timestamp",
+          description:
+            "Overrides the name of the log field used to retrieve the timestamp. Set to empty string to omit timestamp.",
         },
-        ...encodingSchema(["json", "text"]),
-        ...compressionSchema(["gzip", "none"], "none"),
+        ...encodingSchema([
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "json",
+          "logfmt",
+          "native",
+          "native_json",
+          "otlp",
+          "protobuf",
+          "raw_message",
+          "syslog",
+          "text",
+        ]),
+        ...compressionSchema(
+          ["gzip", "none", "snappy", "zlib", "zstd"],
+          "none",
+        ),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "1MB", timeout_secs: "1" }),
         ...bufferSchema(),
@@ -161,34 +253,43 @@ export const loggingSinks: VectorComponentDef[] = [
       properties: {
         endpoint: {
           type: "string",
-          description: "Splunk HEC endpoint URL",
+          description:
+            "The base URL of the Splunk instance. The scheme (http or https) must be specified. No path should be included.",
         },
         default_token: {
           type: "string",
-          description: "Splunk HEC token",
+          description:
+            "Default Splunk HEC token. If an event has a token set in its metadata, it prevails over this one.",
           sensitive: true,
         },
         index: {
           type: "string",
-          description: "Splunk index name",
+          description:
+            "Splunk index name. If not specified, the default index defined within Splunk is used (template-enabled).",
         },
         source: {
           type: "string",
-          description: "Event source value",
+          description: "The source value to include in the events (template-enabled)",
         },
         sourcetype: {
           type: "string",
-          description: "Event sourcetype value",
+          description: "The sourcetype value to include in the events (template-enabled)",
         },
         host_key: {
           type: "string",
-          description: "Field to use as the host value",
+          description:
+            "Overrides the name of the log field used to retrieve the hostname to send to Splunk HEC",
+          default: "host",
         },
         default_namespace: {
           type: "string",
-          description: "Default metric namespace",
+          description:
+            "Sets the default namespace for any metrics sent. Only used if a metric has no existing namespace.",
         },
-        ...compressionSchema(["gzip", "none"], "none"),
+        ...compressionSchema(
+          ["gzip", "none", "snappy", "zlib", "zstd"],
+          "none",
+        ),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "1MB", timeout_secs: "1" }),
         ...bufferSchema(),
