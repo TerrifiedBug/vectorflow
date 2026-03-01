@@ -132,12 +132,17 @@ export async function GET(request: Request) {
 
         const checksum = createHash("sha256").update(configYaml).digest("hex");
 
+        // Extract log_level from globalConfig — it's a VectorFlow UI key
+        // passed to the agent as VECTOR_LOG env var, not in the YAML.
+        const logLevel = (pipeline.globalConfig as Record<string, unknown> | null)?.log_level as string | undefined;
+
         pipelineConfigs.push({
           pipelineId: pipeline.id,
           pipelineName: pipeline.name,
           version,
           configYaml,
           checksum,
+          ...(logLevel ? { logLevel } : {}),
           ...(environment.secretBackend === "BUILTIN" && Object.keys(secrets).length > 0
             ? { secrets }
             : {}),

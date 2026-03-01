@@ -23,9 +23,12 @@ export function generateVectorYaml(
     (e) => enabledNodeIds.has(e.source) && enabledNodeIds.has(e.target),
   );
 
+  // Separate Vector-external keys from real config sections
+  const { log_level: _logLevel, ...vectorGlobalConfig } = globalConfig ?? {};
+
   const config: Record<string, any> = {
     // Inject global config sections first (api, enrichment_tables, etc.)
-    ...(globalConfig ?? {}),
+    ...vectorGlobalConfig,
     sources: {},
     transforms: {},
     sinks: {},
