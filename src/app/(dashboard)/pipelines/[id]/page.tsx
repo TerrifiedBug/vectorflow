@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -31,6 +31,9 @@ import { FlowToolbar } from "@/components/flow/flow-toolbar";
 import { DetailPanel } from "@/components/flow/detail-panel";
 import { DeployDialog } from "@/components/flow/deploy-dialog";
 import { SaveTemplateDialog } from "@/components/flow/save-template-dialog";
+import { DeploymentStatus } from "@/components/pipeline/deployment-status";
+import { PipelineMetricsChart } from "@/components/pipeline/metrics-chart";
+import { PipelineLogs } from "@/components/pipeline/pipeline-logs";
 
 /**
  * Convert database PipelineNode rows into React Flow nodes.
@@ -98,25 +101,42 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const loadGraph = useFlowStore((s) => s.loadGraph);
+  const isDirty = useFlowStore((s) => s.isDirty);
+  const markClean = useFlowStore((s) => s.markClean);
 
   // Fetch pipeline data
   const pipelineQuery = useQuery(
     trpc.pipeline.get.queryOptions({ id: pipelineId })
   );
 
-  // Load graph into the store when data arrives
+  // Warn before navigating away with unsaved changes
   useEffect(() => {
-    if (pipelineQuery.data) {
-      const flowNodes = dbNodesToFlowNodes(pipelineQuery.data.nodes);
-      const flowEdges = dbEdgesToFlowEdges(pipelineQuery.data.edges);
-      loadGraph(flowNodes, flowEdges);
-    }
+    const handler = (e: BeforeUnloadEvent) => {
+      if (useFlowStore.getState().isDirty) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
+
+  // Load graph into the store when data arrives — but skip if the user has
+  // unsaved edits so that navigating away and back doesn't wipe them.
+  const hasLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!pipelineQuery.data) return;
+    if (hasLoadedRef.current && useFlowStore.getState().isDirty) return;
+    hasLoadedRef.current = true;
+    const flowNodes = dbNodesToFlowNodes(pipelineQuery.data.nodes);
+    const flowEdges = dbEdgesToFlowEdges(pipelineQuery.data.edges);
+    loadGraph(flowNodes, flowEdges, pipelineQuery.data.globalConfig as Record<string, unknown> | null);
   }, [pipelineQuery.data, loadGraph]);
 
   // Save mutation
   const saveMutation = useMutation(
     trpc.pipeline.saveGraph.mutationOptions({
       onSuccess: () => {
+        markClean();
         toast.success("Pipeline saved");
       },
       onError: (error) => {
@@ -132,7 +152,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     trpc.deploy.undeploy.mutationOptions({
       onSuccess: (result) => {
         if (result.success) {
-          toast.success("Pipeline undeployed from git");
+          toast.success("Pipeline undeployed");
           queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
         } else {
           toast.error(result.error || "Undeploy failed");
@@ -167,11 +187,6 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
         setIsRenaming(false);
         toast.success("Pipeline renamed");
-        // If deployed, trigger redeploy so git reflects the new name
-        if (!pipelineQuery.data?.isDraft && pipelineQuery.data?.deployedAt) {
-          setDeployOpen(true);
-          toast.info("Pipeline is deployed — redeploy to update the name in git");
-        }
       },
       onError: (error) => {
         toast.error(error.message || "Failed to rename pipeline");
@@ -193,13 +208,11 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     renameMutation.mutate({ id: pipelineId, name: trimmed });
   };
 
-  const handleSave = useCallback(() => {
-    const currentNodes = useFlowStore.getState().nodes;
-    const currentEdges = useFlowStore.getState().edges;
-
-    saveMutation.mutate({
+  const buildSavePayload = useCallback(() => {
+    const state = useFlowStore.getState();
+    return {
       pipelineId,
-      nodes: currentNodes.map((n) => ({
+      nodes: state.nodes.map((n) => ({
         id: n.id,
         componentKey: (n.data as Record<string, unknown>).componentKey as string,
         componentType: ((n.data as Record<string, unknown>).componentDef as { type: string }).type,
@@ -208,14 +221,34 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         positionX: n.position.x,
         positionY: n.position.y,
       })),
-      edges: currentEdges.map((e) => ({
+      edges: state.edges.map((e) => ({
         id: e.id,
         sourceNodeId: e.source,
         targetNodeId: e.target,
         sourcePort: e.sourceHandle ?? undefined,
       })),
-    });
-  }, [pipelineId, saveMutation]);
+      globalConfig: state.globalConfig,
+    };
+  }, [pipelineId]);
+
+  const handleSave = useCallback(() => {
+    saveMutation.mutate(buildSavePayload());
+  }, [saveMutation, buildSavePayload]);
+
+  // Auto-save before deploying so the deploy dialog previews the current editor
+  // state, not stale DB state. This prevents "no changes" deploys when users
+  // edit without explicitly saving first.
+  const handleDeploy = useCallback(async () => {
+    try {
+      await saveMutation.mutateAsync(buildSavePayload());
+      await queryClient.invalidateQueries({
+        queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }),
+      });
+      setDeployOpen(true);
+    } catch {
+      // Save error already toasted by saveMutation's onError handler
+    }
+  }, [saveMutation, buildSavePayload, queryClient, trpc.pipeline.get, pipelineId]);
 
   if (pipelineQuery.isLoading) {
     return (
@@ -237,22 +270,9 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
 
   return (
     <div className="-m-6 flex h-[calc(100vh-3.5rem)] flex-col">
-      <div className="flex items-center">
-        <div className="flex-1">
-          <FlowToolbar
-            pipelineId={pipelineId}
-            onSave={handleSave}
-            isSaving={saveMutation.isPending}
-            onDeploy={() => setDeployOpen(true)}
-            onUndeploy={() => undeployMutation.mutate({ pipelineId })}
-            onSaveAsTemplate={() => setTemplateOpen(true)}
-            isDraft={pipelineQuery.data?.isDraft}
-            deployedAt={pipelineQuery.data?.deployedAt}
-            updatedAt={pipelineQuery.data?.updatedAt}
-          />
-        </div>
-        <div className="flex items-center gap-2 border-b px-3 h-10">
-          {/* Inline pipeline name — click to rename */}
+      <div className="flex h-10 items-center border-b">
+        {/* Pipeline name — click to rename */}
+        <div className="flex items-center gap-1 border-r px-3">
           {isRenaming ? (
             <div className="flex items-center gap-1">
               <Input
@@ -283,6 +303,22 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
               <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           )}
+        </div>
+        <div className="flex-1">
+          <FlowToolbar
+            pipelineId={pipelineId}
+            onSave={handleSave}
+            isSaving={saveMutation.isPending}
+            onDeploy={handleDeploy}
+            onUndeploy={() => undeployMutation.mutate({ pipelineId })}
+            onSaveAsTemplate={() => setTemplateOpen(true)}
+            isDraft={pipelineQuery.data?.isDraft}
+            deployedAt={pipelineQuery.data?.deployedAt}
+            hasConfigChanges={pipelineQuery.data?.hasConfigChanges}
+            isDirty={isDirty}
+          />
+        </div>
+        <div className="flex items-center px-3">
           <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
             <DialogTrigger asChild>
               <Button variant="destructive" size="sm" className="h-7 gap-1.5 px-2.5 text-xs">
@@ -322,6 +358,9 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       </div>
       <DeployDialog pipelineId={pipelineId} open={deployOpen} onOpenChange={setDeployOpen} />
       <SaveTemplateDialog open={templateOpen} onOpenChange={setTemplateOpen} />
+      <DeploymentStatus pipelineId={pipelineId} />
+      <PipelineMetricsChart pipelineId={pipelineId} />
+      <PipelineLogs pipelineId={pipelineId} />
     </div>
   );
 }

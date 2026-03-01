@@ -19,6 +19,7 @@ interface PipelineStatus {
   bytesIn?: number;
   bytesOut?: number;
   utilization?: number;
+  recentLogs?: string[];
 }
 
 export async function POST(request: Request) {
@@ -113,6 +114,7 @@ export async function POST(request: Request) {
           bytesIn: ps.bytesIn ?? 0,
           bytesOut: ps.bytesOut ?? 0,
           utilization: ps.utilization ?? 0,
+          recentLogs: ps.recentLogs ?? undefined,
           lastUpdated: now,
         },
         update: {
@@ -126,6 +128,7 @@ export async function POST(request: Request) {
           bytesIn: ps.bytesIn ?? 0,
           bytesOut: ps.bytesOut ?? 0,
           utilization: ps.utilization ?? 0,
+          recentLogs: ps.recentLogs ?? undefined,
           lastUpdated: now,
         },
       });

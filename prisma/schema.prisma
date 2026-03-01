@@ -154,6 +154,7 @@ model NodePipelineStatus {
   bytesIn       BigInt        @default(0)
   bytesOut      BigInt        @default(0)
   utilization   Float         @default(0)
+  recentLogs    Json?
   lastUpdated   DateTime      @default(now())
 
   @@unique([nodeId, pipelineId])

@@ -436,4 +436,27 @@ export const pipelineRouter = router({
         },
       });
     }),
+
+  logs: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const statuses = await prisma.nodePipelineStatus.findMany({
+        where: { pipelineId: input.pipelineId },
+        select: {
+          nodeId: true,
+          recentLogs: true,
+          node: { select: { name: true } },
+        },
+      });
+
+      const logs: Array<{ nodeName: string; lines: string[] }> = [];
+      for (const s of statuses) {
+        const lines = Array.isArray(s.recentLogs) ? (s.recentLogs as string[]) : [];
+        if (lines.length > 0) {
+          logs.push({ nodeName: s.node.name, lines });
+        }
+      }
+      return logs;
+    }),
 });
