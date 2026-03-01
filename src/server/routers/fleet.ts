@@ -25,6 +25,11 @@ export const fleetRouter = router({
         where: { id: input.id },
         include: {
           environment: { select: { id: true, name: true } },
+          pipelineStatuses: {
+            include: {
+              pipeline: { select: { id: true, name: true } },
+            },
+          },
         },
       });
       if (!node) {
@@ -80,6 +85,7 @@ export const fleetRouter = router({
         apiPort: z.number().int().min(1).max(65535).optional(),
       })
     )
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("fleet.node.updated", "VectorNode"))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
@@ -103,6 +109,7 @@ export const fleetRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("fleet.node.deleted", "VectorNode"))
     .mutation(async ({ input }) => {
       const existing = await prisma.vectorNode.findUnique({
@@ -117,5 +124,68 @@ export const fleetRouter = router({
       return prisma.vectorNode.delete({
         where: { id: input.id },
       });
+    }),
+
+  revokeNode: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("fleet.node.revoked", "VectorNode"))
+    .mutation(async ({ input }) => {
+      const node = await prisma.vectorNode.findUnique({
+        where: { id: input.id },
+      });
+      if (!node) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Node not found" });
+      }
+      return prisma.vectorNode.update({
+        where: { id: input.id },
+        data: {
+          nodeTokenHash: null,
+          status: "UNREACHABLE",
+        },
+      });
+    }),
+
+  listWithPipelineStatus: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const nodes = await prisma.vectorNode.findMany({
+        where: { environmentId: input.environmentId },
+        include: {
+          pipelineStatuses: {
+            include: {
+              pipeline: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const deployedPipelines = await prisma.pipeline.findMany({
+        where: {
+          environmentId: input.environmentId,
+          isDraft: false,
+          deployedAt: { not: null },
+        },
+        select: {
+          id: true,
+          name: true,
+          versions: {
+            orderBy: { version: "desc" },
+            take: 1,
+            select: { version: true },
+          },
+        },
+      });
+
+      return {
+        nodes,
+        deployedPipelines: deployedPipelines.map((p) => ({
+          id: p.id,
+          name: p.name,
+          latestVersion: p.versions[0]?.version ?? 1,
+        })),
+      };
     }),
 });
