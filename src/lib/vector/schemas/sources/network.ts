@@ -20,24 +20,45 @@ export const networkSources: VectorComponentDef[] = [
       properties: {
         address: {
           type: "string",
-          description: "The address to listen on (e.g., 0.0.0.0:514)",
+          description:
+            "The socket address to listen for connections on, or systemd{#N} for systemd socket activation",
         },
         mode: {
           type: "string",
           enum: ["tcp", "udp", "unix"],
-          description: "Protocol to listen on",
+          description: "The type of socket to use",
         },
         path: {
           type: "string",
-          description: "Unix socket path (when mode is unix)",
+          description: "Unix socket path. Must be an absolute path (when mode is unix)",
         },
         max_length: {
           type: "number",
-          description: "Max syslog message length in bytes (default: 102400)",
+          description: "Max syslog message length in bytes",
+          default: 102400,
+        },
+        host_key: {
+          type: "string",
+          description:
+            "Overrides the name of the log field used to add the peer host to each event",
+        },
+        connection_limit: {
+          type: "number",
+          description:
+            "The maximum number of TCP connections that are allowed at any given time",
+        },
+        receive_buffer_bytes: {
+          type: "number",
+          description: "The size of the receive buffer used for each connection",
+        },
+        socket_file_mode: {
+          type: "number",
+          description:
+            "Unix file mode bits to be applied to the unix socket file as its designated file permissions",
         },
         ...tlsSchema(),
       },
-      required: ["address"],
+      required: ["mode"],
     },
   },
   {
@@ -53,7 +74,7 @@ export const networkSources: VectorComponentDef[] = [
       properties: {
         address: {
           type: "string",
-          description: "The address to listen on (e.g., 0.0.0.0:8080)",
+          description: "The socket address to listen for connections on (e.g., 0.0.0.0:80)",
         },
         encoding: {
           type: "string",
@@ -62,16 +83,20 @@ export const networkSources: VectorComponentDef[] = [
         },
         path: {
           type: "string",
-          description: "URL path to accept requests on",
+          description: "The HTTP path to listen on",
+          default: "/",
         },
         method: {
           type: "string",
           enum: ["POST", "PUT", "GET"],
-          description: "HTTP method to accept (default: POST)",
+          description: "HTTP method to accept",
+          default: "POST",
         },
         strict_path: {
           type: "boolean",
-          description: "Only accept requests on the exact path (default: true)",
+          description:
+            "Whether or not to treat the configured path as an absolute path",
+          default: true,
         },
         headers: {
           type: "array",
@@ -82,6 +107,19 @@ export const networkSources: VectorComponentDef[] = [
           type: "array",
           items: { type: "string" },
           description: "Query parameters to include as event fields",
+        },
+        host_key: {
+          type: "string",
+          description: "The key to use for identifying the host",
+        },
+        path_key: {
+          type: "string",
+          description: "The key to use for identifying the path",
+        },
+        response_code: {
+          type: "number",
+          description: "The HTTP status code to return on success",
+          default: 200,
         },
         ...authBasicBearerSchema(),
         ...tlsSchema(),
@@ -104,21 +142,34 @@ export const networkSources: VectorComponentDef[] = [
       properties: {
         endpoint: {
           type: "string",
-          description: "URL to scrape",
+          description: "The URL of the HTTP endpoint to fetch data from",
         },
         scrape_interval_secs: {
           type: "number",
-          description: "Interval between scrapes in seconds (default: 15)",
+          description: "The interval between scrapes in seconds",
+          default: 15,
+        },
+        scrape_timeout_secs: {
+          type: "number",
+          description: "The timeout for each scrape request in seconds",
+          default: 5,
         },
         method: {
           type: "string",
           enum: ["GET", "POST", "PUT", "HEAD"],
-          description: "HTTP method (default: GET)",
+          description: "HTTP method to use",
+          default: "GET",
         },
         headers: {
           type: "object",
           additionalProperties: { type: "string" },
-          description: "Headers to include in requests",
+          description: "Custom headers to send with requests",
+        },
+        query: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description:
+            "Custom parameters for the HTTP request query string",
         },
         ...authBasicBearerSchema(),
         ...tlsSchema(),
@@ -150,15 +201,41 @@ export const networkSources: VectorComponentDef[] = [
         },
         path: {
           type: "string",
-          description: "Unix socket path (for unix modes)",
+          description: "Unix socket path. Must be an absolute path (for unix modes)",
         },
         max_length: {
           type: "number",
-          description: "Max message length in bytes (default: 102400)",
+          description: "Max message length in bytes",
+          default: 102400,
         },
         shutdown_timeout_secs: {
           type: "number",
-          description: "Timeout for graceful shutdown in seconds (default: 30)",
+          description: "Timeout before a connection is forcefully closed during shutdown in seconds",
+          default: 30,
+        },
+        host_key: {
+          type: "string",
+          description:
+            "Overrides the name of the log field used to add the peer host to each event",
+        },
+        port_key: {
+          type: "string",
+          description:
+            "Overrides the name of the log field used to add the peer port to each event",
+        },
+        connection_limit: {
+          type: "number",
+          description:
+            "The maximum number of TCP connections that are allowed at any given time",
+        },
+        receive_buffer_bytes: {
+          type: "number",
+          description: "The size of the receive buffer used for each connection",
+        },
+        socket_file_mode: {
+          type: "number",
+          description:
+            "Unix file mode bits to be applied to the unix socket file as its designated file permissions",
         },
         ...tlsSchema(),
         ...decodingSchema(),
@@ -180,11 +257,35 @@ export const networkSources: VectorComponentDef[] = [
       properties: {
         address: {
           type: "string",
-          description: "Address to listen on (default: 0.0.0.0:24224)",
+          description:
+            "The socket address to listen for connections on, or systemd{#N} for systemd socket activation",
+        },
+        mode: {
+          type: "string",
+          enum: ["tcp", "unix"],
+          description: "The type of socket to use",
+        },
+        path: {
+          type: "string",
+          description: "The Unix socket path. Must be an absolute path (when mode is unix)",
+        },
+        connection_limit: {
+          type: "number",
+          description:
+            "The maximum number of TCP connections that are allowed at any given time",
+        },
+        receive_buffer_bytes: {
+          type: "number",
+          description: "The size of the receive buffer used for each connection",
+        },
+        socket_file_mode: {
+          type: "number",
+          description:
+            "Unix file mode bits to be applied to the unix socket file as its designated file permissions",
         },
         ...tlsSchema(),
       },
-      required: [],
+      required: ["mode"],
     },
   },
   {
@@ -200,11 +301,21 @@ export const networkSources: VectorComponentDef[] = [
       properties: {
         address: {
           type: "string",
-          description: "Address to listen on (default: 0.0.0.0:5044)",
+          description:
+            "The socket address to listen for connections on, or systemd{#N} for systemd socket activation",
+        },
+        connection_limit: {
+          type: "number",
+          description:
+            "The maximum number of TCP connections that are allowed at any given time",
+        },
+        receive_buffer_bytes: {
+          type: "number",
+          description: "The size of the receive buffer used for each connection",
         },
         ...tlsSchema(),
       },
-      required: [],
+      required: ["address"],
     },
   },
   {
@@ -220,16 +331,44 @@ export const networkSources: VectorComponentDef[] = [
       properties: {
         address: {
           type: "string",
-          description: "Address to listen on (default: 0.0.0.0:8125)",
+          description:
+            "The socket address to listen for connections on, or systemd{#N} for systemd socket activation",
         },
         mode: {
           type: "string",
-          enum: ["tcp", "udp"],
-          description: "Protocol to listen on (default: udp)",
+          enum: ["tcp", "udp", "unix"],
+          description: "The type of socket to use",
+        },
+        path: {
+          type: "string",
+          description: "The Unix socket path. Must be an absolute path (when mode is unix)",
+        },
+        sanitize: {
+          type: "boolean",
+          description:
+            "Whether or not to sanitize incoming statsd key names by replacing special characters",
+          default: true,
+        },
+        convert_to: {
+          type: "string",
+          enum: ["milliseconds", "seconds"],
+          description:
+            "Specifies the target unit for converting incoming StatsD timing values",
+          default: "seconds",
+        },
+        shutdown_timeout_secs: {
+          type: "number",
+          description:
+            "The timeout before a connection is forcefully closed during shutdown in seconds",
+          default: 30,
+        },
+        receive_buffer_bytes: {
+          type: "number",
+          description: "The size of the receive buffer used for each connection",
         },
         ...tlsSchema(),
       },
-      required: [],
+      required: ["mode"],
     },
   },
   {
@@ -247,27 +386,57 @@ export const networkSources: VectorComponentDef[] = [
         mode: {
           type: "string",
           enum: ["tcp", "unix"],
-          description: "Listening mode",
+          description: "The type of dnstap socket to use",
         },
-        socket_address: {
+        address: {
           type: "string",
           description: "TCP address to listen on (when mode is tcp)",
         },
         socket_path: {
           type: "string",
-          description: "Unix socket path (when mode is unix)",
+          description:
+            "Absolute path to the socket file to read DNSTAP data from (when mode is unix)",
         },
         raw_data_only: {
           type: "boolean",
-          description: "Output raw dnstap data without parsing (default: false)",
+          description:
+            "Whether or not to skip parsing or decoding of DNSTAP frames",
         },
         multithreaded: {
           type: "boolean",
-          description: "Use multithreaded runtime (default: false)",
+          description: "Whether or not to concurrently process DNSTAP frames",
         },
         max_frame_length: {
           type: "number",
-          description: "Max frame length in bytes (default: 102400)",
+          description: "Maximum DNSTAP frame length that the source accepts in bytes",
+          default: 102400,
+        },
+        lowercase_hostnames: {
+          type: "boolean",
+          description:
+            "Whether to downcase all DNSTAP hostnames received for consistency",
+          default: false,
+        },
+        max_frame_handling_tasks: {
+          type: "number",
+          description:
+            "Maximum number of frames that can be processed concurrently",
+        },
+        socket_receive_buffer_size: {
+          type: "number",
+          description:
+            "The size, in bytes, of the receive buffer used for the socket (when mode is unix)",
+        },
+        shutdown_timeout_secs: {
+          type: "number",
+          description:
+            "The timeout before a connection is forcefully closed during shutdown in seconds",
+          default: 30,
+        },
+        socket_file_mode: {
+          type: "number",
+          description:
+            "Unix file mode bits to be applied to the unix socket file as its designated file permissions",
         },
         ...tlsSchema(),
       },
@@ -287,16 +456,20 @@ export const networkSources: VectorComponentDef[] = [
       properties: {
         address: {
           type: "string",
-          description: "Address to listen on (default: 0.0.0.0:6000)",
+          description: "The socket address to listen for connections on",
+          default: "0.0.0.0:6000",
         },
         version: {
           type: "string",
           enum: ["1", "2"],
-          description: "Vector protocol version (default: 2)",
+          description: "Vector protocol version",
+          default: "2",
         },
         shutdown_timeout_secs: {
           type: "number",
-          description: "Timeout for graceful shutdown in seconds (default: 30)",
+          description:
+            "The timeout before a connection is forcefully closed during shutdown in seconds",
+          default: 30,
         },
         ...tlsSchema(),
       },
@@ -319,7 +492,8 @@ export const networkSources: VectorComponentDef[] = [
           properties: {
             address: {
               type: "string",
-              description: "gRPC listen address (default: 0.0.0.0:4317)",
+              description: "gRPC listen address",
+              default: "0.0.0.0:4317",
             },
           },
           description: "gRPC receiver configuration",
@@ -329,7 +503,14 @@ export const networkSources: VectorComponentDef[] = [
           properties: {
             address: {
               type: "string",
-              description: "HTTP listen address (default: 0.0.0.0:4318)",
+              description: "HTTP listen address",
+              default: "0.0.0.0:4318",
+            },
+            headers: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "A list of HTTP headers to include in the log event. Accepts wildcard (*) for matching patterns",
             },
           },
           description: "HTTP receiver configuration",
@@ -351,17 +532,31 @@ export const networkSources: VectorComponentDef[] = [
     configSchema: {
       type: "object",
       properties: {
-        url: {
+        uri: {
           type: "string",
-          description: "WebSocket URL to connect to (ws:// or wss://)",
+          description: "The WebSocket URI to connect to (ws:// or wss://)",
         },
-        ping_interval_secs: {
+        ping_interval: {
           type: "number",
           description: "Interval between ping frames in seconds",
         },
-        ping_timeout_secs: {
+        ping_timeout: {
           type: "number",
           description: "Timeout waiting for pong response in seconds",
+        },
+        connect_timeout_secs: {
+          type: "number",
+          description: "Timeout for establishing the WebSocket connection in seconds",
+        },
+        initial_message: {
+          type: "string",
+          description:
+            "An initial message to send to the server after connection is established",
+        },
+        initial_message_timeout_secs: {
+          type: "number",
+          description:
+            "Timeout for the initial message to be sent in seconds",
         },
         headers: {
           type: "object",
@@ -373,7 +568,7 @@ export const networkSources: VectorComponentDef[] = [
         ...decodingSchema(),
         ...framingSchema(),
       },
-      required: ["url"],
+      required: ["uri"],
     },
   },
 ];
