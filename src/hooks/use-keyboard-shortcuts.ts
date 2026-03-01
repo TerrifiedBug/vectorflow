@@ -16,6 +16,10 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
   const selectedEdgeId = useFlowStore((s) => s.selectedEdgeId);
   const removeNode = useFlowStore((s) => s.removeNode);
   const removeEdge = useFlowStore((s) => s.removeEdge);
+  const copySelectedNodes = useFlowStore((s) => s.copySelectedNodes);
+  const pasteFromSession = useFlowStore((s) => s.pasteFromSession);
+  const duplicateNode = useFlowStore((s) => s.duplicateNode);
+  const selectedNodeIds = useFlowStore((s) => s.selectedNodeIds);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -32,6 +36,27 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
       if (isMeta && e.key === "s") {
         e.preventDefault();
         onSave?.();
+        return;
+      }
+
+      // Cmd+C → Copy selected node(s)
+      if (isMeta && e.key === "c" && (selectedNodeId || selectedNodeIds.size > 0)) {
+        e.preventDefault();
+        copySelectedNodes();
+        return;
+      }
+
+      // Cmd+V → Paste from session clipboard
+      if (isMeta && e.key === "v") {
+        e.preventDefault();
+        pasteFromSession();
+        return;
+      }
+
+      // Cmd+D → Duplicate selected node
+      if (isMeta && e.key === "d" && selectedNodeId) {
+        e.preventDefault();
+        duplicateNode(selectedNodeId);
         return;
       }
 
@@ -80,5 +105,5 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [undo, redo, selectedNodeId, selectedEdgeId, removeNode, removeEdge, onSave, onExport, onImport]);
+  }, [undo, redo, selectedNodeId, selectedEdgeId, removeNode, removeEdge, copySelectedNodes, pasteFromSession, duplicateNode, selectedNodeIds, onSave, onExport, onImport]);
 }
