@@ -429,8 +429,14 @@ export function datadogCommonSchema() {
   return {
     default_api_key: {
       type: "string",
-      description: "Datadog API key",
+      description:
+        "The default Datadog API key to use in authentication of HTTP requests. Can be overridden by event-level metadata.",
       sensitive: true,
+    },
+    endpoint: {
+      type: "string",
+      description:
+        "The endpoint to send observability data to. Must contain an HTTP scheme. Overrides the site option if set.",
     },
     site: {
       type: "string",
@@ -442,7 +448,9 @@ export function datadogCommonSchema() {
         "ddog-gov.com",
         "ap1.datadoghq.com",
       ],
-      description: "Datadog site",
+      description:
+        "The Datadog site to send observability data to. Can also be set via the DD_SITE environment variable. The config value takes precedence over the environment variable.",
+      default: "datadoghq.com",
     },
   };
 }
