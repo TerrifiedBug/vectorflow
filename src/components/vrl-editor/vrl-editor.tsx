@@ -49,7 +49,7 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
   const [showTest, setShowTest] = useState(false);
   const [showSnippets, setShowSnippets] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<unknown>(null);
 
   const testMutation = useMutation(
     trpc.vrl.test.mutationOptions({
@@ -71,7 +71,7 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
 
     // Register VRL snippet completions
     monaco.languages.registerCompletionItemProvider("plaintext", {
-      provideCompletionItems(model: any, position: any) {
+      provideCompletionItems(model: { getWordUntilPosition: (pos: unknown) => { startColumn: number; endColumn: number } }, position: { lineNumber: number }) {
         const word = model.getWordUntilPosition(position);
         const range = {
           startLineNumber: position.lineNumber,

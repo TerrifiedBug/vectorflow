@@ -319,7 +319,7 @@ export default function AuditPage() {
                       <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
                         {truncate(
                           entry.diff ??
-                          (entry.metadata as any)?.input ??
+                          (entry.metadata as Record<string, unknown>)?.input ??
                           entry.metadata
                         )}
                       </TableCell>

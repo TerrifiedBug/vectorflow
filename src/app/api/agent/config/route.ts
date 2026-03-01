@@ -61,7 +61,7 @@ export async function GET(request: Request) {
         }));
 
         let configYaml: string;
-        let secrets: Record<string, string> = {};
+        const secrets: Record<string, string> = {};
         let certFiles: Array<{ name: string; filename: string; data: string }> = [];
 
         if (environment.secretBackend === "BUILTIN") {
@@ -94,8 +94,8 @@ export async function GET(request: Request) {
           );
 
           configYaml = generateVectorYaml(
-            resolvedNodes as any,
-            flowEdges as any,
+            resolvedNodes as Parameters<typeof generateVectorYaml>[0],
+            flowEdges as Parameters<typeof generateVectorYaml>[1],
             pipeline.globalConfig as Record<string, unknown> | null,
           );
           certFiles = allCertFiles;
@@ -124,8 +124,8 @@ export async function GET(request: Request) {
           }));
 
           configYaml = generateVectorYaml(
-            flowNodes as any,
-            flowEdges as any,
+            flowNodes as Parameters<typeof generateVectorYaml>[0],
+            flowEdges as Parameters<typeof generateVectorYaml>[1],
             pipeline.globalConfig as Record<string, unknown> | null,
           );
         }

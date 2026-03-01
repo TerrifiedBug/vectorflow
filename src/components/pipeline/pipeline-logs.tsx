@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import type { LogLevel } from "@/generated/prisma";
 
 const ALL_LEVELS: LogLevel[] = ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"];
