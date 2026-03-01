@@ -6,7 +6,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,14 +16,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+
 export default function NewEnvironmentPage() {
   const router = useRouter();
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
   const [name, setName] = useState("");
-  const [gitRepo, setGitRepo] = useState("");
-  const [gitBranch, setGitBranch] = useState("");
 
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
@@ -52,10 +50,10 @@ export default function NewEnvironmentPage() {
     createMutation.mutate({
       name,
       teamId: selectedTeamId,
-      gitRepo,
-      gitBranch,
     });
   };
+
+  const isValid = !!name && !!selectedTeamId;
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -88,35 +86,23 @@ export default function NewEnvironmentPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="gitRepo">Git Repository</Label>
-              <Input
-                id="gitRepo"
-                placeholder="https://github.com/org/repo.git or git@github.com:org/repo.git"
-                value={gitRepo}
-                onChange={(e) => setGitRepo(e.target.value)}
-                required
-              />
-              <p className="text-xs text-muted-foreground">
-                Use HTTPS with a token (Settings &rarr; GitOps) or SSH with a deploy key
+            {/* Agent info */}
+            <div className="rounded-md border border-blue-500/30 bg-blue-500/5 p-4 text-sm text-muted-foreground space-y-2">
+              <p>
+                After creating this environment, you&apos;ll generate an enrollment token in the environment settings.
+                Use that token to connect agents:
               </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="gitBranch">Git Branch</Label>
-              <Input
-                id="gitBranch"
-                placeholder="e.g., main"
-                value={gitBranch}
-                onChange={(e) => setGitBranch(e.target.value)}
-                required
-              />
+              <pre className="rounded bg-muted px-3 py-2 text-xs">
+                {`VF_URL=https://your-vectorflow-instance:3000
+VF_TOKEN=<enrollment-token>
+./vf-agent`}
+              </pre>
             </div>
 
             <div className="flex gap-3">
               <Button
                 type="submit"
-                disabled={createMutation.isPending || !name || !selectedTeamId || !gitRepo || !gitBranch}
+                disabled={createMutation.isPending || !isValid}
               >
                 {createMutation.isPending ? "Creating..." : "Create Environment"}
               </Button>
