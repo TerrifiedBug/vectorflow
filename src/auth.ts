@@ -4,7 +4,8 @@ import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { decrypt } from "@/server/services/crypto";
+import { encrypt, decrypt } from "@/server/services/crypto";
+import { verifyTotpCode, verifyBackupCode } from "@/server/services/totp";
 import { authConfig } from "@/auth.config";
 
 /**
@@ -12,6 +13,9 @@ import { authConfig } from "@/auth.config";
  * Returns null if OIDC is not configured.
  */
 async function getOidcSettings() {
+  // Skip DB query during build (no database available)
+  if (!process.env.DATABASE_URL) return null;
+
   try {
     const settings = await prisma.systemSettings.findUnique({
       where: { id: "singleton" },
@@ -41,6 +45,7 @@ const credentialsProvider = Credentials({
   credentials: {
     email: { label: "Email", type: "email" },
     password: { label: "Password", type: "password" },
+    totpCode: { label: "2FA Code", type: "text" },
   },
   async authorize(credentials) {
     if (!credentials?.email || !credentials?.password) return null;
@@ -57,6 +62,37 @@ const credentialsProvider = Credentials({
       user.passwordHash
     );
     if (!valid) return null;
+
+    // TOTP 2FA check
+    if (user.totpEnabled && user.totpSecret) {
+      const totpCode = credentials.totpCode as string | undefined;
+
+      if (!totpCode) {
+        // Signal the client that TOTP is required
+        throw new Error("TOTP_REQUIRED");
+      }
+
+      const secret = decrypt(user.totpSecret);
+      let codeValid = verifyTotpCode(secret, totpCode);
+
+      // If TOTP code didn't match, try as a backup code
+      if (!codeValid && user.totpBackupCodes) {
+        const hashedCodes: string[] = JSON.parse(decrypt(user.totpBackupCodes));
+        const result = verifyBackupCode(totpCode, hashedCodes);
+        if (result.valid) {
+          codeValid = true;
+          // Consume the backup code
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { totpBackupCodes: encrypt(JSON.stringify(result.remaining)) },
+          });
+        }
+      }
+
+      if (!codeValid) {
+        throw new Error("Invalid verification code");
+      }
+    }
 
     return {
       id: user.id,
@@ -173,35 +209,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             if (!membership) {
               await prisma.teamMember.create({
                 data: { userId: dbUser.id, teamId: settings.oidcDefaultTeamId, role: defaultRole },
-              });
-            }
-          }
-        } else {
-          // Legacy fallback: use oidcAdminGroups/oidcEditorGroups (backward compat)
-          const defaultRole = settings?.oidcDefaultRole ?? "VIEWER";
-          const adminGroups = settings?.oidcAdminGroups?.split(",").map((g) => g.trim()).filter(Boolean) ?? [];
-          const editorGroups = settings?.oidcEditorGroups?.split(",").map((g) => g.trim()).filter(Boolean) ?? [];
-
-          let assignedRole: "VIEWER" | "EDITOR" | "ADMIN" = defaultRole as "VIEWER" | "EDITOR" | "ADMIN";
-          if (adminGroups.length > 0 && userGroups.some((g) => adminGroups.includes(g))) {
-            assignedRole = "ADMIN";
-          } else if (editorGroups.length > 0 && userGroups.some((g) => editorGroups.includes(g))) {
-            assignedRole = "EDITOR";
-          }
-
-          const teams = await prisma.team.findMany({ take: 1 });
-          if (teams.length > 0) {
-            const membership = await prisma.teamMember.findUnique({
-              where: { userId_teamId: { userId: dbUser.id, teamId: teams[0].id } },
-            });
-            if (!membership) {
-              await prisma.teamMember.create({
-                data: { userId: dbUser.id, teamId: teams[0].id, role: assignedRole },
-              });
-            } else if (adminGroups.length > 0 || editorGroups.length > 0) {
-              await prisma.teamMember.update({
-                where: { id: membership.id },
-                data: { role: assignedRole },
               });
             }
           }

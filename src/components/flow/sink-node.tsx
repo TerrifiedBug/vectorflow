@@ -40,6 +40,7 @@ function getConfigSummary(config: Record<string, unknown>): string | null {
 
   const [key, value] = entries[0];
   if (value === undefined || value === null) return null;
+  if (typeof value === "object" && !Array.isArray(value)) return `${key}: configured`;
   const display =
     typeof value === "string"
       ? value
@@ -85,11 +86,15 @@ function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
           {componentKey}
         </p>
 
-        {configSummary && (
+        {metrics ? (
+          <p className="truncate text-xs font-mono text-purple-400">
+            {formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}
+          </p>
+        ) : configSummary ? (
           <p className="truncate text-xs text-muted-foreground">
             {configSummary}
           </p>
-        )}
+        ) : null}
 
         {/* Data type badges */}
         <div className="flex flex-wrap gap-1">
@@ -115,8 +120,11 @@ function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
             )}
           />
           <span className="text-muted-foreground">
-            {metrics.eventsPerSec} events/s
+            {formatRate(metrics.eventsPerSec)} ev/s
           </span>
+          {metrics.samples && metrics.samples.length > 1 && (
+            <NodeSparkline samples={metrics.samples} />
+          )}
         </div>
       )}
     </div>

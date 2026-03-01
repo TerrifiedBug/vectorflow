@@ -4,9 +4,15 @@ import { useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useTRPC } from "@/trpc/client";
 import { useMutation } from "@tanstack/react-query";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { vrlTheme } from "./vrl-theme";
 import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
 import { VrlSnippetDrawer } from "@/components/flow/vrl-snippet-drawer";
@@ -42,6 +48,7 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
   const [testError, setTestError] = useState<string | null>(null);
   const [showTest, setShowTest] = useState(false);
   const [showSnippets, setShowSnippets] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const editorRef = useRef<any>(null);
 
   const testMutation = useMutation(
@@ -145,6 +152,14 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
         >
           {showTest ? "Hide Test" : "Test"}
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setExpanded(true)}
+        >
+          <Maximize2 className="mr-1.5 h-3.5 w-3.5" />
+          Expand
+        </Button>
       </div>
 
       {showSnippets && (
@@ -194,6 +209,34 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
           )}
         </div>
       )}
+
+      {/* Expanded full-screen editor */}
+      <Dialog open={expanded} onOpenChange={setExpanded}>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>VRL Editor</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden rounded border">
+            <Editor
+              height="100%"
+              language="plaintext"
+              value={value}
+              onChange={(v) => onChange(v ?? "")}
+              onMount={handleEditorMount}
+              theme="vrl-theme"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                lineNumbers: "on",
+                scrollBeyondLastLine: false,
+                wordWrap: "on",
+                tabSize: 2,
+                automaticLayout: true,
+              }}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

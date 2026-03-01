@@ -95,6 +95,8 @@ export default function VersionHistoryPage() {
   const [viewingConfig, setViewingConfig] = useState<{
     version: number;
     yaml: string;
+    compareYaml: string | null;
+    compareLabel: string;
   } | null>(null);
 
   const [rollbackTarget, setRollbackTarget] = useState<{
@@ -258,13 +260,28 @@ export default function VersionHistoryPage() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8"
-                            title="View config"
-                            onClick={() =>
-                              setViewingConfig({
-                                version: version.version,
-                                yaml: version.configYaml,
-                              })
-                            }
+                            title="View changes"
+                            onClick={() => {
+                              if (isCurrent) {
+                                // Current version: diff against its predecessor
+                                const idx = versions.findIndex((v) => v.id === version.id);
+                                const prev = idx < versions.length - 1 ? versions[idx + 1] : null;
+                                setViewingConfig({
+                                  version: version.version,
+                                  yaml: version.configYaml,
+                                  compareYaml: prev?.configYaml ?? null,
+                                  compareLabel: prev ? `v${prev.version}` : "",
+                                });
+                              } else {
+                                // Older version: diff against current (same as rollback)
+                                setViewingConfig({
+                                  version: version.version,
+                                  yaml: version.configYaml,
+                                  compareYaml: latestVersion?.configYaml ?? null,
+                                  compareLabel: latestVersion ? `v${latestVersion.version} (current)` : "",
+                                });
+                              }
+                            }}
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -304,19 +321,36 @@ export default function VersionHistoryPage() {
           if (!open) setViewingConfig(null);
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>
-              Version {viewingConfig?.version} Configuration
+              Version {viewingConfig?.version} {viewingConfig?.compareYaml !== null ? "Changes" : "Configuration"}
             </DialogTitle>
             <DialogDescription>
-              Full YAML configuration snapshot for this version
+              {viewingConfig?.compareYaml !== null
+                ? `Diff between v${viewingConfig?.version} and ${viewingConfig?.compareLabel}`
+                : "Full YAML configuration for the initial version"}
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="h-[500px] rounded-md border">
-            <pre className="p-4 text-sm font-mono whitespace-pre-wrap">
-              {viewingConfig?.yaml}
-            </pre>
+          <ScrollArea className="h-[500px] rounded-md border bg-muted/30">
+            {viewingConfig && viewingConfig.compareYaml !== null ? (
+              viewingConfig.yaml === viewingConfig.compareYaml ? (
+                <div className="flex items-center justify-center h-full p-8 text-sm text-muted-foreground">
+                  No differences — configs are identical.
+                </div>
+              ) : (
+                <DiffView
+                  oldYaml={viewingConfig.compareYaml}
+                  newYaml={viewingConfig.yaml}
+                  oldLabel={viewingConfig.compareLabel}
+                  newLabel={`v${viewingConfig.version}`}
+                />
+              )
+            ) : (
+              <pre className="p-4 text-sm font-mono whitespace-pre-wrap">
+                {viewingConfig?.yaml}
+              </pre>
+            )}
           </ScrollArea>
         </DialogContent>
       </Dialog>
