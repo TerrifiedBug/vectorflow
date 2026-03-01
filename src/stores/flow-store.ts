@@ -71,6 +71,7 @@ export interface FlowState {
 
   // Global config
   updateGlobalConfig: (key: string, value: unknown) => void;
+  setGlobalConfig: (config: Record<string, unknown> | null) => void;
 
   // Copy / Paste
   copyNode: (id: string) => void;
@@ -344,6 +345,13 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         globalConfig: Object.keys(updated).length > 0 ? updated : null,
         isDirty: true,
       };
+    });
+  },
+
+  setGlobalConfig: (config) => {
+    set({
+      globalConfig: config && Object.keys(config).length > 0 ? config : null,
+      isDirty: true,
     });
   },
 
