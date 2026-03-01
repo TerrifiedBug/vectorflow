@@ -1,73 +1,105 @@
 "use client";
 
-import {
-  Workflow,
-  Server,
-  Layers,
-  Activity,
-  Clock,
-  Shield,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  Loader2,
-} from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { useTRPC } from "@/trpc/client";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTRPC } from "@/trpc/client";
+import { Search } from "lucide-react";
 import Link from "next/link";
 
-const statusConfig: Record<string, { icon: typeof CheckCircle; color: string; label: string }> = {
-  RUNNING: { icon: CheckCircle, color: "text-green-500", label: "Running" },
-  STARTING: { icon: Loader2, color: "text-yellow-500", label: "Starting" },
-  STOPPED: { icon: XCircle, color: "text-muted-foreground", label: "Stopped" },
-  CRASHED: { icon: AlertTriangle, color: "text-red-500", label: "Crashed" },
-  PENDING: { icon: Clock, color: "text-blue-500", label: "Pending" },
-};
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { NodeCard } from "@/components/dashboard/node-card";
+import { PipelineCard } from "@/components/dashboard/pipeline-card";
 
-function formatRelativeTime(date: string | Date | null): string {
-  if (!date) return "Never";
-  const now = Date.now();
-  const then = new Date(date).getTime();
-  const diffSec = Math.floor((now - then) / 1000);
-  if (diffSec < 60) return `${diffSec}s ago`;
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-  return `${Math.floor(diffSec / 86400)}d ago`;
-}
-
-function formatNumber(n: number | bigint | null | undefined): string {
-  if (n == null) return "0";
-  const num = typeof n === "bigint" ? Number(n) : n;
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
-  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
-  return num.toString();
+/** Derive an overall status for a pipeline from its node statuses */
+function derivePipelineStatus(
+  nodes: Array<{ pipelineStatus: string }>
+): string {
+  if (nodes.length === 0) return "PENDING";
+  if (nodes.some((n) => n.pipelineStatus === "CRASHED")) return "CRASHED";
+  if (nodes.some((n) => n.pipelineStatus === "RUNNING")) return "RUNNING";
+  if (nodes.some((n) => n.pipelineStatus === "STARTING")) return "STARTING";
+  if (nodes.every((n) => n.pipelineStatus === "STOPPED")) return "STOPPED";
+  return nodes[0].pipelineStatus;
 }
 
 export default function DashboardPage() {
   const trpc = useTRPC();
+
   const stats = useQuery(trpc.dashboard.stats.queryOptions());
-  const ops = useQuery({
-    ...trpc.dashboard.operationalOverview.queryOptions(),
+  const nodeCards = useQuery({
+    ...trpc.dashboard.nodeCards.queryOptions(),
     refetchInterval: 15_000,
   });
-  const recentPipelines = useQuery(trpc.dashboard.recentPipelines.queryOptions());
-  const recentAudit = useQuery(trpc.dashboard.recentAudit.queryOptions());
+  const pipelineCards = useQuery({
+    ...trpc.dashboard.pipelineCards.queryOptions(),
+    refetchInterval: 15_000,
+  });
+
+  const [nodeSearch, setNodeSearch] = useState("");
+  const [pipelineSearch, setPipelineSearch] = useState("");
+  const [nodeStatusFilter, setNodeStatusFilter] = useState<string | null>(null);
+  const [pipelineStatusFilter, setPipelineStatusFilter] = useState<string | null>(null);
+
+  // Compute pipeline status counts for summary bar
+  const pipelineStatusCounts = useMemo(() => {
+    if (!pipelineCards.data) return { running: 0, stopped: 0, crashed: 0 };
+    let running = 0;
+    let stopped = 0;
+    let crashed = 0;
+    for (const p of pipelineCards.data) {
+      const status = derivePipelineStatus(p.nodes);
+      if (status === "RUNNING" || status === "STARTING") running++;
+      else if (status === "STOPPED") stopped++;
+      else if (status === "CRASHED") crashed++;
+    }
+    return { running, stopped, crashed };
+  }, [pipelineCards.data]);
+
+  // Filter nodes
+  const filteredNodes = useMemo(() => {
+    if (!nodeCards.data) return [];
+    return nodeCards.data.filter((node) => {
+      if (nodeStatusFilter && node.status !== nodeStatusFilter) return false;
+      if (nodeSearch) {
+        const term = nodeSearch.toLowerCase();
+        return (
+          node.name.toLowerCase().includes(term) ||
+          node.host.toLowerCase().includes(term)
+        );
+      }
+      return true;
+    });
+  }, [nodeCards.data, nodeSearch, nodeStatusFilter]);
+
+  // Filter pipelines
+  const filteredPipelines = useMemo(() => {
+    if (!pipelineCards.data) return [];
+    return pipelineCards.data.filter((pipeline) => {
+      if (pipelineStatusFilter) {
+        const status = derivePipelineStatus(pipeline.nodes);
+        if (status !== pipelineStatusFilter) return false;
+      }
+      if (pipelineSearch) {
+        const term = pipelineSearch.toLowerCase();
+        return pipeline.name.toLowerCase().includes(term);
+      }
+      return true;
+    });
+  }, [pipelineCards.data, pipelineSearch, pipelineStatusFilter]);
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
-          <p className="text-muted-foreground">Operational overview of your VectorFlow platform</p>
+          <p className="text-muted-foreground">
+            Operational overview of your VectorFlow platform
+          </p>
         </div>
         <div className="flex gap-2">
           <Button asChild>
@@ -76,263 +108,260 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pipelines</CardTitle>
-            <Workflow className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.data?.pipelines ?? 0}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Fleet Nodes</CardTitle>
-            <Server className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.data?.nodes ?? 0}</div>
-            {stats.data && (
-              <div className="flex gap-2 mt-1">
-                {stats.data.fleet.healthy > 0 && (
-                  <Badge variant="outline" className="text-green-600 border-green-600">
-                    {stats.data.fleet.healthy} healthy
-                  </Badge>
-                )}
-                {stats.data.fleet.degraded > 0 && (
-                  <Badge variant="outline" className="text-yellow-600 border-yellow-600">
-                    {stats.data.fleet.degraded} degraded
-                  </Badge>
-                )}
-                {stats.data.fleet.unreachable > 0 && (
-                  <Badge variant="outline" className="text-red-600 border-red-600">
-                    {stats.data.fleet.unreachable} down
-                  </Badge>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Environments</CardTitle>
-            <Layers className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.data?.environments ?? 0}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Fleet Health</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {stats.data && stats.data.nodes > 0
-                ? `${Math.round((stats.data.fleet.healthy / stats.data.nodes) * 100)}%`
-                : "\u2014"}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Throughput summary */}
-      {ops.data?.recentMetrics && (
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Events In (5m)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatNumber(ops.data.recentMetrics.eventsIn)}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Events Out (5m)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatNumber(ops.data.recentMetrics.eventsOut)}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Errors (5m)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-500">{formatNumber(ops.data.recentMetrics.errorsTotal)}</div>
-            </CardContent>
-          </Card>
+      {/* Summary bar */}
+      <div className="flex flex-wrap items-center gap-6 rounded-lg border bg-card px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">
+            Nodes
+          </span>
+          {stats.data?.fleet.healthy != null && stats.data.fleet.healthy > 0 && (
+            <Badge
+              variant="outline"
+              className="text-green-600 border-green-600"
+            >
+              {stats.data.fleet.healthy} Healthy
+            </Badge>
+          )}
+          {stats.data?.fleet.degraded != null && stats.data.fleet.degraded > 0 && (
+            <Badge
+              variant="outline"
+              className="text-yellow-600 border-yellow-600"
+            >
+              {stats.data.fleet.degraded} Degraded
+            </Badge>
+          )}
+          {stats.data?.fleet.unreachable != null && stats.data.fleet.unreachable > 0 && (
+            <Badge
+              variant="outline"
+              className="text-red-600 border-red-600"
+            >
+              {stats.data.fleet.unreachable} Unreachable
+            </Badge>
+          )}
+          {stats.data && stats.data.nodes === 0 && (
+            <span className="text-sm text-muted-foreground">None</span>
+          )}
         </div>
-      )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Deployed Pipelines Status */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Workflow className="h-4 w-4" />
-              Deployed Pipelines
-            </CardTitle>
-            <CardDescription>Live pipeline status across all environments</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {ops.data?.deployedPipelines?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No deployed pipelines.</p>
-            )}
-            <div className="space-y-2">
-              {ops.data?.deployedPipelines?.map((p: any) => {
-                const statuses = p.nodeStatuses ?? [];
-                const crashed = statuses.filter((s: any) => s.status === "CRASHED").length;
-                const running = statuses.filter((s: any) => s.status === "RUNNING").length;
-                const overallStatus = crashed > 0 ? "CRASHED" : running > 0 ? "RUNNING" : statuses.length > 0 ? statuses[0].status : "PENDING";
-                const config = statusConfig[overallStatus] ?? statusConfig.PENDING;
-                const StatusIcon = config.icon;
+        <div className="h-6 w-px bg-border" />
 
-                return (
-                  <Link
-                    key={p.id}
-                    href={`/pipelines/${p.id}`}
-                    className="flex items-center justify-between rounded-md border p-3 hover:bg-accent transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <StatusIcon className={`h-4 w-4 ${config.color} ${overallStatus === "STARTING" ? "animate-spin" : ""}`} />
-                      <div>
-                        <div className="font-medium">{p.name}</div>
-                        <div className="text-xs text-muted-foreground">{p.environment?.name}</div>
-                      </div>
-                    </div>
-                    <div className="text-right text-xs text-muted-foreground">
-                      {statuses.length > 0 && (
-                        <span>{running}/{statuses.length} nodes</span>
-                      )}
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Unhealthy Nodes */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" />
-              Issues
-            </CardTitle>
-            <CardDescription>Nodes requiring attention</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {ops.data?.unhealthyNodes?.length === 0 && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                All nodes healthy
-              </div>
-            )}
-            <div className="space-y-2">
-              {ops.data?.unhealthyNodes?.map((node: any) => (
-                <Link
-                  key={node.id}
-                  href={`/fleet/${node.id}`}
-                  className="flex items-center justify-between rounded-md border p-3 hover:bg-accent transition-colors"
-                >
-                  <div>
-                    <div className="font-medium">{node.name || node.host}</div>
-                    <div className="text-xs text-muted-foreground">{node.environment?.name}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={
-                        node.status === "UNREACHABLE"
-                          ? "text-red-600 border-red-600"
-                          : node.status === "DEGRADED"
-                            ? "text-yellow-600 border-yellow-600"
-                            : "text-gray-600 border-gray-600"
-                      }
-                    >
-                      {node.status}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {formatRelativeTime(node.lastSeen)}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">
+            Pipelines
+          </span>
+          {pipelineStatusCounts.running > 0 && (
+            <Badge
+              variant="outline"
+              className="text-green-600 border-green-600"
+            >
+              {pipelineStatusCounts.running} Running
+            </Badge>
+          )}
+          {pipelineStatusCounts.stopped > 0 && (
+            <Badge
+              variant="outline"
+              className="text-gray-600 border-gray-600"
+            >
+              {pipelineStatusCounts.stopped} Stopped
+            </Badge>
+          )}
+          {pipelineStatusCounts.crashed > 0 && (
+            <Badge
+              variant="outline"
+              className="text-red-600 border-red-600"
+            >
+              {pipelineStatusCounts.crashed} Crashed
+            </Badge>
+          )}
+          {stats.data && stats.data.pipelines === 0 && (
+            <span className="text-sm text-muted-foreground">None</span>
+          )}
+        </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Recent pipelines */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Recent Pipelines
-            </CardTitle>
-            <CardDescription>Last modified pipelines</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {recentPipelines.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No pipelines yet.</p>
-            )}
-            <div className="space-y-2">
-              {recentPipelines.data?.map((p: any) => (
-                <Link
-                  key={p.id}
-                  href={`/pipelines/${p.id}`}
-                  className="flex items-center justify-between rounded-md border p-3 hover:bg-accent transition-colors"
-                >
-                  <div>
-                    <div className="font-medium">{p.name}</div>
-                    <div className="text-xs text-muted-foreground">{p.environment?.name}</div>
-                  </div>
-                  <Badge variant={p.isDraft ? "secondary" : "default"}>
-                    {p.isDraft ? "Draft" : "Deployed"}
-                  </Badge>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Tabbed content */}
+      <Tabs defaultValue="nodes" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="nodes">Nodes</TabsTrigger>
+          <TabsTrigger value="pipelines">Pipelines</TabsTrigger>
+        </TabsList>
 
-        {/* Recent audit */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-4 w-4" />
-              Recent Activity
-            </CardTitle>
-            <CardDescription>Latest audit log entries</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {recentAudit.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No activity yet.</p>
-            )}
-            <div className="space-y-2">
-              {recentAudit.data?.map((entry: any) => (
-                <div key={entry.id} className="flex items-center justify-between rounded-md border p-3">
-                  <div>
-                    <div className="text-sm font-medium">{entry.action}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {entry.user?.name ?? entry.user?.email} — {entry.entityType}
-                    </div>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {new Date(entry.createdAt).toLocaleDateString()}
-                  </div>
-                </div>
+        {/* Nodes tab */}
+        <TabsContent value="nodes" className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search nodes..."
+                value={nodeSearch}
+                onChange={(e) => setNodeSearch(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant={nodeStatusFilter === null ? "default" : "outline"}
+                size="sm"
+                onClick={() => setNodeStatusFilter(null)}
+              >
+                All
+              </Button>
+              <Button
+                variant={nodeStatusFilter === "HEALTHY" ? "default" : "outline"}
+                size="sm"
+                onClick={() =>
+                  setNodeStatusFilter(
+                    nodeStatusFilter === "HEALTHY" ? null : "HEALTHY"
+                  )
+                }
+              >
+                Healthy
+              </Button>
+              <Button
+                variant={
+                  nodeStatusFilter === "DEGRADED" ? "default" : "outline"
+                }
+                size="sm"
+                onClick={() =>
+                  setNodeStatusFilter(
+                    nodeStatusFilter === "DEGRADED" ? null : "DEGRADED"
+                  )
+                }
+              >
+                Degraded
+              </Button>
+              <Button
+                variant={
+                  nodeStatusFilter === "UNREACHABLE" ? "default" : "outline"
+                }
+                size="sm"
+                onClick={() =>
+                  setNodeStatusFilter(
+                    nodeStatusFilter === "UNREACHABLE" ? null : "UNREACHABLE"
+                  )
+                }
+              >
+                Unreachable
+              </Button>
+            </div>
+          </div>
+
+          {nodeCards.isLoading && (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-48 rounded-lg" />
               ))}
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+
+          {nodeCards.data && filteredNodes.length === 0 && (
+            <div className="flex items-center justify-center rounded-lg border border-dashed py-12">
+              <p className="text-sm text-muted-foreground">
+                {nodeSearch || nodeStatusFilter
+                  ? "No nodes match the current filter."
+                  : "No nodes registered yet."}
+              </p>
+            </div>
+          )}
+
+          {filteredNodes.length > 0 && (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredNodes.map((node) => (
+                <NodeCard key={node.id} node={node} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Pipelines tab */}
+        <TabsContent value="pipelines" className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search pipelines..."
+                value={pipelineSearch}
+                onChange={(e) => setPipelineSearch(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant={pipelineStatusFilter === null ? "default" : "outline"}
+                size="sm"
+                onClick={() => setPipelineStatusFilter(null)}
+              >
+                All
+              </Button>
+              <Button
+                variant={
+                  pipelineStatusFilter === "RUNNING" ? "default" : "outline"
+                }
+                size="sm"
+                onClick={() =>
+                  setPipelineStatusFilter(
+                    pipelineStatusFilter === "RUNNING" ? null : "RUNNING"
+                  )
+                }
+              >
+                Running
+              </Button>
+              <Button
+                variant={
+                  pipelineStatusFilter === "STOPPED" ? "default" : "outline"
+                }
+                size="sm"
+                onClick={() =>
+                  setPipelineStatusFilter(
+                    pipelineStatusFilter === "STOPPED" ? null : "STOPPED"
+                  )
+                }
+              >
+                Stopped
+              </Button>
+              <Button
+                variant={
+                  pipelineStatusFilter === "CRASHED" ? "default" : "outline"
+                }
+                size="sm"
+                onClick={() =>
+                  setPipelineStatusFilter(
+                    pipelineStatusFilter === "CRASHED" ? null : "CRASHED"
+                  )
+                }
+              >
+                Crashed
+              </Button>
+            </div>
+          </div>
+
+          {pipelineCards.isLoading && (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-48 rounded-lg" />
+              ))}
+            </div>
+          )}
+
+          {pipelineCards.data && filteredPipelines.length === 0 && (
+            <div className="flex items-center justify-center rounded-lg border border-dashed py-12">
+              <p className="text-sm text-muted-foreground">
+                {pipelineSearch || pipelineStatusFilter
+                  ? "No pipelines match the current filter."
+                  : "No deployed pipelines yet."}
+              </p>
+            </div>
+          )}
+
+          {filteredPipelines.length > 0 && (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredPipelines.map((pipeline) => (
+                <PipelineCard key={pipeline.id} pipeline={pipeline} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
