@@ -26,34 +26,49 @@ export const azureSinks: VectorComponentDef[] = [
           description: "Azure Storage connection string",
           sensitive: true,
         },
-        storage_account: {
-          type: "string",
-          description: "Azure Storage account name (alternative to connection string)",
-        },
         container_name: {
           type: "string",
-          description: "Blob container name",
+          description: "Name of the Azure Blob Storage container",
         },
         blob_prefix: {
           type: "string",
-          description: "Blob name prefix template (default: date=%F)",
+          description: "Prefix for blob names",
+          default: "blob/%F/",
         },
         blob_append_uuid: {
           type: "boolean",
-          description: "Append UUID to blob name (default: true)",
+          description:
+            "Whether to append a UUID v4 token to the end of the blob key",
+          default: false,
         },
         blob_time_format: {
           type: "string",
-          description: "Time format for blob name (default: %s)",
+          description:
+            "Time format for blob name using strftime specifiers",
+          default: "%s",
         },
-        ...encodingSchema(["json", "ndjson", "text", "csv", "raw_message"]),
-        ...compressionSchema(["gzip", "none", "zlib", "zstd"], "gzip"),
-        ...tlsSchema(),
+        ...encodingSchema([
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "json",
+          "logfmt",
+          "native",
+          "native_json",
+          "protobuf",
+          "raw_message",
+          "text",
+        ]),
+        ...compressionSchema(
+          ["gzip", "none", "snappy", "zlib", "zstd"],
+          "gzip",
+        ),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "300" }),
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["container_name"],
+      required: ["connection_string", "container_name"],
     },
   },
   {
@@ -70,20 +85,33 @@ export const azureSinks: VectorComponentDef[] = [
       properties: {
         customer_id: {
           type: "string",
-          description: "Azure Log Analytics workspace ID",
+          description: "The unique identifier for the Log Analytics workspace",
         },
         shared_key: {
           type: "string",
-          description: "Azure shared key for authentication",
+          description:
+            "The primary or secondary key for the Log Analytics workspace",
           sensitive: true,
         },
         log_type: {
           type: "string",
-          description: "Custom log type name (table name in Log Analytics)",
+          description:
+            "The record type of the data being submitted (table name in Log Analytics)",
         },
         azure_resource_id: {
           type: "string",
-          description: "Azure resource ID for the logs",
+          description:
+            "The Azure resource ID to associate data with a specific Azure resource",
+        },
+        host: {
+          type: "string",
+          description: "The Azure Monitor endpoint host",
+          default: "ods.opinsights.azure.com",
+        },
+        time_generated_key: {
+          type: "string",
+          description:
+            "The log field to use as the TimeGenerated value instead of the current time",
         },
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
