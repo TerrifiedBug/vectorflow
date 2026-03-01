@@ -66,8 +66,8 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
     }),
   );
 
-  const handleEditorMount = useCallback((_editor: unknown, monaco: Monaco) => {
-    editorRef.current = _editor;
+  const handleEditorMount: OnMount = useCallback((editor, monaco) => {
+    editorRef.current = editor;
     monaco.editor.defineTheme("vrl-theme", vrlTheme);
     monaco.editor.setTheme("vrl-theme");
 
