@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
+import { withAudit } from "@/server/middleware/audit";
 
 const SETTINGS_ID = "singleton";
 
@@ -64,6 +65,7 @@ export const settingsRouter = router({
         oidcDefaultTeamId: settings.oidcDefaultTeamId,
         fleetPollIntervalMs: settings.fleetPollIntervalMs,
         fleetUnhealthyThreshold: settings.fleetUnhealthyThreshold,
+        metricsRetentionDays: settings.metricsRetentionDays,
         updatedAt: settings.updatedAt,
       };
     }),
@@ -79,6 +81,7 @@ export const settingsRouter = router({
         tokenEndpointAuthMethod: z.enum(["client_secret_post", "client_secret_basic"]).default("client_secret_post"),
       })
     )
+    .use(withAudit("settings.oidc_updated", "SystemSettings"))
     .mutation(async ({ input }) => {
       await getOrCreateSettings();
 
@@ -109,6 +112,7 @@ export const settingsRouter = router({
         editorGroups: z.string().optional(),
       })
     )
+    .use(withAudit("settings.oidc_role_mapping_updated", "SystemSettings"))
     .mutation(async ({ input }) => {
       await getOrCreateSettings();
 
@@ -135,6 +139,7 @@ export const settingsRouter = router({
       defaultRole: z.enum(["VIEWER", "EDITOR", "ADMIN"]),
       groupsClaim: z.string().min(1),
     }))
+    .use(withAudit("settings.oidc_team_mapping_updated", "SystemSettings"))
     .mutation(async ({ input }) => {
       await getOrCreateSettings();
 
@@ -182,8 +187,10 @@ export const settingsRouter = router({
       z.object({
         pollIntervalMs: z.number().int().min(1000).max(300000),
         unhealthyThreshold: z.number().int().min(1).max(100),
+        metricsRetentionDays: z.number().int().min(1).max(365).optional(),
       })
     )
+    .use(withAudit("settings.fleet_updated", "SystemSettings"))
     .mutation(async ({ input }) => {
       await getOrCreateSettings();
 
@@ -192,6 +199,7 @@ export const settingsRouter = router({
         data: {
           fleetPollIntervalMs: input.pollIntervalMs,
           fleetUnhealthyThreshold: input.unhealthyThreshold,
+          ...(input.metricsRetentionDays !== undefined ? { metricsRetentionDays: input.metricsRetentionDays } : {}),
         },
       });
     }),
