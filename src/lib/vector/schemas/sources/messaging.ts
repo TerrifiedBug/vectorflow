@@ -42,22 +42,63 @@ export const messagingSources: VectorComponentDef[] = [
             "largest",
             "latest",
             "end",
+            "error",
           ],
           description: "Where to start reading when no offset exists",
+          default: "largest",
         },
         commit_interval_ms: {
           type: "number",
           description:
             "Offset commit frequency in milliseconds (default: 5000)",
+          default: 5000,
         },
         session_timeout_ms: {
           type: "number",
           description: "Session timeout in milliseconds (default: 10000)",
+          default: 10000,
+        },
+        socket_timeout_ms: {
+          type: "number",
+          description: "Socket timeout in milliseconds (default: 60000)",
+          default: 60000,
+        },
+        fetch_wait_max_ms: {
+          type: "number",
+          description:
+            "Maximum time the broker may wait to fill the response in milliseconds (default: 100)",
+          default: 100,
+        },
+        drain_timeout_ms: {
+          type: "number",
+          description:
+            "Timeout to drain pending acknowledgements during shutdown or rebalance in milliseconds",
         },
         key_field: {
           type: "string",
           description:
             "Field name for the message key (default: message_key)",
+          default: "message_key",
+        },
+        topic_key: {
+          type: "string",
+          description: "Field name for the topic (default: topic)",
+          default: "topic",
+        },
+        partition_key: {
+          type: "string",
+          description: "Field name for the partition (default: partition)",
+          default: "partition",
+        },
+        offset_key: {
+          type: "string",
+          description: "Field name for the offset (default: offset)",
+          default: "offset",
+        },
+        headers_key: {
+          type: "string",
+          description: "Field name for message headers (default: headers)",
+          default: "headers",
         },
         ...kafkaSaslSchema(),
         ...tlsSchema(),
@@ -78,39 +119,39 @@ export const messagingSources: VectorComponentDef[] = [
     configSchema: {
       type: "object",
       properties: {
-        connection: {
+        connection_string: {
           type: "string",
           description: "AMQP connection URL (e.g., amqp://guest:guest@localhost:5672/%2f)",
         },
-        group_id: {
+        consumer: {
           type: "string",
-          description: "Consumer group identifier",
+          description: "Consumer group identifier (default: vector)",
+          default: "vector",
         },
         queue: {
           type: "string",
-          description: "Queue name to consume from",
-        },
-        exchange: {
-          type: "string",
-          description: "Exchange name to bind to",
-        },
-        exchange_type: {
-          type: "string",
-          enum: ["direct", "fanout", "topic", "headers"],
-          description: "Exchange type",
+          description: "Queue name to consume from (default: vector)",
+          default: "vector",
         },
         routing_key_field: {
           type: "string",
           description: "Field for the routing key (default: routing)",
+          default: "routing",
         },
-        consumer_tag: {
+        exchange_key: {
           type: "string",
-          description: "Consumer tag for identification",
+          description: "Field for the exchange name (default: exchange)",
+          default: "exchange",
+        },
+        offset_key: {
+          type: "string",
+          description: "Field for the message offset (default: offset)",
+          default: "offset",
         },
         ...tlsSchema(),
         ...decodingSchema(),
       },
-      required: ["connection"],
+      required: ["connection_string"],
     },
   },
   {
@@ -127,6 +168,7 @@ export const messagingSources: VectorComponentDef[] = [
         url: {
           type: "string",
           description: "NATS server URL (default: nats://127.0.0.1:4222)",
+          default: "nats://127.0.0.1:4222",
         },
         subject: {
           type: "string",
@@ -138,7 +180,18 @@ export const messagingSources: VectorComponentDef[] = [
         },
         connection_name: {
           type: "string",
-          description: "Name for the NATS connection",
+          description: "Name for the NATS connection (default: vector)",
+          default: "vector",
+        },
+        subject_key_field: {
+          type: "string",
+          description: "Field name for the NATS subject in events",
+        },
+        subscriber_capacity: {
+          type: "number",
+          description:
+            "Buffer capacity of the underlying NATS subscriber (default: 65536)",
+          default: 65536,
         },
         ...authBasicBearerSchema(),
         ...tlsSchema(),
@@ -161,6 +214,7 @@ export const messagingSources: VectorComponentDef[] = [
         endpoint: {
           type: "string",
           description: "Pulsar service URL (default: pulsar://127.0.0.1:6650)",
+          default: "pulsar://127.0.0.1:6650",
         },
         topics: {
           type: "array",
@@ -182,12 +236,45 @@ export const messagingSources: VectorComponentDef[] = [
         batch_size: {
           type: "number",
           description: "Number of messages per batch (default: 1000)",
+          default: 1000,
         },
         dead_letter_queue_topic: {
           type: "string",
           description: "Topic for dead letter messages",
         },
-        ...authBasicBearerSchema(),
+        auth: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Authentication provider name (e.g., token)",
+            },
+            token: {
+              type: "string",
+              description: "Authentication token",
+              sensitive: true,
+            },
+            oauth2: {
+              type: "object",
+              properties: {
+                issuer_url: {
+                  type: "string",
+                  description: "OAuth2 issuer URL",
+                },
+                credentials_url: {
+                  type: "string",
+                  description: "OAuth2 credentials URL",
+                },
+                audience: {
+                  type: "string",
+                  description: "OAuth2 audience",
+                },
+              },
+              description: "OAuth2 authentication options",
+            },
+          },
+          description: "Pulsar authentication configuration",
+        },
         ...tlsSchema(),
         ...decodingSchema(),
       },
@@ -213,10 +300,12 @@ export const messagingSources: VectorComponentDef[] = [
         port: {
           type: "number",
           description: "MQTT broker port (default: 1883)",
+          default: 1883,
         },
         topic: {
           type: "string",
-          description: "MQTT topic to subscribe to",
+          description: "MQTT topic to subscribe to (default: vector)",
+          default: "vector",
         },
         client_id: {
           type: "string",
@@ -225,6 +314,21 @@ export const messagingSources: VectorComponentDef[] = [
         qos: {
           type: "number",
           description: "Quality of Service level (0, 1, or 2)",
+        },
+        keep_alive: {
+          type: "number",
+          description: "Connection keep-alive interval in seconds (default: 60)",
+          default: 60,
+        },
+        max_packet_size: {
+          type: "number",
+          description: "Maximum packet size in bytes (default: 10240)",
+          default: 10240,
+        },
+        topic_key: {
+          type: "string",
+          description: "Field name for the topic in events (default: topic)",
+          default: "topic",
         },
         user: {
           type: "string",
@@ -238,7 +342,7 @@ export const messagingSources: VectorComponentDef[] = [
         ...tlsSchema(),
         ...decodingSchema(),
       },
-      required: ["host", "topic"],
+      required: ["host"],
     },
   },
   {
@@ -260,7 +364,8 @@ export const messagingSources: VectorComponentDef[] = [
         data_type: {
           type: "string",
           enum: ["list", "channel"],
-          description: "Redis data type to read from",
+          description: "Redis data type to read from (default: list)",
+          default: "list",
         },
         key: {
           type: "string",
@@ -272,19 +377,19 @@ export const messagingSources: VectorComponentDef[] = [
             method: {
               type: "string",
               enum: ["lpop", "rpop"],
-              description: "List pop method (default: lpop)",
+              description: "List pop method",
             },
           },
           description: "List-specific configuration",
         },
         redis_key: {
           type: "string",
-          description: "Deprecated: use key instead",
+          description: "Field name to add the Redis key to each event",
         },
         ...tlsSchema(),
         ...decodingSchema(),
       },
-      required: ["url", "data_type", "key"],
+      required: ["url", "key"],
     },
   },
   {
@@ -312,19 +417,36 @@ export const messagingSources: VectorComponentDef[] = [
         },
         max_concurrency: {
           type: "number",
-          description: "Max concurrent pull requests (default: 10)",
+          description: "Max concurrent stream connections (default: 10)",
+          default: 10,
         },
         full_response_size: {
           type: "number",
-          description: "Target total batch size in bytes",
+          description:
+            "Number of messages in a response to mark a stream as busy (default: 100)",
+          default: 100,
         },
         ack_deadline_secs: {
           type: "number",
           description: "Acknowledgement deadline in seconds (default: 600)",
+          default: 600,
         },
         retry_delay_secs: {
           type: "number",
           description: "Delay between retries in seconds (default: 1)",
+          default: 1,
+        },
+        keepalive_secs: {
+          type: "number",
+          description:
+            "Keepalive interval in seconds for active streams (default: 60)",
+          default: 60,
+        },
+        poll_time_seconds: {
+          type: "number",
+          description:
+            "How often to poll active streams to check if they are busy (default: 2)",
+          default: 2,
         },
         credentials_path: {
           type: "string",
@@ -363,22 +485,23 @@ export const messagingSources: VectorComponentDef[] = [
         poll_secs: {
           type: "number",
           description: "Time to wait for messages in seconds (default: 15)",
-        },
-        max_number_of_messages: {
-          type: "number",
-          description: "Max messages per poll request (1-10, default: 10)",
+          default: 15,
         },
         visibility_timeout_secs: {
           type: "number",
-          description: "Visibility timeout for received messages in seconds",
+          description:
+            "Visibility timeout for received messages in seconds (default: 30)",
+          default: 30,
         },
         delete_message: {
           type: "boolean",
           description: "Delete messages after processing (default: true)",
+          default: true,
         },
         client_concurrency: {
           type: "number",
-          description: "Number of concurrent SQS clients (default: 1)",
+          description:
+            "Number of concurrent tasks for polling the queue for messages",
         },
         ...authAwsSchema(),
         ...tlsSchema(),
@@ -401,16 +524,29 @@ export const messagingSources: VectorComponentDef[] = [
         address: {
           type: "string",
           description: "Address to listen on (default: 0.0.0.0:443)",
+          default: "0.0.0.0:443",
         },
         access_key: {
           type: "string",
-          description: "Firehose access key for request validation",
+          description:
+            "Deprecated: use access_keys instead. Firehose access key for request validation",
           sensitive: true,
+        },
+        access_keys: {
+          type: "array",
+          items: { type: "string" },
+          description: "List of valid Firehose access keys for request validation",
+        },
+        store_access_key: {
+          type: "boolean",
+          description:
+            "Store the AWS Firehose access key in event secrets",
         },
         record_compression: {
           type: "string",
           enum: ["auto", "gzip", "none"],
           description: "Compression of incoming records (default: auto)",
+          default: "auto",
         },
         ...tlsSchema(),
         ...decodingSchema(),
@@ -443,15 +579,29 @@ export const messagingSources: VectorComponentDef[] = [
             },
             poll_secs: {
               type: "number",
-              description: "Polling interval in seconds (default: 15)",
+              description: "Polling interval in seconds (default: 20)",
+              default: 20,
             },
             visibility_timeout_secs: {
               type: "number",
-              description: "Message visibility timeout in seconds (default: 300)",
+              description: "Message visibility timeout in seconds",
             },
             delete_message: {
               type: "boolean",
               description: "Delete SQS messages after processing (default: true)",
+              default: true,
+            },
+            max_number_of_messages: {
+              type: "number",
+              description:
+                "Max messages to retrieve per poll (default: 10)",
+              default: 10,
+            },
+            delete_failed_message: {
+              type: "boolean",
+              description:
+                "Delete SQS messages that fail processing (default: false)",
+              default: false,
             },
           },
           description: "SQS notification queue configuration",
@@ -460,6 +610,7 @@ export const messagingSources: VectorComponentDef[] = [
           type: "string",
           enum: ["auto", "gzip", "zstd", "none"],
           description: "Object compression (default: auto)",
+          default: "auto",
         },
         ...authAwsSchema(),
         ...tlsSchema(),
@@ -482,24 +633,28 @@ export const messagingSources: VectorComponentDef[] = [
         address: {
           type: "string",
           description: "Address to listen on (default: 0.0.0.0:8088)",
+          default: "0.0.0.0:8088",
         },
         token: {
           type: "string",
-          description: "HEC token for authentication",
+          description:
+            "Deprecated: use valid_tokens instead. HEC token for authentication",
           sensitive: true,
         },
         valid_tokens: {
           type: "array",
           items: { type: "string" },
-          description: "List of valid HEC tokens (if multiple are accepted)",
+          description: "List of valid HEC tokens for authentication",
         },
         store_hec_token: {
           type: "boolean",
-          description: "Store the HEC token in the event (default: false)",
+          description:
+            "Forward the Splunk HEC authentication token with events (default: false)",
+          default: false,
         },
         ...tlsSchema(),
       },
-      required: ["address"],
+      required: [],
     },
   },
   {
@@ -542,31 +697,44 @@ export const messagingSources: VectorComponentDef[] = [
       properties: {
         address: {
           type: "string",
-          description: "Address to listen on (default: 0.0.0.0:8282)",
+          description: "Address to listen on",
         },
         multiple_outputs: {
           type: "boolean",
           description: "Separate outputs for logs, metrics, traces (default: false)",
+          default: false,
         },
         disable_logs: {
           type: "boolean",
           description: "Disable log collection (default: false)",
+          default: false,
         },
         disable_metrics: {
           type: "boolean",
           description: "Disable metric collection (default: false)",
+          default: false,
         },
         disable_traces: {
           type: "boolean",
           description: "Disable trace collection (default: false)",
+          default: false,
+        },
+        store_api_key: {
+          type: "boolean",
+          description: "Store the Datadog API key in event metadata",
+        },
+        parse_ddtags: {
+          type: "boolean",
+          description: "Parse Datadog tags from incoming events",
         },
         log_namespace: {
           type: "boolean",
           description: "Use Vector namespaced log schema (default: false)",
+          default: false,
         },
         ...tlsSchema(),
       },
-      required: [],
+      required: ["address"],
     },
   },
 ];
