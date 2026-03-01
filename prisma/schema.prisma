@@ -93,7 +93,33 @@ model VectorNode {
   vectorVersion    String?
   os               String?
   pipelineStatuses NodePipelineStatus[]
+  nodeMetrics      NodeMetric[]
+  pipelineLogs     PipelineLog[]
   createdAt        DateTime             @default(now())
+}
+
+model NodeMetric {
+  id               String     @id @default(cuid())
+  nodeId           String
+  node             VectorNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  timestamp        DateTime
+  memoryTotalBytes BigInt     @default(0)
+  memoryUsedBytes  BigInt     @default(0)
+  memoryFreeBytes  BigInt     @default(0)
+  cpuSecondsTotal  Float      @default(0)
+  loadAvg1         Float      @default(0)
+  loadAvg5         Float      @default(0)
+  loadAvg15        Float      @default(0)
+  fsTotalBytes     BigInt     @default(0)
+  fsUsedBytes      BigInt     @default(0)
+  fsFreeBytes      BigInt     @default(0)
+  diskReadBytes    BigInt     @default(0)
+  diskWrittenBytes BigInt     @default(0)
+  netRxBytes       BigInt     @default(0)
+  netTxBytes       BigInt     @default(0)
+
+  @@index([nodeId, timestamp])
+  @@index([timestamp])
 }
 
 enum NodeStatus {
@@ -101,6 +127,29 @@ enum NodeStatus {
   DEGRADED
   UNREACHABLE
   UNKNOWN
+}
+
+enum LogLevel {
+  TRACE
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+model PipelineLog {
+  id         String     @id @default(cuid())
+  pipelineId String
+  pipeline   Pipeline   @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  nodeId     String
+  node       VectorNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  timestamp  DateTime   @default(now())
+  level      LogLevel   @default(INFO)
+  message    String
+
+  @@index([pipelineId, timestamp])
+  @@index([nodeId, timestamp])
+  @@index([timestamp])
 }
 
 enum SecretBackend {
@@ -134,6 +183,7 @@ model Pipeline {
   updatedBy     User?                @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
   nodeStatuses  NodePipelineStatus[]
   metrics       PipelineMetric[]
+  pipelineLogs  PipelineLog[]
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 }
@@ -188,6 +238,7 @@ model PipelineNode {
   config        Json
   positionX     Float
   positionY     Float
+  disabled      Boolean       @default(false)
 }
 
 enum ComponentKind {
@@ -292,6 +343,7 @@ model SystemSettings {
   fleetPollIntervalMs     Int @default(15000)
   fleetUnhealthyThreshold Int @default(3)
   metricsRetentionDays    Int @default(7)
+  logsRetentionDays       Int @default(3)
 
   updatedAt DateTime @updatedAt
 }
