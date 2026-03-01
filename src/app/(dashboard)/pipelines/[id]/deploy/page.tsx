@@ -10,7 +10,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  GitBranch,
+  Radio,
   Loader2,
 } from "lucide-react";
 
@@ -36,7 +36,6 @@ export default function DeployPage() {
     success: boolean;
     versionId?: string;
     versionNumber?: number;
-    commitHash?: string;
     error?: string;
   } | null>(null);
 
@@ -55,53 +54,38 @@ export default function DeployPage() {
     trpc.deploy.environmentInfo.queryOptions({ pipelineId }),
   );
 
-  // GitOps mutation
-  const gitopsMutation = useMutation(
-    trpc.deploy.gitops.mutationOptions({
+  // Agent deploy mutation
+  const agentMutation = useMutation(
+    trpc.deploy.agent.mutationOptions({
       onSuccess: (data) => {
         setDeployResult({
           success: data.success,
           versionId: data.versionId,
           versionNumber: data.versionNumber,
-          commitHash: data.commitHash,
           error: data.error,
         });
         if (data.success) {
           toast.success(
-            `Pushed version ${data.versionNumber} to git`,
+            `Published version ${data.versionNumber} to agents`,
           );
         } else {
-          toast.error(data.error || "GitOps deployment failed");
+          toast.error(data.error || "Deployment failed");
         }
       },
-      onError: (err) => {
-        toast.error(err.message || "GitOps deployment failed");
+      onError: (err: { message: string }) => {
+        toast.error(err.message || "Deployment failed");
       },
     }),
   );
 
-  const isDeploying = gitopsMutation.isPending;
+  const isDeploying = agentMutation.isPending;
   const isLoading =
     pipelineQuery.isLoading || previewQuery.isLoading || envQuery.isLoading;
 
   const handleDeploy = () => {
     if (!envQuery.data) return;
-
-    if (!envQuery.data.gitRepo || !envQuery.data.gitBranch) {
-      toast.error(
-        "GitOps is not configured for this environment. Set a git repo and branch first.",
-      );
-      return;
-    }
-
     setDeployResult(null);
-
-    gitopsMutation.mutate({
-      pipelineId,
-      environmentId: envQuery.data.environmentId,
-      repoUrl: envQuery.data.gitRepo,
-      branch: envQuery.data.gitBranch,
-    });
+    agentMutation.mutate({ pipelineId });
   };
 
   if (isLoading) {
@@ -228,24 +212,9 @@ export default function DeployPage() {
                 </p>
               </div>
               <div>
-                <p className="text-sm font-medium">Deploy Method</p>
-                <div className="flex items-center gap-1.5">
-                  <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    GitOps
-                  </span>
-                </div>
-              </div>
-              <div>
-                <p className="text-sm font-medium">Repository</p>
-                <p className="text-sm text-muted-foreground font-mono">
-                  {envQuery.data.gitRepo || "Not configured"}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm font-medium">Branch</p>
-                <p className="text-sm text-muted-foreground font-mono">
-                  {envQuery.data.gitBranch || "Not configured"}
+                <p className="text-sm font-medium">Enrolled Nodes</p>
+                <p className="text-sm text-muted-foreground">
+                  {envQuery.data.nodes.length} node{envQuery.data.nodes.length !== 1 ? "s" : ""}
                 </p>
               </div>
             </div>
@@ -261,9 +230,7 @@ export default function DeployPage() {
           {deployResult?.success && (
             <p className="text-sm text-green-600 dark:text-green-400">
               <CheckCircle2 className="mr-1 inline h-4 w-4" />
-              Deployed as version {deployResult.versionNumber}
-              {deployResult.commitHash &&
-                ` (commit ${deployResult.commitHash.slice(0, 8)})`}
+              Published as version {deployResult.versionNumber}
             </p>
           )}
           {deployResult && !deployResult.success && deployResult.error && (
@@ -291,8 +258,8 @@ export default function DeployPage() {
               </>
             ) : (
               <>
-                <GitBranch className="mr-2 h-4 w-4" />
-                Push to Git
+                <Radio className="mr-2 h-4 w-4" />
+                Publish to Agents
               </>
             )}
           </Button>
