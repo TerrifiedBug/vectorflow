@@ -8,20 +8,24 @@ datasource db {
 }
 
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
-  name         String?
-  image        String?
-  passwordHash String?
-  authMethod   AuthMethod   @default(LOCAL)
-  memberships  TeamMember[]
-  accounts     Account[]
-  lockedAt         DateTime?
-  lockedBy         String?
-  isSuperAdmin     Boolean      @default(false)
-  auditLogs        AuditLog[]
-  pipelinesUpdated Pipeline[]   @relation("PipelineUpdatedBy")
-  createdAt        DateTime     @default(now())
+  id                 String       @id @default(cuid())
+  email              String       @unique
+  name               String?
+  image              String?
+  passwordHash       String?
+  authMethod         AuthMethod   @default(LOCAL)
+  memberships        TeamMember[]
+  accounts           Account[]
+  lockedAt           DateTime?
+  lockedBy           String?
+  isSuperAdmin       Boolean      @default(false)
+  mustChangePassword Boolean      @default(false)
+  totpSecret         String?
+  totpEnabled        Boolean      @default(false)
+  totpBackupCodes    String?
+  auditLogs          AuditLog[]
+  pipelinesUpdated   Pipeline[]   @relation("PipelineUpdatedBy")
+  createdAt          DateTime     @default(now())
 }
 
 enum AuthMethod {
@@ -30,12 +34,13 @@ enum AuthMethod {
 }
 
 model Team {
-  id           String        @id @default(cuid())
-  name         String
-  members      TeamMember[]
-  environments Environment[]
-  templates    Template[]
-  createdAt    DateTime      @default(now())
+  id               String        @id @default(cuid())
+  name             String
+  requireTwoFactor Boolean       @default(false)
+  members          TeamMember[]
+  environments     Environment[]
+  templates        Template[]
+  createdAt        DateTime      @default(now())
 }
 
 model TeamMember {
@@ -56,31 +61,39 @@ enum Role {
 }
 
 model Environment {
-  id         String       @id @default(cuid())
-  name       String
-  teamId     String
-  team       Team         @relation(fields: [teamId], references: [id])
-  nodes      VectorNode[]
-  pipelines  Pipeline[]
-  gitRepo         String?
-  gitBranch       String?
-  gitSshKey       Bytes?
-  gitHttpsToken   String?
-  gitCommitAuthor String?
-  createdAt       DateTime     @default(now())
+  id                  String        @id @default(cuid())
+  name                String
+  teamId              String
+  team                Team          @relation(fields: [teamId], references: [id])
+  nodes               VectorNode[]
+  pipelines           Pipeline[]
+  secrets             Secret[]
+  certificates        Certificate[]
+  enrollmentTokenHash String?
+  enrollmentTokenHint String?
+  secretBackend       SecretBackend @default(BUILTIN)
+  secretBackendConfig Json?
+  createdAt           DateTime      @default(now())
 }
 
 model VectorNode {
-  id            String      @id @default(cuid())
-  name          String
-  host          String
-  apiPort       Int         @default(8686)
-  environmentId String
-  environment   Environment @relation(fields: [environmentId], references: [id])
-  status        NodeStatus  @default(UNKNOWN)
-  lastSeen      DateTime?
-  metadata      Json?
-  createdAt     DateTime    @default(now())
+  id               String               @id @default(cuid())
+  name             String
+  host             String
+  apiPort          Int                  @default(8686)
+  environmentId    String
+  environment      Environment          @relation(fields: [environmentId], references: [id])
+  status           NodeStatus           @default(UNKNOWN)
+  lastSeen         DateTime?
+  metadata         Json?
+  nodeTokenHash    String?
+  enrolledAt       DateTime?
+  lastHeartbeat    DateTime?
+  agentVersion     String?
+  vectorVersion    String?
+  os               String?
+  pipelineStatuses NodePipelineStatus[]
+  createdAt        DateTime             @default(now())
 }
 
 enum NodeStatus {
@@ -90,21 +103,78 @@ enum NodeStatus {
   UNKNOWN
 }
 
+enum SecretBackend {
+  BUILTIN
+  VAULT
+  AWS_SM
+  EXEC
+}
+
+enum ProcessStatus {
+  RUNNING
+  STARTING
+  STOPPED
+  CRASHED
+  PENDING
+}
+
 model Pipeline {
-  id            String            @id @default(cuid())
+  id            String               @id @default(cuid())
   name          String
   description   String?
   environmentId String
-  environment   Environment       @relation(fields: [environmentId], references: [id])
+  environment   Environment          @relation(fields: [environmentId], references: [id])
   nodes         PipelineNode[]
   edges         PipelineEdge[]
   versions      PipelineVersion[]
-  isDraft       Boolean           @default(true)
+  globalConfig  Json?
+  isDraft       Boolean              @default(true)
   deployedAt    DateTime?
   updatedById   String?
-  updatedBy     User?             @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  updatedBy     User?                @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
+  nodeStatuses  NodePipelineStatus[]
+  metrics       PipelineMetric[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+}
+
+model NodePipelineStatus {
+  id            String        @id @default(cuid())
+  nodeId        String
+  node          VectorNode    @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  pipelineId    String
+  pipeline      Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  version       Int
+  status        ProcessStatus @default(PENDING)
+  pid           Int?
+  uptimeSeconds Int?
+  eventsIn      BigInt        @default(0)
+  eventsOut     BigInt        @default(0)
+  errorsTotal   BigInt        @default(0)
+  bytesIn       BigInt        @default(0)
+  bytesOut      BigInt        @default(0)
+  utilization   Float         @default(0)
+  lastUpdated   DateTime      @default(now())
+
+  @@unique([nodeId, pipelineId])
+}
+
+model PipelineMetric {
+  id              String   @id @default(cuid())
+  pipelineId      String
+  pipeline        Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  nodeId          String?
+  timestamp       DateTime
+  eventsIn        BigInt   @default(0)
+  eventsOut       BigInt   @default(0)
+  eventsDiscarded BigInt   @default(0)
+  errorsTotal     BigInt   @default(0)
+  bytesIn         BigInt   @default(0)
+  bytesOut        BigInt   @default(0)
+  utilization     Float    @default(0)
+
+  @@index([pipelineId, timestamp])
+  @@index([timestamp])
 }
 
 model PipelineNode {
@@ -137,13 +207,38 @@ model PipelineEdge {
 model PipelineVersion {
   id          String   @id @default(cuid())
   pipelineId  String
-  pipeline    Pipeline @relation(fields: [pipelineId], references: [id])
+  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   version     Int
   configYaml  String
   configToml  String?
   createdById String
   changelog   String?
   createdAt   DateTime @default(now())
+}
+
+model Secret {
+  id             String      @id @default(cuid())
+  name           String
+  encryptedValue String
+  environmentId  String
+  environment    Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([environmentId, name])
+}
+
+model Certificate {
+  id            String      @id @default(cuid())
+  name          String
+  filename      String
+  fileType      String
+  encryptedData String
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@unique([environmentId, name])
 }
 
 model Template {
@@ -181,20 +276,21 @@ model AuditLog {
 model SystemSettings {
   id String @id @default("singleton")
 
-  oidcIssuer       String?
-  oidcClientId     String?
-  oidcClientSecret String?
-  oidcDisplayName  String? @default("SSO")
-  oidcDefaultRole  Role    @default(VIEWER)
-  oidcGroupsClaim  String? @default("groups")
-  oidcAdminGroups  String? // Comma-separated group names → ADMIN role
-  oidcEditorGroups String? // Comma-separated group names → EDITOR role
+  oidcIssuer                  String?
+  oidcClientId                String?
+  oidcClientSecret            String?
+  oidcDisplayName             String? @default("SSO")
+  oidcDefaultRole             Role    @default(VIEWER)
+  oidcGroupsClaim             String? @default("groups")
+  oidcAdminGroups             String? // Comma-separated group names → ADMIN role
+  oidcEditorGroups            String? // Comma-separated group names → EDITOR role
   oidcTokenEndpointAuthMethod String? @default("client_secret_post")
-  oidcTeamMappings  String?  // JSON: [{group, teamId, role}]
-  oidcDefaultTeamId String?  // Fallback team for unmatched users
+  oidcTeamMappings            String? // JSON: [{group, teamId, role}]
+  oidcDefaultTeamId           String? // Fallback team for unmatched users
 
   fleetPollIntervalMs     Int @default(15000)
   fleetUnhealthyThreshold Int @default(3)
+  metricsRetentionDays    Int @default(7)
 
   updatedAt DateTime @updatedAt
 }
