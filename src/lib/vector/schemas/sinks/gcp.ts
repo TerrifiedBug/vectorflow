@@ -41,49 +41,81 @@ export const gcpSinks: VectorComponentDef[] = [
         },
         key_prefix: {
           type: "string",
-          description: "Object key prefix template (default: date=%F)",
+          description:
+            "A prefix to apply to all object keys. Supports template syntax.",
+          default: "date=%F/",
         },
         acl: {
           type: "string",
           enum: [
-            "authenticatedRead",
-            "bucketOwnerFullControl",
-            "bucketOwnerRead",
+            "authenticated-read",
+            "bucket-owner-full-control",
+            "bucket-owner-read",
             "private",
-            "projectPrivate",
-            "publicRead",
+            "project-private",
+            "public-read",
           ],
-          description: "Predefined ACL for objects",
+          description: "Predefined ACL to apply to created objects",
         },
         storage_class: {
           type: "string",
           enum: ["STANDARD", "NEARLINE", "COLDLINE", "ARCHIVE"],
-          description: "Storage class (default: STANDARD)",
+          description: "Storage class for created objects",
         },
         metadata: {
           type: "object",
           additionalProperties: { type: "string" },
-          description: "Custom metadata key-value pairs",
+          description: "Custom metadata key-value pairs for created objects",
         },
         content_type: {
           type: "string",
           description: "Content-Type override for objects",
         },
+        endpoint: {
+          type: "string",
+          description: "API endpoint for Google Cloud Storage",
+          default: "https://storage.googleapis.com",
+        },
         filename_append_uuid: {
           type: "boolean",
-          description: "Append UUID to filename (default: true)",
+          description:
+            "Whether to append a UUID v4 token to the end of the object key",
+          default: true,
         },
         filename_time_format: {
           type: "string",
-          description: "Time format for filename (default: %s)",
+          description:
+            "Timestamp format for the time component of the object key (strftime specifiers)",
+          default: "%s",
         },
         filename_extension: {
           type: "string",
-          description: "File extension (default: log)",
+          description:
+            "Filename extension for the object key. If not specified, determined by compression scheme.",
+        },
+        timezone: {
+          type: "string",
+          description:
+            "Timezone for date specifiers in template strings (TZ database name or 'local')",
         },
         ...gcpAuthSchema(),
-        ...encodingSchema(["json", "ndjson", "text", "csv", "raw_message"]),
-        ...compressionSchema(["gzip", "none", "zlib", "zstd"], "none"),
+        ...encodingSchema([
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "json",
+          "logfmt",
+          "native",
+          "native_json",
+          "protobuf",
+          "raw_message",
+          "text",
+        ]),
+        ...compressionSchema(
+          ["gzip", "none", "snappy", "zlib", "zstd"],
+          "none",
+        ),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "300" }),
         ...bufferSchema(),
@@ -106,45 +138,94 @@ export const gcpSinks: VectorComponentDef[] = [
       properties: {
         project_id: {
           type: "string",
-          description: "GCP project ID",
+          description:
+            "GCP project ID. Exactly one of billing_account_id, folder_id, organization_id, or project_id must be set.",
         },
         log_id: {
           type: "string",
-          description: "Log ID (template-enabled, default: vector)",
+          description:
+            "The log ID to which to publish logs. Supports template syntax.",
         },
         billing_account_id: {
           type: "string",
-          description: "Billing account ID (alternative to project)",
+          description:
+            "Billing account ID to which to publish logs (alternative to project_id)",
         },
         folder_id: {
           type: "string",
-          description: "Folder ID (alternative to project)",
+          description:
+            "Folder ID to which to publish logs (alternative to project_id)",
         },
         organization_id: {
           type: "string",
-          description: "Organization ID (alternative to project)",
+          description:
+            "Organization ID to which to publish logs (alternative to project_id)",
         },
         resource: {
           type: "object",
           properties: {
             type: {
               type: "string",
-              description: "Monitored resource type (default: global)",
+              description:
+                "Monitored resource type (e.g. global, gce_instance, k8s_container)",
             },
           },
-          description: "Google Cloud monitored resource descriptor",
+          additionalProperties: { type: "string" },
+          description:
+            "Google Cloud monitored resource descriptor with type and label values",
         },
         severity_key: {
           type: "string",
-          description: "Field to use as log severity",
+          description:
+            "Field from the log event to use as the outgoing log severity",
+        },
+        labels: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description:
+            "Key-value pairs providing additional information about the log entry. Supports template syntax.",
+        },
+        labels_key: {
+          type: "string",
+          description:
+            "Field used to retrieve associated labels from the jsonPayload",
+          default: "logging.googleapis.com/labels",
+        },
+        encoding: {
+          type: "object",
+          properties: {
+            except_fields: {
+              type: "array",
+              items: { type: "string" },
+              description: "List of fields to exclude from the encoded event",
+            },
+            only_fields: {
+              type: "array",
+              items: { type: "string" },
+              description: "List of fields to include in the encoded event",
+            },
+            timestamp_format: {
+              type: "string",
+              enum: [
+                "rfc3339",
+                "unix",
+                "unix_float",
+                "unix_ms",
+                "unix_ns",
+                "unix_us",
+              ],
+              description: "Format used for timestamp fields",
+            },
+          },
+          description: "Transformations to prepare an event for serialization",
         },
         ...gcpAuthSchema(),
         ...tlsSchema(),
-        ...batchSchema({ max_bytes: "5MB", timeout_secs: "1" }),
+        ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["project_id"],
+      required: ["log_id"],
     },
   },
   {
@@ -161,24 +242,30 @@ export const gcpSinks: VectorComponentDef[] = [
       properties: {
         project_id: {
           type: "string",
-          description: "GCP project ID",
+          description: "GCP project ID to which to publish metrics",
         },
         default_namespace: {
           type: "string",
-          description: "Default metric namespace (default: custom.googleapis.com/vector)",
+          description:
+            "Default namespace for metrics that do not have one",
+          default: "namespace",
         },
         resource: {
           type: "object",
           properties: {
             type: {
               type: "string",
-              description: "Monitored resource type (default: global)",
+              description:
+                "Monitored resource type (e.g. global, gce_instance)",
             },
           },
-          description: "Google Cloud monitored resource descriptor",
+          additionalProperties: { type: "string" },
+          description:
+            "Google Cloud monitored resource descriptor with type and label values",
         },
         ...gcpAuthSchema(),
         ...tlsSchema(),
+        ...batchSchema({ timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
       },
@@ -199,18 +286,32 @@ export const gcpSinks: VectorComponentDef[] = [
       properties: {
         project: {
           type: "string",
-          description: "GCP project ID",
+          description: "GCP project name",
         },
         topic: {
           type: "string",
-          description: "Pub/Sub topic name",
+          description: "Pub/Sub topic name within the project",
         },
         endpoint: {
           type: "string",
-          description: "Custom Pub/Sub endpoint URL",
+          description:
+            "Endpoint to which to publish events. Must include the scheme, no path or trailing slash.",
+          default: "https://pubsub.googleapis.com",
         },
         ...gcpAuthSchema(),
-        ...encodingSchema(["json", "text", "raw_message"]),
+        ...encodingSchema([
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "json",
+          "logfmt",
+          "native",
+          "native_json",
+          "protobuf",
+          "raw_message",
+          "text",
+        ]),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
         ...bufferSchema(),
@@ -234,18 +335,72 @@ export const gcpSinks: VectorComponentDef[] = [
       properties: {
         customer_id: {
           type: "string",
-          description: "Chronicle customer ID",
+          description: "Chronicle customer ID (UUID)",
         },
         log_type: {
           type: "string",
-          description: "Chronicle log type",
+          description:
+            "The type of log entries in a request. Must be a supported Chronicle log type. Supports template syntax.",
+        },
+        fallback_log_type: {
+          type: "string",
+          description:
+            "Default log_type when the template in log_type cannot be resolved",
         },
         endpoint: {
           type: "string",
-          description: "Chronicle ingestion endpoint",
+          description: "Chronicle API endpoint to send data to",
+        },
+        region: {
+          type: "string",
+          enum: [
+            "us",
+            "eu",
+            "asia",
+            "australia-southeast1",
+            "canada",
+            "dammam",
+            "doha",
+            "frankfurt",
+            "london",
+            "mumbai",
+            "paris",
+            "singapore",
+            "sydney",
+            "são_paulo",
+            "tel_aviv",
+            "tokyo",
+            "turin",
+            "zurich",
+          ],
+          description: "GCP region for the Chronicle service",
+        },
+        namespace: {
+          type: "string",
+          description:
+            "User-configured environment namespace to identify the data domain. Supports template syntax.",
+        },
+        labels: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description:
+            "Key-value pairs attached to each batch of events",
         },
         ...gcpAuthSchema(),
-        ...encodingSchema(["json", "text", "raw_message"]),
+        ...encodingSchema([
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "json",
+          "logfmt",
+          "native",
+          "native_json",
+          "protobuf",
+          "raw_message",
+          "text",
+        ]),
+        ...compressionSchema(["gzip", "none"], "none"),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "1MB", timeout_secs: "15" }),
         ...bufferSchema(),
