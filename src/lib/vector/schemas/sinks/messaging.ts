@@ -7,7 +7,6 @@ import {
   encodingSchema,
   compressionSchema,
   kafkaSaslSchema,
-  authBasicBearerSchema,
 } from "../shared";
 
 export const messagingSinks: VectorComponentDef[] = [
@@ -39,11 +38,40 @@ export const messagingSinks: VectorComponentDef[] = [
           type: "string",
           description: "Field containing message headers",
         },
+        librdkafka_options: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description:
+            "Advanced librdkafka client options as key-value pairs",
+        },
+        message_timeout_ms: {
+          type: "number",
+          description:
+            "Local message timeout in milliseconds (default: 300000)",
+          default: 300000,
+        },
+        socket_timeout_ms: {
+          type: "number",
+          description:
+            "Default timeout for network requests in milliseconds (default: 60000)",
+          default: 60000,
+        },
         ...kafkaSaslSchema(),
-        ...encodingSchema(["json", "text", "raw_message", "avro"]),
+        ...encodingSchema([
+          "json",
+          "text",
+          "raw_message",
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "logfmt",
+          "native",
+          "native_json",
+          "protobuf",
+        ]),
         ...compressionSchema(["none", "gzip", "snappy", "lz4", "zstd"], "none"),
         ...tlsSchema(),
-        ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
         ...bufferSchema(),
       },
       required: ["bootstrap_servers", "topic"],
@@ -62,43 +90,65 @@ export const messagingSinks: VectorComponentDef[] = [
     configSchema: {
       type: "object",
       properties: {
-        connection: {
+        connection_string: {
           type: "string",
-          description: "AMQP connection URL (e.g., amqp://guest:guest@localhost:5672/%2f)",
+          description:
+            "AMQP connection URI (e.g., amqp://user:password@127.0.0.1:5672/%2f?timeout=10)",
         },
         exchange: {
           type: "string",
-          description: "Exchange name to publish to",
-        },
-        exchange_type: {
-          type: "string",
-          enum: ["direct", "fanout", "topic", "headers"],
-          description: "Exchange type",
+          description: "Exchange name to publish to (template-enabled)",
         },
         routing_key: {
           type: "string",
-          description: "Routing key (template-enabled)",
+          description: "Routing key for queue binding (template-enabled)",
+        },
+        max_channels: {
+          type: "number",
+          description:
+            "Maximum number of AMQP channels to keep active (default: 4)",
+          default: 4,
         },
         properties: {
           type: "object",
           properties: {
             content_type: {
               type: "string",
-              description: "AMQP message content type",
+              description: "Content-Type for the AMQP messages",
             },
             content_encoding: {
               type: "string",
-              description: "AMQP message content encoding",
+              description: "Content-Encoding for the AMQP messages",
+            },
+            expiration_ms: {
+              type: "number",
+              description: "Expiration for AMQP messages (in milliseconds)",
+            },
+            priority: {
+              type: "string",
+              description:
+                "Priority for AMQP messages (template-enabled, integer 0-255)",
             },
           },
           description: "AMQP message properties",
         },
-        ...encodingSchema(["json", "text", "raw_message"]),
+        ...encodingSchema([
+          "json",
+          "text",
+          "raw_message",
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "logfmt",
+          "native",
+          "native_json",
+          "protobuf",
+        ]),
         ...tlsSchema(),
         ...bufferSchema(),
-        ...requestSchema(),
       },
-      required: ["connection", "exchange"],
+      required: ["connection_string", "exchange"],
     },
   },
   {
@@ -115,31 +165,87 @@ export const messagingSinks: VectorComponentDef[] = [
       properties: {
         endpoint: {
           type: "string",
-          description: "Pulsar service URL (default: pulsar://127.0.0.1:6650)",
+          description:
+            "Pulsar service URL (e.g., pulsar://127.0.0.1:6650)",
         },
         topic: {
           type: "string",
-          description: "Pulsar topic to publish to",
+          description: "Pulsar topic to publish to (template-enabled)",
         },
         producer_name: {
           type: "string",
-          description: "Pulsar producer name",
+          description:
+            "Name of the producer; if not specified, Pulsar assigns a default",
         },
         partition_key_field: {
           type: "string",
-          description: "Field to use as the partition key",
+          description:
+            "Log field name or tags key to use as the partition key",
+        },
+        properties_key: {
+          type: "string",
+          description:
+            "Log field name to use for the Pulsar properties key",
         },
         compression: {
           type: "string",
-          enum: ["none", "lz4", "zlib", "zstd", "snappy"],
-          description: "Message compression (default: none)",
+          enum: ["none", "lz4", "gzip", "zstd", "snappy"],
+          description: "Message compression codec (default: none)",
+          default: "none",
         },
-        ...authBasicBearerSchema(),
-        ...encodingSchema(["json", "text", "raw_message", "avro"]),
+        auth: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description:
+                "Authentication provider name (e.g., token, oauth2)",
+            },
+            token: {
+              type: "string",
+              description: "Authentication token",
+              sensitive: true,
+            },
+            oauth2: {
+              type: "object",
+              properties: {
+                audience: {
+                  type: "string",
+                  description: "OAuth2 audience",
+                },
+                credentials_url: {
+                  type: "string",
+                  description: "URL to fetch OAuth2 credentials from",
+                },
+                issuer_url: {
+                  type: "string",
+                  description: "OAuth2 issuer URL",
+                },
+                scope: {
+                  type: "string",
+                  description: "OAuth2 scope",
+                },
+              },
+              description: "OAuth2 authentication configuration",
+            },
+          },
+          description: "Authentication configuration",
+        },
+        ...encodingSchema([
+          "json",
+          "text",
+          "raw_message",
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "logfmt",
+          "native",
+          "native_json",
+          "protobuf",
+        ]),
         ...tlsSchema(),
-        ...batchSchema({ max_bytes: "5MB", timeout_secs: "1" }),
         ...bufferSchema(),
-        ...requestSchema(),
       },
       required: ["endpoint", "topic"],
     },
@@ -148,7 +254,7 @@ export const messagingSinks: VectorComponentDef[] = [
     type: "redis",
     kind: "sink",
     displayName: "Redis",
-    description: "Send events to Redis lists, channels, or streams",
+    description: "Send events to Redis lists, channels, or sorted sets",
     category: "Messaging",
     status: "beta",
     inputTypes: ["log"],
@@ -157,37 +263,71 @@ export const messagingSinks: VectorComponentDef[] = [
     configSchema: {
       type: "object",
       properties: {
-        url: {
+        endpoint: {
           type: "string",
-          description: "Redis connection URL (default: redis://127.0.0.1:6379/0)",
+          description:
+            "Redis connection URL (e.g., redis://127.0.0.1:6379/0)",
         },
         data_type: {
           type: "string",
-          enum: ["list", "channel"],
-          description: "Redis data type to write to",
+          enum: ["list", "channel", "sortedset"],
+          description: "Redis data type to store messages in (default: list)",
+          default: "list",
         },
         key: {
           type: "string",
-          description: "Redis key (list name, channel name, or template)",
+          description:
+            "Redis key (list name, channel name, or template-enabled)",
         },
-        list: {
+        list_option: {
           type: "object",
           properties: {
             method: {
               type: "string",
               enum: ["lpush", "rpush"],
               description: "List push method (default: rpush)",
+              default: "rpush",
             },
           },
           description: "List-specific configuration",
         },
-        ...encodingSchema(["json", "text", "raw_message"]),
+        sorted_set_option: {
+          type: "object",
+          properties: {
+            method: {
+              type: "string",
+              enum: ["zadd"],
+              description:
+                "Sorted set push method (default: zadd)",
+              default: "zadd",
+            },
+            score: {
+              type: "string",
+              description:
+                "Score to publish a message with (template-enabled)",
+            },
+          },
+          description: "Sorted set-specific configuration",
+        },
+        ...encodingSchema([
+          "json",
+          "text",
+          "raw_message",
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "logfmt",
+          "native",
+          "native_json",
+          "protobuf",
+        ]),
         ...tlsSchema(),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["url", "data_type", "key"],
+      required: ["endpoint", "key"],
     },
   },
   {
@@ -204,7 +344,8 @@ export const messagingSinks: VectorComponentDef[] = [
       properties: {
         url: {
           type: "string",
-          description: "NATS server URL (default: nats://127.0.0.1:4222)",
+          description:
+            "NATS server URL (e.g., nats://127.0.0.1:4222). Supports comma-separated multiple URLs",
         },
         subject: {
           type: "string",
@@ -214,11 +355,86 @@ export const messagingSinks: VectorComponentDef[] = [
           type: "string",
           description: "Name for the NATS connection",
         },
-        ...authBasicBearerSchema(),
-        ...encodingSchema(["json", "text", "raw_message"]),
+        auth: {
+          type: "object",
+          properties: {
+            strategy: {
+              type: "string",
+              enum: [
+                "credentials_file",
+                "nkey",
+                "token",
+                "user_password",
+              ],
+              description: "Authentication strategy",
+            },
+            credentials_file: {
+              type: "object",
+              properties: {
+                path: {
+                  type: "string",
+                  description: "Path to NATS credentials file",
+                },
+              },
+              description: "Credentials file authentication",
+              dependsOn: { field: "strategy", value: "credentials_file" },
+            },
+            nkey: {
+              type: "object",
+              properties: {
+                nkey: {
+                  type: "string",
+                  description: "NKey public key",
+                },
+                seed: {
+                  type: "string",
+                  description: "NKey private key seed",
+                  sensitive: true,
+                },
+              },
+              description: "NKey authentication",
+              dependsOn: { field: "strategy", value: "nkey" },
+            },
+            token: {
+              type: "string",
+              description: "Token for authentication",
+              sensitive: true,
+              dependsOn: { field: "strategy", value: "token" },
+            },
+            user_password: {
+              type: "object",
+              properties: {
+                user: {
+                  type: "string",
+                  description: "Username",
+                },
+                password: {
+                  type: "string",
+                  description: "Password",
+                  sensitive: true,
+                },
+              },
+              description: "User/password authentication",
+              dependsOn: { field: "strategy", value: "user_password" },
+            },
+          },
+          description: "Authentication configuration",
+        },
+        ...encodingSchema([
+          "json",
+          "text",
+          "raw_message",
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "logfmt",
+          "native",
+          "native_json",
+          "protobuf",
+        ]),
         ...tlsSchema(),
         ...bufferSchema(),
-        ...requestSchema(),
       },
       required: ["url", "subject"],
     },
@@ -238,11 +454,12 @@ export const messagingSinks: VectorComponentDef[] = [
       properties: {
         host: {
           type: "string",
-          description: "MQTT broker host",
+          description: "MQTT broker hostname or IP address",
         },
         port: {
           type: "number",
           description: "MQTT broker port (default: 1883)",
+          default: 1883,
         },
         topic: {
           type: "string",
@@ -252,13 +469,35 @@ export const messagingSinks: VectorComponentDef[] = [
           type: "string",
           description: "MQTT client identifier",
         },
-        qos: {
-          type: "number",
-          description: "Quality of Service level (0, 1, or 2)",
+        clean_session: {
+          type: "boolean",
+          description:
+            "If true, the MQTT session is cleaned on login (default: false)",
+          default: false,
+        },
+        quality_of_service: {
+          type: "string",
+          enum: ["atmostonce", "atleastonce", "exactlyonce"],
+          description:
+            "Quality of Service level (default: atleastonce)",
+          default: "atleastonce",
         },
         retain: {
           type: "boolean",
           description: "Set retain flag on messages (default: false)",
+          default: false,
+        },
+        keep_alive: {
+          type: "number",
+          description:
+            "Keep-alive interval in seconds between client and broker (default: 60)",
+          default: 60,
+        },
+        max_packet_size: {
+          type: "number",
+          description:
+            "Maximum allowed packet size in bytes (default: 10240)",
+          default: 10240,
         },
         user: {
           type: "string",
@@ -269,10 +508,21 @@ export const messagingSinks: VectorComponentDef[] = [
           description: "MQTT password",
           sensitive: true,
         },
-        ...encodingSchema(["json", "text", "raw_message"]),
+        ...encodingSchema([
+          "json",
+          "text",
+          "raw_message",
+          "avro",
+          "cef",
+          "csv",
+          "gelf",
+          "logfmt",
+          "native",
+          "native_json",
+          "protobuf",
+        ]),
         ...tlsSchema(),
         ...bufferSchema(),
-        ...requestSchema(),
       },
       required: ["host", "topic"],
     },
