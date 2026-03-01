@@ -58,15 +58,16 @@ export default function LoginPage() {
       const result = await signIn("credentials", {
         email,
         password,
-        totpCode: totpRequired ? totpCode : undefined,
+        ...(totpRequired && totpCode ? { totpCode } : {}),
         redirect: false,
       });
 
+      const resultWithCode = result as typeof result & { code?: string };
       if (result?.error) {
-        if (result.error.includes("TOTP_REQUIRED")) {
+        if (resultWithCode.code === "TOTP_REQUIRED") {
           setTotpRequired(true);
           setError(null);
-        } else if (result.error.includes("Invalid verification code")) {
+        } else if (resultWithCode.code === "INVALID_TOTP") {
           setError("Invalid verification code. Please try again.");
           setTotpCode("");
         } else {

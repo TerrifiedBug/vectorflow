@@ -47,6 +47,7 @@ export async function deployAgent(
         n.componentType,
         (n.config as Record<string, unknown>) ?? {},
       ),
+      disabled: n.disabled,
     },
   }));
 

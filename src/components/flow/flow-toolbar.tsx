@@ -33,13 +33,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml, generateVectorToml, importVectorConfig } from "@/lib/config-generator";
 import { useTRPC } from "@/trpc/client";
@@ -85,8 +78,6 @@ export function FlowToolbar({
   onToggleMetrics,
 }: FlowToolbarProps) {
   const globalConfig = useFlowStore((s) => s.globalConfig);
-  const updateGlobalConfig = useFlowStore((s) => s.updateGlobalConfig);
-  const currentLogLevel = (globalConfig?.log_level as string) || "info";
   const canUndo = useFlowStore((s) => s.canUndo);
   const canRedo = useFlowStore((s) => s.canRedo);
   const undo = useFlowStore((s) => s.undo);
@@ -300,31 +291,6 @@ export function FlowToolbar({
             <TooltipContent>{metricsOpen ? "Hide metrics" : "Show metrics"}</TooltipContent>
           </Tooltip>
         )}
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div>
-              <Select
-                value={currentLogLevel}
-                onValueChange={(value) =>
-                  updateGlobalConfig("log_level", value === "info" ? undefined : value)
-                }
-              >
-                <SelectTrigger className="h-7 w-[5.5rem] gap-1 border-none bg-transparent px-2 text-xs shadow-none hover:bg-accent">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(["trace", "debug", "info", "warn", "error"] as const).map((level) => (
-                    <SelectItem key={level} value={level}>
-                      {level}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>Pipeline log level</TooltipContent>
-        </Tooltip>
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 

@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import type { Provider } from "next-auth/providers";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
@@ -7,6 +7,14 @@ import bcrypt from "bcryptjs";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { verifyTotpCode, verifyBackupCode } from "@/server/services/totp";
 import { authConfig } from "@/auth.config";
+
+class TotpRequiredError extends CredentialsSignin {
+  code = "TOTP_REQUIRED";
+}
+
+class InvalidVerificationCodeError extends CredentialsSignin {
+  code = "INVALID_TOTP";
+}
 
 /**
  * Load OIDC settings from the database.
@@ -65,11 +73,11 @@ const credentialsProvider = Credentials({
 
     // TOTP 2FA check
     if (user.totpEnabled && user.totpSecret) {
-      const totpCode = credentials.totpCode as string | undefined;
+      const raw = credentials.totpCode as string | undefined;
+      const totpCode = raw && raw !== "undefined" ? raw.trim() : undefined;
 
       if (!totpCode) {
-        // Signal the client that TOTP is required
-        throw new Error("TOTP_REQUIRED");
+        throw new TotpRequiredError();
       }
 
       const secret = decrypt(user.totpSecret);
@@ -90,7 +98,7 @@ const credentialsProvider = Credentials({
       }
 
       if (!codeValid) {
-        throw new Error("Invalid verification code");
+        throw new InvalidVerificationCodeError();
       }
     }
 

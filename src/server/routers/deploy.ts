@@ -33,6 +33,7 @@ export const deployRouter = router({
           componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
           componentKey: n.componentKey,
           config: decryptNodeConfig(n.componentType, (n.config as Record<string, unknown>) ?? {}),
+          disabled: n.disabled,
         },
       }));
 

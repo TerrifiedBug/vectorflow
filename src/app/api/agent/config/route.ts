@@ -88,6 +88,7 @@ export async function GET(request: Request) {
                   componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
                   componentKey: n.componentKey,
                   config: withCerts,
+                  disabled: n.disabled,
                 },
               };
             }),
@@ -120,6 +121,7 @@ export async function GET(request: Request) {
                 n.componentType,
                 (n.config as Record<string, unknown>) ?? {},
               ),
+              disabled: n.disabled,
             },
           }));
 
