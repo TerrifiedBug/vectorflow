@@ -37,6 +37,13 @@ func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string) client.Hea
 			ps.ErrorsTotal = m.ErrorsTotal
 		}
 
+		// Include recent stdout/stderr lines (max 100 per heartbeat)
+		logs := sup.GetRecentLogs(s.PipelineID)
+		if len(logs) > 100 {
+			logs = logs[len(logs)-100:]
+		}
+		ps.RecentLogs = logs
+
 		pipelines = append(pipelines, ps)
 	}
 

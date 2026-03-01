@@ -3,12 +3,15 @@ package supervisor
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/vectorflow/agent/internal/logbuf"
 )
 
 type ProcessInfo struct {
@@ -23,6 +26,7 @@ type ProcessInfo struct {
 	configPath string
 	restarts   int
 	done       chan struct{}
+	logBuf     *logbuf.RingBuffer
 }
 
 type Supervisor struct {
@@ -77,8 +81,9 @@ func (s *Supervisor) startProcess(pipelineID, configPath string, version int, se
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	lb := logbuf.New(500)
+	cmd.Stdout = io.MultiWriter(os.Stdout, lb)
+	cmd.Stderr = io.MultiWriter(os.Stderr, lb)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start vector for pipeline %s: %w", pipelineID, err)
@@ -95,6 +100,7 @@ func (s *Supervisor) startProcess(pipelineID, configPath string, version int, se
 		cmd:        cmd,
 		configPath: configPath,
 		done:       make(chan struct{}),
+		logBuf:     lb,
 	}
 	s.processes[pipelineID] = info
 
@@ -226,6 +232,17 @@ func (s *Supervisor) Statuses() []ProcessInfo {
 		})
 	}
 	return result
+}
+
+// GetRecentLogs returns and clears the recent log lines for a pipeline.
+func (s *Supervisor) GetRecentLogs(pipelineID string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	info, ok := s.processes[pipelineID]
+	if !ok || info.logBuf == nil {
+		return nil
+	}
+	return info.logBuf.Lines()
 }
 
 // ShutdownAll gracefully terminates all running pipelines.
