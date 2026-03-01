@@ -13,6 +13,10 @@ export function tlsSchema() {
     tls: {
       type: "object",
       properties: {
+        enabled: {
+          type: "boolean",
+          description: "Enable or disable TLS",
+        },
         ca_file: { type: "string", description: "Path to CA certificate" },
         crt_file: { type: "string", description: "Path to client certificate" },
         key_file: { type: "string", description: "Path to private key" },
@@ -21,13 +25,24 @@ export function tlsSchema() {
           description: "Passphrase for encrypted key",
           sensitive: true,
         },
+        server_name: {
+          type: "string",
+          description: "Server name for SNI",
+        },
+        alpn_protocols: {
+          type: "array",
+          items: { type: "string" },
+          description: "ALPN protocols to support",
+        },
         verify_certificate: {
           type: "boolean",
           description: "Verify certificate validity",
+          default: true,
         },
         verify_hostname: {
           type: "boolean",
           description: "Verify hostname in certificate",
+          default: true,
         },
       },
       description: "TLS configuration",
@@ -80,15 +95,18 @@ export function bufferSchema() {
           type: "string",
           enum: ["memory", "disk"],
           description: "Buffer type (default: memory)",
+          default: "memory",
         },
         max_events: {
           type: "number",
           description: "Max events in buffer (default: 500)",
+          default: 500,
         },
         when_full: {
           type: "string",
           enum: ["block", "drop_newest"],
           description: "Behavior when buffer full (default: block)",
+          default: "block",
         },
       },
       description: "Buffer configuration",
@@ -108,15 +126,38 @@ export function requestSchema() {
         timeout_secs: {
           type: "number",
           description: "Request timeout in seconds (default: 60)",
+          default: 60,
+        },
+        headers: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description: "Additional request headers (key-value pairs)",
         },
         concurrency: {
           type: "string",
           description:
             "Concurrency: adaptive, none, or integer (default: adaptive)",
+          default: "adaptive",
         },
         retry_attempts: {
           type: "number",
           description: "Max retry attempts",
+        },
+        retry_initial_backoff_secs: {
+          type: "number",
+          description:
+            "Initial backoff in seconds before first retry (default: 1)",
+          default: 1,
+        },
+        retry_max_duration_secs: {
+          type: "number",
+          description: "Max time between retries in seconds (default: 30)",
+          default: 30,
+        },
+        rate_limit_duration_secs: {
+          type: "number",
+          description: "Rate limit window in seconds (default: 1)",
+          default: 1,
         },
         rate_limit_num: {
           type: "number",
@@ -155,8 +196,15 @@ export function encodingSchema(
         },
         timestamp_format: {
           type: "string",
-          enum: ["rfc3339", "unix"],
-          description: "Timestamp format (default: rfc3339)",
+          enum: [
+            "rfc3339",
+            "unix",
+            "unix_float",
+            "unix_ms",
+            "unix_ns",
+            "unix_us",
+          ],
+          description: "Timestamp format",
         },
       },
       description: "Encoding configuration",
@@ -174,9 +222,12 @@ export function decodingSchema(
     "json",
     "syslog",
     "gelf",
+    "influxdb",
+    "native",
     "native_json",
     "avro",
     "protobuf",
+    "vrl",
   ],
 ) {
   return {
@@ -187,6 +238,7 @@ export function decodingSchema(
           type: "string",
           enum: codecs,
           description: "Decoding codec (default: bytes)",
+          default: "bytes",
         },
       },
       description: "Decoding configuration",
@@ -207,6 +259,7 @@ export function compressionSchema(
       type: "string",
       enum: algos,
       description: `Compression algorithm (default: ${defaultAlgo})`,
+      default: defaultAlgo,
     },
   };
 }
@@ -409,10 +462,12 @@ export function framingSchema() {
             "bytes",
             "newline_delimited",
             "character_delimited",
+            "chunked_gelf",
             "octet_counting",
             "length_delimited",
           ],
-          description: "Framing method (default: newline_delimited)",
+          description: "Framing method (default: bytes)",
+          default: "bytes",
         },
         character_delimited: {
           type: "object",
