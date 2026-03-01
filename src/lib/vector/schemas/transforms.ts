@@ -19,24 +19,39 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
         },
         drop_on_error: {
           type: "boolean",
+          default: false,
           description: "Drop events that cause a runtime error",
         },
         drop_on_abort: {
           type: "boolean",
+          default: true,
           description: "Drop events that trigger an abort",
+        },
+        reroute_dropped: {
+          type: "boolean",
+          default: false,
+          description:
+            "Reroute dropped events to a named output instead of halting processing",
         },
         timezone: {
           type: "string",
-          description: "Default timezone for timestamp operations (default: local)",
+          description: "Default timezone for timestamp operations",
         },
         file: {
           type: "string",
           description: "Path to a VRL file (alternative to inline source)",
         },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Paths to multiple VRL files (alternative to inline source)",
+        },
         metric_tag_values: {
           type: "string",
           enum: ["single", "full"],
-          description: "Tag value representation for metrics (default: single)",
+          default: "single",
+          description: "Tag value representation for metrics",
         },
       },
       required: ["source"],
@@ -80,6 +95,12 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
           additionalProperties: { type: "string" },
           description: "Map of output name to VRL condition",
         },
+        reroute_unmatched: {
+          type: "boolean",
+          default: true,
+          description:
+            "Reroute unmatched events to a named output instead of silently discarding them",
+        },
       },
       required: ["route"],
     },
@@ -99,18 +120,34 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
         rate: {
           type: "number",
           description:
-            "The rate at which events are kept (e.g., 10 keeps 1 in 10)",
+            "The rate at which events are forwarded, expressed as 1/N (e.g., 10 keeps 1 in 10)",
+        },
+        ratio: {
+          type: "number",
+          description:
+            "The rate at which events are forwarded, expressed as a percentage (e.g., 0.13 keeps 13%)",
         },
         key_field: {
           type: "string",
-          description: "Field to use for consistent sampling",
+          description:
+            "Field whose value is hashed to determine if the event should be sampled",
+        },
+        group_by: {
+          type: "string",
+          description: "Template string to group events for sampling",
         },
         exclude: {
           type: "string",
           description: "VRL condition — matching events are always passed through",
         },
+        sample_rate_key: {
+          type: "string",
+          default: "sample_rate",
+          description:
+            "Event key to store the sample rate; if empty, sample rate is not added",
+        },
       },
-      required: ["rate"],
+      required: [],
     },
   },
   {
@@ -146,8 +183,9 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
           properties: {
             num_events: {
               type: "number",
+              default: 5000,
               description:
-                "Number of events to cache for dedup lookback (default: 5000)",
+                "Number of events to cache for dedup lookback",
             },
           },
           description: "Cache configuration",
@@ -168,6 +206,11 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
     configSchema: {
       type: "object",
       properties: {
+        all_metrics: {
+          type: "boolean",
+          description:
+            "When true, all incoming events are processed and converted to metrics; the metrics field is ignored",
+        },
         metrics: {
           type: "array",
           items: {
@@ -180,6 +223,18 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
               field: { type: "string" },
               name: { type: "string" },
               namespace: { type: "string" },
+              kind: {
+                type: "string",
+                enum: ["absolute", "incremental"],
+                default: "incremental",
+                description: "Metric kind",
+              },
+              increment_by_value: {
+                type: "boolean",
+                default: false,
+                description:
+                  "Increment counter by the value in field instead of by 1",
+              },
               tags: {
                 type: "object",
                 additionalProperties: { type: "string" },
@@ -206,12 +261,24 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
       properties: {
         interval_ms: {
           type: "number",
-          description: "Aggregation window in milliseconds (default: 10000)",
+          default: 10000,
+          description: "Aggregation window in milliseconds",
         },
         mode: {
           type: "string",
-          enum: ["auto", "sum"],
-          description: "Aggregation mode (default: auto)",
+          enum: [
+            "Auto",
+            "Count",
+            "Diff",
+            "Latest",
+            "Max",
+            "Mean",
+            "Min",
+            "Stdev",
+            "Sum",
+          ],
+          default: "Auto",
+          description: "Aggregation mode",
         },
       },
       required: [],
@@ -231,8 +298,8 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
       properties: {
         endpoint: {
           type: "string",
-          description:
-            "Instance metadata endpoint (default: http://169.254.169.254)",
+          default: "http://169.254.169.254",
+          description: "Instance metadata endpoint",
         },
         fields: {
           type: "array",
@@ -242,19 +309,28 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
         },
         namespace: {
           type: "string",
-          description: "Namespace for metadata fields (default: empty)",
+          description: "Namespace for metadata fields",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Tags to associate with the metadata",
         },
         refresh_interval_secs: {
           type: "number",
-          description: "How often to refresh metadata in seconds (default: 10)",
+          default: 10,
+          description: "How often to refresh metadata in seconds",
         },
         refresh_timeout_secs: {
           type: "number",
-          description: "Timeout for metadata refresh in seconds (default: 1)",
+          default: 1,
+          description: "Timeout for metadata refresh in seconds",
         },
         required: {
           type: "boolean",
-          description: "Fail if metadata is unavailable (default: true)",
+          default: true,
+          description:
+            "Require successful metadata query before processing data",
         },
       },
       required: [],
@@ -277,7 +353,7 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
           items: {
             type: "object",
             properties: {
-              id: { type: "string", description: "Route identifier" },
+              name: { type: "string", description: "Route name (also used as transform port name)" },
               condition: {
                 type: "string",
                 description: "VRL condition for this route",
@@ -330,6 +406,12 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
           type: "string",
           description: "Inline Lua source code",
         },
+        metric_tag_values: {
+          type: "string",
+          enum: ["single", "full"],
+          default: "single",
+          description: "Tag value representation for metrics",
+        },
         search_dirs: {
           type: "array",
           items: { type: "string" },
@@ -370,16 +452,18 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
       properties: {
         host_tag: {
           type: "string",
-          description: "Tag name to use for the host field (default: host)",
+          default: "host",
+          description: "Tag name to use for the host field",
         },
         timezone: {
           type: "string",
-          description: "Timezone for timestamp formatting (default: local)",
+          description: "Timezone for timestamp formatting",
         },
         metric_tag_values: {
           type: "string",
           enum: ["single", "full"],
-          description: "Tag value representation (default: single)",
+          default: "single",
+          description: "Tag value representation",
         },
       },
       required: [],
@@ -433,7 +517,19 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
         },
         expire_after_ms: {
           type: "number",
-          description: "Expire incomplete groups after milliseconds (default: 30000)",
+          default: 30000,
+          description: "Expire incomplete groups after milliseconds",
+        },
+        flush_period_ms: {
+          type: "number",
+          default: 1000,
+          description:
+            "Interval to check for and flush any expired events, in milliseconds",
+        },
+        end_every_period_ms: {
+          type: "number",
+          description:
+            "If supplied, every time this interval elapses for a given grouping, the reduced value is flushed",
         },
         max_events: {
           type: "number",
@@ -458,19 +554,27 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
         mode: {
           type: "string",
           enum: ["exact", "probabilistic"],
-          description: "Cardinality tracking mode (default: exact)",
+          description: "Cardinality tracking mode",
         },
         value_limit: {
           type: "number",
-          description: "Max unique tag values per tag key (default: 500)",
+          default: 500,
+          description: "Max unique tag values per tag key",
         },
         limit_exceeded_action: {
           type: "string",
           enum: ["drop_tag", "drop_event"],
-          description: "Action when limit is exceeded (default: drop_tag)",
+          default: "drop_tag",
+          description: "Action when limit is exceeded",
+        },
+        cache_size_per_key: {
+          type: "number",
+          default: 5120,
+          description:
+            "Cache size in bytes for detecting duplicate tags (relevant when mode is probabilistic)",
         },
       },
-      required: [],
+      required: ["mode"],
     },
   },
   {
@@ -491,7 +595,8 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
         },
         window_secs: {
           type: "number",
-          description: "Time window in seconds (default: 1)",
+          default: 1,
+          description: "Time window in seconds",
         },
         key_field: {
           type: "string",
