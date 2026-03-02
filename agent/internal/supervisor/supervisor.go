@@ -1,7 +1,6 @@
 package supervisor
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,19 +14,19 @@ import (
 )
 
 type ProcessInfo struct {
-	PipelineID string
-	Version    int
-	PID        int
-	Status     string // RUNNING, STARTING, STOPPED, CRASHED
-	StartedAt  time.Time
-	MetricsPort    int
-	LogLevel   string
-	Secrets    map[string]string
-	cmd        *exec.Cmd
-	configPath string
-	restarts   int
-	done       chan struct{}
-	logBuf     *logbuf.RingBuffer
+	PipelineID  string
+	Version     int
+	PID         int
+	Status      string // RUNNING, STARTING, STOPPED, CRASHED
+	StartedAt   time.Time
+	MetricsPort int
+	LogLevel    string
+	Secrets     map[string]string
+	cmd         *exec.Cmd
+	configPath  string
+	restarts    int
+	done        chan struct{}
+	logBuf      *logbuf.RingBuffer
 }
 
 type Supervisor struct {
@@ -42,7 +41,7 @@ func New(vectorBin string) *Supervisor {
 	return &Supervisor{
 		vectorBin: vectorBin,
 		processes: make(map[string]*ProcessInfo),
-		basePort:  8687, // 8686 is reserved for API, start from 8687
+		basePort:  8687, // prometheus_exporter ports start at 8688 (portSeq increments before use)
 	}
 }
 
@@ -65,15 +64,18 @@ func (s *Supervisor) Start(pipelineID, configPath string, version int, logLevel 
 }
 
 func (s *Supervisor) startProcess(pipelineID, configPath string, version int, logLevel string, secrets map[string]string, port int) error {
-	// Inject internal_metrics + host_metrics sources and prometheus_exporter sink
-	// so the agent can scrape all pipeline and host metrics.
-	if err := injectMetricsConfig(configPath, port); err != nil {
-		slog.Warn("could not inject metrics config", "pipeline", pipelineID, "error", err)
+	// Write a sidecar metrics config (internal_metrics, host_metrics,
+	// prometheus_exporter) and pass it as a second --config so Vector merges
+	// both files without YAML key collisions.
+	args := []string{"--config", configPath}
+	metricsPath, err := writeMetricsConfig(configPath, port)
+	if err != nil {
+		slog.Warn("could not write metrics sidecar config", "pipeline", pipelineID, "error", err)
+	} else {
+		args = append(args, "--config", metricsPath)
 	}
 
-	cmd := exec.Command(s.vectorBin,
-		"--config", configPath,
-	)
+	cmd := exec.Command(s.vectorBin, args...)
 
 	// Inject environment variables
 	cmd.Env = os.Environ()
@@ -93,18 +95,18 @@ func (s *Supervisor) startProcess(pipelineID, configPath string, version int, lo
 	}
 
 	info := &ProcessInfo{
-		PipelineID: pipelineID,
-		Version:    version,
-		PID:        cmd.Process.Pid,
-		Status:     "STARTING",
-		StartedAt:  time.Now(),
-		MetricsPort:    port,
-		LogLevel:   logLevel,
-		Secrets:    secrets,
-		cmd:        cmd,
-		configPath: configPath,
-		done:       make(chan struct{}),
-		logBuf:     lb,
+		PipelineID:  pipelineID,
+		Version:     version,
+		PID:         cmd.Process.Pid,
+		Status:      "STARTING",
+		StartedAt:   time.Now(),
+		MetricsPort: port,
+		LogLevel:    logLevel,
+		Secrets:     secrets,
+		cmd:         cmd,
+		configPath:  configPath,
+		done:        make(chan struct{}),
+		logBuf:      lb,
 	}
 	s.processes[pipelineID] = info
 
@@ -189,13 +191,19 @@ func (s *Supervisor) stopProcess(info *ProcessInfo) error {
 	// Wait up to 30s for graceful shutdown
 	select {
 	case <-info.done:
-		return nil
 	case <-time.After(30 * time.Second):
 		slog.Warn("pipeline did not stop after timeout, sending SIGKILL", "pipeline", info.PipelineID)
 		info.cmd.Process.Kill()
 		<-info.done
-		return nil
 	}
+
+	// Clean up sidecar metrics config file
+	metricsPath := info.configPath + ".vf-metrics.yaml"
+	if err := os.Remove(metricsPath); err != nil && !os.IsNotExist(err) {
+		slog.Warn("could not remove metrics sidecar config", "path", metricsPath, "error", err)
+	}
+
+	return nil
 }
 
 // Restart stops and starts a pipeline with new config.
@@ -227,12 +235,12 @@ func (s *Supervisor) Statuses() []ProcessInfo {
 	var result []ProcessInfo
 	for _, info := range s.processes {
 		result = append(result, ProcessInfo{
-			PipelineID: info.PipelineID,
-			Version:    info.Version,
-			PID:        info.PID,
-			Status:     info.Status,
-			StartedAt:  info.StartedAt,
-			MetricsPort:    info.MetricsPort,
+			PipelineID:  info.PipelineID,
+			Version:     info.Version,
+			PID:         info.PID,
+			Status:      info.Status,
+			StartedAt:   info.StartedAt,
+			MetricsPort: info.MetricsPort,
 		})
 	}
 	return result
@@ -270,18 +278,12 @@ func (s *Supervisor) ShutdownAll() {
 	wg.Wait()
 }
 
-// injectMetricsConfig prepends Vector internal_metrics + host_metrics sources and
-// a prometheus_exporter sink to the pipeline config so the agent can scrape all
-// metrics (events, bytes, errors, discarded, host) from a single HTTP endpoint.
-func injectMetricsConfig(configPath string, port int) error {
-	content, err := os.ReadFile(configPath)
-	if err != nil {
-		return err
-	}
-	// Don't double-inject on crash restarts
-	if bytes.Contains(content, []byte("vf_metrics_exporter:")) {
-		return nil
-	}
+// writeMetricsConfig writes a sidecar Vector config containing internal_metrics +
+// host_metrics sources and a prometheus_exporter sink. It is passed as a second
+// --config argument so Vector merges it with the pipeline config, avoiding YAML
+// key collisions.
+func writeMetricsConfig(configPath string, port int) (string, error) {
+	metricsPath := configPath + ".vf-metrics.yaml"
 	block := fmt.Sprintf(`sources:
   vf_internal_metrics:
     type: internal_metrics
@@ -293,9 +295,11 @@ sinks:
     type: prometheus_exporter
     inputs: ["vf_internal_metrics", "vf_host_metrics"]
     address: "127.0.0.1:%d"
-
 `, port)
-	return os.WriteFile(configPath, append([]byte(block), content...), 0600)
+	if err := os.WriteFile(metricsPath, []byte(block), 0600); err != nil {
+		return "", err
+	}
+	return metricsPath, nil
 }
 
 func minInt(a, b int) int {
