@@ -578,6 +578,7 @@ export const pipelineRouter = router({
       z.object({
         pipelineId: z.string(),
         componentKeys: z.array(z.string()),
+        limit: z.number().min(1).max(50).default(5),
       }),
     )
     .mutation(async ({ input }) => {
@@ -602,6 +603,7 @@ export const pipelineRouter = router({
         data: {
           pipelineId: input.pipelineId,
           componentKeys: input.componentKeys,
+          limit: input.limit,
           expiresAt: new Date(Date.now() + 2 * 60 * 1000),
         },
       });
