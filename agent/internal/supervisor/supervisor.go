@@ -20,7 +20,7 @@ type ProcessInfo struct {
 	PID        int
 	Status     string // RUNNING, STARTING, STOPPED, CRASHED
 	StartedAt  time.Time
-	APIPort    int
+	MetricsPort    int
 	LogLevel   string
 	Secrets    map[string]string
 	cmd        *exec.Cmd
@@ -65,11 +65,10 @@ func (s *Supervisor) Start(pipelineID, configPath string, version int, logLevel 
 }
 
 func (s *Supervisor) startProcess(pipelineID, configPath string, version int, logLevel string, secrets map[string]string, port int) error {
-	// Inject api: block into the config file so the agent can scrape metrics
-	// via Vector's GraphQL endpoint. The env var VECTOR_API_ENABLED doesn't
-	// exist — it must be in the config file.
-	if err := injectAPIConfig(configPath, port); err != nil {
-		slog.Warn("could not inject API config", "pipeline", pipelineID, "error", err)
+	// Inject internal_metrics + host_metrics sources and prometheus_exporter sink
+	// so the agent can scrape all pipeline and host metrics.
+	if err := injectMetricsConfig(configPath, port); err != nil {
+		slog.Warn("could not inject metrics config", "pipeline", pipelineID, "error", err)
 	}
 
 	cmd := exec.Command(s.vectorBin,
@@ -99,7 +98,7 @@ func (s *Supervisor) startProcess(pipelineID, configPath string, version int, lo
 		PID:        cmd.Process.Pid,
 		Status:     "STARTING",
 		StartedAt:  time.Now(),
-		APIPort:    port,
+		MetricsPort:    port,
 		LogLevel:   logLevel,
 		Secrets:    secrets,
 		cmd:        cmd,
@@ -233,7 +232,7 @@ func (s *Supervisor) Statuses() []ProcessInfo {
 			PID:        info.PID,
 			Status:     info.Status,
 			StartedAt:  info.StartedAt,
-			APIPort:    info.APIPort,
+			MetricsPort:    info.MetricsPort,
 		})
 	}
 	return result
@@ -271,19 +270,32 @@ func (s *Supervisor) ShutdownAll() {
 	wg.Wait()
 }
 
-// injectAPIConfig prepends a Vector API block to the pipeline config YAML
-// so the agent can scrape metrics from Vector's GraphQL endpoint.
-func injectAPIConfig(configPath string, port int) error {
+// injectMetricsConfig prepends Vector internal_metrics + host_metrics sources and
+// a prometheus_exporter sink to the pipeline config so the agent can scrape all
+// metrics (events, bytes, errors, discarded, host) from a single HTTP endpoint.
+func injectMetricsConfig(configPath string, port int) error {
 	content, err := os.ReadFile(configPath)
 	if err != nil {
 		return err
 	}
 	// Don't double-inject on crash restarts
-	if bytes.Contains(content, []byte("api:\n  enabled: true\n")) {
+	if bytes.Contains(content, []byte("vf_metrics_exporter:")) {
 		return nil
 	}
-	apiBlock := fmt.Sprintf("api:\n  enabled: true\n  address: \"127.0.0.1:%d\"\n\n", port)
-	return os.WriteFile(configPath, append([]byte(apiBlock), content...), 0600)
+	block := fmt.Sprintf(`sources:
+  vf_internal_metrics:
+    type: internal_metrics
+  vf_host_metrics:
+    type: host_metrics
+
+sinks:
+  vf_metrics_exporter:
+    type: prometheus_exporter
+    inputs: ["vf_internal_metrics", "vf_host_metrics"]
+    address: "127.0.0.1:%d"
+
+`, port)
+	return os.WriteFile(configPath, append([]byte(block), content...), 0600)
 }
 
 func minInt(a, b int) int {
