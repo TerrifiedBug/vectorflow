@@ -8,6 +8,7 @@ interface MetricRow {
   errorsTotal: bigint;
   bytesIn: bigint;
   bytesOut: bigint;
+  eventsDiscarded: bigint;
 }
 
 interface SummaryCardsProps {
@@ -37,9 +38,10 @@ export function SummaryCards({ rows }: SummaryCardsProps) {
   const eventsOutRate = latest ? Number(latest.eventsOut) : 0;
   const bytesInRate = latest ? Number(latest.bytesIn) : 0;
   const errorsTotal = rows.reduce((sum, r) => sum + Number(r.errorsTotal), 0);
+  const discardedTotal = rows.reduce((sum, r) => sum + Number(r.eventsDiscarded), 0);
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
       <Card>
         <CardContent className="pt-4">
           <p className="text-xs text-muted-foreground">Events In</p>
@@ -62,6 +64,12 @@ export function SummaryCards({ rows }: SummaryCardsProps) {
         <CardContent className="pt-4">
           <p className="text-xs text-muted-foreground">Errors</p>
           <p className="text-2xl font-bold">{errorsTotal}</p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="pt-4">
+          <p className="text-xs text-muted-foreground">Discarded</p>
+          <p className="text-2xl font-bold">{discardedTotal}</p>
         </CardContent>
       </Card>
     </div>

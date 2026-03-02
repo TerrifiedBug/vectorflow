@@ -105,6 +105,15 @@ export default function PipelineMetricsPage() {
               <MetricsChart rows={rows} dataKey="bytes" height={220} />
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Errors & Discarded Events</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MetricsChart rows={rows} dataKey="errors" height={220} />
+            </CardContent>
+          </Card>
         </>
       )}
     </div>

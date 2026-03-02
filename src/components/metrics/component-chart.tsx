@@ -17,11 +17,12 @@ interface MetricRow {
   bytesIn: bigint;
   bytesOut: bigint;
   errorsTotal: bigint;
+  eventsDiscarded: bigint;
 }
 
 interface MetricsChartProps {
   rows: MetricRow[];
-  dataKey: "events" | "bytes";
+  dataKey: "events" | "bytes" | "errors";
   height?: number;
 }
 
@@ -41,8 +42,12 @@ function formatBytesRate(v: number): string {
 export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps) {
   const data = rows.map((m) => ({
     time: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    in: dataKey === "events" ? Number(m.eventsIn) / 60 : Number(m.bytesIn) / 60,
-    out: dataKey === "events" ? Number(m.eventsOut) / 60 : Number(m.bytesOut) / 60,
+    in: dataKey === "events" ? Number(m.eventsIn) / 60
+      : dataKey === "bytes" ? Number(m.bytesIn) / 60
+      : Number(m.errorsTotal) / 60,
+    out: dataKey === "events" ? Number(m.eventsOut) / 60
+      : dataKey === "bytes" ? Number(m.bytesOut) / 60
+      : Number(m.eventsDiscarded) / 60,
   }));
 
   if (data.length === 0) {
@@ -53,11 +58,11 @@ export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps)
     );
   }
 
-  const formatter = dataKey === "events" ? formatEventsRate : formatBytesRate;
-  const inLabel = dataKey === "events" ? "Events In/s" : "Bytes In/s";
-  const outLabel = dataKey === "events" ? "Events Out/s" : "Bytes Out/s";
-  const inColor = dataKey === "events" ? "#22c55e" : "#f59e0b";
-  const outColor = dataKey === "events" ? "#3b82f6" : "#8b5cf6";
+  const formatter = dataKey === "bytes" ? formatBytesRate : formatEventsRate;
+  const inLabel = dataKey === "events" ? "Events In/s" : dataKey === "bytes" ? "Bytes In/s" : "Errors/s";
+  const outLabel = dataKey === "events" ? "Events Out/s" : dataKey === "bytes" ? "Bytes Out/s" : "Discarded/s";
+  const inColor = dataKey === "events" ? "#22c55e" : dataKey === "bytes" ? "#f59e0b" : "#ef4444";
+  const outColor = dataKey === "events" ? "#3b82f6" : dataKey === "bytes" ? "#8b5cf6" : "#f97316";
 
   return (
     <ResponsiveContainer width="100%" height={height}>
