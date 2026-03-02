@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
 import { Loader2, AlertTriangle, Info } from "lucide-react";
+import { useFormField, useFormStore } from "@/stores/form-store";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,15 +28,13 @@ export default function ProfilePage() {
   const isLocalUser = me?.authMethod !== "OIDC";
 
   // --- Personal Info ---
-  const [name, setName] = useState("");
-  useEffect(() => {
-    if (me?.name) setName(me.name);
-  }, [me?.name]);
+  const [name, setName] = useFormField("profile", "name", me?.name ?? "");
 
   const updateProfileMutation = useMutation(
     trpc.user.updateProfile.mutationOptions({
       onSuccess: () => {
         toast.success("Profile updated");
+        useFormStore.getState().clearForm("profile");
         router.refresh();
       },
       onError: (error) => toast.error(error.message || "Failed to update profile"),
