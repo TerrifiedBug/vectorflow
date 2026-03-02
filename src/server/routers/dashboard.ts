@@ -48,7 +48,13 @@ export const dashboardRouter = router({
       include: {
         environment: { select: { id: true, name: true } },
         pipelineStatuses: {
-          include: {
+          select: {
+            status: true,
+            eventsIn: true,
+            eventsOut: true,
+            bytesIn: true,
+            bytesOut: true,
+            errorsTotal: true,
             pipeline: { select: { id: true, name: true } },
           },
         },
@@ -83,28 +89,40 @@ export const dashboardRouter = router({
       metricsByNode.set(m.nodeId, arr);
     }
 
-    return nodes.map((node) => ({
-      id: node.id,
-      name: node.name,
-      host: node.host,
-      status: node.status,
-      lastSeen: node.lastSeen,
-      environment: node.environment,
-      pipelines: node.pipelineStatuses.map((ps) => ({
-        id: ps.pipelineId,
-        name: ps.pipeline?.name ?? ps.pipelineId.slice(0, 8),
-        status: ps.status,
-        eventsIn: Number(ps.eventsIn ?? 0),
-        eventsOut: Number(ps.eventsOut ?? 0),
-        bytesIn: Number(ps.bytesIn ?? 0),
-        bytesOut: Number(ps.bytesOut ?? 0),
-      })),
-      sparkline: (metricsByNode.get(node.id) ?? []).map((m) => ({
-        t: m.timestamp.getTime(),
-        mem: m.memoryTotalBytes ? Number(m.memoryUsedBytes) / Number(m.memoryTotalBytes) * 100 : 0,
-        cpu: Number(m.cpuSecondsTotal ?? 0),
-      })),
-    }));
+    return nodes.map((node) => {
+      let totalEventsIn = 0, totalEventsOut = 0;
+      let totalBytesIn = 0, totalBytesOut = 0;
+      let totalErrors = 0;
+      let pipelineCount = 0;
+      let unhealthyPipelines = 0;
+
+      for (const ps of node.pipelineStatuses) {
+        pipelineCount++;
+        totalEventsIn += Number(ps.eventsIn ?? 0);
+        totalEventsOut += Number(ps.eventsOut ?? 0);
+        totalBytesIn += Number(ps.bytesIn ?? 0);
+        totalBytesOut += Number(ps.bytesOut ?? 0);
+        totalErrors += Number(ps.errorsTotal ?? 0);
+        if (ps.status !== "RUNNING") unhealthyPipelines++;
+      }
+
+      return {
+        id: node.id,
+        name: node.name,
+        host: node.host,
+        status: node.status,
+        lastSeen: node.lastSeen,
+        environment: node.environment,
+        pipelineCount,
+        unhealthyPipelines,
+        totals: { eventsIn: totalEventsIn, eventsOut: totalEventsOut, bytesIn: totalBytesIn, bytesOut: totalBytesOut, errors: totalErrors },
+        sparkline: (metricsByNode.get(node.id) ?? []).map((m) => ({
+          t: m.timestamp.getTime(),
+          mem: m.memoryTotalBytes ? Number(m.memoryUsedBytes) / Number(m.memoryTotalBytes) * 100 : 0,
+          cpu: Number(m.cpuSecondsTotal ?? 0),
+        })),
+      };
+    });
   }),
 
   pipelineCards: protectedProcedure.query(async () => {
