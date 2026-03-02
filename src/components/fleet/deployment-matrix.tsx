@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, AlertCircle, Clock, XCircle, Minus } from "lucide-react";
+import Link from "next/link";
 
 interface DeploymentMatrixProps {
   environmentId: string;
@@ -72,7 +73,9 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
             <tr key={pipeline.id} className="hover:bg-muted/30">
               <td className="px-3 py-2 font-medium">
                 <div className="flex items-center gap-2">
-                  {pipeline.name}
+                  <Link href={`/pipelines/${pipeline.id}`} className="hover:underline">
+                    {pipeline.name}
+                  </Link>
                   <Badge variant="outline" className="text-xs">
                     v{pipeline.latestVersion}
                   </Badge>
