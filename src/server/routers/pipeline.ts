@@ -572,4 +572,102 @@ export const pipelineRouter = router({
 
       return { items, nextCursor };
     }),
+
+  requestSamples: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        componentKeys: z.array(z.string()),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        select: { id: true, isDraft: true, deployedAt: true },
+      });
+      if (!pipeline) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Pipeline not found",
+        });
+      }
+      if (pipeline.isDraft || !pipeline.deployedAt) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Pipeline must be deployed to sample events",
+        });
+      }
+
+      const request = await prisma.eventSampleRequest.create({
+        data: {
+          pipelineId: input.pipelineId,
+          componentKeys: input.componentKeys,
+          expiresAt: new Date(Date.now() + 2 * 60 * 1000),
+        },
+      });
+
+      return { requestId: request.id, status: "PENDING" };
+    }),
+
+  sampleResult: protectedProcedure
+    .input(z.object({ requestId: z.string() }))
+    .query(async ({ input }) => {
+      const request = await prisma.eventSampleRequest.findUnique({
+        where: { id: input.requestId },
+        include: {
+          samples: {
+            select: {
+              id: true,
+              componentKey: true,
+              events: true,
+              schema: true,
+              error: true,
+              sampledAt: true,
+            },
+          },
+        },
+      });
+      if (!request) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Sample request not found",
+        });
+      }
+
+      return {
+        requestId: request.id,
+        status: request.status,
+        samples: request.samples,
+      };
+    }),
+
+  eventSchemas: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .query(async ({ input }) => {
+      const samples = await prisma.eventSample.findMany({
+        where: {
+          pipelineId: input.pipelineId,
+          error: null,
+        },
+        orderBy: { sampledAt: "desc" },
+        select: {
+          componentKey: true,
+          schema: true,
+          events: true,
+          sampledAt: true,
+        },
+      });
+
+      // Deduplicate: keep only the most recent sample per componentKey
+      const seen = new Set<string>();
+      const deduplicated = [];
+      for (const sample of samples) {
+        if (!seen.has(sample.componentKey)) {
+          seen.add(sample.componentKey);
+          deduplicated.push(sample);
+        }
+      }
+
+      return deduplicated;
+    }),
 });

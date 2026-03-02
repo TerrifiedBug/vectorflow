@@ -255,6 +255,46 @@ export async function POST(request: Request) {
       }
     }
 
+    // Process event sample results from the agent
+    const sampleResults = body.sampleResults as Array<{
+      requestId: string;
+      componentKey: string;
+      events?: unknown[];
+      schema?: Array<{ path: string; type: string; sample: string }>;
+      error?: string;
+    }> | undefined;
+
+    if (Array.isArray(sampleResults) && sampleResults.length > 0) {
+      for (const result of sampleResults) {
+        if (!result.requestId) continue;
+        const request = await prisma.eventSampleRequest.findUnique({
+          where: { id: result.requestId },
+          select: { pipelineId: true, status: true },
+        });
+        if (!request || request.status !== "PENDING") continue;
+
+        await prisma.eventSample.create({
+          data: {
+            requestId: result.requestId,
+            pipelineId: request.pipelineId,
+            componentKey: result.componentKey ?? "",
+            events: (result.events ?? []) as any,
+            schema: (result.schema ?? []) as any,
+            error: result.error ?? null,
+          },
+        });
+
+        await prisma.eventSampleRequest.update({
+          where: { id: result.requestId },
+          data: {
+            status: result.error ? "ERROR" : "COMPLETED",
+            completedAt: new Date(),
+            nodeId: agent.nodeId,
+          },
+        });
+      }
+    }
+
     // Check fleet-wide node health
     checkNodeHealth().catch((err) =>
       console.error("Node health check error:", err),
@@ -267,6 +307,22 @@ export async function POST(request: Request) {
       cleanupOldMetrics().catch((err) =>
         console.error("Metrics cleanup error:", err),
       );
+
+      prisma.eventSampleRequest
+        .updateMany({
+          where: { status: "PENDING", expiresAt: { lt: new Date() } },
+          data: { status: "EXPIRED" },
+        })
+        .catch((err) => console.error("Sample request cleanup error:", err));
+
+      prisma.eventSampleRequest
+        .deleteMany({
+          where: {
+            status: { in: ["COMPLETED", "ERROR", "EXPIRED"] },
+            requestedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+          },
+        })
+        .catch((err) => console.error("Old sample cleanup error:", err));
     }
 
     return NextResponse.json({ ok: true });
