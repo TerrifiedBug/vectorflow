@@ -2,10 +2,12 @@ package sampler
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -41,7 +43,7 @@ func Sample(vectorBin string, apiPort int, componentKey string, limit int) Sampl
 		"--url", url,
 		"--format", "json",
 		"--limit", fmt.Sprintf("%d", limit),
-		"--duration_ms", "15000",
+		"--duration-ms", "15000",
 		"--quiet",
 	)
 
@@ -52,6 +54,9 @@ func Sample(vectorBin string, apiPort int, componentKey string, limit int) Sampl
 			Error:        fmt.Sprintf("failed to create stdout pipe: %v", err),
 		}
 	}
+
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
 
 	if err := cmd.Start(); err != nil {
 		return SampleResult{
@@ -85,9 +90,13 @@ func Sample(vectorBin string, apiPort int, componentKey string, limit int) Sampl
 	_ = cmd.Wait()
 
 	if len(events) == 0 {
+		errMsg := "no events received within 15s"
+		if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
+			errMsg = stderr
+		}
 		return SampleResult{
 			ComponentKey: componentKey,
-			Error:        "timeout: no events received within 15s",
+			Error:        errMsg,
 		}
 	}
 
