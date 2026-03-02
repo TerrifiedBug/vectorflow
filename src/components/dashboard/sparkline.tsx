@@ -37,6 +37,7 @@ export function Sparkline({
       className={className}
       aria-hidden
     >
+      <line x1={0} y1={height} x2={width} y2={height} stroke="currentColor" strokeOpacity={0.1} strokeWidth={0.5} />
       <polyline
         points={points}
         fill="none"

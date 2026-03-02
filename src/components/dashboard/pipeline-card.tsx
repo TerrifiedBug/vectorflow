@@ -81,7 +81,7 @@ export function PipelineCard({ pipeline }: PipelineCardProps) {
                 {formatBytesRate(rates.bytesIn)} in / {formatBytesRate(rates.bytesOut)} out
               </p>
             </div>
-            <Sparkline data={eventsData} color="#8b5cf6" />
+            <Sparkline data={eventsData} width={140} height={48} color="#8b5cf6" />
           </div>
 
           {/* Cumulative totals */}
