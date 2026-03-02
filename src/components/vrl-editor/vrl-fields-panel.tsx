@@ -254,45 +254,41 @@ function FieldRow({
   }, [renameValue, field.path, onInsert]);
 
   return (
-    <div className="group/row flex items-center gap-1.5 rounded px-3 py-1 hover:bg-accent">
-      {/* Field name — click to insert */}
-      <button
-        className="shrink-0 font-mono text-xs font-medium hover:underline"
-        onClick={() => onInsert(field.path)}
-        title={field.path}
-      >
-        {relativeName}
-      </button>
-
-      {/* Type badge */}
-      <span
-        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none ${typeBadgeClass(field.type)}`}
-      >
-        {field.type || "unknown"}
-      </span>
-
-      {/* Discovered badge */}
-      {field.source === "live" && (
-        <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium leading-none text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
-          discovered
-        </span>
-      )}
-
-      {/* Sample value */}
-      {field.sample && (
-        <span
-          className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground"
-          title={field.sample}
+    <div className="group/row rounded px-3 py-1 hover:bg-accent">
+      {/* Row 1: field name + type + sample */}
+      <div className="flex items-center gap-1.5">
+        <button
+          className="shrink-0 font-mono text-xs font-medium hover:underline"
+          onClick={() => onInsert(field.path)}
+          title={field.path}
         >
-          {field.sample}
+          {relativeName}
+        </button>
+
+        <span
+          className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none ${typeBadgeClass(field.type)}`}
+        >
+          {field.type || "unknown"}
         </span>
-      )}
 
-      {/* Spacer if no sample */}
-      {!field.sample && <span className="flex-1" />}
+        {field.source === "live" && (
+          <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium leading-none text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+            discovered
+          </span>
+        )}
 
-      {/* Quick actions — visible on row hover */}
-      <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100">
+        {field.sample && (
+          <span
+            className="min-w-0 truncate text-[10px] text-muted-foreground"
+            title={field.sample}
+          >
+            {field.sample}
+          </span>
+        )}
+      </div>
+
+      {/* Row 2: quick actions — appears on hover */}
+      <div className="mt-0.5 flex flex-wrap items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100">
         {applicableActions.map((action) => {
           if (action.needsRename) {
             return (
@@ -300,7 +296,7 @@ function FieldRow({
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon"
                     className="h-5 w-5"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -311,7 +307,7 @@ function FieldRow({
                     <action.icon className="h-3 w-3" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top">{action.label}</TooltipContent>
+                <TooltipContent side="bottom">{action.label}</TooltipContent>
               </Tooltip>
             );
           }
@@ -320,7 +316,7 @@ function FieldRow({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon"
                   className="h-5 w-5"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -330,18 +326,18 @@ function FieldRow({
                   <action.icon className="h-3 w-3" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">{action.label}</TooltipContent>
+              <TooltipContent side="bottom">{action.label}</TooltipContent>
             </Tooltip>
           );
         })}
-      </span>
+      </div>
 
       {/* Inline rename input */}
       {renaming === field.path && (
-        <div className="flex items-center gap-1">
+        <div className="mt-0.5 flex items-center gap-1">
           <Input
             autoFocus
-            className="h-5 w-24 px-1 text-xs font-mono"
+            className="h-5 flex-1 px-1 text-xs font-mono"
             placeholder=".new_name ⏎"
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
