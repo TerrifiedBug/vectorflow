@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
@@ -12,7 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Layers } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Layers, Plus } from "lucide-react";
 
 export function EnvironmentSelector() {
   const trpc = useTRPC();
@@ -35,7 +38,20 @@ export function EnvironmentSelector() {
     }
   }, [environments, selectedEnvironmentId, setSelectedEnvironmentId]);
 
-  if (environments.length === 0) return null;
+  if (envsQuery.isLoading) {
+    return <Skeleton className="h-9 w-[180px]" />;
+  }
+
+  if (environments.length === 0) {
+    return (
+      <Button variant="outline" size="sm" className="h-9 text-xs text-muted-foreground" asChild>
+        <Link href="/environments">
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          Create Environment
+        </Link>
+      </Button>
+    );
+  }
 
   return (
     <Select
