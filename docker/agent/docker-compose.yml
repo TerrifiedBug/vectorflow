@@ -6,9 +6,12 @@ services:
       - .env
     volumes:
       - agent-data:/var/lib/vf-agent
+      - vector-data:/var/lib/vector
     network_mode: host
     restart: unless-stopped
 
 volumes:
   agent-data:
     name: vectorflow-agent-data
+  vector-data:
+    name: vectorflow-vector-data
