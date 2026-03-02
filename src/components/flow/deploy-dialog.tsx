@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { ConfigDiff } from "@/components/ui/config-diff";
 
 interface DeployDialogProps {
   pipelineId: string;
@@ -75,7 +76,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Rocket className="h-5 w-5" />
@@ -129,10 +130,15 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
             {preview?.configYaml && (
               <div className="space-y-1">
-                <span className="text-xs font-medium text-muted-foreground">Generated Config</span>
-                <pre className="max-h-48 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all">
-                  {preview.configYaml}
-                </pre>
+                <span className="text-xs font-medium text-muted-foreground">
+                  {preview.currentConfigYaml ? "Changes" : "Generated Config"}
+                </span>
+                <ConfigDiff
+                  oldConfig={preview.currentConfigYaml ?? ""}
+                  newConfig={preview.configYaml}
+                  oldLabel={preview.currentVersion != null ? `v${preview.currentVersion}` : "empty"}
+                  newLabel="pending"
+                />
               </div>
             )}
 
