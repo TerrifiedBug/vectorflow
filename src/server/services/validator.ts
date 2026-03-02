@@ -213,6 +213,30 @@ function basicStructuralValidation(yamlContent: string): ValidationResult {
         componentKey: key,
       });
     }
+
+    // Check component-specific required fields
+    if (tc.type === "remap") {
+      if (!tc.source && !tc.file && !tc.files) {
+        errors.push({
+          message: `Transform "${key}" (remap) requires a "source", "file", or "files" field`,
+          componentKey: key,
+        });
+      }
+    } else if (tc.type === "filter") {
+      if (!tc.condition) {
+        errors.push({
+          message: `Transform "${key}" (filter) requires a "condition" field`,
+          componentKey: key,
+        });
+      }
+    } else if (tc.type === "route") {
+      if (!tc.route || typeof tc.route !== "object" || Object.keys(tc.route).length === 0) {
+        errors.push({
+          message: `Transform "${key}" (route) requires at least one route condition`,
+          componentKey: key,
+        });
+      }
+    }
   }
 
   // 6. Check all sources have a type
