@@ -8,7 +8,6 @@ import { toast } from "sonner";
 import { FileText, Workflow } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
-import { useFormField, useFormStore } from "@/stores/form-store";
 import { generateId } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
@@ -30,8 +29,8 @@ export default function NewPipelinePage() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  const [name, setName] = useFormField("pipeline-new", "name", "");
-  const [description, setDescription] = useFormField("pipeline-new", "description", "");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
@@ -137,7 +136,6 @@ export default function NewPipelinePage() {
 
       queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
       toast.success("Pipeline created");
-      useFormStore.getState().clearForm("pipeline-new");
       router.push(`/pipelines/${pipeline.id}`);
     } catch {
       // Error already handled by mutation onError

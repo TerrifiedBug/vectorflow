@@ -1,10 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
-import { useFormField, useFormStore } from "@/stores/form-store";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,7 @@ export default function NewEnvironmentPage() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  const [name, setName] = useFormField("env-new", "name", "");
+  const [name, setName] = useState("");
 
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
@@ -31,7 +31,6 @@ export default function NewEnvironmentPage() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: trpc.environment.list.queryKey() });
         toast.success("Environment created successfully");
-        useFormStore.getState().clearForm("env-new");
         router.push("/environments");
       },
       onError: (error) => {

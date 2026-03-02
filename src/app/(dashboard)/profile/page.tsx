@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
 import { Loader2, AlertTriangle, Info } from "lucide-react";
-import { useFormField, useFormStore } from "@/stores/form-store";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,13 +27,23 @@ export default function ProfilePage() {
   const isLocalUser = me?.authMethod !== "OIDC";
 
   // --- Personal Info ---
-  const [name, setName] = useFormField("profile", "name", me?.name ?? "");
+  const [name, setName] = useState("");
+  const hasLoadedRef = useRef(false);
+  const [isDirty, setIsDirty] = useState(false);
+
+  useEffect(() => {
+    if (!me?.name) return;
+    if (hasLoadedRef.current && isDirty) return; // Don't overwrite dirty state on refetch
+    hasLoadedRef.current = true;
+    setName(me.name);
+  }, [me?.name, isDirty]);
 
   const updateProfileMutation = useMutation(
     trpc.user.updateProfile.mutationOptions({
       onSuccess: () => {
         toast.success("Profile updated");
-        useFormStore.getState().clearForm("profile");
+        setIsDirty(false);
+        hasLoadedRef.current = false;
         router.refresh();
       },
       onError: (error) => toast.error(error.message || "Failed to update profile"),
@@ -108,7 +117,7 @@ export default function ProfilePage() {
                   <Input
                     id="profile-name"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => { setIsDirty(true); setName(e.target.value); }}
                     placeholder="Your name"
                     required
                   />
