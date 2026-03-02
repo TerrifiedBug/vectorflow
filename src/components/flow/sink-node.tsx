@@ -9,6 +9,7 @@ import type { NodeMetricsData } from "@/stores/flow-store";
 import { getIcon } from "./node-icon";
 import { NodeSparkline } from "./node-sparkline";
 import { formatRate, formatBytesRate } from "./node-metrics-format";
+import { EditableNodeLabel } from "./editable-node-label";
 
 type SinkNodeData = {
   componentDef: VectorComponentDef;
@@ -52,7 +53,7 @@ function getConfigSummary(config: Record<string, unknown>): string | null {
   return `${key}: ${truncated}`;
 }
 
-function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
+function SinkNodeComponent({ id, data, selected }: NodeProps<SinkNodeType>) {
   const { componentDef, componentKey, config, metrics, disabled } = data;
   const Icon = getIcon(componentDef.icon);
   const configSummary = getConfigSummary(config);
@@ -82,9 +83,7 @@ function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
 
       {/* Body */}
       <div className="space-y-2 px-3 py-2.5">
-        <p className={cn("truncate text-sm font-medium text-foreground", disabled && "line-through")}>
-          {componentKey}
-        </p>
+        <EditableNodeLabel nodeId={id} value={componentKey} disabled={disabled} />
 
         {metrics ? (
           <p className="truncate text-xs font-mono text-purple-400">
