@@ -58,6 +58,7 @@ export const pipelineRouter = router({
           updatedBy: { select: { name: true, email: true } },
           nodeStatuses: {
             select: {
+              status: true,
               eventsIn: true,
               eventsOut: true,
               errorsTotal: true,
@@ -79,6 +80,9 @@ export const pipelineRouter = router({
         include: {
           nodes: true,
           edges: true,
+          nodeStatuses: {
+            select: { status: true },
+          },
         },
       });
       if (!pipeline) {

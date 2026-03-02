@@ -35,6 +35,17 @@ import { SaveTemplateDialog } from "@/components/flow/save-template-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PipelineMetricsChart } from "@/components/pipeline/metrics-chart";
 
+function aggregateProcessStatus(
+  statuses: Array<{ status: string }>
+): "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING" | null {
+  if (statuses.length === 0) return null;
+  if (statuses.some((s) => s.status === "CRASHED")) return "CRASHED";
+  if (statuses.some((s) => s.status === "STOPPED")) return "STOPPED";
+  if (statuses.some((s) => s.status === "STARTING")) return "STARTING";
+  if (statuses.some((s) => s.status === "PENDING")) return "PENDING";
+  return "RUNNING";
+}
+
 /**
  * Convert database PipelineNode rows into React Flow nodes.
  * Each node's data includes the resolved VectorComponentDef from the catalog.
@@ -356,6 +367,11 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             isDirty={isDirty}
             metricsOpen={metricsOpen}
             onToggleMetrics={() => setMetricsOpen((v) => !v)}
+            processStatus={
+              pipelineQuery.data?.nodeStatuses
+                ? aggregateProcessStatus(pipelineQuery.data.nodeStatuses)
+                : null
+            }
           />
         </div>
         <div className="flex items-center px-3">
