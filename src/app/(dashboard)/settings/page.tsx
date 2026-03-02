@@ -508,23 +508,28 @@ function FleetSettings() {
   const settingsQuery = useQuery(trpc.settings.get.queryOptions());
   const settings = settingsQuery.data;
 
-  const [pollIntervalSec, setPollIntervalSec] = useState(15);
-  const [unhealthyThreshold, setUnhealthyThreshold] = useState(3);
-  const [metricsRetentionDays, setMetricsRetentionDays] = useState(7);
-
-  useEffect(() => {
-    if (settings) {
-      setPollIntervalSec(Math.round(settings.fleetPollIntervalMs / 1000));
-      setUnhealthyThreshold(settings.fleetUnhealthyThreshold);
-      if (settings.metricsRetentionDays) setMetricsRetentionDays(settings.metricsRetentionDays);
-    }
-  }, [settings]);
+  const [pollIntervalSec, setPollIntervalSec] = useFormField(
+    "settings-fleet",
+    "pollIntervalSec",
+    settings ? Math.round(settings.fleetPollIntervalMs / 1000) : 15,
+  );
+  const [unhealthyThreshold, setUnhealthyThreshold] = useFormField(
+    "settings-fleet",
+    "unhealthyThreshold",
+    settings?.fleetUnhealthyThreshold ?? 3,
+  );
+  const [metricsRetentionDays, setMetricsRetentionDays] = useFormField(
+    "settings-fleet",
+    "metricsRetentionDays",
+    settings?.metricsRetentionDays ?? 7,
+  );
 
   const updateFleetMutation = useMutation(
     trpc.settings.updateFleet.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
         toast.success("Fleet settings saved successfully");
+        useFormStore.getState().clearForm("settings-fleet");
       },
       onError: (error) => {
         toast.error(error.message || "Failed to save fleet settings");
