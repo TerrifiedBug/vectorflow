@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { BookOpen, Maximize2, ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
+import { BookOpen, Code, ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -53,7 +53,6 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
   const [sampleInput, setSampleInput] = useState("");
   const [testOutput, setTestOutput] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
-  const [showTest, setShowTest] = useState(false);
   const [showSnippets, setShowSnippets] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const editorRef = useRef<EditorInstance | null>(null);
@@ -120,14 +119,12 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
         setSampleIndex(0);
         if (events.length > 0) {
           setSampleInput(JSON.stringify(events[0], null, 2));
-          setShowTest(true);
         }
         const schema = (sample.schema as Array<{ path: string; type: string; sample: string }>) ?? [];
         setLiveSchemaFields(schema);
       }
     } else if (data.status === "ERROR" || data.status === "EXPIRED") {
       setTestError(`Sampling ${data.status.toLowerCase()}: no events could be collected`);
-      setShowTest(true);
     }
 
     setRequestId(null);
@@ -274,191 +271,175 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
   }, [value, sampleInput, testMutation]);
 
   return (
-    <div className="space-y-3">
-      <div className="overflow-hidden rounded border">
-          <Editor
-            height={height}
-            language="plaintext"
-            value={value}
-            onChange={(v) => onChange(v ?? "")}
-            onMount={handleEditorMount}
-            theme="vrl-theme"
-            options={{
-              minimap: { enabled: false },
-              fontSize: 13,
-              lineNumbers: "on",
-              scrollBeyondLastLine: false,
-              wordWrap: "on",
-              tabSize: 2,
-              automaticLayout: true,
-            }}
-          />
-      </div>
-
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowSnippets((prev) => !prev)}
-        >
-          <BookOpen className="mr-1.5 h-3.5 w-3.5" />
-          {showSnippets ? "Hide Snippets" : "Snippets"}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowTest((prev) => !prev)}
-        >
-          {showTest ? "Hide Test" : "Test"}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setExpanded(true)}
-        >
-          <Maximize2 className="mr-1.5 h-3.5 w-3.5" />
-          Expand
-        </Button>
-        {pipelineId && upstreamSourceKeys && upstreamSourceKeys.length > 0 && (
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleFetchSamples}
-              disabled={isSampling}
-            >
-              {isSampling ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Download className="mr-1.5 h-3.5 w-3.5" />
-              )}
-              {isSampling ? "Sampling..." : "Fetch Samples"}
-            </Button>
-            {sampleEvents.length > 0 && (
-              <Badge variant="secondary" className="text-xs">
-                {sampleEvents.length} sample{sampleEvents.length !== 1 ? "s" : ""}
-              </Badge>
-            )}
-          </>
-        )}
-      </div>
-
-      {isRawTextSource && !showSnippets && (
-        <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
-          <p className="font-medium">This source emits raw text in <code className="rounded bg-sky-100 px-1 dark:bg-sky-900/50">.message</code></p>
-          <p className="mt-0.5 text-sky-700 dark:text-sky-400">
-            Use a parsing function to extract fields — click Snippets → Parsing for examples.
-          </p>
-        </div>
+    <div className="space-y-2">
+      {/* Inline: just a button + VRL preview */}
+      <Button variant="outline" size="sm" onClick={() => setExpanded(true)}>
+        <Code className="mr-1.5 h-3.5 w-3.5" />
+        Open VRL Editor
+      </Button>
+      {value && (
+        <p className="truncate font-mono text-xs text-muted-foreground px-1">
+          {value.split("\n")[0]}
+        </p>
       )}
 
-      {showSnippets && (
-        <VrlSnippetDrawer onInsert={handleInsertSnippet} />
-      )}
-
-      {showTest && (
-        <div className="space-y-3 rounded border p-3">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="vrl-sample-input" className="text-xs">
-                Sample Input (JSON)
-              </Label>
-              {sampleEvents.length > 1 && (
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    disabled={sampleIndex <= 0}
-                    onClick={() => {
-                      const newIdx = sampleIndex - 1;
-                      setSampleIndex(newIdx);
-                      setSampleInput(JSON.stringify(sampleEvents[newIdx], null, 2));
-                    }}
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </Button>
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {sampleIndex + 1}/{sampleEvents.length}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    disabled={sampleIndex >= sampleEvents.length - 1}
-                    onClick={() => {
-                      const newIdx = sampleIndex + 1;
-                      setSampleIndex(newIdx);
-                      setSampleInput(JSON.stringify(sampleEvents[newIdx], null, 2));
-                    }}
-                  >
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              )}
-            </div>
-            <textarea
-              id="vrl-sample-input"
-              className="w-full rounded border bg-muted/30 p-2 font-mono text-xs"
-              rows={4}
-              value={sampleInput}
-              onChange={(e) => setSampleInput(e.target.value)}
-              placeholder={'No test input — a default event will be used:\n{"message": "test event", "timestamp": "...", "host": "localhost"}'}
-            />
-          </div>
-
-          <Button
-            size="sm"
-            onClick={handleTest}
-            disabled={testMutation.isPending}
-          >
-            {testMutation.isPending ? "Running..." : "Run VRL"}
-          </Button>
-
-          {testOutput && (
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Output</Label>
-              <pre className="max-h-40 overflow-auto rounded bg-muted/40 p-2 font-mono text-xs">
-                {testOutput}
-              </pre>
-            </div>
-          )}
-
-          {testError && (
-            <div className="space-y-1">
-              <Label className="text-xs text-red-500">Error</Label>
-              <pre className="max-h-40 overflow-auto rounded border border-red-300 bg-red-50 p-2 font-mono text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
-                {testError}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Expanded full-screen editor */}
+      {/* Full-screen modal: editor (left) + tools (right) */}
       <Dialog open={expanded} onOpenChange={setExpanded}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+        <DialogContent className="sm:max-w-[calc(100vw-4rem)] xl:max-w-6xl h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>VRL Editor</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-hidden rounded border">
-            <Editor
-              height="100%"
-              language="plaintext"
-              value={value}
-              onChange={(v) => onChange(v ?? "")}
-              onMount={handleEditorMount}
-              theme="vrl-theme"
-              options={{
-                minimap: { enabled: false },
-                fontSize: 14,
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
-                wordWrap: "on",
-                tabSize: 2,
-                automaticLayout: true,
-              }}
-            />
+          <div className="flex flex-1 gap-4 min-h-0">
+            {/* Left: Monaco editor at full height */}
+            <div className="flex-1 overflow-hidden rounded border">
+              <Editor
+                height="100%"
+                language="plaintext"
+                value={value}
+                onChange={(v) => onChange(v ?? "")}
+                onMount={handleEditorMount}
+                theme="vrl-theme"
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  lineNumbers: "on",
+                  scrollBeyondLastLine: false,
+                  wordWrap: "on",
+                  tabSize: 2,
+                  automaticLayout: true,
+                }}
+              />
+            </div>
+
+            {/* Right: tools pane */}
+            <div className="w-[320px] shrink-0 flex flex-col gap-3 overflow-y-auto">
+              {/* Action buttons */}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowSnippets((prev) => !prev)}
+                >
+                  <BookOpen className="mr-1.5 h-3.5 w-3.5" />
+                  {showSnippets ? "Hide Snippets" : "Snippets"}
+                </Button>
+                {pipelineId && upstreamSourceKeys && upstreamSourceKeys.length > 0 && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleFetchSamples}
+                      disabled={isSampling}
+                    >
+                      {isSampling ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      {isSampling ? "Sampling..." : "Fetch Samples"}
+                    </Button>
+                    {sampleEvents.length > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {sampleEvents.length} sample{sampleEvents.length !== 1 ? "s" : ""}
+                      </Badge>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Raw text source hint */}
+              {isRawTextSource && !showSnippets && (
+                <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
+                  <p className="font-medium">This source emits raw text in <code className="rounded bg-sky-100 px-1 dark:bg-sky-900/50">.message</code></p>
+                  <p className="mt-0.5 text-sky-700 dark:text-sky-400">
+                    Use a parsing function to extract fields — click Snippets → Parsing for examples.
+                  </p>
+                </div>
+              )}
+
+              {/* Snippet drawer */}
+              {showSnippets && (
+                <VrlSnippetDrawer onInsert={handleInsertSnippet} />
+              )}
+
+              {/* Test panel (always visible) */}
+              <div className="space-y-3 rounded border p-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="vrl-sample-input" className="text-xs">
+                      Sample Input (JSON)
+                    </Label>
+                    {sampleEvents.length > 1 && (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          disabled={sampleIndex <= 0}
+                          onClick={() => {
+                            const newIdx = sampleIndex - 1;
+                            setSampleIndex(newIdx);
+                            setSampleInput(JSON.stringify(sampleEvents[newIdx], null, 2));
+                          }}
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </Button>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {sampleIndex + 1}/{sampleEvents.length}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          disabled={sampleIndex >= sampleEvents.length - 1}
+                          onClick={() => {
+                            const newIdx = sampleIndex + 1;
+                            setSampleIndex(newIdx);
+                            setSampleInput(JSON.stringify(sampleEvents[newIdx], null, 2));
+                          }}
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <textarea
+                    id="vrl-sample-input"
+                    className="w-full rounded border bg-muted/30 p-2 font-mono text-xs"
+                    rows={4}
+                    value={sampleInput}
+                    onChange={(e) => setSampleInput(e.target.value)}
+                    placeholder={'No test input — a default event will be used:\n{"message": "test event", "timestamp": "...", "host": "localhost"}'}
+                  />
+                </div>
+
+                <Button
+                  size="sm"
+                  onClick={handleTest}
+                  disabled={testMutation.isPending}
+                >
+                  {testMutation.isPending ? "Running..." : "Run VRL"}
+                </Button>
+
+                {testOutput && (
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Output</Label>
+                    <pre className="max-h-40 overflow-auto rounded bg-muted/40 p-2 font-mono text-xs">
+                      {testOutput}
+                    </pre>
+                  </div>
+                )}
+
+                {testError && (
+                  <div className="space-y-1">
+                    <Label className="text-xs text-red-500">Error</Label>
+                    <pre className="max-h-40 overflow-auto rounded border border-red-300 bg-red-50 p-2 font-mono text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
+                      {testError}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
