@@ -5,6 +5,7 @@ import { checkNodeHealth } from "@/server/services/fleet-health";
 import { ingestMetrics } from "@/server/services/metrics-ingest";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
+import { metricStore } from "@/server/services/metric-store";
 
 let lastCleanup = 0;
 
@@ -19,6 +20,17 @@ interface PipelineStatus {
   errorsTotal?: number;
   bytesIn?: number;
   bytesOut?: number;
+  eventsDiscarded?: number;
+  componentMetrics?: Array<{
+    componentId: string;
+    componentKind: string;
+    receivedEvents: number;
+    sentEvents: number;
+    receivedBytes?: number;
+    sentBytes?: number;
+    errorsTotal?: number;
+    discardedEvents?: number;
+  }>;
   utilization?: number;
   recentLogs?: string[];
 }
@@ -81,6 +93,7 @@ export async function POST(request: Request) {
       eventsIn: bigint;
       eventsOut: bigint;
       errorsTotal: bigint;
+      eventsDiscarded: bigint;
       bytesIn: bigint;
       bytesOut: bigint;
     }>();
@@ -96,6 +109,7 @@ export async function POST(request: Request) {
           eventsIn: true,
           eventsOut: true,
           errorsTotal: true,
+          eventsDiscarded: true,
           bytesIn: true,
           bytesOut: true,
         },
@@ -105,6 +119,7 @@ export async function POST(request: Request) {
           eventsIn: s.eventsIn,
           eventsOut: s.eventsOut,
           errorsTotal: s.errorsTotal,
+          eventsDiscarded: s.eventsDiscarded,
           bytesIn: s.bytesIn,
           bytesOut: s.bytesOut,
         });
@@ -130,6 +145,7 @@ export async function POST(request: Request) {
           eventsIn: ps.eventsIn ?? 0,
           eventsOut: ps.eventsOut ?? 0,
           errorsTotal: ps.errorsTotal ?? 0,
+          eventsDiscarded: ps.eventsDiscarded ?? 0,
           bytesIn: ps.bytesIn ?? 0,
           bytesOut: ps.bytesOut ?? 0,
           utilization: ps.utilization ?? 0,
@@ -144,6 +160,7 @@ export async function POST(request: Request) {
           eventsIn: ps.eventsIn ?? 0,
           eventsOut: ps.eventsOut ?? 0,
           errorsTotal: ps.errorsTotal ?? 0,
+          eventsDiscarded: ps.eventsDiscarded ?? 0,
           bytesIn: ps.bytesIn ?? 0,
           bytesOut: ps.bytesOut ?? 0,
           utilization: ps.utilization ?? 0,
@@ -203,6 +220,7 @@ export async function POST(request: Request) {
         eventsIn: BigInt(p.eventsIn ?? 0),
         eventsOut: BigInt(p.eventsOut ?? 0),
         errorsTotal: BigInt(p.errorsTotal ?? 0),
+        eventsDiscarded: BigInt(p.eventsDiscarded ?? 0),
         bytesIn: BigInt(p.bytesIn ?? 0),
         bytesOut: BigInt(p.bytesOut ?? 0),
         utilization: p.utilization ?? 0,
@@ -212,6 +230,20 @@ export async function POST(request: Request) {
       ingestMetrics(metricsData, prevSnapshots).catch((err) =>
         console.error("Metrics ingestion error:", err),
       );
+    }
+
+    // Feed per-component metrics into the in-memory MetricStore for editor overlays
+    for (const ps of pipelines) {
+      if (Array.isArray(ps.componentMetrics) && ps.componentMetrics.length > 0) {
+        for (const cm of ps.componentMetrics) {
+          metricStore.recordTotals(agent.nodeId, cm.componentId, {
+            receivedEventsTotal: cm.receivedEvents,
+            sentEventsTotal: cm.sentEvents,
+            receivedBytesTotal: cm.receivedBytes ?? 0,
+            sentBytesTotal: cm.sentBytes ?? 0,
+          });
+        }
+      }
     }
 
     // Persist pipeline logs
