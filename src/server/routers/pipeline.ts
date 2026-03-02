@@ -102,7 +102,7 @@ export const pipelineRouter = router({
         const latestVersion = await prisma.pipelineVersion.findFirst({
           where: { pipelineId: input.id },
           orderBy: { version: "desc" },
-          select: { configYaml: true },
+          select: { configYaml: true, logLevel: true },
         });
 
         if (latestVersion) {
@@ -129,6 +129,15 @@ export const pipelineRouter = router({
             pipeline.globalConfig as Record<string, unknown> | null,
           );
           hasConfigChanges = currentYaml !== latestVersion.configYaml;
+
+          // Also check if log level changed (stripped from YAML, passed as VECTOR_LOG env var)
+          if (!hasConfigChanges) {
+            const currentLogLevel = (pipeline.globalConfig as Record<string, unknown>)?.log_level ?? null;
+            const deployedLogLevel = latestVersion.logLevel ?? null;
+            if (currentLogLevel !== deployedLogLevel) {
+              hasConfigChanges = true;
+            }
+          }
         } else {
           hasConfigChanges = true;
         }
@@ -402,11 +411,17 @@ export const pipelineRouter = router({
       if (!userId) {
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        select: { globalConfig: true },
+      });
+      const logLevel = (pipeline?.globalConfig as Record<string, unknown>)?.log_level as string ?? null;
       return createVersion(
         input.pipelineId,
         input.configYaml,
         userId,
         input.changelog,
+        logLevel,
       );
     }),
 

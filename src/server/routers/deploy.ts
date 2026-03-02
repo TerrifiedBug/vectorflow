@@ -54,7 +54,7 @@ export const deployRouter = router({
       const latestVersion = await prisma.pipelineVersion.findFirst({
         where: { pipelineId: input.pipelineId },
         orderBy: { version: "desc" },
-        select: { configYaml: true, version: true },
+        select: { configYaml: true, version: true, logLevel: true },
       });
 
       return {
@@ -62,6 +62,8 @@ export const deployRouter = router({
         validation,
         currentConfigYaml: latestVersion?.configYaml ?? null,
         currentVersion: latestVersion?.version ?? null,
+        currentLogLevel: latestVersion?.logLevel ?? null,
+        newLogLevel: (pipeline.globalConfig as Record<string, unknown>)?.log_level as string ?? null,
       };
     }),
 
