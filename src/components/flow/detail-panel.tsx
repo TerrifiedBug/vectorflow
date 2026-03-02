@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { Copy, Trash2 } from "lucide-react";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import type { NodeMetricsData } from "@/stores/flow-store";
+import type { Node, Edge } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -72,6 +73,46 @@ function formatBytes(v: number): string {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Helper: trace upstream to find source types                        */
+/* ------------------------------------------------------------------ */
+
+function getUpstreamSourceTypes(
+  nodeId: string,
+  allNodes: Node[],
+  allEdges: Edge[],
+): string[] {
+  const sourceTypes: string[] = [];
+  const visited = new Set<string>();
+  const queue = [nodeId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    if (visited.has(currentId)) continue;
+    visited.add(currentId);
+
+    // Find all edges that target this node
+    const incomingEdges = allEdges.filter((e) => e.target === currentId);
+    for (const edge of incomingEdges) {
+      const upstreamNode = allNodes.find((n) => n.id === edge.source);
+      if (!upstreamNode) continue;
+
+      const data = upstreamNode.data as {
+        componentDef?: VectorComponentDef;
+      };
+      if (data.componentDef?.kind === "source") {
+        // Found a source — collect its type and don't trace further
+        sourceTypes.push(data.componentDef.type);
+      } else {
+        // Not a source — continue tracing upstream
+        queue.push(upstreamNode.id);
+      }
+    }
+  }
+
+  return [...new Set(sourceTypes)];
+}
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -80,6 +121,7 @@ export function DetailPanel() {
   const selectedNodeIds = useFlowStore((s) => s.selectedNodeIds);
   const copySelectedNodes = useFlowStore((s) => s.copySelectedNodes);
   const nodes = useFlowStore((s) => s.nodes);
+  const edges = useFlowStore((s) => s.edges);
   const updateNodeConfig = useFlowStore((s) => s.updateNodeConfig);
   const updateNodeKey = useFlowStore((s) => s.updateNodeKey);
   const toggleNodeDisabled = useFlowStore((s) => s.toggleNodeDisabled);
@@ -88,6 +130,14 @@ export function DetailPanel() {
   const selectedNode = selectedNodeId
     ? nodes.find((n) => n.id === selectedNodeId)
     : null;
+
+  const upstreamSourceTypes = useMemo(
+    () =>
+      selectedNodeId
+        ? getUpstreamSourceTypes(selectedNodeId, nodes, edges)
+        : [],
+    [selectedNodeId, nodes, edges],
+  );
 
   const handleConfigChange = useCallback(
     (values: Record<string, unknown>) => {
@@ -265,6 +315,7 @@ export function DetailPanel() {
                 <VrlEditor
                   value={(config.source as string) ?? ""}
                   onChange={(v) => handleConfigChange({ ...config, source: v })}
+                  sourceTypes={upstreamSourceTypes}
                 />
               </div>
             )}
@@ -276,6 +327,7 @@ export function DetailPanel() {
                 <VrlEditor
                   value={(config.condition as string) ?? ""}
                   onChange={(v) => handleConfigChange({ ...config, condition: v })}
+                  sourceTypes={upstreamSourceTypes}
                 />
               </div>
             )}
@@ -303,6 +355,7 @@ export function DetailPanel() {
                         })
                       }
                       height="120px"
+                      sourceTypes={upstreamSourceTypes}
                     />
                   </div>
                 ))}

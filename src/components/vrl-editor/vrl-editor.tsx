@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useTRPC } from "@/trpc/client";
 import { useMutation } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import {
 import { vrlTheme } from "./vrl-theme";
 import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
 import { VrlSnippetDrawer } from "@/components/flow/vrl-snippet-drawer";
+import { getMergedOutputSchemas, getSourceOutputSchema } from "@/lib/vector/source-output-schemas";
 import type { Monaco, OnMount } from "@monaco-editor/react";
 
 type EditorInstance = Parameters<OnMount>[0];
@@ -37,13 +38,14 @@ interface VrlEditorProps {
   value: string;
   onChange: (value: string) => void;
   height?: string;
+  sourceTypes?: string[];
 }
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps) {
+export function VrlEditor({ value, onChange, height = "200px", sourceTypes }: VrlEditorProps) {
   const trpc = useTRPC();
   const [sampleInput, setSampleInput] = useState("");
   const [testOutput, setTestOutput] = useState<string | null>(null);
@@ -52,6 +54,14 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
   const [showSnippets, setShowSnippets] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const editorRef = useRef<EditorInstance | null>(null);
+
+  const isRawTextSource = useMemo(() => {
+    if (!sourceTypes || sourceTypes.length === 0) return false;
+    return sourceTypes.some((t) => {
+      const schema = getSourceOutputSchema(t);
+      return schema?.rawText === true;
+    });
+  }, [sourceTypes]);
 
   const testMutation = useMutation(
     trpc.vrl.test.mutationOptions({
@@ -94,7 +104,60 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
         };
       },
     });
-  }, []);
+
+    // Register field completion provider (triggered by ".")
+    if (sourceTypes && sourceTypes.length > 0) {
+      const fields = getMergedOutputSchemas(sourceTypes);
+
+      monaco.languages.registerCompletionItemProvider("plaintext", {
+        triggerCharacters: ["."],
+        provideCompletionItems(
+          model: { getLineContent: (line: number) => string; getWordUntilPosition: (pos: { lineNumber: number; column: number }) => { startColumn: number; endColumn: number } },
+          position: { lineNumber: number; column: number },
+        ) {
+          // Extract the dot-path prefix before the cursor
+          const lineContent = model.getLineContent(position.lineNumber);
+          const textBeforeCursor = lineContent.substring(0, position.column - 1);
+          const prefixMatch = textBeforeCursor.match(/(\.[\w.]*?)$/);
+          const prefix = prefixMatch ? prefixMatch[1] : "";
+
+          // Filter fields to show only direct children of the prefix
+          const suggestions = fields
+            .filter((f) => {
+              if (!prefix) return f.path.split(".").length === 2; // top-level fields like ".message"
+              return f.path.startsWith(prefix + ".") && f.path.substring(prefix.length + 1).indexOf(".") === -1;
+            })
+            .map((f) => {
+              // Extract the child segment name
+              const childName = prefix
+                ? f.path.substring(prefix.length + 1)
+                : f.path.substring(1); // strip leading "."
+              const isObject = f.type === "object" || f.type === "array";
+              const word = model.getWordUntilPosition(position);
+              const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn,
+              };
+              return {
+                label: childName,
+                kind: isObject
+                  ? monaco.languages.CompletionItemKind.Module
+                  : monaco.languages.CompletionItemKind.Field,
+                insertText: childName,
+                detail: f.type,
+                documentation: f.description,
+                sortText: (f.always ? "0" : "1") + childName,
+                range,
+              };
+            });
+
+          return { suggestions };
+        },
+      });
+    }
+  }, [sourceTypes]);
 
   const handleInsertSnippet = useCallback((code: string) => {
     const editor = editorRef.current;
@@ -163,6 +226,15 @@ export function VrlEditor({ value, onChange, height = "200px" }: VrlEditorProps)
           Expand
         </Button>
       </div>
+
+      {isRawTextSource && !showSnippets && (
+        <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
+          <p className="font-medium">This source emits raw text in <code className="rounded bg-sky-100 px-1 dark:bg-sky-900/50">.message</code></p>
+          <p className="mt-0.5 text-sky-700 dark:text-sky-400">
+            Use a parsing function to extract fields — click Snippets → Parsing for examples.
+          </p>
+        </div>
+      )}
 
       {showSnippets && (
         <VrlSnippetDrawer onInsert={handleInsertSnippet} />
