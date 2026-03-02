@@ -93,6 +93,24 @@ export const dashboardRouter = router({
     // Build per-node live rates from MetricStore
     const latestSamples = metricStore.getLatestAll();
 
+    // Look up component kinds so we only count source for "in" and sink for "out"
+    const allComponentNodes = await prisma.pipelineNode.findMany({
+      select: { componentKey: true, kind: true },
+    });
+    const componentKindMap = new Map<string, string>();
+    for (const cn of allComponentNodes) {
+      componentKindMap.set(cn.componentKey, cn.kind);
+    }
+
+    // Resolve kind for a MetricStore key like "nodeId:my_source"
+    function resolveKind(metricKey: string): string | undefined {
+      const componentId = metricKey.split(":").slice(1).join(":");
+      for (const [compKey, kind] of componentKindMap) {
+        if (componentId.includes(compKey)) return kind;
+      }
+      return undefined;
+    }
+
     return nodes.map((node) => {
       let pipelineCount = 0;
       let unhealthyPipelines = 0;
@@ -113,13 +131,17 @@ export const dashboardRouter = router({
         if (ps.status !== "RUNNING") unhealthyPipelines++;
       }
 
-      // Sum component-level rates for this node
+      // Sum component-level rates for this node, scoped by kind
       for (const [key, sample] of latestSamples) {
         if (!key.startsWith(`${node.id}:`)) continue;
-        eventsInRate += sample.receivedEventsRate;
-        eventsOutRate += sample.sentEventsRate;
-        bytesInRate += sample.receivedBytesRate;
-        bytesOutRate += sample.sentBytesRate;
+        const kind = resolveKind(key);
+        if (kind === "SOURCE") {
+          eventsInRate += sample.receivedEventsRate;
+          bytesInRate += sample.receivedBytesRate;
+        } else if (kind === "SINK") {
+          eventsOutRate += sample.sentEventsRate;
+          bytesOutRate += sample.sentBytesRate;
+        }
         errorsRate += sample.errorsRate;
       }
 
@@ -194,30 +216,32 @@ export const dashboardRouter = router({
     // Build per-pipeline rates from MetricStore by aggregating across nodes
     const latestSamplesForPipelines = metricStore.getLatestAll();
 
-    // Map componentId → pipelineId using pipeline nodes
-    const allPipelineNodes = await prisma.pipelineNode.findMany({
+    // Map componentKey → { pipelineId, kind } using pipeline nodes
+    const pipelineComponentNodes = await prisma.pipelineNode.findMany({
       where: { pipelineId: { in: pipelineIds } },
-      select: { pipelineId: true, componentKey: true },
+      select: { pipelineId: true, componentKey: true, kind: true },
     });
-    const componentToPipeline = new Map<string, string>();
-    for (const pn of allPipelineNodes) {
-      componentToPipeline.set(pn.componentKey, pn.pipelineId);
+    const componentToPipeline = new Map<string, { pipelineId: string; kind: string }>();
+    for (const pn of pipelineComponentNodes) {
+      componentToPipeline.set(pn.componentKey, { pipelineId: pn.pipelineId, kind: pn.kind });
     }
 
-    // Aggregate rates per pipeline
+    // Aggregate rates per pipeline, scoped by kind
     const pipelineRates = new Map<string, { eventsIn: number; eventsOut: number; bytesIn: number; bytesOut: number; errors: number }>();
     for (const [key, sample] of latestSamplesForPipelines) {
       const componentId = key.split(":").slice(1).join(":");
-      // Match by checking if any pipeline node's componentKey is in the componentId
-      for (const [compKey, pipeId] of componentToPipeline) {
+      for (const [compKey, info] of componentToPipeline) {
         if (componentId.includes(compKey)) {
-          const existing = pipelineRates.get(pipeId) ?? { eventsIn: 0, eventsOut: 0, bytesIn: 0, bytesOut: 0, errors: 0 };
-          existing.eventsIn += sample.receivedEventsRate;
-          existing.eventsOut += sample.sentEventsRate;
-          existing.bytesIn += sample.receivedBytesRate;
-          existing.bytesOut += sample.sentBytesRate;
+          const existing = pipelineRates.get(info.pipelineId) ?? { eventsIn: 0, eventsOut: 0, bytesIn: 0, bytesOut: 0, errors: 0 };
+          if (info.kind === "SOURCE") {
+            existing.eventsIn += sample.receivedEventsRate;
+            existing.bytesIn += sample.receivedBytesRate;
+          } else if (info.kind === "SINK") {
+            existing.eventsOut += sample.sentEventsRate;
+            existing.bytesOut += sample.sentBytesRate;
+          }
           existing.errors += sample.errorsRate;
-          pipelineRates.set(pipeId, existing);
+          pipelineRates.set(info.pipelineId, existing);
           break;
         }
       }
