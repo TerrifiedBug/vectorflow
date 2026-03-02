@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
@@ -134,7 +135,11 @@ export default function DashboardLayout({
           </div>
         </header>
         <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
-        <div className="flex-1 p-6">{children}</div>
+        <div className="flex-1 p-6">
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );
