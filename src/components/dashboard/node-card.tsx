@@ -88,7 +88,7 @@ export function NodeCard({ node }: NodeCardProps) {
 
   return (
     <Link href={`/fleet/${node.id}`} className="block">
-      <Card className="cursor-pointer transition-colors hover:border-foreground/20">
+      <Card className="cursor-pointer transition-all duration-200 hover:border-foreground/20 hover:shadow-md hover:-translate-y-0.5">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm">{node.name}</CardTitle>
