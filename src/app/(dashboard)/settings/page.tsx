@@ -1385,17 +1385,21 @@ function UsersSettings() {
                       {user.memberships.length === 0 && (
                         <span className="text-xs text-muted-foreground">No teams</span>
                       )}
-                      {user.memberships.slice(0, 2).map((m) => (
-                        <Badge key={m.team.id} variant="outline" className="text-xs">
-                          {m.team.name}
-                        </Badge>
-                      ))}
-                      {user.memberships.length > 2 && (
+                      {user.memberships.length > 0 && (
                         <Popover>
                           <PopoverTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-6 px-2 text-xs">
-                              +{user.memberships.length - 2} more
-                            </Button>
+                            <button className="flex items-center gap-1 rounded-md hover:bg-muted/50 px-1 py-0.5 transition-colors">
+                              {user.memberships.slice(0, 2).map((m) => (
+                                <Badge key={m.team.id} variant="outline" className="text-xs">
+                                  {m.team.name}
+                                </Badge>
+                              ))}
+                              {user.memberships.length > 2 && (
+                                <span className="text-xs text-muted-foreground">
+                                  +{user.memberships.length - 2} more
+                                </span>
+                              )}
+                            </button>
                           </PopoverTrigger>
                           <PopoverContent className="w-64 p-3" align="start">
                             <p className="mb-2 text-sm font-medium">Team Memberships</p>
