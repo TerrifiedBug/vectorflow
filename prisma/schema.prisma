@@ -198,12 +198,13 @@ model NodePipelineStatus {
   status        ProcessStatus @default(PENDING)
   pid           Int?
   uptimeSeconds Int?
-  eventsIn      BigInt        @default(0)
-  eventsOut     BigInt        @default(0)
-  errorsTotal   BigInt        @default(0)
-  bytesIn       BigInt        @default(0)
-  bytesOut      BigInt        @default(0)
-  utilization   Float         @default(0)
+  eventsIn        BigInt        @default(0)
+  eventsOut       BigInt        @default(0)
+  errorsTotal     BigInt        @default(0)
+  eventsDiscarded BigInt        @default(0)
+  bytesIn         BigInt        @default(0)
+  bytesOut        BigInt        @default(0)
+  utilization     Float         @default(0)
   recentLogs    Json?
   lastUpdated   DateTime      @default(now())
 
