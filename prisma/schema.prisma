@@ -95,6 +95,8 @@ model VectorNode {
   agentVersion     String?
   vectorVersion    String?
   os               String?
+  deploymentMode   DeploymentMode       @default(UNKNOWN)
+  pendingAction    Json?
   pipelineStatuses NodePipelineStatus[]
   nodeMetrics      NodeMetric[]
   pipelineLogs     PipelineLog[]
@@ -129,6 +131,12 @@ enum NodeStatus {
   HEALTHY
   DEGRADED
   UNREACHABLE
+  UNKNOWN
+}
+
+enum DeploymentMode {
+  STANDALONE
+  DOCKER
   UNKNOWN
 }
 
@@ -181,6 +189,7 @@ model Pipeline {
   versions      PipelineVersion[]
   globalConfig  Json?
   isDraft       Boolean              @default(true)
+  isSystem      Boolean              @default(false)
   deployedAt    DateTime?
   updatedById   String?
   updatedBy     User?                @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
@@ -383,6 +392,11 @@ model SystemSettings {
   fleetUnhealthyThreshold Int @default(3)
   metricsRetentionDays    Int @default(7)
   logsRetentionDays       Int @default(3)
+
+  latestServerRelease          String?
+  latestServerReleaseCheckedAt DateTime?
+  latestAgentRelease           String?
+  latestAgentReleaseCheckedAt  DateTime?
 
   updatedAt DateTime @updatedAt
 }
