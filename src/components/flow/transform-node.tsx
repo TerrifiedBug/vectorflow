@@ -9,7 +9,7 @@ import type { NodeMetricsData } from "@/stores/flow-store";
 import { getIcon } from "./node-icon";
 import { NodeSparkline } from "./node-sparkline";
 import { formatRate, formatBytesRate } from "./node-metrics-format";
-import { EditableNodeLabel } from "./editable-node-label";
+
 
 type TransformNodeData = {
   componentDef: VectorComponentDef;
@@ -54,7 +54,6 @@ function getConfigSummary(config: Record<string, unknown>): string | null {
 }
 
 function TransformNodeComponent({
-  id,
   data,
   selected,
 }: NodeProps<TransformNodeType>) {
@@ -87,7 +86,7 @@ function TransformNodeComponent({
 
       {/* Body */}
       <div className="space-y-2 px-3 py-2.5">
-        <EditableNodeLabel nodeId={id} value={componentKey} disabled={disabled} />
+        <p className="truncate text-xs font-medium text-foreground">{componentKey}</p>
 
         {metrics ? (
           <p className="truncate text-xs font-mono text-blue-400">

@@ -3,15 +3,14 @@
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowLeft, Save, ShieldOff, Trash2, Activity, Terminal, Server } from "lucide-react";
+import { ArrowLeft, ShieldOff, Trash2, Activity, Terminal, Server, Pencil, Check, X } from "lucide-react";
 import { NodeLogs } from "@/components/fleet/node-logs";
 import { toast } from "sonner";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -54,6 +53,21 @@ function formatBytes(n: number | bigint | null): string {
   return `${v} B`;
 }
 
+function formatRate(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M/s`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K/s`;
+  if (n >= 1) return `${n.toFixed(1)}/s`;
+  if (n > 0) return `${n.toFixed(2)}/s`;
+  return "0/s";
+}
+
+function formatBytesRate(n: number): string {
+  if (n >= 1_073_741_824) return `${(n / 1_073_741_824).toFixed(1)} GB/s`;
+  if (n >= 1_048_576) return `${(n / 1_048_576).toFixed(1)} MB/s`;
+  if (n >= 1_024) return `${(n / 1_024).toFixed(1)} KB/s`;
+  return `${Math.round(n)} B/s`;
+}
+
 function formatUptime(seconds: number | null): string {
   if (!seconds) return "—";
   if (seconds < 60) return `${seconds}s`;
@@ -77,8 +91,8 @@ export default function NodeDetailPage() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
+  const [isRenaming, setIsRenaming] = useState(false);
   const [editName, setEditName] = useState("");
-  const [isDirty, setIsDirty] = useState(false);
 
   const nodeQuery = useQuery(
     trpc.fleet.get.queryOptions(
@@ -89,17 +103,31 @@ export default function NodeDetailPage() {
 
   const node = nodeQuery.data;
 
-  useEffect(() => {
-    if (node) {
-      setEditName(node.name);
-    }
-  }, [node]);
+  // Fetch live per-pipeline rates from MetricStore
+  const ratesQuery = useQuery(
+    trpc.metrics.getNodePipelineRates.queryOptions(
+      { nodeId: params.nodeId },
+      { enabled: !!node, refetchInterval: 15_000 },
+    )
+  );
+  const pipelineRates = ratesQuery.data?.rates ?? {};
 
-  useEffect(() => {
-    if (node) {
-      setIsDirty(editName !== node.name);
+  const handleStartRename = () => {
+    setEditName(node?.name ?? "");
+    setIsRenaming(true);
+  };
+
+  const handleConfirmRename = () => {
+    const trimmed = editName.trim();
+    if (!trimmed || !node || trimmed === node.name) {
+      setIsRenaming(false);
+      return;
     }
-  }, [editName, node]);
+    updateMutation.mutate(
+      { id: node.id, name: trimmed },
+      { onSuccess: () => setIsRenaming(false) },
+    );
+  };
 
   const updateMutation = useMutation(
     trpc.fleet.update.mutationOptions({
@@ -110,7 +138,6 @@ export default function NodeDetailPage() {
         queryClient.invalidateQueries({
           queryKey: trpc.fleet.list.queryKey(),
         });
-        setIsDirty(false);
       },
     })
   );
@@ -146,15 +173,6 @@ export default function NodeDetailPage() {
       return;
     }
     revokeMutation.mutate({ id: node.id });
-  }
-
-  function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    if (!node) return;
-    updateMutation.mutate({
-      id: node.id,
-      name: editName,
-    });
   }
 
   function handleDelete() {
@@ -199,7 +217,36 @@ export default function NodeDetailPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">{node.name}</h2>
+            {isRenaming ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleConfirmRename();
+                    if (e.key === "Escape") setIsRenaming(false);
+                  }}
+                  className="h-9 w-64 text-lg font-bold"
+                  autoFocus
+                  disabled={updateMutation.isPending}
+                />
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={handleConfirmRename} disabled={updateMutation.isPending}>
+                  <Check className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setIsRenaming(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <button
+                onClick={handleStartRename}
+                className="group flex items-center gap-2 rounded px-1 py-0.5 text-2xl font-bold tracking-tight hover:bg-accent transition-colors"
+                title="Click to rename"
+              >
+                {node.name}
+                <Pencil className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            )}
             <p className="text-muted-foreground">
               {node.host}:{node.apiPort}
             </p>
@@ -229,7 +276,7 @@ export default function NodeDetailPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div>
         {/* Node Details */}
         <Card>
           <CardHeader>
@@ -288,33 +335,6 @@ export default function NodeDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Rename Node */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Rename Node</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSave} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Name</Label>
-                <Input
-                  id="edit-name"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  required
-                />
-              </div>
-              <Button
-                type="submit"
-                disabled={!isDirty || updateMutation.isPending}
-                className="w-full"
-              >
-                <Save className="mr-2 h-4 w-4" />
-                {updateMutation.isPending ? "Saving..." : "Save Changes"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
       </div>
 
       <Separator />
@@ -354,7 +374,9 @@ export default function NodeDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {node.pipelineStatuses.map((ps) => (
+                {node.pipelineStatuses.map((ps) => {
+                  const rates = pipelineRates[ps.pipelineId];
+                  return (
                   <TableRow key={ps.pipelineId}>
                     <TableCell className="font-medium">
                       {ps.pipeline?.name ?? ps.pipelineId.slice(0, 8)}
@@ -368,25 +390,31 @@ export default function NodeDetailPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
-                      {formatCount(ps.eventsIn)}
+                      <div>{formatCount(ps.eventsIn)}</div>
+                      {rates && <div className="text-xs text-muted-foreground">{formatRate(rates.eventsInRate)}</div>}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
-                      {formatCount(ps.eventsOut)}
+                      <div>{formatCount(ps.eventsOut)}</div>
+                      {rates && <div className="text-xs text-muted-foreground">{formatRate(rates.eventsOutRate)}</div>}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
-                      {formatCount(ps.errorsTotal)}
+                      <div>{formatCount(ps.errorsTotal)}</div>
+                      {rates && rates.errorsRate > 0 && <div className="text-xs text-red-500">{formatRate(rates.errorsRate)}</div>}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
-                      {formatBytes(ps.bytesIn)}
+                      <div>{formatBytes(ps.bytesIn)}</div>
+                      {rates && <div className="text-xs text-muted-foreground">{formatBytesRate(rates.bytesInRate)}</div>}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
-                      {formatBytes(ps.bytesOut)}
+                      <div>{formatBytes(ps.bytesOut)}</div>
+                      {rates && <div className="text-xs text-muted-foreground">{formatBytesRate(rates.bytesOutRate)}</div>}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {formatUptime(ps.uptimeSeconds)}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           ) : (

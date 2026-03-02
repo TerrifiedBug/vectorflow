@@ -90,4 +90,49 @@ export const metricsRouter = router({
 
       return { components };
     }),
+
+  /**
+   * Per-pipeline live rates for a specific node.
+   * Used by the fleet node detail page to show rate columns.
+   */
+  getNodePipelineRates: protectedProcedure
+    .input(z.object({ nodeId: z.string() }))
+    .query(async ({ input }) => {
+      const nodeMetrics = metricStore.getAllForNode(input.nodeId, 5);
+
+      // Map componentId → pipelineId using pipeline nodes
+      const pipelineNodes = await prisma.pipelineNode.findMany({
+        select: { pipelineId: true, componentKey: true },
+      });
+
+      const rates: Record<string, {
+        eventsInRate: number;
+        eventsOutRate: number;
+        bytesInRate: number;
+        bytesOutRate: number;
+        errorsRate: number;
+      }> = {};
+
+      for (const [componentId, samples] of nodeMetrics) {
+        if (samples.length === 0) continue;
+        const latest = samples[samples.length - 1];
+        const matchingNode = pipelineNodes.find(
+          (pn) => componentId.includes(pn.componentKey),
+        );
+        if (!matchingNode) continue;
+
+        const existing = rates[matchingNode.pipelineId] ?? {
+          eventsInRate: 0, eventsOutRate: 0,
+          bytesInRate: 0, bytesOutRate: 0, errorsRate: 0,
+        };
+        existing.eventsInRate += latest.receivedEventsRate;
+        existing.eventsOutRate += latest.sentEventsRate;
+        existing.bytesInRate += latest.receivedBytesRate;
+        existing.bytesOutRate += latest.sentBytesRate;
+        existing.errorsRate += latest.errorsRate;
+        rates[matchingNode.pipelineId] = existing;
+      }
+
+      return { rates };
+    }),
 });

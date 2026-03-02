@@ -1,5 +1,6 @@
 import { router, protectedProcedure } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { metricStore } from "@/server/services/metric-store";
 
 export const dashboardRouter = router({
   stats: protectedProcedure.query(async () => {
@@ -89,12 +90,18 @@ export const dashboardRouter = router({
       metricsByNode.set(m.nodeId, arr);
     }
 
+    // Build per-node live rates from MetricStore
+    const latestSamples = metricStore.getLatestAll();
+
     return nodes.map((node) => {
+      let pipelineCount = 0;
+      let unhealthyPipelines = 0;
       let totalEventsIn = 0, totalEventsOut = 0;
       let totalBytesIn = 0, totalBytesOut = 0;
       let totalErrors = 0;
-      let pipelineCount = 0;
-      let unhealthyPipelines = 0;
+      let eventsInRate = 0, eventsOutRate = 0;
+      let bytesInRate = 0, bytesOutRate = 0;
+      let errorsRate = 0;
 
       for (const ps of node.pipelineStatuses) {
         pipelineCount++;
@@ -106,6 +113,16 @@ export const dashboardRouter = router({
         if (ps.status !== "RUNNING") unhealthyPipelines++;
       }
 
+      // Sum component-level rates for this node
+      for (const [key, sample] of latestSamples) {
+        if (!key.startsWith(`${node.id}:`)) continue;
+        eventsInRate += sample.receivedEventsRate;
+        eventsOutRate += sample.sentEventsRate;
+        bytesInRate += sample.receivedBytesRate;
+        bytesOutRate += sample.sentBytesRate;
+        errorsRate += sample.errorsRate;
+      }
+
       return {
         id: node.id,
         name: node.name,
@@ -115,6 +132,7 @@ export const dashboardRouter = router({
         environment: node.environment,
         pipelineCount,
         unhealthyPipelines,
+        rates: { eventsIn: eventsInRate, eventsOut: eventsOutRate, bytesIn: bytesInRate, bytesOut: bytesOutRate, errors: errorsRate },
         totals: { eventsIn: totalEventsIn, eventsOut: totalEventsOut, bytesIn: totalBytesIn, bytesOut: totalBytesOut, errors: totalErrors },
         sparkline: (metricsByNode.get(node.id) ?? []).map((m) => ({
           t: m.timestamp.getTime(),
@@ -173,11 +191,45 @@ export const dashboardRouter = router({
       metricsByPipeline.set(m.pipelineId, arr);
     }
 
+    // Build per-pipeline rates from MetricStore by aggregating across nodes
+    const latestSamplesForPipelines = metricStore.getLatestAll();
+
+    // Map componentId → pipelineId using pipeline nodes
+    const allPipelineNodes = await prisma.pipelineNode.findMany({
+      where: { pipelineId: { in: pipelineIds } },
+      select: { pipelineId: true, componentKey: true },
+    });
+    const componentToPipeline = new Map<string, string>();
+    for (const pn of allPipelineNodes) {
+      componentToPipeline.set(pn.componentKey, pn.pipelineId);
+    }
+
+    // Aggregate rates per pipeline
+    const pipelineRates = new Map<string, { eventsIn: number; eventsOut: number; bytesIn: number; bytesOut: number; errors: number }>();
+    for (const [key, sample] of latestSamplesForPipelines) {
+      const componentId = key.split(":").slice(1).join(":");
+      // Match by checking if any pipeline node's componentKey is in the componentId
+      for (const [compKey, pipeId] of componentToPipeline) {
+        if (componentId.includes(compKey)) {
+          const existing = pipelineRates.get(pipeId) ?? { eventsIn: 0, eventsOut: 0, bytesIn: 0, bytesOut: 0, errors: 0 };
+          existing.eventsIn += sample.receivedEventsRate;
+          existing.eventsOut += sample.sentEventsRate;
+          existing.bytesIn += sample.receivedBytesRate;
+          existing.bytesOut += sample.sentBytesRate;
+          existing.errors += sample.errorsRate;
+          pipelineRates.set(pipeId, existing);
+          break;
+        }
+      }
+    }
+
     return pipelines.map((p) => {
+      const rates = pipelineRates.get(p.id) ?? { eventsIn: 0, eventsOut: 0, bytesIn: 0, bytesOut: 0, errors: 0 };
       const totalEventsIn = p.nodeStatuses.reduce((s, ns) => s + Number(ns.eventsIn ?? 0), 0);
       const totalEventsOut = p.nodeStatuses.reduce((s, ns) => s + Number(ns.eventsOut ?? 0), 0);
       const totalBytesIn = p.nodeStatuses.reduce((s, ns) => s + Number(ns.bytesIn ?? 0), 0);
       const totalBytesOut = p.nodeStatuses.reduce((s, ns) => s + Number(ns.bytesOut ?? 0), 0);
+      const totalErrors = p.nodeStatuses.reduce((s, ns) => s + Number(ns.errorsTotal ?? 0), 0);
 
       return {
         id: p.id,
@@ -191,11 +243,12 @@ export const dashboardRouter = router({
           status: ns.node.status,
           pipelineStatus: ns.status,
         })),
-        totals: { eventsIn: totalEventsIn, eventsOut: totalEventsOut, bytesIn: totalBytesIn, bytesOut: totalBytesOut },
+        rates,
+        totals: { eventsIn: totalEventsIn, eventsOut: totalEventsOut, bytesIn: totalBytesIn, bytesOut: totalBytesOut, errors: totalErrors },
         sparkline: (metricsByPipeline.get(p.id) ?? []).map((m) => ({
           t: m.timestamp.getTime(),
-          eventsIn: Number(m.eventsIn ?? 0),
-          eventsOut: Number(m.eventsOut ?? 0),
+          eventsIn: Number(m.eventsIn ?? 0) / 60,
+          eventsOut: Number(m.eventsOut ?? 0) / 60,
         })),
       };
     });

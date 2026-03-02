@@ -9,7 +9,7 @@ import type { NodeMetricsData } from "@/stores/flow-store";
 import { getIcon } from "./node-icon";
 import { NodeSparkline } from "./node-sparkline";
 import { formatRate, formatBytesRate } from "./node-metrics-format";
-import { EditableNodeLabel } from "./editable-node-label";
+
 
 type SourceNodeData = {
   componentDef: VectorComponentDef;
@@ -53,7 +53,7 @@ function getConfigSummary(config: Record<string, unknown>): string | null {
   return `${key}: ${truncated}`;
 }
 
-function SourceNodeComponent({ id, data, selected }: NodeProps<SourceNodeType>) {
+function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
   const { componentDef, componentKey, config, metrics, disabled } = data;
   const Icon = getIcon(componentDef.icon);
   const configSummary = getConfigSummary(config);
@@ -76,7 +76,7 @@ function SourceNodeComponent({ id, data, selected }: NodeProps<SourceNodeType>) 
 
       {/* Body */}
       <div className="space-y-2 px-3 py-2.5">
-        <EditableNodeLabel nodeId={id} value={componentKey} disabled={disabled} />
+        <p className="truncate text-xs font-medium text-foreground">{componentKey}</p>
 
         {metrics ? (
           <p className="truncate text-xs font-mono text-emerald-400">
