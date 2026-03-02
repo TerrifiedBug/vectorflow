@@ -158,6 +158,7 @@ export default function Setup2FAPage() {
                     className="absolute right-1 h-7 w-7"
                     onClick={handleCopySecret}
                     title="Copy secret key"
+                    aria-label="Copy secret key"
                   >
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
@@ -182,6 +183,7 @@ export default function Setup2FAPage() {
                   className="absolute right-2 top-2 h-7 w-7"
                   onClick={handleCopyBackupCodes}
                   title="Copy backup codes"
+                  aria-label="Copy backup codes"
                 >
                   <Copy className="h-3.5 w-3.5" />
                 </Button>

@@ -107,6 +107,7 @@ export default function DeployPage() {
           variant="ghost"
           size="icon"
           onClick={() => router.push(`/pipelines/${pipelineId}`)}
+          aria-label="Back to pipeline"
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>

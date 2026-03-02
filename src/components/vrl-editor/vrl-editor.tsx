@@ -429,6 +429,7 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
                           size="icon"
                           className="h-6 w-6"
                           disabled={sampleIndex <= 0}
+                          aria-label="Previous sample"
                           onClick={() => {
                             const newIdx = sampleIndex - 1;
                             setSampleIndex(newIdx);
@@ -445,6 +446,7 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
                           size="icon"
                           className="h-6 w-6"
                           disabled={sampleIndex >= sampleEvents.length - 1}
+                          aria-label="Next sample"
                           onClick={() => {
                             const newIdx = sampleIndex + 1;
                             setSampleIndex(newIdx);
