@@ -2,16 +2,11 @@
 
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "./sparkline";
-
-const statusColors: Record<string, string> = {
-  HEALTHY: "bg-green-500/15 text-green-700 dark:text-green-400",
-  DEGRADED: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
-  UNREACHABLE: "bg-red-500/15 text-red-700 dark:text-red-400",
-  UNKNOWN: "bg-gray-500/15 text-gray-700 dark:text-gray-400",
-};
+import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 
 function relativeTime(date: Date | string | null): string {
   if (!date) return "Never";
@@ -101,9 +96,9 @@ export function NodeCard({ node }: NodeCardProps) {
               <Badge variant="outline" className="text-xs px-1.5 py-0">
                 {node.environment.name}
               </Badge>
-              <Badge className={cn("text-xs px-1.5 py-0", statusColors[node.status] ?? statusColors.UNKNOWN)}>
-                {node.status}
-              </Badge>
+              <StatusBadge variant={nodeStatusVariant(node.status)}>
+                {nodeStatusLabel(node.status)}
+              </StatusBadge>
             </div>
           </div>
           <p className="text-xs text-muted-foreground truncate">{node.host}</p>

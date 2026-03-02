@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -23,20 +23,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { NodeMetricsCharts } from "@/components/fleet/node-metrics-charts";
-import type { NodeStatus } from "@/generated/prisma";
 import {
   formatTimestamp as formatLastSeen,
   formatCount,
   formatBytes,
   formatBytesRate,
 } from "@/lib/format";
-
-const statusColors: Record<NodeStatus, string> = {
-  HEALTHY: "bg-green-500/15 text-green-700 dark:text-green-400",
-  DEGRADED: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
-  UNREACHABLE: "bg-red-500/15 text-red-700 dark:text-red-400",
-  UNKNOWN: "bg-gray-500/15 text-gray-700 dark:text-gray-400",
-};
+import { nodeStatusVariant, nodeStatusLabel, pipelineStatusVariant, pipelineStatusLabel } from "@/lib/status";
 
 /** Thin wrapper that appends "/s" to the shared formatRate for display. */
 function formatRate(n: number): string {
@@ -55,14 +48,6 @@ function formatUptime(seconds: number | null): string {
   const m = Math.floor((seconds % 3600) / 60);
   return `${h}h ${m}m`;
 }
-
-const pipelineStatusColors: Record<string, string> = {
-  RUNNING: "bg-green-500/15 text-green-700 dark:text-green-400",
-  STARTING: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
-  STOPPED: "bg-gray-500/15 text-gray-700 dark:text-gray-400",
-  CRASHED: "bg-red-500/15 text-red-700 dark:text-red-400",
-  PENDING: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
-};
 
 export default function NodeDetailPage() {
   const params = useParams<{ nodeId: string }>();
@@ -265,12 +250,9 @@ export default function NodeDetailPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">Status</p>
-                <Badge
-                  variant="outline"
-                  className={statusColors[node.status as NodeStatus]}
-                >
-                  {node.status}
-                </Badge>
+                <StatusBadge variant={nodeStatusVariant(node.status)}>
+                  {nodeStatusLabel(node.status)}
+                </StatusBadge>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Environment</p>
@@ -361,12 +343,9 @@ export default function NodeDetailPage() {
                       {ps.pipeline?.name ?? ps.pipelineId.slice(0, 8)}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={pipelineStatusColors[ps.status] ?? ""}
-                      >
-                        {ps.status}
-                      </Badge>
+                      <StatusBadge variant={pipelineStatusVariant(ps.status)}>
+                        {pipelineStatusLabel(ps.status)}
+                      </StatusBadge>
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       <div>{formatCount(ps.eventsIn)}</div>

@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -48,13 +49,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { SecretsSection } from "@/components/environment/secrets-section";
 import { CertificatesSection } from "@/components/environment/certificates-section";
-
-const statusColors: Record<string, string> = {
-  HEALTHY: "bg-green-500/15 text-green-700 dark:text-green-400",
-  DEGRADED: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
-  UNREACHABLE: "bg-red-500/15 text-red-700 dark:text-red-400",
-  UNKNOWN: "bg-gray-500/15 text-gray-700 dark:text-gray-400",
-};
+import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 
 export default function EnvironmentDetailPage({
   params,
@@ -320,12 +315,9 @@ export default function EnvironmentDetailPage({
                       {node.host}:{node.apiPort}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={statusColors[node.status] ?? statusColors.UNKNOWN}
-                      >
-                        {node.status}
-                      </Badge>
+                      <StatusBadge variant={nodeStatusVariant(node.status)}>
+                        {nodeStatusLabel(node.status)}
+                      </StatusBadge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {node.lastSeen

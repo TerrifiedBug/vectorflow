@@ -3,23 +3,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, AlertCircle, Clock, XCircle, Minus } from "lucide-react";
+import { Minus } from "lucide-react";
 import Link from "next/link";
+import { StatusDot } from "@/components/ui/status-dot";
+import { pipelineStatusVariant, pipelineStatusLabel } from "@/lib/status";
 
 interface DeploymentMatrixProps {
   environmentId: string;
 }
-
-const processStatusConfig: Record<
-  string,
-  { icon: typeof CheckCircle; color: string; label: string }
-> = {
-  RUNNING: { icon: CheckCircle, color: "text-green-500", label: "Running" },
-  STARTING: { icon: Clock, color: "text-yellow-500", label: "Starting" },
-  STOPPED: { icon: XCircle, color: "text-muted-foreground", label: "Stopped" },
-  CRASHED: { icon: AlertCircle, color: "text-red-500", label: "Crashed" },
-  PENDING: { icon: Clock, color: "text-blue-500", label: "Pending" },
-};
 
 export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
   const trpc = useTRPC();
@@ -96,9 +87,6 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
                   );
                 }
 
-                const cfg =
-                  processStatusConfig[ps.status] ?? processStatusConfig.PENDING;
-                const Icon = cfg.icon;
                 const isOutdated = ps.version < pipeline.latestVersion;
 
                 return (
@@ -106,9 +94,9 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
                     <div className="flex flex-col items-center gap-0.5">
                       <div
                         className="flex items-center gap-1"
-                        title={cfg.label}
+                        title={pipelineStatusLabel(ps.status)}
                       >
-                        <Icon className={`h-4 w-4 ${cfg.color}`} />
+                        <StatusDot variant={pipelineStatusVariant(ps.status)} />
                         <span className="text-xs text-muted-foreground">
                           v{ps.version}
                         </span>

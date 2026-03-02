@@ -7,6 +7,7 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
 
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Table,
   TableBody,
@@ -16,16 +17,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { NodeStatus } from "@/generated/prisma";
 import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
 import { formatLastSeen } from "@/lib/format";
-
-const statusColors: Record<NodeStatus, string> = {
-  HEALTHY: "bg-green-500/15 text-green-700 dark:text-green-400",
-  DEGRADED: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
-  UNREACHABLE: "bg-red-500/15 text-red-700 dark:text-red-400",
-  UNKNOWN: "bg-gray-500/15 text-gray-700 dark:text-gray-400",
-};
+import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 
 export default function FleetPage() {
   const trpc = useTRPC();
@@ -114,12 +108,9 @@ export default function FleetPage() {
                   {node.vectorVersion?.split(" ")[1] ?? "—"}
                 </TableCell>
                 <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={statusColors[node.status as NodeStatus]}
-                  >
-                    {node.status}
-                  </Badge>
+                  <StatusBadge variant={nodeStatusVariant(node.status)}>
+                    {nodeStatusLabel(node.status)}
+                  </StatusBadge>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {formatLastSeen(node.lastSeen)}
