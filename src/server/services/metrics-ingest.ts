@@ -6,6 +6,7 @@ export interface MetricsDataPoint {
   eventsIn: bigint;
   eventsOut: bigint;
   errorsTotal: bigint;
+  eventsDiscarded: bigint;
   bytesIn: bigint;
   bytesOut: bigint;
   utilization: number;
@@ -15,6 +16,7 @@ export interface PreviousSnapshot {
   eventsIn: bigint;
   eventsOut: bigint;
   errorsTotal: bigint;
+  eventsDiscarded: bigint;
   bytesIn: bigint;
   bytesOut: bigint;
 }
@@ -53,6 +55,7 @@ export async function ingestMetrics(
         eventsIn: true,
         eventsOut: true,
         errorsTotal: true,
+        eventsDiscarded: true,
         bytesIn: true,
         bytesOut: true,
       },
@@ -68,6 +71,7 @@ export async function ingestMetrics(
     const deltaEventsIn = clamp(dp.eventsIn, prev?.eventsIn);
     const deltaEventsOut = clamp(dp.eventsOut, prev?.eventsOut);
     const deltaErrors = clamp(dp.errorsTotal, prev?.errorsTotal);
+    const deltaDiscarded = clamp(dp.eventsDiscarded, prev?.eventsDiscarded);
     const deltaBytesIn = clamp(dp.bytesIn, prev?.bytesIn);
     const deltaBytesOut = clamp(dp.bytesOut, prev?.bytesOut);
 
@@ -87,6 +91,7 @@ export async function ingestMetrics(
           eventsIn: { increment: deltaEventsIn },
           eventsOut: { increment: deltaEventsOut },
           errorsTotal: { increment: deltaErrors },
+          eventsDiscarded: { increment: deltaDiscarded },
           bytesIn: { increment: deltaBytesIn },
           bytesOut: { increment: deltaBytesOut },
           utilization: dp.utilization,
@@ -101,6 +106,7 @@ export async function ingestMetrics(
           eventsIn: deltaEventsIn,
           eventsOut: deltaEventsOut,
           errorsTotal: deltaErrors,
+          eventsDiscarded: deltaDiscarded,
           bytesIn: deltaBytesIn,
           bytesOut: deltaBytesOut,
           utilization: dp.utilization,
@@ -124,6 +130,7 @@ export async function ingestMetrics(
     let totalEventsIn = BigInt(0);
     let totalEventsOut = BigInt(0);
     let totalErrors = BigInt(0);
+    let totalDiscarded = BigInt(0);
     let totalBytesIn = BigInt(0);
     let totalBytesOut = BigInt(0);
     let totalUtil = 0;
@@ -132,6 +139,7 @@ export async function ingestMetrics(
       totalEventsIn += row.eventsIn;
       totalEventsOut += row.eventsOut;
       totalErrors += row.errorsTotal;
+      totalDiscarded += row.eventsDiscarded;
       totalBytesIn += row.bytesIn;
       totalBytesOut += row.bytesOut;
       totalUtil += row.utilization;
@@ -154,6 +162,7 @@ export async function ingestMetrics(
           eventsIn: totalEventsIn,
           eventsOut: totalEventsOut,
           errorsTotal: totalErrors,
+          eventsDiscarded: totalDiscarded,
           bytesIn: totalBytesIn,
           bytesOut: totalBytesOut,
           utilization: avgUtil,
@@ -168,6 +177,7 @@ export async function ingestMetrics(
           eventsIn: totalEventsIn,
           eventsOut: totalEventsOut,
           errorsTotal: totalErrors,
+          eventsDiscarded: totalDiscarded,
           bytesIn: totalBytesIn,
           bytesOut: totalBytesOut,
           utilization: avgUtil,
