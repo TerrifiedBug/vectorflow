@@ -61,6 +61,7 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
   const fieldProviderRef = useRef<{ dispose: () => void } | null>(null);
   const snippetProviderRef = useRef<{ dispose: () => void } | null>(null);
 
+  const [sampleLimit, setSampleLimit] = useState(5);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [sampleEvents, setSampleEvents] = useState<unknown[]>([]);
   const [sampleIndex, setSampleIndex] = useState(0);
@@ -147,8 +148,9 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
     requestSamplesMutation.mutate({
       pipelineId,
       componentKeys: upstreamSourceKeys,
+      limit: sampleLimit,
     });
-  }, [pipelineId, upstreamSourceKeys, requestSamplesMutation]);
+  }, [pipelineId, upstreamSourceKeys, sampleLimit, requestSamplesMutation]);
 
   const isSampling = !!requestId || requestSamplesMutation.isPending;
 
@@ -346,6 +348,16 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
                 </Button>
                 {pipelineId && upstreamSourceKeys && upstreamSourceKeys.length > 0 && (
                   <>
+                    <select
+                      value={sampleLimit}
+                      onChange={(e) => setSampleLimit(Number(e.target.value))}
+                      className="h-8 rounded border bg-background px-2 text-xs"
+                    >
+                      <option value={5}>5 events</option>
+                      <option value={10}>10 events</option>
+                      <option value={25}>25 events</option>
+                      <option value={50}>50 events</option>
+                    </select>
                     <Button
                       variant="outline"
                       size="sm"

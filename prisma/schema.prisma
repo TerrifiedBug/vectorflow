@@ -236,6 +236,7 @@ model EventSampleRequest {
   pipelineId    String
   pipeline      Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   componentKeys Json
+  limit         Int           @default(5)
   status        String        @default("PENDING")
   nodeId        String?
   requestedAt   DateTime      @default(now())

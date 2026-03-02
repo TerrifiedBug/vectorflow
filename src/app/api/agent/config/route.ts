@@ -165,7 +165,7 @@ export async function GET(request: Request) {
             pipelineId: { in: deployedPipelineIds },
             expiresAt: { gt: new Date() },
           },
-          select: { id: true, pipelineId: true, componentKeys: true },
+          select: { id: true, pipelineId: true, componentKeys: true, limit: true },
         })
       : [];
 
@@ -188,7 +188,7 @@ export async function GET(request: Request) {
               requestId: s.id,
               pipelineId: s.pipelineId,
               componentKeys: s.componentKeys,
-              limit: 5,
+              limit: s.limit,
             })),
           }
         : {}),
