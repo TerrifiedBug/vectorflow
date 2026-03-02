@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
-import { useFormField, useFormStore } from "@/stores/form-store";
 import { copyToClipboard } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -76,24 +75,35 @@ function AuthSettings() {
   const settingsQuery = useQuery(trpc.settings.get.queryOptions());
   const settings = settingsQuery.data;
 
-  const isDirty = useFormStore((s) => !!s.fields["settings-oidc"] && Object.keys(s.fields["settings-oidc"]).length > 0);
+  const hasLoadedRef = useRef(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const markDirty = useCallback(() => setIsDirty(true), []);
 
-  const [issuer, setIssuer] = useFormField("settings-oidc", "issuer", settings?.oidcIssuer ?? "");
-  const [clientId, setClientId] = useFormField("settings-oidc", "clientId", settings?.oidcClientId ?? "");
-  const [clientSecret, setClientSecret] = useFormField("settings-oidc", "clientSecret", "");
-  const [displayName, setDisplayName] = useFormField("settings-oidc", "displayName", settings?.oidcDisplayName ?? "SSO");
-  const [tokenAuthMethod, setTokenAuthMethod] = useFormField<"client_secret_post" | "client_secret_basic">(
-    "settings-oidc",
-    "tokenAuthMethod",
-    (settings?.oidcTokenEndpointAuthMethod as "client_secret_post" | "client_secret_basic") ?? "client_secret_post",
-  );
+  const [issuer, setIssuer] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [displayName, setDisplayName] = useState("SSO");
+  const [tokenAuthMethod, setTokenAuthMethod] = useState<"client_secret_post" | "client_secret_basic">("client_secret_post");
+
+  useEffect(() => {
+    if (!settings) return;
+    if (hasLoadedRef.current && isDirty) return; // Don't overwrite dirty state on refetch
+    hasLoadedRef.current = true;
+    setIssuer(settings.oidcIssuer ?? "");
+    setClientId(settings.oidcClientId ?? "");
+    setDisplayName(settings.oidcDisplayName ?? "SSO");
+    setTokenAuthMethod((settings.oidcTokenEndpointAuthMethod as "client_secret_post" | "client_secret_basic") ?? "client_secret_post");
+    // Don't populate clientSecret - it's masked
+  }, [settings, isDirty]);
 
   const updateOidcMutation = useMutation(
     trpc.settings.updateOidc.mutationOptions({
       onSuccess: () => {
-        useFormStore.getState().clearForm("settings-oidc");
+        setIsDirty(false);
+        hasLoadedRef.current = false; // Allow next sync from server
         queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
         toast.success("OIDC settings saved successfully");
+        setClientSecret("");
       },
       onError: (error) => {
         toast.error(error.message || "Failed to save OIDC settings");
@@ -135,25 +145,27 @@ function AuthSettings() {
     testOidcMutation.mutate({ issuer });
   };
 
-  const [teamMappings, setTeamMappings] = useFormField<Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>>(
-    "settings-oidc",
-    "teamMappings",
-    (settings?.oidcTeamMappings ?? []) as Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>,
-  );
-  const [defaultTeamId, setDefaultTeamId] = useFormField("settings-oidc", "defaultTeamId", settings?.oidcDefaultTeamId ?? "");
-  const [defaultRole, setDefaultRole] = useFormField<"VIEWER" | "EDITOR" | "ADMIN">(
-    "settings-oidc",
-    "defaultRole",
-    (settings?.oidcDefaultRole as "VIEWER" | "EDITOR" | "ADMIN") ?? "VIEWER",
-  );
-  const [groupsClaim, setGroupsClaim] = useFormField("settings-oidc", "groupsClaim", settings?.oidcGroupsClaim ?? "groups");
+  const [teamMappings, setTeamMappings] = useState<Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>>([]);
+  const [defaultTeamId, setDefaultTeamId] = useState("");
+  const [defaultRole, setDefaultRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
+  const [groupsClaim, setGroupsClaim] = useState("groups");
 
   const teamsQuery = useQuery(trpc.admin.listTeams.queryOptions());
+
+  useEffect(() => {
+    if (!settings) return;
+    if (hasLoadedRef.current && isDirty) return; // Don't overwrite dirty state on refetch
+    setDefaultRole((settings.oidcDefaultRole as "VIEWER" | "EDITOR" | "ADMIN") ?? "VIEWER");
+    setGroupsClaim(settings.oidcGroupsClaim ?? "groups");
+    setTeamMappings((settings.oidcTeamMappings ?? []) as Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>);
+    setDefaultTeamId(settings.oidcDefaultTeamId ?? "");
+  }, [settings, isDirty]);
 
   const updateTeamMappingMutation = useMutation(
     trpc.settings.updateOidcTeamMappings.mutationOptions({
       onSuccess: () => {
-        useFormStore.getState().clearForm("settings-oidc");
+        setIsDirty(false);
+        hasLoadedRef.current = false; // Allow next sync from server
         queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
         toast.success("OIDC team mapping saved");
       },
@@ -164,14 +176,17 @@ function AuthSettings() {
   );
 
   function addMapping() {
+    markDirty();
     setTeamMappings([...teamMappings, { group: "", teamId: "", role: "VIEWER" }]);
   }
 
   function removeMapping(index: number) {
+    markDirty();
     setTeamMappings(teamMappings.filter((_, i) => i !== index));
   }
 
   function updateMapping(index: number, field: keyof typeof teamMappings[number], value: string) {
+    markDirty();
     setTeamMappings(teamMappings.map((m, i) =>
       i === index ? { ...m, [field]: value } as typeof m : m
     ));
@@ -213,7 +228,7 @@ function AuthSettings() {
               type="url"
               placeholder="https://accounts.google.com"
               value={issuer}
-              onChange={(e) => { setIssuer(e.target.value); }}
+              onChange={(e) => { markDirty(); setIssuer(e.target.value); }}
               required
             />
             <p className="text-xs text-muted-foreground">
@@ -227,7 +242,7 @@ function AuthSettings() {
               id="oidc-client-id"
               placeholder="your-client-id"
               value={clientId}
-              onChange={(e) => { setClientId(e.target.value); }}
+              onChange={(e) => { markDirty(); setClientId(e.target.value); }}
               required
             />
           </div>
@@ -243,7 +258,7 @@ function AuthSettings() {
                   : "Enter client secret"
               }
               value={clientSecret}
-              onChange={(e) => { setClientSecret(e.target.value); }}
+              onChange={(e) => { markDirty(); setClientSecret(e.target.value); }}
               required={!settings?.oidcClientSecret}
             />
             <p className="text-xs text-muted-foreground">
@@ -259,7 +274,7 @@ function AuthSettings() {
               id="oidc-display-name"
               placeholder="SSO"
               value={displayName}
-              onChange={(e) => { setDisplayName(e.target.value); }}
+              onChange={(e) => { markDirty(); setDisplayName(e.target.value); }}
               required
             />
             <p className="text-xs text-muted-foreground">
@@ -272,7 +287,7 @@ function AuthSettings() {
             <Label htmlFor="oidc-auth-method">Token Auth Method</Label>
             <Select
               value={tokenAuthMethod}
-              onValueChange={(val: "client_secret_post" | "client_secret_basic") => { setTokenAuthMethod(val); }}
+              onValueChange={(val: "client_secret_post" | "client_secret_basic") => { markDirty(); setTokenAuthMethod(val); }}
             >
               <SelectTrigger id="oidc-auth-method" className="w-full">
                 <SelectValue />
@@ -508,28 +523,25 @@ function FleetSettings() {
   const settingsQuery = useQuery(trpc.settings.get.queryOptions());
   const settings = settingsQuery.data;
 
-  const [pollIntervalSec, setPollIntervalSec] = useFormField(
-    "settings-fleet",
-    "pollIntervalSec",
-    settings ? Math.round(settings.fleetPollIntervalMs / 1000) : 15,
-  );
-  const [unhealthyThreshold, setUnhealthyThreshold] = useFormField(
-    "settings-fleet",
-    "unhealthyThreshold",
-    settings?.fleetUnhealthyThreshold ?? 3,
-  );
-  const [metricsRetentionDays, setMetricsRetentionDays] = useFormField(
-    "settings-fleet",
-    "metricsRetentionDays",
-    settings?.metricsRetentionDays ?? 7,
-  );
+  const [pollIntervalSec, setPollIntervalSec] = useState(15);
+  const [unhealthyThreshold, setUnhealthyThreshold] = useState(3);
+  const [metricsRetentionDays, setMetricsRetentionDays] = useState(7);
+  const [fleetDirty, setFleetDirty] = useState(false);
+
+  useEffect(() => {
+    if (!settings) return;
+    if (fleetDirty) return; // Don't overwrite dirty state on refetch
+    setPollIntervalSec(Math.round(settings.fleetPollIntervalMs / 1000));
+    setUnhealthyThreshold(settings.fleetUnhealthyThreshold);
+    if (settings.metricsRetentionDays) setMetricsRetentionDays(settings.metricsRetentionDays);
+  }, [settings, fleetDirty]);
 
   const updateFleetMutation = useMutation(
     trpc.settings.updateFleet.mutationOptions({
       onSuccess: () => {
+        setFleetDirty(false);
         queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
         toast.success("Fleet settings saved successfully");
-        useFormStore.getState().clearForm("settings-fleet");
       },
       onError: (error) => {
         toast.error(error.message || "Failed to save fleet settings");
@@ -574,7 +586,7 @@ function FleetSettings() {
               min={1}
               max={300}
               value={pollIntervalSec}
-              onChange={(e) => setPollIntervalSec(Number(e.target.value))}
+              onChange={(e) => { setFleetDirty(true); setPollIntervalSec(Number(e.target.value)); }}
               required
             />
             <p className="text-xs text-muted-foreground">
@@ -590,7 +602,7 @@ function FleetSettings() {
               min={1}
               max={100}
               value={unhealthyThreshold}
-              onChange={(e) => setUnhealthyThreshold(Number(e.target.value))}
+              onChange={(e) => { setFleetDirty(true); setUnhealthyThreshold(Number(e.target.value)); }}
               required
             />
             <p className="text-xs text-muted-foreground">
@@ -607,7 +619,7 @@ function FleetSettings() {
               min={1}
               max={365}
               value={metricsRetentionDays}
-              onChange={(e) => setMetricsRetentionDays(Number(e.target.value))}
+              onChange={(e) => { setFleetDirty(true); setMetricsRetentionDays(Number(e.target.value)); }}
               required
             />
             <p className="text-xs text-muted-foreground">
