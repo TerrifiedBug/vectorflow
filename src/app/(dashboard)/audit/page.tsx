@@ -130,7 +130,7 @@ export default function AuditPage() {
         <CardContent>
           <div className="flex flex-wrap items-end gap-4">
             {/* Search */}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <label className="text-xs text-muted-foreground">Search</label>
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -144,7 +144,7 @@ export default function AuditPage() {
             </div>
 
             {/* Action filter */}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <label className="text-xs text-muted-foreground">Action</label>
               <Select
                 value={actionFilter || ALL_VALUE}
@@ -167,7 +167,7 @@ export default function AuditPage() {
             </div>
 
             {/* Entity type filter */}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <label className="text-xs text-muted-foreground">
                 Entity Type
               </label>
@@ -192,7 +192,7 @@ export default function AuditPage() {
             </div>
 
             {/* Date range */}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <label className="text-xs text-muted-foreground">From</label>
               <Input
                 type="date"
@@ -201,7 +201,7 @@ export default function AuditPage() {
                 className="w-[160px]"
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <label className="text-xs text-muted-foreground">To</label>
               <Input
                 type="date"
