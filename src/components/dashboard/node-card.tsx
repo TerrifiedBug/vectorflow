@@ -13,14 +13,6 @@ const statusColors: Record<string, string> = {
   UNKNOWN: "bg-gray-500/15 text-gray-700 dark:text-gray-400",
 };
 
-const pipelineStatusDot: Record<string, string> = {
-  RUNNING: "bg-green-500",
-  STARTING: "bg-blue-500",
-  STOPPED: "bg-gray-400",
-  CRASHED: "bg-red-500",
-  PENDING: "bg-yellow-500",
-};
-
 function relativeTime(date: Date | string | null): string {
   if (!date) return "Never";
   const ms = Date.now() - new Date(date).getTime();
@@ -33,6 +25,19 @@ function relativeTime(date: Date | string | null): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function fmtRate(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function fmtBytes(n: number): string {
+  if (n >= 1_073_741_824) return `${(n / 1_073_741_824).toFixed(1)} GB`;
+  if (n >= 1_048_576) return `${(n / 1_048_576).toFixed(1)} MB`;
+  if (n >= 1_024) return `${(n / 1_024).toFixed(1)} KB`;
+  return `${n} B`;
+}
+
 interface NodeCardProps {
   node: {
     id: string;
@@ -41,15 +46,15 @@ interface NodeCardProps {
     status: string;
     lastSeen: Date | string | null;
     environment: { id: string; name: string };
-    pipelines: Array<{
-      id: string;
-      name: string;
-      status: string;
+    pipelineCount: number;
+    unhealthyPipelines: number;
+    totals: {
       eventsIn: number;
       eventsOut: number;
       bytesIn: number;
       bytesOut: number;
-    }>;
+      errors: number;
+    };
     sparkline: Array<{ t: number; mem: number; cpu: number }>;
   };
 }
@@ -57,6 +62,12 @@ interface NodeCardProps {
 export function NodeCard({ node }: NodeCardProps) {
   const cpuData = node.sparkline.map((s) => s.cpu);
   const memData = node.sparkline.map((s) => s.mem);
+
+  const healthyCount = node.pipelineCount - node.unhealthyPipelines;
+  const pipelineLabel =
+    node.unhealthyPipelines === 0
+      ? `${node.pipelineCount} pipelines running`
+      : `${healthyCount} of ${node.pipelineCount} running`;
 
   return (
     <Link href={`/fleet/${node.id}`} className="block">
@@ -88,23 +99,44 @@ export function NodeCard({ node }: NodeCardProps) {
             </div>
           </div>
 
-          {/* Pipeline list */}
-          {node.pipelines.length > 0 && (
-            <div className="space-y-1">
-              {node.pipelines.slice(0, 4).map((p) => (
-                <div key={p.id} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", pipelineStatusDot[p.status] ?? "bg-gray-400")} />
-                    <span className="truncate">{p.name}</span>
-                  </div>
-                  <span className="font-mono text-muted-foreground text-[10px] shrink-0 ml-2">
-                    {p.eventsIn}/{p.eventsOut} ev/s
-                  </span>
-                </div>
-              ))}
-              {node.pipelines.length > 4 && (
-                <p className="text-[10px] text-muted-foreground">+{node.pipelines.length - 4} more</p>
+          {/* Pipeline health */}
+          <div className="flex items-center gap-1.5 text-xs">
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full shrink-0",
+                node.unhealthyPipelines > 0 ? "bg-yellow-500" : "bg-green-500"
               )}
+            />
+            <span className="text-muted-foreground">{pipelineLabel}</span>
+          </div>
+
+          {/* Aggregated stats 2x2 grid */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Events in</span>
+              <span className="font-mono">{fmtRate(node.totals.eventsIn)}/s</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Events out</span>
+              <span className="font-mono">{fmtRate(node.totals.eventsOut)}/s</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Bytes in</span>
+              <span className="font-mono">{fmtBytes(node.totals.bytesIn)}/s</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Bytes out</span>
+              <span className="font-mono">{fmtBytes(node.totals.bytesOut)}/s</span>
+            </div>
+          </div>
+
+          {/* Errors (only if > 0) */}
+          {node.totals.errors > 0 && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="h-1.5 w-1.5 rounded-full shrink-0 bg-red-500" />
+              <span className="text-red-600 dark:text-red-400 font-medium">
+                {fmtRate(node.totals.errors)} errors
+              </span>
             </div>
           )}
 
