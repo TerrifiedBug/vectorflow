@@ -74,13 +74,15 @@ export async function deployAgent(
   }
 
   // 3. Create pipeline version (also marks pipeline as deployed)
-  const logLevel = (pipeline.globalConfig as Record<string, unknown>)?.log_level as string ?? null;
+  const gc = pipeline.globalConfig as Record<string, unknown> | null;
+  const logLevel = (gc?.log_level as string) ?? null;
   const version = await createVersion(
     pipelineId,
     configYaml,
     userId,
     "Deployed via agent mode",
     logLevel,
+    gc,
   );
 
   return {
