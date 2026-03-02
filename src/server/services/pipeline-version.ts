@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma";
 import { TRPCError } from "@trpc/server";
 
 /**
@@ -12,6 +13,7 @@ export async function createVersion(
   userId: string,
   changelog?: string,
   logLevel?: string | null,
+  globalConfig?: Record<string, unknown> | null,
 ) {
   // Find the highest existing version number for this pipeline
   const latest = await prisma.pipelineVersion.findFirst({
@@ -28,6 +30,7 @@ export async function createVersion(
       version: nextVersion,
       configYaml,
       logLevel: logLevel ?? null,
+      globalConfig: (globalConfig as Prisma.InputJsonValue) ?? undefined,
       createdById: userId,
       changelog,
     },
@@ -96,11 +99,22 @@ export async function rollback(
     });
   }
 
+  // Restore globalConfig on the Pipeline model so the editor loads the correct state
+  if (targetVersion.globalConfig !== undefined) {
+    await prisma.pipeline.update({
+      where: { id: pipelineId },
+      data: {
+        globalConfig: targetVersion.globalConfig as Prisma.InputJsonValue ?? undefined,
+      },
+    });
+  }
+
   return createVersion(
     pipelineId,
     targetVersion.configYaml,
     userId,
     `Rollback to version ${targetVersion.version}`,
     targetVersion.logLevel,
+    targetVersion.globalConfig as Record<string, unknown> | null,
   );
 }
