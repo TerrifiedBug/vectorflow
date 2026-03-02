@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { BookOpen, Code, ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
+import { BookOpen, Code, ChevronLeft, ChevronRight, Columns3, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ import {
 import { vrlTheme } from "./vrl-theme";
 import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
 import { VrlSnippetDrawer } from "@/components/flow/vrl-snippet-drawer";
+import { VrlFieldsPanel } from "./vrl-fields-panel";
 import { getMergedOutputSchemas, getSourceOutputSchema } from "@/lib/vector/source-output-schemas";
 import type { Monaco, OnMount } from "@monaco-editor/react";
 
@@ -53,7 +54,7 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
   const [sampleInput, setSampleInput] = useState("");
   const [testOutput, setTestOutput] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
-  const [showSnippets, setShowSnippets] = useState(false);
+  const [toolsPanel, setToolsPanel] = useState<"fields" | "snippets" | null>(null);
   const [expanded, setExpanded] = useState(false);
   const editorRef = useRef<EditorInstance | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -72,6 +73,8 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
       return schema?.rawText === true;
     });
   }, [sourceTypes]);
+
+  const hasFields = (sourceTypes && sourceTypes.length > 0) || liveSchemaFields.length > 0;
 
   const testMutation = useMutation(
     trpc.vrl.test.mutationOptions({
@@ -123,6 +126,9 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
         }
         const schema = (sample.schema as Array<{ path: string; type: string; sample: string }>) ?? [];
         setLiveSchemaFields(schema);
+        if (schema.length > 0) {
+          setToolsPanel("fields");
+        }
       }
     } else if (data.status === "ERROR" || data.status === "EXPIRED") {
       setTestError(`Sampling ${data.status.toLowerCase()}: no events could be collected`);
@@ -315,13 +321,23 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
             <div className="w-[320px] shrink-0 flex flex-col gap-3 overflow-y-auto">
               {/* Action buttons */}
               <div className="flex flex-wrap gap-2">
+                {hasFields && (
+                  <Button
+                    variant={toolsPanel === "fields" ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => setToolsPanel((prev) => (prev === "fields" ? null : "fields"))}
+                  >
+                    <Columns3 className="mr-1.5 h-3.5 w-3.5" />
+                    Fields
+                  </Button>
+                )}
                 <Button
-                  variant="outline"
+                  variant={toolsPanel === "snippets" ? "secondary" : "outline"}
                   size="sm"
-                  onClick={() => setShowSnippets((prev) => !prev)}
+                  onClick={() => setToolsPanel((prev) => (prev === "snippets" ? null : "snippets"))}
                 >
                   <BookOpen className="mr-1.5 h-3.5 w-3.5" />
-                  {showSnippets ? "Hide Snippets" : "Snippets"}
+                  Snippets
                 </Button>
                 {pipelineId && upstreamSourceKeys && upstreamSourceKeys.length > 0 && (
                   <>
@@ -348,7 +364,7 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
               </div>
 
               {/* Raw text source hint */}
-              {isRawTextSource && !showSnippets && (
+              {isRawTextSource && toolsPanel !== "snippets" && (
                 <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
                   <p className="font-medium">This source emits raw text in <code className="rounded bg-sky-100 px-1 dark:bg-sky-900/50">.message</code></p>
                   <p className="mt-0.5 text-sky-700 dark:text-sky-400">
@@ -357,8 +373,17 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
                 </div>
               )}
 
+              {/* Fields panel */}
+              {toolsPanel === "fields" && (
+                <VrlFieldsPanel
+                  staticFields={getMergedOutputSchemas(sourceTypes ?? [])}
+                  liveFields={liveSchemaFields}
+                  onInsert={handleInsertSnippet}
+                />
+              )}
+
               {/* Snippet drawer */}
-              {showSnippets && (
+              {toolsPanel === "snippets" && (
                 <VrlSnippetDrawer onInsert={handleInsertSnippet} />
               )}
 
