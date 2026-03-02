@@ -95,7 +95,7 @@ export default function FleetPage() {
           </TableHeader>
           <TableBody>
             {nodes.map((node) => (
-              <TableRow key={node.id}>
+              <TableRow key={node.id} className="cursor-pointer hover:bg-muted/50">
                 <TableCell className="font-medium">
                   <Link
                     href={`/fleet/${node.id}`}
