@@ -1,6 +1,8 @@
 import { router, protectedProcedure } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { metricStore } from "@/server/services/metric-store";
+import { generateVectorYaml } from "@/lib/config-generator";
+import { decryptNodeConfig } from "@/server/services/config-crypto";
 
 export const dashboardRouter = router({
   stats: protectedProcedure.query(async () => {
@@ -172,6 +174,8 @@ export const dashboardRouter = router({
       where: { isDraft: false, deployedAt: { not: null } },
       include: {
         environment: { select: { id: true, name: true } },
+        nodes: true,
+        edges: true,
         nodeStatuses: {
           include: {
             node: { select: { id: true, name: true, status: true } },
@@ -180,7 +184,7 @@ export const dashboardRouter = router({
         versions: {
           orderBy: { version: "desc" },
           take: 1,
-          select: { version: true },
+          select: { version: true, configYaml: true },
         },
       },
       orderBy: { name: "asc" },
@@ -255,12 +259,53 @@ export const dashboardRouter = router({
       const totalBytesOut = p.nodeStatuses.reduce((s, ns) => s + Number(ns.bytesOut ?? 0), 0);
       const totalErrors = p.nodeStatuses.reduce((s, ns) => s + Number(ns.errorsTotal ?? 0), 0);
 
+      // Detect saved-but-undeployed changes by comparing current YAML to latest version
+      let hasUndeployedChanges = false;
+      const latestVersion = p.versions[0];
+      if (latestVersion?.configYaml) {
+        try {
+          const decryptedNodes = p.nodes.map((n) => ({
+            ...n,
+            config: decryptNodeConfig(
+              n.componentType,
+              (n.config as Record<string, unknown>) ?? {},
+            ),
+          }));
+          const flowNodes = decryptedNodes.map((n) => ({
+            id: n.id,
+            type: n.kind.toLowerCase(),
+            position: { x: n.positionX, y: n.positionY },
+            data: {
+              componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
+              componentKey: n.componentKey,
+              config: n.config as Record<string, unknown>,
+              disabled: n.disabled,
+            },
+          }));
+          const flowEdges = p.edges.map((e) => ({
+            id: e.id,
+            source: e.sourceNodeId,
+            target: e.targetNodeId,
+            ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
+          }));
+          const currentYaml = generateVectorYaml(
+            flowNodes as Parameters<typeof generateVectorYaml>[0],
+            flowEdges as Parameters<typeof generateVectorYaml>[1],
+            p.globalConfig as Record<string, unknown> | null,
+          );
+          hasUndeployedChanges = currentYaml !== latestVersion.configYaml;
+        } catch {
+          hasUndeployedChanges = false;
+        }
+      }
+
       return {
         id: p.id,
         name: p.name,
         environment: p.environment,
         deployedAt: p.deployedAt,
         latestVersion: p.versions[0]?.version ?? 0,
+        hasUndeployedChanges,
         nodes: p.nodeStatuses.map((ns) => ({
           id: ns.node.id,
           name: ns.node.name,

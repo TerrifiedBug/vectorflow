@@ -36,6 +36,7 @@ interface PipelineCardProps {
     environment: { id: string; name: string };
     deployedAt: Date | string | null;
     latestVersion: number;
+    hasUndeployedChanges?: boolean;
     nodes: Array<{
       id: string;
       name: string;
@@ -62,6 +63,11 @@ export function PipelineCard({ pipeline }: PipelineCardProps) {
               <Badge variant="outline" className="text-xs px-1.5 py-0">
                 {pipeline.environment.name}
               </Badge>
+              {pipeline.hasUndeployedChanges && (
+                <Badge variant="outline" className="text-xs px-1.5 py-0 border-amber-500/50 text-amber-600 dark:text-amber-400">
+                  Pending deploy
+                </Badge>
+              )}
               {pipeline.latestVersion > 0 && (
                 <Badge variant="secondary" className="text-xs px-1.5 py-0">
                   v{pipeline.latestVersion}
