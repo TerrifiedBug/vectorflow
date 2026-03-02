@@ -92,19 +92,26 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
                 return (
                   <td key={node.id} className="px-3 py-2 text-center">
                     <div className="flex flex-col items-center gap-0.5">
-                      <div
-                        className="flex items-center gap-1"
-                        title={pipelineStatusLabel(ps.status)}
-                      >
-                        <StatusDot variant={pipelineStatusVariant(ps.status)} />
-                        <span className="text-xs text-muted-foreground">
-                          v{ps.version}
-                        </span>
-                      </div>
-                      {isOutdated && (
-                        <span className="text-xs text-yellow-500">
-                          (outdated)
-                        </span>
+                      {isOutdated ? (
+                        <div
+                          className="flex items-center gap-1"
+                          title={`Deployed: v${ps.version}, Latest: v${pipeline.latestVersion}`}
+                        >
+                          <StatusDot variant={pipelineStatusVariant(ps.status)} />
+                          <Badge
+                            variant="outline"
+                            className="text-xs border-yellow-500/50 text-yellow-600 dark:text-yellow-400"
+                          >
+                            v{ps.version}
+                          </Badge>
+                        </div>
+                      ) : (
+                        <div
+                          className="flex items-center gap-1"
+                          title={pipelineStatusLabel(ps.status)}
+                        >
+                          <StatusDot variant={pipelineStatusVariant(ps.status)} />
+                        </div>
                       )}
                     </div>
                   </td>
