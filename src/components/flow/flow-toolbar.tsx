@@ -40,6 +40,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { PipelineSettings, useHasGlobalConfigContent } from "@/components/flow/pipeline-settings";
+import { cn } from "@/lib/utils";
 import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml, generateVectorToml, importVectorConfig } from "@/lib/config-generator";
 import { useTRPC } from "@/trpc/client";
@@ -164,7 +165,7 @@ export function FlowToolbar({
       <div className="flex h-10 items-center gap-1 px-3">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={onSave} disabled={isSaving} className="relative h-7 w-7 p-0" aria-label="Save pipeline">
+            <Button variant="ghost" size="sm" onClick={onSave} disabled={isSaving || !isDirty} className={cn("relative h-7 w-7 p-0", !isDirty && "opacity-50")} aria-label="Save pipeline">
               <Save className="h-4 w-4" />
               {isDirty && (
                 <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-orange-500" />

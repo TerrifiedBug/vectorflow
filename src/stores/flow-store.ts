@@ -101,6 +101,32 @@ export interface FlowState {
 interface InternalState extends FlowState {
   _past: Snapshot[];
   _future: Snapshot[];
+  _savedSnapshot: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Fingerprinting (for dirty-state comparison)                        */
+/* ------------------------------------------------------------------ */
+
+function computeFlowFingerprint(nodes: Node[], edges: Edge[], globalConfig: Record<string, unknown> | null): string {
+  const cleanNodes = nodes.map((n) => ({
+    id: n.id,
+    type: n.type,
+    position: n.position,
+    data: Object.fromEntries(
+      Object.entries(n.data as Record<string, unknown>).filter(
+        ([k]) => k !== "metrics" && k !== "measured"
+      )
+    ),
+  }));
+  const cleanEdges = edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    sourceHandle: e.sourceHandle,
+    targetHandle: e.targetHandle,
+  }));
+  return JSON.stringify({ nodes: cleanNodes, edges: cleanEdges, globalConfig });
 }
 
 /* ------------------------------------------------------------------ */
@@ -136,6 +162,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
 
   _past: [],
   _future: [],
+  _savedSnapshot: null,
   canUndo: false,
   canRedo: false,
 
@@ -609,7 +636,9 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   /* ---- Dirty tracking ---- */
 
   markClean: () => {
-    set({ isDirty: false });
+    const state = get() as InternalState;
+    const snapshot = computeFlowFingerprint(state.nodes, state.edges, state.globalConfig);
+    set({ isDirty: false, _savedSnapshot: snapshot } as Partial<InternalState>);
   },
 
   /* ---- Serialization ---- */
@@ -629,10 +658,13 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         })
       : nodes;
 
+    const gc = globalConfig ?? null;
+    const snapshot = computeFlowFingerprint(nodes, edges, gc);
+
     set({
       nodes: mergedNodes,
       edges,
-      globalConfig: globalConfig ?? null,
+      globalConfig: gc,
       selectedNodeId: null,
       selectedNodeIds: new Set(),
       selectedEdgeId: null,
@@ -641,7 +673,8 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       _future: [],
       canUndo: false,
       canRedo: false,
-    });
+      _savedSnapshot: snapshot,
+    } as Partial<InternalState>);
   },
 
   clearGraph: () => {
@@ -700,3 +733,17 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     });
   },
 }));
+
+/* ------------------------------------------------------------------ */
+/*  Auto-recompute isDirty against saved snapshot                      */
+/* ------------------------------------------------------------------ */
+
+useFlowStore.subscribe((state) => {
+  const internal = state as unknown as InternalState;
+  if (internal._savedSnapshot === null) return;
+  const current = computeFlowFingerprint(internal.nodes, internal.edges, internal.globalConfig);
+  const shouldBeDirty = current !== internal._savedSnapshot;
+  if (internal.isDirty !== shouldBeDirty) {
+    useFlowStore.setState({ isDirty: shouldBeDirty });
+  }
+});
