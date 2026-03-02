@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useTRPC } from "@/trpc/client";
-import { useMutation } from "@tanstack/react-query";
-import { BookOpen, Maximize2 } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { BookOpen, Maximize2, ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -39,13 +40,15 @@ interface VrlEditorProps {
   onChange: (value: string) => void;
   height?: string;
   sourceTypes?: string[];
+  pipelineId?: string;
+  upstreamSourceKeys?: string[];
 }
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export function VrlEditor({ value, onChange, height = "200px", sourceTypes }: VrlEditorProps) {
+export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipelineId, upstreamSourceKeys }: VrlEditorProps) {
   const trpc = useTRPC();
   const [sampleInput, setSampleInput] = useState("");
   const [testOutput, setTestOutput] = useState<string | null>(null);
@@ -54,6 +57,11 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes }: Vr
   const [showSnippets, setShowSnippets] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const editorRef = useRef<EditorInstance | null>(null);
+
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [sampleEvents, setSampleEvents] = useState<unknown[]>([]);
+  const [sampleIndex, setSampleIndex] = useState(0);
+  const [liveSchemaFields, setLiveSchemaFields] = useState<Array<{ path: string; type: string; sample: string }>>([]);
 
   const isRawTextSource = useMemo(() => {
     if (!sourceTypes || sourceTypes.length === 0) return false;
@@ -75,6 +83,56 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes }: Vr
       },
     }),
   );
+
+  const requestSamplesMutation = useMutation(
+    trpc.pipeline.requestSamples.mutationOptions({
+      onSuccess: (data) => setRequestId(data.requestId),
+      onError: (err) => setTestError(`Sample request failed: ${err.message}`),
+    }),
+  );
+
+  const sampleResultQuery = useQuery(
+    trpc.pipeline.sampleResult.queryOptions(
+      { requestId: requestId! },
+      {
+        enabled: !!requestId,
+        refetchInterval: (query) => {
+          const status = query.state.data?.status;
+          return status === "PENDING" ? 3000 : false;
+        },
+      },
+    ),
+  );
+
+  useEffect(() => {
+    const data = sampleResultQuery.data;
+    if (!data || data.status === "PENDING") return;
+
+    if (data.status === "COMPLETED" && data.samples.length > 0) {
+      const sample = data.samples[0];
+      const events = (sample.events as unknown[]) ?? [];
+      setSampleEvents(events);
+      setSampleIndex(0);
+      if (events.length > 0) {
+        setSampleInput(JSON.stringify(events[0], null, 2));
+        setShowTest(true);
+      }
+      const schema = (sample.schema as Array<{ path: string; type: string; sample: string }>) ?? [];
+      setLiveSchemaFields(schema);
+    }
+
+    setRequestId(null);
+  }, [sampleResultQuery.data]);
+
+  const handleFetchSamples = useCallback(() => {
+    if (!pipelineId || !upstreamSourceKeys?.length) return;
+    requestSamplesMutation.mutate({
+      pipelineId,
+      componentKeys: upstreamSourceKeys,
+    });
+  }, [pipelineId, upstreamSourceKeys, requestSamplesMutation]);
+
+  const isSampling = !!requestId || requestSamplesMutation.isPending;
 
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
@@ -106,8 +164,20 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes }: Vr
     });
 
     // Register field completion provider (triggered by ".")
-    if (sourceTypes && sourceTypes.length > 0) {
-      const fields = getMergedOutputSchemas(sourceTypes);
+    if ((sourceTypes && sourceTypes.length > 0) || liveSchemaFields.length > 0) {
+      const staticFields = getMergedOutputSchemas(sourceTypes ?? []);
+      const liveByPath = new Map(liveSchemaFields.map((f) => [f.path, f]));
+      const allFields = staticFields.map((f) => {
+        const live = liveByPath.get(f.path);
+        if (live) {
+          liveByPath.delete(f.path);
+          return { ...f, description: `${f.description} | Sample: ${live.sample}` };
+        }
+        return f;
+      });
+      for (const [, f] of liveByPath) {
+        allFields.push({ path: f.path, type: f.type, description: `Sample: ${f.sample}`, always: false });
+      }
 
       monaco.languages.registerCompletionItemProvider("plaintext", {
         triggerCharacters: ["."],
@@ -122,7 +192,7 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes }: Vr
           const prefix = prefixMatch ? prefixMatch[1] : "";
 
           // Filter fields to show only direct children of the prefix
-          const suggestions = fields
+          const suggestions = allFields
             .filter((f) => {
               if (!prefix) return f.path.split(".").length === 2; // top-level fields like ".message"
               return f.path.startsWith(prefix + ".") && f.path.substring(prefix.length + 1).indexOf(".") === -1;
@@ -157,7 +227,7 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes }: Vr
         },
       });
     }
-  }, [sourceTypes]);
+  }, [sourceTypes, liveSchemaFields]);
 
   const handleInsertSnippet = useCallback((code: string) => {
     const editor = editorRef.current;
@@ -225,6 +295,28 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes }: Vr
           <Maximize2 className="mr-1.5 h-3.5 w-3.5" />
           Expand
         </Button>
+        {pipelineId && upstreamSourceKeys && upstreamSourceKeys.length > 0 && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFetchSamples}
+              disabled={isSampling}
+            >
+              {isSampling ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              {isSampling ? "Sampling..." : "Fetch Samples"}
+            </Button>
+            {sampleEvents.length > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                {sampleEvents.length} sample{sampleEvents.length !== 1 ? "s" : ""}
+              </Badge>
+            )}
+          </>
+        )}
       </div>
 
       {isRawTextSource && !showSnippets && (
@@ -243,9 +335,44 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes }: Vr
       {showTest && (
         <div className="space-y-3 rounded border p-3">
           <div className="space-y-1.5">
-            <Label htmlFor="vrl-sample-input" className="text-xs">
-              Sample Input (JSON)
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="vrl-sample-input" className="text-xs">
+                Sample Input (JSON)
+              </Label>
+              {sampleEvents.length > 1 && (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    disabled={sampleIndex <= 0}
+                    onClick={() => {
+                      const newIdx = sampleIndex - 1;
+                      setSampleIndex(newIdx);
+                      setSampleInput(JSON.stringify(sampleEvents[newIdx], null, 2));
+                    }}
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {sampleIndex + 1}/{sampleEvents.length}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    disabled={sampleIndex >= sampleEvents.length - 1}
+                    onClick={() => {
+                      const newIdx = sampleIndex + 1;
+                      setSampleIndex(newIdx);
+                      setSampleInput(JSON.stringify(sampleEvents[newIdx], null, 2));
+                    }}
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
+            </div>
             <textarea
               id="vrl-sample-input"
               className="w-full rounded border bg-muted/30 p-2 font-mono text-xs"

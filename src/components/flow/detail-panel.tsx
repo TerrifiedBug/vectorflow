@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
+import { useParams } from "next/navigation";
 import { Copy, Trash2 } from "lucide-react";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
@@ -76,12 +77,13 @@ function formatBytes(v: number): string {
 /*  Helper: trace upstream to find source types                        */
 /* ------------------------------------------------------------------ */
 
-function getUpstreamSourceTypes(
+function getUpstreamSources(
   nodeId: string,
   allNodes: Node[],
   allEdges: Edge[],
-): string[] {
-  const sourceTypes: string[] = [];
+): { sourceTypes: string[]; sourceKeys: string[] } {
+  const sourceTypes = new Set<string>();
+  const sourceKeys = new Set<string>();
   const visited = new Set<string>();
   const queue = [nodeId];
 
@@ -90,7 +92,6 @@ function getUpstreamSourceTypes(
     if (visited.has(currentId)) continue;
     visited.add(currentId);
 
-    // Find all edges that target this node
     const incomingEdges = allEdges.filter((e) => e.target === currentId);
     for (const edge of incomingEdges) {
       const upstreamNode = allNodes.find((n) => n.id === edge.source);
@@ -98,18 +99,18 @@ function getUpstreamSourceTypes(
 
       const data = upstreamNode.data as {
         componentDef?: VectorComponentDef;
+        componentKey?: string;
       };
       if (data.componentDef?.kind === "source") {
-        // Found a source — collect its type and don't trace further
-        sourceTypes.push(data.componentDef.type);
+        sourceTypes.add(data.componentDef.type);
+        if (data.componentKey) sourceKeys.add(data.componentKey);
       } else {
-        // Not a source — continue tracing upstream
         queue.push(upstreamNode.id);
       }
     }
   }
 
-  return [...new Set(sourceTypes)];
+  return { sourceTypes: [...sourceTypes], sourceKeys: [...sourceKeys] };
 }
 
 /* ------------------------------------------------------------------ */
@@ -117,6 +118,8 @@ function getUpstreamSourceTypes(
 /* ------------------------------------------------------------------ */
 
 export function DetailPanel() {
+  const params = useParams<{ id: string }>();
+  const pipelineId = params?.id;
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
   const selectedNodeIds = useFlowStore((s) => s.selectedNodeIds);
   const copySelectedNodes = useFlowStore((s) => s.copySelectedNodes);
@@ -131,11 +134,11 @@ export function DetailPanel() {
     ? nodes.find((n) => n.id === selectedNodeId)
     : null;
 
-  const upstreamSourceTypes = useMemo(
+  const upstream = useMemo(
     () =>
       selectedNodeId
-        ? getUpstreamSourceTypes(selectedNodeId, nodes, edges)
-        : [],
+        ? getUpstreamSources(selectedNodeId, nodes, edges)
+        : { sourceTypes: [], sourceKeys: [] },
     [selectedNodeId, nodes, edges],
   );
 
@@ -315,7 +318,9 @@ export function DetailPanel() {
                 <VrlEditor
                   value={(config.source as string) ?? ""}
                   onChange={(v) => handleConfigChange({ ...config, source: v })}
-                  sourceTypes={upstreamSourceTypes}
+                  sourceTypes={upstream.sourceTypes}
+                  pipelineId={pipelineId}
+                  upstreamSourceKeys={upstream.sourceKeys}
                 />
               </div>
             )}
@@ -327,7 +332,9 @@ export function DetailPanel() {
                 <VrlEditor
                   value={(config.condition as string) ?? ""}
                   onChange={(v) => handleConfigChange({ ...config, condition: v })}
-                  sourceTypes={upstreamSourceTypes}
+                  sourceTypes={upstream.sourceTypes}
+                  pipelineId={pipelineId}
+                  upstreamSourceKeys={upstream.sourceKeys}
                 />
               </div>
             )}
@@ -355,7 +362,9 @@ export function DetailPanel() {
                         })
                       }
                       height="120px"
-                      sourceTypes={upstreamSourceTypes}
+                      sourceTypes={upstream.sourceTypes}
+                      pipelineId={pipelineId}
+                      upstreamSourceKeys={upstream.sourceKeys}
                     />
                   </div>
                 ))}
