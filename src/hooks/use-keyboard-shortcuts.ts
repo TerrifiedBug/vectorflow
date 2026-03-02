@@ -25,9 +25,14 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
     function handleKeyDown(e: KeyboardEvent) {
       const isMeta = e.metaKey || e.ctrlKey;
 
-      // Don't trigger shortcuts when typing in inputs/textareas
+      // Don't trigger shortcuts when typing in inputs/textareas/editors
       const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable ||
+        target.closest(".monaco-editor")
+      ) {
         // Allow Cmd+S even in inputs
         if (!(isMeta && e.key === "s")) return;
       }
