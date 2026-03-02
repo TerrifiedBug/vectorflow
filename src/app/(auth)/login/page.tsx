@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Shield, KeyRound } from "lucide-react";
+import { Shield, KeyRound, Loader2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -95,7 +95,13 @@ export default function LoginPage() {
   }
 
   if (checkingSetup) {
-    return null;
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
