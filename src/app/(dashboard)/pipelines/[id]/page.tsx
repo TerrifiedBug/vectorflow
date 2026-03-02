@@ -32,6 +32,7 @@ import { FlowToolbar } from "@/components/flow/flow-toolbar";
 import { DetailPanel } from "@/components/flow/detail-panel";
 import { DeployDialog } from "@/components/flow/deploy-dialog";
 import { SaveTemplateDialog } from "@/components/flow/save-template-dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PipelineMetricsChart } from "@/components/pipeline/metrics-chart";
 
 /**
@@ -100,6 +101,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const [deployOpen, setDeployOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [undeployOpen, setUndeployOpen] = useState(false);
   const [metricsOpen, setMetricsOpen] = useState(false);
 
   const loadGraph = useFlowStore((s) => s.loadGraph);
@@ -346,7 +348,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             onSave={handleSave}
             isSaving={saveMutation.isPending}
             onDeploy={handleDeploy}
-            onUndeploy={() => undeployMutation.mutate({ pipelineId })}
+            onUndeploy={() => setUndeployOpen(true)}
             onSaveAsTemplate={() => setTemplateOpen(true)}
             isDraft={pipelineQuery.data?.isDraft}
             deployedAt={pipelineQuery.data?.deployedAt}
@@ -401,6 +403,20 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       )}
       <DeployDialog pipelineId={pipelineId} open={deployOpen} onOpenChange={setDeployOpen} />
       <SaveTemplateDialog open={templateOpen} onOpenChange={setTemplateOpen} />
+      <ConfirmDialog
+        open={undeployOpen}
+        onOpenChange={setUndeployOpen}
+        title="Undeploy pipeline?"
+        description="This will stop the running pipeline and remove the deployed configuration. You can redeploy at any time."
+        confirmLabel="Undeploy"
+        variant="destructive"
+        isPending={undeployMutation.isPending}
+        pendingLabel="Undeploying..."
+        onConfirm={() => {
+          undeployMutation.mutate({ pipelineId });
+          setUndeployOpen(false);
+        }}
+      />
     </div>
   );
 }
