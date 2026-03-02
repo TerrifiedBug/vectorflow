@@ -21,11 +21,32 @@ const nodeStatusDot: Record<string, string> = {
   UNKNOWN: "bg-gray-400",
 };
 
+function fmtCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(Math.round(n));
+}
+
+function fmtRate(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M/s`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K/s`;
+  if (n >= 1) return `${n.toFixed(1)}/s`;
+  if (n > 0) return `${n.toFixed(2)}/s`;
+  return "0/s";
+}
+
 function formatBytes(v: number): string {
   if (v >= 1_073_741_824) return `${(v / 1_073_741_824).toFixed(1)} GB`;
   if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB`;
   if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB`;
   return `${v} B`;
+}
+
+function fmtBytesRate(v: number): string {
+  if (v >= 1_073_741_824) return `${(v / 1_073_741_824).toFixed(1)} GB/s`;
+  if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB/s`;
+  if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB/s`;
+  return `${Math.round(v)} B/s`;
 }
 
 function relativeTime(date: Date | string | null): string {
@@ -53,14 +74,15 @@ interface PipelineCardProps {
       status: string;
       pipelineStatus: string;
     }>;
-    totals: { eventsIn: number; eventsOut: number; bytesIn: number; bytesOut: number };
+    rates: { eventsIn: number; eventsOut: number; bytesIn: number; bytesOut: number; errors: number };
+    totals: { eventsIn: number; eventsOut: number; bytesIn: number; bytesOut: number; errors: number };
     sparkline: Array<{ t: number; eventsIn: number; eventsOut: number }>;
   };
 }
 
 export function PipelineCard({ pipeline }: PipelineCardProps) {
   const eventsData = pipeline.sparkline.map((s) => s.eventsIn + s.eventsOut);
-  const { totals } = pipeline;
+  const { rates, totals } = pipeline;
 
   return (
     <Link href={`/pipelines/${pipeline.id}`} className="block">
@@ -81,18 +103,34 @@ export function PipelineCard({ pipeline }: PipelineCardProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* Throughput + sparkline */}
+          {/* Live rates + sparkline */}
           <div className="flex items-center justify-between">
-            <div className="text-xs text-muted-foreground space-y-0.5">
-              <p>
-                <span className="font-mono text-foreground">{totals.eventsIn.toLocaleString()}</span> in / <span className="font-mono text-foreground">{totals.eventsOut.toLocaleString()}</span> out ev/s
+            <div className="text-xs space-y-0.5">
+              <p className="text-muted-foreground">
+                <span className="font-mono text-foreground">{fmtRate(rates.eventsIn)}</span> in / <span className="font-mono text-foreground">{fmtRate(rates.eventsOut)}</span> out
               </p>
-              <p>
-                {formatBytes(totals.bytesIn)} in / {formatBytes(totals.bytesOut)} out
+              <p className="text-muted-foreground">
+                {fmtBytesRate(rates.bytesIn)} in / {fmtBytesRate(rates.bytesOut)} out
               </p>
             </div>
             <Sparkline data={eventsData} color="#8b5cf6" />
           </div>
+
+          {/* Cumulative totals */}
+          <div className="text-[10px] text-muted-foreground space-y-0.5">
+            <p>Total: {fmtCount(totals.eventsIn)} in / {fmtCount(totals.eventsOut)} out events</p>
+            <p>Total: {formatBytes(totals.bytesIn)} in / {formatBytes(totals.bytesOut)} out</p>
+          </div>
+
+          {/* Errors */}
+          {(rates.errors > 0 || totals.errors > 0) && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="h-1.5 w-1.5 rounded-full shrink-0 bg-red-500" />
+              <span className="text-red-600 dark:text-red-400 font-medium">
+                {rates.errors > 0 ? `${rates.errors.toFixed(1)}/s` : fmtCount(totals.errors)} errors
+              </span>
+            </div>
+          )}
 
           {/* Nodes list */}
           {pipeline.nodes.length > 0 && (

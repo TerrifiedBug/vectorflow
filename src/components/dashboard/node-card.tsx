@@ -48,6 +48,13 @@ interface NodeCardProps {
     environment: { id: string; name: string };
     pipelineCount: number;
     unhealthyPipelines: number;
+    rates: {
+      eventsIn: number;
+      eventsOut: number;
+      bytesIn: number;
+      bytesOut: number;
+      errors: number;
+    };
     totals: {
       eventsIn: number;
       eventsOut: number;
@@ -110,32 +117,44 @@ export function NodeCard({ node }: NodeCardProps) {
             <span className="text-muted-foreground">{pipelineLabel}</span>
           </div>
 
-          {/* Aggregated stats 2x2 grid */}
+          {/* Live rates */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Events in</span>
-              <span className="font-mono">{fmtRate(node.totals.eventsIn)}/s</span>
+              <span className="font-mono">{fmtRate(node.rates.eventsIn)}/s</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Events out</span>
-              <span className="font-mono">{fmtRate(node.totals.eventsOut)}/s</span>
+              <span className="font-mono">{fmtRate(node.rates.eventsOut)}/s</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Bytes in</span>
-              <span className="font-mono">{fmtBytes(node.totals.bytesIn)}/s</span>
+              <span className="font-mono">{fmtBytes(node.rates.bytesIn)}/s</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Bytes out</span>
-              <span className="font-mono">{fmtBytes(node.totals.bytesOut)}/s</span>
+              <span className="font-mono">{fmtBytes(node.rates.bytesOut)}/s</span>
+            </div>
+          </div>
+
+          {/* Cumulative totals */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-muted-foreground">
+            <div className="flex justify-between">
+              <span>Total in</span>
+              <span className="font-mono">{fmtRate(node.totals.eventsIn)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Total out</span>
+              <span className="font-mono">{fmtRate(node.totals.eventsOut)}</span>
             </div>
           </div>
 
           {/* Errors (only if > 0) */}
-          {node.totals.errors > 0 && (
+          {(node.rates.errors > 0 || node.totals.errors > 0) && (
             <div className="flex items-center gap-1.5 text-xs">
               <span className="h-1.5 w-1.5 rounded-full shrink-0 bg-red-500" />
               <span className="text-red-600 dark:text-red-400 font-medium">
-                {fmtRate(node.totals.errors)} errors
+                {node.rates.errors > 0 ? `${node.rates.errors.toFixed(1)}/s` : fmtRate(node.totals.errors)} errors
               </span>
             </div>
           )}

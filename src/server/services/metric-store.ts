@@ -94,6 +94,17 @@ class MetricStore {
     }
     return result;
   }
+
+  /** Get the latest sample for every component across all nodes. Keyed by "nodeId:componentId". */
+  getLatestAll(): Map<string, MetricSample> {
+    const result = new Map<string, MetricSample>();
+    for (const [key, samples] of this.samples) {
+      if (samples.length > 0) {
+        result.set(key, samples[samples.length - 1]);
+      }
+    }
+    return result;
+  }
 }
 
 const globalForMetrics = globalThis as unknown as { metricStore: MetricStore | undefined };
