@@ -17,15 +17,15 @@ export interface VrlSnippet {
 
 export const VRL_SNIPPETS: VrlSnippet[] = [
   // ── Parsing ──────────────────────────────────────────
-  { id: "parse-json", name: "parse_json", description: "Parse JSON from .message and merge into event (preserves existing fields)", category: "Parsing", code: '. = merge(., parse_json!(.message))', placeholders: [".message"] },
-  { id: "parse-syslog", name: "parse_syslog", description: "Parse syslog-formatted message and merge into event", category: "Parsing", code: '. = merge(., parse_syslog!(.message))', placeholders: [".message"] },
+  { id: "parse-json", name: "parse_json", description: "Parse JSON from .message and merge into event (preserves existing fields)", category: "Parsing", code: '. = merge!(., parse_json!(.message))', placeholders: [".message"] },
+  { id: "parse-syslog", name: "parse_syslog", description: "Parse syslog-formatted message and merge into event", category: "Parsing", code: '. = merge!(., parse_syslog!(.message))', placeholders: [".message"] },
   { id: "parse-csv", name: "parse_csv", description: "Parse a CSV row into an array", category: "Parsing", code: '.parsed = parse_csv!(.message)', placeholders: [".message"] },
-  { id: "parse-key-value", name: "parse_key_value", description: "Parse key=value pairs and merge into event (preserves existing fields)", category: "Parsing", code: '. = merge(., parse_key_value!(.message))', placeholders: [".message"] },
-  { id: "parse-regex", name: "parse_regex", description: "Extract fields using a named-capture regex and merge into event", category: "Parsing", code: ". = merge(., parse_regex!(.message, r'^(?P<timestamp>\\S+) (?P<level>\\w+) (?P<msg>.*)$'))", placeholders: [".message"] },
-  { id: "parse-grok", name: "parse_grok", description: "Parse using a Grok pattern and merge into event", category: "Parsing", code: '. = merge(., parse_grok!(.message, "%{COMBINEDAPACHELOG}"))', placeholders: [".message", "%{COMBINEDAPACHELOG}"] },
+  { id: "parse-key-value", name: "parse_key_value", description: "Parse key=value pairs and merge into event (preserves existing fields)", category: "Parsing", code: '. = merge!(., parse_key_value!(.message))', placeholders: [".message"] },
+  { id: "parse-regex", name: "parse_regex", description: "Extract fields using a named-capture regex and merge into event", category: "Parsing", code: ". = merge!(., parse_regex!(.message, r'^(?P<timestamp>\\S+) (?P<level>\\w+) (?P<msg>.*)$'))", placeholders: [".message"] },
+  { id: "parse-grok", name: "parse_grok", description: "Parse using a Grok pattern and merge into event", category: "Parsing", code: '. = merge!(., parse_grok!(.message, "%{COMBINEDAPACHELOG}"))', placeholders: [".message", "%{COMBINEDAPACHELOG}"] },
   { id: "parse-xml", name: "parse_xml", description: "Parse an XML string into an object", category: "Parsing", code: '.parsed = parse_xml!(.message)', placeholders: [".message"] },
-  { id: "parse-apache-log", name: "parse_apache_log", description: "Parse Apache combined log and merge into event", category: "Parsing", code: '. = merge(., parse_apache_log!(.message, format: "combined"))', placeholders: [".message"] },
-  { id: "parse-nginx-log", name: "parse_nginx_log", description: "Parse Nginx combined log and merge into event", category: "Parsing", code: '. = merge(., parse_nginx_log!(.message, format: "combined"))', placeholders: [".message"] },
+  { id: "parse-apache-log", name: "parse_apache_log", description: "Parse Apache combined log and merge into event", category: "Parsing", code: '. = merge!(., parse_apache_log!(.message, format: "combined"))', placeholders: [".message"] },
+  { id: "parse-nginx-log", name: "parse_nginx_log", description: "Parse Nginx combined log and merge into event", category: "Parsing", code: '. = merge!(., parse_nginx_log!(.message, format: "combined"))', placeholders: [".message"] },
 
   // ── Filtering ────────────────────────────────────────
   { id: "del-field", name: "del(.field)", description: "Delete a field from the event", category: "Filtering", code: 'del(.field_name)', placeholders: [".field_name"] },
@@ -38,7 +38,7 @@ export const VRL_SNIPPETS: VrlSnippet[] = [
   // ── Enrichment ───────────────────────────────────────
   { id: "set-field", name: "set field", description: "Set a new field on the event", category: "Enrichment", code: '.environment = "production"', placeholders: [".environment"] },
   { id: "rename-field", name: "rename field", description: "Rename a field by copying and deleting the original", category: "Enrichment", code: '.new_name = del(.old_name)', placeholders: [".new_name", ".old_name"] },
-  { id: "merge-objects", name: "merge objects", description: "Merge two objects together", category: "Enrichment", code: '. = merge(., {"source": "vectorflow", "processed": true})' },
+  { id: "merge-objects", name: "merge objects", description: "Merge two objects together", category: "Enrichment", code: '. = merge!(., {"source": "vectorflow", "processed": true})' },
   { id: "add-tags", name: "add tags", description: "Add tags to the event", category: "Enrichment", code: '.tags = push(.tags ?? [], "processed")', placeholders: [".tags"] },
   { id: "set-timestamp", name: "set timestamp", description: "Set the timestamp to the current time", category: "Enrichment", code: '.timestamp = now()' },
   { id: "uuid", name: "uuid_v4()", description: "Generate a unique ID for the event", category: "Enrichment", code: '.id = uuid_v4()' },
