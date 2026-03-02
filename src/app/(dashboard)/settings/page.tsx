@@ -64,6 +64,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 
 // ─── Auth Tab ──────────────────────────────────────────────────────────────────
@@ -1376,25 +1381,49 @@ function UsersSettings() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex items-center gap-1">
                       {user.memberships.length === 0 && (
                         <span className="text-xs text-muted-foreground">No teams</span>
                       )}
-                      {user.memberships.map((m) => (
-                        <Badge key={m.team.id} variant="outline" className="text-xs flex items-center gap-1">
-                          {m.team.name} ({m.role.charAt(0) + m.role.slice(1).toLowerCase()})
-                          <button
-                            type="button"
-                            className="ml-0.5 rounded-full hover:bg-muted p-0.5"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setRemoveFromTeamConfirm({ userId: user.id, userName: user.name ?? user.email, teamId: m.team.id, teamName: m.team.name });
-                            }}
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
+                      {user.memberships.slice(0, 2).map((m) => (
+                        <Badge key={m.team.id} variant="outline" className="text-xs">
+                          {m.team.name}
                         </Badge>
                       ))}
+                      {user.memberships.length > 2 && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-6 px-2 text-xs">
+                              +{user.memberships.length - 2} more
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-64 p-3" align="start">
+                            <p className="mb-2 text-sm font-medium">Team Memberships</p>
+                            <div className="space-y-2">
+                              {user.memberships.map((m) => (
+                                <div key={m.team.id} className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="text-xs">{m.team.name}</Badge>
+                                    <span className="text-xs text-muted-foreground">
+                                      {m.role.charAt(0) + m.role.slice(1).toLowerCase()}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="rounded-full hover:bg-muted p-0.5"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setRemoveFromTeamConfirm({ userId: user.id, userName: user.name ?? user.email, teamId: m.team.id, teamName: m.team.name });
+                                    }}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>
