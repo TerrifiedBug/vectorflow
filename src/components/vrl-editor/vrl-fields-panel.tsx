@@ -22,17 +22,13 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import type { OutputFieldSchema } from "@/lib/vector/source-output-schemas";
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
 export interface VrlFieldsPanelProps {
-  staticFields: Array<{
-    path: string;
-    type: string;
-    description: string;
-    always: boolean;
-  }>;
+  staticFields: OutputFieldSchema[];
   liveFields: Array<{ path: string; type: string; sample: string }>;
   onInsert: (code: string) => void;
 }
@@ -204,7 +200,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     label: "Parse as timestamp",
     icon: Clock,
     getCode: (path) =>
-      `${path} = format_timestamp!(${path}, format: "%Y-%m-%d %H:%M:%S")`,
+      `${path} = parse_timestamp!(${path}, format: "%+")`,
     applies: (f) =>
       f.type === "string" && f.sample !== "" && looksLikeTimestamp(f.sample),
   },
@@ -244,10 +240,7 @@ function FieldRow({
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const relativeName = getRelativeName(field.path, groupKey);
-  const applicableActions = useMemo(
-    () => QUICK_ACTIONS.filter((a) => a.applies(field)),
-    [field],
-  );
+  const applicableActions = QUICK_ACTIONS.filter((a) => a.applies(field));
 
   const handleRenameSubmit = useCallback(() => {
     if (renameValue.trim()) {
@@ -349,7 +342,7 @@ function FieldRow({
           <Input
             autoFocus
             className="h-5 w-24 px-1 text-xs font-mono"
-            placeholder="new_name"
+            placeholder=".new_name ⏎"
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
             onKeyDown={(e) => {
@@ -462,6 +455,7 @@ export function VrlFieldsPanel({
             <div key={groupKey}>
               <button
                 onClick={() => toggleGroup(groupKey)}
+                aria-expanded={!collapsed.has(groupKey)}
                 className="flex w-full items-center gap-1 rounded px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted/50"
               >
                 {collapsed.has(groupKey) ? (
