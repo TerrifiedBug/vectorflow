@@ -3,12 +3,14 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { Search } from "lucide-react";
+import { Search, Server, Activity, GitBranch, BarChart3 } from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NodeCard } from "@/components/dashboard/node-card";
@@ -108,75 +110,77 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Summary bar */}
-      <div className="flex flex-wrap items-center gap-6 rounded-lg border bg-card px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">
-            Nodes
-          </span>
-          {stats.data?.fleet.healthy != null && stats.data.fleet.healthy > 0 && (
-            <Badge
-              variant="outline"
-              className="text-green-600 border-green-600"
-            >
-              {stats.data.fleet.healthy} Healthy
-            </Badge>
-          )}
-          {stats.data?.fleet.degraded != null && stats.data.fleet.degraded > 0 && (
-            <Badge
-              variant="outline"
-              className="text-yellow-600 border-yellow-600"
-            >
-              {stats.data.fleet.degraded} Degraded
-            </Badge>
-          )}
-          {stats.data?.fleet.unreachable != null && stats.data.fleet.unreachable > 0 && (
-            <Badge
-              variant="outline"
-              className="text-red-600 border-red-600"
-            >
-              {stats.data.fleet.unreachable} Unreachable
-            </Badge>
-          )}
-          {stats.data && stats.data.nodes === 0 && (
-            <span className="text-sm text-muted-foreground">None</span>
-          )}
-        </div>
+      {/* KPI Summary Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {/* Total Nodes */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-muted-foreground">Total Nodes</p>
+              <Server className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <p className="mt-1 text-2xl font-bold">{stats.data?.nodes ?? 0}</p>
+          </CardContent>
+        </Card>
 
-        <div className="h-6 w-px bg-border" />
+        {/* Node Health */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-muted-foreground">Node Health</p>
+              <Activity className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {stats.data?.fleet.healthy != null && stats.data.fleet.healthy > 0 && (
+                <StatusBadge variant="healthy">{stats.data.fleet.healthy} Healthy</StatusBadge>
+              )}
+              {stats.data?.fleet.degraded != null && stats.data.fleet.degraded > 0 && (
+                <StatusBadge variant="degraded">{stats.data.fleet.degraded} Degraded</StatusBadge>
+              )}
+              {stats.data?.fleet.unreachable != null && stats.data.fleet.unreachable > 0 && (
+                <StatusBadge variant="error">{stats.data.fleet.unreachable} Unreachable</StatusBadge>
+              )}
+              {stats.data && stats.data.nodes === 0 && (
+                <span className="text-sm text-muted-foreground">No nodes</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">
-            Pipelines
-          </span>
-          {pipelineStatusCounts.running > 0 && (
-            <Badge
-              variant="outline"
-              className="text-green-600 border-green-600"
-            >
-              {pipelineStatusCounts.running} Running
-            </Badge>
-          )}
-          {pipelineStatusCounts.stopped > 0 && (
-            <Badge
-              variant="outline"
-              className="text-gray-600 border-gray-600"
-            >
-              {pipelineStatusCounts.stopped} Stopped
-            </Badge>
-          )}
-          {pipelineStatusCounts.crashed > 0 && (
-            <Badge
-              variant="outline"
-              className="text-red-600 border-red-600"
-            >
-              {pipelineStatusCounts.crashed} Crashed
-            </Badge>
-          )}
-          {stats.data && stats.data.pipelines === 0 && (
-            <span className="text-sm text-muted-foreground">None</span>
-          )}
-        </div>
+        {/* Total Pipelines */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-muted-foreground">Pipelines</p>
+              <GitBranch className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <p className="mt-1 text-2xl font-bold">{stats.data?.pipelines ?? 0}</p>
+          </CardContent>
+        </Card>
+
+        {/* Pipeline Status */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-muted-foreground">Pipeline Status</p>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {pipelineStatusCounts.running > 0 && (
+                <StatusBadge variant="healthy">{pipelineStatusCounts.running} Running</StatusBadge>
+              )}
+              {pipelineStatusCounts.stopped > 0 && (
+                <StatusBadge variant="neutral">{pipelineStatusCounts.stopped} Stopped</StatusBadge>
+              )}
+              {pipelineStatusCounts.crashed > 0 && (
+                <StatusBadge variant="error">{pipelineStatusCounts.crashed} Crashed</StatusBadge>
+              )}
+              {stats.data && stats.data.pipelines === 0 && (
+                <span className="text-sm text-muted-foreground">No pipelines</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Tabbed content */}
