@@ -25,6 +25,7 @@ model User {
   totpBackupCodes    String?
   auditLogs          AuditLog[]
   pipelinesUpdated   Pipeline[]   @relation("PipelineUpdatedBy")
+  vrlSnippets        VrlSnippet[]
   createdAt          DateTime     @default(now())
 }
 
@@ -40,6 +41,7 @@ model Team {
   members          TeamMember[]
   environments     Environment[]
   templates        Template[]
+  vrlSnippets      VrlSnippet[]
   createdAt        DateTime      @default(now())
 }
 
@@ -401,4 +403,21 @@ model Account {
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+}
+
+model VrlSnippet {
+  id          String   @id @default(cuid())
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  category    String
+  code        String
+  createdBy   String
+  creator     User     @relation(fields: [createdBy], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([teamId, name])
+  @@index([teamId])
 }

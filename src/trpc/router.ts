@@ -15,6 +15,7 @@ import { userRouter } from "@/server/routers/user";
 import { adminRouter } from "@/server/routers/admin";
 import { secretRouter } from "@/server/routers/secret";
 import { certificateRouter } from "@/server/routers/certificate";
+import { vrlSnippetRouter } from "@/server/routers/vrl-snippet";
 
 export const appRouter = router({
   team: teamRouter,
@@ -33,6 +34,7 @@ export const appRouter = router({
   admin: adminRouter,
   secret: secretRouter,
   certificate: certificateRouter,
+  vrlSnippet: vrlSnippetRouter,
 });
 
 export type AppRouter = typeof appRouter;
