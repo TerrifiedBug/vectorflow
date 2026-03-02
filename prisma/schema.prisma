@@ -264,6 +264,7 @@ model PipelineVersion {
   version     Int
   configYaml  String
   configToml  String?
+  logLevel    String?
   createdById String
   changelog   String?
   createdAt   DateTime @default(now())

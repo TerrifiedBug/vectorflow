@@ -11,6 +11,7 @@ export async function createVersion(
   configYaml: string,
   userId: string,
   changelog?: string,
+  logLevel?: string | null,
 ) {
   // Find the highest existing version number for this pipeline
   const latest = await prisma.pipelineVersion.findFirst({
@@ -26,6 +27,7 @@ export async function createVersion(
       pipelineId,
       version: nextVersion,
       configYaml,
+      logLevel: logLevel ?? null,
       createdById: userId,
       changelog,
     },
@@ -99,5 +101,6 @@ export async function rollback(
     targetVersion.configYaml,
     userId,
     `Rollback to version ${targetVersion.version}`,
+    targetVersion.logLevel,
   );
 }
