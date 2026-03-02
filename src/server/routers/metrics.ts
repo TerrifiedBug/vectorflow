@@ -4,39 +4,50 @@ import { metricStore } from "@/server/services/metric-store";
 import { prisma } from "@/lib/prisma";
 
 export const metricsRouter = router({
-  getComponentMetrics: protectedProcedure
-    .input(
-      z.object({
-        nodeId: z.string(),
-        componentId: z.string(),
-        minutes: z.number().int().min(1).max(60).default(60),
-      }),
-    )
-    .query(({ input }) => {
-      return metricStore.getSamples(input.nodeId, input.componentId, input.minutes);
-    }),
-
-  getNodeMetrics: protectedProcedure
-    .input(
-      z.object({
-        nodeId: z.string(),
-        minutes: z.number().int().min(1).max(60).default(60),
-      }),
-    )
-    .query(({ input }) => {
-      const allMetrics = metricStore.getAllForNode(input.nodeId, input.minutes);
-      const result: Record<string, { samples: ReturnType<typeof metricStore.getSamples> }> = {};
-      for (const [componentId, samples] of allMetrics) {
-        result[componentId] = { samples };
-      }
-      return result;
-    }),
-
+  /**
+   * Pipeline-level metrics from the database (persistent, per-minute rollups).
+   * Used by the standalone metrics page and anywhere that needs historical data.
+   */
   getPipelineMetrics: protectedProcedure
     .input(
       z.object({
         pipelineId: z.string(),
-        minutes: z.number().int().min(1).max(60).default(60),
+        minutes: z.number().int().min(1).max(1440).default(60),
+      }),
+    )
+    .query(async ({ input }) => {
+      const since = new Date(Date.now() - input.minutes * 60 * 1000);
+
+      const rows = await prisma.pipelineMetric.findMany({
+        where: {
+          pipelineId: input.pipelineId,
+          nodeId: null,
+          timestamp: { gte: since },
+        },
+        orderBy: { timestamp: "asc" },
+        select: {
+          timestamp: true,
+          eventsIn: true,
+          eventsOut: true,
+          errorsTotal: true,
+          bytesIn: true,
+          bytesOut: true,
+          utilization: true,
+        },
+      });
+
+      return { rows };
+    }),
+
+  /**
+   * Per-component live metrics from the in-memory store.
+   * Used by the flow editor to overlay throughput on nodes.
+   */
+  getComponentMetrics: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        minutes: z.number().int().min(1).max(60).default(5),
       }),
     )
     .query(async ({ input }) => {

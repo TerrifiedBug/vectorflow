@@ -138,7 +138,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   // Poll per-component metrics from the in-memory MetricStore
   const isDeployed = pipelineQuery.data && !pipelineQuery.data.isDraft;
   const componentMetricsQuery = useQuery(
-    trpc.metrics.getPipelineMetrics.queryOptions(
+    trpc.metrics.getComponentMetrics.queryOptions(
       { pipelineId, minutes: 5 },
       { enabled: !!isDeployed, refetchInterval: 5000 },
     ),
