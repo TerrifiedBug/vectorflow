@@ -109,12 +109,16 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 
 		case "component_received_bytes_total":
 			v := int64(value)
-			sr.Pipeline.BytesIn += v
+			if componentKind == "source" {
+				sr.Pipeline.BytesIn += v
+			}
 			getOrCreate(componentMap, componentID, componentKind).ReceivedBytes = v
 
 		case "component_sent_bytes_total":
 			v := int64(value)
-			sr.Pipeline.BytesOut += v
+			if componentKind == "sink" {
+				sr.Pipeline.BytesOut += v
+			}
 			getOrCreate(componentMap, componentID, componentKind).SentBytes = v
 
 		case "component_errors_total":
@@ -127,36 +131,40 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 			sr.Pipeline.EventsDiscarded += v
 			getOrCreate(componentMap, componentID, componentKind).DiscardedEvents += v
 
-		// Host metrics
+		// Host metrics – use += to aggregate across CPU cores, devices, interfaces, etc.
 		case "host_memory_total_bytes":
-			sr.Host.MemoryTotalBytes = int64(value)
+			sr.Host.MemoryTotalBytes += int64(value)
 		case "host_memory_used_bytes":
-			sr.Host.MemoryUsedBytes = int64(value)
+			sr.Host.MemoryUsedBytes += int64(value)
 		case "host_memory_free_bytes":
-			sr.Host.MemoryFreeBytes = int64(value)
+			sr.Host.MemoryFreeBytes += int64(value)
 		case "host_cpu_seconds_total":
-			sr.Host.CpuSecondsTotal = value
+			sr.Host.CpuSecondsTotal += value
 		case "host_load1":
-			sr.Host.LoadAvg1 = value
+			sr.Host.LoadAvg1 += value
 		case "host_load5":
-			sr.Host.LoadAvg5 = value
+			sr.Host.LoadAvg5 += value
 		case "host_load15":
-			sr.Host.LoadAvg15 = value
+			sr.Host.LoadAvg15 += value
 		case "host_filesystem_total_bytes":
-			sr.Host.FsTotalBytes = int64(value)
+			sr.Host.FsTotalBytes += int64(value)
 		case "host_filesystem_used_bytes":
-			sr.Host.FsUsedBytes = int64(value)
+			sr.Host.FsUsedBytes += int64(value)
 		case "host_filesystem_free_bytes":
-			sr.Host.FsFreeBytes = int64(value)
+			sr.Host.FsFreeBytes += int64(value)
 		case "host_disk_read_bytes_total":
-			sr.Host.DiskReadBytes = int64(value)
+			sr.Host.DiskReadBytes += int64(value)
 		case "host_disk_written_bytes_total":
-			sr.Host.DiskWrittenBytes = int64(value)
+			sr.Host.DiskWrittenBytes += int64(value)
 		case "host_network_receive_bytes_total":
-			sr.Host.NetRxBytes = int64(value)
+			sr.Host.NetRxBytes += int64(value)
 		case "host_network_transmit_bytes_total":
-			sr.Host.NetTxBytes = int64(value)
+			sr.Host.NetTxBytes += int64(value)
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return ScrapeResult{}
 	}
 
 	// Convert component map to slice, filtering out injected vf_ components
@@ -189,7 +197,8 @@ func getOrCreate(m map[string]*ComponentMetrics, id, kind string) *ComponentMetr
 func parsePrometheusLine(line string) (string, map[string]string, float64) {
 	labels := make(map[string]string)
 
-	// Split value from the end
+	// Split value (and optional timestamp) from the metric name + labels
+	// Format: name{labels} value [timestamp]
 	spaceIdx := strings.LastIndex(line, " ")
 	if spaceIdx < 0 {
 		return "", nil, 0
@@ -200,6 +209,17 @@ func parsePrometheusLine(line string) (string, map[string]string, float64) {
 	value, err := strconv.ParseFloat(valueStr, 64)
 	if err != nil {
 		return "", nil, 0
+	}
+
+	// Check if what we parsed is actually a timestamp (the real value is before it)
+	// Timestamps are Unix milliseconds (13+ digits), values are typically much smaller
+	// More robust: check if there's another space indicating metric value timestamp format
+	if innerSpace := strings.LastIndex(prefix, " "); innerSpace >= 0 {
+		if innerVal, innerErr := strconv.ParseFloat(prefix[innerSpace+1:], 64); innerErr == nil {
+			// This is the actual metric value; what we first parsed was the timestamp
+			value = innerVal
+			prefix = prefix[:innerSpace]
+		}
 	}
 
 	// Split name from labels
