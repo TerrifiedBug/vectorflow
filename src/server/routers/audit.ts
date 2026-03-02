@@ -118,4 +118,18 @@ export const auditRouter = router({
     });
     return results.map((r) => r.entityType);
   }),
+
+  /** Distinct users who have audit log entries */
+  users: protectedProcedure.query(async () => {
+    const results = await prisma.auditLog.findMany({
+      where: { userId: { not: null } },
+      select: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+      distinct: ["userId"],
+    });
+    return results
+      .filter((r) => r.user !== null)
+      .map((r) => r.user!);
+  }),
 });

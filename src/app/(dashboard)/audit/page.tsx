@@ -69,6 +69,7 @@ export default function AuditPage() {
   // Filter state
   const [actionFilter, setActionFilter] = useState<string>("");
   const [entityTypeFilter, setEntityTypeFilter] = useState<string>("");
+  const [userFilter, setUserFilter] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [search, setSearch] = useState<string>("");
@@ -79,11 +80,13 @@ export default function AuditPage() {
   // Fetch filter options
   const actionsQuery = useQuery(trpc.audit.actions.queryOptions());
   const entityTypesQuery = useQuery(trpc.audit.entityTypes.queryOptions());
+  const usersQuery = useQuery(trpc.audit.users.queryOptions());
 
   // Build query input
   const queryInput = {
     ...(actionFilter ? { action: actionFilter } : {}),
     ...(entityTypeFilter ? { entityType: entityTypeFilter } : {}),
+    ...(userFilter ? { userId: userFilter } : {}),
     ...(startDate ? { startDate } : {}),
     ...(endDate ? { endDate } : {}),
     ...(search ? { search } : {}),
@@ -100,6 +103,7 @@ export default function AuditPage() {
   const allItems = logsQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const actions = actionsQuery.data ?? [];
   const entityTypes = entityTypesQuery.data ?? [];
+  const users = usersQuery.data ?? [];
 
   function toggleRow(id: string) {
     setExpandedRows((prev) => {
@@ -191,6 +195,29 @@ export default function AuditPage() {
               </Select>
             </div>
 
+            {/* User filter */}
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">User</label>
+              <Select
+                value={userFilter || ALL_VALUE}
+                onValueChange={(v) =>
+                  setUserFilter(v === ALL_VALUE ? "" : v)
+                }
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="All users" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>All users</SelectItem>
+                  {users.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name || u.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Date range */}
             <div className="space-y-2">
               <label className="text-xs text-muted-foreground">From</label>
@@ -214,6 +241,7 @@ export default function AuditPage() {
             {/* Clear filters */}
             {(actionFilter ||
               entityTypeFilter ||
+              userFilter ||
               startDate ||
               endDate ||
               search) && (
@@ -223,6 +251,7 @@ export default function AuditPage() {
                 onClick={() => {
                   setActionFilter("");
                   setEntityTypeFilter("");
+                  setUserFilter("");
                   setStartDate("");
                   setEndDate("");
                   setSearch("");
