@@ -11,6 +11,7 @@ export async function writeAuditLog(params: {
   userEmail?: string | null;
   userName?: string | null;
   teamId?: string | null;
+  environmentId?: string | null;
 }) {
   return prisma.auditLog.create({ data: params });
 }

@@ -11,6 +11,7 @@ export const auditRouter = router({
         entityType: z.string().optional(),
         search: z.string().optional(),
         teamId: z.string().optional(),
+        environmentId: z.string().optional(),
         startDate: z.string().optional(),
         endDate: z.string().optional(),
         cursor: z.string().optional(),
@@ -46,6 +47,10 @@ export const auditRouter = router({
         conditions.push({
           OR: [{ teamId: input.teamId }, { teamId: null }],
         });
+      }
+
+      if (input.environmentId) {
+        conditions.push({ environmentId: input.environmentId });
       }
 
       if (startDate || endDate) {

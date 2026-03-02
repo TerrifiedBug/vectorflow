@@ -89,6 +89,66 @@ async function resolveTeamId(
 }
 
 /**
+ * Resolve environmentId from procedure input.
+ * Tries: input.environmentId → input.pipelineId → input.id (by entity type)
+ */
+async function resolveEnvironmentId(
+  inputData: Record<string, unknown> | undefined,
+  entityType: string,
+): Promise<string | null> {
+  if (!inputData) return null;
+
+  if (inputData.environmentId) return inputData.environmentId as string;
+
+  if (inputData.pipelineId) {
+    const pipeline = await prisma.pipeline.findUnique({
+      where: { id: inputData.pipelineId as string },
+      select: { environmentId: true },
+    });
+    return pipeline?.environmentId ?? null;
+  }
+
+  // For operations where input.id refers to the entity itself
+  if (inputData.id && entityType === "Environment") {
+    return inputData.id as string;
+  }
+
+  if (inputData.id && entityType === "Pipeline") {
+    const pipeline = await prisma.pipeline.findUnique({
+      where: { id: inputData.id as string },
+      select: { environmentId: true },
+    });
+    return pipeline?.environmentId ?? null;
+  }
+
+  if (inputData.id && entityType === "VectorNode") {
+    const node = await prisma.vectorNode.findUnique({
+      where: { id: inputData.id as string },
+      select: { environmentId: true },
+    });
+    return node?.environmentId ?? null;
+  }
+
+  if (inputData.id && entityType === "Secret") {
+    const secret = await prisma.secret.findUnique({
+      where: { id: inputData.id as string },
+      select: { environmentId: true },
+    });
+    return secret?.environmentId ?? null;
+  }
+
+  if (inputData.id && entityType === "Certificate") {
+    const cert = await prisma.certificate.findUnique({
+      where: { id: inputData.id as string },
+      select: { environmentId: true },
+    });
+    return cert?.environmentId ?? null;
+  }
+
+  return null;
+}
+
+/**
  * tRPC middleware factory for audit logging.
  *
  * Usage: procedure.use(withAudit("pipeline.created", "Pipeline"))
@@ -103,12 +163,19 @@ export function withAudit(action: string, entityType: string) {
     let inputData: unknown;
     try { inputData = await getRawInput(); } catch { /* ignore */ }
 
-    // Pre-resolve teamId for delete operations (entity won't exist after next())
+    // Pre-resolve teamId and environmentId for delete operations (entity won't exist after next())
     const ctxTeamId = (ctx as any).teamId ?? null;
     let resolvedTeamId: string | null = ctxTeamId;
-    if (!resolvedTeamId && action.includes("deleted")) {
+    let resolvedEnvironmentId: string | null = null;
+    if (action.includes("deleted")) {
       try {
-        resolvedTeamId = await resolveTeamId(
+        if (!resolvedTeamId) {
+          resolvedTeamId = await resolveTeamId(
+            inputData as Record<string, unknown> | undefined,
+            entityType,
+          );
+        }
+        resolvedEnvironmentId = await resolveEnvironmentId(
           inputData as Record<string, unknown> | undefined,
           entityType,
         );
@@ -146,12 +213,24 @@ export function withAudit(action: string, entityType: string) {
           } catch { /* ignore */ }
         }
 
+        // Resolve environmentId if not yet known
+        let environmentId = resolvedEnvironmentId;
+        if (!environmentId) {
+          try {
+            environmentId = await resolveEnvironmentId(
+              inputData as Record<string, unknown> | undefined,
+              entityType,
+            );
+          } catch { /* ignore */ }
+        }
+
         writeAuditLog({
           userId,
           action,
           entityType,
           entityId,
           teamId,
+          environmentId,
           metadata: {
             timestamp: new Date().toISOString(),
             ...(inputData ? { input: sanitizeInput(inputData) } : {}),
