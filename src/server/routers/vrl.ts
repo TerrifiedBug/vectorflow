@@ -19,11 +19,20 @@ export const vrlRouter = router({
     .mutation(async ({ input }) => {
       const start = performance.now();
 
-      const effectiveInput = input.input.trim() || JSON.stringify({
+      let effectiveInput = input.input.trim() || JSON.stringify({
         message: "test event",
         timestamp: new Date().toISOString(),
         host: "localhost",
       });
+
+      // vector vrl --input expects NDJSON (one JSON object per line).
+      // If the user pastes pretty-printed JSON, compact it to a single line.
+      try {
+        const parsed = JSON.parse(effectiveInput);
+        effectiveInput = JSON.stringify(parsed);
+      } catch {
+        // Not valid JSON — pass through and let vector report the error
+      }
 
       let tmpDir: string;
       try {
