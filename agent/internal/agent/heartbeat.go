@@ -29,16 +29,31 @@ func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string) client.Hea
 			UptimeSeconds: uptimeSeconds,
 		}
 
-		// Scrape live metrics from Vector's GraphQL API for running pipelines
-		if s.Status == "RUNNING" && s.APIPort > 0 {
-			sr := metrics.Scrape(s.APIPort)
+		// Scrape metrics from Vector's Prometheus endpoint for running pipelines
+		if s.Status == "RUNNING" && s.MetricsPort > 0 {
+			sr := metrics.ScrapePrometheus(s.MetricsPort)
 			ps.EventsIn = sr.Pipeline.EventsIn
 			ps.EventsOut = sr.Pipeline.EventsOut
 			ps.BytesIn = sr.Pipeline.BytesIn
 			ps.BytesOut = sr.Pipeline.BytesOut
 			ps.ErrorsTotal = sr.Pipeline.ErrorsTotal
+			ps.EventsDiscarded = sr.Pipeline.EventsDiscarded
 
-			// Capture host metrics from the first running pipeline's API
+			// Map per-component metrics for editor node overlays
+			for _, cm := range sr.Components {
+				ps.ComponentMetrics = append(ps.ComponentMetrics, client.ComponentMetric{
+					ComponentID:     cm.ComponentID,
+					ComponentKind:   cm.ComponentKind,
+					ReceivedEvents:  cm.ReceivedEvents,
+					SentEvents:      cm.SentEvents,
+					ReceivedBytes:   cm.ReceivedBytes,
+					SentBytes:       cm.SentBytes,
+					ErrorsTotal:     cm.ErrorsTotal,
+					DiscardedEvents: cm.DiscardedEvents,
+				})
+			}
+
+			// Capture host metrics from the first running pipeline
 			if hostMetrics == nil {
 				hostMetrics = &client.HostMetrics{
 					MemoryTotalBytes: sr.Host.MemoryTotalBytes,
