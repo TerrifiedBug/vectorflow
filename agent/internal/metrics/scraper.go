@@ -93,40 +93,40 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 
 		// Per-component pipeline metrics
 		switch name {
-		case "component_received_events_total":
+		case "vector_component_received_events_total", "component_received_events_total":
 			v := int64(value)
 			if componentKind == "source" {
 				sr.Pipeline.EventsIn += v
 			}
 			getOrCreate(componentMap, componentID, componentKind).ReceivedEvents = v
 
-		case "component_sent_events_total":
+		case "vector_component_sent_events_total", "component_sent_events_total":
 			v := int64(value)
 			if componentKind == "sink" {
 				sr.Pipeline.EventsOut += v
 			}
 			getOrCreate(componentMap, componentID, componentKind).SentEvents = v
 
-		case "component_received_bytes_total":
+		case "vector_component_received_bytes_total", "component_received_bytes_total":
 			v := int64(value)
 			if componentKind == "source" {
 				sr.Pipeline.BytesIn += v
 			}
 			getOrCreate(componentMap, componentID, componentKind).ReceivedBytes = v
 
-		case "component_sent_bytes_total":
+		case "vector_component_sent_bytes_total", "component_sent_bytes_total":
 			v := int64(value)
 			if componentKind == "sink" {
 				sr.Pipeline.BytesOut += v
 			}
 			getOrCreate(componentMap, componentID, componentKind).SentBytes = v
 
-		case "component_errors_total":
+		case "vector_component_errors_total", "component_errors_total":
 			v := int64(value)
 			sr.Pipeline.ErrorsTotal += v
 			getOrCreate(componentMap, componentID, componentKind).ErrorsTotal += v
 
-		case "component_discarded_events_total":
+		case "vector_component_discarded_events_total", "component_discarded_events_total":
 			v := int64(value)
 			sr.Pipeline.EventsDiscarded += v
 			getOrCreate(componentMap, componentID, componentKind).DiscardedEvents += v
