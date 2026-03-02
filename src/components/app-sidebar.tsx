@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { TeamSelector } from "@/components/team-selector";
+import { Separator } from "@/components/ui/separator";
 import { useTeamStore } from "@/stores/team-store";
 
 import {
@@ -61,7 +62,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader className="border-b px-4 py-3">
+      <SidebarHeader className="px-4 pt-3 pb-0">
         <Link href="/" className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Workflow className="h-4 w-4" />
@@ -70,9 +71,11 @@ export function AppSidebar() {
             VectorFlow
           </span>
         </Link>
-        <div className="px-3 pb-2">
+        <Separator className="my-2" />
+        <div className="px-3 pb-3">
           <TeamSelector />
         </div>
+        <Separator />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

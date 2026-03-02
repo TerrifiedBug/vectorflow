@@ -1152,7 +1152,7 @@ function TeamSettings() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleInvite} className="grid grid-cols-[1fr_120px_auto] items-end gap-3">
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="invite-email">Email</Label>
               <Input
                 id="invite-email"
@@ -1163,7 +1163,7 @@ function TeamSettings() {
                 required
               />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="invite-role">Role</Label>
               <Select
                 value={inviteRole}
