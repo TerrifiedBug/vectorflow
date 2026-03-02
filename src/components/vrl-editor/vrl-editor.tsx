@@ -160,7 +160,16 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
     monaco.editor.defineTheme("vrl-theme", vrlTheme);
     monaco.editor.setTheme("vrl-theme");
 
-    // Dispose previous snippet provider (Dialog remounts editor each open)
+    // Auto-focus editor so space bar and other keys work immediately
+    editor.focus();
+  }, []);
+
+  // Register snippet completion provider once when Monaco is available.
+  // useEffect cleanup disposes on unmount, preventing duplicates across Dialog open/close cycles.
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+
     snippetProviderRef.current?.dispose();
     snippetProviderRef.current = monaco.languages.registerCompletionItemProvider("plaintext", {
       provideCompletionItems(model: { getWordUntilPosition: (pos: unknown) => { startColumn: number; endColumn: number } }, position: { lineNumber: number }) {
@@ -185,9 +194,11 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
       },
     });
 
-    // Auto-focus editor so space bar and other keys work immediately
-    editor.focus();
-  }, []);
+    return () => {
+      snippetProviderRef.current?.dispose();
+      snippetProviderRef.current = null;
+    };
+  }, [expanded]);
 
   // Re-register field completion provider when sourceTypes or liveSchemaFields change
   useEffect(() => {
