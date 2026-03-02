@@ -1171,7 +1171,7 @@ function TeamSettings() {
                   setInviteRole(val)
                 }
               >
-                <SelectTrigger id="invite-role" className="h-9">
+                <SelectTrigger id="invite-role" className="h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
