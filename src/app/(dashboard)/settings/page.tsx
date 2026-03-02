@@ -1146,8 +1146,8 @@ function TeamSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleInvite} className="flex items-end gap-3">
-            <div className="min-w-0 flex-1 space-y-2">
+          <form onSubmit={handleInvite} className="grid grid-cols-[1fr_120px_auto] items-end gap-3">
+            <div className="space-y-2">
               <Label htmlFor="invite-email">Email</Label>
               <Input
                 id="invite-email"
@@ -1166,7 +1166,7 @@ function TeamSettings() {
                   setInviteRole(val)
                 }
               >
-                <SelectTrigger id="invite-role" className="h-9 w-[120px]">
+                <SelectTrigger id="invite-role" className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
