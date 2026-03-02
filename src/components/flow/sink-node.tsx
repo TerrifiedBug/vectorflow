@@ -114,13 +114,11 @@ function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
         <div className="flex items-center gap-2 border-t px-3 py-1.5 text-xs">
           <span
             className={cn(
-              "h-2 w-2 rounded-full",
+              "h-2 w-2 shrink-0 rounded-full",
               statusColors[metrics.status] ?? "bg-gray-400"
             )}
+            aria-label={`Status: ${metrics.status}`}
           />
-          <span className="text-muted-foreground">
-            {formatRate(metrics.eventsPerSec)} ev/s
-          </span>
           {metrics.samples && metrics.samples.length > 1 && (
             <NodeSparkline samples={metrics.samples} />
           )}
