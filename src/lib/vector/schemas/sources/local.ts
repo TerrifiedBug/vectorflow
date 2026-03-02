@@ -104,11 +104,6 @@ export const localSources: VectorComponentDef[] = [
           description:
             "Whether to ignore existing checkpoints when determining where to start reading a file",
         },
-        data_dir: {
-          type: "string",
-          description:
-            "The directory used to persist file checkpoint positions",
-        },
         offset_key: {
           type: "string",
           description:
@@ -212,10 +207,6 @@ export const localSources: VectorComponentDef[] = [
             },
           },
           description: "Streaming mode configuration",
-        },
-        working_directory: {
-          type: "string",
-          description: "Working directory for the command",
         },
         include_stderr: {
           type: "boolean",
@@ -322,11 +313,6 @@ export const localSources: VectorComponentDef[] = [
           description:
             "Number of events per batch; a checkpoint is set at the end of each batch",
           default: 16,
-        },
-        data_dir: {
-          type: "string",
-          description:
-            "Directory used to persist file checkpoint positions",
         },
         emit_cursor: {
           type: "boolean",
