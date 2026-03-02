@@ -14,9 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import type { VectorComponentDef } from "@/lib/vector/types";
-import type { NodeMetricsData } from "@/stores/flow-store";
 import type { Node, Edge } from "@xyflow/react";
-import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Kind badge styling                                                 */
@@ -61,16 +59,6 @@ function filterSchema(
     properties: filtered,
     required: schema.required?.filter((r) => !fieldsToExclude.includes(r)),
   };
-}
-
-/* ------------------------------------------------------------------ */
-/*  Helper: human-readable byte rate                                   */
-/* ------------------------------------------------------------------ */
-
-function formatBytes(v: number): string {
-  if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB`;
-  if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB`;
-  return `${Math.round(v)} B`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -213,12 +201,11 @@ export function DetailPanel() {
     );
   }
 
-  const { componentDef, componentKey, config, disabled, metrics } = selectedNode.data as {
+  const { componentDef, componentKey, config, disabled } = selectedNode.data as {
     componentDef: VectorComponentDef;
     componentKey: string;
     config: Record<string, unknown>;
     disabled?: boolean;
-    metrics?: NodeMetricsData;
   };
 
   return (
@@ -280,30 +267,6 @@ export function DetailPanel() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Live metrics (only shown when pipeline is deployed) */}
-          {metrics && (
-            <Card>
-              <CardContent className="pt-4">
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <p className="text-muted-foreground">Events/s</p>
-                    <p className="font-mono font-medium">{metrics.eventsPerSec.toFixed(1)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Bytes/s</p>
-                    <p className="font-mono font-medium">{formatBytes(metrics.bytesPerSec)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Status</p>
-                    <p className={cn("font-medium", metrics.status === "healthy" ? "text-green-600" : "text-yellow-600")}>
-                      {metrics.status}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
           <Separator />
 

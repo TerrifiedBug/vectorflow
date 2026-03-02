@@ -45,6 +45,8 @@ import { generateVectorYaml, generateVectorToml, importVectorConfig } from "@/li
 import { useTRPC } from "@/trpc/client";
 import { useMutation } from "@tanstack/react-query";
 
+type ProcessStatusValue = "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING";
+
 interface FlowToolbarProps {
   pipelineId?: string;
   onSave: () => void;
@@ -58,6 +60,7 @@ interface FlowToolbarProps {
   isDirty?: boolean;
   metricsOpen?: boolean;
   onToggleMetrics?: () => void;
+  processStatus?: ProcessStatusValue | null;
 }
 
 function downloadFile(content: string, filename: string) {
@@ -83,6 +86,7 @@ export function FlowToolbar({
   isDirty = false,
   metricsOpen = false,
   onToggleMetrics,
+  processStatus,
 }: FlowToolbarProps) {
   const globalConfig = useFlowStore((s) => s.globalConfig);
   const canUndo = useFlowStore((s) => s.canUndo);
@@ -320,6 +324,30 @@ export function FlowToolbar({
         </Popover>
 
         <Separator orientation="vertical" className="mx-1 h-5" />
+
+        {/* Process status indicator */}
+        {processStatus && (
+          <div className="flex items-center gap-1.5 px-2 text-xs">
+            <span className={
+              processStatus === "RUNNING" ? "h-2 w-2 rounded-full bg-green-500" :
+              processStatus === "CRASHED" ? "h-2 w-2 rounded-full bg-red-500" :
+              processStatus === "STOPPED" ? "h-2 w-2 rounded-full bg-gray-400" :
+              "h-2 w-2 rounded-full bg-yellow-500"
+            } />
+            <span className={
+              processStatus === "RUNNING" ? "font-medium text-green-600 dark:text-green-400" :
+              processStatus === "CRASHED" ? "font-medium text-red-600 dark:text-red-400" :
+              processStatus === "STOPPED" ? "font-medium text-muted-foreground" :
+              "font-medium text-yellow-600 dark:text-yellow-400"
+            }>
+              {processStatus === "RUNNING" && "Running"}
+              {processStatus === "STARTING" && "Starting..."}
+              {processStatus === "STOPPED" && "Stopped"}
+              {processStatus === "CRASHED" && "Crashed"}
+              {processStatus === "PENDING" && "Pending..."}
+            </span>
+          </div>
+        )}
 
         {/* Deploy state buttons */}
         {(() => {

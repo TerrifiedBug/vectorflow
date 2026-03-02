@@ -44,6 +44,17 @@ function formatBytes(n: number | bigint): string {
   return `${v} B`;
 }
 
+function aggregateProcessStatus(
+  statuses: Array<{ status: string }>
+): "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING" | null {
+  if (statuses.length === 0) return null;
+  if (statuses.some((s) => s.status === "CRASHED")) return "CRASHED";
+  if (statuses.some((s) => s.status === "STOPPED")) return "STOPPED";
+  if (statuses.some((s) => s.status === "STARTING")) return "STARTING";
+  if (statuses.some((s) => s.status === "PENDING")) return "PENDING";
+  return "RUNNING";
+}
+
 function sumNodeStatuses(statuses: Array<{ eventsIn: bigint; eventsOut: bigint; errorsTotal: bigint; eventsDiscarded: bigint; bytesIn: bigint; bytesOut: bigint }>) {
   let eventsIn = BigInt(0), eventsOut = BigInt(0), errorsTotal = BigInt(0), eventsDiscarded = BigInt(0), bytesIn = BigInt(0), bytesOut = BigInt(0);
   for (const s of statuses) {
@@ -172,9 +183,16 @@ export default function PipelinesPage() {
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={pipeline.isDraft ? "secondary" : "default"}>
-                    {pipeline.isDraft ? "Draft" : "Deployed"}
-                  </Badge>
+                  {pipeline.isDraft ? (
+                    <Badge variant="secondary">Draft</Badge>
+                  ) : (() => {
+                    const ps = aggregateProcessStatus(pipeline.nodeStatuses);
+                    if (ps === "RUNNING") return <Badge variant="default">Running</Badge>;
+                    if (ps === "CRASHED") return <Badge variant="destructive">Crashed</Badge>;
+                    if (ps === "STOPPED") return <Badge variant="outline">Stopped</Badge>;
+                    if (ps === "STARTING" || ps === "PENDING") return <Badge variant="secondary">Starting...</Badge>;
+                    return <Badge variant="default">Deployed</Badge>;
+                  })()}
                 </TableCell>
                 <TableCell className="text-right font-mono text-sm text-muted-foreground">
                   {totals
