@@ -166,11 +166,14 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     }
   }, [componentMetricsQuery.data, updateNodeMetrics]);
 
+  const queryClient = useQueryClient();
+
   // Save mutation
   const saveMutation = useMutation(
     trpc.pipeline.saveGraph.mutationOptions({
       onSuccess: () => {
         markClean();
+        queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
         toast.success("Pipeline saved");
       },
       onError: (error) => {
@@ -178,8 +181,6 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       },
     })
   );
-
-  const queryClient = useQueryClient();
 
   // Undeploy mutation
   const undeployMutation = useMutation(

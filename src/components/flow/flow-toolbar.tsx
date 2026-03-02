@@ -297,8 +297,8 @@ export function FlowToolbar({
         {/* Deploy state buttons */}
         {(() => {
           const isDeployed = !isDraft && !!deployedAt;
-          // isDirty = unsaved editor changes; hasConfigChanges = saved config differs from deployed
-          const hasChanges = isDeployed && (isDirty || hasConfigChanges);
+          // Only flag redeployment when saved config actually differs from deployed
+          const hasChanges = isDeployed && hasConfigChanges;
 
           if (!isDeployed) {
             // Never deployed or undeployed
