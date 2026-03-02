@@ -172,6 +172,7 @@ export default function VersionHistoryPage() {
           variant="ghost"
           size="icon"
           onClick={() => router.push(`/pipelines/${pipelineId}`)}
+          aria-label="Back to pipeline"
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -261,6 +262,7 @@ export default function VersionHistoryPage() {
                             size="icon"
                             className="h-8 w-8"
                             title="View changes"
+                            aria-label="View changes"
                             onClick={() => {
                               if (isCurrent) {
                                 // Current version: diff against its predecessor
@@ -291,6 +293,7 @@ export default function VersionHistoryPage() {
                               size="icon"
                               className="h-8 w-8"
                               title="Rollback to this version"
+                              aria-label="Rollback to this version"
                               disabled={rollbackMutation.isPending}
                               onClick={() =>
                                 setRollbackTarget({

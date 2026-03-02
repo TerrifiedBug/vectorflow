@@ -187,6 +187,7 @@ export function CertificatesSection({ environmentId }: CertificatesSectionProps)
                         variant="ghost"
                         size="icon"
                         title="Delete"
+                        aria-label="Delete certificate"
                         onClick={() => setDeleteTarget({ id: cert.id, name: cert.name })}
                       >
                         <Trash2 className="h-4 w-4" />

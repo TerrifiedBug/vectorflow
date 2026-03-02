@@ -164,7 +164,7 @@ export function FlowToolbar({
       <div className="flex h-10 items-center gap-1 px-3">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={onSave} disabled={isSaving} className="h-7 w-7 p-0">
+            <Button variant="ghost" size="sm" onClick={onSave} disabled={isSaving} className="h-7 w-7 p-0" aria-label="Save pipeline">
               <Save className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -173,7 +173,7 @@ export function FlowToolbar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={handleValidate} disabled={validateMutation.isPending} className="h-7 w-7 p-0">
+            <Button variant="ghost" size="sm" onClick={handleValidate} disabled={validateMutation.isPending} className="h-7 w-7 p-0" aria-label="Validate pipeline">
               <CheckCircle className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -184,7 +184,7 @@ export function FlowToolbar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={undo} disabled={!canUndo} className="h-7 w-7 p-0">
+            <Button variant="ghost" size="sm" onClick={undo} disabled={!canUndo} className="h-7 w-7 p-0" aria-label="Undo">
               <Undo2 className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -193,7 +193,7 @@ export function FlowToolbar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={redo} disabled={!canRedo} className="h-7 w-7 p-0">
+            <Button variant="ghost" size="sm" onClick={redo} disabled={!canRedo} className="h-7 w-7 p-0" aria-label="Redo">
               <Redo2 className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -211,6 +211,7 @@ export function FlowToolbar({
               }}
               disabled={!selectedNodeId && !selectedEdgeId}
               className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+              aria-label="Delete selected"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -222,7 +223,7 @@ export function FlowToolbar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={handleImport} className="h-7 w-7 p-0">
+            <Button variant="ghost" size="sm" onClick={handleImport} className="h-7 w-7 p-0" aria-label="Import config">
               <Upload className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -241,7 +242,7 @@ export function FlowToolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Export config">
                   <Download className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -268,6 +269,7 @@ export function FlowToolbar({
               onClick={onSaveAsTemplate}
               disabled={nodes.length === 0}
               className="h-7 w-7 p-0"
+              aria-label="Save as template"
             >
               <BookTemplate className="h-4 w-4" />
             </Button>
@@ -278,7 +280,7 @@ export function FlowToolbar({
         {pipelineId && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" asChild>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" asChild aria-label="Version history">
                 <Link href={`/pipelines/${pipelineId}/versions`}>
                   <History className="h-4 w-4" />
                 </Link>
@@ -296,6 +298,7 @@ export function FlowToolbar({
                 size="sm"
                 onClick={onToggleMetrics}
                 className="h-7 w-7 p-0"
+                aria-label="Toggle metrics panel"
               >
                 <BarChart3 className="h-4 w-4" />
               </Button>
@@ -308,7 +311,7 @@ export function FlowToolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="relative h-7 w-7 p-0">
+                <Button variant="ghost" size="sm" className="relative h-7 w-7 p-0" aria-label="Pipeline settings">
                   <Settings className="h-4 w-4" />
                   {hasGlobalContent && (
                     <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-blue-500" />

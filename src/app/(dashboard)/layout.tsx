@@ -100,7 +100,7 @@ export default function DashboardLayout({
             <ThemeToggle />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full">
+                <Button variant="ghost" size="icon" className="rounded-full" aria-label="User menu">
                   <Avatar size="sm">
                     {userImage && <AvatarImage src={userImage} alt={userName ?? "User"} />}
                     <AvatarFallback>{initials}</AvatarFallback>

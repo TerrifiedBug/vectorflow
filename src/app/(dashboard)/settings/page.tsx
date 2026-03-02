@@ -439,6 +439,7 @@ function AuthSettings() {
                           type="button"
                           variant="ghost"
                           size="icon"
+                          aria-label="Remove mapping"
                           onClick={() => removeMapping(index)}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -956,6 +957,7 @@ function TeamSettings() {
                           size="icon"
                           className="h-8 w-8"
                           title="Unlock user"
+                          aria-label="Unlock user"
                           onClick={() => setLockConfirm({ userId: member.user.id, name: member.user.name || member.user.email, action: "unlock" })}
                         >
                           <Unlock className="h-4 w-4" />
@@ -966,6 +968,7 @@ function TeamSettings() {
                           size="icon"
                           className="h-8 w-8"
                           title="Lock user"
+                          aria-label="Lock user"
                           onClick={() => setLockConfirm({ userId: member.user.id, name: member.user.name || member.user.email, action: "lock" })}
                         >
                           <Lock className="h-4 w-4" />
@@ -977,6 +980,7 @@ function TeamSettings() {
                           size="icon"
                           className="h-8 w-8"
                           title="Reset password"
+                          aria-label="Reset password"
                           onClick={() => setResetPasswordConfirm({ userId: member.user.id, name: member.user.name || member.user.email })}
                         >
                           <KeyRound className="h-4 w-4" />
@@ -986,6 +990,7 @@ function TeamSettings() {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
+                        aria-label="Remove member"
                         onClick={() => setRemoveMember({ userId: member.user.id, name: member.user.name || member.user.email })}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -1020,6 +1025,7 @@ function TeamSettings() {
                   type="button"
                   variant="outline"
                   size="icon"
+                  aria-label="Copy temporary password"
                   onClick={() => {
                     copyToClipboard(tempPassword);
                     toast.success("Copied to clipboard");
@@ -1433,6 +1439,7 @@ function UsersSettings() {
                         size="icon"
                         className="h-8 w-8"
                         title="Assign to team"
+                        aria-label="Assign to team"
                         onClick={() =>
                           setAssignDialog({
                             userId: user.id,
@@ -1447,6 +1454,7 @@ function UsersSettings() {
                         size="icon"
                         className="h-8 w-8"
                         title={user.lockedAt ? "Unlock user" : "Lock user"}
+                        aria-label={user.lockedAt ? "Unlock user" : "Lock user"}
                         onClick={() =>
                           setLockDialog({
                             userId: user.id,
@@ -1467,6 +1475,7 @@ function UsersSettings() {
                           size="icon"
                           className="h-8 w-8"
                           title="Reset password"
+                          aria-label="Reset password"
                           onClick={() =>
                             setResetPasswordDialog({
                               userId: user.id,
@@ -1482,6 +1491,7 @@ function UsersSettings() {
                         size="icon"
                         className="h-8 w-8"
                         title={user.isSuperAdmin ? "Remove super admin" : "Make super admin"}
+                        aria-label={user.isSuperAdmin ? "Remove super admin" : "Make super admin"}
                         disabled={toggleSuperAdminMutation.isPending}
                         onClick={() =>
                           setToggleSuperAdminConfirm({
@@ -1498,6 +1508,7 @@ function UsersSettings() {
                         size="icon"
                         className="h-8 w-8"
                         title="Delete user"
+                        aria-label="Delete user"
                         onClick={() =>
                           setDeleteDialog({
                             userId: user.id,
@@ -1781,6 +1792,7 @@ function UsersSettings() {
                   type="button"
                   variant="outline"
                   size="icon"
+                  aria-label="Copy temporary password"
                   onClick={() => {
                     copyToClipboard(resetPasswordResult);
                     toast.success("Copied to clipboard");
@@ -1845,6 +1857,7 @@ function UsersSettings() {
               type="button"
               variant="outline"
               size="icon"
+              aria-label="Copy password"
               onClick={() => {
                 copyToClipboard(createdPassword);
                 toast.success("Copied to clipboard");
@@ -1999,6 +2012,7 @@ function TeamsManagement() {
                           ? "Remove environments before deleting"
                           : "Delete team"
                       }
+                      aria-label="Delete team"
                       disabled={team._count.environments > 0}
                       onClick={() =>
                         setDeleteTeam({ id: team.id, name: team.name })

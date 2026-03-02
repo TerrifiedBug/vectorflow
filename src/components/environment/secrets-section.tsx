@@ -168,6 +168,7 @@ export function SecretsSection({ environmentId }: SecretsSectionProps) {
                         variant="ghost"
                         size="icon"
                         title="Update value"
+                        aria-label="Update secret"
                         onClick={() => {
                           setUpdateTarget({ id: secret.id, name: secret.name });
                           setUpdateValue("");
@@ -179,6 +180,7 @@ export function SecretsSection({ environmentId }: SecretsSectionProps) {
                         variant="ghost"
                         size="icon"
                         title="Delete"
+                        aria-label="Delete secret"
                         onClick={() => setDeleteTarget({ id: secret.id, name: secret.name })}
                       >
                         <Trash2 className="h-4 w-4" />

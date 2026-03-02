@@ -298,6 +298,7 @@ function FieldRow({
                     variant="ghost"
                     size="icon"
                     className="h-5 w-5"
+                    aria-label={action.label}
                     onClick={(e) => {
                       e.stopPropagation();
                       setRenaming(field.path);
@@ -318,6 +319,7 @@ function FieldRow({
                   variant="ghost"
                   size="icon"
                   className="h-5 w-5"
+                  aria-label={action.label}
                   onClick={(e) => {
                     e.stopPropagation();
                     onInsert(action.getCode(field.path));
