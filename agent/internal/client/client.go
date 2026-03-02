@@ -128,18 +128,32 @@ func (c *Client) GetConfig() (*ConfigResponse, error) {
 
 // PipelineStatus is sent as part of the heartbeat
 type PipelineStatus struct {
-	PipelineID    string  `json:"pipelineId"`
-	Version       int     `json:"version"`
-	Status        string  `json:"status"` // RUNNING, STARTING, STOPPED, CRASHED, PENDING
-	PID           int     `json:"pid,omitempty"`
-	UptimeSeconds int     `json:"uptimeSeconds,omitempty"`
-	EventsIn      int64   `json:"eventsIn,omitempty"`
-	EventsOut     int64   `json:"eventsOut,omitempty"`
-	ErrorsTotal   int64   `json:"errorsTotal,omitempty"`
-	BytesIn       int64   `json:"bytesIn,omitempty"`
-	BytesOut      int64   `json:"bytesOut,omitempty"`
-	Utilization   float64  `json:"utilization,omitempty"`
-	RecentLogs    []string `json:"recentLogs,omitempty"`
+	PipelineID       string            `json:"pipelineId"`
+	Version          int               `json:"version"`
+	Status           string            `json:"status"` // RUNNING, STARTING, STOPPED, CRASHED, PENDING
+	PID              int               `json:"pid,omitempty"`
+	UptimeSeconds    int               `json:"uptimeSeconds,omitempty"`
+	EventsIn         int64             `json:"eventsIn,omitempty"`
+	EventsOut        int64             `json:"eventsOut,omitempty"`
+	ErrorsTotal      int64             `json:"errorsTotal,omitempty"`
+	BytesIn          int64             `json:"bytesIn,omitempty"`
+	BytesOut         int64             `json:"bytesOut,omitempty"`
+	EventsDiscarded  int64             `json:"eventsDiscarded,omitempty"`
+	ComponentMetrics []ComponentMetric `json:"componentMetrics,omitempty"`
+	Utilization      float64           `json:"utilization,omitempty"`
+	RecentLogs       []string          `json:"recentLogs,omitempty"`
+}
+
+// ComponentMetric holds per-component metrics for editor node overlays.
+type ComponentMetric struct {
+	ComponentID     string `json:"componentId"`
+	ComponentKind   string `json:"componentKind"`
+	ReceivedEvents  int64  `json:"receivedEvents"`
+	SentEvents      int64  `json:"sentEvents"`
+	ReceivedBytes   int64  `json:"receivedBytes,omitempty"`
+	SentBytes       int64  `json:"sentBytes,omitempty"`
+	ErrorsTotal     int64  `json:"errorsTotal,omitempty"`
+	DiscardedEvents int64  `json:"discardedEvents,omitempty"`
 }
 
 // HostMetrics holds system-level metrics from the Vector host
