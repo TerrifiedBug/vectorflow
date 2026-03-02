@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
+import yaml from "js-yaml";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
-import { generateVectorYaml } from "@/lib/config-generator";
-import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { resolveSecretRefs, resolveCertRefs } from "@/server/services/secret-resolver";
 import { decrypt } from "@/server/services/crypto";
 import { createHash } from "crypto";
@@ -27,20 +26,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Environment not found" }, { status: 404 });
     }
 
-    // Get all deployed (non-draft) pipelines in this environment
+    // Get all deployed (non-draft) pipelines with their latest VERSIONED config.
+    // Agents receive the config snapshot from PipelineVersion — NOT live node/edge
+    // data — so that saving in the editor doesn't affect agents until an explicit
+    // deploy confirms the change.
     const pipelines = await prisma.pipeline.findMany({
       where: {
         environmentId: agent.environmentId,
         isDraft: false,
         deployedAt: { not: null },
       },
-      include: {
-        nodes: true,
-        edges: true,
+      select: {
+        id: true,
+        name: true,
         versions: {
           orderBy: { version: "desc" },
           take: 1,
-          select: { version: true },
+          select: { version: true, configYaml: true, logLevel: true },
         },
       },
     });
@@ -50,56 +52,33 @@ export async function GET(request: Request) {
 
     for (const pipeline of pipelines) {
       try {
-        const version = pipeline.versions[0]?.version ?? 1;
+        const latestVersion = pipeline.versions[0];
+        if (!latestVersion?.configYaml) continue; // no deployed version yet
 
-        // Build flow edges (shared across backends)
-        const flowEdges = pipeline.edges.map((e) => ({
-          id: e.id,
-          source: e.sourceNodeId,
-          target: e.targetNodeId,
-          ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
-        }));
-
-        let configYaml: string;
+        const version = latestVersion.version;
+        let configYaml = latestVersion.configYaml;
         const secrets: Record<string, string> = {};
         let certFiles: Array<{ name: string; filename: string; data: string }> = [];
 
         if (environment.secretBackend === "BUILTIN") {
-          // Resolve SECRET[] and CERT[] references to actual values/paths
-          const allCertFiles: Array<{ name: string; filename: string; data: string }> = [];
-          const resolvedNodes = await Promise.all(
-            pipeline.nodes.map(async (n) => {
-              const decrypted = decryptNodeConfig(
-                n.componentType,
-                (n.config as Record<string, unknown>) ?? {},
-              );
-              const withSecrets = await resolveSecretRefs(decrypted, agent.environmentId);
-              const { config: withCerts, certFiles: certs } = await resolveCertRefs(
-                withSecrets,
-                agent.environmentId,
-                certBasePath,
-              );
-              allCertFiles.push(...certs);
-              return {
-                id: n.id,
-                type: n.kind.toLowerCase(),
-                position: { x: n.positionX, y: n.positionY },
-                data: {
-                  componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
-                  componentKey: n.componentKey,
-                  config: withCerts,
-                  disabled: n.disabled,
-                },
-              };
-            }),
-          );
+          // Parse versioned YAML back to objects so we can resolve SECRET[]/CERT[]
+          // references at the object level. This ensures js-yaml properly quotes
+          // values containing special characters when we re-dump.
+          const parsedConfig = yaml.load(configYaml) as Record<string, unknown>;
 
-          configYaml = generateVectorYaml(
-            resolvedNodes as Parameters<typeof generateVectorYaml>[0],
-            flowEdges as Parameters<typeof generateVectorYaml>[1],
-            pipeline.globalConfig as Record<string, unknown> | null,
+          // Walk config objects and resolve all SECRET[name] → actual values
+          const withSecrets = await resolveSecretRefs(parsedConfig, agent.environmentId);
+
+          // Walk config objects and resolve all CERT[name] → deploy file paths
+          const { config: withCerts, certFiles: certs } = await resolveCertRefs(
+            withSecrets,
+            agent.environmentId,
+            certBasePath,
           );
-          certFiles = allCertFiles;
+          certFiles = certs;
+
+          // Re-dump to YAML with proper quoting for special characters
+          configYaml = yaml.dump(withCerts, { indent: 2, lineWidth: -1, noRefs: true });
 
           // Deliver all environment secrets as env vars
           const envSecrets = await prisma.secret.findMany({
@@ -108,35 +87,10 @@ export async function GET(request: Request) {
           for (const s of envSecrets) {
             secrets[`VF_SECRET_${s.name}`] = decrypt(s.encryptedValue);
           }
-        } else {
-          // External backend — don't resolve secrets, leave references in YAML
-          const flowNodes = pipeline.nodes.map((n) => ({
-            id: n.id,
-            type: n.kind.toLowerCase(),
-            position: { x: n.positionX, y: n.positionY },
-            data: {
-              componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
-              componentKey: n.componentKey,
-              config: decryptNodeConfig(
-                n.componentType,
-                (n.config as Record<string, unknown>) ?? {},
-              ),
-              disabled: n.disabled,
-            },
-          }));
-
-          configYaml = generateVectorYaml(
-            flowNodes as Parameters<typeof generateVectorYaml>[0],
-            flowEdges as Parameters<typeof generateVectorYaml>[1],
-            pipeline.globalConfig as Record<string, unknown> | null,
-          );
         }
+        // External backend: configYaml is used as-is with references intact
 
         const checksum = createHash("sha256").update(configYaml).digest("hex");
-
-        // Extract log_level from globalConfig — it's a VectorFlow UI key
-        // passed to the agent as VECTOR_LOG env var, not in the YAML.
-        const logLevel = (pipeline.globalConfig as Record<string, unknown> | null)?.log_level as string | undefined;
 
         pipelineConfigs.push({
           pipelineId: pipeline.id,
@@ -144,7 +98,7 @@ export async function GET(request: Request) {
           version,
           configYaml,
           checksum,
-          ...(logLevel ? { logLevel } : {}),
+          ...(latestVersion.logLevel ? { logLevel: latestVersion.logLevel } : {}),
           ...(environment.secretBackend === "BUILTIN" && Object.keys(secrets).length > 0
             ? { secrets }
             : {}),

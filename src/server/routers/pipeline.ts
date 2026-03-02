@@ -46,7 +46,7 @@ export const pipelineRouter = router({
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      return prisma.pipeline.findMany({
+      const pipelines = await prisma.pipeline.findMany({
         where: { environmentId: input.environmentId },
         select: {
           id: true,
@@ -55,6 +55,7 @@ export const pipelineRouter = router({
           isDraft: true,
           deployedAt: true,
           updatedAt: true,
+          globalConfig: true,
           updatedBy: { select: { name: true, email: true } },
           nodeStatuses: {
             select: {
@@ -67,8 +68,97 @@ export const pipelineRouter = router({
               bytesOut: true,
             },
           },
+          nodes: {
+            select: {
+              id: true,
+              componentType: true,
+              componentKey: true,
+              kind: true,
+              config: true,
+              positionX: true,
+              positionY: true,
+              disabled: true,
+            },
+          },
+          edges: {
+            select: {
+              id: true,
+              sourceNodeId: true,
+              targetNodeId: true,
+              sourcePort: true,
+            },
+          },
+          versions: {
+            orderBy: { version: "desc" as const },
+            take: 1,
+            select: { version: true, configYaml: true, logLevel: true },
+          },
         },
         orderBy: { updatedAt: "desc" },
+      });
+
+      return pipelines.map((p) => {
+        let hasUndeployedChanges = false;
+        if (!p.isDraft && p.deployedAt) {
+          const latestVersion = p.versions[0];
+          if (latestVersion?.configYaml) {
+            try {
+              const decryptedNodes = p.nodes.map((n) => ({
+                ...n,
+                config: decryptNodeConfig(
+                  n.componentType,
+                  (n.config as Record<string, unknown>) ?? {},
+                ),
+              }));
+              const flowNodes = decryptedNodes.map((n) => ({
+                id: n.id,
+                type: n.kind.toLowerCase(),
+                position: { x: n.positionX, y: n.positionY },
+                data: {
+                  componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
+                  componentKey: n.componentKey,
+                  config: n.config as Record<string, unknown>,
+                  disabled: n.disabled,
+                },
+              }));
+              const flowEdges = p.edges.map((e) => ({
+                id: e.id,
+                source: e.sourceNodeId,
+                target: e.targetNodeId,
+                ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
+              }));
+              const currentYaml = generateVectorYaml(
+                flowNodes as Parameters<typeof generateVectorYaml>[0],
+                flowEdges as Parameters<typeof generateVectorYaml>[1],
+                p.globalConfig as Record<string, unknown> | null,
+              );
+              hasUndeployedChanges = currentYaml !== latestVersion.configYaml;
+              if (!hasUndeployedChanges) {
+                const currentLogLevel = (p.globalConfig as Record<string, unknown>)?.log_level ?? null;
+                const deployedLogLevel = (latestVersion as { logLevel?: string | null }).logLevel ?? null;
+                if (currentLogLevel !== deployedLogLevel) {
+                  hasUndeployedChanges = true;
+                }
+              }
+            } catch {
+              hasUndeployedChanges = false;
+            }
+          } else if (latestVersion && !latestVersion.configYaml) {
+            hasUndeployedChanges = true;
+          }
+        }
+
+        return {
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          isDraft: p.isDraft,
+          deployedAt: p.deployedAt,
+          updatedAt: p.updatedAt,
+          updatedBy: p.updatedBy,
+          nodeStatuses: p.nodeStatuses,
+          hasUndeployedChanges,
+        };
       });
     }),
 

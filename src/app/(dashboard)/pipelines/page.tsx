@@ -180,6 +180,7 @@ export default function PipelinesPage() {
                   </Link>
                 </TableCell>
                 <TableCell>
+                  <div className="flex items-center gap-1.5">
                   {pipeline.isDraft ? (
                     <Badge variant="secondary">Draft</Badge>
                   ) : (() => {
@@ -190,6 +191,12 @@ export default function PipelinesPage() {
                     if (ps === "STARTING" || ps === "PENDING") return <Badge variant="secondary">Starting...</Badge>;
                     return <Badge variant="default">Deployed</Badge>;
                   })()}
+                  {!pipeline.isDraft && pipeline.hasUndeployedChanges && (
+                    <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                      Pending deploy
+                    </Badge>
+                  )}
+                  </div>
                 </TableCell>
                 <TableCell className="text-right font-mono text-sm text-muted-foreground">
                   {totals
