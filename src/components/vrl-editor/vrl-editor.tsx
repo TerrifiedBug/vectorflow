@@ -76,6 +76,11 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
 
   const hasFields = (sourceTypes && sourceTypes.length > 0) || liveSchemaFields.length > 0;
 
+  const staticFieldsForPanel = useMemo(
+    () => getMergedOutputSchemas(sourceTypes ?? []),
+    [sourceTypes],
+  );
+
   const testMutation = useMutation(
     trpc.vrl.test.mutationOptions({
       onSuccess: (data) => {
@@ -376,7 +381,7 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
               {/* Fields panel */}
               {toolsPanel === "fields" && (
                 <VrlFieldsPanel
-                  staticFields={getMergedOutputSchemas(sourceTypes ?? [])}
+                  staticFields={staticFieldsForPanel}
                   liveFields={liveSchemaFields}
                   onInsert={handleInsertSnippet}
                 />
