@@ -57,6 +57,8 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
   const [showSnippets, setShowSnippets] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const editorRef = useRef<EditorInstance | null>(null);
+  const monacoRef = useRef<Monaco | null>(null);
+  const fieldProviderRef = useRef<{ dispose: () => void } | null>(null);
 
   const [requestId, setRequestId] = useState<string | null>(null);
   const [sampleEvents, setSampleEvents] = useState<unknown[]>([]);
@@ -110,15 +112,22 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
 
     if (data.status === "COMPLETED" && data.samples.length > 0) {
       const sample = data.samples[0];
-      const events = (sample.events as unknown[]) ?? [];
-      setSampleEvents(events);
-      setSampleIndex(0);
-      if (events.length > 0) {
-        setSampleInput(JSON.stringify(events[0], null, 2));
-        setShowTest(true);
+      if (sample.error) {
+        setTestError(`Sampling error: ${sample.error}`);
+      } else {
+        const events = (sample.events as unknown[]) ?? [];
+        setSampleEvents(events);
+        setSampleIndex(0);
+        if (events.length > 0) {
+          setSampleInput(JSON.stringify(events[0], null, 2));
+          setShowTest(true);
+        }
+        const schema = (sample.schema as Array<{ path: string; type: string; sample: string }>) ?? [];
+        setLiveSchemaFields(schema);
       }
-      const schema = (sample.schema as Array<{ path: string; type: string; sample: string }>) ?? [];
-      setLiveSchemaFields(schema);
+    } else if (data.status === "ERROR" || data.status === "EXPIRED") {
+      setTestError(`Sampling ${data.status.toLowerCase()}: no events could be collected`);
+      setShowTest(true);
     }
 
     setRequestId(null);
@@ -136,10 +145,11 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
 
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
+    monacoRef.current = monaco;
     monaco.editor.defineTheme("vrl-theme", vrlTheme);
     monaco.editor.setTheme("vrl-theme");
 
-    // Register VRL snippet completions
+    // Register VRL snippet completions (static, only needs to happen once)
     monaco.languages.registerCompletionItemProvider("plaintext", {
       provideCompletionItems(model: { getWordUntilPosition: (pos: unknown) => { startColumn: number; endColumn: number } }, position: { lineNumber: number }) {
         const word = model.getWordUntilPosition(position);
@@ -162,71 +172,85 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
         };
       },
     });
+  }, []);
 
-    // Register field completion provider (triggered by ".")
-    if ((sourceTypes && sourceTypes.length > 0) || liveSchemaFields.length > 0) {
-      const staticFields = getMergedOutputSchemas(sourceTypes ?? []);
-      const liveByPath = new Map(liveSchemaFields.map((f) => [f.path, f]));
-      const allFields = staticFields.map((f) => {
-        const live = liveByPath.get(f.path);
-        if (live) {
-          liveByPath.delete(f.path);
-          return { ...f, description: `${f.description} | Sample: ${live.sample}` };
-        }
-        return f;
-      });
-      for (const [, f] of liveByPath) {
-        allFields.push({ path: f.path, type: f.type, description: `Sample: ${f.sample}`, always: false });
+  // Re-register field completion provider when sourceTypes or liveSchemaFields change
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+
+    // Dispose previous field provider
+    fieldProviderRef.current?.dispose();
+    fieldProviderRef.current = null;
+
+    const hasStaticFields = sourceTypes && sourceTypes.length > 0;
+    const hasLiveFields = liveSchemaFields.length > 0;
+    if (!hasStaticFields && !hasLiveFields) return;
+
+    // Merge static + live fields
+    const staticFields = getMergedOutputSchemas(sourceTypes ?? []);
+    const liveByPath = new Map(liveSchemaFields.map((f) => [f.path, f]));
+    const allFields = staticFields.map((f) => {
+      const live = liveByPath.get(f.path);
+      if (live) {
+        liveByPath.delete(f.path);
+        return { ...f, description: `${f.description} | Sample: ${live.sample}` };
       }
-
-      monaco.languages.registerCompletionItemProvider("plaintext", {
-        triggerCharacters: ["."],
-        provideCompletionItems(
-          model: { getLineContent: (line: number) => string; getWordUntilPosition: (pos: { lineNumber: number; column: number }) => { startColumn: number; endColumn: number } },
-          position: { lineNumber: number; column: number },
-        ) {
-          // Extract the dot-path prefix before the cursor
-          const lineContent = model.getLineContent(position.lineNumber);
-          const textBeforeCursor = lineContent.substring(0, position.column - 1);
-          const prefixMatch = textBeforeCursor.match(/(\.[\w.]*?)$/);
-          const prefix = prefixMatch ? prefixMatch[1] : "";
-
-          // Filter fields to show only direct children of the prefix
-          const suggestions = allFields
-            .filter((f) => {
-              if (!prefix) return f.path.split(".").length === 2; // top-level fields like ".message"
-              return f.path.startsWith(prefix + ".") && f.path.substring(prefix.length + 1).indexOf(".") === -1;
-            })
-            .map((f) => {
-              // Extract the child segment name
-              const childName = prefix
-                ? f.path.substring(prefix.length + 1)
-                : f.path.substring(1); // strip leading "."
-              const isObject = f.type === "object" || f.type === "array";
-              const word = model.getWordUntilPosition(position);
-              const range = {
-                startLineNumber: position.lineNumber,
-                endLineNumber: position.lineNumber,
-                startColumn: word.startColumn,
-                endColumn: word.endColumn,
-              };
-              return {
-                label: childName,
-                kind: isObject
-                  ? monaco.languages.CompletionItemKind.Module
-                  : monaco.languages.CompletionItemKind.Field,
-                insertText: childName,
-                detail: f.type,
-                documentation: f.description,
-                sortText: (f.always ? "0" : "1") + childName,
-                range,
-              };
-            });
-
-          return { suggestions };
-        },
-      });
+      return f;
+    });
+    for (const [, f] of liveByPath) {
+      allFields.push({ path: f.path, type: f.type, description: `Sample: ${f.sample}`, always: false });
     }
+
+    fieldProviderRef.current = monaco.languages.registerCompletionItemProvider("plaintext", {
+      triggerCharacters: ["."],
+      provideCompletionItems(
+        model: { getLineContent: (line: number) => string; getWordUntilPosition: (pos: { lineNumber: number; column: number }) => { startColumn: number; endColumn: number } },
+        position: { lineNumber: number; column: number },
+      ) {
+        const lineContent = model.getLineContent(position.lineNumber);
+        const textBeforeCursor = lineContent.substring(0, position.column - 1);
+        const prefixMatch = textBeforeCursor.match(/(\.[\w.]*?)$/);
+        const prefix = prefixMatch ? prefixMatch[1] : "";
+
+        const suggestions = allFields
+          .filter((f) => {
+            if (!prefix) return f.path.split(".").length === 2;
+            return f.path.startsWith(prefix + ".") && f.path.substring(prefix.length + 1).indexOf(".") === -1;
+          })
+          .map((f) => {
+            const childName = prefix
+              ? f.path.substring(prefix.length + 1)
+              : f.path.substring(1);
+            const isObject = f.type === "object" || f.type === "array";
+            const word = model.getWordUntilPosition(position);
+            const range = {
+              startLineNumber: position.lineNumber,
+              endLineNumber: position.lineNumber,
+              startColumn: word.startColumn,
+              endColumn: word.endColumn,
+            };
+            return {
+              label: childName,
+              kind: isObject
+                ? monaco.languages.CompletionItemKind.Module
+                : monaco.languages.CompletionItemKind.Field,
+              insertText: childName,
+              detail: f.type,
+              documentation: f.description,
+              sortText: (f.always ? "0" : "1") + childName,
+              range,
+            };
+          });
+
+        return { suggestions };
+      },
+    });
+
+    return () => {
+      fieldProviderRef.current?.dispose();
+      fieldProviderRef.current = null;
+    };
   }, [sourceTypes, liveSchemaFields]);
 
   const handleInsertSnippet = useCallback((code: string) => {
