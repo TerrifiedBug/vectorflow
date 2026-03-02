@@ -99,6 +99,7 @@ type ConfigResponse struct {
 	PollIntervalMs      int                    `json:"pollIntervalMs"`
 	SecretBackend       string                 `json:"secretBackend"`
 	SecretBackendConfig map[string]interface{} `json:"secretBackendConfig,omitempty"`
+	SampleRequests      []SampleRequestMsg     `json:"sampleRequests,omitempty"`
 }
 
 func (c *Client) GetConfig() (*ConfigResponse, error) {
@@ -176,10 +177,35 @@ type HostMetrics struct {
 
 // HeartbeatRequest is sent to POST /api/agent/heartbeat
 type HeartbeatRequest struct {
-	Pipelines     []PipelineStatus `json:"pipelines"`
-	HostMetrics   *HostMetrics     `json:"hostMetrics,omitempty"`
-	AgentVersion  string           `json:"agentVersion,omitempty"`
-	VectorVersion string           `json:"vectorVersion,omitempty"`
+	Pipelines     []PipelineStatus  `json:"pipelines"`
+	HostMetrics   *HostMetrics      `json:"hostMetrics,omitempty"`
+	AgentVersion  string            `json:"agentVersion,omitempty"`
+	VectorVersion string            `json:"vectorVersion,omitempty"`
+	SampleResults []SampleResultMsg `json:"sampleResults,omitempty"`
+}
+
+// SampleRequestMsg is received from the server via config poll.
+type SampleRequestMsg struct {
+	RequestID     string   `json:"requestId"`
+	PipelineID    string   `json:"pipelineId"`
+	ComponentKeys []string `json:"componentKeys"`
+	Limit         int      `json:"limit"`
+}
+
+// SampleResultMsg contains sampled events and extracted schema for one component.
+type SampleResultMsg struct {
+	RequestID    string         `json:"requestId"`
+	ComponentKey string         `json:"componentKey"`
+	Events       []interface{}  `json:"events"`
+	Schema       []FieldInfoMsg `json:"schema"`
+	Error        string         `json:"error,omitempty"`
+}
+
+// FieldInfoMsg describes a single field discovered in a sampled event.
+type FieldInfoMsg struct {
+	Path   string `json:"path"`
+	Type   string `json:"type"`
+	Sample string `json:"sample"`
 }
 
 func (c *Client) SendHeartbeat(req HeartbeatRequest) error {

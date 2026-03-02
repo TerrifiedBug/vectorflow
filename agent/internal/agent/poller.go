@@ -17,9 +17,10 @@ type pipelineState struct {
 }
 
 type poller struct {
-	cfg    *config.Config
-	client *client.Client
-	known  map[string]pipelineState // pipelineId -> last known state
+	cfg            *config.Config
+	client         *client.Client
+	known          map[string]pipelineState // pipelineId -> last known state
+	sampleRequests []client.SampleRequestMsg
 }
 
 func newPoller(cfg *config.Config, c *client.Client) *poller {
@@ -138,5 +139,13 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 		}
 	}
 
+	// Store sample requests for the agent to process
+	p.sampleRequests = resp.SampleRequests
+
 	return actions, nil
+}
+
+// SampleRequests returns the sample requests from the last poll response.
+func (p *poller) SampleRequests() []client.SampleRequestMsg {
+	return p.sampleRequests
 }

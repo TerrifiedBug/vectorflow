@@ -8,11 +8,13 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/vectorflow/agent/internal/client"
 	"github.com/vectorflow/agent/internal/config"
+	"github.com/vectorflow/agent/internal/sampler"
 	"github.com/vectorflow/agent/internal/supervisor"
 )
 
@@ -24,6 +26,9 @@ type Agent struct {
 	poller        *poller
 	supervisor    *supervisor.Supervisor
 	vectorVersion string
+
+	mu            sync.Mutex
+	sampleResults []client.SampleResultMsg
 }
 
 func New(cfg *config.Config) (*Agent, error) {
@@ -119,11 +124,94 @@ func (a *Agent) pollAndApply() {
 			a.supervisor.UpdateVersion(action.PipelineID, action.Version)
 		}
 	}
+
+	// Process any sample requests from the server
+	if reqs := a.poller.SampleRequests(); len(reqs) > 0 {
+		a.processSampleRequests(reqs)
+	}
 }
 
 func (a *Agent) sendHeartbeat() {
-	hb := buildHeartbeat(a.supervisor, a.vectorVersion)
+	// Drain accumulated sample results under lock
+	a.mu.Lock()
+	results := a.sampleResults
+	a.sampleResults = nil
+	a.mu.Unlock()
+
+	hb := buildHeartbeat(a.supervisor, a.vectorVersion, results)
 	if err := a.client.SendHeartbeat(hb); err != nil {
 		slog.Warn("heartbeat error", "error", err)
+		// Put results back so they retry on the next heartbeat
+		if len(results) > 0 {
+			a.mu.Lock()
+			a.sampleResults = append(results, a.sampleResults...)
+			a.mu.Unlock()
+		}
+	}
+}
+
+// processSampleRequests launches goroutines to run vector tap for each sample request.
+// Results are appended to a.sampleResults under mutex and sent in the next heartbeat.
+func (a *Agent) processSampleRequests(requests []client.SampleRequestMsg) {
+	statuses := a.supervisor.Statuses()
+
+	// Build a lookup map of pipeline statuses
+	statusMap := make(map[string]supervisor.ProcessInfo, len(statuses))
+	for _, s := range statuses {
+		statusMap[s.PipelineID] = s
+	}
+
+	for _, req := range requests {
+		s, found := statusMap[req.PipelineID]
+		if !found || s.Status != "RUNNING" || s.APIPort == 0 {
+			// Pipeline not running or no API port — record error results immediately
+			for _, key := range req.ComponentKeys {
+				errMsg := "pipeline not running"
+				if !found {
+					errMsg = "pipeline not found"
+				} else if s.APIPort == 0 {
+					errMsg = "pipeline API port not available"
+				}
+				a.mu.Lock()
+				a.sampleResults = append(a.sampleResults, client.SampleResultMsg{
+					RequestID:    req.RequestID,
+					ComponentKey: key,
+					Error:        errMsg,
+				})
+				a.mu.Unlock()
+			}
+			continue
+		}
+
+		// Launch sampling goroutines — one per component key so they don't block
+		// the main poll/heartbeat loop.
+		for _, key := range req.ComponentKeys {
+			go func(reqID string, apiPort int, componentKey string, limit int) {
+				slog.Debug("sampling component", "requestId", reqID, "component", componentKey)
+				result := sampler.Sample(a.cfg.VectorBin, apiPort, componentKey, limit)
+				result.RequestID = reqID
+
+				msg := client.SampleResultMsg{
+					RequestID:    result.RequestID,
+					ComponentKey: result.ComponentKey,
+					Events:       result.Events,
+					Error:        result.Error,
+				}
+				// Convert FieldInfo to FieldInfoMsg
+				for _, fi := range result.Schema {
+					msg.Schema = append(msg.Schema, client.FieldInfoMsg{
+						Path:   fi.Path,
+						Type:   fi.Type,
+						Sample: fi.Sample,
+					})
+				}
+
+				a.mu.Lock()
+				a.sampleResults = append(a.sampleResults, msg)
+				a.mu.Unlock()
+
+				slog.Debug("sample complete", "requestId", reqID, "component", componentKey, "events", len(result.Events))
+			}(req.RequestID, s.APIPort, key, req.Limit)
+		}
 	}
 }
