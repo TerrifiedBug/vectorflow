@@ -29,6 +29,7 @@ export const metricsRouter = router({
           timestamp: true,
           eventsIn: true,
           eventsOut: true,
+          eventsDiscarded: true,
           errorsTotal: true,
           bytesIn: true,
           bytesOut: true,
