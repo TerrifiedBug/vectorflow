@@ -25,17 +25,32 @@ function relativeTime(date: Date | string | null): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function fmtRate(n: number): string {
+function fmtCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
+  return String(Math.round(n));
+}
+
+function fmtRate(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M/s`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K/s`;
+  if (n >= 1) return `${n.toFixed(1)}/s`;
+  if (n > 0) return `${n.toFixed(2)}/s`;
+  return "0/s";
 }
 
 function fmtBytes(n: number): string {
   if (n >= 1_073_741_824) return `${(n / 1_073_741_824).toFixed(1)} GB`;
   if (n >= 1_048_576) return `${(n / 1_048_576).toFixed(1)} MB`;
   if (n >= 1_024) return `${(n / 1_024).toFixed(1)} KB`;
-  return `${n} B`;
+  return `${Math.round(n)} B`;
+}
+
+function fmtBytesRate(n: number): string {
+  if (n >= 1_073_741_824) return `${(n / 1_073_741_824).toFixed(1)} GB/s`;
+  if (n >= 1_048_576) return `${(n / 1_048_576).toFixed(1)} MB/s`;
+  if (n >= 1_024) return `${(n / 1_024).toFixed(1)} KB/s`;
+  return `${Math.round(n)} B/s`;
 }
 
 interface NodeCardProps {
@@ -121,19 +136,19 @@ export function NodeCard({ node }: NodeCardProps) {
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Events in</span>
-              <span className="font-mono">{fmtRate(node.rates.eventsIn)}/s</span>
+              <span className="font-mono">{fmtRate(node.rates.eventsIn)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Events out</span>
-              <span className="font-mono">{fmtRate(node.rates.eventsOut)}/s</span>
+              <span className="font-mono">{fmtRate(node.rates.eventsOut)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Bytes in</span>
-              <span className="font-mono">{fmtBytes(node.rates.bytesIn)}/s</span>
+              <span className="font-mono">{fmtBytesRate(node.rates.bytesIn)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Bytes out</span>
-              <span className="font-mono">{fmtBytes(node.rates.bytesOut)}/s</span>
+              <span className="font-mono">{fmtBytesRate(node.rates.bytesOut)}</span>
             </div>
           </div>
 
@@ -141,11 +156,11 @@ export function NodeCard({ node }: NodeCardProps) {
           <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-muted-foreground">
             <div className="flex justify-between">
               <span>Total in</span>
-              <span className="font-mono">{fmtRate(node.totals.eventsIn)}</span>
+              <span className="font-mono">{fmtCount(node.totals.eventsIn)}</span>
             </div>
             <div className="flex justify-between">
               <span>Total out</span>
-              <span className="font-mono">{fmtRate(node.totals.eventsOut)}</span>
+              <span className="font-mono">{fmtCount(node.totals.eventsOut)}</span>
             </div>
           </div>
 
@@ -154,7 +169,7 @@ export function NodeCard({ node }: NodeCardProps) {
             <div className="flex items-center gap-1.5 text-xs">
               <span className="h-1.5 w-1.5 rounded-full shrink-0 bg-red-500" />
               <span className="text-red-600 dark:text-red-400 font-medium">
-                {node.rates.errors > 0 ? `${node.rates.errors.toFixed(1)}/s` : fmtRate(node.totals.errors)} errors
+                {node.rates.errors > 0 ? fmtRate(node.rates.errors) : `${fmtCount(node.totals.errors)} total`} errors
               </span>
             </div>
           )}
