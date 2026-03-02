@@ -138,9 +138,9 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
             {preview?.currentLogLevel !== preview?.newLogLevel && (
               <div className="rounded-md bg-muted p-2 text-xs">
-                Log level: <span className="line-through text-muted-foreground">{preview?.currentLogLevel ?? "default"}</span>
+                Log level: <span className="line-through text-muted-foreground">{preview?.currentLogLevel ?? "info"}</span>
                 {" → "}
-                <span className="font-medium">{preview?.newLogLevel ?? "default"}</span>
+                <span className="font-medium">{preview?.newLogLevel ?? "info"}</span>
               </div>
             )}
 
