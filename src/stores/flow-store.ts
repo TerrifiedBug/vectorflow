@@ -615,8 +615,22 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   /* ---- Serialization ---- */
 
   loadGraph: (nodes, edges, globalConfig) => {
+    // Preserve live metrics from current nodes through reloads
+    const currentNodes = (get() as InternalState).nodes;
+    const metricsMap = new Map<string, unknown>();
+    for (const n of currentNodes) {
+      const metrics = (n.data as Record<string, unknown>).metrics;
+      if (metrics) metricsMap.set(n.id, metrics);
+    }
+    const mergedNodes = metricsMap.size > 0
+      ? nodes.map((n) => {
+          const existing = metricsMap.get(n.id);
+          return existing ? { ...n, data: { ...n.data, metrics: existing } } : n;
+        })
+      : nodes;
+
     set({
-      nodes,
+      nodes: mergedNodes,
       edges,
       globalConfig: globalConfig ?? null,
       selectedNodeId: null,

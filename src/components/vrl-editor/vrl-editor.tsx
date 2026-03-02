@@ -58,6 +58,7 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
   const editorRef = useRef<EditorInstance | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const fieldProviderRef = useRef<{ dispose: () => void } | null>(null);
+  const snippetProviderRef = useRef<{ dispose: () => void } | null>(null);
 
   const [requestId, setRequestId] = useState<string | null>(null);
   const [sampleEvents, setSampleEvents] = useState<unknown[]>([]);
@@ -146,8 +147,9 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
     monaco.editor.defineTheme("vrl-theme", vrlTheme);
     monaco.editor.setTheme("vrl-theme");
 
-    // Register VRL snippet completions (static, only needs to happen once)
-    monaco.languages.registerCompletionItemProvider("plaintext", {
+    // Dispose previous snippet provider (Dialog remounts editor each open)
+    snippetProviderRef.current?.dispose();
+    snippetProviderRef.current = monaco.languages.registerCompletionItemProvider("plaintext", {
       provideCompletionItems(model: { getWordUntilPosition: (pos: unknown) => { startColumn: number; endColumn: number } }, position: { lineNumber: number }) {
         const word = model.getWordUntilPosition(position);
         const range = {
@@ -169,6 +171,9 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
         };
       },
     });
+
+    // Auto-focus editor so space bar and other keys work immediately
+    editor.focus();
   }, []);
 
   // Re-register field completion provider when sourceTypes or liveSchemaFields change
@@ -277,11 +282,6 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
         <Code className="mr-1.5 h-3.5 w-3.5" />
         Open VRL Editor
       </Button>
-      {value && (
-        <p className="truncate font-mono text-xs text-muted-foreground px-1">
-          {value.split("\n")[0]}
-        </p>
-      )}
 
       {/* Full-screen modal: editor (left) + tools (right) */}
       <Dialog open={expanded} onOpenChange={setExpanded}>
