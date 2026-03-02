@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
-import { Plus, MoreHorizontal, Copy, Trash2, BarChart3 } from "lucide-react";
+import { Plus, MoreHorizontal, Copy, Trash2, BarChart3, Info } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
 
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatCount, formatBytes } from "@/lib/format";
 
 function aggregateProcessStatus(
@@ -148,7 +149,17 @@ export default function PipelinesPage() {
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Total Events In / Out</TableHead>
-              <TableHead className="text-right">Total Bytes In / Out</TableHead>
+              <TableHead className="text-right">
+                <span className="inline-flex items-center gap-1">
+                  Total Bytes In / Out
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3 w-3 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>Measured before sink-side compression</TooltipContent>
+                  </Tooltip>
+                </span>
+              </TableHead>
               <TableHead className="text-right">Errors / Discarded</TableHead>
               <TableHead>Last Updated</TableHead>
               <TableHead className="w-12" />
