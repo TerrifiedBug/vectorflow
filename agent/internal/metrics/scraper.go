@@ -1,97 +1,69 @@
 package metrics
 
 import (
-	"bytes"
-	"encoding/json"
+	"bufio"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
-// PipelineMetrics holds aggregated metrics scraped from a Vector instance.
+// PipelineMetrics holds aggregated metrics across all components in a pipeline.
 type PipelineMetrics struct {
-	EventsIn    int64
-	EventsOut   int64
-	ErrorsTotal int64
-	BytesIn     int64
-	BytesOut    int64
+	EventsIn        int64
+	EventsOut       int64
+	ErrorsTotal     int64
+	EventsDiscarded int64
+	BytesIn         int64
+	BytesOut        int64
 }
 
-// HostMetrics holds system-level metrics scraped from Vector's hostMetrics API.
+// ComponentMetrics holds per-component metrics for editor node overlays.
+type ComponentMetrics struct {
+	ComponentID     string
+	ComponentKind   string // source, transform, sink
+	ReceivedEvents  int64
+	SentEvents      int64
+	ReceivedBytes   int64
+	SentBytes       int64
+	ErrorsTotal     int64
+	DiscardedEvents int64
+}
+
+// HostMetrics holds system-level metrics from Vector's host_metrics source.
 type HostMetrics struct {
-	MemoryTotalBytes  int64   `json:"memoryTotalBytes"`
-	MemoryUsedBytes   int64   `json:"memoryUsedBytes"`
-	MemoryFreeBytes   int64   `json:"memoryFreeBytes"`
-	CpuSecondsTotal   float64 `json:"cpuSecondsTotal"`
-	LoadAvg1          float64 `json:"loadAvg1"`
-	LoadAvg5          float64 `json:"loadAvg5"`
-	LoadAvg15         float64 `json:"loadAvg15"`
-	FsTotalBytes      int64   `json:"fsTotalBytes"`
-	FsUsedBytes       int64   `json:"fsUsedBytes"`
-	FsFreeBytes       int64   `json:"fsFreeBytes"`
-	DiskReadBytes     int64   `json:"diskReadBytes"`
-	DiskWrittenBytes  int64   `json:"diskWrittenBytes"`
-	NetRxBytes        int64   `json:"netRxBytes"`
-	NetTxBytes        int64   `json:"netTxBytes"`
+	MemoryTotalBytes  int64
+	MemoryUsedBytes   int64
+	MemoryFreeBytes   int64
+	CpuSecondsTotal   float64
+	LoadAvg1          float64
+	LoadAvg5          float64
+	LoadAvg15         float64
+	FsTotalBytes      int64
+	FsUsedBytes       int64
+	FsFreeBytes       int64
+	DiskReadBytes     int64
+	DiskWrittenBytes  int64
+	NetRxBytes        int64
+	NetTxBytes        int64
 }
 
-// ScrapeResult contains both pipeline and host metrics from a single scrape.
+// ScrapeResult contains all metrics from a single Prometheus scrape.
 type ScrapeResult struct {
-	Pipeline PipelineMetrics
-	Host     HostMetrics
+	Pipeline   PipelineMetrics
+	Components []ComponentMetrics
+	Host       HostMetrics
 }
 
 var httpClient = &http.Client{Timeout: 5 * time.Second}
 
-// Scrape queries Vector's GraphQL API and returns aggregated pipeline and host metrics.
+// ScrapePrometheus fetches and parses Vector's Prometheus metrics endpoint.
 // Returns zero metrics on any error (non-fatal).
-func Scrape(apiPort int) ScrapeResult {
-	url := fmt.Sprintf("http://127.0.0.1:%d/graphql", apiPort)
+func ScrapePrometheus(metricsPort int) ScrapeResult {
+	url := fmt.Sprintf("http://127.0.0.1:%d/metrics", metricsPort)
 
-	query := `{
-		components(first: 1000) {
-			edges {
-				node {
-					__typename
-					... on Source {
-						metrics {
-							receivedEventsTotal { receivedEventsTotal }
-							sentEventsTotal { sentEventsTotal }
-							receivedBytesTotal { receivedBytesTotal }
-						}
-					}
-					... on Transform {
-						metrics {
-							receivedEventsTotal { receivedEventsTotal }
-							sentEventsTotal { sentEventsTotal }
-						}
-					}
-					... on Sink {
-						metrics {
-							receivedEventsTotal { receivedEventsTotal }
-							sentEventsTotal { sentEventsTotal }
-							sentBytesTotal { sentBytesTotal }
-						}
-					}
-				}
-			}
-		}
-		hostMetrics {
-			memory { totalBytes freeBytes usedBytes }
-			cpu { cpuSecondsTotal }
-			loadAverage { load1 load5 load15 }
-			filesystem { totalBytes freeBytes usedBytes }
-			disk { readBytesTotal writtenBytesTotal }
-			network { receiveBytesTotal transmitBytesTotal }
-		}
-	}`
-
-	body, err := json.Marshal(map[string]string{"query": query})
-	if err != nil {
-		return ScrapeResult{}
-	}
-
-	resp, err := httpClient.Post(url, "application/json", bytes.NewReader(body))
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return ScrapeResult{}
 	}
@@ -101,141 +73,183 @@ func Scrape(apiPort int) ScrapeResult {
 		return ScrapeResult{}
 	}
 
-	var result graphqlResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return ScrapeResult{}
-	}
-
 	var sr ScrapeResult
+	componentMap := make(map[string]*ComponentMetrics)
 
-	if result.Data != nil && result.Data.Components != nil {
-		for _, edge := range result.Data.Components.Edges {
-			node := edge.Node
-			if node.Metrics == nil {
-				continue
-			}
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(line) == 0 || line[0] == '#' {
+			continue
+		}
 
-			switch node.TypeName {
-			case "Source":
-				sr.Pipeline.EventsIn += metricValue(node.Metrics.ReceivedEventsTotal)
-				sr.Pipeline.BytesIn += metricValue(node.Metrics.ReceivedBytesTotal)
-			case "Transform":
-				// No error counters in Vector 0.44.0
-			case "Sink":
-				sr.Pipeline.EventsOut += metricValue(node.Metrics.SentEventsTotal)
-				sr.Pipeline.BytesOut += metricValue(node.Metrics.SentBytesTotal)
+		name, labels, value := parsePrometheusLine(line)
+		if name == "" {
+			continue
+		}
+
+		componentID := labels["component_id"]
+		componentKind := labels["component_kind"]
+
+		// Per-component pipeline metrics
+		switch name {
+		case "component_received_events_total":
+			v := int64(value)
+			if componentKind == "source" {
+				sr.Pipeline.EventsIn += v
 			}
+			getOrCreate(componentMap, componentID, componentKind).ReceivedEvents = v
+
+		case "component_sent_events_total":
+			v := int64(value)
+			if componentKind == "sink" {
+				sr.Pipeline.EventsOut += v
+			}
+			getOrCreate(componentMap, componentID, componentKind).SentEvents = v
+
+		case "component_received_bytes_total":
+			v := int64(value)
+			sr.Pipeline.BytesIn += v
+			getOrCreate(componentMap, componentID, componentKind).ReceivedBytes = v
+
+		case "component_sent_bytes_total":
+			v := int64(value)
+			sr.Pipeline.BytesOut += v
+			getOrCreate(componentMap, componentID, componentKind).SentBytes = v
+
+		case "component_errors_total":
+			v := int64(value)
+			sr.Pipeline.ErrorsTotal += v
+			getOrCreate(componentMap, componentID, componentKind).ErrorsTotal += v
+
+		case "component_discarded_events_total":
+			v := int64(value)
+			sr.Pipeline.EventsDiscarded += v
+			getOrCreate(componentMap, componentID, componentKind).DiscardedEvents += v
+
+		// Host metrics
+		case "host_memory_total_bytes":
+			sr.Host.MemoryTotalBytes = int64(value)
+		case "host_memory_used_bytes":
+			sr.Host.MemoryUsedBytes = int64(value)
+		case "host_memory_free_bytes":
+			sr.Host.MemoryFreeBytes = int64(value)
+		case "host_cpu_seconds_total":
+			sr.Host.CpuSecondsTotal = value
+		case "host_load1":
+			sr.Host.LoadAvg1 = value
+		case "host_load5":
+			sr.Host.LoadAvg5 = value
+		case "host_load15":
+			sr.Host.LoadAvg15 = value
+		case "host_filesystem_total_bytes":
+			sr.Host.FsTotalBytes = int64(value)
+		case "host_filesystem_used_bytes":
+			sr.Host.FsUsedBytes = int64(value)
+		case "host_filesystem_free_bytes":
+			sr.Host.FsFreeBytes = int64(value)
+		case "host_disk_read_bytes_total":
+			sr.Host.DiskReadBytes = int64(value)
+		case "host_disk_written_bytes_total":
+			sr.Host.DiskWrittenBytes = int64(value)
+		case "host_network_receive_bytes_total":
+			sr.Host.NetRxBytes = int64(value)
+		case "host_network_transmit_bytes_total":
+			sr.Host.NetTxBytes = int64(value)
 		}
 	}
 
-	if result.Data != nil && result.Data.HostMetrics != nil {
-		hm := result.Data.HostMetrics
-		sr.Host = HostMetrics{
-			MemoryTotalBytes: int64(hm.Memory.TotalBytes),
-			MemoryUsedBytes:  int64(hm.Memory.UsedBytes),
-			MemoryFreeBytes:  int64(hm.Memory.FreeBytes),
-			CpuSecondsTotal:  hm.CPU.CpuSecondsTotal,
-			LoadAvg1:         hm.LoadAverage.Load1,
-			LoadAvg5:         hm.LoadAverage.Load5,
-			LoadAvg15:        hm.LoadAverage.Load15,
-			FsTotalBytes:     int64(hm.Filesystem.TotalBytes),
-			FsUsedBytes:      int64(hm.Filesystem.UsedBytes),
-			FsFreeBytes:      int64(hm.Filesystem.FreeBytes),
-			DiskReadBytes:    int64(hm.Disk.ReadBytesTotal),
-			DiskWrittenBytes: int64(hm.Disk.WrittenBytesTotal),
-			NetRxBytes:       int64(hm.Network.ReceiveBytesTotal),
-			NetTxBytes:       int64(hm.Network.TransmitBytesTotal),
+	// Convert component map to slice, filtering out injected vf_ components
+	for _, cm := range componentMap {
+		if strings.HasPrefix(cm.ComponentID, "vf_") {
+			continue
 		}
+		sr.Components = append(sr.Components, *cm)
 	}
 
 	return sr
 }
 
-// GraphQL response types for Vector's component metrics API.
-
-type graphqlResponse struct {
-	Data *graphqlData `json:"data"`
-}
-
-type graphqlData struct {
-	Components  *graphqlComponents  `json:"components"`
-	HostMetrics *graphqlHostMetrics `json:"hostMetrics"`
-}
-
-type graphqlHostMetrics struct {
-	Memory      graphqlMemory      `json:"memory"`
-	CPU         graphqlCPU         `json:"cpu"`
-	LoadAverage graphqlLoadAverage `json:"loadAverage"`
-	Filesystem  graphqlFilesystem  `json:"filesystem"`
-	Disk        graphqlDisk        `json:"disk"`
-	Network     graphqlNetwork     `json:"network"`
-}
-
-type graphqlMemory struct {
-	TotalBytes float64 `json:"totalBytes"`
-	FreeBytes  float64 `json:"freeBytes"`
-	UsedBytes  float64 `json:"usedBytes"`
-}
-
-type graphqlCPU struct {
-	CpuSecondsTotal float64 `json:"cpuSecondsTotal"`
-}
-
-type graphqlLoadAverage struct {
-	Load1  float64 `json:"load1"`
-	Load5  float64 `json:"load5"`
-	Load15 float64 `json:"load15"`
-}
-
-type graphqlFilesystem struct {
-	TotalBytes float64 `json:"totalBytes"`
-	FreeBytes  float64 `json:"freeBytes"`
-	UsedBytes  float64 `json:"usedBytes"`
-}
-
-type graphqlDisk struct {
-	ReadBytesTotal    float64 `json:"readBytesTotal"`
-	WrittenBytesTotal float64 `json:"writtenBytesTotal"`
-}
-
-type graphqlNetwork struct {
-	ReceiveBytesTotal  float64 `json:"receiveBytesTotal"`
-	TransmitBytesTotal float64 `json:"transmitBytesTotal"`
-}
-
-type graphqlComponents struct {
-	Edges []graphqlEdge `json:"edges"`
-}
-
-type graphqlEdge struct {
-	Node graphqlNode `json:"node"`
-}
-
-type graphqlNode struct {
-	TypeName string           `json:"__typename"`
-	Metrics  *graphqlMetrics  `json:"metrics"`
-}
-
-type graphqlMetrics struct {
-	ReceivedEventsTotal json.RawMessage `json:"receivedEventsTotal"`
-	SentEventsTotal     json.RawMessage `json:"sentEventsTotal"`
-	ReceivedBytesTotal  json.RawMessage `json:"receivedBytesTotal"`
-	SentBytesTotal      json.RawMessage `json:"sentBytesTotal"`
-}
-
-// metricValue extracts the numeric value from Vector's nested metric format:
-// { "receivedEventsTotal": { "receivedEventsTotal": 42 } }
-// The inner object always has one key whose value is the counter.
-func metricValue(raw json.RawMessage) int64 {
-	if len(raw) == 0 || string(raw) == "null" {
-		return 0
+// getOrCreate returns the ComponentMetrics for a given componentID, creating it if needed.
+func getOrCreate(m map[string]*ComponentMetrics, id, kind string) *ComponentMetrics {
+	if id == "" {
+		// Return a throwaway struct if there's no component_id label
+		return &ComponentMetrics{}
 	}
-	var obj map[string]float64
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		return 0
+	if cm, ok := m[id]; ok {
+		return cm
 	}
-	for _, v := range obj {
-		return int64(v)
+	cm := &ComponentMetrics{ComponentID: id, ComponentKind: kind}
+	m[id] = cm
+	return cm
+}
+
+// parsePrometheusLine parses a single Prometheus exposition line into name, labels, value.
+// Example: `component_errors_total{component_id="my_source",component_kind="source"} 42`
+func parsePrometheusLine(line string) (string, map[string]string, float64) {
+	labels := make(map[string]string)
+
+	// Split value from the end
+	spaceIdx := strings.LastIndex(line, " ")
+	if spaceIdx < 0 {
+		return "", nil, 0
 	}
-	return 0
+	valueStr := line[spaceIdx+1:]
+	prefix := line[:spaceIdx]
+
+	value, err := strconv.ParseFloat(valueStr, 64)
+	if err != nil {
+		return "", nil, 0
+	}
+
+	// Split name from labels
+	braceIdx := strings.IndexByte(prefix, '{')
+	if braceIdx < 0 {
+		return prefix, labels, value
+	}
+
+	name := prefix[:braceIdx]
+	labelStr := prefix[braceIdx+1:]
+	if len(labelStr) > 0 && labelStr[len(labelStr)-1] == '}' {
+		labelStr = labelStr[:len(labelStr)-1]
+	}
+
+	// Parse labels: key="value",key2="value2"
+	for _, pair := range splitLabels(labelStr) {
+		eqIdx := strings.IndexByte(pair, '=')
+		if eqIdx < 0 {
+			continue
+		}
+		k := pair[:eqIdx]
+		v := pair[eqIdx+1:]
+		if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+			v = v[1 : len(v)-1]
+		}
+		labels[k] = v
+	}
+
+	return name, labels, value
+}
+
+// splitLabels splits comma-separated label pairs, respecting quoted values.
+func splitLabels(s string) []string {
+	var parts []string
+	var current strings.Builder
+	inQuote := false
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if ch == '"' {
+			inQuote = !inQuote
+			current.WriteByte(ch)
+		} else if ch == ',' && !inQuote {
+			parts = append(parts, current.String())
+			current.Reset()
+		} else {
+			current.WriteByte(ch)
+		}
+	}
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+	return parts
 }
