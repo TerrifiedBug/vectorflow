@@ -179,7 +179,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   {
     label: "Parse JSON",
     icon: Braces,
-    getCode: (path) => `. = parse_json!(${path})`,
+    getCode: (path) => `. = merge(., parse_json!(${path}))`,
     applies: (f) =>
       (f.type === "string" || f.type === "") && f.sample !== "" && looksLikeJson(f.sample),
   },
