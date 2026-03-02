@@ -9,7 +9,7 @@ import (
 	"github.com/vectorflow/agent/internal/supervisor"
 )
 
-func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string) client.HeartbeatRequest {
+func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string, sampleResults []client.SampleResultMsg) client.HeartbeatRequest {
 	statuses := sup.Statuses()
 
 	pipelines := make([]client.PipelineStatus, 0, len(statuses))
@@ -89,5 +89,6 @@ func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string) client.Hea
 		HostMetrics:   hostMetrics,
 		AgentVersion:  Version,
 		VectorVersion: vectorVersion,
+		SampleResults: sampleResults,
 	}
 }
