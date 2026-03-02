@@ -5,6 +5,8 @@ export interface MetricSample {
   receivedBytesRate: number;
   sentBytesRate: number;
   errorCount: number;
+  errorsRate: number;
+  discardedRate: number;
 }
 
 interface PrevTotals {
@@ -13,6 +15,8 @@ interface PrevTotals {
   sentEventsTotal: number;
   receivedBytesTotal: number;
   sentBytesTotal: number;
+  errorsTotal: number;
+  discardedTotal: number;
 }
 
 const MAX_SAMPLES = 240; // 1 hour at 15s intervals
@@ -29,6 +33,8 @@ class MetricStore {
       sentEventsTotal: number;
       receivedBytesTotal?: number;
       sentBytesTotal?: number;
+      errorsTotal?: number;
+      discardedTotal?: number;
     },
   ): MetricSample | null {
     const key = `${nodeId}:${componentId}`;
@@ -41,6 +47,8 @@ class MetricStore {
       sentEventsTotal: totals.sentEventsTotal,
       receivedBytesTotal: totals.receivedBytesTotal ?? 0,
       sentBytesTotal: totals.sentBytesTotal ?? 0,
+      errorsTotal: totals.errorsTotal ?? 0,
+      discardedTotal: totals.discardedTotal ?? 0,
     });
 
     if (!prev) return null;
@@ -54,7 +62,9 @@ class MetricStore {
       sentEventsRate: Math.max(0, (totals.sentEventsTotal - prev.sentEventsTotal) / elapsedSec),
       receivedBytesRate: Math.max(0, ((totals.receivedBytesTotal ?? 0) - prev.receivedBytesTotal) / elapsedSec),
       sentBytesRate: Math.max(0, ((totals.sentBytesTotal ?? 0) - prev.sentBytesTotal) / elapsedSec),
-      errorCount: 0,
+      errorCount: totals.errorsTotal ?? 0,
+      errorsRate: Math.max(0, ((totals.errorsTotal ?? 0) - prev.errorsTotal) / elapsedSec),
+      discardedRate: Math.max(0, ((totals.discardedTotal ?? 0) - prev.discardedTotal) / elapsedSec),
     };
 
     const arr = this.samples.get(key) ?? [];
