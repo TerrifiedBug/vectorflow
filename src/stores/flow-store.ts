@@ -288,13 +288,18 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   },
 
   updateNodeKey: (id, key) => {
-    set((state) => ({
-      nodes: state.nodes.map((n) =>
-        n.id === id
-          ? { ...n, data: { ...n.data, componentKey: key } }
-          : n,
-      ),
-    }));
+    set((state) => {
+      const history = pushSnapshot(state);
+      return {
+        ...history,
+        nodes: state.nodes.map((n) =>
+          n.id === id
+            ? { ...n, data: { ...n.data, componentKey: key } }
+            : n,
+        ),
+        isDirty: true,
+      };
+    });
   },
 
   toggleNodeDisabled: (id) => {
