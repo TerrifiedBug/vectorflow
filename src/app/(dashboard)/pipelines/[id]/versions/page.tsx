@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
-import { createTwoFilesPatch } from "diff";
 import {
   ArrowLeft,
   Clock,
@@ -40,46 +39,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-
-/* ------------------------------------------------------------------ */
-/*  Diff rendering                                                     */
-/* ------------------------------------------------------------------ */
-
-function DiffView({ oldYaml, newYaml, oldLabel, newLabel }: {
-  oldYaml: string;
-  newYaml: string;
-  oldLabel: string;
-  newLabel: string;
-}) {
-  const patch = createTwoFilesPatch(oldLabel, newLabel, oldYaml, newYaml, "", "", { context: 3 });
-  const lines = patch.split("\n");
-
-  // Skip the first two header lines (--- and +++)
-  const headerEnd = lines.findIndex((l, i) => i > 0 && l.startsWith("@@"));
-  const displayLines = headerEnd > 0 ? lines.slice(headerEnd) : lines.slice(2);
-
-  return (
-    <pre className="p-4 text-xs font-mono leading-5">
-      {displayLines.map((line, i) => {
-        let className = "";
-        if (line.startsWith("+") && !line.startsWith("+++")) {
-          className = "bg-green-500/15 text-green-700 dark:text-green-400";
-        } else if (line.startsWith("-") && !line.startsWith("---")) {
-          className = "bg-red-500/15 text-red-700 dark:text-red-400";
-        } else if (line.startsWith("@@")) {
-          className = "text-blue-600 dark:text-blue-400 font-semibold";
-        } else {
-          className = "text-muted-foreground";
-        }
-        return (
-          <div key={i} className={className}>
-            {line || "\n"}
-          </div>
-        );
-      })}
-    </pre>
-  );
-}
+import { ConfigDiff } from "@/components/ui/config-diff";
 
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */
@@ -342,11 +302,12 @@ export default function VersionHistoryPage() {
                   No differences — configs are identical.
                 </div>
               ) : (
-                <DiffView
-                  oldYaml={viewingConfig.compareYaml}
-                  newYaml={viewingConfig.yaml}
+                <ConfigDiff
+                  oldConfig={viewingConfig.compareYaml}
+                  newConfig={viewingConfig.yaml}
                   oldLabel={viewingConfig.compareLabel}
                   newLabel={`v${viewingConfig.version}`}
+                  className="p-4 text-xs font-mono leading-5"
                 />
               )
             ) : (
@@ -384,11 +345,12 @@ export default function VersionHistoryPage() {
                   No differences — configs are identical.
                 </div>
               ) : (
-                <DiffView
-                  oldYaml={latestVersion.configYaml}
-                  newYaml={rollbackTarget.yaml}
+                <ConfigDiff
+                  oldConfig={latestVersion.configYaml}
+                  newConfig={rollbackTarget.yaml}
                   oldLabel={`v${latestVersion.version} (current)`}
                   newLabel={`v${rollbackTarget.version} (rollback target)`}
+                  className="p-4 text-xs font-mono leading-5"
                 />
               )}
             </ScrollArea>
