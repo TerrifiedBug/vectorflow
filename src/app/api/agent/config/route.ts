@@ -156,6 +156,19 @@ export async function GET(request: Request) {
       }
     }
 
+    // Query pending sample requests for deployed pipelines
+    const deployedPipelineIds = pipelineConfigs.map((p) => p.pipelineId);
+    const pendingSamples = deployedPipelineIds.length > 0
+      ? await prisma.eventSampleRequest.findMany({
+          where: {
+            status: "PENDING",
+            pipelineId: { in: deployedPipelineIds },
+            expiresAt: { gt: new Date() },
+          },
+          select: { id: true, pipelineId: true, componentKeys: true },
+        })
+      : [];
+
     // Get system settings for poll interval
     const settings = await prisma.systemSettings.findUnique({
       where: { id: "singleton" },
@@ -168,6 +181,16 @@ export async function GET(request: Request) {
       secretBackend: environment.secretBackend,
       ...(environment.secretBackend !== "BUILTIN"
         ? { secretBackendConfig: environment.secretBackendConfig }
+        : {}),
+      ...(pendingSamples.length > 0
+        ? {
+            sampleRequests: pendingSamples.map((s) => ({
+              requestId: s.id,
+              pipelineId: s.pipelineId,
+              componentKeys: s.componentKeys,
+              limit: 5,
+            })),
+          }
         : {}),
     });
   } catch (error) {

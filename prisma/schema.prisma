@@ -183,9 +183,11 @@ model Pipeline {
   updatedBy     User?                @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
   nodeStatuses  NodePipelineStatus[]
   metrics       PipelineMetric[]
-  pipelineLogs  PipelineLog[]
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  pipelineLogs    PipelineLog[]
+  sampleRequests  EventSampleRequest[]
+  eventSamples    EventSample[]
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 }
 
 model NodePipelineStatus {
@@ -227,6 +229,34 @@ model PipelineMetric {
 
   @@index([pipelineId, timestamp])
   @@index([timestamp])
+}
+
+model EventSampleRequest {
+  id            String        @id @default(cuid())
+  pipelineId    String
+  pipeline      Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  componentKeys Json
+  status        String        @default("PENDING")
+  nodeId        String?
+  requestedAt   DateTime      @default(now())
+  expiresAt     DateTime
+  completedAt   DateTime?
+  samples       EventSample[]
+}
+
+model EventSample {
+  id            String              @id @default(cuid())
+  requestId     String
+  request       EventSampleRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  pipelineId    String
+  pipeline      Pipeline            @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  componentKey  String
+  events        Json
+  schema        Json
+  error         String?
+  sampledAt     DateTime            @default(now())
+
+  @@index([pipelineId, componentKey])
 }
 
 model PipelineNode {
