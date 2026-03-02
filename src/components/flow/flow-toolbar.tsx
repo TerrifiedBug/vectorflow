@@ -17,6 +17,7 @@ import {
   BookTemplate,
   History,
   BarChart3,
+  Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { PipelineSettings, useHasGlobalConfigContent } from "@/components/flow/pipeline-settings";
 import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml, generateVectorToml, importVectorConfig } from "@/lib/config-generator";
 import { useTRPC } from "@/trpc/client";
@@ -90,6 +97,7 @@ export function FlowToolbar({
   const removeEdge = useFlowStore((s) => s.removeEdge);
   const loadGraph = useFlowStore((s) => s.loadGraph);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasGlobalContent = useHasGlobalConfigContent();
 
   const trpc = useTRPC();
   const validateMutation = useMutation(trpc.validator.validate.mutationOptions({
@@ -291,6 +299,25 @@ export function FlowToolbar({
             <TooltipContent>{metricsOpen ? "Hide metrics" : "Show metrics"}</TooltipContent>
           </Tooltip>
         )}
+
+        <Popover>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm" className="relative h-7 w-7 p-0">
+                  <Settings className="h-4 w-4" />
+                  {hasGlobalContent && (
+                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-blue-500" />
+                  )}
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Pipeline settings</TooltipContent>
+          </Tooltip>
+          <PopoverContent align="end" className="w-80">
+            <PipelineSettings />
+          </PopoverContent>
+        </Popover>
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 
