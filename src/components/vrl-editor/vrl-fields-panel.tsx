@@ -266,20 +266,20 @@ function FieldRow({
         </button>
 
         <span
-          className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none ${typeBadgeClass(field.type)}`}
+          className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium leading-none ${typeBadgeClass(field.type)}`}
         >
           {field.type || "unknown"}
         </span>
 
         {field.source === "live" && (
-          <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium leading-none text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+          <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium leading-none text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
             discovered
           </span>
         )}
 
         {field.sample && (
           <span
-            className="min-w-0 truncate text-[10px] text-muted-foreground"
+            className="min-w-0 truncate text-xs text-muted-foreground"
             title={field.sample}
           >
             {field.sample}
@@ -462,7 +462,7 @@ export function VrlFieldsPanel({
                   <ChevronDown className="h-3 w-3" />
                 )}
                 {groupKey}
-                <span className="ml-auto text-[10px] font-normal">
+                <span className="ml-auto text-xs font-normal">
                   {fields.length}
                 </span>
               </button>
@@ -483,7 +483,7 @@ export function VrlFieldsPanel({
       {/* Hint when only static fields are available */}
       {!hasLiveFields && staticFields.length > 0 && (
         <div className="border-t px-3 py-1.5">
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Fetch samples for live field types and values
           </p>
         </div>

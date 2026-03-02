@@ -61,7 +61,7 @@ export function TeamSelector() {
           <SelectItem key={team.id} value={team.id}>
             <div className="flex items-center justify-between gap-2 w-full">
               <span>{team.name}</span>
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              <Badge variant="outline" className="text-xs px-1.5 py-0">
                 {team._count.members} members
               </Badge>
             </div>

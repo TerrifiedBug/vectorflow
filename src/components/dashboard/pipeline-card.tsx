@@ -73,11 +73,11 @@ export function PipelineCard({ pipeline }: PipelineCardProps) {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm truncate">{pipeline.name}</CardTitle>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              <Badge variant="outline" className="text-xs px-1.5 py-0">
                 {pipeline.environment.name}
               </Badge>
               {pipeline.latestVersion > 0 && (
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                <Badge variant="secondary" className="text-xs px-1.5 py-0">
                   v{pipeline.latestVersion}
                 </Badge>
               )}
@@ -99,7 +99,7 @@ export function PipelineCard({ pipeline }: PipelineCardProps) {
           </div>
 
           {/* Cumulative totals */}
-          <div className="text-[10px] text-muted-foreground space-y-0.5">
+          <div className="text-xs text-muted-foreground space-y-0.5">
             <p>Total: {formatCount(totals.eventsIn)} in / {formatCount(totals.eventsOut)} out events</p>
             <p>Total: {formatBytes(totals.bytesIn)} in / {formatBytes(totals.bytesOut)} out</p>
           </div>
@@ -127,13 +127,13 @@ export function PipelineCard({ pipeline }: PipelineCardProps) {
                 </div>
               ))}
               {pipeline.nodes.length > 4 && (
-                <p className="text-[10px] text-muted-foreground">+{pipeline.nodes.length - 4} more</p>
+                <p className="text-xs text-muted-foreground">+{pipeline.nodes.length - 4} more</p>
               )}
             </div>
           )}
 
           {/* Deploy info */}
-          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>{pipeline.nodes.length} node{pipeline.nodes.length !== 1 ? "s" : ""}</span>
             <span>Deployed {relativeTime(pipeline.deployedAt)}</span>
           </div>

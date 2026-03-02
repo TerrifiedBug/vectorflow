@@ -80,7 +80,7 @@ export function VrlSnippetDrawer({ onInsert }: VrlSnippetDrawerProps) {
                   <ChevronDown className="h-3 w-3" />
                 )}
                 {category}
-                <span className="ml-auto text-[10px] font-normal">
+                <span className="ml-auto text-xs font-normal">
                   {snippets.length}
                 </span>
               </button>
@@ -93,7 +93,7 @@ export function VrlSnippetDrawer({ onInsert }: VrlSnippetDrawerProps) {
                     title={snippet.code}
                   >
                     <span className="text-xs font-medium">{snippet.name}</span>
-                    <span className="line-clamp-1 text-[10px] text-muted-foreground">
+                    <span className="line-clamp-1 text-xs text-muted-foreground">
                       {snippet.description}
                     </span>
                   </button>

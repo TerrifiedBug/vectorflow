@@ -94,7 +94,7 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
             <Badge
               key={dt}
               variant="secondary"
-              className={cn("px-1.5 py-0 text-[10px]", dataTypeBadgeColor[dt])}
+              className={cn("px-1.5 py-0 text-xs", dataTypeBadgeColor[dt])}
             >
               {dt.charAt(0).toUpperCase() + dt.slice(1)}
             </Badge>

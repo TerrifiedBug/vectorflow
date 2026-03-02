@@ -65,7 +65,7 @@ function DraggableItem({ def }: { def: VectorComponentDef }) {
           <span className="truncate text-sm font-medium text-foreground">
             {def.displayName}
           </span>
-          <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px]">
+          <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-xs">
             {def.category}
           </Badge>
         </div>
@@ -99,7 +99,7 @@ function CategoryGroup({
           <ChevronRight className="h-3 w-3" />
         )}
         {category}
-        <span className="ml-auto font-normal tabular-nums text-[10px]">
+        <span className="ml-auto font-normal tabular-nums text-xs">
           {items.length}
         </span>
       </button>
