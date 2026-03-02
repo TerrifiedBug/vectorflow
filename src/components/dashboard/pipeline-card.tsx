@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { formatCount, formatBytes, formatBytesRate } from "@/lib/format";
 import { Sparkline } from "./sparkline";
 
 const pipelineStatusDot: Record<string, string> = {
@@ -21,32 +22,13 @@ const nodeStatusDot: Record<string, string> = {
   UNKNOWN: "bg-gray-400",
 };
 
-function fmtCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(Math.round(n));
-}
-
+/** Format an events-per-second rate with /s suffix for display. */
 function fmtRate(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M/s`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K/s`;
   if (n >= 1) return `${n.toFixed(1)}/s`;
   if (n > 0) return `${n.toFixed(2)}/s`;
   return "0/s";
-}
-
-function formatBytes(v: number): string {
-  if (v >= 1_073_741_824) return `${(v / 1_073_741_824).toFixed(1)} GB`;
-  if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB`;
-  if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB`;
-  return `${v} B`;
-}
-
-function fmtBytesRate(v: number): string {
-  if (v >= 1_073_741_824) return `${(v / 1_073_741_824).toFixed(1)} GB/s`;
-  if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB/s`;
-  if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB/s`;
-  return `${Math.round(v)} B/s`;
 }
 
 function relativeTime(date: Date | string | null): string {
@@ -110,7 +92,7 @@ export function PipelineCard({ pipeline }: PipelineCardProps) {
                 <span className="font-mono text-foreground">{fmtRate(rates.eventsIn)}</span> in / <span className="font-mono text-foreground">{fmtRate(rates.eventsOut)}</span> out
               </p>
               <p className="text-muted-foreground">
-                {fmtBytesRate(rates.bytesIn)} in / {fmtBytesRate(rates.bytesOut)} out
+                {formatBytesRate(rates.bytesIn)} in / {formatBytesRate(rates.bytesOut)} out
               </p>
             </div>
             <Sparkline data={eventsData} color="#8b5cf6" />
@@ -118,7 +100,7 @@ export function PipelineCard({ pipeline }: PipelineCardProps) {
 
           {/* Cumulative totals */}
           <div className="text-[10px] text-muted-foreground space-y-0.5">
-            <p>Total: {fmtCount(totals.eventsIn)} in / {fmtCount(totals.eventsOut)} out events</p>
+            <p>Total: {formatCount(totals.eventsIn)} in / {formatCount(totals.eventsOut)} out events</p>
             <p>Total: {formatBytes(totals.bytesIn)} in / {formatBytes(totals.bytesOut)} out</p>
           </div>
 
@@ -127,7 +109,7 @@ export function PipelineCard({ pipeline }: PipelineCardProps) {
             <div className="flex items-center gap-1.5 text-xs">
               <span className="h-1.5 w-1.5 rounded-full shrink-0 bg-red-500" />
               <span className="text-red-600 dark:text-red-400 font-medium">
-                {rates.errors > 0 ? `${rates.errors.toFixed(1)}/s` : fmtCount(totals.errors)} errors
+                {rates.errors > 0 ? `${rates.errors.toFixed(1)}/s` : formatCount(totals.errors)} errors
               </span>
             </div>
           )}

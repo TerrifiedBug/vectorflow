@@ -24,6 +24,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { NodeMetricsCharts } from "@/components/fleet/node-metrics-charts";
 import type { NodeStatus } from "@/generated/prisma";
+import {
+  formatTimestamp as formatLastSeen,
+  formatCount,
+  formatBytes,
+  formatBytesRate,
+} from "@/lib/format";
 
 const statusColors: Record<NodeStatus, string> = {
   HEALTHY: "bg-green-500/15 text-green-700 dark:text-green-400",
@@ -32,40 +38,13 @@ const statusColors: Record<NodeStatus, string> = {
   UNKNOWN: "bg-gray-500/15 text-gray-700 dark:text-gray-400",
 };
 
-function formatLastSeen(date: Date | string | null): string {
-  if (!date) return "Never";
-  const d = new Date(date);
-  return d.toLocaleString();
-}
-
-function formatCount(n: number | bigint | null): string {
-  const v = Number(n ?? 0);
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
-  return String(v);
-}
-
-function formatBytes(n: number | bigint | null): string {
-  const v = Number(n ?? 0);
-  if (v >= 1_073_741_824) return `${(v / 1_073_741_824).toFixed(1)} GB`;
-  if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB`;
-  if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB`;
-  return `${v} B`;
-}
-
+/** Thin wrapper that appends "/s" to the shared formatRate for display. */
 function formatRate(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M/s`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K/s`;
   if (n >= 1) return `${n.toFixed(1)}/s`;
   if (n > 0) return `${n.toFixed(2)}/s`;
   return "0/s";
-}
-
-function formatBytesRate(n: number): string {
-  if (n >= 1_073_741_824) return `${(n / 1_073_741_824).toFixed(1)} GB/s`;
-  if (n >= 1_048_576) return `${(n / 1_048_576).toFixed(1)} MB/s`;
-  if (n >= 1_024) return `${(n / 1_024).toFixed(1)} KB/s`;
-  return `${Math.round(n)} B/s`;
 }
 
 function formatUptime(seconds: number | null): string {

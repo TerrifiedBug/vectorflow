@@ -18,6 +18,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { NodeStatus } from "@/generated/prisma";
 import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
+import { formatLastSeen } from "@/lib/format";
 
 const statusColors: Record<NodeStatus, string> = {
   HEALTHY: "bg-green-500/15 text-green-700 dark:text-green-400",
@@ -25,22 +26,6 @@ const statusColors: Record<NodeStatus, string> = {
   UNREACHABLE: "bg-red-500/15 text-red-700 dark:text-red-400",
   UNKNOWN: "bg-gray-500/15 text-gray-700 dark:text-gray-400",
 };
-
-function formatLastSeen(date: Date | string | null): string {
-  if (!date) return "Never";
-  const d = new Date(date);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-
-  return d.toLocaleDateString();
-}
 
 export default function FleetPage() {
   const trpc = useTRPC();

@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Cpu, MemoryStick, HardDrive, Network } from "lucide-react";
 import { useState } from "react";
+import { formatBytes, formatBytesRate, formatPercent } from "@/lib/format";
 
 interface NodeMetricsChartsProps {
   nodeId: string;
@@ -31,24 +32,6 @@ function formatTime(date: Date | string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function formatBytes(v: number): string {
-  if (v >= 1_073_741_824) return `${(v / 1_073_741_824).toFixed(1)} GB`;
-  if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB`;
-  if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB`;
-  return `${v} B`;
-}
-
-function formatBytesRate(v: number): string {
-  if (v >= 1_073_741_824) return `${(v / 1_073_741_824).toFixed(1)} GB/s`;
-  if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB/s`;
-  if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB/s`;
-  return `${v.toFixed(0)} B/s`;
-}
-
-function formatPercent(v: number): string {
-  return `${v.toFixed(1)}%`;
 }
 
 const CHART_HEIGHT = 180;
