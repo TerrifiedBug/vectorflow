@@ -70,7 +70,7 @@ export function AppSidebar() {
             VectorFlow
           </span>
         </Link>
-        <div className="px-2 pb-2">
+        <div className="px-3 pb-2">
           <TeamSelector />
         </div>
       </SidebarHeader>
