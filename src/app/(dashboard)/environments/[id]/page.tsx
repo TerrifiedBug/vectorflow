@@ -13,6 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import {
   Card,
@@ -408,16 +415,17 @@ export default function EnvironmentDetailPage({
                   Choose how pipelines on this environment resolve secret references.
                 </p>
                 {editing ? (
-                  <select
-                    value={editSecretBackend}
-                    onChange={(e) => setEditSecretBackend(e.target.value as "BUILTIN" | "VAULT" | "AWS_SM" | "EXEC")}
-                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="BUILTIN">Built-in (VectorFlow delivers secrets as env vars)</option>
-                    <option value="VAULT">HashiCorp Vault</option>
-                    <option value="AWS_SM">AWS Secrets Manager</option>
-                    <option value="EXEC">Exec (custom script)</option>
-                  </select>
+                  <Select value={editSecretBackend} onValueChange={(val) => setEditSecretBackend(val as "BUILTIN" | "VAULT" | "AWS_SM" | "EXEC")}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BUILTIN">Built-in (VectorFlow delivers secrets as env vars)</SelectItem>
+                      <SelectItem value="VAULT">HashiCorp Vault</SelectItem>
+                      <SelectItem value="AWS_SM">AWS Secrets Manager</SelectItem>
+                      <SelectItem value="EXEC">Exec (custom script)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 ) : (
                   <Badge variant="secondary">
                     {env.secretBackend === "VAULT" ? "HashiCorp Vault" :
@@ -434,12 +442,12 @@ export default function EnvironmentDetailPage({
                   <div>
                     <label className="text-sm font-medium">Vault Address</label>
                     {editing ? (
-                      <input
+                      <Input
                         type="text"
                         value={editVaultConfig.address}
                         onChange={(e) => setEditVaultConfig(prev => ({ ...prev, address: e.target.value }))}
                         placeholder="https://vault.internal:8200"
-                        className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        className="mt-1"
                       />
                     ) : (
                       <p className="mt-1 text-sm text-muted-foreground">
@@ -450,15 +458,16 @@ export default function EnvironmentDetailPage({
                   <div>
                     <label className="text-sm font-medium">Auth Method</label>
                     {editing ? (
-                      <select
-                        value={editVaultConfig.authMethod}
-                        onChange={(e) => setEditVaultConfig(prev => ({ ...prev, authMethod: e.target.value as "token" | "approle" | "kubernetes" }))}
-                        className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                      >
-                        <option value="token">Token</option>
-                        <option value="approle">AppRole</option>
-                        <option value="kubernetes">Kubernetes</option>
-                      </select>
+                      <Select value={editVaultConfig.authMethod} onValueChange={(val) => setEditVaultConfig(prev => ({ ...prev, authMethod: val as "token" | "approle" | "kubernetes" }))}>
+                        <SelectTrigger className="mt-1 w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="token">Token</SelectItem>
+                          <SelectItem value="approle">AppRole</SelectItem>
+                          <SelectItem value="kubernetes">Kubernetes</SelectItem>
+                        </SelectContent>
+                      </Select>
                     ) : (
                       <p className="mt-1 text-sm text-muted-foreground capitalize">
                         {(env.secretBackendConfig as Record<string, string>)?.authMethod || "token"}
@@ -468,12 +477,12 @@ export default function EnvironmentDetailPage({
                   <div>
                     <label className="text-sm font-medium">Mount Path</label>
                     {editing ? (
-                      <input
+                      <Input
                         type="text"
                         value={editVaultConfig.mountPath}
                         onChange={(e) => setEditVaultConfig(prev => ({ ...prev, mountPath: e.target.value }))}
                         placeholder="secret/data/vectorflow"
-                        className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        className="mt-1"
                       />
                     ) : (
                       <p className="mt-1 text-sm text-muted-foreground">
@@ -486,12 +495,12 @@ export default function EnvironmentDetailPage({
                     <div>
                       <label className="text-sm font-medium">Role</label>
                       {editing ? (
-                        <input
+                        <Input
                           type="text"
                           value={editVaultConfig.role}
                           onChange={(e) => setEditVaultConfig(prev => ({ ...prev, role: e.target.value }))}
                           placeholder="vectorflow-agent"
-                          className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                          className="mt-1"
                         />
                       ) : (
                         <p className="mt-1 text-sm text-muted-foreground">
