@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
+import { useFormField, useFormStore } from "@/stores/form-store";
 import { copyToClipboard } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -75,35 +76,24 @@ function AuthSettings() {
   const settingsQuery = useQuery(trpc.settings.get.queryOptions());
   const settings = settingsQuery.data;
 
-  const hasLoadedRef = useRef(false);
-  const [isDirty, setIsDirty] = useState(false);
-  const markDirty = useCallback(() => setIsDirty(true), []);
+  const isDirty = useFormStore((s) => !!s.fields["settings-oidc"] && Object.keys(s.fields["settings-oidc"]).length > 0);
 
-  const [issuer, setIssuer] = useState("");
-  const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
-  const [displayName, setDisplayName] = useState("SSO");
-  const [tokenAuthMethod, setTokenAuthMethod] = useState<"client_secret_post" | "client_secret_basic">("client_secret_post");
-
-  useEffect(() => {
-    if (!settings) return;
-    if (hasLoadedRef.current && isDirty) return; // Don't overwrite dirty state
-    hasLoadedRef.current = true;
-    setIssuer(settings.oidcIssuer ?? "");
-    setClientId(settings.oidcClientId ?? "");
-    setDisplayName(settings.oidcDisplayName ?? "SSO");
-    setTokenAuthMethod((settings.oidcTokenEndpointAuthMethod as "client_secret_post" | "client_secret_basic") ?? "client_secret_post");
-    // Don't populate clientSecret - it's masked
-  }, [settings, isDirty]);
+  const [issuer, setIssuer] = useFormField("settings-oidc", "issuer", settings?.oidcIssuer ?? "");
+  const [clientId, setClientId] = useFormField("settings-oidc", "clientId", settings?.oidcClientId ?? "");
+  const [clientSecret, setClientSecret] = useFormField("settings-oidc", "clientSecret", "");
+  const [displayName, setDisplayName] = useFormField("settings-oidc", "displayName", settings?.oidcDisplayName ?? "SSO");
+  const [tokenAuthMethod, setTokenAuthMethod] = useFormField<"client_secret_post" | "client_secret_basic">(
+    "settings-oidc",
+    "tokenAuthMethod",
+    (settings?.oidcTokenEndpointAuthMethod as "client_secret_post" | "client_secret_basic") ?? "client_secret_post",
+  );
 
   const updateOidcMutation = useMutation(
     trpc.settings.updateOidc.mutationOptions({
       onSuccess: () => {
-        setIsDirty(false);
-        hasLoadedRef.current = false; // Allow next sync from server
+        useFormStore.getState().clearForm("settings-oidc");
         queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
         toast.success("OIDC settings saved successfully");
-        setClientSecret("");
       },
       onError: (error) => {
         toast.error(error.message || "Failed to save OIDC settings");
@@ -145,27 +135,25 @@ function AuthSettings() {
     testOidcMutation.mutate({ issuer });
   };
 
-  const [teamMappings, setTeamMappings] = useState<Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>>([]);
-  const [defaultTeamId, setDefaultTeamId] = useState("");
-  const [defaultRole, setDefaultRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
-  const [groupsClaim, setGroupsClaim] = useState("groups");
+  const [teamMappings, setTeamMappings] = useFormField<Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>>(
+    "settings-oidc",
+    "teamMappings",
+    (settings?.oidcTeamMappings ?? []) as Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>,
+  );
+  const [defaultTeamId, setDefaultTeamId] = useFormField("settings-oidc", "defaultTeamId", settings?.oidcDefaultTeamId ?? "");
+  const [defaultRole, setDefaultRole] = useFormField<"VIEWER" | "EDITOR" | "ADMIN">(
+    "settings-oidc",
+    "defaultRole",
+    (settings?.oidcDefaultRole as "VIEWER" | "EDITOR" | "ADMIN") ?? "VIEWER",
+  );
+  const [groupsClaim, setGroupsClaim] = useFormField("settings-oidc", "groupsClaim", settings?.oidcGroupsClaim ?? "groups");
 
   const teamsQuery = useQuery(trpc.admin.listTeams.queryOptions());
-
-  useEffect(() => {
-    if (!settings) return;
-    if (hasLoadedRef.current && isDirty) return; // Don't overwrite dirty state
-    setDefaultRole((settings.oidcDefaultRole as "VIEWER" | "EDITOR" | "ADMIN") ?? "VIEWER");
-    setGroupsClaim(settings.oidcGroupsClaim ?? "groups");
-    setTeamMappings((settings.oidcTeamMappings ?? []) as Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>);
-    setDefaultTeamId(settings.oidcDefaultTeamId ?? "");
-  }, [settings, isDirty]);
 
   const updateTeamMappingMutation = useMutation(
     trpc.settings.updateOidcTeamMappings.mutationOptions({
       onSuccess: () => {
-        setIsDirty(false);
-        hasLoadedRef.current = false; // Allow next sync from server
+        useFormStore.getState().clearForm("settings-oidc");
         queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
         toast.success("OIDC team mapping saved");
       },
@@ -176,17 +164,14 @@ function AuthSettings() {
   );
 
   function addMapping() {
-    markDirty();
     setTeamMappings([...teamMappings, { group: "", teamId: "", role: "VIEWER" }]);
   }
 
   function removeMapping(index: number) {
-    markDirty();
     setTeamMappings(teamMappings.filter((_, i) => i !== index));
   }
 
   function updateMapping(index: number, field: keyof typeof teamMappings[number], value: string) {
-    markDirty();
     setTeamMappings(teamMappings.map((m, i) =>
       i === index ? { ...m, [field]: value } as typeof m : m
     ));
@@ -228,7 +213,7 @@ function AuthSettings() {
               type="url"
               placeholder="https://accounts.google.com"
               value={issuer}
-              onChange={(e) => { markDirty(); setIssuer(e.target.value); }}
+              onChange={(e) => { setIssuer(e.target.value); }}
               required
             />
             <p className="text-xs text-muted-foreground">
@@ -242,7 +227,7 @@ function AuthSettings() {
               id="oidc-client-id"
               placeholder="your-client-id"
               value={clientId}
-              onChange={(e) => { markDirty(); setClientId(e.target.value); }}
+              onChange={(e) => { setClientId(e.target.value); }}
               required
             />
           </div>
@@ -258,7 +243,7 @@ function AuthSettings() {
                   : "Enter client secret"
               }
               value={clientSecret}
-              onChange={(e) => { markDirty(); setClientSecret(e.target.value); }}
+              onChange={(e) => { setClientSecret(e.target.value); }}
               required={!settings?.oidcClientSecret}
             />
             <p className="text-xs text-muted-foreground">
@@ -274,7 +259,7 @@ function AuthSettings() {
               id="oidc-display-name"
               placeholder="SSO"
               value={displayName}
-              onChange={(e) => { markDirty(); setDisplayName(e.target.value); }}
+              onChange={(e) => { setDisplayName(e.target.value); }}
               required
             />
             <p className="text-xs text-muted-foreground">
@@ -287,7 +272,7 @@ function AuthSettings() {
             <Label htmlFor="oidc-auth-method">Token Auth Method</Label>
             <Select
               value={tokenAuthMethod}
-              onValueChange={(val: "client_secret_post" | "client_secret_basic") => { markDirty(); setTokenAuthMethod(val); }}
+              onValueChange={(val: "client_secret_post" | "client_secret_basic") => { setTokenAuthMethod(val); }}
             >
               <SelectTrigger id="oidc-auth-method" className="w-full">
                 <SelectValue />
@@ -374,7 +359,7 @@ function AuthSettings() {
               id="oidc-groups-claim"
               placeholder="groups"
               value={groupsClaim}
-              onChange={(e) => { markDirty(); setGroupsClaim(e.target.value); }}
+              onChange={(e) => { setGroupsClaim(e.target.value); }}
               required
             />
             <p className="text-xs text-muted-foreground">
@@ -465,7 +450,7 @@ function AuthSettings() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="oidc-default-team">Default Team</Label>
-              <Select value={defaultTeamId} onValueChange={(val) => { markDirty(); setDefaultTeamId(val); }}>
+              <Select value={defaultTeamId} onValueChange={(val) => { setDefaultTeamId(val); }}>
                 <SelectTrigger id="oidc-default-team">
                   <SelectValue placeholder="Select default team" />
                 </SelectTrigger>
@@ -483,7 +468,7 @@ function AuthSettings() {
               <Label htmlFor="oidc-default-role">Default Role</Label>
               <Select
                 value={defaultRole}
-                onValueChange={(val: "VIEWER" | "EDITOR" | "ADMIN") => { markDirty(); setDefaultRole(val); }}
+                onValueChange={(val: "VIEWER" | "EDITOR" | "ADMIN") => { setDefaultRole(val); }}
               >
                 <SelectTrigger id="oidc-default-role">
                   <SelectValue />
