@@ -8,18 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SummaryCards } from "@/components/metrics/summary-cards";
-import { ComponentChart } from "@/components/metrics/component-chart";
+import { MetricsChart } from "@/components/metrics/component-chart";
 
 const TIME_RANGES = [
   { label: "5m", minutes: 5 },
   { label: "15m", minutes: 15 },
   { label: "1h", minutes: 60 },
+  { label: "6h", minutes: 360 },
+  { label: "24h", minutes: 1440 },
 ] as const;
 
 export default function PipelineMetricsPage() {
   const params = useParams<{ id: string }>();
   const trpc = useTRPC();
-  const [minutes, setMinutes] = useState(15);
+  const [minutes, setMinutes] = useState(60);
 
   const pipelineQuery = useQuery(
     trpc.pipeline.get.queryOptions({ id: params.id }),
@@ -44,7 +46,7 @@ export default function PipelineMetricsPage() {
   }
 
   const pipeline = pipelineQuery.data;
-  const metricsData = metricsQuery.data?.components ?? {};
+  const rows = metricsQuery.data?.rows ?? [];
 
   return (
     <div className="space-y-6">
@@ -54,7 +56,7 @@ export default function PipelineMetricsPage() {
             {pipeline?.name ?? "Pipeline"} — Metrics
           </h2>
           <p className="text-muted-foreground">
-            Real-time throughput and component performance
+            Pipeline throughput and performance
           </p>
         </div>
         <div className="flex gap-1">
@@ -71,37 +73,40 @@ export default function PipelineMetricsPage() {
         </div>
       </div>
 
-      <SummaryCards allSamples={metricsData} />
+      <SummaryCards rows={rows} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Components</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {Object.keys(metricsData).length === 0 ? (
+      {rows.length === 0 ? (
+        <Card>
+          <CardContent className="py-12">
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
               <p className="text-muted-foreground">
                 No metrics data available yet. Metrics appear after the pipeline
-                is deployed and the fleet poller begins collecting data.
+                is deployed and agents begin reporting heartbeats.
               </p>
             </div>
-          ) : (
-            <div className="space-y-6">
-              {Object.entries(metricsData).map(([componentId, data]) => (
-                <div key={componentId} className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{data.componentKey}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {data.componentType} ({data.kind})
-                    </span>
-                  </div>
-                  <ComponentChart samples={data.samples} />
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Events Throughput</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MetricsChart rows={rows} dataKey="events" height={220} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Data Throughput</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MetricsChart rows={rows} dataKey="bytes" height={220} />
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

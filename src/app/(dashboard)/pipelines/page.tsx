@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
-import { Plus, MoreHorizontal, Copy, Trash2 } from "lucide-react";
+import { Plus, MoreHorizontal, Copy, Trash2, BarChart3 } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
 
@@ -148,8 +148,8 @@ export default function PipelinesPage() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">Events In / Out</TableHead>
-              <TableHead className="text-right">Bytes In / Out</TableHead>
+              <TableHead className="text-right">Total Events In / Out</TableHead>
+              <TableHead className="text-right">Total Bytes In / Out</TableHead>
               <TableHead>Components</TableHead>
               <TableHead>Last Updated</TableHead>
               <TableHead className="w-12" />
@@ -198,6 +198,12 @@ export default function PipelinesPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem asChild>
+                        <Link href={`/pipelines/${pipeline.id}/metrics`}>
+                          <BarChart3 className="mr-2 h-4 w-4" />
+                          Metrics
+                        </Link>
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => cloneMutation.mutate({ pipelineId: pipeline.id })}
                         disabled={cloneMutation.isPending}
