@@ -5,7 +5,7 @@ import { metricStore } from "@/server/services/metric-store";
 export const dashboardRouter = router({
   stats: protectedProcedure.query(async () => {
     const [pipelineCount, nodeCount, environmentCount, healthyCounts] = await Promise.all([
-      prisma.pipeline.count(),
+      prisma.pipeline.count({ where: { isDraft: false, deployedAt: { not: null } } }),
       prisma.vectorNode.count(),
       prisma.environment.count(),
       prisma.vectorNode.groupBy({
