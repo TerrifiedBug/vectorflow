@@ -42,6 +42,7 @@ model Team {
   environments     Environment[]
   templates        Template[]
   vrlSnippets      VrlSnippet[]
+  alertRules       AlertRule[]
   createdAt        DateTime      @default(now())
 }
 
@@ -76,6 +77,8 @@ model Environment {
   enrollmentTokenHint String?
   secretBackend       SecretBackend @default(BUILTIN)
   secretBackendConfig Json?
+  alertRules          AlertRule[]
+  alertWebhooks       AlertWebhook[]
   createdAt           DateTime      @default(now())
 }
 
@@ -196,6 +199,7 @@ model Pipeline {
   nodeStatuses  NodePipelineStatus[]
   metrics       PipelineMetric[]
   pipelineLogs    PipelineLog[]
+  alertRules      AlertRule[]
   sampleRequests  EventSampleRequest[]
   eventSamples    EventSample[]
   createdAt       DateTime             @default(now())
@@ -434,4 +438,76 @@ model VrlSnippet {
 
   @@unique([teamId, name])
   @@index([teamId])
+}
+
+enum AlertMetric {
+  node_unreachable
+  cpu_usage
+  memory_usage
+  disk_usage
+  error_rate
+  discarded_rate
+  pipeline_crashed
+}
+
+enum AlertCondition {
+  gt
+  lt
+  eq
+}
+
+enum AlertStatus {
+  firing
+  resolved
+}
+
+model AlertRule {
+  id              String         @id @default(cuid())
+  name            String
+  enabled         Boolean        @default(true)
+  environmentId   String
+  environment     Environment    @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  pipelineId      String?
+  pipeline        Pipeline?      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  teamId          String
+  team            Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  metric          AlertMetric
+  condition       AlertCondition
+  threshold       Float
+  durationSeconds Int            @default(60)
+  events          AlertEvent[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([environmentId])
+  @@index([teamId])
+}
+
+model AlertWebhook {
+  id            String      @id @default(cuid())
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  url           String
+  headers       Json?
+  hmacSecret    String?
+  enabled       Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([environmentId])
+}
+
+model AlertEvent {
+  id          String      @id @default(cuid())
+  alertRuleId String
+  alertRule   AlertRule   @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+  status      AlertStatus
+  value       Float
+  message     String?
+  firedAt     DateTime    @default(now())
+  resolvedAt  DateTime?
+  notifiedAt  DateTime?
+
+  @@index([alertRuleId])
+  @@index([firedAt])
 }
