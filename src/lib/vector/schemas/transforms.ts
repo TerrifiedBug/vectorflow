@@ -37,16 +37,6 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
           type: "string",
           description: "Default timezone for timestamp operations",
         },
-        file: {
-          type: "string",
-          description: "Path to a VRL file (alternative to inline source)",
-        },
-        files: {
-          type: "array",
-          items: { type: "string" },
-          description:
-            "Paths to multiple VRL files (alternative to inline source)",
-        },
         metric_tag_values: {
           type: "string",
           enum: ["single", "full"],
@@ -411,11 +401,6 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
           enum: ["single", "full"],
           default: "single",
           description: "Tag value representation for metrics",
-        },
-        search_dirs: {
-          type: "array",
-          items: { type: "string" },
-          description: "Directories to search for Lua modules",
         },
         timers: {
           type: "array",
