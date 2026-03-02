@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTeamStore } from "@/stores/team-store";
+import { useEnvironmentStore } from "@/stores/environment-store";
 
 const ALL_VALUE = "__all__";
 
@@ -65,12 +66,14 @@ function getActionColor(action: string): string {
 export default function AuditPage() {
   const trpc = useTRPC();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
 
   // Filter state
   const [actionFilter, setActionFilter] = useState<string>("");
   const [entityTypeFilter, setEntityTypeFilter] = useState<string>("");
   const [userFilter, setUserFilter] = useState<string>("");
   const [teamFilter, setTeamFilter] = useState<string>("");
+  const [environmentFilter, setEnvironmentFilter] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [search, setSearch] = useState<string>("");
@@ -83,9 +86,17 @@ export default function AuditPage() {
   const entityTypesQuery = useQuery(trpc.audit.entityTypes.queryOptions());
   const usersQuery = useQuery(trpc.audit.users.queryOptions());
   const teamsQuery = useQuery(trpc.team.list.queryOptions());
+  const environmentsQuery = useQuery(
+    trpc.environment.list.queryOptions(
+      { teamId: (teamFilter || selectedTeamId)! },
+      { enabled: !!(teamFilter || selectedTeamId) }
+    )
+  );
+  const environments = environmentsQuery.data ?? [];
 
   // Build query input — explicit team filter overrides global team selector
   const effectiveTeamId = teamFilter || selectedTeamId;
+  const effectiveEnvironmentId = environmentFilter || undefined;
   const queryInput = {
     ...(actionFilter ? { action: actionFilter } : {}),
     ...(entityTypeFilter ? { entityType: entityTypeFilter } : {}),
@@ -94,6 +105,7 @@ export default function AuditPage() {
     ...(endDate ? { endDate } : {}),
     ...(search ? { search } : {}),
     ...(effectiveTeamId ? { teamId: effectiveTeamId } : {}),
+    ...(effectiveEnvironmentId ? { environmentId: effectiveEnvironmentId } : {}),
   };
 
   // Infinite query for cursor-based pagination
@@ -243,6 +255,27 @@ export default function AuditPage() {
               </Select>
             </div>
 
+            {/* Environment filter */}
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Environment</label>
+              <Select
+                value={environmentFilter || ALL_VALUE}
+                onValueChange={(v) => setEnvironmentFilter(v === ALL_VALUE ? "" : v)}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="All environments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>All environments</SelectItem>
+                  {environments.map((env) => (
+                    <SelectItem key={env.id} value={env.id}>
+                      {env.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Date range */}
             <div className="space-y-2">
               <label className="text-xs text-muted-foreground">From</label>
@@ -268,6 +301,7 @@ export default function AuditPage() {
               entityTypeFilter ||
               userFilter ||
               teamFilter ||
+              environmentFilter ||
               startDate ||
               endDate ||
               search) && (
@@ -279,6 +313,7 @@ export default function AuditPage() {
                   setEntityTypeFilter("");
                   setUserFilter("");
                   setTeamFilter("");
+                  setEnvironmentFilter("");
                   setStartDate("");
                   setEndDate("");
                   setSearch("");
