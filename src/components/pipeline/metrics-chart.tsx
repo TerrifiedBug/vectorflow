@@ -11,17 +11,11 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { formatBytesRate } from "@/lib/format";
 
 interface PipelineMetricsChartProps {
   pipelineId: string;
   hours?: number;
-}
-
-function formatBytesRate(v: number): string {
-  if (v >= 1_073_741_824) return `${(v / 1_073_741_824).toFixed(1)} GB/s`;
-  if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB/s`;
-  if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB/s`;
-  return `${v.toFixed(0)} B/s`;
 }
 
 function formatEventsRate(v: number): string {

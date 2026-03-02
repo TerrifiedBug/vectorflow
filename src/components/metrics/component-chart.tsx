@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { formatBytesRate } from "@/lib/format";
 
 interface MetricRow {
   timestamp: Date;
@@ -30,13 +31,6 @@ function formatEventsRate(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M/s`;
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K/s`;
   return `${v.toFixed(1)}/s`;
-}
-
-function formatBytesRate(v: number): string {
-  if (v >= 1_073_741_824) return `${(v / 1_073_741_824).toFixed(1)} GB/s`;
-  if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB/s`;
-  if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB/s`;
-  return `${v.toFixed(0)} B/s`;
 }
 
 export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps) {

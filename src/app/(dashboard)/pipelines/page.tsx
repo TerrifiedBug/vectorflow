@@ -28,21 +28,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-
-function formatCount(n: number | bigint): string {
-  const v = Number(n);
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
-  return String(v);
-}
-
-function formatBytes(n: number | bigint): string {
-  const v = Number(n);
-  if (v >= 1_073_741_824) return `${(v / 1_073_741_824).toFixed(1)} GB`;
-  if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB`;
-  if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB`;
-  return `${v} B`;
-}
+import { formatCount, formatBytes } from "@/lib/format";
 
 function aggregateProcessStatus(
   statuses: Array<{ status: string }>
