@@ -44,15 +44,17 @@ function formatBytes(n: number | bigint): string {
   return `${v} B`;
 }
 
-function sumNodeStatuses(statuses: Array<{ eventsIn: bigint; eventsOut: bigint; bytesIn: bigint; bytesOut: bigint }>) {
-  let eventsIn = BigInt(0), eventsOut = BigInt(0), bytesIn = BigInt(0), bytesOut = BigInt(0);
+function sumNodeStatuses(statuses: Array<{ eventsIn: bigint; eventsOut: bigint; errorsTotal: bigint; eventsDiscarded: bigint; bytesIn: bigint; bytesOut: bigint }>) {
+  let eventsIn = BigInt(0), eventsOut = BigInt(0), errorsTotal = BigInt(0), eventsDiscarded = BigInt(0), bytesIn = BigInt(0), bytesOut = BigInt(0);
   for (const s of statuses) {
     eventsIn += BigInt(s.eventsIn);
     eventsOut += BigInt(s.eventsOut);
+    errorsTotal += BigInt(s.errorsTotal);
+    eventsDiscarded += BigInt(s.eventsDiscarded);
     bytesIn += BigInt(s.bytesIn);
     bytesOut += BigInt(s.bytesOut);
   }
-  return { eventsIn, eventsOut, bytesIn, bytesOut };
+  return { eventsIn, eventsOut, errorsTotal, eventsDiscarded, bytesIn, bytesOut };
 }
 
 export default function PipelinesPage() {
@@ -150,7 +152,7 @@ export default function PipelinesPage() {
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Total Events In / Out</TableHead>
               <TableHead className="text-right">Total Bytes In / Out</TableHead>
-              <TableHead>Components</TableHead>
+              <TableHead className="text-right">Errors / Discarded</TableHead>
               <TableHead>Last Updated</TableHead>
               <TableHead className="w-12" />
             </TableRow>
@@ -184,8 +186,10 @@ export default function PipelinesPage() {
                     ? `${formatBytes(totals.bytesIn)} / ${formatBytes(totals.bytesOut)}`
                     : "—"}
                 </TableCell>
-                <TableCell>
-                  {pipeline._count.nodes} nodes, {pipeline._count.edges} edges
+                <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                  {totals
+                    ? `${formatCount(totals.errorsTotal)} / ${formatCount(totals.eventsDiscarded)}`
+                    : "—"}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {new Date(pipeline.updatedAt).toLocaleDateString()}
