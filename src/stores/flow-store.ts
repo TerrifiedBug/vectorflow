@@ -248,6 +248,8 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   removeNode: (id) => {
     set((state) => {
       const history = pushSnapshot(state);
+      const newSelectedIds = new Set(state.selectedNodeIds);
+      newSelectedIds.delete(id);
       return {
         ...history,
         nodes: state.nodes.filter((n) => n.id !== id),
@@ -256,6 +258,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         ),
         selectedNodeId:
           state.selectedNodeId === id ? null : state.selectedNodeId,
+        selectedNodeIds: newSelectedIds,
         isDirty: true,
       };
     });
