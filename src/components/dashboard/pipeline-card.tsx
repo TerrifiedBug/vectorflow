@@ -68,7 +68,7 @@ export function PipelineCard({ pipeline }: PipelineCardProps) {
 
   return (
     <Link href={`/pipelines/${pipeline.id}`} className="block">
-      <Card className="transition-colors hover:border-foreground/20">
+      <Card className="cursor-pointer transition-colors hover:border-foreground/20">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm truncate">{pipeline.name}</CardTitle>

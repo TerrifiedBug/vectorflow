@@ -159,7 +159,7 @@ export default function PipelinesPage() {
               const hasStats = pipeline.nodeStatuses.length > 0;
               const totals = hasStats ? sumNodeStatuses(pipeline.nodeStatuses) : null;
               return (
-              <TableRow key={pipeline.id}>
+              <TableRow key={pipeline.id} className="cursor-pointer hover:bg-muted/50">
                 <TableCell className="font-medium">
                   <Link
                     href={`/pipelines/${pipeline.id}`}
