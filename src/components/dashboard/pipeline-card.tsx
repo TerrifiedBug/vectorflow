@@ -3,24 +3,10 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import { formatCount, formatBytes, formatBytesRate } from "@/lib/format";
 import { Sparkline } from "./sparkline";
-
-const pipelineStatusDot: Record<string, string> = {
-  RUNNING: "bg-green-500",
-  STARTING: "bg-blue-500",
-  STOPPED: "bg-gray-400",
-  CRASHED: "bg-red-500",
-  PENDING: "bg-yellow-500",
-};
-
-const nodeStatusDot: Record<string, string> = {
-  HEALTHY: "bg-green-500",
-  DEGRADED: "bg-yellow-500",
-  UNREACHABLE: "bg-red-500",
-  UNKNOWN: "bg-gray-400",
-};
+import { StatusDot } from "@/components/ui/status-dot";
+import { nodeStatusVariant, pipelineStatusVariant } from "@/lib/status";
 
 /** Format an events-per-second rate with /s suffix for display. */
 function fmtRate(n: number): string {
@@ -120,10 +106,10 @@ export function PipelineCard({ pipeline }: PipelineCardProps) {
               {pipeline.nodes.slice(0, 4).map((n) => (
                 <div key={n.id} className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-1.5 truncate">
-                    <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", nodeStatusDot[n.status] ?? "bg-gray-400")} />
+                    <StatusDot variant={nodeStatusVariant(n.status)} className="h-1.5 w-1.5" />
                     <span className="truncate">{n.name}</span>
                   </div>
-                  <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", pipelineStatusDot[n.pipelineStatus] ?? "bg-gray-400")} />
+                  <StatusDot variant={pipelineStatusVariant(n.pipelineStatus)} className="h-1.5 w-1.5" />
                 </div>
               ))}
               {pipeline.nodes.length > 4 && (

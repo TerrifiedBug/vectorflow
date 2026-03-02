@@ -3,19 +3,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, AlertCircle, Clock, XCircle } from "lucide-react";
+import { StatusDot } from "@/components/ui/status-dot";
+import { pipelineStatusVariant, pipelineStatusLabel } from "@/lib/status";
 
 interface DeploymentStatusProps {
   pipelineId: string;
 }
-
-const statusConfig: Record<string, { icon: typeof CheckCircle; color: string; label: string }> = {
-  RUNNING: { icon: CheckCircle, color: "text-green-500", label: "Running" },
-  STARTING: { icon: Clock, color: "text-yellow-500", label: "Starting" },
-  STOPPED: { icon: XCircle, color: "text-muted-foreground", label: "Stopped" },
-  CRASHED: { icon: AlertCircle, color: "text-red-500", label: "Crashed" },
-  PENDING: { icon: Clock, color: "text-blue-500", label: "Pending" },
-};
 
 function formatUptime(seconds: number | null): string {
   if (!seconds) return "\u2014";
@@ -61,12 +54,10 @@ export function DeploymentStatus({ pipelineId }: DeploymentStatusProps) {
       </div>
       <div className="rounded-md border divide-y">
         {status.nodes.map((node) => {
-          const cfg = statusConfig[node.pipelineStatus] ?? statusConfig.PENDING;
-          const Icon = cfg.icon;
           return (
             <div key={node.nodeId} className="flex items-center justify-between px-3 py-2 text-xs">
               <div className="flex items-center gap-2">
-                <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />
+                <StatusDot variant={pipelineStatusVariant(node.pipelineStatus)} />
                 <span className="font-medium">{node.nodeName}</span>
                 <span className="text-muted-foreground">{node.nodeHost}</span>
               </div>

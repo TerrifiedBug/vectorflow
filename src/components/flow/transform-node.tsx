@@ -9,6 +9,8 @@ import type { NodeMetricsData } from "@/stores/flow-store";
 import { getIcon } from "./node-icon";
 import { NodeSparkline } from "./node-sparkline";
 import { formatRate, formatBytesRate } from "./node-metrics-format";
+import { StatusDot } from "@/components/ui/status-dot";
+import { nodeStatusVariant } from "@/lib/status";
 
 
 type TransformNodeData = {
@@ -17,12 +19,6 @@ type TransformNodeData = {
   config: Record<string, unknown>;
   metrics?: NodeMetricsData;
   disabled?: boolean;
-};
-
-const statusColors: Record<string, string> = {
-  healthy: "bg-green-500",
-  degraded: "bg-yellow-500",
-  unreachable: "bg-red-500",
 };
 
 type TransformNodeType = Node<TransformNodeData, "transform">;
@@ -115,13 +111,7 @@ function TransformNodeComponent({
       {/* Monitoring overlay */}
       {metrics && (
         <div className="flex items-center gap-2 border-t px-3 py-1.5 text-xs">
-          <span
-            className={cn(
-              "h-2 w-2 shrink-0 rounded-full",
-              statusColors[metrics.status] ?? "bg-gray-400"
-            )}
-            aria-label={`Status: ${metrics.status}`}
-          />
+          <StatusDot variant={nodeStatusVariant(metrics.status)} />
           {metrics.samples && metrics.samples.length > 1 && (
             <NodeSparkline samples={metrics.samples} />
           )}
