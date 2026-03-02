@@ -184,7 +184,7 @@ export const dashboardRouter = router({
         versions: {
           orderBy: { version: "desc" },
           take: 1,
-          select: { version: true, configYaml: true },
+          select: { version: true, configYaml: true, logLevel: true },
         },
       },
       orderBy: { name: "asc" },
@@ -294,9 +294,21 @@ export const dashboardRouter = router({
             p.globalConfig as Record<string, unknown> | null,
           );
           hasUndeployedChanges = currentYaml !== latestVersion.configYaml;
+
+          // Also check log level changes (matches pipeline.ts logic)
+          if (!hasUndeployedChanges) {
+            const currentLogLevel = (p.globalConfig as Record<string, unknown>)?.log_level ?? null;
+            const deployedLogLevel = (latestVersion as { logLevel?: string | null }).logLevel ?? null;
+            if (currentLogLevel !== deployedLogLevel) {
+              hasUndeployedChanges = true;
+            }
+          }
         } catch {
           hasUndeployedChanges = false;
         }
+      } else if (latestVersion && !latestVersion.configYaml) {
+        // Version exists but no configYaml — treat as changed
+        hasUndeployedChanges = true;
       }
 
       return {
