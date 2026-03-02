@@ -164,8 +164,11 @@ export function FlowToolbar({
       <div className="flex h-10 items-center gap-1 px-3">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={onSave} disabled={isSaving} className="h-7 w-7 p-0" aria-label="Save pipeline">
+            <Button variant="ghost" size="sm" onClick={onSave} disabled={isSaving} className="relative h-7 w-7 p-0" aria-label="Save pipeline">
               <Save className="h-4 w-4" />
+              {isDirty && (
+                <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-orange-500" />
+              )}
             </Button>
           </TooltipTrigger>
           <TooltipContent>Save pipeline (Cmd+S)</TooltipContent>
