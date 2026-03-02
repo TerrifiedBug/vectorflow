@@ -9,6 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -359,16 +366,20 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
                 </Button>
                 {pipelineId && upstreamSourceKeys && upstreamSourceKeys.length > 0 && (
                   <>
-                    <select
-                      value={sampleLimit}
-                      onChange={(e) => setSampleLimit(Number(e.target.value))}
-                      className="h-8 rounded border bg-background px-2 text-xs"
+                    <Select
+                      value={String(sampleLimit)}
+                      onValueChange={(val) => setSampleLimit(Number(val))}
                     >
-                      <option value={5}>5 events</option>
-                      <option value={10}>10 events</option>
-                      <option value={25}>25 events</option>
-                      <option value={50}>50 events</option>
-                    </select>
+                      <SelectTrigger className="h-8 w-[110px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5 events</SelectItem>
+                        <SelectItem value="10">10 events</SelectItem>
+                        <SelectItem value="25">25 events</SelectItem>
+                        <SelectItem value="50">50 events</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <Button
                       variant="outline"
                       size="sm"
