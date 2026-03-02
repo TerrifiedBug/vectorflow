@@ -43,11 +43,7 @@ export function PipelineSettings() {
     const trimmed = jsonText.trim();
     if (trimmed === "") {
       // Clear everything except log_level
-      if (currentLogLevel !== "info") {
-        setGlobalConfig({ log_level: currentLogLevel });
-      } else {
-        setGlobalConfig(null);
-      }
+      setGlobalConfig({ log_level: currentLogLevel });
       setJsonError(null);
       return;
     }
@@ -59,9 +55,7 @@ export function PipelineSettings() {
       }
       // Merge back log_level if set
       const merged: Record<string, unknown> = { ...parsed };
-      if (currentLogLevel !== "info") {
-        merged.log_level = currentLogLevel;
-      }
+      merged.log_level = currentLogLevel;
       setGlobalConfig(merged);
       setJsonError(null);
     } catch (e) {
@@ -81,7 +75,7 @@ export function PipelineSettings() {
         <Select
           value={currentLogLevel}
           onValueChange={(value) =>
-            updateGlobalConfig("log_level", value === "info" ? undefined : value)
+            updateGlobalConfig("log_level", value)
           }
         >
           <SelectTrigger id="log-level" className="w-full">

@@ -62,8 +62,8 @@ export const deployRouter = router({
         validation,
         currentConfigYaml: latestVersion?.configYaml ?? null,
         currentVersion: latestVersion?.version ?? null,
-        currentLogLevel: latestVersion?.logLevel ?? null,
-        newLogLevel: (pipeline.globalConfig as Record<string, unknown>)?.log_level as string ?? null,
+        currentLogLevel: latestVersion?.logLevel ?? "info",
+        newLogLevel: ((pipeline.globalConfig as Record<string, unknown>)?.log_level as string) ?? "info",
       };
     }),
 
