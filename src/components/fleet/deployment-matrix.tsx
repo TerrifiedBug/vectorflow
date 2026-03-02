@@ -114,7 +114,7 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
                         </span>
                       </div>
                       {isOutdated && (
-                        <span className="text-[10px] text-yellow-500">
+                        <span className="text-xs text-yellow-500">
                           (outdated)
                         </span>
                       )}

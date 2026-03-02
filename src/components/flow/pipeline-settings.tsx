@@ -103,7 +103,7 @@ export function PipelineSettings() {
           />
           Global Configuration (JSON)
           {hasJsonContent && (
-            <Badge variant="secondary" className="ml-auto text-[10px]">
+            <Badge variant="secondary" className="ml-auto text-xs">
               configured
             </Badge>
           )}

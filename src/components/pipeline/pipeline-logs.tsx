@@ -116,7 +116,7 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
           <button
             key={level}
             onClick={() => toggleLevel(level)}
-            className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+            className={`rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${
               activeLevels.has(level)
                 ? LEVEL_BADGE_COLORS[level]
                 : "bg-transparent text-gray-700 hover:text-gray-500"
@@ -126,14 +126,14 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
           </button>
         ))}
         <div className="flex-1" />
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {displayItems.length} lines
         </span>
         {logsQuery.hasNextPage && (
           <Button
             variant="ghost"
             size="sm"
-            className="h-5 text-[10px] px-2"
+            className="h-5 text-xs px-2"
             onClick={() => logsQuery.fetchNextPage()}
             disabled={logsQuery.isFetchingNextPage}
           >
@@ -149,7 +149,7 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
         className="flex-1 overflow-auto bg-black/95 p-3 font-mono text-xs"
       >
         {logsQuery.isFetchingNextPage && (
-          <div className="text-center text-muted-foreground py-1 text-[10px]">
+          <div className="text-center text-muted-foreground py-1 text-xs">
             Loading older logs...
           </div>
         )}

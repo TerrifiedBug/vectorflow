@@ -98,10 +98,10 @@ export function NodeCard({ node }: NodeCardProps) {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm">{node.name}</CardTitle>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              <Badge variant="outline" className="text-xs px-1.5 py-0">
                 {node.environment.name}
               </Badge>
-              <Badge className={cn("text-[10px] px-1.5 py-0", statusColors[node.status] ?? statusColors.UNKNOWN)}>
+              <Badge className={cn("text-xs px-1.5 py-0", statusColors[node.status] ?? statusColors.UNKNOWN)}>
                 {node.status}
               </Badge>
             </div>
@@ -111,11 +111,11 @@ export function NodeCard({ node }: NodeCardProps) {
         <CardContent className="space-y-3">
           {/* Sparklines */}
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span>CPU</span>
               <Sparkline data={cpuData} color="#3b82f6" />
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span>Mem</span>
               <Sparkline data={memData} color="#22c55e" />
             </div>
@@ -153,7 +153,7 @@ export function NodeCard({ node }: NodeCardProps) {
           </div>
 
           {/* Cumulative totals */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-muted-foreground">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
             <div className="flex justify-between">
               <span>Total in</span>
               <span className="font-mono">{fmtCount(node.totals.eventsIn)}</span>
@@ -175,7 +175,7 @@ export function NodeCard({ node }: NodeCardProps) {
           )}
 
           {/* Last seen */}
-          <p className="text-[10px] text-muted-foreground text-right">
+          <p className="text-xs text-muted-foreground text-right">
             Seen {relativeTime(node.lastSeen)}
           </p>
         </CardContent>

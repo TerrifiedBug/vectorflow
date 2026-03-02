@@ -195,7 +195,7 @@ export default function NewPipelinePage() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-medium">{t.name}</p>
-                      <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px]">
+                      <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-xs">
                         {t.nodeCount}
                       </Badge>
                     </div>
