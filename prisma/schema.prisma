@@ -69,6 +69,7 @@ model Environment {
   pipelines           Pipeline[]
   secrets             Secret[]
   certificates        Certificate[]
+  auditLogs           AuditLog[]
   enrollmentTokenHash String?
   enrollmentTokenHint String?
   secretBackend       SecretBackend @default(BUILTIN)
@@ -340,19 +341,21 @@ model Template {
 }
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  action     String
-  entityType String
-  entityId   String
-  diff       Json?
-  metadata   Json?
-  ipAddress  String?
-  userEmail  String?
-  userName   String?
-  teamId     String?
-  createdAt  DateTime @default(now())
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  action        String
+  entityType    String
+  entityId      String
+  diff          Json?
+  metadata      Json?
+  ipAddress     String?
+  userEmail     String?
+  userName      String?
+  teamId        String?
+  environmentId String?
+  environment   Environment? @relation(fields: [environmentId], references: [id])
+  createdAt     DateTime     @default(now())
 
   @@index([entityType, entityId])
   @@index([userId])
