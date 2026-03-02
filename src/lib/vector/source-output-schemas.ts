@@ -27,10 +27,10 @@ export const SOURCE_OUTPUT_SCHEMAS: SourceOutputSchema[] = [
       { path: ".timestamp", type: "timestamp", description: "Ingestion timestamp", always: true },
     ],
     suggestedTransforms: [
-      '. = parse_json!(.message)',
-      'parsed = parse_regex!(.message, r\'(?P<timestamp>\\S+) (?P<level>\\w+) (?P<msg>.*)\')',
-      '. = parse_syslog!(.message)',
-      '. = parse_csv!(.message)',
+      '. = merge(., parse_json!(.message))',
+      '. = merge(., parse_regex!(.message, r\'(?P<timestamp>\\S+) (?P<level>\\w+) (?P<msg>.*)\'))',
+      '. = merge(., parse_syslog!(.message))',
+      '.parsed = parse_csv!(.message)',
     ],
   },
   {
@@ -41,7 +41,7 @@ export const SOURCE_OUTPUT_SCHEMAS: SourceOutputSchema[] = [
       { path: ".timestamp", type: "timestamp", description: "Ingestion timestamp", always: true },
       { path: ".source_type", type: "string", description: "Always \"stdin\"", always: true },
     ],
-    suggestedTransforms: ['. = parse_json!(.message)'],
+    suggestedTransforms: ['. = merge(., parse_json!(.message))'],
   },
   {
     sourceType: "journald",
@@ -87,7 +87,7 @@ export const SOURCE_OUTPUT_SCHEMAS: SourceOutputSchema[] = [
       { path: ".timestamp", type: "timestamp", description: "Ingestion timestamp", always: true },
       { path: ".source_type", type: "string", description: "Always \"http_server\"", always: true },
     ],
-    suggestedTransforms: ['. = parse_json!(.message)'],
+    suggestedTransforms: ['. = merge(., parse_json!(.message))'],
   },
   {
     sourceType: "socket",
@@ -98,7 +98,7 @@ export const SOURCE_OUTPUT_SCHEMAS: SourceOutputSchema[] = [
       { path: ".timestamp", type: "timestamp", description: "Ingestion timestamp", always: true },
       { path: ".source_type", type: "string", description: "Always \"socket\"", always: true },
     ],
-    suggestedTransforms: ['. = parse_json!(.message)'],
+    suggestedTransforms: ['. = merge(., parse_json!(.message))'],
   },
 
   // ── Messaging Sources ──
@@ -114,7 +114,7 @@ export const SOURCE_OUTPUT_SCHEMAS: SourceOutputSchema[] = [
       { path: ".headers", type: "object", description: "Kafka message headers", always: false },
       { path: ".source_type", type: "string", description: "Always \"kafka\"", always: true },
     ],
-    suggestedTransforms: ['. = parse_json!(.message)'],
+    suggestedTransforms: ['. = merge(., parse_json!(.message))'],
   },
   {
     sourceType: "amqp",
@@ -124,7 +124,7 @@ export const SOURCE_OUTPUT_SCHEMAS: SourceOutputSchema[] = [
       { path: ".timestamp", type: "timestamp", description: "Ingestion timestamp", always: true },
       { path: ".source_type", type: "string", description: "Always \"amqp\"", always: true },
     ],
-    suggestedTransforms: ['. = parse_json!(.message)'],
+    suggestedTransforms: ['. = merge(., parse_json!(.message))'],
   },
   {
     sourceType: "nats",
@@ -135,7 +135,7 @@ export const SOURCE_OUTPUT_SCHEMAS: SourceOutputSchema[] = [
       { path: ".timestamp", type: "timestamp", description: "Ingestion timestamp", always: true },
       { path: ".source_type", type: "string", description: "Always \"nats\"", always: true },
     ],
-    suggestedTransforms: ['. = parse_json!(.message)'],
+    suggestedTransforms: ['. = merge(., parse_json!(.message))'],
   },
   {
     sourceType: "gcp_pubsub",
@@ -148,7 +148,7 @@ export const SOURCE_OUTPUT_SCHEMAS: SourceOutputSchema[] = [
       { path: ".timestamp", type: "timestamp", description: "Ingestion timestamp", always: true },
       { path: ".source_type", type: "string", description: "Always \"gcp_pubsub\"", always: true },
     ],
-    suggestedTransforms: ['. = parse_json!(.message)'],
+    suggestedTransforms: ['. = merge(., parse_json!(.message))'],
   },
   {
     sourceType: "aws_s3",
@@ -161,7 +161,7 @@ export const SOURCE_OUTPUT_SCHEMAS: SourceOutputSchema[] = [
       { path: ".timestamp", type: "timestamp", description: "Ingestion timestamp", always: true },
       { path: ".source_type", type: "string", description: "Always \"aws_s3\"", always: true },
     ],
-    suggestedTransforms: ['. = parse_json!(.message)'],
+    suggestedTransforms: ['. = merge(., parse_json!(.message))'],
   },
   {
     sourceType: "aws_sqs",
@@ -171,7 +171,7 @@ export const SOURCE_OUTPUT_SCHEMAS: SourceOutputSchema[] = [
       { path: ".timestamp", type: "timestamp", description: "Ingestion timestamp", always: true },
       { path: ".source_type", type: "string", description: "Always \"aws_sqs\"", always: true },
     ],
-    suggestedTransforms: ['. = parse_json!(.message)'],
+    suggestedTransforms: ['. = merge(., parse_json!(.message))'],
   },
 
   // ── Container Sources ──
@@ -188,7 +188,7 @@ export const SOURCE_OUTPUT_SCHEMAS: SourceOutputSchema[] = [
       { path: ".timestamp", type: "timestamp", description: "Log timestamp", always: true },
       { path: ".source_type", type: "string", description: "Always \"docker_logs\"", always: true },
     ],
-    suggestedTransforms: ['. = parse_json!(.message)'],
+    suggestedTransforms: ['. = merge(., parse_json!(.message))'],
   },
   {
     sourceType: "kubernetes_logs",
@@ -206,7 +206,7 @@ export const SOURCE_OUTPUT_SCHEMAS: SourceOutputSchema[] = [
       { path: ".timestamp", type: "timestamp", description: "Log timestamp", always: true },
       { path: ".source_type", type: "string", description: "Always \"kubernetes_logs\"", always: true },
     ],
-    suggestedTransforms: ['. = parse_json!(.message)'],
+    suggestedTransforms: ['. = merge(., parse_json!(.message))'],
   },
 
   // ── Metric Sources ──
