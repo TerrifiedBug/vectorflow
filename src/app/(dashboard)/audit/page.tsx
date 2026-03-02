@@ -70,6 +70,7 @@ export default function AuditPage() {
   const [actionFilter, setActionFilter] = useState<string>("");
   const [entityTypeFilter, setEntityTypeFilter] = useState<string>("");
   const [userFilter, setUserFilter] = useState<string>("");
+  const [teamFilter, setTeamFilter] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [search, setSearch] = useState<string>("");
@@ -81,8 +82,10 @@ export default function AuditPage() {
   const actionsQuery = useQuery(trpc.audit.actions.queryOptions());
   const entityTypesQuery = useQuery(trpc.audit.entityTypes.queryOptions());
   const usersQuery = useQuery(trpc.audit.users.queryOptions());
+  const teamsQuery = useQuery(trpc.team.list.queryOptions());
 
-  // Build query input
+  // Build query input — explicit team filter overrides global team selector
+  const effectiveTeamId = teamFilter || selectedTeamId;
   const queryInput = {
     ...(actionFilter ? { action: actionFilter } : {}),
     ...(entityTypeFilter ? { entityType: entityTypeFilter } : {}),
@@ -90,7 +93,7 @@ export default function AuditPage() {
     ...(startDate ? { startDate } : {}),
     ...(endDate ? { endDate } : {}),
     ...(search ? { search } : {}),
-    ...(selectedTeamId ? { teamId: selectedTeamId } : {}),
+    ...(effectiveTeamId ? { teamId: effectiveTeamId } : {}),
   };
 
   // Infinite query for cursor-based pagination
@@ -104,6 +107,7 @@ export default function AuditPage() {
   const actions = actionsQuery.data ?? [];
   const entityTypes = entityTypesQuery.data ?? [];
   const users = usersQuery.data ?? [];
+  const teams = teamsQuery.data ?? [];
 
   function toggleRow(id: string) {
     setExpandedRows((prev) => {
@@ -218,6 +222,27 @@ export default function AuditPage() {
               </Select>
             </div>
 
+            {/* Team filter */}
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Team</label>
+              <Select
+                value={teamFilter || ALL_VALUE}
+                onValueChange={(v) => setTeamFilter(v === ALL_VALUE ? "" : v)}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="All teams" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>All teams</SelectItem>
+                  {teams.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Date range */}
             <div className="space-y-2">
               <label className="text-xs text-muted-foreground">From</label>
@@ -242,6 +267,7 @@ export default function AuditPage() {
             {(actionFilter ||
               entityTypeFilter ||
               userFilter ||
+              teamFilter ||
               startDate ||
               endDate ||
               search) && (
@@ -252,6 +278,7 @@ export default function AuditPage() {
                   setActionFilter("");
                   setEntityTypeFilter("");
                   setUserFilter("");
+                  setTeamFilter("");
                   setStartDate("");
                   setEndDate("");
                   setSearch("");
