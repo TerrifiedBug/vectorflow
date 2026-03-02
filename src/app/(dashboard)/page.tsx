@@ -186,8 +186,12 @@ export default function DashboardPage() {
       {/* Tabbed content */}
       <Tabs defaultValue="nodes" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="nodes">Nodes</TabsTrigger>
-          <TabsTrigger value="pipelines">Pipelines</TabsTrigger>
+          <TabsTrigger value="nodes">
+            Nodes{stats.data && stats.data.nodes > 0 ? ` (${stats.data.nodes})` : ""}
+          </TabsTrigger>
+          <TabsTrigger value="pipelines">
+            Pipelines{stats.data && stats.data.pipelines > 0 ? ` (${stats.data.pipelines})` : ""}
+          </TabsTrigger>
         </TabsList>
 
         {/* Nodes tab */}
@@ -259,11 +263,15 @@ export default function DashboardPage() {
           )}
 
           {nodeCards.data && filteredNodes.length === 0 && (
-            <div className="flex items-center justify-center rounded-lg border border-dashed py-12">
-              <p className="text-sm text-muted-foreground">
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
+              <Server className="mb-3 h-10 w-10 text-muted-foreground/50" />
+              <p className="text-sm font-medium">
+                {nodeSearch || nodeStatusFilter ? "No nodes match the current filter" : "No nodes registered yet"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
                 {nodeSearch || nodeStatusFilter
-                  ? "No nodes match the current filter."
-                  : "No nodes registered yet."}
+                  ? "Try adjusting your search or filter criteria."
+                  : "Deploy a VectorFlow agent to register your first node."}
               </p>
             </div>
           )}
@@ -348,12 +356,21 @@ export default function DashboardPage() {
           )}
 
           {pipelineCards.data && filteredPipelines.length === 0 && (
-            <div className="flex items-center justify-center rounded-lg border border-dashed py-12">
-              <p className="text-sm text-muted-foreground">
-                {pipelineSearch || pipelineStatusFilter
-                  ? "No pipelines match the current filter."
-                  : "No deployed pipelines yet."}
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
+              <GitBranch className="mb-3 h-10 w-10 text-muted-foreground/50" />
+              <p className="text-sm font-medium">
+                {pipelineSearch || pipelineStatusFilter ? "No pipelines match the current filter" : "No deployed pipelines yet"}
               </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {pipelineSearch || pipelineStatusFilter
+                  ? "Try adjusting your search or filter criteria."
+                  : "Create and deploy a pipeline to see it here."}
+              </p>
+              {!pipelineSearch && !pipelineStatusFilter && (
+                <Button asChild className="mt-4" variant="outline" size="sm">
+                  <Link href="/pipelines/new">Create Pipeline</Link>
+                </Button>
+              )}
             </div>
           )}
 
