@@ -100,9 +100,9 @@ export const metricsRouter = router({
     .query(async ({ input }) => {
       const nodeMetrics = metricStore.getAllForNode(input.nodeId, 5);
 
-      // Map componentId → pipelineId using pipeline nodes
+      // Map componentKey → { pipelineId, kind } using pipeline nodes
       const pipelineNodes = await prisma.pipelineNode.findMany({
-        select: { pipelineId: true, componentKey: true },
+        select: { pipelineId: true, componentKey: true, kind: true },
       });
 
       const rates: Record<string, {
@@ -125,10 +125,13 @@ export const metricsRouter = router({
           eventsInRate: 0, eventsOutRate: 0,
           bytesInRate: 0, bytesOutRate: 0, errorsRate: 0,
         };
-        existing.eventsInRate += latest.receivedEventsRate;
-        existing.eventsOutRate += latest.sentEventsRate;
-        existing.bytesInRate += latest.receivedBytesRate;
-        existing.bytesOutRate += latest.sentBytesRate;
+        if (matchingNode.kind === "SOURCE") {
+          existing.eventsInRate += latest.receivedEventsRate;
+          existing.bytesInRate += latest.receivedBytesRate;
+        } else if (matchingNode.kind === "SINK") {
+          existing.eventsOutRate += latest.sentEventsRate;
+          existing.bytesOutRate += latest.sentBytesRate;
+        }
         existing.errorsRate += latest.errorsRate;
         rates[matchingNode.pipelineId] = existing;
       }
