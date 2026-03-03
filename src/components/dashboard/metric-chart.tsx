@@ -26,14 +26,14 @@ type TSMap = Record<string, { t: number; v: number }[]>;
 
 // 8 distinguishable colors cycling through shadcn chart CSS variables
 const SERIES_COLORS = [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
-  "hsl(var(--chart-5))",
-  "hsl(221 83% 53%)", // blue
-  "hsl(142 71% 45%)", // green
-  "hsl(38 92% 50%)", // amber
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "oklch(0.546 0.245 262.881)", // blue
+  "oklch(0.648 0.200 145.736)", // green
+  "oklch(0.769 0.188 70.08)", // amber
 ];
 
 /** Convert a label to a CSS-safe slug for use as chart config keys */
@@ -213,17 +213,25 @@ export function MetricChart({
             <ChartTooltip
               content={
                 <ChartTooltipContent
-                  labelFormatter={(v) =>
-                    new Date(Number(v)).toLocaleTimeString([], {
+                  labelFormatter={(_value, payload) => {
+                    const timestamp = payload?.[0]?.payload?.t;
+                    if (!timestamp) return "";
+                    return new Date(Number(timestamp)).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
                       second: "2-digit",
-                    })
-                  }
-                  formatter={(value, name) => [
-                    yFormatter(value as number),
-                    name,
-                  ]}
+                    });
+                  }}
+                  formatter={(value, name) => (
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="text-muted-foreground">
+                        {chartConfig[name as string]?.label ?? name}
+                      </span>
+                      <span className="font-mono font-medium tabular-nums text-foreground">
+                        {yFormatter(value as number)}
+                      </span>
+                    </div>
+                  )}
                 />
               }
             />
