@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { generateEnrollmentToken } from "@/server/services/agent-token";
@@ -11,7 +11,7 @@ export const environmentRouter = router({
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return prisma.environment.findMany({
-        where: { teamId: input.teamId },
+        where: { teamId: input.teamId, isSystem: false },
         select: {
           id: true,
           name: true,
@@ -21,6 +21,17 @@ export const environmentRouter = router({
         },
         orderBy: { createdAt: "desc" },
       });
+    }),
+
+  /** Returns the system environment for super admins */
+  getSystem: protectedProcedure
+    .use(requireSuperAdmin())
+    .query(async () => {
+      const env = await prisma.environment.findFirst({
+        where: { isSystem: true },
+        select: { id: true, name: true, isSystem: true },
+      });
+      return env;
     }),
 
   get: protectedProcedure
@@ -98,6 +109,12 @@ export const environmentRouter = router({
           message: "Environment not found",
         });
       }
+      if (existing.isSystem) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "The system environment cannot be modified directly",
+        });
+      }
       return prisma.environment.update({
         where: { id },
         data,
@@ -117,6 +134,12 @@ export const environmentRouter = router({
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Environment not found",
+        });
+      }
+      if (existing.isSystem) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "The system environment cannot be deleted",
         });
       }
       const pipelineIds = existing.pipelines.map((p) => p.id);

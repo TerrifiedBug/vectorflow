@@ -16,6 +16,7 @@ import { useTRPC } from "@/trpc/client";
 import { TeamSelector } from "@/components/team-selector";
 import { Separator } from "@/components/ui/separator";
 import { useTeamStore } from "@/stores/team-store";
+import { useEnvironmentStore } from "@/stores/environment-store";
 
 import {
   Sidebar,
@@ -39,10 +40,14 @@ const navItems = [
   { title: "Settings", href: "/settings", icon: Settings, requiredRole: "ADMIN" as const },
 ];
 
+/** Nav items visible when the system environment is selected */
+const SYSTEM_ENV_ALLOWED_HREFS = new Set(["/pipelines"]);
+
 export function AppSidebar() {
   const pathname = usePathname();
   const trpc = useTRPC();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const isSystemEnvironment = useEnvironmentStore((s) => s.isSystemEnvironment);
   const roleQuery = useQuery(
     trpc.team.teamRole.queryOptions(
       { teamId: selectedTeamId! },
@@ -53,6 +58,10 @@ export function AppSidebar() {
   const isSuperAdmin = roleQuery.data?.isSuperAdmin ?? false;
 
   const visibleItems = navItems.filter((item) => {
+    // When system environment is selected, only show allowed nav items
+    if (isSystemEnvironment && !SYSTEM_ENV_ALLOWED_HREFS.has(item.href)) {
+      return false;
+    }
     if (!item.requiredRole) return true;
     if (isSuperAdmin) return true;
     if (!userRole) return false;
