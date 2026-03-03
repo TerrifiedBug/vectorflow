@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/vectorflow/agent/internal/agent"
-	"github.com/vectorflow/agent/internal/config"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/agent"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
 )
 
 func main() {

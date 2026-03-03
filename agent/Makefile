@@ -1,7 +1,7 @@
 .PHONY: build build-all clean docker
 
 VERSION ?= 0.1.0
-LDFLAGS := -ldflags="-s -w -X github.com/vectorflow/agent/internal/agent.Version=$(VERSION)"
+LDFLAGS := -ldflags="-s -w -X github.com/TerrifiedBug/vectorflow/agent/internal/agent.Version=$(VERSION)"
 
 build:
 	CGO_ENABLED=0 go build $(LDFLAGS) -o bin/vf-agent .
@@ -11,7 +11,7 @@ build-all:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o bin/vf-agent-linux-arm64 .
 
 docker:
-	docker build -t vectorflow/worker:$(VERSION) .
+	docker build -t ghcr.io/terrifiedbug/vectorflow-agent:$(VERSION) .
 
 clean:
 	rm -rf bin/

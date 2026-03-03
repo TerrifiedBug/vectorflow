@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/vectorflow/agent/internal/client"
-	"github.com/vectorflow/agent/internal/config"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
 )
 
 type pipelineState struct {
