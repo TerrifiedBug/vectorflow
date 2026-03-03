@@ -43,6 +43,16 @@ const edgeSchema = z.object({
 });
 
 export const pipelineRouter = router({
+  getSystemPipeline: protectedProcedure
+    .use(requireSuperAdmin())
+    .query(async () => {
+      const pipeline = await prisma.pipeline.findFirst({
+        where: { isSystem: true },
+        select: { id: true, name: true },
+      });
+      return pipeline; // null if no system pipeline exists
+    }),
+
   list: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))
