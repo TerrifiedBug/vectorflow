@@ -75,11 +75,9 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="px-4 pt-3 pb-0">
         <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Workflow className="h-4 w-4" />
-          </div>
-          <span className="text-lg font-semibold tracking-tight">
-            VectorFlow
+          <span className="text-lg tracking-tight">
+            <span className="font-bold">Vector</span>
+            <span className="font-light">Flow</span>
           </span>
         </Link>
         <Separator className="my-2" />
