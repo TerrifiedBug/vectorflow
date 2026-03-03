@@ -47,4 +47,7 @@ next-env.d.ts
 /src/generated/prisma
 
 /docs/plans/*
+/docs/internal/*
 
+# agent build output
+/agent/bin/
