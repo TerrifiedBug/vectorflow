@@ -141,7 +141,7 @@ export const withTeamAccess = (minRole: Role) =>
       if (!env) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Environment not found" });
       }
-      teamId = env.teamId;
+      teamId = env.teamId ?? undefined;
     }
 
     if (!teamId && rawInput?.pipelineId) {
@@ -152,7 +152,7 @@ export const withTeamAccess = (minRole: Role) =>
       if (!pipeline) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
       }
-      teamId = pipeline.environment.teamId;
+      teamId = pipeline.environment.teamId ?? undefined;
     }
 
     // Fallback: try input.id as various entity types
@@ -162,7 +162,7 @@ export const withTeamAccess = (minRole: Role) =>
         select: { environment: { select: { teamId: true } } },
       });
       if (pipeline) {
-        teamId = pipeline.environment.teamId;
+        teamId = pipeline.environment.teamId ?? undefined;
       }
     }
 
@@ -172,7 +172,7 @@ export const withTeamAccess = (minRole: Role) =>
         select: { teamId: true },
       });
       if (env) {
-        teamId = env.teamId;
+        teamId = env.teamId ?? undefined;
       }
     }
 
@@ -182,7 +182,7 @@ export const withTeamAccess = (minRole: Role) =>
         select: { environment: { select: { teamId: true } } },
       });
       if (node) {
-        teamId = node.environment.teamId;
+        teamId = node.environment.teamId ?? undefined;
       }
     }
 
