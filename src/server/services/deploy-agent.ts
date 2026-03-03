@@ -4,6 +4,7 @@ import { generateVectorYaml } from "@/lib/config-generator";
 import { validateConfig } from "@/server/services/validator";
 import { createVersion } from "@/server/services/pipeline-version";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
+import { startSystemVector, stopSystemVector } from "@/server/services/system-vector";
 
 export interface AgentDeployResult {
   success: boolean;
@@ -80,10 +81,18 @@ export async function deployAgent(
     pipelineId,
     configYaml,
     userId,
-    "Deployed via agent mode",
+    pipeline.isSystem
+      ? "Deployed via system vector"
+      : "Deployed via agent mode",
     logLevel,
     gc,
   );
+
+  // 4. For system pipelines, start the local Vector process instead of
+  //    relying on agents to pick up the config.
+  if (pipeline.isSystem) {
+    await startSystemVector(configYaml);
+  }
 
   return {
     success: true,
@@ -95,6 +104,7 @@ export async function deployAgent(
 /**
  * Undeploy a pipeline in Agent mode. Marks the pipeline as a draft so
  * agents will stop running it on their next poll.
+ * For system pipelines, also stops the local Vector child process.
  */
 export async function undeployAgent(
   pipelineId: string,
@@ -108,6 +118,11 @@ export async function undeployAgent(
       code: "NOT_FOUND",
       message: "Pipeline not found",
     });
+  }
+
+  // Stop local Vector process for system pipelines
+  if (pipeline.isSystem) {
+    await stopSystemVector();
   }
 
   await prisma.pipeline.update({
