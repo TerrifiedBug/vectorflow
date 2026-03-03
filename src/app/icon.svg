@@ -1,4 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <rect width="32" height="32" rx="6" fill="#0a0a0a"/>
-  <text x="17.5" y="18" text-anchor="middle" dominant-baseline="central" font-family="system-ui,-apple-system,sans-serif" font-size="18" fill="#fafafa" font-weight="700" letter-spacing="-1">Vf</text>
+  <!-- V -->
+  <path d="M7 8 L13 24 L15.5 24 L21.5 8 L18.5 8 L14.25 20 L10 8 Z" fill="#fafafa"/>
+  <!-- f -->
+  <path d="M21 14 L21 12 C21 9.5 22.2 8.5 24 8.5 C24.5 8.5 25 8.6 25 8.6 L25 11 C25 11 24.6 10.8 24.2 10.8 C23.4 10.8 23.2 11.3 23.2 12.2 L23.2 14 L25 14 L25 16.2 L23.2 16.2 L23.2 24 L21 24 L21 16.2 L19.5 16.2 L19.5 14 Z" fill="#fafafa"/>
 </svg>
