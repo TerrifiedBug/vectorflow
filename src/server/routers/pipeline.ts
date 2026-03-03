@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { ComponentKind, LogLevel } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
@@ -12,6 +12,7 @@ import {
 } from "@/server/services/pipeline-version";
 import { encryptNodeConfig, decryptNodeConfig } from "@/server/services/config-crypto";
 import { generateVectorYaml } from "@/lib/config-generator";
+import { getOrCreateSystemEnvironment } from "@/server/services/system-environment";
 
 /** Pipeline names must be safe identifiers */
 const pipelineNameSchema = z
@@ -274,6 +275,52 @@ export const pipelineRouter = router({
       });
     }),
 
+  createSystemPipeline: protectedProcedure
+    .use(requireSuperAdmin())
+    // withAudit works without withTeamAccess — teamId/environmentId will be null
+    // which is expected for system-level operations
+    .use(withAudit("pipeline.system_created", "Pipeline"))
+    .mutation(async () => {
+      const systemEnv = await getOrCreateSystemEnvironment();
+
+      return prisma.$transaction(async (tx) => {
+        const existing = await tx.pipeline.findFirst({
+          where: { isSystem: true },
+        });
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "A system pipeline already exists",
+          });
+        }
+
+        const pipeline = await tx.pipeline.create({
+          data: {
+            name: "Audit Log Shipping",
+            isSystem: true,
+            environmentId: systemEnv.id,
+          },
+        });
+
+        await tx.pipelineNode.create({
+          data: {
+            pipelineId: pipeline.id,
+            componentType: "file",
+            kind: "SOURCE",
+            componentKey: "audit_log",
+            config: {
+              include: ["/var/lib/vectorflow/audit.jsonl"],
+              read_from: "beginning",
+            },
+            positionX: 200,
+            positionY: 200,
+          },
+        });
+
+        return pipeline;
+      });
+    }),
+
   update: protectedProcedure
     .input(
       z.object({
@@ -319,6 +366,12 @@ export const pipelineRouter = router({
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Pipeline not found",
+        });
+      }
+      if (existing.isSystem) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "System pipelines cannot be deleted",
         });
       }
 
