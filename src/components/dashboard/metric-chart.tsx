@@ -36,9 +36,9 @@ const SERIES_COLORS = [
   "hsl(38 92% 50%)", // amber
 ];
 
-/** Escape a string for safe use in CSS custom property names */
-function cssEscape(s: string) {
-  return s.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+/** Convert a label to a CSS-safe slug for use as chart config keys */
+function toSlug(s: string) {
+  return s.replace(/[^a-zA-Z0-9]/g, "-").replace(/-+/g, "-").toLowerCase();
 }
 
 interface MetricChartProps {
@@ -95,26 +95,31 @@ export function MetricChart({
 
     const timestamps = Array.from(tsSet).sort((a, b) => a - b);
 
-    // Index series by timestamp for O(1) lookup
+    // Index series by timestamp for O(1) lookup, using CSS-safe slug keys
     const indexed = new Map<string, Map<number, number>>();
+    const slugToLabel = new Map<string, string>();
     for (const [label, pts] of Object.entries(data)) {
-      const key = `${label}${primaryLabel}`;
+      const displayLabel = `${label}${primaryLabel}`;
+      const slug = toSlug(displayLabel);
       const m = new Map<number, number>();
       for (const p of pts) m.set(p.t, p.v);
-      indexed.set(key, m);
+      indexed.set(slug, m);
+      slugToLabel.set(slug, displayLabel);
     }
     if (dataSecondary) {
       for (const [label, pts] of Object.entries(dataSecondary)) {
-        const key = `${label}${secondaryLabel}`;
+        const displayLabel = `${label}${secondaryLabel}`;
+        const slug = toSlug(displayLabel);
         const m = new Map<number, number>();
         for (const p of pts) m.set(p.t, p.v);
-        indexed.set(key, m);
+        indexed.set(slug, m);
+        slugToLabel.set(slug, displayLabel);
       }
     }
 
     const keys = Array.from(indexed.keys());
 
-    // Build chart data
+    // Build chart data using slug keys
     const chartData = timestamps.map((t) => {
       const row: Record<string, number> = { t };
       for (const key of keys) {
@@ -123,16 +128,16 @@ export function MetricChart({
       return row;
     });
 
-    // Build chart config
+    // Build chart config with slug keys and display labels
     const config: ChartConfig = {};
     let colorIdx = 0;
     for (const label of allLabels) {
       const color = SERIES_COLORS[colorIdx % SERIES_COLORS.length];
-      const priKey = `${label}${primaryLabel}`;
-      config[priKey] = { label: priKey, color };
+      const priSlug = toSlug(`${label}${primaryLabel}`);
+      config[priSlug] = { label: slugToLabel.get(priSlug) ?? label, color };
       if (dataSecondary && secLabels.includes(label)) {
-        const secKey = `${label}${secondaryLabel}`;
-        config[secKey] = { label: secKey, color };
+        const secSlug = toSlug(`${label}${secondaryLabel}`);
+        config[secSlug] = { label: slugToLabel.get(secSlug) ?? label, color };
       }
       colorIdx++;
     }
@@ -140,8 +145,8 @@ export function MetricChart({
     for (const label of secLabels) {
       if (!allLabels.includes(label)) {
         const color = SERIES_COLORS[colorIdx % SERIES_COLORS.length];
-        const secKey = `${label}${secondaryLabel}`;
-        config[secKey] = { label: secKey, color };
+        const secSlug = toSlug(`${label}${secondaryLabel}`);
+        config[secSlug] = { label: slugToLabel.get(secSlug) ?? label, color };
         colorIdx++;
       }
     }
@@ -172,10 +177,9 @@ export function MetricChart({
 
   const Chart = variant === "area" ? AreaChart : LineChart;
 
-  // Determine which keys are primary vs secondary (for dashed styling)
-  const primaryKeys = Object.keys(data).map((l) => `${l}${primaryLabel}`);
+  // Determine which slugs are secondary (for dashed styling)
   const secondaryKeys = dataSecondary
-    ? Object.keys(dataSecondary).map((l) => `${l}${secondaryLabel}`)
+    ? Object.keys(dataSecondary).map((l) => toSlug(`${l}${secondaryLabel}`))
     : [];
 
   return (
@@ -230,8 +234,8 @@ export function MetricChart({
                     key={key}
                     type="monotone"
                     dataKey={key}
-                    stroke={`var(--color-${cssEscape(key)})`}
-                    fill={`var(--color-${cssEscape(key)})`}
+                    stroke={`var(--color-${key})`}
+                    fill={`var(--color-${key})`}
                     fillOpacity={0.15}
                     strokeWidth={1.5}
                     strokeDasharray={
@@ -245,7 +249,7 @@ export function MetricChart({
                     key={key}
                     type="monotone"
                     dataKey={key}
-                    stroke={`var(--color-${cssEscape(key)})`}
+                    stroke={`var(--color-${key})`}
                     strokeWidth={1.5}
                     strokeDasharray={
                       secondaryKeys.includes(key) ? "5 3" : undefined
