@@ -66,9 +66,11 @@ export const pipelineRouter = router({
           description: true,
           isDraft: true,
           deployedAt: true,
+          createdAt: true,
           updatedAt: true,
           globalConfig: true,
-          updatedBy: { select: { name: true, email: true } },
+          createdBy: { select: { name: true, email: true, image: true } },
+          updatedBy: { select: { name: true, email: true, image: true } },
           nodeStatuses: {
             select: {
               status: true,
@@ -166,7 +168,9 @@ export const pipelineRouter = router({
           description: p.description,
           isDraft: p.isDraft,
           deployedAt: p.deployedAt,
+          createdAt: p.createdAt,
           updatedAt: p.updatedAt,
+          createdBy: p.createdBy,
           updatedBy: p.updatedBy,
           nodeStatuses: p.nodeStatuses,
           hasUndeployedChanges,
