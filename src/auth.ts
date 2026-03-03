@@ -7,6 +7,17 @@ import bcrypt from "bcryptjs";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { verifyTotpCode, verifyBackupCode } from "@/server/services/totp";
 import { authConfig } from "@/auth.config";
+import { writeAuditLog } from "@/server/services/audit";
+import { headers } from "next/headers";
+
+async function getClientIp(): Promise<string | null> {
+  try {
+    const hdrs = await headers();
+    return hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || hdrs.get("x-real-ip") || null;
+  } catch {
+    return null;
+  }
+}
 
 class TotpRequiredError extends CredentialsSignin {
   code = "TOTP_REQUIRED";
@@ -58,18 +69,39 @@ const credentialsProvider = Credentials({
   async authorize(credentials) {
     if (!credentials?.email || !credentials?.password) return null;
 
+    const ipAddress = await getClientIp();
+    const email = credentials.email as string;
+
     const user = await prisma.user.findUnique({
-      where: { email: credentials.email as string },
+      where: { email },
     });
 
-    if (!user?.passwordHash) return null;
-    if (user.lockedAt) return null;
+    if (!user?.passwordHash) {
+      writeAuditLog({
+        userId: null, action: "auth.login_failed", entityType: "Auth", entityId: "credentials",
+        ipAddress, userEmail: email, userName: null, metadata: { reason: "unknown_email" },
+      }).catch(() => {});
+      return null;
+    }
+    if (user.lockedAt) {
+      writeAuditLog({
+        userId: user.id, action: "auth.login_failed", entityType: "Auth", entityId: "credentials",
+        ipAddress, userEmail: user.email, userName: user.name, metadata: { reason: "account_locked" },
+      }).catch(() => {});
+      return null;
+    }
 
     const valid = await bcrypt.compare(
       credentials.password as string,
       user.passwordHash
     );
-    if (!valid) return null;
+    if (!valid) {
+      writeAuditLog({
+        userId: user.id, action: "auth.login_failed", entityType: "Auth", entityId: "credentials",
+        ipAddress, userEmail: user.email, userName: user.name, metadata: { reason: "invalid_password" },
+      }).catch(() => {});
+      return null;
+    }
 
     // TOTP 2FA check
     if (user.totpEnabled && user.totpSecret) {
@@ -98,9 +130,18 @@ const credentialsProvider = Credentials({
       }
 
       if (!codeValid) {
+        writeAuditLog({
+          userId: user.id, action: "auth.login_failed", entityType: "Auth", entityId: "credentials",
+          ipAddress, userEmail: user.email, userName: user.name, metadata: { reason: "invalid_totp" },
+        }).catch(() => {});
         throw new InvalidVerificationCodeError();
       }
     }
+
+    writeAuditLog({
+      userId: user.id, action: "auth.login_success", entityType: "Auth", entityId: "credentials",
+      ipAddress, userEmail: user.email, userName: user.name,
+    }).catch(() => {});
 
     return {
       id: user.id,
@@ -165,6 +206,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               authMethod: "OIDC",
             },
           });
+          const ipAddress = await getClientIp();
+          writeAuditLog({
+            userId: dbUser.id, action: "auth.user_provisioned", entityType: "Auth", entityId: "oidc",
+            ipAddress, userEmail: dbUser.email, userName: dbUser.name,
+          }).catch(() => {});
         } else if (dbUser.authMethod === "LOCAL") {
           // SSO takeover: convert local user to OIDC (removes local login)
           await prisma.user.update({
@@ -223,6 +269,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         user.id = dbUser.id;
+
+        const ipAddress = await getClientIp();
+        writeAuditLog({
+          userId: dbUser.id, action: "auth.login_success", entityType: "Auth", entityId: "oidc",
+          ipAddress, userEmail: dbUser.email, userName: dbUser.name,
+        }).catch(() => {});
       }
       return true;
     },
@@ -240,6 +292,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.id as string;
       }
       return session;
+    },
+  },
+  events: {
+    async signOut(message) {
+      const ipAddress = await getClientIp();
+      const token = "token" in message ? message.token : null;
+      const userId = (token?.id as string) ?? null;
+      if (userId) {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true, name: true },
+        });
+        writeAuditLog({
+          userId, action: "auth.logout", entityType: "Auth", entityId: "session",
+          ipAddress, userEmail: user?.email ?? null, userName: user?.name ?? null,
+        }).catch(() => {});
+      }
     },
   },
 });

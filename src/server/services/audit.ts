@@ -7,7 +7,7 @@ export const AUDIT_LOG_PATH =
   join(process.cwd(), ".vectorflow", "audit.jsonl");
 
 export async function writeAuditLog(params: {
-  userId: string;
+  userId: string | null;
   action: string;
   entityType: string;
   entityId: string;

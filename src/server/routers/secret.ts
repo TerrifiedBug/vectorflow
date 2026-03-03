@@ -86,6 +86,7 @@ export const secretRouter = router({
   resolve: protectedProcedure
     .input(z.object({ environmentId: z.string(), name: z.string() }))
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("secret.accessed", "Secret"))
     .query(async ({ input }) => {
       const secret = await prisma.secret.findUnique({
         where: { environmentId_name: { environmentId: input.environmentId, name: input.name } },
