@@ -177,7 +177,7 @@ export default function EnvironmentDetailPage({
           <div>
             <h2 className="text-2xl font-bold tracking-tight">{env.name}</h2>
             <p className="text-muted-foreground">
-              {env.team.name}
+              {env.team?.name ?? "System"}
             </p>
           </div>
         </div>

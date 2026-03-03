@@ -66,8 +66,9 @@ enum Role {
 model Environment {
   id                  String        @id @default(cuid())
   name                String
-  teamId              String
-  team                Team          @relation(fields: [teamId], references: [id])
+  isSystem            Boolean       @default(false)
+  teamId              String?
+  team                Team?         @relation(fields: [teamId], references: [id])
   nodes               VectorNode[]
   pipelines           Pipeline[]
   secrets             Secret[]
