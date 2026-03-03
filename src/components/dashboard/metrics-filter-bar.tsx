@@ -21,6 +21,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
 export type TimeRange = "1h" | "6h" | "1d" | "7d";
+export type GroupBy = "pipeline" | "node" | "aggregate";
 
 interface FilterOption {
   id: string;
@@ -33,6 +34,8 @@ interface MetricsFilterBarProps {
   selectedNodeIds: string[];
   selectedPipelineIds: string[];
   timeRange: TimeRange;
+  groupBy: GroupBy;
+  onGroupByChange: (groupBy: GroupBy) => void;
   onNodeChange: (ids: string[]) => void;
   onPipelineChange: (ids: string[]) => void;
   onTimeRangeChange: (range: TimeRange) => void;
@@ -118,6 +121,8 @@ export function MetricsFilterBar({
   selectedNodeIds,
   selectedPipelineIds,
   timeRange,
+  groupBy,
+  onGroupByChange,
   onNodeChange,
   onPipelineChange,
   onTimeRangeChange,
@@ -137,6 +142,21 @@ export function MetricsFilterBar({
           selected={selectedPipelineIds}
           onChange={onPipelineChange}
         />
+        <div className="flex items-center gap-2 ml-2 pl-2 border-l">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">Group by</span>
+          <ToggleGroup
+            type="single"
+            value={groupBy}
+            onValueChange={(v) => {
+              if (v) onGroupByChange(v as GroupBy);
+            }}
+            size="sm"
+          >
+            <ToggleGroupItem value="pipeline">Pipeline</ToggleGroupItem>
+            <ToggleGroupItem value="node">Node</ToggleGroupItem>
+            <ToggleGroupItem value="aggregate">Aggregate</ToggleGroupItem>
+          </ToggleGroup>
+        </div>
       </div>
       <ToggleGroup
         type="single"
