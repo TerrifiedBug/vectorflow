@@ -1653,7 +1653,6 @@ function UsersSettings() {
   const resetPasswordMutation = useMutation(
     trpc.admin.resetPassword.mutationOptions({
       onSuccess: (data) => {
-        queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
         setResetPasswordResult(data.temporaryPassword);
       },
       onError: (error) => toast.error(error.message),
@@ -2140,6 +2139,9 @@ function UsersSettings() {
       {/* Reset Password Confirmation Dialog */}
       <Dialog open={!!resetPasswordDialog} onOpenChange={(open) => {
         if (!open) {
+          if (resetPasswordResult) {
+            queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
+          }
           setResetPasswordDialog(null);
           setResetPasswordResult("");
         }
@@ -2170,6 +2172,7 @@ function UsersSettings() {
               </div>
               <DialogFooter>
                 <Button onClick={() => {
+                  queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
                   setResetPasswordDialog(null);
                   setResetPasswordResult("");
                 }}>Done</Button>
