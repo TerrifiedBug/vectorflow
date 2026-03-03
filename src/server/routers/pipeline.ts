@@ -15,6 +15,7 @@ import { encryptNodeConfig, decryptNodeConfig } from "@/server/services/config-c
 import { generateVectorYaml } from "@/lib/config-generator";
 import { getOrCreateSystemEnvironment } from "@/server/services/system-environment";
 import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
+import { stripEnvRefs, type StrippedRef } from "@/server/services/strip-env-refs";
 
 /** Pipeline names must be safe identifiers */
 const pipelineNameSchema = z
@@ -442,6 +443,112 @@ export const pipelineRouter = router({
 
         return { id: cloned.id, name: cloned.name };
       });
+    }),
+
+  promote: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        targetEnvironmentId: z.string(),
+        name: pipelineNameSchema.optional(),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.promoted", "Pipeline"))
+    .mutation(async ({ input, ctx }) => {
+      const source = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        select: {
+          name: true,
+          description: true,
+          environmentId: true,
+          globalConfig: true,
+          environment: { select: { teamId: true } },
+        },
+      });
+      if (!source) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Pipeline not found",
+        });
+      }
+
+      if (source.environmentId === input.targetEnvironmentId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Target environment must be different from source environment",
+        });
+      }
+
+      const targetEnv = await prisma.environment.findUnique({
+        where: { id: input.targetEnvironmentId },
+        select: { teamId: true, name: true },
+      });
+      if (!targetEnv) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Target environment not found",
+        });
+      }
+      if (targetEnv.teamId !== source.environment.teamId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Target environment must belong to the same team",
+        });
+      }
+
+      const pipelineName = input.name ?? source.name;
+
+      const existing = await prisma.pipeline.findFirst({
+        where: {
+          name: pipelineName,
+          environmentId: input.targetEnvironmentId,
+        },
+      });
+      if (existing) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `A pipeline named "${pipelineName}" already exists in the target environment`,
+        });
+      }
+
+      const allStrippedSecrets: StrippedRef[] = [];
+      const allStrippedCertificates: StrippedRef[] = [];
+
+      const promoted = await prisma.$transaction(async (tx) => {
+        const created = await tx.pipeline.create({
+          data: {
+            name: pipelineName,
+            description: source.description,
+            environmentId: input.targetEnvironmentId,
+            globalConfig: source.globalConfig ?? undefined,
+            isDraft: true,
+            createdById: ctx.session.user?.id ?? null,
+            updatedById: ctx.session.user?.id,
+          },
+        });
+
+        await copyPipelineGraph(tx, {
+          sourcePipelineId: input.pipelineId,
+          targetPipelineId: created.id,
+          transformConfig: (config, componentKey) => {
+            const result = stripEnvRefs(config, componentKey);
+            allStrippedSecrets.push(...result.strippedSecrets);
+            allStrippedCertificates.push(...result.strippedCertificates);
+            return result.config;
+          },
+        });
+
+        return created;
+      });
+
+      return {
+        id: promoted.id,
+        name: promoted.name,
+        targetEnvironmentName: targetEnv.name,
+        strippedSecrets: allStrippedSecrets,
+        strippedCertificates: allStrippedCertificates,
+      };
     }),
 
   saveGraph: protectedProcedure
