@@ -1,7 +1,6 @@
 "use client";
 
-import { useRef } from "react";
-import Link from "next/link";
+import { useRef, useState } from "react";
 import {
   Save,
   Undo2,
@@ -45,6 +44,7 @@ import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml, generateVectorToml, importVectorConfig } from "@/lib/config-generator";
 import { useTRPC } from "@/trpc/client";
 import { useMutation } from "@tanstack/react-query";
+import { VersionHistoryDialog } from "@/components/pipeline/version-history-dialog";
 
 type ProcessStatusValue = "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING";
 
@@ -103,6 +103,7 @@ export function FlowToolbar({
   const loadGraph = useFlowStore((s) => s.loadGraph);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasGlobalContent = useHasGlobalConfigContent();
+  const [versionsOpen, setVersionsOpen] = useState(false);
 
   const trpc = useTRPC();
   const validateMutation = useMutation(trpc.validator.validate.mutationOptions({
@@ -282,16 +283,21 @@ export function FlowToolbar({
         </Tooltip>
 
         {pipelineId && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" asChild aria-label="Version history">
-                <Link href={`/pipelines/${pipelineId}/versions`}>
+          <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setVersionsOpen(true)} aria-label="Version history">
                   <History className="h-4 w-4" />
-                </Link>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Version history &amp; rollback</TooltipContent>
-          </Tooltip>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Version history &amp; rollback</TooltipContent>
+            </Tooltip>
+            <VersionHistoryDialog
+              pipelineId={pipelineId}
+              open={versionsOpen}
+              onOpenChange={setVersionsOpen}
+            />
+          </>
         )}
 
         {onToggleMetrics && (
