@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     const environments = await prisma.environment.findMany({
       where: {
         enrollmentTokenHash: { not: null },
+        isSystem: false,
       },
       select: {
         id: true,

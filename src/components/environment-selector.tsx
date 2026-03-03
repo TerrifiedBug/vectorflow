@@ -10,16 +10,17 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Layers, Plus } from "lucide-react";
+import { Layers, Plus, Settings } from "lucide-react";
 
 export function EnvironmentSelector() {
   const trpc = useTRPC();
-  const { selectedEnvironmentId, setSelectedEnvironmentId } =
+  const { selectedEnvironmentId, setSelectedEnvironmentId, setIsSystemEnvironment } =
     useEnvironmentStore();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
@@ -31,18 +32,40 @@ export function EnvironmentSelector() {
   );
   const environments = envsQuery.data ?? [];
 
+  // Fetch current user info to check super admin status
+  const { data: me } = useQuery(trpc.user.me.queryOptions());
+  const isSuperAdmin = me?.isSuperAdmin ?? false;
+
+  // Fetch system environment for super admins
+  const systemEnvQuery = useQuery(
+    trpc.environment.getSystem.queryOptions(undefined, {
+      enabled: isSuperAdmin,
+    }),
+  );
+  const systemEnvironment = systemEnvQuery.data;
+
   // Auto-select first environment if none selected
   useEffect(() => {
     if (!selectedEnvironmentId && environments.length > 0) {
       setSelectedEnvironmentId(environments[0].id);
+      setIsSystemEnvironment(false);
     }
-  }, [environments, selectedEnvironmentId, setSelectedEnvironmentId]);
+  }, [environments, selectedEnvironmentId, setSelectedEnvironmentId, setIsSystemEnvironment]);
+
+  // Track whether selected environment is the system environment
+  useEffect(() => {
+    if (selectedEnvironmentId && systemEnvironment) {
+      setIsSystemEnvironment(selectedEnvironmentId === systemEnvironment.id);
+    } else {
+      setIsSystemEnvironment(false);
+    }
+  }, [selectedEnvironmentId, systemEnvironment, setIsSystemEnvironment]);
 
   if (envsQuery.isLoading) {
     return <Skeleton className="h-9 w-[180px]" />;
   }
 
-  if (environments.length === 0) {
+  if (environments.length === 0 && !systemEnvironment) {
     return (
       <Button variant="outline" size="sm" className="h-9 text-xs text-muted-foreground" asChild>
         <Link href="/environments">
@@ -68,6 +91,18 @@ export function EnvironmentSelector() {
             {env.name}
           </SelectItem>
         ))}
+        {isSuperAdmin && systemEnvironment && (
+          <>
+            <SelectSeparator />
+            <SelectItem
+              value={systemEnvironment.id}
+              className="text-muted-foreground"
+            >
+              <Settings className="mr-1.5 h-3.5 w-3.5" />
+              System
+            </SelectItem>
+          </>
+        )}
       </SelectContent>
     </Select>
   );
