@@ -81,6 +81,7 @@ export const certificateRouter = router({
   getData: protectedProcedure
     .input(z.object({ id: z.string(), environmentId: z.string() }))
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("certificate.accessed", "Certificate"))
     .query(async ({ input }) => {
       const cert = await prisma.certificate.findUnique({ where: { id: input.id } });
       if (!cert || cert.environmentId !== input.environmentId) {

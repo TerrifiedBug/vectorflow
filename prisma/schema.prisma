@@ -359,8 +359,8 @@ model Template {
 
 model AuditLog {
   id            String       @id @default(cuid())
-  userId        String
-  user          User         @relation(fields: [userId], references: [id])
+  userId        String?
+  user          User?        @relation(fields: [userId], references: [id])
   action        String
   entityType    String
   entityId      String
@@ -377,6 +377,7 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([userId])
   @@index([createdAt])
+  @@index([action])
 }
 
 model SystemSettings {
