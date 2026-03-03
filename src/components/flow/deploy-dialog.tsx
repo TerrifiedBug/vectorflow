@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { ConfigDiff } from "@/components/ui/config-diff";
 
 interface DeployDialogProps {
@@ -27,6 +28,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [deploying, setDeploying] = useState(false);
+  const [changelog, setChangelog] = useState("");
 
   const previewQuery = useQuery({
     ...trpc.deploy.preview.queryOptions({ pipelineId }),
@@ -71,11 +73,11 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
   function handleDeploy() {
     setDeploying(true);
-    agentMutation.mutate({ pipelineId });
+    agentMutation.mutate({ pipelineId, changelog: changelog.trim() });
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(val) => { if (!val) { setChangelog(""); setDeploying(false); } onOpenChange(val); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -155,6 +157,21 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 Current deployed version: v{preview.currentVersion}
               </p>
             )}
+
+            {/* Deployment reason (required) */}
+            <div className="space-y-1">
+              <label htmlFor="changelog" className="text-xs font-medium">
+                Deployment Reason <span className="text-destructive">*</span>
+              </label>
+              <Textarea
+                id="changelog"
+                placeholder="What changed and why? e.g., Added rate limiting to reduce Datadog ingestion costs"
+                value={changelog}
+                onChange={(e) => setChangelog(e.target.value)}
+                rows={3}
+                className="resize-none text-sm"
+              />
+            </div>
           </div>
         )}
 
@@ -164,7 +181,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
           </Button>
           <Button
             onClick={handleDeploy}
-            disabled={isLoading || !isValid || deploying}
+            disabled={isLoading || !isValid || deploying || !changelog.trim()}
           >
             {deploying ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Deploying...</>
