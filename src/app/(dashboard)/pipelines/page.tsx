@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
-import { Plus, MoreHorizontal, Copy, Trash2, BarChart3 } from "lucide-react";
+import { Plus, MoreHorizontal, Copy, Trash2, BarChart3, ArrowUpRight } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
 
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { PromotePipelineDialog } from "@/components/promote-pipeline-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatEventsRate, formatBytesRate } from "@/lib/format";
@@ -140,6 +141,7 @@ export default function PipelinesPage() {
   );
 
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [promoteTarget, setPromoteTarget] = useState<{ id: string; name: string; environmentId: string } | null>(null);
 
   const isLoading =
     environmentsQuery.isLoading ||
@@ -306,6 +308,16 @@ export default function PipelinesPage() {
                         Clone
                       </DropdownMenuItem>
                       <DropdownMenuItem
+                        onClick={() => setPromoteTarget({
+                          id: pipeline.id,
+                          name: pipeline.name,
+                          environmentId: effectiveEnvId,
+                        })}
+                      >
+                        <ArrowUpRight className="mr-2 h-4 w-4" />
+                        Promote to...
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
                         className="text-destructive"
                         onClick={() => setDeleteTarget({ id: pipeline.id, name: pipeline.name })}
                       >
@@ -342,6 +354,14 @@ export default function PipelinesPage() {
           }
         }}
       />
+
+      {promoteTarget && (
+        <PromotePipelineDialog
+          open={!!promoteTarget}
+          onOpenChange={(open) => { if (!open) setPromoteTarget(null); }}
+          pipeline={promoteTarget}
+        />
+      )}
     </div>
   );
 }
