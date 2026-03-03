@@ -463,6 +463,7 @@ export const pipelineRouter = router({
           description: true,
           environmentId: true,
           globalConfig: true,
+          isSystem: true,
           environment: { select: { teamId: true } },
         },
       });
@@ -470,6 +471,12 @@ export const pipelineRouter = router({
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Pipeline not found",
+        });
+      }
+      if (source.isSystem) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "System pipelines cannot be promoted",
         });
       }
 
@@ -499,29 +506,39 @@ export const pipelineRouter = router({
 
       const pipelineName = input.name ?? source.name;
 
-      const existing = await prisma.pipeline.findFirst({
-        where: {
-          name: pipelineName,
-          environmentId: input.targetEnvironmentId,
-        },
-      });
-      if (existing) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: `A pipeline named "${pipelineName}" already exists in the target environment`,
-        });
-      }
-
       const allStrippedSecrets: StrippedRef[] = [];
       const allStrippedCertificates: StrippedRef[] = [];
 
+      // Strip secrets/certs from globalConfig if present
+      let strippedGlobalConfig = source.globalConfig ?? undefined;
+      if (strippedGlobalConfig && typeof strippedGlobalConfig === "object" && !Array.isArray(strippedGlobalConfig)) {
+        const globalResult = stripEnvRefs(strippedGlobalConfig as Record<string, unknown>, "__global__");
+        strippedGlobalConfig = globalResult.config as typeof strippedGlobalConfig;
+        allStrippedSecrets.push(...globalResult.strippedSecrets);
+        allStrippedCertificates.push(...globalResult.strippedCertificates);
+      }
+
       const promoted = await prisma.$transaction(async (tx) => {
+        // Check name collision inside transaction to avoid TOCTOU race
+        const existing = await tx.pipeline.findFirst({
+          where: {
+            name: pipelineName,
+            environmentId: input.targetEnvironmentId,
+          },
+        });
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `A pipeline named "${pipelineName}" already exists in the target environment`,
+          });
+        }
+
         const created = await tx.pipeline.create({
           data: {
             name: pipelineName,
             description: source.description,
             environmentId: input.targetEnvironmentId,
-            globalConfig: source.globalConfig ?? undefined,
+            globalConfig: strippedGlobalConfig,
             isDraft: true,
             createdById: ctx.session.user?.id ?? null,
             updatedById: ctx.session.user?.id,
