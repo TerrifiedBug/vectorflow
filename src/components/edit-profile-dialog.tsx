@@ -33,6 +33,7 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
 
   useEffect(() => {
     if (open && session?.user?.name) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(session.user.name);
     }
   }, [open, session?.user?.name]);

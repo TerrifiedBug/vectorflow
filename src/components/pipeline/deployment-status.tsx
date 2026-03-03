@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/ui/status-dot";
-import { pipelineStatusVariant, pipelineStatusLabel } from "@/lib/status";
+import { pipelineStatusVariant } from "@/lib/status";
 
 interface DeploymentStatusProps {
   pipelineId: string;

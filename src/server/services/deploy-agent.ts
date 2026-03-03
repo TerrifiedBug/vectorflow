@@ -62,8 +62,8 @@ export async function deployAgent(
 
   // 2. Generate and validate YAML
   const configYaml = generateVectorYaml(
-    flowNodes as any,
-    flowEdges as any,
+    flowNodes as Parameters<typeof generateVectorYaml>[0],
+    flowEdges as Parameters<typeof generateVectorYaml>[1],
     pipeline.globalConfig as Record<string, unknown> | null,
   );
 

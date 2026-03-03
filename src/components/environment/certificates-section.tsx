@@ -70,6 +70,7 @@ export function CertificatesSection({ environmentId }: CertificatesSectionProps)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const uploadMutation = useMutation(
+    // eslint-disable-next-line react-hooks/refs
     trpc.certificate.upload.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: trpc.certificate.list.queryKey({ environmentId }) });

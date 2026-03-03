@@ -23,12 +23,15 @@ const FIELD_RENAMES: Record<string, { newName: string; kinds: Set<string> }> = {
  *  - request.headers.Authorization: "Bearer <token>" → auth.strategy=bearer, auth.token=<token>
  *  - request.headers.Authorization: "Basic <b64>"    → auth.strategy=basic, auth.user/password (decoded)
  */
-function normaliseAuth(config: Record<string, any>): void {
-  const authHeader = config.request?.headers?.Authorization as string | undefined;
+function normaliseAuth(config: Record<string, unknown>): void {
+  const request = config.request as Record<string, unknown> | undefined;
+  const headers = request?.headers as Record<string, unknown> | undefined;
+  const authHeader = headers?.Authorization as string | undefined;
   if (!authHeader || typeof authHeader !== "string") return;
 
   // Already has an explicit auth block — don't overwrite
-  if (config.auth?.strategy) return;
+  const auth = config.auth as Record<string, unknown> | undefined;
+  if (auth?.strategy) return;
 
   if (authHeader.startsWith("Bearer ")) {
     const token = authHeader.slice("Bearer ".length).trim();
@@ -46,12 +49,12 @@ function normaliseAuth(config: Record<string, any>): void {
   }
 
   // Remove the Authorization header since auth is now in the dedicated block
-  delete config.request.headers.Authorization;
+  delete (headers as Record<string, unknown>).Authorization;
   // Clean up empty headers/request objects
-  if (Object.keys(config.request.headers).length === 0) {
-    delete config.request.headers;
+  if (Object.keys(headers as Record<string, unknown>).length === 0) {
+    delete (request as Record<string, unknown>).headers;
   }
-  if (Object.keys(config.request).length === 0) {
+  if (Object.keys(request as Record<string, unknown>).length === 0) {
     delete config.request;
   }
 }
@@ -59,7 +62,7 @@ function normaliseAuth(config: Record<string, any>): void {
 /**
  * Rename deprecated Vector config fields to their current names.
  */
-function normaliseFieldNames(config: Record<string, any>, kind: string): void {
+function normaliseFieldNames(config: Record<string, unknown>, kind: string): void {
   for (const [oldName, { newName, kinds }] of Object.entries(FIELD_RENAMES)) {
     if (kinds.has(kind) && oldName in config && !(newName in config)) {
       config[newName] = config[oldName];
@@ -71,7 +74,7 @@ function normaliseFieldNames(config: Record<string, any>, kind: string): void {
 export interface ImportResult {
   nodes: Node[];
   edges: Edge[];
-  globalConfig: Record<string, any> | null;
+  globalConfig: Record<string, unknown> | null;
 }
 
 /**
@@ -86,14 +89,15 @@ export interface ImportResult {
  */
 export function importVectorConfig(
   content: string,
-  format: "yaml" | "toml" = "yaml",
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _format: "yaml" | "toml" = "yaml",
 ): ImportResult {
   // Currently only YAML is fully supported; TOML parsing could be added
   // later with a TOML library.
-  const config = yaml.load(content) as Record<string, any>;
+  const config = yaml.load(content) as Record<string, unknown>;
 
   // Extract global config — everything that isn't sources/transforms/sinks
-  const globalConfig: Record<string, any> = {};
+  const globalConfig: Record<string, unknown> = {};
   for (const key of Object.keys(config)) {
     if (!GRAPH_SECTIONS.has(key)) {
       globalConfig[key] = config[key];
@@ -111,10 +115,10 @@ export function importVectorConfig(
   ];
 
   for (const [section, kind] of sections) {
-    const components = (config[section] ?? {}) as Record<string, any>;
+    const components = (config[section] ?? {}) as Record<string, Record<string, unknown>>;
 
     for (const [key, value] of Object.entries(components)) {
-      const componentType: string = value.type || key;
+      const componentType: string = (value.type as string) || key;
 
       // Try to resolve against the catalog; fall back to a minimal definition
       const componentDef = findComponentDef(componentType, kind) ?? {
@@ -128,6 +132,7 @@ export function importVectorConfig(
       };
 
       // Strip `type` and `inputs` — they are structural, not user config
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { type: _type, inputs: _inputs, ...nodeConfig } = value;
 
       // Normalise deprecated field names (e.g. fingerprinting → fingerprint)
@@ -150,8 +155,8 @@ export function importVectorConfig(
       // Collect edges (source field is a componentKey for now; resolved below)
       if (value.inputs) {
         const inputList: string[] = Array.isArray(value.inputs)
-          ? value.inputs
-          : [value.inputs];
+          ? (value.inputs as string[])
+          : [value.inputs as string];
 
         for (const input of inputList) {
           edges.push({

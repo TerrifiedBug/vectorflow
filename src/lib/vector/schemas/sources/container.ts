@@ -1,5 +1,4 @@
 import type { VectorComponentDef } from "../../types";
-import { decodingSchema } from "../shared";
 
 export const containerSources: VectorComponentDef[] = [
   {

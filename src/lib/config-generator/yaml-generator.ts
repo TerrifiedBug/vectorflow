@@ -1,6 +1,14 @@
 import yaml from "js-yaml";
 import type { Node, Edge } from "@xyflow/react";
 
+/** Shape of node.data used by the flow editor */
+interface FlowNodeData {
+  componentDef: { type: string; kind: string };
+  componentKey: string;
+  config: Record<string, unknown>;
+  disabled?: boolean;
+}
+
 /**
  * Converts a React Flow graph (nodes + edges) into a valid Vector YAML config string.
  *
@@ -17,18 +25,19 @@ export function generateVectorYaml(
   globalConfig?: Record<string, unknown> | null,
 ): string {
   // Filter out disabled nodes and their edges
-  const enabledNodes = nodes.filter((n) => !(n.data as any).disabled);
+  const enabledNodes = nodes.filter((n) => !(n.data as unknown as FlowNodeData).disabled);
   const enabledNodeIds = new Set(enabledNodes.map((n) => n.id));
   const enabledEdges = edges.filter(
     (e) => enabledNodeIds.has(e.source) && enabledNodeIds.has(e.target),
   );
 
   // Separate Vector-external keys from real config sections
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { log_level: _logLevel, ...vectorGlobalConfig } = globalConfig ?? {};
 
-  const config: Record<string, any> = {
+  const config: Record<string, Record<string, unknown>> = {
     // Inject global config sections first (api, enrichment_tables, etc.)
-    ...vectorGlobalConfig,
+    ...(vectorGlobalConfig as Record<string, Record<string, unknown>>),
     sources: {},
     transforms: {},
     sinks: {},
@@ -36,7 +45,7 @@ export function generateVectorYaml(
 
   // Group nodes by kind
   for (const node of enabledNodes) {
-    const { componentDef, componentKey, config: nodeConfig } = node.data as any;
+    const { componentDef, componentKey, config: nodeConfig } = node.data as unknown as FlowNodeData;
     const section =
       componentDef.kind === "source"
         ? "sources"
@@ -44,7 +53,7 @@ export function generateVectorYaml(
           ? "transforms"
           : "sinks";
 
-    const entry: Record<string, any> = {
+    const entry: Record<string, unknown> = {
       type: componentDef.type,
       ...nodeConfig,
     };
@@ -55,7 +64,7 @@ export function generateVectorYaml(
         .filter((e) => e.target === node.id)
         .map((e) => {
           const sourceNode = enabledNodes.find((n) => n.id === e.source);
-          return sourceNode ? (sourceNode.data as any).componentKey : null;
+          return sourceNode ? (sourceNode.data as unknown as FlowNodeData).componentKey : null;
         })
         .filter(Boolean);
       if (inputs.length > 0) {

@@ -40,6 +40,5 @@ services:
 volumes:
   pgdata:
     name: vectorflow-pgdata
-    external: true
   vfdata:
     name: vectorflow-data

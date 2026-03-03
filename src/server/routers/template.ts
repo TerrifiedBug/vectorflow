@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { Prisma } from "@/generated/prisma";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
@@ -98,8 +99,8 @@ export const templateRouter = router({
           description: input.description,
           category: input.category,
           teamId: input.teamId,
-          nodes: input.nodes as any,
-          edges: input.edges as any,
+          nodes: input.nodes as Prisma.InputJsonValue,
+          edges: input.edges as Prisma.InputJsonValue,
         },
       });
     }),

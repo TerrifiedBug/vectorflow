@@ -56,7 +56,7 @@ interface VrlEditorProps {
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipelineId, upstreamSourceKeys }: VrlEditorProps) {
+export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSourceKeys }: VrlEditorProps) {
   const trpc = useTRPC();
   const [sampleInput, setSampleInput] = useState("");
   const [testOutput, setTestOutput] = useState<string | null>(null);
@@ -129,6 +129,7 @@ export function VrlEditor({ value, onChange, height = "200px", sourceTypes, pipe
     if (data.status === "COMPLETED" && data.samples.length > 0) {
       const sample = data.samples[0];
       if (sample.error) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setTestError(`Sampling error: ${sample.error}`);
       } else {
         const events = (sample.events as unknown[]) ?? [];

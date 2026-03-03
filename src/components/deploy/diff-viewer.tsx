@@ -23,8 +23,6 @@ function computeLineDiff(
     type: "added" | "removed" | "unchanged";
   }> = [];
 
-  const maxLen = Math.max(oldLines.length, newLines.length);
-
   // Simple line-by-line comparison. For a production app we would use
   // a proper diff algorithm, but this is sufficient for YAML configs.
   let oi = 0;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
@@ -19,7 +19,7 @@ export function TeamSelector() {
   const setSelectedTeamId = useTeamStore((s) => s.setSelectedTeamId);
 
   const teamsQuery = useQuery(trpc.team.list.queryOptions());
-  const teams = teamsQuery.data ?? [];
+  const teams = useMemo(() => teamsQuery.data ?? [], [teamsQuery.data]);
 
   // Auto-select first team if none selected
   useEffect(() => {
