@@ -54,3 +54,20 @@ export function formatTimestamp(date: Date | string | null): string {
   if (!date) return "Never";
   return new Date(date).toLocaleString();
 }
+
+/** SI-suffix formatter for chart Y-axes: 1000 → "1K", 1500000 → "1.5M" */
+export function formatSI(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  if (n === 0) return "0";
+  return n.toFixed(0);
+}
+
+/** Time axis formatter — adapts label density to range */
+export function formatTimeAxis(timestamp: number, range: string): string {
+  const d = new Date(timestamp);
+  if (range === "7d") {
+    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
