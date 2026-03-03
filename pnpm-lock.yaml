@@ -4,6 +4,10 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  hono: '>=4.11.10'
+  lodash: '>=4.17.23'
+
 importers:
 
   .:
@@ -33,14 +37,14 @@ importers:
         specifier: ^5.90.21
         version: 5.90.21(react@19.2.3)
       '@trpc/client':
-        specifier: ^11.0.0
-        version: 11.0.0(@trpc/server@11.0.0(typescript@5.9.3))(typescript@5.9.3)
+        specifier: ^11.8.0
+        version: 11.11.0(@trpc/server@11.11.0(typescript@5.9.3))(typescript@5.9.3)
       '@trpc/server':
-        specifier: ^11.0.0
-        version: 11.0.0(typescript@5.9.3)
+        specifier: ^11.8.0
+        version: 11.11.0(typescript@5.9.3)
       '@trpc/tanstack-react-query':
-        specifier: ^11.0.0
-        version: 11.0.0(@tanstack/react-query@5.90.21(react@19.2.3))(@trpc/client@11.0.0(@trpc/server@11.0.0(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.0.0(typescript@5.9.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
+        specifier: ^11.8.0
+        version: 11.11.0(@tanstack/react-query@5.90.21(react@19.2.3))(@trpc/client@11.11.0(@trpc/server@11.11.0(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.11.0(typescript@5.9.3))(react@19.2.3)(typescript@5.9.3)
       '@types/qrcode':
         specifier: ^1.5.6
         version: 1.5.6
@@ -603,7 +607,7 @@ packages:
     resolution: {integrity: sha512-vHL6w3ecZsky+8P5MD+eFfaGTyCeOHUIFYMGpQGbrBTSmNNoxv0if69rEZ5giu36weC5saFuznL411gRX7bJDw==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
-      hono: ^4
+      hono: '>=4.11.10'
 
   '@hookform/resolvers@5.2.2':
     resolution: {integrity: sha512-A/IxlMLShx3KjV/HeTcTfaMxdwy690+L/ZADoeaTltLx+CVuzkeVIPuybK3jrRfw7YZnmdKsVVHAlEPIAEUNlA==}
@@ -1806,25 +1810,24 @@ packages:
     peerDependencies:
       react: ^18 || ^19
 
-  '@trpc/client@11.0.0':
-    resolution: {integrity: sha512-U2THlxsdr4ykAX5lpTU8k5WRADPQ+68Ex2gfUht3MlCxGK7njBmNSSzjpQSWNt7tMI/xsYrddFiRlmEPrh+Cbg==}
+  '@trpc/client@11.11.0':
+    resolution: {integrity: sha512-tIPeetFO8GT/o0In+Lk5JA3f29m8qCBSaKNatQdAx6BOfZFjpqHOaoAsCmE/MdUu9AVhPRPorcoqUlZUdDc5gA==}
     peerDependencies:
-      '@trpc/server': 11.0.0
+      '@trpc/server': 11.11.0
       typescript: '>=5.7.2'
 
-  '@trpc/server@11.0.0':
-    resolution: {integrity: sha512-xY9q/b/wR/tWGYTm5xmRjivkYD2EZZXmOKmHuNJRYZuLbieeNUsdfQRjJC409WB1pjKWInomhHwuA8bahZJ4lQ==}
+  '@trpc/server@11.11.0':
+    resolution: {integrity: sha512-5CBK5Oit8qv2k2zgIHrUsa12tnCIVpZIJLvMa4n2tejuWz/d7Qb1B1v9zZioapr7y8sEvnk8zPcNnxcT2LlQxg==}
     peerDependencies:
       typescript: '>=5.7.2'
 
-  '@trpc/tanstack-react-query@11.0.0':
-    resolution: {integrity: sha512-cFiplPXQKprVbi2kJMKyiJ+W4tXKS3xnHS0oOYPn14R4w2qW44vjHY9ZZZJpdkmsbsiT6efiunjHR60Gstod2Q==}
+  '@trpc/tanstack-react-query@11.11.0':
+    resolution: {integrity: sha512-Y89xM3CiaEUP0GLaM4yGfGdcZLTJKq/nsuL8SHcKxYP5JddS9uTuZzRQaqQsL2DlZLlXaF8KsEr622Yu7oAwYA==}
     peerDependencies:
-      '@tanstack/react-query': ^5.67.1
-      '@trpc/client': 11.0.0
-      '@trpc/server': 11.0.0
+      '@tanstack/react-query': ^5.80.3
+      '@trpc/client': 11.11.0
+      '@trpc/server': 11.11.0
       react: '>=18.2.0'
-      react-dom: '>=18.2.0'
       typescript: '>=5.7.2'
 
   '@ts-morph/common@0.27.0':
@@ -3107,8 +3110,8 @@ packages:
   hermes-parser@0.25.1:
     resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
 
-  hono@4.11.4:
-    resolution: {integrity: sha512-U7tt8JsyrxSRKspfhtLET79pU8K+tInj5QZXs1jSugO1Vq5dFj3kmZsRldo29mTBfcjDRVRXrEZ6LS63Cog9ZA==}
+  hono@4.12.4:
+    resolution: {integrity: sha512-ooiZW1Xy8rQ4oELQ++otI2T9DsKpV0M6c6cO6JGx4RTfav9poFFLlet9UMXHZnoM1yG0HWGlQLswBGX3RZmHtg==}
     engines: {node: '>=16.9.0'}
 
   http-errors@2.0.1:
@@ -3522,8 +3525,8 @@ packages:
   lodash.merge@4.6.2:
     resolution: {integrity: sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==}
 
-  lodash@4.17.21:
-    resolution: {integrity: sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==}
+  lodash@4.17.23:
+    resolution: {integrity: sha512-LgVTMpQtIopCi79SJeDiP0TfWi5CNEc/L/aRdTh3yIvmZXTnheWpKjSZhnvMl8iXbC1tFg9gdHHDMLoV7CnG+w==}
 
   log-symbols@6.0.0:
     resolution: {integrity: sha512-i24m8rpwhmPIS4zscNzK6MSEhk0DUWa/8iYQWxhffV8jkI4Phvs3F+quL5xvS0gdQR0FyTCMMH33Y78dDTzzIw==}
@@ -5003,12 +5006,12 @@ snapshots:
     dependencies:
       '@chevrotain/gast': 10.5.0
       '@chevrotain/types': 10.5.0
-      lodash: 4.17.21
+      lodash: 4.17.23
 
   '@chevrotain/gast@10.5.0':
     dependencies:
       '@chevrotain/types': 10.5.0
-      lodash: 4.17.21
+      lodash: 4.17.23
 
   '@chevrotain/types@10.5.0': {}
 
@@ -5203,9 +5206,9 @@ snapshots:
 
   '@floating-ui/utils@0.2.10': {}
 
-  '@hono/node-server@1.19.9(hono@4.11.4)':
+  '@hono/node-server@1.19.9(hono@4.12.4)':
     dependencies:
-      hono: 4.11.4
+      hono: 4.12.4
 
   '@hookform/resolvers@5.2.2(react-hook-form@7.71.2(react@19.2.3))':
     dependencies:
@@ -5369,7 +5372,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.27.1(zod@3.25.76)':
     dependencies:
-      '@hono/node-server': 1.19.9(hono@4.11.4)
+      '@hono/node-server': 1.19.9(hono@4.12.4)
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
       content-type: 1.0.5
@@ -5379,7 +5382,7 @@ snapshots:
       eventsource-parser: 3.0.6
       express: 5.2.1
       express-rate-limit: 8.2.1(express@5.2.1)
-      hono: 4.11.4
+      hono: 4.12.4
       jose: 6.1.3
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -5521,13 +5524,13 @@ snapshots:
       '@electric-sql/pglite': 0.3.15
       '@electric-sql/pglite-socket': 0.0.20(@electric-sql/pglite@0.3.15)
       '@electric-sql/pglite-tools': 0.2.20(@electric-sql/pglite@0.3.15)
-      '@hono/node-server': 1.19.9(hono@4.11.4)
+      '@hono/node-server': 1.19.9(hono@4.12.4)
       '@mrleebo/prisma-ast': 0.13.1
       '@prisma/get-platform': 7.2.0
       '@prisma/query-plan-executor': 7.2.0
       foreground-child: 3.3.1
       get-port-please: 3.2.0
-      hono: 4.11.4
+      hono: 4.12.4
       http-status-codes: 2.3.0
       pathe: 2.0.3
       proper-lockfile: 4.1.2
@@ -6410,22 +6413,21 @@ snapshots:
       '@tanstack/query-core': 5.90.20
       react: 19.2.3
 
-  '@trpc/client@11.0.0(@trpc/server@11.0.0(typescript@5.9.3))(typescript@5.9.3)':
+  '@trpc/client@11.11.0(@trpc/server@11.11.0(typescript@5.9.3))(typescript@5.9.3)':
     dependencies:
-      '@trpc/server': 11.0.0(typescript@5.9.3)
+      '@trpc/server': 11.11.0(typescript@5.9.3)
       typescript: 5.9.3
 
-  '@trpc/server@11.0.0(typescript@5.9.3)':
+  '@trpc/server@11.11.0(typescript@5.9.3)':
     dependencies:
       typescript: 5.9.3
 
-  '@trpc/tanstack-react-query@11.0.0(@tanstack/react-query@5.90.21(react@19.2.3))(@trpc/client@11.0.0(@trpc/server@11.0.0(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.0.0(typescript@5.9.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.9.3)':
+  '@trpc/tanstack-react-query@11.11.0(@tanstack/react-query@5.90.21(react@19.2.3))(@trpc/client@11.11.0(@trpc/server@11.11.0(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.11.0(typescript@5.9.3))(react@19.2.3)(typescript@5.9.3)':
     dependencies:
       '@tanstack/react-query': 5.90.21(react@19.2.3)
-      '@trpc/client': 11.0.0(@trpc/server@11.0.0(typescript@5.9.3))(typescript@5.9.3)
-      '@trpc/server': 11.0.0(typescript@5.9.3)
+      '@trpc/client': 11.11.0(@trpc/server@11.11.0(typescript@5.9.3))(typescript@5.9.3)
+      '@trpc/server': 11.11.0(typescript@5.9.3)
       react: 19.2.3
-      react-dom: 19.2.3(react@19.2.3)
       typescript: 5.9.3
 
   '@ts-morph/common@0.27.0':
@@ -6922,7 +6924,7 @@ snapshots:
       '@chevrotain/gast': 10.5.0
       '@chevrotain/types': 10.5.0
       '@chevrotain/utils': 10.5.0
-      lodash: 4.17.21
+      lodash: 4.17.23
       regexp-to-ast: 0.5.0
 
   chokidar@4.0.3:
@@ -7903,7 +7905,7 @@ snapshots:
     dependencies:
       hermes-estree: 0.25.1
 
-  hono@4.11.4: {}
+  hono@4.12.4: {}
 
   http-errors@2.0.1:
     dependencies:
@@ -8250,7 +8252,7 @@ snapshots:
 
   lodash.merge@4.6.2: {}
 
-  lodash@4.17.21: {}
+  lodash@4.17.23: {}
 
   log-symbols@6.0.0:
     dependencies:
@@ -8906,7 +8908,7 @@ snapshots:
     dependencies:
       clsx: 2.1.1
       eventemitter3: 4.0.7
-      lodash: 4.17.21
+      lodash: 4.17.23
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
       react-is: 18.3.1

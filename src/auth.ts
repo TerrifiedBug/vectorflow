@@ -349,15 +349,14 @@ export function invalidateAuthCache() {
 }
 
 // Proxy exports — delegate to the lazily-cached NextAuth instance
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handlers = {
-  GET: async (...args: any[]) => {
+  GET: async (...args: unknown[]) => {
     const instance = await getAuthInstance();
-    return instance!.handlers.GET(...args);
+    return instance!.handlers.GET(...(args as Parameters<typeof instance.handlers.GET>));
   },
-  POST: async (...args: any[]) => {
+  POST: async (...args: unknown[]) => {
     const instance = await getAuthInstance();
-    return instance!.handlers.POST(...args);
+    return instance!.handlers.POST(...(args as Parameters<typeof instance.handlers.POST>));
   },
 };
 
