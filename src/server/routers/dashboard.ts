@@ -1,4 +1,5 @@
-import { router, protectedProcedure } from "@/trpc/init";
+import { z } from "zod";
+import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { metricStore } from "@/server/services/metric-store";
 import { generateVectorYaml } from "@/lib/config-generator";
@@ -391,4 +392,227 @@ export const dashboardRouter = router({
 
     return { unhealthyNodes, deployedPipelines, recentMetrics: recentMetrics._sum };
   }),
+
+  chartMetrics: protectedProcedure
+    .use(withTeamAccess("VIEWER"))
+    .input(
+      z.object({
+        environmentId: z.string(),
+        nodeIds: z.array(z.string()).default([]),
+        pipelineIds: z.array(z.string()).default([]),
+        range: z.enum(["1h", "6h", "1d", "7d"]).default("1h"),
+      })
+    )
+    .query(async ({ input }) => {
+      const rangeMs: Record<string, number> = {
+        "1h": 60 * 60 * 1000,
+        "6h": 6 * 60 * 60 * 1000,
+        "1d": 24 * 60 * 60 * 1000,
+        "7d": 7 * 24 * 60 * 60 * 1000,
+      };
+      const since = new Date(Date.now() - rangeMs[input.range]);
+
+      const envFilter = { environment: { id: input.environmentId } };
+
+      const [allNodes, allPipelines] = await Promise.all([
+        prisma.vectorNode.findMany({
+          where: envFilter,
+          select: { id: true, name: true },
+        }),
+        prisma.pipeline.findMany({
+          where: { environmentId: input.environmentId, isDraft: false, deployedAt: { not: null } },
+          select: { id: true, name: true },
+        }),
+      ]);
+
+      const nodeIds = input.nodeIds.length > 0
+        ? input.nodeIds
+        : allNodes.map((n: { id: string; name: string }) => n.id);
+      const pipelineIds = input.pipelineIds.length > 0
+        ? input.pipelineIds
+        : allPipelines.map((p: { id: string; name: string }) => p.id);
+
+      const nodeNameMap = new Map<string, string>(allNodes.map((n: { id: string; name: string }) => [n.id, n.name]));
+      const pipelineNameMap = new Map<string, string>(allPipelines.map((p: { id: string; name: string }) => [p.id, p.name]));
+
+      let effectiveNodeIds = nodeIds;
+      if (input.pipelineIds.length > 0 && input.nodeIds.length === 0) {
+        const nodeStatuses = await prisma.nodePipelineStatus.findMany({
+          where: { pipelineId: { in: pipelineIds } },
+          select: { nodeId: true },
+          distinct: ["nodeId"],
+        });
+        effectiveNodeIds = nodeStatuses.map((ns: { nodeId: string }) => ns.nodeId);
+      }
+
+      const usePerNode = input.nodeIds.length > 0;
+
+      const [pipelineRows, nodeRows] = await Promise.all([
+        prisma.pipelineMetric.findMany({
+          where: {
+            pipelineId: { in: pipelineIds },
+            timestamp: { gte: since },
+            ...(usePerNode ? { nodeId: { in: nodeIds } } : { nodeId: null }),
+          },
+          orderBy: { timestamp: "asc" },
+          select: {
+            pipelineId: true,
+            nodeId: true,
+            timestamp: true,
+            eventsIn: true,
+            eventsOut: true,
+            bytesIn: true,
+            bytesOut: true,
+            errorsTotal: true,
+            eventsDiscarded: true,
+          },
+        }),
+        effectiveNodeIds.length > 0
+          ? prisma.nodeMetric.findMany({
+              where: {
+                nodeId: { in: effectiveNodeIds },
+                timestamp: { gte: since },
+              },
+              orderBy: { timestamp: "asc" },
+              select: {
+                nodeId: true,
+                timestamp: true,
+                cpuSecondsTotal: true,
+                memoryUsedBytes: true,
+                memoryTotalBytes: true,
+                diskReadBytes: true,
+                diskWrittenBytes: true,
+                netRxBytes: true,
+                netTxBytes: true,
+              },
+            })
+          : [],
+      ]);
+
+      type TSMap = Record<string, { t: number; v: number }[]>;
+
+      const bucketMs = input.range === "7d" ? 5 * 60 * 1000 : 0;
+
+      function addPoint(map: TSMap, label: string, t: number, v: number) {
+        if (!map[label]) map[label] = [];
+        map[label].push({ t, v });
+      }
+
+      function downsample(map: TSMap): TSMap {
+        if (bucketMs === 0) return map;
+        const result: TSMap = {};
+        for (const [label, points] of Object.entries(map)) {
+          const buckets = new Map<number, { sum: number; count: number }>();
+          for (const p of points) {
+            const bucket = Math.floor(p.t / bucketMs) * bucketMs;
+            const b = buckets.get(bucket) ?? { sum: 0, count: 0 };
+            b.sum += p.v;
+            b.count++;
+            buckets.set(bucket, b);
+          }
+          result[label] = Array.from(buckets.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([t, b]) => ({ t, v: b.sum / b.count }));
+        }
+        return result;
+      }
+
+      const eventsIn: TSMap = {};
+      const eventsOut: TSMap = {};
+      const bytesIn: TSMap = {};
+      const bytesOut: TSMap = {};
+      const errors: TSMap = {};
+      const discarded: TSMap = {};
+
+      for (const row of pipelineRows) {
+        const label = usePerNode
+          ? (nodeNameMap.get(row.nodeId ?? "") ?? row.nodeId ?? "unknown")
+          : (pipelineNameMap.get(row.pipelineId) ?? row.pipelineId);
+        const t = new Date(row.timestamp).getTime();
+
+        addPoint(eventsIn, label, t, Number(row.eventsIn) / 60);
+        addPoint(eventsOut, label, t, Number(row.eventsOut) / 60);
+        addPoint(bytesIn, label, t, Number(row.bytesIn) / 60);
+        addPoint(bytesOut, label, t, Number(row.bytesOut) / 60);
+        addPoint(errors, label, t, Number(row.errorsTotal) / 60);
+        addPoint(discarded, label, t, Number(row.eventsDiscarded) / 60);
+      }
+
+      const cpu: TSMap = {};
+      const memory: TSMap = {};
+      const diskRead: TSMap = {};
+      const diskWrite: TSMap = {};
+      const netRx: TSMap = {};
+      const netTx: TSMap = {};
+
+      type NodeRow = {
+        nodeId: string;
+        timestamp: Date;
+        cpuSecondsTotal: number;
+        memoryUsedBytes: bigint;
+        memoryTotalBytes: bigint;
+        diskReadBytes: bigint;
+        diskWrittenBytes: bigint;
+        netRxBytes: bigint;
+        netTxBytes: bigint;
+      };
+      const nodeRowsByNode = new Map<string, NodeRow[]>();
+      for (const row of nodeRows as NodeRow[]) {
+        const arr = nodeRowsByNode.get(row.nodeId) ?? [];
+        arr.push(row);
+        nodeRowsByNode.set(row.nodeId, arr);
+      }
+
+      for (const [nodeId, rows] of nodeRowsByNode) {
+        const label = nodeNameMap.get(nodeId) ?? nodeId;
+        for (let i = 1; i < rows.length; i++) {
+          const prev = rows[i - 1];
+          const curr = rows[i];
+          const t = new Date(curr.timestamp).getTime();
+          const dtSec = (t - new Date(prev.timestamp).getTime()) / 1000;
+          if (dtSec <= 0) continue;
+
+          const cpuDelta = curr.cpuSecondsTotal - prev.cpuSecondsTotal;
+          const cpuPct = Math.max(0, Math.min(100, (cpuDelta / dtSec) * 100));
+          addPoint(cpu, label, t, cpuPct);
+
+          const memTotal = Number(curr.memoryTotalBytes);
+          const memUsed = Number(curr.memoryUsedBytes);
+          addPoint(memory, label, t, memTotal > 0 ? (memUsed / memTotal) * 100 : 0);
+
+          const dr = (Number(curr.diskReadBytes) - Number(prev.diskReadBytes)) / dtSec;
+          const dw = (Number(curr.diskWrittenBytes) - Number(prev.diskWrittenBytes)) / dtSec;
+          addPoint(diskRead, label, t, Math.max(0, dr));
+          addPoint(diskWrite, label, t, Math.max(0, dw));
+
+          const rx = (Number(curr.netRxBytes) - Number(prev.netRxBytes)) / dtSec;
+          const tx = (Number(curr.netTxBytes) - Number(prev.netTxBytes)) / dtSec;
+          addPoint(netRx, label, t, Math.max(0, rx));
+          addPoint(netTx, label, t, Math.max(0, tx));
+        }
+      }
+
+      return {
+        pipeline: {
+          eventsIn: downsample(eventsIn),
+          eventsOut: downsample(eventsOut),
+          bytesIn: downsample(bytesIn),
+          bytesOut: downsample(bytesOut),
+          errors: downsample(errors),
+          discarded: downsample(discarded),
+        },
+        system: {
+          cpu: downsample(cpu),
+          memory: downsample(memory),
+          diskRead: downsample(diskRead),
+          diskWrite: downsample(diskWrite),
+          netRx: downsample(netRx),
+          netTx: downsample(netTx),
+        },
+        filterOptions: {
+          nodes: allNodes.map((n: { id: string; name: string }) => ({ id: n.id, name: n.name })),
+          pipelines: allPipelines.map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })),
+        },
+      };
+    }),
 });
