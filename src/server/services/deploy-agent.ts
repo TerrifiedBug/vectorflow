@@ -22,6 +22,7 @@ export interface AgentDeployResult {
 export async function deployAgent(
   pipelineId: string,
   userId: string,
+  changelog?: string,
 ): Promise<AgentDeployResult> {
   // 1. Get pipeline with graph data
   const pipeline = await prisma.pipeline.findUnique({
@@ -81,9 +82,7 @@ export async function deployAgent(
     pipelineId,
     configYaml,
     userId,
-    pipeline.isSystem
-      ? "Deployed via system vector"
-      : "Deployed via agent mode",
+    changelog ?? (pipeline.isSystem ? "Deployed via system vector" : "Deployed via agent mode"),
     logLevel,
     gc,
   );
