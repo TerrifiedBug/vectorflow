@@ -14,6 +14,7 @@ import {
 import { encryptNodeConfig, decryptNodeConfig } from "@/server/services/config-crypto";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { getOrCreateSystemEnvironment } from "@/server/services/system-environment";
+import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
 
 /** Pipeline names must be safe identifiers */
 const pipelineNameSchema = z
@@ -408,7 +409,12 @@ export const pipelineRouter = router({
     .mutation(async ({ input, ctx }) => {
       const source = await prisma.pipeline.findUnique({
         where: { id: input.pipelineId },
-        include: { nodes: true, edges: true },
+        select: {
+          name: true,
+          description: true,
+          environmentId: true,
+          globalConfig: true,
+        },
       });
       if (!source) {
         throw new TRPCError({
@@ -418,7 +424,6 @@ export const pipelineRouter = router({
       }
 
       return prisma.$transaction(async (tx) => {
-        // Create the new pipeline as a draft
         const cloned = await tx.pipeline.create({
           data: {
             name: `${source.name} (Copy)`,
@@ -430,39 +435,10 @@ export const pipelineRouter = router({
           },
         });
 
-        // Build old→new node ID mapping
-        const nodeIdMap = new Map<string, string>();
-        for (const node of source.nodes) {
-          const created = await tx.pipelineNode.create({
-            data: {
-              pipelineId: cloned.id,
-              componentKey: node.componentKey,
-              componentType: node.componentType,
-              kind: node.kind,
-              config: node.config ?? {},
-              positionX: node.positionX,
-              positionY: node.positionY,
-              disabled: node.disabled,
-            },
-          });
-          nodeIdMap.set(node.id, created.id);
-        }
-
-        // Copy edges, remapping source/target to new node IDs
-        for (const edge of source.edges) {
-          const newSource = nodeIdMap.get(edge.sourceNodeId);
-          const newTarget = nodeIdMap.get(edge.targetNodeId);
-          if (newSource && newTarget) {
-            await tx.pipelineEdge.create({
-              data: {
-                pipelineId: cloned.id,
-                sourceNodeId: newSource,
-                targetNodeId: newTarget,
-                sourcePort: edge.sourcePort,
-              },
-            });
-          }
-        }
+        await copyPipelineGraph(tx, {
+          sourcePipelineId: input.pipelineId,
+          targetPipelineId: cloned.id,
+        });
 
         return { id: cloned.id, name: cloned.name };
       });
