@@ -90,7 +90,7 @@ function readPinnedVersion(): string {
       "Could not find ARG VECTOR_VERSION in docker/server/Dockerfile",
     );
   }
-  return match[1];
+  return match[1]!;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +155,11 @@ async function ghFetch<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`GitHub API ${res.status} for ${url}: ${body}`);
+    const hint =
+      (res.status === 403 || res.status === 429) && !GITHUB_TOKEN
+        ? " (try setting GITHUB_TOKEN for higher rate limits)"
+        : "";
+    throw new Error(`GitHub API ${res.status} for ${url}${hint}: ${body}`);
   }
   return res.json() as Promise<T>;
 }
@@ -200,7 +204,8 @@ async function fetchReleaseNotes(
   let page = 1;
   let keepGoing = true;
 
-  while (keepGoing) {
+  const MAX_PAGES = 20;
+  while (keepGoing && page <= MAX_PAGES) {
     const url = `https://api.github.com/repos/vectordotdev/vector/releases?per_page=100&page=${page}`;
     const batch = await ghFetch<GitHubRelease[]>(url);
     if (batch.length === 0) break;
@@ -290,8 +295,11 @@ function computeDiff(
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const targetVersion = process.argv[2];
-  if (!targetVersion) {
+  const targetVersion = process.argv[2]?.replace(/^v/, "");
+  if (!targetVersion || !/^\d+\.\d+\.\d+$/.test(targetVersion)) {
+    if (targetVersion) {
+      console.error(`Invalid version format: "${targetVersion}". Expected X.Y.Z`);
+    }
     console.error(
       "Usage: npx tsx scripts/vector-sync-check.ts <target-version>",
     );
@@ -448,21 +456,32 @@ async function main() {
   out("## 3. Upgrade Checklist");
   out();
   out(
-    `- [ ] Update \`ARG VECTOR_VERSION=${currentVersion}\` to \`${targetVersion}\` in \`docker/server/Dockerfile\``,
+    `- [ ] Update \`VECTOR_VERSION\` to \`${targetVersion}\` in \`docker/server/Dockerfile\``,
   );
   out(
-    "- [ ] Add schema definitions for any new components marked with \u26A0\uFE0F above",
+    `- [ ] Update \`VECTOR_VERSION\` to \`${targetVersion}\` in \`agent/Dockerfile\``,
   );
   out(
-    "- [ ] Remove schema definitions for any removed components marked with \u26A0\uFE0F above",
+    "- [ ] Review breaking changes above and update affected schemas",
   );
   out(
-    "- [ ] Review release notes for breaking changes to existing component configs",
+    "- [ ] Add schemas for any new components marked with \u26A0\uFE0F above (if desired)",
   );
-  out("- [ ] Update config generator if any config field names changed");
-  out("- [ ] Run integration tests against the new Vector version");
-  out("- [ ] Update `docker/server/docker-compose.dev.yml` if needed");
-  out("- [ ] Test pipeline deployment end-to-end with the new binary");
+  out(
+    "- [ ] Remove schemas for any components removed from Vector",
+  );
+  out(
+    "- [ ] Test agent enrollment + heartbeat with new Vector version",
+  );
+  out(
+    "- [ ] Verify `vector validate` works for existing pipeline configs",
+  );
+  out(
+    "- [ ] Check if VRL functions changed (update editor autocomplete if needed)",
+  );
+  out(
+    "- [ ] Build and test Docker images with new version",
+  );
   out();
 
   // Print report to stdout
