@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Badge } from "@/components/ui/badge";
+import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { VectorComponentDef, DataType } from "@/lib/vector/types";
 import type { NodeMetricsData } from "@/stores/flow-store";
@@ -19,6 +20,7 @@ type SourceNodeData = {
   config: Record<string, unknown>;
   metrics?: NodeMetricsData;
   disabled?: boolean;
+  isSystemLocked?: boolean;
 };
 
 type SourceNodeType = Node<SourceNodeData, "source">;
@@ -50,7 +52,7 @@ function getConfigSummary(config: Record<string, unknown>): string | null {
 }
 
 function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
-  const { componentDef, componentKey, config, metrics, disabled } = data;
+  const { componentDef, componentKey, config, metrics, disabled, isSystemLocked } = data;
   const Icon = getIcon(componentDef.icon);
   const configSummary = getConfigSummary(config);
 
@@ -58,9 +60,11 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
     <div
       className={cn(
         "w-56 rounded-lg border bg-card shadow-sm transition-shadow",
-        selected && "ring-2 ring-node-source shadow-md",
+        selected && !isSystemLocked && "ring-2 ring-node-source shadow-md",
+        isSystemLocked && "ring-2 ring-blue-400 shadow-md",
         disabled && "opacity-40"
       )}
+      draggable={!isSystemLocked}
     >
       {/* Header bar */}
       <div className="flex items-center gap-2 rounded-t-lg bg-node-source px-3 py-2 text-node-source-foreground">
@@ -68,6 +72,9 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
         <span className="truncate text-sm font-medium">
           {componentDef.displayName}
         </span>
+        {isSystemLocked && (
+          <Lock className="ml-auto h-3.5 w-3.5 shrink-0 opacity-70" />
+        )}
       </div>
 
       {/* Body */}
