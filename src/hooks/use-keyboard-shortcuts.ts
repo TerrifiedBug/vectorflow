@@ -61,6 +61,9 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
       // Cmd+D → Duplicate selected node
       if (isMeta && e.key === "d" && selectedNodeId) {
         e.preventDefault();
+        const currentNodes = useFlowStore.getState().nodes;
+        const selectedNode = currentNodes.find((n) => n.id === selectedNodeId);
+        if (selectedNode?.data?.isSystemLocked) return;
         duplicateNode(selectedNodeId);
         return;
       }
@@ -82,6 +85,9 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
       // Delete / Backspace → Delete selected node or edge
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedNodeId) {
+          const currentNodes = useFlowStore.getState().nodes;
+          const selectedNode = currentNodes.find((n) => n.id === selectedNodeId);
+          if (selectedNode?.data?.isSystemLocked) return;
           e.preventDefault();
           removeNode(selectedNodeId);
           return;

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
-import { Copy, Trash2 } from "lucide-react";
+import { Copy, Trash2, Lock, Info } from "lucide-react";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
 import { VrlEditor } from "@/components/vrl-editor/vrl-editor";
@@ -189,7 +189,10 @@ export function DetailPanel() {
               size="sm"
               className="w-full"
               onClick={() => {
-                selectedNodeIds.forEach((id) => removeNode(id));
+                selectedNodeIds.forEach((id) => {
+                  const node = nodes.find((n) => n.id === id);
+                  if (!node?.data?.isSystemLocked) removeNode(id);
+                });
               }}
             >
               <Trash2 className="mr-2 h-4 w-4" />
@@ -201,17 +204,26 @@ export function DetailPanel() {
     );
   }
 
-  const { componentDef, componentKey, config, disabled } = selectedNode.data as {
+  const { componentDef, componentKey, config, disabled, isSystemLocked } = selectedNode.data as {
     componentDef: VectorComponentDef;
     componentKey: string;
     config: Record<string, unknown>;
     disabled?: boolean;
+    isSystemLocked?: boolean;
   };
 
   return (
     <div className="flex h-full w-80 shrink-0 flex-col border-l bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-6 p-4">
+          {/* ---- System locked banner ---- */}
+          {isSystemLocked && (
+            <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>This source is managed by VectorFlow and cannot be edited.</span>
+            </div>
+          )}
+
           {/* ---- Header ---- */}
           <Card className="gap-4 py-4">
             <CardHeader className="pb-0">
@@ -226,15 +238,21 @@ export function DetailPanel() {
                   >
                     {componentDef.kind}
                   </Badge>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={handleDelete}
-                    aria-label="Delete component"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  {isSystemLocked ? (
+                    <div className="flex h-7 w-7 items-center justify-center text-blue-500">
+                      <Lock className="h-3.5 w-3.5" />
+                    </div>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={handleDelete}
+                      aria-label="Delete component"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -246,6 +264,7 @@ export function DetailPanel() {
                   id="component-key"
                   value={componentKey}
                   onChange={(e) => handleKeyChange(e.target.value)}
+                  disabled={isSystemLocked}
                 />
               </div>
 
@@ -258,6 +277,7 @@ export function DetailPanel() {
                   onCheckedChange={() => {
                     if (selectedNodeId) toggleNodeDisabled(selectedNodeId);
                   }}
+                  disabled={isSystemLocked}
                 />
               </div>
 
@@ -275,79 +295,98 @@ export function DetailPanel() {
           <div className="space-y-4">
             <h3 className="text-sm font-semibold">Configuration</h3>
 
-            {/* VRL Editor for remap source field */}
-            {componentDef.type === "remap" && (
-              <div className="space-y-2">
-                <Label>VRL Source</Label>
-                <VrlEditor
-                  value={(config.source as string) ?? ""}
-                  onChange={(v) => handleConfigChange({ ...config, source: v })}
-                  sourceTypes={upstream.sourceTypes}
-                  pipelineId={pipelineId}
-                  upstreamSourceKeys={upstream.sourceKeys}
-                />
-              </div>
-            )}
-
-            {/* VRL Editor for filter condition field */}
-            {componentDef.type === "filter" && (
-              <div className="space-y-2">
-                <Label>VRL Condition</Label>
-                <VrlEditor
-                  value={(config.condition as string) ?? ""}
-                  onChange={(v) => handleConfigChange({ ...config, condition: v })}
-                  sourceTypes={upstream.sourceTypes}
-                  pipelineId={pipelineId}
-                  upstreamSourceKeys={upstream.sourceKeys}
-                />
-              </div>
-            )}
-
-            {/* VRL Editors for route conditions */}
-            {componentDef.type === "route" && (
+            {isSystemLocked ? (
+              /* Read-only config display for locked nodes */
               <div className="space-y-3">
-                <Label>Route Conditions</Label>
-                {Object.entries(
-                  (config.route as Record<string, string>) ?? {},
-                ).map(([routeName, condition]) => (
-                  <div key={routeName} className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">
-                      {routeName}
-                    </Label>
+                {Object.entries(config).map(([key, value]) => (
+                  <div key={key} className="space-y-1">
+                    <Label className="text-muted-foreground">{key}</Label>
+                    <p className="truncate text-sm font-mono">
+                      {typeof value === "object" ? JSON.stringify(value) : String(value ?? "")}
+                    </p>
+                  </div>
+                ))}
+                {Object.keys(config).length === 0 && (
+                  <p className="text-sm text-muted-foreground">No configuration</p>
+                )}
+              </div>
+            ) : (
+              <>
+                {/* VRL Editor for remap source field */}
+                {componentDef.type === "remap" && (
+                  <div className="space-y-2">
+                    <Label>VRL Source</Label>
                     <VrlEditor
-                      value={condition ?? ""}
-                      onChange={(v) =>
-                        handleConfigChange({
-                          ...config,
-                          route: {
-                            ...((config.route as Record<string, string>) ?? {}),
-                            [routeName]: v,
-                          },
-                        })
-                      }
-                      height="120px"
+                      value={(config.source as string) ?? ""}
+                      onChange={(v) => handleConfigChange({ ...config, source: v })}
                       sourceTypes={upstream.sourceTypes}
                       pipelineId={pipelineId}
                       upstreamSourceKeys={upstream.sourceKeys}
                     />
                   </div>
-                ))}
-              </div>
-            )}
+                )}
 
-            {/* Standard schema form for remaining fields (exclude VRL-managed fields) */}
-            <SchemaForm
-              schema={filterSchema(
-                componentDef.configSchema as {
-                  type?: string;
-                  properties?: Record<string, Record<string, unknown>>;
-                  required?: string[];
-                },
-                componentDef.type,
-              )}
-              values={config}
-              onChange={handleConfigChange}
-            />
+                {/* VRL Editor for filter condition field */}
+                {componentDef.type === "filter" && (
+                  <div className="space-y-2">
+                    <Label>VRL Condition</Label>
+                    <VrlEditor
+                      value={(config.condition as string) ?? ""}
+                      onChange={(v) => handleConfigChange({ ...config, condition: v })}
+                      sourceTypes={upstream.sourceTypes}
+                      pipelineId={pipelineId}
+                      upstreamSourceKeys={upstream.sourceKeys}
+                    />
+                  </div>
+                )}
+
+                {/* VRL Editors for route conditions */}
+                {componentDef.type === "route" && (
+                  <div className="space-y-3">
+                    <Label>Route Conditions</Label>
+                    {Object.entries(
+                      (config.route as Record<string, string>) ?? {},
+                    ).map(([routeName, condition]) => (
+                      <div key={routeName} className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">
+                          {routeName}
+                        </Label>
+                        <VrlEditor
+                          value={condition ?? ""}
+                          onChange={(v) =>
+                            handleConfigChange({
+                              ...config,
+                              route: {
+                                ...((config.route as Record<string, string>) ?? {}),
+                                [routeName]: v,
+                              },
+                            })
+                          }
+                          height="120px"
+                          sourceTypes={upstream.sourceTypes}
+                          pipelineId={pipelineId}
+                          upstreamSourceKeys={upstream.sourceKeys}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Standard schema form for remaining fields (exclude VRL-managed fields) */}
+                <SchemaForm
+                  schema={filterSchema(
+                    componentDef.configSchema as {
+                      type?: string;
+                      properties?: Record<string, Record<string, unknown>>;
+                      required?: string[];
+                    },
+                    componentDef.type,
+                  )}
+                  values={config}
+                  onChange={handleConfigChange}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>

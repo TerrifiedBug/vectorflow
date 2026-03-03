@@ -17,7 +17,11 @@ export function NodeContextMenu({ nodeId, x, y, onClose }: NodeContextMenuProps)
   const selectedNodeIds = useFlowStore((s) => s.selectedNodeIds);
   const copySelectedNodes = useFlowStore((s) => s.copySelectedNodes);
   const pasteFromSession = useFlowStore((s) => s.pasteFromSession);
+  const nodes = useFlowStore((s) => s.nodes);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const targetNode = nodes.find((n) => n.id === nodeId);
+  const isLocked = !!targetNode?.data?.isSystemLocked;
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -56,7 +60,8 @@ export function NodeContextMenu({ nodeId, x, y, onClose }: NodeContextMenuProps)
       label: "Duplicate",
       icon: CopyPlus,
       shortcut: "Ctrl+D",
-      onClick: () => { duplicateNode(nodeId); onClose(); },
+      disabled: isLocked,
+      onClick: () => { if (isLocked) return; duplicateNode(nodeId); onClose(); },
     }] : []),
     { separator: true as const },
     {
@@ -64,9 +69,14 @@ export function NodeContextMenu({ nodeId, x, y, onClose }: NodeContextMenuProps)
       icon: Trash2,
       shortcut: "Del",
       destructive: true,
+      disabled: isLocked && !isMulti,
       onClick: () => {
+        if (isLocked && !isMulti) return;
         if (isMulti) {
-          selectedNodeIds.forEach((id) => removeNode(id));
+          selectedNodeIds.forEach((id) => {
+            const node = nodes.find((n) => n.id === id);
+            if (!node?.data?.isSystemLocked) removeNode(id);
+          });
         } else {
           removeNode(nodeId);
         }
@@ -92,7 +102,7 @@ export function NodeContextMenu({ nodeId, x, y, onClose }: NodeContextMenuProps)
             className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:pointer-events-none ${
               item.destructive ? "text-destructive hover:text-destructive" : ""
             }`}
-            disabled={false}
+            disabled={!!item.disabled}
             onClick={item.onClick}
           >
             <Icon className="h-4 w-4" />

@@ -47,6 +47,7 @@ export interface FlowState {
   selectedEdgeId: string | null;
   clipboard: ClipboardData | null;
   isDirty: boolean;
+  isSystemPipeline: boolean;
 
   // React Flow callbacks
   onNodesChange: OnNodesChange;
@@ -84,7 +85,7 @@ export interface FlowState {
   markClean: () => void;
 
   // Serialization
-  loadGraph: (nodes: Node[], edges: Edge[], globalConfig?: Record<string, unknown> | null) => void;
+  loadGraph: (nodes: Node[], edges: Edge[], globalConfig?: Record<string, unknown> | null, options?: { isSystem?: boolean }) => void;
   clearGraph: () => void;
 
   // Undo / Redo
@@ -115,7 +116,7 @@ function computeFlowFingerprint(nodes: Node[], edges: Edge[], globalConfig: Reco
     position: n.position,
     data: Object.fromEntries(
       Object.entries(n.data as Record<string, unknown>).filter(
-        ([k]) => k !== "metrics" && k !== "measured"
+        ([k]) => k !== "metrics" && k !== "measured" && k !== "isSystemLocked"
       )
     ),
   }));
@@ -159,6 +160,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   selectedEdgeId: null,
   clipboard: null,
   isDirty: false,
+  isSystemPipeline: false,
 
   _past: [],
   _future: [],
@@ -170,11 +172,26 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
 
   onNodesChange: (changes) => {
     set((state) => {
-      const nodes = applyNodeChanges(changes, state.nodes);
+      // Filter out position and remove changes for system-locked nodes
+      const lockedIds = new Set(
+        state.nodes
+          .filter((n) => n.data?.isSystemLocked)
+          .map((n) => n.id),
+      );
+      const filteredChanges = changes.filter((change) => {
+        if ("id" in change && lockedIds.has(change.id)) {
+          if (change.type === "position" || change.type === "remove") {
+            return false;
+          }
+        }
+        return true;
+      });
+
+      const nodes = applyNodeChanges(filteredChanges, state.nodes);
       const newSelectedIds = new Set(state.selectedNodeIds);
       let selectedNodeId = state.selectedNodeId;
 
-      for (const change of changes) {
+      for (const change of filteredChanges) {
         if (change.type === "select") {
           if (change.selected) {
             newSelectedIds.add(change.id);
@@ -274,6 +291,10 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
 
   removeNode: (id) => {
     set((state) => {
+      // Prevent deletion of system-locked nodes
+      const node = state.nodes.find((n) => n.id === id);
+      if (node?.data?.isSystemLocked) return {};
+
       const history = pushSnapshot(state);
       const newSelectedIds = new Set(state.selectedNodeIds);
       newSelectedIds.delete(id);
@@ -306,6 +327,10 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
 
   updateNodeConfig: (id, config) => {
     set((state) => {
+      // Prevent editing system-locked nodes
+      const node = state.nodes.find((n) => n.id === id);
+      if (node?.data?.isSystemLocked) return {};
+
       const history = pushSnapshot(state);
       return {
         ...history,
@@ -319,6 +344,10 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
 
   updateNodeKey: (id, key) => {
     set((state) => {
+      // Prevent editing system-locked nodes
+      const node = state.nodes.find((n) => n.id === id);
+      if (node?.data?.isSystemLocked) return {};
+
       const history = pushSnapshot(state);
       return {
         ...history,
@@ -334,6 +363,10 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
 
   toggleNodeDisabled: (id) => {
     set((state) => {
+      // Prevent toggling system-locked nodes
+      const node = state.nodes.find((n) => n.id === id);
+      if (node?.data?.isSystemLocked) return {};
+
       const history = pushSnapshot(state);
       return {
         ...history,
@@ -442,6 +475,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     const state = get() as InternalState;
     const node = state.nodes.find((n) => n.id === id);
     if (!node) return;
+    if (node.data?.isSystemLocked) return;
     const history = pushSnapshot(state);
     const offset = 40;
     const newNode: Node = {
@@ -643,7 +677,9 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
 
   /* ---- Serialization ---- */
 
-  loadGraph: (nodes, edges, globalConfig) => {
+  loadGraph: (nodes, edges, globalConfig, options) => {
+    const isSystem = options?.isSystem ?? false;
+
     // Preserve live metrics from current nodes through reloads
     const currentNodes = (get() as InternalState).nodes;
     const metricsMap = new Map<string, unknown>();
@@ -651,20 +687,28 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       const metrics = (n.data as Record<string, unknown>).metrics;
       if (metrics) metricsMap.set(n.id, metrics);
     }
-    const mergedNodes = metricsMap.size > 0
-      ? nodes.map((n) => {
-          const existing = metricsMap.get(n.id);
-          return existing ? { ...n, data: { ...n.data, metrics: existing } } : n;
-        })
-      : nodes;
+
+    // For system pipelines, mark source nodes as locked
+    const processedNodes = nodes.map((n) => {
+      let data = { ...n.data };
+      if (isSystem && n.type === "source") {
+        data = { ...data, isSystemLocked: true };
+      }
+      const existingMetrics = metricsMap.get(n.id);
+      if (existingMetrics) {
+        data = { ...data, metrics: existingMetrics };
+      }
+      return { ...n, data };
+    });
 
     const gc = globalConfig ?? null;
     const snapshot = computeFlowFingerprint(nodes, edges, gc);
 
     set({
-      nodes: mergedNodes,
+      nodes: processedNodes,
       edges,
       globalConfig: gc,
+      isSystemPipeline: isSystem,
       selectedNodeId: null,
       selectedNodeIds: new Set(),
       selectedEdgeId: null,
@@ -682,6 +726,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       nodes: [],
       edges: [],
       globalConfig: null,
+      isSystemPipeline: false,
       selectedNodeId: null,
       selectedNodeIds: new Set(),
       selectedEdgeId: null,

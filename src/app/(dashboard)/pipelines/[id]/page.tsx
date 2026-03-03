@@ -145,7 +145,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     hasLoadedRef.current = true;
     const flowNodes = dbNodesToFlowNodes(pipelineQuery.data.nodes);
     const flowEdges = dbEdgesToFlowEdges(pipelineQuery.data.edges);
-    loadGraph(flowNodes, flowEdges, pipelineQuery.data.globalConfig as Record<string, unknown> | null);
+    loadGraph(flowNodes, flowEdges, pipelineQuery.data.globalConfig as Record<string, unknown> | null, { isSystem: pipelineQuery.data.isSystem });
   }, [pipelineQuery.data, loadGraph]);
 
   // Poll per-component metrics from the in-memory MetricStore
