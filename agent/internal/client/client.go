@@ -93,6 +93,14 @@ type CertFile struct {
 	Data     string `json:"data"` // base64 encoded
 }
 
+// PendingAction represents a server-initiated action for the agent to perform.
+type PendingAction struct {
+	Type          string `json:"type"`
+	TargetVersion string `json:"targetVersion"`
+	DownloadURL   string `json:"downloadUrl"`
+	Checksum      string `json:"checksum"`
+}
+
 // ConfigResponse is returned from GET /api/agent/config
 type ConfigResponse struct {
 	Pipelines           []PipelineConfig       `json:"pipelines"`
@@ -100,6 +108,7 @@ type ConfigResponse struct {
 	SecretBackend       string                 `json:"secretBackend"`
 	SecretBackendConfig map[string]interface{} `json:"secretBackendConfig,omitempty"`
 	SampleRequests      []SampleRequestMsg     `json:"sampleRequests,omitempty"`
+	PendingAction       *PendingAction         `json:"pendingAction,omitempty"`
 }
 
 func (c *Client) GetConfig() (*ConfigResponse, error) {

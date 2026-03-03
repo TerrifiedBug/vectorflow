@@ -131,6 +131,27 @@ func (a *Agent) pollAndApply() {
 	if reqs := a.poller.SampleRequests(); len(reqs) > 0 {
 		a.processSampleRequests(reqs)
 	}
+
+	// Handle pending action (e.g. self-update)
+	if action := a.poller.PendingAction(); action != nil {
+		a.handlePendingAction(action)
+	}
+}
+
+func (a *Agent) handlePendingAction(action *client.PendingAction) {
+	switch action.Type {
+	case "self_update":
+		if a.deploymentMode == "DOCKER" {
+			slog.Warn("received update command but running in Docker — ignoring",
+				"targetVersion", action.TargetVersion)
+			return
+		}
+		if err := a.handleSelfUpdate(action); err != nil {
+			slog.Error("self-update failed", "error", err)
+		}
+	default:
+		slog.Warn("unknown pending action type", "type", action.Type)
+	}
 }
 
 func (a *Agent) sendHeartbeat() {
