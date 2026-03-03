@@ -43,10 +43,16 @@ function derivePipelineStatus(
 export default function DashboardPage() {
   const trpc = useTRPC();
 
-  const stats = useQuery(trpc.dashboard.stats.queryOptions());
+  const { selectedEnvironmentId } = useEnvironmentStore();
+
+  const stats = useQuery({
+    ...trpc.dashboard.stats.queryOptions({ environmentId: selectedEnvironmentId ?? "" }),
+    enabled: !!selectedEnvironmentId,
+  });
   const pipelineCards = useQuery({
-    ...trpc.dashboard.pipelineCards.queryOptions(),
+    ...trpc.dashboard.pipelineCards.queryOptions({ environmentId: selectedEnvironmentId ?? "" }),
     refetchInterval: 15_000,
+    enabled: !!selectedEnvironmentId,
   });
 
   // Compute pipeline status counts for summary bar
@@ -64,7 +70,6 @@ export default function DashboardPage() {
     return { running, stopped, crashed };
   }, [pipelineCards.data]);
 
-  const { selectedEnvironmentId } = useEnvironmentStore();
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedPipelineIds, setSelectedPipelineIds] = useState<string[]>([]);
   const [timeRange, setTimeRange] = useState<TimeRange>("1h");
