@@ -223,6 +223,43 @@ export const fleetRouter = router({
       });
     }),
 
+  triggerAgentUpdate: protectedProcedure
+    .input(
+      z.object({
+        nodeId: z.string(),
+        targetVersion: z.string(),
+        downloadUrl: z.string().url(),
+        checksum: z.string(),
+      }),
+    )
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("node.update_triggered", "VectorNode"))
+    .mutation(async ({ input }) => {
+      const node = await prisma.vectorNode.findUnique({
+        where: { id: input.nodeId },
+      });
+      if (!node) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Node not found" });
+      }
+      if (node.deploymentMode === "DOCKER") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot auto-update Docker agents",
+        });
+      }
+      return prisma.vectorNode.update({
+        where: { id: input.nodeId },
+        data: {
+          pendingAction: {
+            type: "self_update",
+            targetVersion: input.targetVersion,
+            downloadUrl: input.downloadUrl,
+            checksum: input.checksum,
+          },
+        },
+      });
+    }),
+
   listWithPipelineStatus: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))

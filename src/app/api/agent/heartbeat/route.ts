@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
 import { checkNodeHealth } from "@/server/services/fleet-health";
@@ -9,6 +10,7 @@ import { metricStore } from "@/server/services/metric-store";
 import { evaluateAlerts } from "@/server/services/alert-evaluator";
 import { deliverWebhooks } from "@/server/services/webhook-delivery";
 import { DeploymentMode } from "@/generated/prisma";
+import { isVersionOlder } from "@/lib/version";
 
 let lastCleanup = 0;
 
@@ -80,6 +82,25 @@ export async function POST(request: Request) {
 
     const now = new Date();
 
+    // Check if pendingAction should be cleared (agent has updated to target version)
+    let clearPendingAction = false;
+    if (agentVersion) {
+      const currentNode = await prisma.vectorNode.findUnique({
+        where: { id: agent.nodeId },
+        select: { pendingAction: true },
+      });
+      if (currentNode?.pendingAction) {
+        const action = currentNode.pendingAction as { type: string; targetVersion?: string };
+        if (
+          action.type === "self_update" &&
+          action.targetVersion &&
+          !isVersionOlder(agentVersion, action.targetVersion)
+        ) {
+          clearPendingAction = true;
+        }
+      }
+    }
+
     // Update node heartbeat and metadata
     await prisma.vectorNode.update({
       where: { id: agent.nodeId },
@@ -92,6 +113,7 @@ export async function POST(request: Request) {
         ...(deploymentMode && Object.values(DeploymentMode).includes(deploymentMode)
           ? { deploymentMode }
           : {}),
+        ...(clearPendingAction ? { pendingAction: Prisma.DbNull } : {}),
       },
     });
 

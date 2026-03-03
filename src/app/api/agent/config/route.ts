@@ -13,6 +13,12 @@ export async function GET(request: Request) {
   }
 
   try {
+    // Fetch the node to check for pending actions (e.g., self-update)
+    const node = await prisma.vectorNode.findUnique({
+      where: { id: agent.nodeId },
+      select: { pendingAction: true },
+    });
+
     const environment = await prisma.environment.findUnique({
       where: { id: agent.environmentId },
       select: {
@@ -146,6 +152,7 @@ export async function GET(request: Request) {
             })),
           }
         : {}),
+      ...(node?.pendingAction ? { pendingAction: node.pendingAction } : {}),
     });
   } catch (error) {
     console.error("Agent config error:", error);
