@@ -43,7 +43,7 @@ const navItems = [
 ];
 
 /** Nav items visible when the system environment is selected */
-const SYSTEM_ENV_ALLOWED_HREFS = new Set(["/pipelines"]);
+const SYSTEM_ENV_ALLOWED_HREFS = new Set(["/", "/pipelines"]);
 
 export function AppSidebar() {
   const pathname = usePathname();
