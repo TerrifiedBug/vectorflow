@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
 import { Loader2, AlertTriangle, Info } from "lucide-react";
@@ -22,7 +22,6 @@ import { TotpSetupCard } from "@/components/totp-setup-card";
 export default function ProfilePage() {
   const trpc = useTRPC();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { data: me } = useQuery(trpc.user.me.queryOptions());
   const isLocalUser = me?.authMethod !== "OIDC";
 
@@ -39,6 +38,7 @@ export default function ProfilePage() {
   }, [me?.name, isDirty]);
 
   const updateProfileMutation = useMutation(
+    // eslint-disable-next-line react-hooks/refs
     trpc.user.updateProfile.mutationOptions({
       onSuccess: () => {
         toast.success("Profile updated");
@@ -82,11 +82,6 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Profile</h2>
-        <p className="text-muted-foreground">Manage your account settings</p>
-      </div>
-
       {/* Personal Info */}
       <Card>
         <CardHeader>

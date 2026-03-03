@@ -72,7 +72,7 @@ export function CertPickerInput({ fieldName, value, onChange }: CertPickerInputP
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          title="Clear certificate reference"
+          aria-label="Clear certificate reference"
           onClick={() => onChange("")}
         >
           <X className="h-3.5 w-3.5" />

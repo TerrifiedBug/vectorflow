@@ -60,7 +60,7 @@ export function SecretPickerInput({ value, onChange, placeholder }: SecretPicker
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          title="Clear secret reference"
+          aria-label="Clear secret reference"
           onClick={() => onChange("")}
         >
           <X className="h-3.5 w-3.5" />
@@ -86,7 +86,7 @@ export function SecretPickerInput({ value, onChange, placeholder }: SecretPicker
               variant="outline"
               size="icon"
               className="h-9 w-9 shrink-0"
-              title="Use a secret"
+              aria-label="Use a secret"
             >
               <Lock className="h-3.5 w-3.5" />
             </Button>

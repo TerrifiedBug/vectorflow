@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { VRL_SNIPPETS, type VrlSnippet } from "@/lib/vrl/snippets";
+import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
 import { useTRPC } from "@/trpc/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTeamStore } from "@/stores/team-store";
@@ -201,7 +201,7 @@ export function VrlSnippetDrawer({ onInsert }: VrlSnippetDrawerProps) {
             <div key={category}>
               <button
                 onClick={() => toggleCategory(category)}
-                className="flex w-full items-center gap-1 rounded px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted/50"
+                className="flex w-full cursor-pointer items-center gap-1 rounded px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted/50"
               >
                 {collapsed.has(category) ? (
                   <ChevronRight className="h-3 w-3" />
@@ -236,15 +236,16 @@ export function VrlSnippetDrawer({ onInsert }: VrlSnippetDrawerProps) {
                       <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleEdit(snippet); }}
-                          className="rounded p-0.5 hover:bg-muted"
-                          title="Edit"
+                          className="cursor-pointer rounded p-0.5 hover:bg-muted"
+                          aria-label="Edit snippet"
                         >
                           <Pencil className="h-3 w-3" />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); deleteMutation.mutate({ id: snippet.id }); }}
-                          className="rounded p-0.5 hover:bg-muted text-destructive"
-                          title="Delete"
+                          className="cursor-pointer rounded p-0.5 hover:bg-muted text-destructive"
+                          aria-label="Delete snippet"
+                          disabled={deleteMutation.isPending}
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>

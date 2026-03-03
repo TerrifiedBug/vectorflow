@@ -431,6 +431,7 @@ function AuthSettings() {
   }, [settings, isDirty]);
 
   const updateOidcMutation = useMutation(
+    // eslint-disable-next-line react-hooks/refs
     trpc.settings.updateOidc.mutationOptions({
       onSuccess: () => {
         setIsDirty(false);
@@ -496,6 +497,7 @@ function AuthSettings() {
   }, [settings, isDirty]);
 
   const updateTeamMappingMutation = useMutation(
+    // eslint-disable-next-line react-hooks/refs
     trpc.settings.updateOidcTeamMappings.mutationOptions({
       onSuccess: () => {
         setIsDirty(false);
@@ -866,6 +868,7 @@ function FleetSettings() {
   useEffect(() => {
     if (!settings) return;
     if (fleetDirty) return; // Don't overwrite dirty state on refetch
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPollIntervalSec(Math.round(settings.fleetPollIntervalMs / 1000));
     setUnhealthyThreshold(settings.fleetUnhealthyThreshold);
     if (settings.metricsRetentionDays) setMetricsRetentionDays(settings.metricsRetentionDays);
@@ -1109,6 +1112,7 @@ function TeamSettings() {
   // Sync team name state when data loads
   useEffect(() => {
     if (team?.name && !teamName) setTeamName(team.name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [team?.name]);
 
   const handleInvite = (e: React.FormEvent) => {
@@ -1243,6 +1247,7 @@ function TeamSettings() {
                   <TableCell>
                     <Select
                       value={member.role}
+                      disabled={updateRoleMutation.isPending}
                       onValueChange={(role: "VIEWER" | "EDITOR" | "ADMIN") => {
                         updateRoleMutation.mutate({
                           teamId: team.id,
@@ -1354,14 +1359,14 @@ function TeamSettings() {
                 </DialogDescription>
               </DialogHeader>
               <div className="flex items-center gap-2">
-                <Input value={tempPassword} readOnly className="font-mono" />
+                <Input value={tempPassword} readOnly className="font-mono" aria-label="Temporary password" />
                 <Button
                   type="button"
                   variant="outline"
                   size="icon"
                   aria-label="Copy temporary password"
-                  onClick={() => {
-                    copyToClipboard(tempPassword);
+                  onClick={async () => {
+                    await copyToClipboard(tempPassword);
                     toast.success("Copied to clipboard");
                   }}
                 >
@@ -2149,14 +2154,14 @@ function UsersSettings() {
                 </DialogDescription>
               </DialogHeader>
               <div className="flex items-center gap-2">
-                <Input value={resetPasswordResult} readOnly className="font-mono" />
+                <Input value={resetPasswordResult} readOnly className="font-mono" aria-label="Temporary password" />
                 <Button
                   type="button"
                   variant="outline"
                   size="icon"
                   aria-label="Copy temporary password"
-                  onClick={() => {
-                    copyToClipboard(resetPasswordResult);
+                  onClick={async () => {
+                    await copyToClipboard(resetPasswordResult);
                     toast.success("Copied to clipboard");
                   }}
                 >
@@ -2214,14 +2219,14 @@ function UsersSettings() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2">
-            <Input value={createdPassword} readOnly className="font-mono" />
+            <Input value={createdPassword} readOnly className="font-mono" aria-label="Generated password" />
             <Button
               type="button"
               variant="outline"
               size="icon"
               aria-label="Copy password"
-              onClick={() => {
-                copyToClipboard(createdPassword);
+              onClick={async () => {
+                await copyToClipboard(createdPassword);
                 toast.success("Copied to clipboard");
               }}
             >
@@ -2483,18 +2488,9 @@ export default function SettingsPage() {
   const isSuperAdmin = teamRoleQuery.data?.isSuperAdmin ?? false;
   const isTeamAdmin = teamRoleQuery.data?.role === "ADMIN";
 
-  const meQuery = useQuery(trpc.user.me.queryOptions());
-  const me = meQuery.data;
-
   if (teamRoleQuery.isLoading) {
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
-          <p className="text-muted-foreground">
-            Manage system configuration and team settings
-          </p>
-        </div>
         <Skeleton className="h-10 w-64" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -2503,13 +2499,6 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
-        <p className="text-muted-foreground">
-          Manage system configuration and team settings
-        </p>
-      </div>
-
       <Tabs defaultValue={isTeamAdmin ? "team" : isSuperAdmin ? "auth" : "team"}>
         <TabsList>
           {isTeamAdmin && (

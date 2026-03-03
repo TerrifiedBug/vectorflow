@@ -77,7 +77,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   }
 
   return (
-    <Dialog open={open} onOpenChange={(val) => { if (!val) { setChangelog(""); setDeploying(false); } onOpenChange(val); }}>
+    <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) setChangelog(""); onOpenChange(val); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

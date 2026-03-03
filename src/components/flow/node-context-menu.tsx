@@ -99,7 +99,7 @@ export function NodeContextMenu({ nodeId, x, y, onClose }: NodeContextMenuProps)
         return (
           <button
             key={item.label}
-            className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:pointer-events-none ${
+            className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:pointer-events-none ${
               item.destructive ? "text-destructive hover:text-destructive" : ""
             }`}
             disabled={!!item.disabled}

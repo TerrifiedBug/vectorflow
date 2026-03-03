@@ -20,7 +20,12 @@ export function generateId(): string {
 /** Copy text to clipboard with fallback for non-HTTPS contexts. */
 export async function copyToClipboard(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(text);
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Clipboard API can fail in dialogs or non-secure contexts — fall through
+    }
   }
   // Fallback: temporary textarea + execCommand
   const ta = document.createElement("textarea");

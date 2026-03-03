@@ -76,12 +76,6 @@ const CONDITION_LABELS: Record<string, string> = {
 
 const BINARY_METRICS = new Set(["node_unreachable", "pipeline_crashed"]);
 
-const CONDITION_LABELS_LONG: Record<string, string> = {
-  gt: "Greater than (>)",
-  lt: "Less than (<)",
-  eq: "Equal to (=)",
-};
-
 // ─── Alert Rules Section ────────────────────────────────────────────────────────
 
 interface RuleFormState {
@@ -304,6 +298,7 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
                 <TableCell>
                   <Switch
                     checked={rule.enabled}
+                    disabled={toggleMutation.isPending}
                     onCheckedChange={(checked) =>
                       toggleMutation.mutate({ id: rule.id, enabled: checked })
                     }
@@ -315,6 +310,7 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
+                      aria-label="Edit alert rule"
                       onClick={() => openEdit(rule)}
                     >
                       <Pencil className="h-4 w-4" />
@@ -323,6 +319,7 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-destructive hover:text-destructive"
+                      aria-label="Delete alert rule"
                       onClick={() =>
                         setDeleteTarget({ id: rule.id, name: rule.name })
                       }
@@ -729,6 +726,7 @@ function WebhooksSection({ environmentId }: { environmentId: string }) {
                 <TableCell>
                   <Switch
                     checked={webhook.enabled}
+                    disabled={toggleMutation.isPending}
                     onCheckedChange={(checked) =>
                       toggleMutation.mutate({
                         id: webhook.id,
@@ -756,6 +754,7 @@ function WebhooksSection({ environmentId }: { environmentId: string }) {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
+                      aria-label="Edit webhook"
                       onClick={() => openEdit(webhook)}
                     >
                       <Pencil className="h-4 w-4" />
@@ -764,6 +763,7 @@ function WebhooksSection({ environmentId }: { environmentId: string }) {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-destructive hover:text-destructive"
+                      aria-label="Delete webhook"
                       onClick={() =>
                         setDeleteTarget({
                           id: webhook.id,
@@ -1060,12 +1060,6 @@ export default function AlertsPage() {
   if (!selectedEnvironmentId) {
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Alerts</h2>
-          <p className="text-muted-foreground">
-            Manage alert rules, webhooks, and view alert history
-          </p>
-        </div>
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
           <p className="text-muted-foreground">
             Select an environment to manage alerts.
@@ -1077,13 +1071,6 @@ export default function AlertsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Alerts</h2>
-        <p className="text-muted-foreground">
-          Manage alert rules, webhooks, and view alert history
-        </p>
-      </div>
-
       <AlertRulesSection environmentId={selectedEnvironmentId} />
 
       <Separator />

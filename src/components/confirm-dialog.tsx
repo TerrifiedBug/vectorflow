@@ -37,7 +37,7 @@ export function ConfirmDialog({
   onConfirm,
 }: ConfirmDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(val) => { if (!isPending) onOpenChange(val); }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

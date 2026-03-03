@@ -26,7 +26,6 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTeamStore } from "@/stores/team-store";
-import { useEnvironmentStore } from "@/stores/environment-store";
 
 const ALL_VALUE = "__all__";
 
@@ -66,8 +65,6 @@ function getActionColor(action: string): string {
 export default function AuditPage() {
   const trpc = useTRPC();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
-  const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
-
   // Filter state
   const [actionFilter, setActionFilter] = useState<string>("");
   const [entityTypeFilter, setEntityTypeFilter] = useState<string>("");
@@ -135,13 +132,6 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Audit Log</h2>
-        <p className="text-muted-foreground">
-          Track all actions performed in the system
-        </p>
-      </div>
-
       {/* Filter bar */}
       <Card>
         <CardHeader className="pb-3">
@@ -151,10 +141,11 @@ export default function AuditPage() {
           <div className="flex flex-wrap items-end gap-4">
             {/* Search */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-muted-foreground">Search</label>
+              <label htmlFor="audit-search" className="text-xs text-muted-foreground">Search</label>
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
+                  id="audit-search"
                   placeholder="Search actions, entities..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -165,14 +156,14 @@ export default function AuditPage() {
 
             {/* Action filter */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-muted-foreground">Action</label>
+              <label htmlFor="audit-action" className="text-xs text-muted-foreground">Action</label>
               <Select
                 value={actionFilter || ALL_VALUE}
                 onValueChange={(v) =>
                   setActionFilter(v === ALL_VALUE ? "" : v)
                 }
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger id="audit-action" className="w-[180px]">
                   <SelectValue placeholder="All actions" />
                 </SelectTrigger>
                 <SelectContent>
@@ -188,7 +179,7 @@ export default function AuditPage() {
 
             {/* Entity type filter */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-muted-foreground">
+              <label htmlFor="audit-entity-type" className="text-xs text-muted-foreground">
                 Entity Type
               </label>
               <Select
@@ -197,7 +188,7 @@ export default function AuditPage() {
                   setEntityTypeFilter(v === ALL_VALUE ? "" : v)
                 }
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger id="audit-entity-type" className="w-[180px]">
                   <SelectValue placeholder="All types" />
                 </SelectTrigger>
                 <SelectContent>
@@ -213,14 +204,14 @@ export default function AuditPage() {
 
             {/* User filter */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-muted-foreground">User</label>
+              <label htmlFor="audit-user" className="text-xs text-muted-foreground">User</label>
               <Select
                 value={userFilter || ALL_VALUE}
                 onValueChange={(v) =>
                   setUserFilter(v === ALL_VALUE ? "" : v)
                 }
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger id="audit-user" className="w-[180px]">
                   <SelectValue placeholder="All users" />
                 </SelectTrigger>
                 <SelectContent>
@@ -236,12 +227,12 @@ export default function AuditPage() {
 
             {/* Team filter */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-muted-foreground">Team</label>
+              <label htmlFor="audit-team" className="text-xs text-muted-foreground">Team</label>
               <Select
                 value={teamFilter || ALL_VALUE}
                 onValueChange={(v) => setTeamFilter(v === ALL_VALUE ? "" : v)}
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger id="audit-team" className="w-[180px]">
                   <SelectValue placeholder="All teams" />
                 </SelectTrigger>
                 <SelectContent>
@@ -257,12 +248,12 @@ export default function AuditPage() {
 
             {/* Environment filter */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-muted-foreground">Environment</label>
+              <label htmlFor="audit-env" className="text-xs text-muted-foreground">Environment</label>
               <Select
                 value={environmentFilter || ALL_VALUE}
                 onValueChange={(v) => setEnvironmentFilter(v === ALL_VALUE ? "" : v)}
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger id="audit-env" className="w-[180px]">
                   <SelectValue placeholder="All environments" />
                 </SelectTrigger>
                 <SelectContent>
@@ -278,8 +269,9 @@ export default function AuditPage() {
 
             {/* Date range */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-muted-foreground">From</label>
+              <label htmlFor="audit-from" className="text-xs text-muted-foreground">From</label>
               <Input
+                id="audit-from"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -287,8 +279,9 @@ export default function AuditPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-muted-foreground">To</label>
+              <label htmlFor="audit-to" className="text-xs text-muted-foreground">To</label>
               <Input
+                id="audit-to"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
