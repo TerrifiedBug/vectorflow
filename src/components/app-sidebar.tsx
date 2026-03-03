@@ -10,6 +10,7 @@ import {
   Layers,
   FileText,
   ScrollText,
+  Bell,
   Settings,
 } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
@@ -37,6 +38,7 @@ const navItems = [
   { title: "Environments", href: "/environments", icon: Layers },
   { title: "Templates", href: "/templates", icon: FileText },
   { title: "Audit Log", href: "/audit", icon: ScrollText },
+  { title: "Alerts", href: "/alerts", icon: Bell },
   { title: "Settings", href: "/settings", icon: Settings, requiredRole: "ADMIN" as const },
 ];
 
