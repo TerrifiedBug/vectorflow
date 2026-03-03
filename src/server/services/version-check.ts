@@ -11,9 +11,18 @@ interface GitHubRelease {
   published_at: string;
 }
 
+interface GitHubAsset {
+  name: string;
+  browser_download_url: string;
+}
+
+interface GitHubReleaseWithAssets extends GitHubRelease {
+  assets: GitHubAsset[];
+}
+
 async function fetchLatestRelease(
   repo: string,
-): Promise<GitHubRelease | null> {
+): Promise<GitHubReleaseWithAssets | null> {
   try {
     const res = await fetch(`${GITHUB_API}/repos/${repo}/releases/latest`, {
       headers: { Accept: "application/vnd.github.v3+json" },
@@ -23,6 +32,29 @@ async function fetchLatestRelease(
     return res.json();
   } catch {
     return null;
+  }
+}
+
+async function fetchChecksums(
+  release: GitHubReleaseWithAssets,
+): Promise<Record<string, string>> {
+  const asset = release.assets.find((a) => a.name === "checksums.txt");
+  if (!asset) return {};
+  try {
+    const res = await fetch(asset.browser_download_url);
+    if (!res.ok) return {};
+    const text = await res.text();
+    const checksums: Record<string, string> = {};
+    for (const line of text.trim().split("\n")) {
+      // Format: "<sha256hash>  <filename>"
+      const match = line.match(/^([a-f0-9]{64})\s+(.+)$/);
+      if (match) {
+        checksums[match[2]] = match[1];
+      }
+    }
+    return checksums;
+  } catch {
+    return {};
   }
 }
 
@@ -88,6 +120,7 @@ export async function checkServerVersion(force = false): Promise<{
 
 export async function checkAgentVersion(force = false): Promise<{
   latestVersion: string | null;
+  checksums: Record<string, string>;
   checkedAt: Date | null;
 }> {
   const settings = await prisma.systemSettings.findUnique({
@@ -101,12 +134,14 @@ export async function checkAgentVersion(force = false): Promise<{
     Date.now() - lastChecked.getTime() > CHECK_INTERVAL_MS;
 
   let latestVersion = settings?.latestAgentRelease ?? null;
+  let checksums: Record<string, string> = {};
   let checkedAt: Date | null = lastChecked ?? null;
 
   if (needsCheck) {
     const release = await fetchLatestRelease(AGENT_REPO);
     if (release) {
       latestVersion = release.tag_name.replace(/^v/, "");
+      checksums = await fetchChecksums(release);
       checkedAt = new Date();
       await prisma.systemSettings.upsert({
         where: { id: "singleton" },
@@ -123,5 +158,5 @@ export async function checkAgentVersion(force = false): Promise<{
     }
   }
 
-  return { latestVersion, checkedAt };
+  return { latestVersion, checksums, checkedAt };
 }

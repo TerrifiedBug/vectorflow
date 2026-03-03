@@ -68,6 +68,7 @@ export default function FleetPage() {
     }),
   );
   const latestAgentVersion = versionQuery.data?.agent.latestVersion ?? null;
+  const agentChecksums = versionQuery.data?.agent.checksums ?? {};
 
   const triggerUpdate = useMutation(
     trpc.fleet.triggerAgentUpdate.mutationOptions({
@@ -200,7 +201,7 @@ export default function FleetPage() {
                           nodeId: node.id,
                           targetVersion: latestAgentVersion,
                           downloadUrl: `https://github.com/${AGENT_REPO}/releases/download/v${latestAgentVersion}/vf-agent-linux-amd64`,
-                          checksum: "sha256:pending",
+                          checksum: `sha256:${agentChecksums["vf-agent-linux-amd64"] ?? ""}`,
                         });
                       }}
                     >

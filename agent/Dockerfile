@@ -4,7 +4,8 @@ WORKDIR /src
 COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /vf-agent .
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/TerrifiedBug/vectorflow/agent/internal/agent.Version=${VERSION}" -o /vf-agent .
 
 # Stage 2: Download Vector
 FROM alpine:3.21 AS vector
