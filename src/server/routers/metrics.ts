@@ -138,4 +138,51 @@ export const metricsRouter = router({
 
       return { rates };
     }),
+
+  /**
+   * Per-pipeline live rates for the pipelines table.
+   * Aggregates source component rates (events/sec, bytes/sec) per pipeline.
+   */
+  getLiveRates: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .query(async ({ input }) => {
+      // Get all pipelines and their source components for this environment
+      const pipelines = await prisma.pipeline.findMany({
+        where: { environmentId: input.environmentId },
+        select: {
+          id: true,
+          nodes: { select: { componentKey: true, kind: true } },
+          environment: { select: { nodes: { select: { id: true } } } },
+        },
+      });
+
+      const rates: Record<string, { eventsPerSec: number; bytesPerSec: number }> = {};
+
+      for (const pipeline of pipelines) {
+        let eventsPerSec = 0;
+        let bytesPerSec = 0;
+
+        const vectorNodeIds = pipeline.environment.nodes.map((n) => n.id);
+        const sourceKeys = pipeline.nodes
+          .filter((n) => n.kind === "SOURCE")
+          .map((n) => n.componentKey);
+
+        for (const vectorNodeId of vectorNodeIds) {
+          const nodeMetrics = metricStore.getAllForNode(vectorNodeId, 5);
+          for (const [componentId, samples] of nodeMetrics) {
+            if (samples.length === 0) continue;
+            const matchesSource = sourceKeys.some((key) => componentId.includes(key));
+            if (matchesSource) {
+              const latest = samples[samples.length - 1];
+              eventsPerSec += latest.receivedEventsRate;
+              bytesPerSec += latest.receivedBytesRate;
+            }
+          }
+        }
+
+        rates[pipeline.id] = { eventsPerSec, bytesPerSec };
+      }
+
+      return { rates };
+    }),
 });
