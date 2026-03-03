@@ -3,18 +3,29 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { Search, Server, Activity, GitBranch, BarChart3 } from "lucide-react";
+import {
+  Server,
+  Activity,
+  GitBranch,
+  BarChart3,
+  Cpu,
+  MemoryStick,
+  HardDrive,
+  Network,
+} from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
-import { NodeCard } from "@/components/dashboard/node-card";
-import { PipelineCard } from "@/components/dashboard/pipeline-card";
+import { useEnvironmentStore } from "@/stores/environment-store";
+import {
+  MetricsFilterBar,
+  type TimeRange,
+} from "@/components/dashboard/metrics-filter-bar";
+import { MetricsSection } from "@/components/dashboard/metrics-section";
+import { MetricChart } from "@/components/dashboard/metric-chart";
+import { formatSI, formatBytesRate } from "@/lib/format";
 
 /** Derive an overall status for a pipeline from its node statuses */
 function derivePipelineStatus(
@@ -32,19 +43,10 @@ export default function DashboardPage() {
   const trpc = useTRPC();
 
   const stats = useQuery(trpc.dashboard.stats.queryOptions());
-  const nodeCards = useQuery({
-    ...trpc.dashboard.nodeCards.queryOptions(),
-    refetchInterval: 15_000,
-  });
   const pipelineCards = useQuery({
     ...trpc.dashboard.pipelineCards.queryOptions(),
     refetchInterval: 15_000,
   });
-
-  const [nodeSearch, setNodeSearch] = useState("");
-  const [pipelineSearch, setPipelineSearch] = useState("");
-  const [nodeStatusFilter, setNodeStatusFilter] = useState<string | null>(null);
-  const [pipelineStatusFilter, setPipelineStatusFilter] = useState<string | null>(null);
 
   // Compute pipeline status counts for summary bar
   const pipelineStatusCounts = useMemo(() => {
@@ -61,37 +63,28 @@ export default function DashboardPage() {
     return { running, stopped, crashed };
   }, [pipelineCards.data]);
 
-  // Filter nodes
-  const filteredNodes = useMemo(() => {
-    if (!nodeCards.data) return [];
-    return nodeCards.data.filter((node) => {
-      if (nodeStatusFilter && node.status !== nodeStatusFilter) return false;
-      if (nodeSearch) {
-        const term = nodeSearch.toLowerCase();
-        return (
-          node.name.toLowerCase().includes(term) ||
-          node.host.toLowerCase().includes(term)
-        );
-      }
-      return true;
-    });
-  }, [nodeCards.data, nodeSearch, nodeStatusFilter]);
+  const { selectedEnvironmentId } = useEnvironmentStore();
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  const [selectedPipelineIds, setSelectedPipelineIds] = useState<string[]>([]);
+  const [timeRange, setTimeRange] = useState<TimeRange>("1h");
 
-  // Filter pipelines
-  const filteredPipelines = useMemo(() => {
-    if (!pipelineCards.data) return [];
-    return pipelineCards.data.filter((pipeline) => {
-      if (pipelineStatusFilter) {
-        const status = derivePipelineStatus(pipeline.nodes);
-        if (status !== pipelineStatusFilter) return false;
-      }
-      if (pipelineSearch) {
-        const term = pipelineSearch.toLowerCase();
-        return pipeline.name.toLowerCase().includes(term);
-      }
-      return true;
-    });
-  }, [pipelineCards.data, pipelineSearch, pipelineStatusFilter]);
+  const refreshInterval: Record<TimeRange, number> = {
+    "1h": 15_000,
+    "6h": 60_000,
+    "1d": 60_000,
+    "7d": 300_000,
+  };
+
+  const chartData = useQuery({
+    ...trpc.dashboard.chartMetrics.queryOptions({
+      environmentId: selectedEnvironmentId ?? "",
+      nodeIds: selectedNodeIds,
+      pipelineIds: selectedPipelineIds,
+      range: timeRange,
+    }),
+    refetchInterval: refreshInterval[timeRange],
+    enabled: !!selectedEnvironmentId,
+  });
 
   return (
     <div className="space-y-6">
@@ -183,206 +176,98 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Tabbed content */}
-      <Tabs defaultValue="nodes" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="nodes">
-            Nodes{stats.data && stats.data.nodes > 0 ? ` (${stats.data.nodes})` : ""}
-          </TabsTrigger>
-          <TabsTrigger value="pipelines">
-            Pipelines{stats.data && stats.data.pipelines > 0 ? ` (${stats.data.pipelines})` : ""}
-          </TabsTrigger>
-        </TabsList>
+      {/* Metrics Filter Bar */}
+      <MetricsFilterBar
+        nodes={chartData.data?.filterOptions.nodes ?? []}
+        pipelines={chartData.data?.filterOptions.pipelines ?? []}
+        selectedNodeIds={selectedNodeIds}
+        selectedPipelineIds={selectedPipelineIds}
+        timeRange={timeRange}
+        onNodeChange={setSelectedNodeIds}
+        onPipelineChange={setSelectedPipelineIds}
+        onTimeRangeChange={setTimeRange}
+      />
 
-        {/* Nodes tab */}
-        <TabsContent value="nodes" className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search nodes..."
-                value={nodeSearch}
-                onChange={(e) => setNodeSearch(e.target.value)}
-                className="pl-8"
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant={nodeStatusFilter === null ? "default" : "outline"}
-                size="sm"
-                onClick={() => setNodeStatusFilter(null)}
-              >
-                All
-              </Button>
-              <Button
-                variant={nodeStatusFilter === "HEALTHY" ? "default" : "outline"}
-                size="sm"
-                onClick={() =>
-                  setNodeStatusFilter(
-                    nodeStatusFilter === "HEALTHY" ? null : "HEALTHY"
-                  )
-                }
-              >
-                Healthy
-              </Button>
-              <Button
-                variant={
-                  nodeStatusFilter === "DEGRADED" ? "default" : "outline"
-                }
-                size="sm"
-                onClick={() =>
-                  setNodeStatusFilter(
-                    nodeStatusFilter === "DEGRADED" ? null : "DEGRADED"
-                  )
-                }
-              >
-                Degraded
-              </Button>
-              <Button
-                variant={
-                  nodeStatusFilter === "UNREACHABLE" ? "default" : "outline"
-                }
-                size="sm"
-                onClick={() =>
-                  setNodeStatusFilter(
-                    nodeStatusFilter === "UNREACHABLE" ? null : "UNREACHABLE"
-                  )
-                }
-              >
-                Unreachable
-              </Button>
-            </div>
-          </div>
+      {/* Pipeline Metrics */}
+      <MetricsSection title="Pipeline Metrics">
+        <MetricChart
+          title="Events In/Out per Second"
+          data={chartData.data?.pipeline.eventsIn ?? {}}
+          dataSecondary={chartData.data?.pipeline.eventsOut ?? {}}
+          primaryLabel=" In"
+          secondaryLabel=" Out"
+          yFormatter={formatSI}
+          timeRange={timeRange}
+          height={250}
+        />
+        <MetricChart
+          title="Bytes In/Out per Second"
+          data={chartData.data?.pipeline.bytesIn ?? {}}
+          dataSecondary={chartData.data?.pipeline.bytesOut ?? {}}
+          primaryLabel=" In"
+          secondaryLabel=" Out"
+          yFormatter={(v) => formatBytesRate(v)}
+          timeRange={timeRange}
+          height={250}
+        />
+        <MetricChart
+          title="Errors & Discarded"
+          data={chartData.data?.pipeline.errors ?? {}}
+          dataSecondary={chartData.data?.pipeline.discarded ?? {}}
+          variant="area"
+          primaryLabel=" Errors"
+          secondaryLabel=" Discarded"
+          yFormatter={formatSI}
+          timeRange={timeRange}
+          height={200}
+        />
+      </MetricsSection>
 
-          {nodeCards.isLoading && (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-48 rounded-lg" />
-              ))}
-            </div>
-          )}
-
-          {nodeCards.data && filteredNodes.length === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
-              <Server className="mb-3 h-10 w-10 text-muted-foreground/50" />
-              <p className="text-sm font-medium">
-                {nodeSearch || nodeStatusFilter ? "No nodes match the current filter" : "No nodes registered yet"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {nodeSearch || nodeStatusFilter
-                  ? "Try adjusting your search or filter criteria."
-                  : "Deploy a VectorFlow agent to register your first node."}
-              </p>
-            </div>
-          )}
-
-          {filteredNodes.length > 0 && (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {filteredNodes.map((node) => (
-                <NodeCard key={node.id} node={node} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Pipelines tab */}
-        <TabsContent value="pipelines" className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search pipelines..."
-                value={pipelineSearch}
-                onChange={(e) => setPipelineSearch(e.target.value)}
-                className="pl-8"
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant={pipelineStatusFilter === null ? "default" : "outline"}
-                size="sm"
-                onClick={() => setPipelineStatusFilter(null)}
-              >
-                All
-              </Button>
-              <Button
-                variant={
-                  pipelineStatusFilter === "RUNNING" ? "default" : "outline"
-                }
-                size="sm"
-                onClick={() =>
-                  setPipelineStatusFilter(
-                    pipelineStatusFilter === "RUNNING" ? null : "RUNNING"
-                  )
-                }
-              >
-                Running
-              </Button>
-              <Button
-                variant={
-                  pipelineStatusFilter === "STOPPED" ? "default" : "outline"
-                }
-                size="sm"
-                onClick={() =>
-                  setPipelineStatusFilter(
-                    pipelineStatusFilter === "STOPPED" ? null : "STOPPED"
-                  )
-                }
-              >
-                Stopped
-              </Button>
-              <Button
-                variant={
-                  pipelineStatusFilter === "CRASHED" ? "default" : "outline"
-                }
-                size="sm"
-                onClick={() =>
-                  setPipelineStatusFilter(
-                    pipelineStatusFilter === "CRASHED" ? null : "CRASHED"
-                  )
-                }
-              >
-                Crashed
-              </Button>
-            </div>
-          </div>
-
-          {pipelineCards.isLoading && (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-48 rounded-lg" />
-              ))}
-            </div>
-          )}
-
-          {pipelineCards.data && filteredPipelines.length === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
-              <GitBranch className="mb-3 h-10 w-10 text-muted-foreground/50" />
-              <p className="text-sm font-medium">
-                {pipelineSearch || pipelineStatusFilter ? "No pipelines match the current filter" : "No deployed pipelines yet"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {pipelineSearch || pipelineStatusFilter
-                  ? "Try adjusting your search or filter criteria."
-                  : "Create and deploy a pipeline to see it here."}
-              </p>
-              {!pipelineSearch && !pipelineStatusFilter && (
-                <Button asChild className="mt-4" variant="outline" size="sm">
-                  <Link href="/pipelines/new">Create Pipeline</Link>
-                </Button>
-              )}
-            </div>
-          )}
-
-          {filteredPipelines.length > 0 && (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {filteredPipelines.map((pipeline) => (
-                <PipelineCard key={pipeline.id} pipeline={pipeline} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+      {/* System Metrics */}
+      <MetricsSection title="System Metrics">
+        <div className="grid gap-4 md:grid-cols-2">
+          <MetricChart
+            title="CPU Usage"
+            icon={<Cpu className="h-4 w-4" />}
+            data={chartData.data?.system.cpu ?? {}}
+            yFormatter={(v) => `${v.toFixed(0)}%`}
+            yDomain={[0, 100]}
+            timeRange={timeRange}
+            height={220}
+          />
+          <MetricChart
+            title="Memory Usage"
+            icon={<MemoryStick className="h-4 w-4" />}
+            data={chartData.data?.system.memory ?? {}}
+            yFormatter={(v) => `${v.toFixed(0)}%`}
+            yDomain={[0, 100]}
+            timeRange={timeRange}
+            height={220}
+          />
+          <MetricChart
+            title="Disk I/O"
+            icon={<HardDrive className="h-4 w-4" />}
+            data={chartData.data?.system.diskRead ?? {}}
+            dataSecondary={chartData.data?.system.diskWrite ?? {}}
+            primaryLabel=" Read"
+            secondaryLabel=" Write"
+            yFormatter={(v) => formatBytesRate(v)}
+            timeRange={timeRange}
+            height={220}
+          />
+          <MetricChart
+            title="Network I/O"
+            icon={<Network className="h-4 w-4" />}
+            data={chartData.data?.system.netRx ?? {}}
+            dataSecondary={chartData.data?.system.netTx ?? {}}
+            primaryLabel=" Rx"
+            secondaryLabel=" Tx"
+            yFormatter={(v) => formatBytesRate(v)}
+            timeRange={timeRange}
+            height={220}
+          />
+        </div>
+      </MetricsSection>
     </div>
   );
 }
