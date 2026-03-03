@@ -4,9 +4,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/vectorflow/agent/internal/client"
-	"github.com/vectorflow/agent/internal/metrics"
-	"github.com/vectorflow/agent/internal/supervisor"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/metrics"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/supervisor"
 )
 
 func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string, sampleResults []client.SampleResultMsg) client.HeartbeatRequest {

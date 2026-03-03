@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/vectorflow/agent/internal/client"
-	"github.com/vectorflow/agent/internal/config"
-	"github.com/vectorflow/agent/internal/sampler"
-	"github.com/vectorflow/agent/internal/supervisor"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/sampler"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/supervisor"
 )
 
 const Version = "0.1.0"

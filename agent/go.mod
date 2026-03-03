@@ -1,3 +1,3 @@
-module github.com/vectorflow/agent
+module github.com/TerrifiedBug/vectorflow/agent
 
 go 1.22

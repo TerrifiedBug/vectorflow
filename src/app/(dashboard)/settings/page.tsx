@@ -2334,7 +2334,7 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <VersionCheckSection />
+      {isSuperAdmin && <VersionCheckSection />}
 
       <Tabs defaultValue={isTeamAdmin ? "team" : isSuperAdmin ? "auth" : "team"}>
         <TabsList>

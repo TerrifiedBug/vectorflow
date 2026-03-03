@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/vectorflow/agent/internal/logbuf"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/logbuf"
 )
 
 type ProcessInfo struct {
