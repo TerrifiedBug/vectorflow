@@ -288,6 +288,7 @@ export const pipelineRouter = router({
           name: input.name,
           description: input.description,
           environmentId: input.environmentId,
+          globalConfig: { log_level: "info" },
           createdById: ctx.session.user?.id ?? null,
           updatedById: ctx.session.user?.id ?? null,
         },
@@ -318,6 +319,7 @@ export const pipelineRouter = router({
             name: "Audit Log Shipping",
             isSystem: true,
             environmentId: systemEnv.id,
+            globalConfig: { log_level: "info" },
             createdById: ctx.session.user?.id ?? null,
           },
         });
