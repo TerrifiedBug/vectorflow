@@ -64,7 +64,6 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
         isSystemLocked && "ring-2 ring-blue-400 shadow-md",
         disabled && "opacity-40"
       )}
-      draggable={!isSystemLocked}
     >
       {/* Header bar */}
       <div className="flex items-center gap-2 rounded-t-lg bg-node-source px-3 py-2 text-node-source-foreground">
