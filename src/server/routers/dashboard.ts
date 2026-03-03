@@ -10,7 +10,8 @@ export const dashboardRouter = router({
     .input(z.object({ environmentId: z.string() }))
     .query(async ({ input }) => {
       const envFilter = { environment: { id: input.environmentId } };
-      const [pipelineCount, nodeCount, healthyCounts] = await Promise.all([
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const [pipelineCount, nodeCount, healthyCounts, reductionMetrics] = await Promise.all([
         prisma.pipeline.count({
           where: { environmentId: input.environmentId, isDraft: false, deployedAt: { not: null } },
         }),
@@ -20,25 +21,22 @@ export const dashboardRouter = router({
           where: envFilter,
           _count: { status: true },
         }),
+        prisma.pipelineMetric.aggregate({
+          where: {
+            nodeId: null, // aggregate rows only
+            timestamp: { gte: oneHourAgo },
+            pipeline: { environmentId: input.environmentId },
+          },
+          _sum: {
+            eventsIn: true,
+            eventsOut: true,
+          },
+        }),
       ]);
 
       const healthy = healthyCounts.find((h) => h.status === "HEALTHY")?._count.status ?? 0;
       const degraded = healthyCounts.find((h) => h.status === "DEGRADED")?._count.status ?? 0;
       const unreachable = healthyCounts.find((h) => h.status === "UNREACHABLE")?._count.status ?? 0;
-
-      // Query recent metrics for log reduction calculation
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      const reductionMetrics = await prisma.pipelineMetric.aggregate({
-        where: {
-          nodeId: null, // aggregate rows only
-          timestamp: { gte: oneHourAgo },
-          pipeline: { environmentId: input.environmentId },
-        },
-        _sum: {
-          eventsIn: true,
-          eventsOut: true,
-        },
-      });
 
       const totalEventsIn = Number(reductionMetrics._sum.eventsIn ?? 0);
       const totalEventsOut = Number(reductionMetrics._sum.eventsOut ?? 0);
