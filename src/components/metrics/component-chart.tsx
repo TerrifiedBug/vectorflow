@@ -1,14 +1,14 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   AreaChart,
   Area,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { formatBytesRate } from "@/lib/format";
 
 interface MetricRow {
@@ -33,6 +33,18 @@ function formatEventsRate(v: number): string {
   return `${v.toFixed(1)}/s`;
 }
 
+const colorMap = {
+  events: { in: "#22c55e", out: "#3b82f6" },
+  bytes: { in: "#f59e0b", out: "#8b5cf6" },
+  errors: { in: "#ef4444", out: "#f97316" },
+} as const;
+
+const labelMap = {
+  events: { in: "Events In/s", out: "Events Out/s" },
+  bytes: { in: "Bytes In/s", out: "Bytes Out/s" },
+  errors: { in: "Errors/s", out: "Discarded/s" },
+} as const;
+
 export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps) {
   const data = rows.map((m) => ({
     time: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -44,6 +56,11 @@ export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps)
       : Number(m.eventsDiscarded) / 60,
   }));
 
+  const chartConfig = useMemo<ChartConfig>(() => ({
+    in: { label: labelMap[dataKey].in, color: colorMap[dataKey].in },
+    out: { label: labelMap[dataKey].out, color: colorMap[dataKey].out },
+  }), [dataKey]);
+
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center text-xs text-muted-foreground" style={{ height }}>
@@ -53,13 +70,9 @@ export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps)
   }
 
   const formatter = dataKey === "bytes" ? formatBytesRate : formatEventsRate;
-  const inLabel = dataKey === "events" ? "Events In/s" : dataKey === "bytes" ? "Bytes In/s" : "Errors/s";
-  const outLabel = dataKey === "events" ? "Events Out/s" : dataKey === "bytes" ? "Bytes Out/s" : "Discarded/s";
-  const inColor = dataKey === "events" ? "#22c55e" : dataKey === "bytes" ? "#f59e0b" : "#ef4444";
-  const outColor = dataKey === "events" ? "#3b82f6" : dataKey === "bytes" ? "#8b5cf6" : "#f97316";
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <ChartContainer config={chartConfig} className="w-full" style={{ height }}>
       <AreaChart data={data}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
         <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
@@ -68,13 +81,21 @@ export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps)
           width={55}
           tickFormatter={(v) => formatter(v)}
         />
-        <Tooltip
-          contentStyle={{ fontSize: 12 }}
-          formatter={((v: number | undefined, name: string) => [formatter(v ?? 0), name]) as any}
+        <ChartTooltip
+          content={
+            <ChartTooltipContent
+              formatter={(value, name) => (
+                <div className="flex w-full items-center justify-between gap-2">
+                  <span className="text-muted-foreground">{chartConfig[name as keyof typeof chartConfig]?.label ?? name}</span>
+                  <span className="font-mono font-medium text-foreground">{formatter(Number(value) ?? 0)}</span>
+                </div>
+              )}
+            />
+          }
         />
-        <Area type="monotone" dataKey="in" name={inLabel} stroke={inColor} fill={inColor} fillOpacity={0.1} strokeWidth={1.5} />
-        <Area type="monotone" dataKey="out" name={outLabel} stroke={outColor} fill={outColor} fillOpacity={0.1} strokeWidth={1.5} />
+        <Area type="monotone" dataKey="in" name={labelMap[dataKey].in} stroke="var(--color-in)" fill="var(--color-in)" fillOpacity={0.1} strokeWidth={1.5} />
+        <Area type="monotone" dataKey="out" name={labelMap[dataKey].out} stroke="var(--color-out)" fill="var(--color-out)" fillOpacity={0.1} strokeWidth={1.5} />
       </AreaChart>
-    </ResponsiveContainer>
+    </ChartContainer>
   );
 }

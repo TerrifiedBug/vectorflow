@@ -7,10 +7,9 @@ import {
   Area,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { formatBytesRate } from "@/lib/format";
 
 interface PipelineMetricsChartProps {
@@ -24,6 +23,16 @@ function formatEventsRate(v: number): string {
   return `${v.toFixed(1)}/s`;
 }
 
+const eventsChartConfig = {
+  eventsIn: { label: "Events In/s", color: "#22c55e" },
+  eventsOut: { label: "Events Out/s", color: "#3b82f6" },
+} satisfies ChartConfig;
+
+const bytesChartConfig = {
+  bytesIn: { label: "Bytes In/s", color: "#f59e0b" },
+  bytesOut: { label: "Bytes Out/s", color: "#8b5cf6" },
+} satisfies ChartConfig;
+
 export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetricsChartProps) {
   const trpc = useTRPC();
 
@@ -35,11 +44,11 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
   // Convert minute-bucket deltas to per-second rates
   const data = (metricsQuery.data ?? []).map((m) => ({
     time: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    "Events In/s": Number(m.eventsIn) / 60,
-    "Events Out/s": Number(m.eventsOut) / 60,
-    "Bytes In/s": Number(m.bytesIn) / 60,
-    "Bytes Out/s": Number(m.bytesOut) / 60,
-    Errors: Number(m.errorsTotal),
+    eventsIn: Number(m.eventsIn) / 60,
+    eventsOut: Number(m.eventsOut) / 60,
+    bytesIn: Number(m.bytesIn) / 60,
+    bytesOut: Number(m.bytesOut) / 60,
+    errors: Number(m.errorsTotal),
   }));
 
   if (metricsQuery.isLoading) {
@@ -63,7 +72,7 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
       {/* Events rate chart */}
       <div>
         <p className="text-xs text-muted-foreground mb-1 font-medium">Events Throughput</p>
-        <ResponsiveContainer width="100%" height={180}>
+        <ChartContainer config={eventsChartConfig} className="w-full" style={{ height: 180 }}>
           <AreaChart data={data}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
             <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
@@ -72,35 +81,44 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
               width={55}
               tickFormatter={(v) => formatEventsRate(v)}
             />
-            <Tooltip
-              contentStyle={{ fontSize: 12 }}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              formatter={((v: number | undefined, name: string) => [formatEventsRate(v ?? 0), name]) as any}
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  formatter={(value, name) => (
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="text-muted-foreground">{eventsChartConfig[name as keyof typeof eventsChartConfig]?.label ?? name}</span>
+                      <span className="font-mono font-medium text-foreground">{formatEventsRate(Number(value) ?? 0)}</span>
+                    </div>
+                  )}
+                />
+              }
             />
             <Area
               type="monotone"
-              dataKey="Events In/s"
-              stroke="#22c55e"
-              fill="#22c55e"
+              dataKey="eventsIn"
+              name="Events In/s"
+              stroke="var(--color-eventsIn)"
+              fill="var(--color-eventsIn)"
               fillOpacity={0.1}
               strokeWidth={1.5}
             />
             <Area
               type="monotone"
-              dataKey="Events Out/s"
-              stroke="#3b82f6"
-              fill="#3b82f6"
+              dataKey="eventsOut"
+              name="Events Out/s"
+              stroke="var(--color-eventsOut)"
+              fill="var(--color-eventsOut)"
               fillOpacity={0.1}
               strokeWidth={1.5}
             />
           </AreaChart>
-        </ResponsiveContainer>
+        </ChartContainer>
       </div>
 
       {/* Bytes rate chart */}
       <div>
         <p className="text-xs text-muted-foreground mb-1 font-medium">Data Throughput</p>
-        <ResponsiveContainer width="100%" height={180}>
+        <ChartContainer config={bytesChartConfig} className="w-full" style={{ height: 180 }}>
           <AreaChart data={data}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
             <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
@@ -109,29 +127,38 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
               width={55}
               tickFormatter={(v) => formatBytesRate(v)}
             />
-            <Tooltip
-              contentStyle={{ fontSize: 12 }}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              formatter={((v: number | undefined, name: string) => [formatBytesRate(v ?? 0), name]) as any}
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  formatter={(value, name) => (
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="text-muted-foreground">{bytesChartConfig[name as keyof typeof bytesChartConfig]?.label ?? name}</span>
+                      <span className="font-mono font-medium text-foreground">{formatBytesRate(Number(value) ?? 0)}</span>
+                    </div>
+                  )}
+                />
+              }
             />
             <Area
               type="monotone"
-              dataKey="Bytes In/s"
-              stroke="#f59e0b"
-              fill="#f59e0b"
+              dataKey="bytesIn"
+              name="Bytes In/s"
+              stroke="var(--color-bytesIn)"
+              fill="var(--color-bytesIn)"
               fillOpacity={0.1}
               strokeWidth={1.5}
             />
             <Area
               type="monotone"
-              dataKey="Bytes Out/s"
-              stroke="#8b5cf6"
-              fill="#8b5cf6"
+              dataKey="bytesOut"
+              name="Bytes Out/s"
+              stroke="var(--color-bytesOut)"
+              fill="var(--color-bytesOut)"
               fillOpacity={0.1}
               strokeWidth={1.5}
             />
           </AreaChart>
-        </ResponsiveContainer>
+        </ChartContainer>
       </div>
     </div>
   );

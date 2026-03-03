@@ -7,10 +7,9 @@ import {
   Area,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -35,6 +34,24 @@ function formatTime(date: Date | string): string {
 }
 
 const CHART_HEIGHT = 180;
+
+const cpuChartConfig = {
+  cpuPercent: { label: "CPU", color: "#3b82f6" },
+} satisfies ChartConfig;
+
+const memoryChartConfig = {
+  memPercent: { label: "Memory", color: "#22c55e" },
+} satisfies ChartConfig;
+
+const diskChartConfig = {
+  diskReadRate: { label: "Read", color: "#f59e0b" },
+  diskWriteRate: { label: "Write", color: "#ef4444" },
+} satisfies ChartConfig;
+
+const networkChartConfig = {
+  netRxRate: { label: "Receive", color: "#8b5cf6" },
+  netTxRate: { label: "Transmit", color: "#06b6d4" },
+} satisfies ChartConfig;
 
 export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
   const trpc = useTRPC();
@@ -202,7 +219,7 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+            <ChartContainer config={cpuChartConfig} className="w-full" style={{ height: CHART_HEIGHT }}>
               <AreaChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
@@ -212,21 +229,28 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
                   domain={[0, 100]}
                   tickFormatter={(v) => `${v}%`}
                 />
-                <Tooltip
-                  contentStyle={{ fontSize: 12 }}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={((v: number | undefined) => [formatPercent(v ?? 0), "CPU"]) as any}
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value, name) => (
+                        <div className="flex w-full items-center justify-between gap-2">
+                          <span className="text-muted-foreground">{cpuChartConfig[name as keyof typeof cpuChartConfig]?.label ?? name}</span>
+                          <span className="font-mono font-medium text-foreground">{formatPercent(Number(value) ?? 0)}</span>
+                        </div>
+                      )}
+                    />
+                  }
                 />
                 <Area
                   type="monotone"
                   dataKey="cpuPercent"
-                  stroke="#3b82f6"
-                  fill="#3b82f6"
+                  stroke="var(--color-cpuPercent)"
+                  fill="var(--color-cpuPercent)"
                   fillOpacity={0.2}
                   strokeWidth={1.5}
                 />
               </AreaChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
 
@@ -239,7 +263,7 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+            <ChartContainer config={memoryChartConfig} className="w-full" style={{ height: CHART_HEIGHT }}>
               <AreaChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
@@ -249,21 +273,28 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
                   domain={[0, 100]}
                   tickFormatter={(v) => `${v}%`}
                 />
-                <Tooltip
-                  contentStyle={{ fontSize: 12 }}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={((v: number | undefined) => [formatPercent(v ?? 0), "Memory"]) as any}
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value, name) => (
+                        <div className="flex w-full items-center justify-between gap-2">
+                          <span className="text-muted-foreground">{memoryChartConfig[name as keyof typeof memoryChartConfig]?.label ?? name}</span>
+                          <span className="font-mono font-medium text-foreground">{formatPercent(Number(value) ?? 0)}</span>
+                        </div>
+                      )}
+                    />
+                  }
                 />
                 <Area
                   type="monotone"
                   dataKey="memPercent"
-                  stroke="#22c55e"
-                  fill="#22c55e"
+                  stroke="var(--color-memPercent)"
+                  fill="var(--color-memPercent)"
                   fillOpacity={0.2}
                   strokeWidth={1.5}
                 />
               </AreaChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
 
@@ -276,7 +307,7 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+            <ChartContainer config={diskChartConfig} className="w-full" style={{ height: CHART_HEIGHT }}>
               <AreaChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
@@ -285,32 +316,36 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
                   width={55}
                   tickFormatter={(v) => formatBytesRate(v)}
                 />
-                <Tooltip
-                  contentStyle={{ fontSize: 12 }}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={((v: number | undefined, name: string) => [
-                    formatBytesRate(v ?? 0),
-                    name === "diskReadRate" ? "Read" : "Write",
-                  ]) as any}
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value, name) => (
+                        <div className="flex w-full items-center justify-between gap-2">
+                          <span className="text-muted-foreground">{diskChartConfig[name as keyof typeof diskChartConfig]?.label ?? name}</span>
+                          <span className="font-mono font-medium text-foreground">{formatBytesRate(Number(value) ?? 0)}</span>
+                        </div>
+                      )}
+                    />
+                  }
                 />
                 <Area
                   type="monotone"
                   dataKey="diskReadRate"
-                  stroke="#f59e0b"
-                  fill="#f59e0b"
+                  stroke="var(--color-diskReadRate)"
+                  fill="var(--color-diskReadRate)"
                   fillOpacity={0.15}
                   strokeWidth={1.5}
                 />
                 <Area
                   type="monotone"
                   dataKey="diskWriteRate"
-                  stroke="#ef4444"
-                  fill="#ef4444"
+                  stroke="var(--color-diskWriteRate)"
+                  fill="var(--color-diskWriteRate)"
                   fillOpacity={0.15}
                   strokeWidth={1.5}
                 />
               </AreaChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
 
@@ -323,7 +358,7 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+            <ChartContainer config={networkChartConfig} className="w-full" style={{ height: CHART_HEIGHT }}>
               <AreaChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
@@ -332,32 +367,36 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
                   width={55}
                   tickFormatter={(v) => formatBytesRate(v)}
                 />
-                <Tooltip
-                  contentStyle={{ fontSize: 12 }}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={((v: number | undefined, name: string) => [
-                    formatBytesRate(v ?? 0),
-                    name === "netRxRate" ? "Receive" : "Transmit",
-                  ]) as any}
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value, name) => (
+                        <div className="flex w-full items-center justify-between gap-2">
+                          <span className="text-muted-foreground">{networkChartConfig[name as keyof typeof networkChartConfig]?.label ?? name}</span>
+                          <span className="font-mono font-medium text-foreground">{formatBytesRate(Number(value) ?? 0)}</span>
+                        </div>
+                      )}
+                    />
+                  }
                 />
                 <Area
                   type="monotone"
                   dataKey="netRxRate"
-                  stroke="#8b5cf6"
-                  fill="#8b5cf6"
+                  stroke="var(--color-netRxRate)"
+                  fill="var(--color-netRxRate)"
                   fillOpacity={0.15}
                   strokeWidth={1.5}
                 />
                 <Area
                   type="monotone"
                   dataKey="netTxRate"
-                  stroke="#06b6d4"
-                  fill="#06b6d4"
+                  stroke="var(--color-netTxRate)"
+                  fill="var(--color-netTxRate)"
                   fillOpacity={0.15}
                   strokeWidth={1.5}
                 />
               </AreaChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
       </div>
