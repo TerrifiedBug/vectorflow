@@ -18,7 +18,7 @@ import (
 	"github.com/TerrifiedBug/vectorflow/agent/internal/supervisor"
 )
 
-const Version = "0.1.0"
+var Version = "dev"
 
 type Agent struct {
 	cfg            *config.Config

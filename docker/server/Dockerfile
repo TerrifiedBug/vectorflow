@@ -38,9 +38,11 @@ RUN node -e "console.log(require('./node_modules/@prisma/client/package.json').v
 FROM node:22-alpine AS runner
 WORKDIR /app
 
+ARG VF_VERSION=dev
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV VF_VERSION=${VF_VERSION}
 
 RUN apk add --no-cache git openssh-client && \
     addgroup --system --gid 1001 nodejs && \

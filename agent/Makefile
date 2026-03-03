@@ -1,6 +1,6 @@
 .PHONY: build build-all clean docker
 
-VERSION ?= 0.1.0
+VERSION ?= dev
 LDFLAGS := -ldflags="-s -w -X github.com/TerrifiedBug/vectorflow/agent/internal/agent.Version=$(VERSION)"
 
 build:
