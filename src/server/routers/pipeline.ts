@@ -608,6 +608,8 @@ export const pipelineRouter = router({
         targetVersionId: z.string(),
       })
     )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.rollback", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) {
