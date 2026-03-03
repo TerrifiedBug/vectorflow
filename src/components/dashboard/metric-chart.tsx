@@ -217,7 +217,7 @@ export function MetricChart({
             <ChartTooltip
               content={
                 <ChartTooltipContent
-                  labelFormatter={(_value, payload) => {
+                  labelFormatter={(_value: string, payload: Array<{ payload?: { t?: number } }>) => {
                     const timestamp = payload?.[0]?.payload?.t;
                     if (!timestamp) return "";
                     return new Date(Number(timestamp)).toLocaleTimeString([], {
@@ -226,7 +226,7 @@ export function MetricChart({
                       second: "2-digit",
                     });
                   }}
-                  formatter={(value, name) => (
+                  formatter={(value: number | string, name: string) => (
                     <div className="flex w-full items-center justify-between gap-2">
                       <span className="text-muted-foreground">
                         {chartConfig[name as string]?.label ?? name}

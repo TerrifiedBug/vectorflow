@@ -16,7 +16,7 @@
 
 Stop hand-editing YAML. Build observability pipelines with drag-and-drop<br>and deploy them across your entire fleet from a single dashboard.
 
-[Quick Start](#-quick-start) · [Features](#-features) · [Configuration](#%EF%B8%8F-configuration) · [Development](#-development)
+[Quick Start](#-quick-start) · [Deployment](#-deployment) · [Features](#-features) · [Configuration](#%EF%B8%8F-configuration) · [Development](#-development)
 
 </div>
 
@@ -157,6 +157,87 @@ VF_URL=http://your-server:3000 VF_TOKEN=<token> ./vf-agent
 5. Click **Deploy** — review the YAML diff and confirm
 
 Your pipeline is now running across all enrolled nodes.
+
+## 📦 Deployment
+
+### Server
+
+Run the VectorFlow server with Docker Compose:
+
+```bash
+cd vectorflow/docker/server
+docker compose up -d
+```
+
+See [Configuration → Server](#%EF%B8%8F-configuration) for all available environment variables.
+
+### Agent
+
+#### Option A: Docker
+
+The simplest way to run the agent — ideal for containerized environments:
+
+```bash
+cd vectorflow/docker/agent
+
+cat > .env << 'EOF'
+VF_URL=http://your-vectorflow-server:3000
+VF_TOKEN=paste-enrollment-token-here
+EOF
+
+docker compose up -d
+```
+
+#### Option B: Standalone Binary (Linux)
+
+Install the agent as a native systemd service. The install script downloads the agent binary, installs Vector if needed, and configures everything automatically:
+
+```bash
+curl -sSfL https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/agent/install.sh | \
+  sudo bash -s -- --url https://vectorflow.example.com --token <enrollment-token>
+```
+
+**Managing the service:**
+
+```bash
+systemctl status vf-agent          # Check status
+journalctl -u vf-agent -f          # Follow logs
+sudo systemctl restart vf-agent    # Restart
+```
+
+**Upgrading:**
+
+```bash
+# Upgrade to the latest release
+curl -sSfL https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/agent/install.sh | sudo bash
+
+# Install a specific version
+curl -sSfL https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/agent/install.sh | \
+  sudo bash -s -- --version v0.3.0
+```
+
+Existing configuration at `/etc/vectorflow/agent.env` is preserved during upgrades.
+
+**Uninstalling:**
+
+```bash
+sudo systemctl stop vf-agent
+sudo systemctl disable vf-agent
+sudo rm /etc/systemd/system/vf-agent.service
+sudo systemctl daemon-reload
+sudo rm /usr/local/bin/vf-agent
+sudo rm -rf /var/lib/vf-agent /etc/vectorflow
+```
+
+#### Option C: Manual Binary
+
+Download the binary from [Releases](https://github.com/TerrifiedBug/vectorflow/releases) and run it directly:
+
+```bash
+VF_URL=http://your-server:3000 VF_TOKEN=<token> ./vf-agent
+```
+
+See [Configuration → Agent](#%EF%B8%8F-configuration) for all available environment variables.
 
 ## 🛠️ Tech Stack
 
