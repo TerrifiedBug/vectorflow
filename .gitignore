@@ -48,5 +48,3 @@ next-env.d.ts
 
 /docs/plans/*
 
-# system vector runtime data
-.vectorflow/
