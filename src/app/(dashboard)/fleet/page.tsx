@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Table,
@@ -16,14 +17,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
 import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { isVersionOlder } from "@/lib/version";
 
+const AGENT_REPO = "terrifiedbug/vectorflow-agent";
+
 export default function FleetPage() {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
 
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
@@ -60,6 +69,14 @@ export default function FleetPage() {
   );
   const latestAgentVersion = versionQuery.data?.agent.latestVersion ?? null;
 
+  const triggerUpdate = useMutation(
+    trpc.fleet.triggerAgentUpdate.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.fleet.list.queryKey() });
+      },
+    }),
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -95,6 +112,7 @@ export default function FleetPage() {
               <TableHead>Agent Version</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Last Seen</TableHead>
+              <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -148,6 +166,47 @@ export default function FleetPage() {
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {formatLastSeen(node.lastSeen)}
+                </TableCell>
+                <TableCell>
+                  {node.pendingAction ? (
+                    <Badge variant="outline" className="text-blue-600">
+                      Update pending...
+                    </Badge>
+                  ) : node.deploymentMode === "DOCKER" ? (
+                    latestAgentVersion &&
+                    node.agentVersion &&
+                    isVersionOlder(node.agentVersion, latestAgentVersion) ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <Button variant="outline" size="sm" disabled>
+                              Update
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>Update via Docker image pull</TooltipContent>
+                      </Tooltip>
+                    ) : null
+                  ) : latestAgentVersion &&
+                    node.agentVersion &&
+                    isVersionOlder(node.agentVersion, latestAgentVersion) ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={triggerUpdate.isPending}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        triggerUpdate.mutate({
+                          nodeId: node.id,
+                          targetVersion: latestAgentVersion,
+                          downloadUrl: `https://github.com/${AGENT_REPO}/releases/download/v${latestAgentVersion}/vf-agent-linux-amd64`,
+                          checksum: "sha256:pending",
+                        });
+                      }}
+                    >
+                      {triggerUpdate.isPending ? "Updating..." : "Update"}
+                    </Button>
+                  ) : null}
                 </TableCell>
               </TableRow>
             ))}
