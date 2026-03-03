@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { metricStore } from "@/server/services/metric-store";
 import { prisma } from "@/lib/prisma";
 
@@ -134,6 +134,59 @@ export const metricsRouter = router({
         }
         existing.errorsRate += latest.errorsRate;
         rates[matchingNode.pipelineId] = existing;
+      }
+
+      return { rates };
+    }),
+
+  /**
+   * Per-pipeline live rates for the pipelines table.
+   * Aggregates source component rates (events/sec, bytes/sec) per pipeline.
+   */
+  getLiveRates: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      // Fetch pipelines and environment nodes in parallel (nodes are shared across all pipelines)
+      const [pipelines, envNodes] = await Promise.all([
+        prisma.pipeline.findMany({
+          where: { environmentId: input.environmentId },
+          select: {
+            id: true,
+            nodes: { select: { componentKey: true, kind: true } },
+          },
+        }),
+        prisma.vectorNode.findMany({
+          where: { environmentId: input.environmentId },
+          select: { id: true },
+        }),
+      ]);
+
+      const vectorNodeIds = envNodes.map((n) => n.id);
+      const rates: Record<string, { eventsPerSec: number; bytesPerSec: number }> = {};
+
+      for (const pipeline of pipelines) {
+        let eventsPerSec = 0;
+        let bytesPerSec = 0;
+
+        const sourceKeys = pipeline.nodes
+          .filter((n) => n.kind === "SOURCE")
+          .map((n) => n.componentKey);
+
+        for (const vectorNodeId of vectorNodeIds) {
+          const nodeMetrics = metricStore.getAllForNode(vectorNodeId, 5);
+          for (const [componentId, samples] of nodeMetrics) {
+            if (samples.length === 0) continue;
+            const matchesSource = sourceKeys.some((key) => componentId.includes(key));
+            if (matchesSource) {
+              const latest = samples[samples.length - 1];
+              eventsPerSec += latest.receivedEventsRate;
+              bytesPerSec += latest.receivedBytesRate;
+            }
+          }
+        }
+
+        rates[pipeline.id] = { eventsPerSec, bytesPerSec };
       }
 
       return { rates };

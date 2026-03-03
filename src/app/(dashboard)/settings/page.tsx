@@ -359,7 +359,7 @@ function AuditLogShippingSection() {
               <Button
                 size="sm"
                 onClick={() =>
-                  deployMutation.mutate({ pipelineId: systemPipeline.id })
+                  deployMutation.mutate({ pipelineId: systemPipeline.id, changelog: "Enabled system pipeline from settings" })
                 }
                 disabled={isToggling}
               >

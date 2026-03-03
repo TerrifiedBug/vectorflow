@@ -691,14 +691,15 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     // For system pipelines, mark source nodes as locked
     const processedNodes = nodes.map((n) => {
       let data = { ...n.data };
-      if (isSystem && n.type === "source") {
+      const isLocked = isSystem && n.type === "source";
+      if (isLocked) {
         data = { ...data, isSystemLocked: true };
       }
       const existingMetrics = metricsMap.get(n.id);
       if (existingMetrics) {
         data = { ...data, metrics: existingMetrics };
       }
-      return { ...n, data };
+      return { ...n, data, draggable: isLocked ? false : undefined };
     });
 
     const gc = globalConfig ?? null;

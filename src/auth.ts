@@ -203,6 +203,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             data: {
               email: user.email,
               name: user.name ?? profile?.name ?? user.email.split("@")[0],
+              image: (profileData?.picture as string) ?? null,
               authMethod: "OIDC",
             },
           });
@@ -216,6 +217,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           await prisma.user.update({
             where: { id: dbUser.id },
             data: { authMethod: "OIDC", passwordHash: null },
+          });
+        }
+
+        // Refresh profile picture on each OIDC sign-in
+        const profilePicture = (profileData?.picture as string) ?? null;
+        if (profilePicture && dbUser.image !== profilePicture) {
+          await prisma.user.update({
+            where: { id: dbUser.id },
+            data: { image: profilePicture },
           });
         }
 
