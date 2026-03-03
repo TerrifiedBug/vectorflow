@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
@@ -217,6 +218,103 @@ function VersionCheckSection() {
             <p className="text-xs text-muted-foreground">
               Last checked: {formatRelativeTime(server?.checkedAt)}
             </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Audit Log Shipping Section ─────────────────────────────────────────────
+
+function AuditLogShippingSection() {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const systemPipelineQuery = useQuery(
+    trpc.pipeline.getSystemPipeline.queryOptions(),
+  );
+
+  const createSystemPipelineMutation = useMutation(
+    trpc.pipeline.createSystemPipeline.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: trpc.pipeline.getSystemPipeline.queryKey(),
+        });
+        toast.success("Audit log shipping pipeline created");
+      },
+      onError: (error) => {
+        if (error.message?.includes("already exists")) {
+          // Pipeline was created concurrently — just refetch
+          queryClient.invalidateQueries({
+            queryKey: trpc.pipeline.getSystemPipeline.queryKey(),
+          });
+        } else {
+          toast.error(error.message || "Failed to create system pipeline");
+        }
+      },
+    }),
+  );
+
+  const systemPipeline = systemPipelineQuery.data;
+  const isLoading = systemPipelineQuery.isLoading;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Audit Log Shipping</CardTitle>
+            <CardDescription>
+              Ship audit logs to external destinations via Vector. Configure
+              transforms and sinks in the pipeline editor.
+            </CardDescription>
+          </div>
+          {!isLoading && systemPipeline && (
+            <Badge
+              variant="outline"
+              className="text-xs text-green-600 border-green-600"
+            >
+              <CheckCircle2 className="mr-1 h-3 w-3" />
+              Active
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-9 w-48" />
+        ) : systemPipeline ? (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">
+              Audit log shipping is configured.
+            </span>
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/pipelines/${systemPipeline.id}`}>
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Configure sinks
+              </Link>
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">
+              Audit log shipping is not configured.
+            </span>
+            <Button
+              size="sm"
+              onClick={() => createSystemPipelineMutation.mutate()}
+              disabled={createSystemPipelineMutation.isPending}
+            >
+              {createSystemPipelineMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Enable Audit Log Shipping"
+              )}
+            </Button>
           </div>
         )}
       </CardContent>
@@ -2335,6 +2433,7 @@ export default function SettingsPage() {
       </div>
 
       {isSuperAdmin && <VersionCheckSection />}
+      {isSuperAdmin && <AuditLogShippingSection />}
 
       <Tabs defaultValue={isTeamAdmin ? "team" : isSuperAdmin ? "auth" : "team"}>
         <TabsList>
