@@ -108,7 +108,7 @@ export default function LoginPage() {
     <Card>
       <CardHeader>
         <CardTitle className="text-2xl">
-          {totpRequired ? "Two-Factor Authentication" : "Sign in to VectorFlow"}
+          {totpRequired ? "Two-Factor Authentication" : "Sign in"}
         </CardTitle>
         <CardDescription>
           {totpRequired
@@ -174,7 +174,7 @@ export default function LoginPage() {
             </>
           )}
         </CardContent>
-        <CardFooter className="flex flex-col gap-3 pt-2">
+        <CardFooter className="flex flex-col gap-3 pt-6">
           <Button type="submit" className="w-full" disabled={loading}>
             {loading
               ? "Verifying..."
