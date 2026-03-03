@@ -214,7 +214,7 @@ export function MetricChart({
               content={
                 <ChartTooltipContent
                   labelFormatter={(v) =>
-                    new Date(v as number).toLocaleTimeString([], {
+                    new Date(Number(v)).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
                       second: "2-digit",
