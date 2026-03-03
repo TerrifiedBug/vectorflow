@@ -177,11 +177,12 @@ type HostMetrics struct {
 
 // HeartbeatRequest is sent to POST /api/agent/heartbeat
 type HeartbeatRequest struct {
-	Pipelines     []PipelineStatus  `json:"pipelines"`
-	HostMetrics   *HostMetrics      `json:"hostMetrics,omitempty"`
-	AgentVersion  string            `json:"agentVersion,omitempty"`
-	VectorVersion string            `json:"vectorVersion,omitempty"`
-	SampleResults []SampleResultMsg `json:"sampleResults,omitempty"`
+	Pipelines      []PipelineStatus  `json:"pipelines"`
+	HostMetrics    *HostMetrics      `json:"hostMetrics,omitempty"`
+	AgentVersion   string            `json:"agentVersion,omitempty"`
+	VectorVersion  string            `json:"vectorVersion,omitempty"`
+	DeploymentMode string            `json:"deploymentMode,omitempty"`
+	SampleResults  []SampleResultMsg `json:"sampleResults,omitempty"`
 }
 
 // SampleRequestMsg is received from the server via config poll.

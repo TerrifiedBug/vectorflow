@@ -21,11 +21,12 @@ import (
 const Version = "0.1.0"
 
 type Agent struct {
-	cfg           *config.Config
-	client        *client.Client
-	poller        *poller
-	supervisor    *supervisor.Supervisor
-	vectorVersion string
+	cfg            *config.Config
+	client         *client.Client
+	poller         *poller
+	supervisor     *supervisor.Supervisor
+	vectorVersion  string
+	deploymentMode string
 
 	mu            sync.Mutex
 	sampleResults []client.SampleResultMsg
@@ -42,11 +43,12 @@ func New(cfg *config.Config) (*Agent, error) {
 	}
 
 	return &Agent{
-		cfg:           cfg,
-		client:        c,
-		poller:        newPoller(cfg, c),
-		supervisor:    sup,
-		vectorVersion: vectorVersion,
+		cfg:            cfg,
+		client:         c,
+		poller:         newPoller(cfg, c),
+		supervisor:     sup,
+		vectorVersion:  vectorVersion,
+		deploymentMode: DetectDeploymentMode(),
 	}, nil
 }
 
@@ -138,7 +140,7 @@ func (a *Agent) sendHeartbeat() {
 	a.sampleResults = nil
 	a.mu.Unlock()
 
-	hb := buildHeartbeat(a.supervisor, a.vectorVersion, results)
+	hb := buildHeartbeat(a.supervisor, a.vectorVersion, a.deploymentMode, results)
 	if err := a.client.SendHeartbeat(hb); err != nil {
 		slog.Warn("heartbeat error", "error", err)
 		// Put results back so they retry on the next heartbeat
