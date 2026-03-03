@@ -66,6 +66,9 @@ RUN npm install --global prisma@$(cat /tmp/prisma-version) && \
     rm /tmp/prisma-version && \
     ln -s "$(npm root -g)/prisma" node_modules/prisma
 
+# Create runtime data directory for system vector config and audit logs
+RUN mkdir -p /app/.vectorflow && chown vectorflow:nodejs /app/.vectorflow
+
 # Copy entrypoint script
 COPY --chown=vectorflow:nodejs docker/server/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh

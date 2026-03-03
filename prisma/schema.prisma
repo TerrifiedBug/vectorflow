@@ -104,6 +104,7 @@ model VectorNode {
   pipelineStatuses NodePipelineStatus[]
   nodeMetrics      NodeMetric[]
   pipelineLogs     PipelineLog[]
+  alertEvents      AlertEvent[]
   createdAt        DateTime             @default(now())
 }
 
@@ -502,6 +503,8 @@ model AlertEvent {
   id          String      @id @default(cuid())
   alertRuleId String
   alertRule   AlertRule   @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+  nodeId      String?
+  node        VectorNode? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
   status      AlertStatus
   value       Float
   message     String?
@@ -510,5 +513,6 @@ model AlertEvent {
   notifiedAt  DateTime?
 
   @@index([alertRuleId])
+  @@index([nodeId])
   @@index([firedAt])
 }

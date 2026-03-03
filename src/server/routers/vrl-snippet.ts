@@ -2,6 +2,7 @@ import { z } from "zod";
 import { router, protectedProcedure } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
+import { withAudit } from "@/server/middleware/audit";
 
 export const vrlSnippetRouter = router({
   list: protectedProcedure
@@ -34,6 +35,7 @@ export const vrlSnippetRouter = router({
         code: z.string().min(1),
       })
     )
+    .use(withAudit("vrlSnippet.created", "VrlSnippet"))
     .mutation(async ({ input, ctx }) => {
       return prisma.vrlSnippet.create({
         data: {
@@ -57,6 +59,7 @@ export const vrlSnippetRouter = router({
         code: z.string().min(1).optional(),
       })
     )
+    .use(withAudit("vrlSnippet.updated", "VrlSnippet"))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
       return prisma.vrlSnippet.update({ where: { id }, data });
@@ -64,6 +67,7 @@ export const vrlSnippetRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withAudit("vrlSnippet.deleted", "VrlSnippet"))
     .mutation(async ({ input }) => {
       return prisma.vrlSnippet.delete({ where: { id: input.id } });
     }),

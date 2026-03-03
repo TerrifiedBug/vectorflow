@@ -245,7 +245,6 @@ function AuditLogShippingSection() {
       },
       onError: (error) => {
         if (error.message?.includes("already exists")) {
-          // Pipeline was created concurrently — just refetch
           queryClient.invalidateQueries({
             queryKey: trpc.pipeline.getSystemPipeline.queryKey(),
           });
@@ -256,8 +255,38 @@ function AuditLogShippingSection() {
     }),
   );
 
+  const undeployMutation = useMutation(
+    trpc.deploy.undeploy.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: trpc.pipeline.getSystemPipeline.queryKey(),
+        });
+        toast.success("Audit log shipping disabled");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to disable audit log shipping");
+      },
+    }),
+  );
+
+  const deployMutation = useMutation(
+    trpc.deploy.agent.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: trpc.pipeline.getSystemPipeline.queryKey(),
+        });
+        toast.success("Audit log shipping enabled");
+      },
+      onError: (error: { message?: string }) => {
+        toast.error(error.message || "Failed to enable audit log shipping");
+      },
+    }),
+  );
+
   const systemPipeline = systemPipelineQuery.data;
   const isLoading = systemPipelineQuery.isLoading;
+  const isDeployed = systemPipeline && !systemPipeline.isDraft && systemPipeline.deployedAt;
+  const isToggling = undeployMutation.isPending || deployMutation.isPending;
 
   return (
     <Card>
@@ -273,10 +302,23 @@ function AuditLogShippingSection() {
           {!isLoading && systemPipeline && (
             <Badge
               variant="outline"
-              className="text-xs text-green-600 border-green-600"
+              className={
+                isDeployed
+                  ? "text-xs text-green-600 border-green-600"
+                  : "text-xs text-yellow-600 border-yellow-600"
+              }
             >
-              <CheckCircle2 className="mr-1 h-3 w-3" />
-              Active
+              {isDeployed ? (
+                <>
+                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                  Active
+                </>
+              ) : (
+                <>
+                  <XCircle className="mr-1 h-3 w-3" />
+                  Disabled
+                </>
+              )}
             </Badge>
           )}
         </div>
@@ -287,7 +329,7 @@ function AuditLogShippingSection() {
         ) : systemPipeline ? (
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground">
-              Audit log shipping is configured.
+              Audit log shipping is {isDeployed ? "active" : "configured but disabled"}.
             </span>
             <Button variant="outline" size="sm" asChild>
               <Link href={`/pipelines/${systemPipeline.id}`}>
@@ -295,6 +337,42 @@ function AuditLogShippingSection() {
                 Configure sinks
               </Link>
             </Button>
+            {isDeployed ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  undeployMutation.mutate({ pipelineId: systemPipeline.id })
+                }
+                disabled={isToggling}
+              >
+                {undeployMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Disabling...
+                  </>
+                ) : (
+                  "Disable"
+                )}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() =>
+                  deployMutation.mutate({ pipelineId: systemPipeline.id })
+                }
+                disabled={isToggling}
+              >
+                {deployMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Enabling...
+                  </>
+                ) : (
+                  "Enable"
+                )}
+              </Button>
+            )}
           </div>
         ) : (
           <div className="flex items-center gap-3">
@@ -2432,9 +2510,6 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {isSuperAdmin && <VersionCheckSection />}
-      {isSuperAdmin && <AuditLogShippingSection />}
-
       <Tabs defaultValue={isTeamAdmin ? "team" : isSuperAdmin ? "auth" : "team"}>
         <TabsList>
           {isTeamAdmin && (
@@ -2461,6 +2536,14 @@ export default function SettingsPage() {
                 <Layers className="mr-2 h-4 w-4" />
                 Teams
               </TabsTrigger>
+              <TabsTrigger value="version">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Version
+              </TabsTrigger>
+              <TabsTrigger value="audit-shipping">
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Audit Shipping
+              </TabsTrigger>
             </>
           )}
         </TabsList>
@@ -2484,6 +2567,12 @@ export default function SettingsPage() {
             </TabsContent>
             <TabsContent value="teams" className="mt-6">
               <TeamsManagement />
+            </TabsContent>
+            <TabsContent value="version" className="mt-6">
+              <VersionCheckSection />
+            </TabsContent>
+            <TabsContent value="audit-shipping" className="mt-6">
+              <AuditLogShippingSection />
             </TabsContent>
           </>
         )}

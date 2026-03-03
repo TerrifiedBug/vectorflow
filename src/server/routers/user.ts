@@ -102,6 +102,7 @@ export const userRouter = router({
     .input(z.object({
       name: z.string().min(1).max(100),
     }))
+    .use(withAudit("user.profile_updated", "User"))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user!.id!;
       const user = await prisma.user.findUnique({

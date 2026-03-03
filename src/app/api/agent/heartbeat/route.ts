@@ -333,33 +333,44 @@ export async function POST(request: Request) {
     try {
       const firedAlerts = await evaluateAlerts(agent.nodeId, agent.environmentId);
 
-      for (const alert of firedAlerts) {
-        const environment = await prisma.environment.findUnique({
-          where: { id: alert.rule.environmentId },
-          select: { name: true },
-        });
+      if (firedAlerts.length > 0) {
+        // Fetch context once for all alerts in this batch
+        const [nodeInfo, envInfo] = await Promise.all([
+          prisma.vectorNode.findUnique({
+            where: { id: agent.nodeId },
+            select: { host: true },
+          }),
+          prisma.environment.findUnique({
+            where: { id: agent.environmentId },
+            select: { name: true, team: { select: { name: true } } },
+          }),
+        ]);
 
-        const pipeline = alert.rule.pipelineId
-          ? await prisma.pipeline.findUnique({
-              where: { id: alert.rule.pipelineId },
-              select: { name: true },
-            })
-          : null;
+        for (const alert of firedAlerts) {
+          const pipeline = alert.rule.pipelineId
+            ? await prisma.pipeline.findUnique({
+                where: { id: alert.rule.pipelineId },
+                select: { name: true },
+              })
+            : null;
 
-        await deliverWebhooks(alert.rule.environmentId, {
-          alertId: alert.event.id,
-          status: alert.event.status as "firing" | "resolved",
-          ruleName: alert.rule.name,
-          severity: "warning",
-          environment: environment?.name ?? "Unknown",
-          pipeline: pipeline?.name,
-          metric: alert.rule.metric,
-          value: alert.event.value,
-          threshold: alert.rule.threshold,
-          message: alert.event.message ?? "",
-          timestamp: alert.event.firedAt.toISOString(),
-          dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/pipelines`,
-        });
+          await deliverWebhooks(alert.rule.environmentId, {
+            alertId: alert.event.id,
+            status: alert.event.status as "firing" | "resolved",
+            ruleName: alert.rule.name,
+            severity: "warning",
+            environment: envInfo?.name ?? "Unknown",
+            team: envInfo?.team?.name,
+            node: nodeInfo?.host ?? agent.nodeId,
+            pipeline: pipeline?.name,
+            metric: alert.rule.metric,
+            value: alert.event.value,
+            threshold: alert.rule.threshold,
+            message: alert.event.message ?? "",
+            timestamp: alert.event.firedAt.toISOString(),
+            dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/alerts`,
+          });
+        }
       }
     } catch (err) {
       console.error("Alert evaluation failed:", err);

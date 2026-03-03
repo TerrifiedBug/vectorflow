@@ -1,11 +1,14 @@
 import { spawn, type ChildProcess } from "child_process";
 import { writeFile, mkdir } from "fs/promises";
-import { dirname } from "path";
+import { dirname, join } from "path";
+import yaml from "js-yaml";
+import { AUDIT_LOG_PATH } from "@/server/services/audit";
 
 const VECTOR_BIN = process.env.VF_VECTOR_BIN ?? "vector";
+const VECTORFLOW_DATA_DIR = join(process.cwd(), ".vectorflow");
 const SYSTEM_CONFIG_PATH =
   process.env.VF_SYSTEM_CONFIG_PATH ??
-  "/var/lib/vectorflow/system-pipeline.yaml";
+  join(VECTORFLOW_DATA_DIR, "system-pipeline.yaml");
 
 let vectorProcess: ChildProcess | null = null;
 
@@ -17,13 +20,28 @@ export async function startSystemVector(configYaml: string): Promise<void> {
   // Ensure the config directory exists
   await mkdir(dirname(SYSTEM_CONFIG_PATH), { recursive: true });
 
+  // Parse the config, inject runtime paths, and re-serialize.
+  // The audit log source path and data_dir are runtime values that depend on
+  // the deployment environment, not user configuration.
+  const dataDir = join(VECTORFLOW_DATA_DIR, "vector-data");
+  await mkdir(dataDir, { recursive: true });
+
+  const config = yaml.load(configYaml) as Record<string, any>;
+  config.data_dir = dataDir;
+
+  // Override the audit_log source's include path with the actual write location
+  if (config.sources?.audit_log) {
+    config.sources.audit_log.include = [AUDIT_LOG_PATH];
+  }
+
+  const fullConfig = yaml.dump(config, { indent: 2, lineWidth: -1, noRefs: true });
+
   // Write config to disk
-  await writeFile(SYSTEM_CONFIG_PATH, configYaml);
+  await writeFile(SYSTEM_CONFIG_PATH, fullConfig);
 
   // Stop existing process if running
   await stopSystemVector();
 
-  // Spawn Vector with the config
   const proc = spawn(VECTOR_BIN, ["--config", SYSTEM_CONFIG_PATH], {
     stdio: ["ignore", "pipe", "pipe"],
   });

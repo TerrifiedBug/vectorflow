@@ -287,6 +287,7 @@ export async function evaluateAlerts(
           const event = await prisma.alertEvent.create({
             data: {
               alertRuleId: rule.id,
+              nodeId,
               status: "firing",
               value,
               message,

@@ -1,3 +1,4 @@
+import { join } from "path";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
@@ -48,7 +49,7 @@ export const pipelineRouter = router({
     .query(async () => {
       const pipeline = await prisma.pipeline.findFirst({
         where: { isSystem: true },
-        select: { id: true, name: true },
+        select: { id: true, name: true, isDraft: true, deployedAt: true },
       });
       return pipeline; // null if no system pipeline exists
     }),
@@ -319,7 +320,10 @@ export const pipelineRouter = router({
             kind: "SOURCE",
             componentKey: "audit_log",
             config: {
-              include: ["/var/lib/vectorflow/audit.jsonl"],
+              include: [
+                process.env.VF_AUDIT_LOG_PATH ??
+                  join(process.cwd(), ".vectorflow", "audit.jsonl"),
+              ],
               read_from: "beginning",
             },
             positionX: 200,
@@ -466,6 +470,7 @@ export const pipelineRouter = router({
       })
     )
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.graph_saved", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const existing = await prisma.pipeline.findUnique({
         where: { id: input.pipelineId },
