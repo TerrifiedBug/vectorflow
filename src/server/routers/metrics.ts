@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { metricStore } from "@/server/services/metric-store";
 import { prisma } from "@/lib/prisma";
 
@@ -145,24 +145,30 @@ export const metricsRouter = router({
    */
   getLiveRates: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      // Get all pipelines and their source components for this environment
-      const pipelines = await prisma.pipeline.findMany({
-        where: { environmentId: input.environmentId },
-        select: {
-          id: true,
-          nodes: { select: { componentKey: true, kind: true } },
-          environment: { select: { nodes: { select: { id: true } } } },
-        },
-      });
+      // Fetch pipelines and environment nodes in parallel (nodes are shared across all pipelines)
+      const [pipelines, envNodes] = await Promise.all([
+        prisma.pipeline.findMany({
+          where: { environmentId: input.environmentId },
+          select: {
+            id: true,
+            nodes: { select: { componentKey: true, kind: true } },
+          },
+        }),
+        prisma.vectorNode.findMany({
+          where: { environmentId: input.environmentId },
+          select: { id: true },
+        }),
+      ]);
 
+      const vectorNodeIds = envNodes.map((n) => n.id);
       const rates: Record<string, { eventsPerSec: number; bytesPerSec: number }> = {};
 
       for (const pipeline of pipelines) {
         let eventsPerSec = 0;
         let bytesPerSec = 0;
 
-        const vectorNodeIds = pipeline.environment.nodes.map((n) => n.id);
         const sourceKeys = pipeline.nodes
           .filter((n) => n.kind === "SOURCE")
           .map((n) => n.componentKey);
