@@ -6,6 +6,8 @@ import { ingestMetrics } from "@/server/services/metrics-ingest";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
 import { metricStore } from "@/server/services/metric-store";
+import { evaluateAlerts } from "@/server/services/alert-evaluator";
+import { deliverWebhooks } from "@/server/services/webhook-delivery";
 import { DeploymentMode } from "@/generated/prisma";
 
 let lastCleanup = 0;
@@ -304,6 +306,42 @@ export async function POST(request: Request) {
     checkNodeHealth().catch((err) =>
       console.error("Node health check error:", err),
     );
+
+    // Evaluate alert rules and deliver webhooks for any fired/resolved alerts
+    try {
+      const firedAlerts = await evaluateAlerts(agent.nodeId, agent.environmentId);
+
+      for (const alert of firedAlerts) {
+        const environment = await prisma.environment.findUnique({
+          where: { id: alert.rule.environmentId },
+          select: { name: true },
+        });
+
+        const pipeline = alert.rule.pipelineId
+          ? await prisma.pipeline.findUnique({
+              where: { id: alert.rule.pipelineId },
+              select: { name: true },
+            })
+          : null;
+
+        await deliverWebhooks(alert.rule.environmentId, {
+          alertId: alert.event.id,
+          status: alert.event.status as "firing" | "resolved",
+          ruleName: alert.rule.name,
+          severity: "warning",
+          environment: environment?.name ?? "Unknown",
+          pipeline: pipeline?.name,
+          metric: alert.rule.metric,
+          value: alert.event.value,
+          threshold: alert.rule.threshold,
+          message: alert.event.message ?? "",
+          timestamp: alert.event.firedAt.toISOString(),
+          dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/pipelines`,
+        });
+      }
+    } catch (err) {
+      console.error("Alert evaluation failed:", err);
+    }
 
     // Throttle cleanup to once per hour
     const ONE_HOUR = 60 * 60 * 1000;
