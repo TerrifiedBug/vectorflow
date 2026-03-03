@@ -266,7 +266,7 @@ export const pipelineRouter = router({
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.created", "Pipeline"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const environment = await prisma.environment.findUnique({
         where: { id: input.environmentId },
       });
@@ -282,6 +282,8 @@ export const pipelineRouter = router({
           name: input.name,
           description: input.description,
           environmentId: input.environmentId,
+          createdById: ctx.session.user?.id ?? null,
+          updatedById: ctx.session.user?.id ?? null,
         },
       });
     }),
@@ -291,7 +293,7 @@ export const pipelineRouter = router({
     // withAudit works without withTeamAccess — teamId/environmentId will be null
     // which is expected for system-level operations
     .use(withAudit("pipeline.system_created", "Pipeline"))
-    .mutation(async () => {
+    .mutation(async ({ ctx }) => {
       const systemEnv = await getOrCreateSystemEnvironment();
 
       return prisma.$transaction(async (tx) => {
@@ -310,6 +312,7 @@ export const pipelineRouter = router({
             name: "Audit Log Shipping",
             isSystem: true,
             environmentId: systemEnv.id,
+            createdById: ctx.session.user?.id ?? null,
           },
         });
 
@@ -418,6 +421,7 @@ export const pipelineRouter = router({
             description: source.description,
             environmentId: source.environmentId,
             globalConfig: source.globalConfig ?? undefined,
+            createdById: ctx.session.user?.id ?? null,
             updatedById: ctx.session.user?.id,
           },
         });
