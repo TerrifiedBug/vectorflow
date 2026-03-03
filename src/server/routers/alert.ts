@@ -5,6 +5,10 @@ import { prisma } from "@/lib/prisma";
 import { Prisma, AlertMetric, AlertCondition } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import crypto from "crypto";
+import {
+  type WebhookPayload,
+  formatWebhookMessage,
+} from "@/server/services/webhook-delivery";
 
 export const alertRouter = router({
   // ─── Alert Rules ───────────────────────────────────────────────────
@@ -236,7 +240,11 @@ export const alertRouter = router({
     .mutation(async ({ input }) => {
       const webhook = await prisma.alertWebhook.findUnique({
         where: { id: input.id },
-        include: { environment: { select: { name: true } } },
+        include: {
+          environment: {
+            select: { name: true, team: { select: { name: true } } },
+          },
+        },
       });
       if (!webhook) {
         throw new TRPCError({
@@ -245,21 +253,28 @@ export const alertRouter = router({
         });
       }
 
-      const payload = {
+      const payload: WebhookPayload = {
         alertId: "test-alert-id",
-        status: "firing" as const,
+        status: "firing",
         ruleName: "Test Alert Rule",
         severity: "warning",
         environment: webhook.environment.name,
+        team: webhook.environment.team?.name,
+        node: "test-node.example.com",
         metric: "cpu_usage",
         value: 85.5,
         threshold: 80,
-        message: "This is a test alert from VectorFlow",
+        message: "CPU usage is 85.50 (threshold: > 80)",
         timestamp: new Date().toISOString(),
-        dashboardUrl: "",
+        dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/alerts`,
       };
 
-      const body = JSON.stringify(payload);
+      const outgoing = {
+        ...payload,
+        content: formatWebhookMessage(payload),
+      };
+
+      const body = JSON.stringify(outgoing);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         ...((webhook.headers as Record<string, string>) ?? {}),
@@ -323,6 +338,9 @@ export const alertRouter = router({
               threshold: true,
               pipeline: { select: { id: true, name: true } },
             },
+          },
+          node: {
+            select: { id: true, host: true },
           },
         },
         orderBy: { firedAt: "desc" },

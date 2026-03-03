@@ -7,6 +7,12 @@ export async function register() {
       "@/server/services/system-vector"
     );
 
+    // Ensure the system environment has a team (backfill for pre-system-team installs)
+    const { getOrCreateSystemEnvironment } = await import(
+      "@/server/services/system-environment"
+    );
+    await getOrCreateSystemEnvironment();
+
     const systemPipeline = await prisma.pipeline.findFirst({
       where: { isSystem: true, isDraft: false, deployedAt: { not: null } },
       select: { id: true },

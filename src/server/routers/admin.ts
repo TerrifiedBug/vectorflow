@@ -105,6 +105,7 @@ export const adminRouter = router({
     .use(requireSuperAdmin())
     .query(async () => {
       return prisma.team.findMany({
+        where: { name: { not: "__system__" } },
         select: { id: true, name: true },
         orderBy: { name: "asc" },
       });

@@ -100,6 +100,14 @@ async function resolveTeamId(
     return webhook?.environment.teamId ?? null;
   }
 
+  if (inputData.id && entityType === "VrlSnippet") {
+    const snippet = await prisma.vrlSnippet.findUnique({
+      where: { id: inputData.id as string },
+      select: { teamId: true },
+    });
+    return snippet?.teamId ?? null;
+  }
+
   return null;
 }
 
@@ -180,6 +188,105 @@ async function resolveEnvironmentId(
 }
 
 /**
+ * Compute a shallow diff between two entity snapshots.
+ * Returns only fields that changed, with { old, new } values.
+ */
+function computeDiff(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): Record<string, { old: unknown; new: unknown }> | null {
+  const diff: Record<string, { old: unknown; new: unknown }> = {};
+  const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+
+  for (const key of allKeys) {
+    if (key === "updatedAt" || key === "createdAt") continue;
+    if (SENSITIVE_KEYS.has(key)) {
+      if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
+        diff[key] = { old: "[REDACTED]", new: "[REDACTED]" };
+      }
+      continue;
+    }
+
+    const oldVal = before[key];
+    const newVal = after[key];
+    if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+      diff[key] = { old: oldVal, new: newVal };
+    }
+  }
+
+  return Object.keys(diff).length > 0 ? diff : null;
+}
+
+/**
+ * Map entity types to their Prisma loaders for diff snapshots.
+ * Sensitive fields excluded at query level.
+ */
+const ENTITY_LOADERS: Record<string, (id: string) => Promise<Record<string, unknown> | null>> = {
+  Pipeline: (id) =>
+    prisma.pipeline.findUnique({ where: { id } }) as Promise<Record<string, unknown> | null>,
+  VrlSnippet: (id) =>
+    prisma.vrlSnippet.findUnique({ where: { id } }) as Promise<Record<string, unknown> | null>,
+  User: (id) =>
+    prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true, name: true, email: true,
+        authMethod: true, mustChangePassword: true,
+        totpEnabled: true,
+      },
+    }) as Promise<Record<string, unknown> | null>,
+  VectorNode: (id) =>
+    prisma.vectorNode.findUnique({ where: { id } }) as Promise<Record<string, unknown> | null>,
+  Environment: (id) =>
+    prisma.environment.findUnique({ where: { id } }) as Promise<Record<string, unknown> | null>,
+  Secret: (id) =>
+    prisma.secret.findUnique({
+      where: { id },
+      select: {
+        id: true, name: true, environmentId: true, createdAt: true, updatedAt: true,
+      },
+    }) as Promise<Record<string, unknown> | null>,
+  SystemSettings: (_id) =>
+    prisma.systemSettings.findFirst() as Promise<Record<string, unknown> | null>,
+  AlertRule: (id) =>
+    prisma.alertRule.findUnique({ where: { id } }) as Promise<Record<string, unknown> | null>,
+  AlertWebhook: (id) =>
+    prisma.alertWebhook.findUnique({
+      where: { id },
+      select: {
+        id: true, url: true, environmentId: true,
+        enabled: true, createdAt: true, updatedAt: true,
+      },
+    }) as Promise<Record<string, unknown> | null>,
+  Certificate: (id) =>
+    prisma.certificate.findUnique({
+      where: { id },
+      select: {
+        id: true, name: true, environmentId: true,
+        createdAt: true,
+      },
+    }) as Promise<Record<string, unknown> | null>,
+  Team: (id) =>
+    prisma.team.findUnique({ where: { id } }) as Promise<Record<string, unknown> | null>,
+  Template: (id) =>
+    prisma.template.findUnique({ where: { id } }) as Promise<Record<string, unknown> | null>,
+};
+
+async function loadEntity(
+  entityType: string,
+  entityId: string | undefined,
+): Promise<Record<string, unknown> | null> {
+  if (!entityId) return null;
+  const loader = ENTITY_LOADERS[entityType];
+  if (!loader) return null;
+  try {
+    return await loader(entityId);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * tRPC middleware factory for audit logging.
  *
  * Usage: procedure.use(withAudit("pipeline.created", "Pipeline"))
@@ -190,11 +297,12 @@ async function resolveEnvironmentId(
  */
 export function withAudit(action: string, entityType: string) {
   return middleware(async ({ ctx, getRawInput, next }) => {
-    // Capture input before the mutation (entity may be deleted after)
     let inputData: unknown;
     try { inputData = await getRawInput(); } catch { /* ignore */ }
 
-    // Pre-resolve teamId and environmentId for delete operations (entity won't exist after next())
+    const input = inputData as Record<string, any> | undefined;
+    const preloadId = input?.id ?? input?.pipelineId ?? input?.userId;
+
     const ctxTeamId = (ctx as any).teamId ?? null;
     let resolvedTeamId: string | null = ctxTeamId;
     let resolvedEnvironmentId: string | null = null;
@@ -213,15 +321,20 @@ export function withAudit(action: string, entityType: string) {
       } catch { /* ignore */ }
     }
 
+    // Snapshot before mutation (only for update actions)
+    const isUpdate = !action.includes("created") && !action.includes("deleted");
+    let beforeSnapshot: Record<string, unknown> | null = null;
+    if (isUpdate && preloadId) {
+      beforeSnapshot = await loadEntity(entityType, preloadId as string);
+    }
+
     const result = await next();
 
     if (result.ok) {
       const userId = ctx.session?.user?.id;
       if (userId) {
         const data = result.data as Record<string, any> | undefined;
-        const input = inputData as Record<string, any> | undefined;
 
-        // Extract entity ID: prefer result.id, fall back to input fields
         const entityId =
           (data && typeof data === "object" && "id" in data
             ? String(data.id)
@@ -233,7 +346,15 @@ export function withAudit(action: string, entityType: string) {
           input?.versionId ??
           userId;
 
-        // Resolve teamId if not yet known
+        // Compute diff for update operations
+        let diff: Record<string, { old: unknown; new: unknown }> | null = null;
+        if (isUpdate && beforeSnapshot) {
+          const afterSnapshot = await loadEntity(entityType, entityId);
+          if (afterSnapshot) {
+            diff = computeDiff(beforeSnapshot, afterSnapshot);
+          }
+        }
+
         let teamId = resolvedTeamId;
         if (!teamId) {
           try {
@@ -244,7 +365,6 @@ export function withAudit(action: string, entityType: string) {
           } catch { /* ignore */ }
         }
 
-        // Resolve environmentId if not yet known
         let environmentId = resolvedEnvironmentId;
         if (!environmentId) {
           try {
@@ -260,6 +380,7 @@ export function withAudit(action: string, entityType: string) {
           action,
           entityType,
           entityId,
+          diff: diff ?? undefined,
           teamId,
           environmentId,
           metadata: {

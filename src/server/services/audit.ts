@@ -1,8 +1,10 @@
-import { appendFile } from "fs/promises";
+import { appendFile, mkdir } from "fs/promises";
+import { join, dirname } from "path";
 import { prisma } from "@/lib/prisma";
 
-const AUDIT_LOG_PATH =
-  process.env.VF_AUDIT_LOG_PATH ?? "/var/lib/vectorflow/audit.jsonl";
+export const AUDIT_LOG_PATH =
+  process.env.VF_AUDIT_LOG_PATH ??
+  join(process.cwd(), ".vectorflow", "audit.jsonl");
 
 export async function writeAuditLog(params: {
   userId: string;
@@ -37,6 +39,7 @@ export async function writeAuditLog(params: {
     }) + "\n";
 
   try {
+    await mkdir(dirname(AUDIT_LOG_PATH), { recursive: true });
     await appendFile(AUDIT_LOG_PATH, jsonLine);
   } catch (error) {
     // File write failure should not break audit logging to DB

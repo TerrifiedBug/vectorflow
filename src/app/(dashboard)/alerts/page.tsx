@@ -74,6 +74,8 @@ const CONDITION_LABELS: Record<string, string> = {
   eq: "=",
 };
 
+const BINARY_METRICS = new Set(["node_unreachable", "pipeline_crashed"]);
+
 const CONDITION_LABELS_LONG: Record<string, string> = {
   gt: "Greater than (>)",
   lt: "Less than (<)",
@@ -207,7 +209,8 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
   };
 
   const handleSubmit = () => {
-    if (!form.name || !form.metric || !form.condition || !form.threshold) {
+    const isBinary = BINARY_METRICS.has(form.metric);
+    if (!form.name || !form.metric || (!isBinary && !form.threshold)) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -399,7 +402,14 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
                   <Select
                     value={form.metric}
                     onValueChange={(v) =>
-                      setForm((f) => ({ ...f, metric: v }))
+                      setForm((f) => ({
+                        ...f,
+                        metric: v,
+                        condition: BINARY_METRICS.has(v) ? "eq" : "gt",
+                        ...(BINARY_METRICS.has(v)
+                          ? { threshold: "1" }
+                          : {}),
+                      }))
                     }
                   >
                     <SelectTrigger id="rule-metric">
@@ -415,41 +425,23 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="rule-condition">Condition</Label>
-                  <Select
-                    value={form.condition}
-                    onValueChange={(v) =>
-                      setForm((f) => ({ ...f, condition: v }))
-                    }
-                  >
-                    <SelectTrigger id="rule-condition">
-                      <SelectValue placeholder="Select condition" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.values(AlertCondition).map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {CONDITION_LABELS_LONG[c] ?? c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
               </>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="rule-threshold">Threshold</Label>
-              <Input
-                id="rule-threshold"
-                type="number"
-                placeholder="80"
-                value={form.threshold}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, threshold: e.target.value }))
-                }
-              />
-            </div>
+            {!BINARY_METRICS.has(form.metric) && (
+              <div className="space-y-2">
+                <Label htmlFor="rule-threshold">Threshold</Label>
+                <Input
+                  id="rule-threshold"
+                  type="number"
+                  placeholder="80"
+                  value={form.threshold}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, threshold: e.target.value }))
+                  }
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="rule-duration">Duration (seconds)</Label>
@@ -917,6 +909,7 @@ function AlertHistorySection({ environmentId }: { environmentId: string }) {
       message: string | null;
       firedAt: Date;
       resolvedAt: Date | null;
+      node: { id: string; host: string } | null;
       alertRule: {
         id: string;
         name: string;
@@ -989,8 +982,10 @@ function AlertHistorySection({ environmentId }: { environmentId: string }) {
               <TableRow>
                 <TableHead>Timestamp</TableHead>
                 <TableHead>Rule Name</TableHead>
+                <TableHead>Node</TableHead>
+                <TableHead>Pipeline</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Metric Value</TableHead>
+                <TableHead>Value</TableHead>
                 <TableHead>Message</TableHead>
               </TableRow>
             </TableHeader>
@@ -1003,6 +998,12 @@ function AlertHistorySection({ environmentId }: { environmentId: string }) {
                   <TableCell className="font-medium">
                     {event.alertRule.name}
                   </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {event.node?.host ?? "-"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {event.alertRule.pipeline?.name ?? "-"}
+                  </TableCell>
                   <TableCell>
                     <StatusBadge
                       variant={
@@ -1013,7 +1014,9 @@ function AlertHistorySection({ environmentId }: { environmentId: string }) {
                     </StatusBadge>
                   </TableCell>
                   <TableCell className="font-mono">
-                    {event.value}
+                    {typeof event.value === "number"
+                      ? event.value.toFixed(2)
+                      : event.value}
                   </TableCell>
                   <TableCell className="max-w-[300px] truncate text-muted-foreground">
                     {event.message || "-"}

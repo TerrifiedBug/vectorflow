@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -63,12 +62,7 @@ export function TeamSelector() {
       <SelectContent>
         {teams.map((team) => (
           <SelectItem key={team.id} value={team.id}>
-            <div className="flex items-center justify-between gap-2 w-full">
-              <span>{team.name}</span>
-              <Badge variant="outline" className="text-xs px-1.5 py-0">
-                {team._count.members} members
-              </Badge>
-            </div>
+            {team.name}
           </SelectItem>
         ))}
       </SelectContent>

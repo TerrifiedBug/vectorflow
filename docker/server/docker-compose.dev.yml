@@ -31,6 +31,8 @@ services:
       DATABASE_URL: postgresql://vectorflow:${POSTGRES_PASSWORD:-vectorflow}@postgres:5432/vectorflow
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       AUTH_TRUST_HOST: "true"
+    volumes:
+      - vfdata:/app/.vectorflow
     env_file:
       - path: .env
         required: false
@@ -39,3 +41,5 @@ volumes:
   pgdata:
     name: vectorflow-pgdata
     external: true
+  vfdata:
+    name: vectorflow-data

@@ -48,7 +48,10 @@ export const teamRouter = router({
     });
 
     return prisma.team.findMany({
-      where: user?.isSuperAdmin ? {} : { members: { some: { userId } } },
+      where: {
+        name: { not: "__system__" },
+        ...(user?.isSuperAdmin ? {} : { members: { some: { userId } } }),
+      },
       include: {
         _count: { select: { members: true, environments: true } },
       },
