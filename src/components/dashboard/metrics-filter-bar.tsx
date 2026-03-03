@@ -17,7 +17,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
 export type TimeRange = "1h" | "6h" | "1d" | "7d";
@@ -128,7 +127,7 @@ export function MetricsFilterBar({
   onTimeRangeChange,
 }: MetricsFilterBarProps) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border bg-card px-4 py-2 sticky top-0 z-10">
+    <div className="flex items-center justify-between gap-4 rounded-lg border bg-card px-4 py-2 sticky top-0 z-[5]">
       <div className="flex items-center gap-2">
         <MultiSelect
           label="Node"
@@ -144,33 +143,42 @@ export function MetricsFilterBar({
         />
         <div className="flex items-center gap-2 ml-2 pl-2 border-l">
           <span className="text-xs text-muted-foreground whitespace-nowrap">Group by</span>
-          <ToggleGroup
-            type="single"
-            value={groupBy}
-            onValueChange={(v) => {
-              if (v) onGroupByChange(v as GroupBy);
-            }}
-            size="sm"
-          >
-            <ToggleGroupItem value="pipeline">Pipeline</ToggleGroupItem>
-            <ToggleGroupItem value="node">Node</ToggleGroupItem>
-            <ToggleGroupItem value="aggregate">Aggregate</ToggleGroupItem>
-          </ToggleGroup>
+          <div className="flex items-center gap-1">
+            {(["pipeline", "node", "aggregate"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => onGroupByChange(v)}
+                className={cn(
+                  "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
+                  groupBy === v
+                    ? "bg-accent text-accent-foreground border-transparent"
+                    : "bg-transparent text-muted-foreground border-border hover:bg-muted"
+                )}
+              >
+                {v.charAt(0).toUpperCase() + v.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
-      <ToggleGroup
-        type="single"
-        value={timeRange}
-        onValueChange={(v) => {
-          if (v) onTimeRangeChange(v as TimeRange);
-        }}
-        size="sm"
-      >
-        <ToggleGroupItem value="1h">1h</ToggleGroupItem>
-        <ToggleGroupItem value="6h">6h</ToggleGroupItem>
-        <ToggleGroupItem value="1d">1d</ToggleGroupItem>
-        <ToggleGroupItem value="7d">7d</ToggleGroupItem>
-      </ToggleGroup>
+      <div className="flex items-center gap-1">
+        {(["1h", "6h", "1d", "7d"] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => onTimeRangeChange(v)}
+            className={cn(
+              "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
+              timeRange === v
+                ? "bg-accent text-accent-foreground border-transparent"
+                : "bg-transparent text-muted-foreground border-border hover:bg-muted"
+            )}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -179,16 +179,6 @@ export default function TemplatesPage() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Templates</h2>
-          <p className="text-muted-foreground">
-            Create pipelines from saved templates
-          </p>
-        </div>
-      </div>
-
       {/* Environment notice */}
       {!selectedEnvironmentId && (
         <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">

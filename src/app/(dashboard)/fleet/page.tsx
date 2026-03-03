@@ -80,15 +80,6 @@ export default function FleetPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Fleet</h2>
-          <p className="text-muted-foreground">
-            Manage your Vector node fleet
-          </p>
-        </div>
-      </div>
-
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (

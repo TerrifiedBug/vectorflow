@@ -24,16 +24,20 @@ import type { ReactNode } from "react";
 
 type TSMap = Record<string, { t: number; v: number }[]>;
 
-// 8 distinguishable colors cycling through shadcn chart CSS variables
+// 12 perceptually distinct colors (~30° hue spacing) for multi-series charts
 const SERIES_COLORS = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-  "oklch(0.546 0.245 262.881)", // blue
-  "oklch(0.648 0.200 145.736)", // green
-  "oklch(0.769 0.188 70.08)", // amber
+  "oklch(0.65 0.22 41)",    // orange
+  "oklch(0.55 0.24 265)",   // blue
+  "oklch(0.65 0.17 163)",   // teal
+  "oklch(0.63 0.26 304)",   // purple
+  "oklch(0.75 0.19 84)",    // yellow
+  "oklch(0.65 0.25 17)",    // red
+  "oklch(0.60 0.20 146)",   // green
+  "oklch(0.70 0.18 200)",   // cyan
+  "oklch(0.58 0.22 330)",   // magenta
+  "oklch(0.72 0.16 110)",   // lime
+  "oklch(0.55 0.20 240)",   // indigo
+  "oklch(0.68 0.22 55)",    // amber
 ];
 
 /** Convert a label to a CSS-safe slug for use as chart config keys */

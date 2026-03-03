@@ -202,7 +202,8 @@ export function TotpSetupCard({ totpEnabled, authMethod }: TotpSetupCardProps) {
             <div className="space-y-4">
               {qrDataUrl && (
                 <div className="flex justify-center">
-                  <img src={qrDataUrl} alt="TOTP QR Code" className="rounded-lg border" />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qrDataUrl} alt="TOTP QR Code" className="rounded-lg border" />
                 </div>
               )}
 
@@ -218,7 +219,7 @@ export function TotpSetupCard({ totpEnabled, authMethod }: TotpSetupCardProps) {
                       size="icon"
                       className="absolute right-1 h-7 w-7"
                       onClick={handleCopySecret}
-                      title="Copy secret key"
+                      aria-label="Copy secret key"
                     >
                       <Copy className="h-3.5 w-3.5" />
                     </Button>
@@ -242,7 +243,7 @@ export function TotpSetupCard({ totpEnabled, authMethod }: TotpSetupCardProps) {
                     size="icon"
                     className="absolute right-2 top-2 h-7 w-7"
                     onClick={handleCopyBackupCodes}
-                    title="Copy backup codes"
+                    aria-label="Copy backup codes"
                   >
                     <Copy className="h-3.5 w-3.5" />
                   </Button>

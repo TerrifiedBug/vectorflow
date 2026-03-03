@@ -169,7 +169,7 @@ export default function EnvironmentDetailPage({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild>
+          <Button variant="ghost" size="icon" asChild aria-label="Back to environments">
             <Link href="/environments">
               <ArrowLeft className="h-4 w-4" />
             </Link>
@@ -357,8 +357,9 @@ export default function EnvironmentDetailPage({
                     <Button
                       variant="outline"
                       size="icon"
-                      onClick={() => {
-                        copyToClipboard(enrollmentToken);
+                      aria-label="Copy enrollment token"
+                      onClick={async () => {
+                        await copyToClipboard(enrollmentToken);
                         toast.success("Token copied to clipboard");
                       }}
                     >

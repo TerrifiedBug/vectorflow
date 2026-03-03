@@ -1,6 +1,8 @@
 export async function register() {
+  // Only run in the Node.js runtime — Edge doesn't support child_process/fs/path.
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
   // Start system Vector process if a deployed system pipeline exists.
-  // We lazy-import to avoid pulling server-only modules into edge/client builds.
   try {
     const { prisma } = await import("@/lib/prisma");
     const { startSystemVector } = await import(

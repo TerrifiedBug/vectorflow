@@ -34,13 +34,7 @@ export default function EnvironmentsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Environments</h2>
-          <p className="text-muted-foreground">
-            Manage your deployment environments
-          </p>
-        </div>
+      <div className="flex justify-end">
         <Button asChild>
           <Link href="/environments/new">
             <Plus className="mr-2 h-4 w-4" />

@@ -13,9 +13,6 @@ import {
   HardDrive,
   Network,
 } from "lucide-react";
-import Link from "next/link";
-
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useEnvironmentStore } from "@/stores/environment-store";
@@ -97,21 +94,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
-          <p className="text-muted-foreground">
-            Operational overview of your VectorFlow platform
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button asChild>
-            <Link href="/pipelines/new">New Pipeline</Link>
-          </Button>
-        </div>
-      </div>
-
       {/* KPI Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {/* Total Nodes */}
