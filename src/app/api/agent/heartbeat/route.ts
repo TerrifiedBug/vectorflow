@@ -6,6 +6,7 @@ import { ingestMetrics } from "@/server/services/metrics-ingest";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
 import { metricStore } from "@/server/services/metric-store";
+import { DeploymentMode } from "@/generated/prisma";
 
 let lastCleanup = 0;
 
@@ -60,11 +61,12 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { pipelines, hostMetrics, agentVersion, vectorVersion } = body as {
+    const { pipelines, hostMetrics, agentVersion, vectorVersion, deploymentMode } = body as {
       pipelines: PipelineStatus[];
       hostMetrics?: HostMetrics;
       agentVersion?: string;
       vectorVersion?: string;
+      deploymentMode?: DeploymentMode;
     };
 
     if (!Array.isArray(pipelines)) {
@@ -85,6 +87,9 @@ export async function POST(request: Request) {
         status: "HEALTHY",
         ...(agentVersion ? { agentVersion } : {}),
         ...(vectorVersion ? { vectorVersion } : {}),
+        ...(deploymentMode && Object.values(DeploymentMode).includes(deploymentMode)
+          ? { deploymentMode }
+          : {}),
       },
     });
 
