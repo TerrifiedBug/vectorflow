@@ -4,6 +4,7 @@ import { router, protectedProcedure, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { withAudit } from "@/server/middleware/audit";
+import { checkServerVersion, checkAgentVersion } from "@/server/services/version-check";
 
 const SETTINGS_ID = "singleton";
 
@@ -252,5 +253,15 @@ export const settingsRouter = router({
           message: `Failed to connect to OIDC provider: ${error instanceof Error ? error.message : "Unknown error"}`,
         });
       }
+    }),
+
+  checkVersion: protectedProcedure
+    .input(z.object({ force: z.boolean().optional() }).optional())
+    .query(async ({ input }) => {
+      const [server, agent] = await Promise.all([
+        checkServerVersion(input?.force),
+        checkAgentVersion(input?.force),
+      ]);
+      return { server, agent };
     }),
 });
