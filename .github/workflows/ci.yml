@@ -14,7 +14,7 @@ env:
 
 jobs:
   check:
-    name: Type Check
+    name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +30,9 @@ jobs:
 
       - name: Generate Prisma client
         run: npx prisma generate
+
+      - name: Lint
+        run: pnpm lint
 
       - name: Type check
         run: npx tsc --noEmit

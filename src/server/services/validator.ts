@@ -32,8 +32,9 @@ export async function validateConfig(
 
     const warnings = parseVectorWarnings(stderr || "");
     return { valid: true, errors: [], warnings };
-  } catch (err: any) {
-    if (err.code === "ENOENT") {
+  } catch (err: unknown) {
+    const execErr = err as NodeJS.ErrnoException & { stdout?: string; stderr?: string };
+    if (execErr.code === "ENOENT") {
       return {
         valid: false,
         errors: [
@@ -45,7 +46,7 @@ export async function validateConfig(
         warnings: [],
       };
     }
-    const output = [err.stdout, err.stderr, err.message]
+    const output = [execErr.stdout, execErr.stderr, execErr.message]
       .filter(Boolean)
       .join("\n");
     const errors = parseVectorErrors(output);

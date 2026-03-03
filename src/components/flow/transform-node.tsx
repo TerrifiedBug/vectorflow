@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -54,7 +54,7 @@ function TransformNodeComponent({
   selected,
 }: NodeProps<TransformNodeType>) {
   const { componentDef, componentKey, config, metrics, disabled } = data;
-  const Icon = getIcon(componentDef.icon);
+  const Icon = useMemo(() => getIcon(componentDef.icon), [componentDef.icon]);
   const configSummary = getConfigSummary(config);
 
   return (
@@ -74,6 +74,7 @@ function TransformNodeComponent({
 
       {/* Header bar */}
       <div className="flex items-center gap-2 rounded-t-lg bg-node-transform px-3 py-2 text-node-transform-foreground">
+        {/* eslint-disable-next-line react-hooks/static-components */}
         <Icon className="h-4 w-4 shrink-0" />
         <span className="truncate text-sm font-medium">
           {componentDef.displayName}

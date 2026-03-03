@@ -13,6 +13,16 @@ import {
 import type { VectorComponentDef } from "@/lib/vector/types";
 import { findComponentDef } from "@/lib/vector/catalog";
 
+/** Shape of node.data used throughout the flow editor */
+interface FlowNodeData {
+  componentDef: VectorComponentDef;
+  componentKey: string;
+  config: Record<string, unknown>;
+  disabled?: boolean;
+  metrics?: NodeMetricsData;
+  isSystemLocked?: boolean;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
@@ -522,19 +532,19 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
 
     const payload = {
       nodes: selectedNodes.map((n) => ({
-        componentKey: (n.data as any).componentKey as string,
-        componentType: ((n.data as any).componentDef as any).type as string,
-        kind: ((n.data as any).componentDef as any).kind as string,
-        config: (n.data as any).config as Record<string, unknown>,
-        disabled: !!(n.data as any).disabled,
+        componentKey: (n.data as unknown as FlowNodeData).componentKey,
+        componentType: (n.data as unknown as FlowNodeData).componentDef.type,
+        kind: (n.data as unknown as FlowNodeData).componentDef.kind,
+        config: (n.data as unknown as FlowNodeData).config,
+        disabled: !!(n.data as unknown as FlowNodeData).disabled,
         relativePosition: { x: n.position.x - cx, y: n.position.y - cy },
       })),
       edges: selectedEdges.map((e) => {
         const sn = state.nodes.find((n) => n.id === e.source);
         const tn = state.nodes.find((n) => n.id === e.target);
         return {
-          sourceKey: sn ? ((sn.data as any).componentKey as string) : "",
-          targetKey: tn ? ((tn.data as any).componentKey as string) : "",
+          sourceKey: sn ? (sn.data as unknown as FlowNodeData).componentKey : "",
+          targetKey: tn ? (tn.data as unknown as FlowNodeData).componentKey : "",
           sourcePort: (e.sourceHandle as string) ?? null,
         };
       }),
@@ -552,9 +562,9 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       const node = selectedNodes[0];
       set({
         clipboard: {
-          componentDef: (node.data as any).componentDef,
-          componentKey: (node.data as any).componentKey,
-          config: { ...(node.data as any).config },
+          componentDef: (node.data as unknown as FlowNodeData).componentDef,
+          componentKey: (node.data as unknown as FlowNodeData).componentKey,
+          config: { ...(node.data as unknown as FlowNodeData).config },
           position: { x: node.position.x, y: node.position.y },
         },
       });
@@ -601,7 +611,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     const cx = 400;
     const cy = 300;
 
-    const existingKeys = new Set(state.nodes.map((n) => (n.data as any).componentKey as string));
+    const existingKeys = new Set(state.nodes.map((n) => (n.data as unknown as FlowNodeData).componentKey));
     const keyMap = new Map<string, string>();
 
     const newNodes: Node[] = payload.nodes.map((pn) => {
@@ -641,10 +651,10 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     const newEdges: Edge[] = payload.edges
       .map((pe) => {
         const sourceNode = newNodes.find(
-          (n) => (n.data as any).componentKey === keyMap.get(pe.sourceKey)
+          (n) => (n.data as unknown as FlowNodeData).componentKey === keyMap.get(pe.sourceKey)
         );
         const targetNode = newNodes.find(
-          (n) => (n.data as any).componentKey === keyMap.get(pe.targetKey)
+          (n) => (n.data as unknown as FlowNodeData).componentKey === keyMap.get(pe.targetKey)
         );
         if (!sourceNode || !targetNode) return null;
         return {

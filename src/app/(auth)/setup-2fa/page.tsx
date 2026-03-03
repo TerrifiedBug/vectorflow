@@ -84,6 +84,7 @@ export default function Setup2FAPage() {
   // Auto-start setup when page loads
   useEffect(() => {
     if (me && !me.totpEnabled && !started && me.authMethod !== "OIDC") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStarted(true);
       setupMutation.mutate();
     }
@@ -141,6 +142,7 @@ export default function Setup2FAPage() {
           <div className="space-y-4">
             {qrDataUrl && (
               <div className="flex justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={qrDataUrl} alt="TOTP QR Code" className="rounded-lg border" />
               </div>
             )}

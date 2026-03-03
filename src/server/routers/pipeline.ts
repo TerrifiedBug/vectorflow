@@ -608,7 +608,7 @@ export const pipelineRouter = router({
           where: { pipelineId: input.pipelineId },
         });
 
-        const createdNodes = await Promise.all(
+        await Promise.all(
           input.nodes.map((node) =>
             tx.pipelineNode.create({
               data: {
@@ -626,7 +626,7 @@ export const pipelineRouter = router({
           )
         );
 
-        const createdEdges = await Promise.all(
+        await Promise.all(
           input.edges.map((edge) =>
             tx.pipelineEdge.create({
               data: {

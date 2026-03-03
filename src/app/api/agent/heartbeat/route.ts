@@ -307,8 +307,8 @@ export async function POST(request: Request) {
             requestId: result.requestId,
             pipelineId: request.pipelineId,
             componentKey: result.componentKey ?? "",
-            events: (result.events ?? []) as any,
-            schema: (result.schema ?? []) as any,
+            events: (result.events ?? []) as Prisma.InputJsonValue,
+            schema: (result.schema ?? []) as Prisma.InputJsonValue,
             error: result.error ?? null,
           },
         });

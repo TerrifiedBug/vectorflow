@@ -246,6 +246,7 @@ const ENTITY_LOADERS: Record<string, (id: string) => Promise<Record<string, unkn
         id: true, name: true, environmentId: true, createdAt: true, updatedAt: true,
       },
     }) as Promise<Record<string, unknown> | null>,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   SystemSettings: (_id) =>
     prisma.systemSettings.findFirst() as Promise<Record<string, unknown> | null>,
   AlertRule: (id) =>
@@ -300,10 +301,10 @@ export function withAudit(action: string, entityType: string) {
     let inputData: unknown;
     try { inputData = await getRawInput(); } catch { /* ignore */ }
 
-    const input = inputData as Record<string, any> | undefined;
+    const input = inputData as Record<string, unknown> | undefined;
     const preloadId = input?.id ?? input?.pipelineId ?? input?.userId;
 
-    const ctxTeamId = (ctx as any).teamId ?? null;
+    const ctxTeamId = (ctx as Record<string, unknown>).teamId as string | null ?? null;
     let resolvedTeamId: string | null = ctxTeamId;
     let resolvedEnvironmentId: string | null = null;
     if (action.includes("deleted")) {
@@ -333,9 +334,9 @@ export function withAudit(action: string, entityType: string) {
     if (result.ok) {
       const userId = ctx.session?.user?.id;
       if (userId) {
-        const data = result.data as Record<string, any> | undefined;
+        const data = result.data as Record<string, unknown> | undefined;
 
-        const entityId =
+        const entityId = (
           (data && typeof data === "object" && "id" in data
             ? String(data.id)
             : undefined) ??
@@ -344,7 +345,8 @@ export function withAudit(action: string, entityType: string) {
           input?.teamId ??
           input?.pipelineId ??
           input?.versionId ??
-          userId;
+          userId
+        ) as string;
 
         // Compute diff for update operations
         let diff: Record<string, { old: unknown; new: unknown }> | null = null;
@@ -387,7 +389,7 @@ export function withAudit(action: string, entityType: string) {
             timestamp: new Date().toISOString(),
             ...(inputData ? { input: sanitizeInput(inputData) } : {}),
           },
-          ipAddress: (ctx as any).ipAddress ?? null,
+          ipAddress: (ctx as Record<string, unknown>).ipAddress as string | null ?? null,
           userEmail: ctx.session?.user?.email ?? null,
           userName: ctx.session?.user?.name ?? null,
         }).catch(() => {});

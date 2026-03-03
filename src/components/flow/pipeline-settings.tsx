@@ -32,7 +32,9 @@ export function PipelineSettings() {
 
   // Derive the config object minus log_level for the JSON editor
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { log_level, ...rest } = globalConfig ?? {};
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setJsonText(
       Object.keys(rest).length > 0 ? JSON.stringify(rest, null, 2) : "",
     );

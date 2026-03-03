@@ -31,7 +31,7 @@ const kindMeta: Record<
 };
 
 function DraggableItem({ def }: { def: VectorComponentDef }) {
-  const Icon = getIcon(def.icon);
+  const Icon = useMemo(() => getIcon(def.icon), [def.icon]);
   const meta = kindMeta[def.kind];
 
   function handleDragStart(event: React.DragEvent<HTMLDivElement>) {
@@ -58,6 +58,7 @@ function DraggableItem({ def }: { def: VectorComponentDef }) {
           "text-white"
         )}
       >
+        {/* eslint-disable-next-line react-hooks/static-components */}
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">

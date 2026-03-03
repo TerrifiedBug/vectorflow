@@ -73,7 +73,20 @@ export async function queryComponents(
     });
     const data = await res.json();
     // Parse and normalize the response
-    return (data.data?.components?.edges || []).map((edge: any) => {
+    interface VectorGraphQLEdge {
+      node: {
+        __typename: string;
+        componentId: string;
+        componentType: string;
+        metrics?: {
+          receivedEventsTotal?: { receivedEventsTotal: number };
+          sentEventsTotal?: { sentEventsTotal: number };
+          receivedBytesTotal?: { receivedBytesTotal: number };
+          sentBytesTotal?: { sentBytesTotal: number };
+        };
+      };
+    }
+    return (data.data?.components?.edges || []).map((edge: VectorGraphQLEdge) => {
       const node = edge.node;
       const kind = node.__typename.toLowerCase() as
         | "source"

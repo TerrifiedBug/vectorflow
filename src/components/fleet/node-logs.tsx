@@ -100,7 +100,7 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
         });
       });
     }
-  }, [logsQuery.hasNextPage, logsQuery.isFetchingNextPage, logsQuery.fetchNextPage]);
+  }, [logsQuery]);
 
   function toggleLevel(level: LogLevel) {
     setActiveLevels((prev) => {

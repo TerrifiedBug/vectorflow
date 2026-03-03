@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
@@ -30,7 +30,7 @@ export function EnvironmentSelector() {
       { enabled: !!selectedTeamId },
     ),
   );
-  const environments = envsQuery.data ?? [];
+  const environments = useMemo(() => envsQuery.data ?? [], [envsQuery.data]);
 
   // Fetch current user info to check super admin status
   const { data: me } = useQuery(trpc.user.me.queryOptions());

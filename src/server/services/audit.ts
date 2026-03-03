@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "fs/promises";
 import { join, dirname } from "path";
+import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 
 export const AUDIT_LOG_PATH =
@@ -11,15 +12,21 @@ export async function writeAuditLog(params: {
   action: string;
   entityType: string;
   entityId: string;
-  diff?: Record<string, any>;
-  metadata?: Record<string, any>;
+  diff?: Record<string, { old: unknown; new: unknown }>;
+  metadata?: Record<string, unknown>;
   ipAddress?: string | null;
   userEmail?: string | null;
   userName?: string | null;
   teamId?: string | null;
   environmentId?: string | null;
 }) {
-  const log = await prisma.auditLog.create({ data: params });
+  const log = await prisma.auditLog.create({
+    data: {
+      ...params,
+      diff: params.diff as unknown as Prisma.InputJsonValue,
+      metadata: params.metadata as unknown as Prisma.InputJsonValue,
+    },
+  });
 
   const jsonLine =
     JSON.stringify({

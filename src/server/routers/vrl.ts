@@ -81,11 +81,12 @@ export const vrlRouter = router({
           output: formattedOutput,
           durationMs,
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         const durationMs = Math.round(performance.now() - start);
+        const execErr = err as NodeJS.ErrnoException & { stderr?: string };
 
         // Check if vector binary is not available
-        if (err.code === "ENOENT") {
+        if (execErr.code === "ENOENT") {
           return {
             output: "",
             error: "VRL testing requires vector binary. Install Vector (https://vector.dev) to use this feature.",
@@ -96,7 +97,7 @@ export const vrlRouter = router({
         // vector vrl command returned a non-zero exit code
         return {
           output: "",
-          error: err.stderr?.trim() || err.message || "Unknown error running VRL",
+          error: execErr.stderr?.trim() || execErr.message || "Unknown error running VRL",
           durationMs,
         };
       } finally {

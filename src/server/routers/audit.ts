@@ -29,7 +29,7 @@ export const auditRouter = router({
       } = input;
       const take = 50;
 
-      const conditions: Record<string, any>[] = [];
+      const conditions: Record<string, unknown>[] = [];
 
       if (action) {
         conditions.push({ action });
@@ -54,7 +54,7 @@ export const auditRouter = router({
       }
 
       if (startDate || endDate) {
-        const createdAt: Record<string, any> = {};
+        const createdAt: Record<string, Date> = {};
         if (startDate) {
           createdAt.gte = new Date(startDate);
         }

@@ -26,12 +26,13 @@ export async function startSystemVector(configYaml: string): Promise<void> {
   const dataDir = join(VECTORFLOW_DATA_DIR, "vector-data");
   await mkdir(dataDir, { recursive: true });
 
-  const config = yaml.load(configYaml) as Record<string, any>;
+  const config = yaml.load(configYaml) as Record<string, unknown>;
   config.data_dir = dataDir;
 
   // Override the audit_log source's include path with the actual write location
-  if (config.sources?.audit_log) {
-    config.sources.audit_log.include = [AUDIT_LOG_PATH];
+  const sources = config.sources as Record<string, Record<string, unknown>> | undefined;
+  if (sources?.audit_log) {
+    sources.audit_log.include = [AUDIT_LOG_PATH];
   }
 
   const fullConfig = yaml.dump(config, { indent: 2, lineWidth: -1, noRefs: true });

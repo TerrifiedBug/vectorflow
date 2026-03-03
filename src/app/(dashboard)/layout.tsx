@@ -77,6 +77,7 @@ export default function DashboardLayout({
   // Force password change dialog when mustChangePassword is set
   useEffect(() => {
     if (me?.mustChangePassword) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPasswordDialogOpen(true);
     }
   }, [me?.mustChangePassword]);
