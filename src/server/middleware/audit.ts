@@ -85,6 +85,21 @@ async function resolveTeamId(
     }
   }
 
+  if (inputData.id && (entityType === "AlertRule" || entityType === "AlertWebhook")) {
+    if (entityType === "AlertRule") {
+      const rule = await prisma.alertRule.findUnique({
+        where: { id: inputData.id as string },
+        select: { teamId: true },
+      });
+      return rule?.teamId ?? null;
+    }
+    const webhook = await prisma.alertWebhook.findUnique({
+      where: { id: inputData.id as string },
+      select: { environment: { select: { teamId: true } } },
+    });
+    return webhook?.environment.teamId ?? null;
+  }
+
   return null;
 }
 
@@ -143,6 +158,22 @@ async function resolveEnvironmentId(
       select: { environmentId: true },
     });
     return cert?.environmentId ?? null;
+  }
+
+  if (inputData.id && entityType === "AlertRule") {
+    const rule = await prisma.alertRule.findUnique({
+      where: { id: inputData.id as string },
+      select: { environmentId: true },
+    });
+    return rule?.environmentId ?? null;
+  }
+
+  if (inputData.id && entityType === "AlertWebhook") {
+    const webhook = await prisma.alertWebhook.findUnique({
+      where: { id: inputData.id as string },
+      select: { environmentId: true },
+    });
+    return webhook?.environmentId ?? null;
   }
 
   return null;

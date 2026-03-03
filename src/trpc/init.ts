@@ -196,6 +196,26 @@ export const withTeamAccess = (minRole: Role) =>
       }
     }
 
+    if (!teamId && rawInput?.id) {
+      const alertRule = await prisma.alertRule.findUnique({
+        where: { id: rawInput.id as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (alertRule) {
+        teamId = alertRule.environment.teamId ?? undefined;
+      }
+    }
+
+    if (!teamId && rawInput?.id) {
+      const alertWebhook = await prisma.alertWebhook.findUnique({
+        where: { id: rawInput.id as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (alertWebhook) {
+        teamId = alertWebhook.environment.teamId ?? undefined;
+      }
+    }
+
     if (!teamId) {
       throw new TRPCError({
         code: "BAD_REQUEST",
