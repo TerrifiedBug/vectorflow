@@ -66,9 +66,11 @@ export const pipelineRouter = router({
           description: true,
           isDraft: true,
           deployedAt: true,
+          createdAt: true,
           updatedAt: true,
           globalConfig: true,
-          updatedBy: { select: { name: true, email: true } },
+          createdBy: { select: { name: true, email: true, image: true } },
+          updatedBy: { select: { name: true, email: true, image: true } },
           nodeStatuses: {
             select: {
               status: true,
@@ -166,7 +168,9 @@ export const pipelineRouter = router({
           description: p.description,
           isDraft: p.isDraft,
           deployedAt: p.deployedAt,
+          createdAt: p.createdAt,
           updatedAt: p.updatedAt,
+          createdBy: p.createdBy,
           updatedBy: p.updatedBy,
           nodeStatuses: p.nodeStatuses,
           hasUndeployedChanges,
@@ -266,7 +270,7 @@ export const pipelineRouter = router({
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.created", "Pipeline"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const environment = await prisma.environment.findUnique({
         where: { id: input.environmentId },
       });
@@ -282,6 +286,8 @@ export const pipelineRouter = router({
           name: input.name,
           description: input.description,
           environmentId: input.environmentId,
+          createdById: ctx.session.user?.id ?? null,
+          updatedById: ctx.session.user?.id ?? null,
         },
       });
     }),
@@ -291,7 +297,7 @@ export const pipelineRouter = router({
     // withAudit works without withTeamAccess — teamId/environmentId will be null
     // which is expected for system-level operations
     .use(withAudit("pipeline.system_created", "Pipeline"))
-    .mutation(async () => {
+    .mutation(async ({ ctx }) => {
       const systemEnv = await getOrCreateSystemEnvironment();
 
       return prisma.$transaction(async (tx) => {
@@ -310,6 +316,7 @@ export const pipelineRouter = router({
             name: "Audit Log Shipping",
             isSystem: true,
             environmentId: systemEnv.id,
+            createdById: ctx.session.user?.id ?? null,
           },
         });
 
@@ -418,6 +425,7 @@ export const pipelineRouter = router({
             description: source.description,
             environmentId: source.environmentId,
             globalConfig: source.globalConfig ?? undefined,
+            createdById: ctx.session.user?.id ?? null,
             updatedById: ctx.session.user?.id,
           },
         });
@@ -600,6 +608,8 @@ export const pipelineRouter = router({
         targetVersionId: z.string(),
       })
     )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.rollback", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) {

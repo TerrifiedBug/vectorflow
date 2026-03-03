@@ -26,7 +26,8 @@ import {
 } from "@/components/dashboard/metrics-filter-bar";
 import { MetricsSection } from "@/components/dashboard/metrics-section";
 import { MetricChart } from "@/components/dashboard/metric-chart";
-import { formatSI, formatBytesRate } from "@/lib/format";
+import { formatSI, formatBytesRate, formatEventsRate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 /** Derive an overall status for a pipeline from its node statuses */
 function derivePipelineStatus(
@@ -112,7 +113,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {/* Total Nodes */}
         <Card>
           <CardContent className="p-4">
@@ -180,6 +181,35 @@ export default function DashboardPage() {
                 <span className="text-sm text-muted-foreground">No pipelines</span>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Log Reduction */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-muted-foreground">Log Reduction</p>
+            </div>
+            {stats.data?.reduction?.percent != null ? (
+              <>
+                <p className={cn(
+                  "mt-1 text-2xl font-bold",
+                  stats.data.reduction.percent > 50 ? "text-green-600 dark:text-green-400" :
+                  stats.data.reduction.percent > 10 ? "text-amber-600 dark:text-amber-400" :
+                  "text-muted-foreground"
+                )}>
+                  {stats.data.reduction.percent.toFixed(0)}%
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {formatEventsRate(stats.data.reduction.eventsIn / 3600)} → {formatEventsRate(stats.data.reduction.eventsOut / 3600)}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-2xl font-bold text-muted-foreground">—</p>
+                <p className="text-xs text-muted-foreground">No traffic data</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

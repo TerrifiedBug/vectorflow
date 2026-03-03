@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
-import { Plus, MoreHorizontal, Copy, Trash2, BarChart3, Info } from "lucide-react";
+import { Plus, MoreHorizontal, Copy, Trash2, BarChart3 } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
 
@@ -29,7 +29,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatCount, formatBytes } from "@/lib/format";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { formatEventsRate, formatBytesRate } from "@/lib/format";
 
 function aggregateProcessStatus(
   statuses: Array<{ status: string }>
@@ -53,6 +54,29 @@ function sumNodeStatuses(statuses: Array<{ eventsIn: bigint; eventsOut: bigint; 
     bytesOut += BigInt(s.bytesOut);
   }
   return { eventsIn, eventsOut, errorsTotal, eventsDiscarded, bytesIn, bytesOut };
+}
+
+function getUserInitials(user: { name?: string | null; email?: string | null } | null | undefined): string {
+  if (user?.name) {
+    const parts = user.name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return parts[0][0].toUpperCase();
+  }
+  if (user?.email) return user.email[0].toUpperCase();
+  return "?";
+}
+
+function getReductionPercent(totals: { eventsIn: bigint; eventsOut: bigint }): number | null {
+  const evIn = Number(totals.eventsIn);
+  const evOut = Number(totals.eventsOut);
+  if (evIn === 0) return null;
+  return (1 - evOut / evIn) * 100;
+}
+
+function reductionColor(pct: number): string {
+  if (pct > 50) return "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30";
+  if (pct > 10) return "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30";
+  return "bg-muted text-muted-foreground";
 }
 
 export default function PipelinesPage() {
@@ -81,6 +105,15 @@ export default function PipelinesPage() {
   );
 
   const pipelines = pipelinesQuery.data ?? [];
+
+  // Poll live rates from MetricStore for the pipelines table
+  const liveRatesQuery = useQuery(
+    trpc.metrics.getLiveRates.queryOptions(
+      { environmentId: effectiveEnvId },
+      { enabled: !!effectiveEnvId, refetchInterval: 15_000 }
+    )
+  );
+  const liveRates = liveRatesQuery.data?.rates ?? {};
 
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -148,19 +181,10 @@ export default function PipelinesPage() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">Total Events In / Out</TableHead>
-              <TableHead className="text-right">
-                <span className="inline-flex items-center gap-1">
-                  Total Bytes In / Out
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-3 w-3 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>Measured before sink-side compression</TooltipContent>
-                  </Tooltip>
-                </span>
-              </TableHead>
-              <TableHead className="text-right">Errors / Discarded</TableHead>
+              <TableHead className="text-right">Events/sec In</TableHead>
+              <TableHead className="text-right">Bytes/sec In</TableHead>
+              <TableHead className="text-right">Reduction</TableHead>
+              <TableHead>Created</TableHead>
               <TableHead>Last Updated</TableHead>
               <TableHead className="w-12" />
             </TableRow>
@@ -198,23 +222,67 @@ export default function PipelinesPage() {
                   )}
                   </div>
                 </TableCell>
+                {/* Events/sec In */}
                 <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                  {totals
-                    ? `${formatCount(totals.eventsIn)} / ${formatCount(totals.eventsOut)}`
+                  {liveRates[pipeline.id]
+                    ? formatEventsRate(liveRates[pipeline.id].eventsPerSec)
                     : "—"}
                 </TableCell>
+                {/* Bytes/sec In */}
                 <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                  {totals
-                    ? `${formatBytes(totals.bytesIn)} / ${formatBytes(totals.bytesOut)}`
+                  {liveRates[pipeline.id]
+                    ? formatBytesRate(liveRates[pipeline.id].bytesPerSec)
                     : "—"}
                 </TableCell>
-                <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                  {totals
-                    ? `${formatCount(totals.errorsTotal)} / ${formatCount(totals.eventsDiscarded)}`
-                    : "—"}
+                {/* Reduction */}
+                <TableCell className="text-right">
+                  {(() => {
+                    const pct = totals ? getReductionPercent(totals) : null;
+                    if (pct == null) return <span className="text-sm text-muted-foreground">—</span>;
+                    return (
+                      <Badge variant="outline" className={reductionColor(pct)}>
+                        {pct.toFixed(0)}%
+                      </Badge>
+                    );
+                  })()}
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {new Date(pipeline.updatedAt).toLocaleDateString()}
+                {/* Created */}
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Avatar className="h-5 w-5">
+                            {pipeline.createdBy?.image && <AvatarImage src={pipeline.createdBy.image} alt={pipeline.createdBy.name ?? ""} />}
+                            <AvatarFallback className="text-[10px]">{getUserInitials(pipeline.createdBy)}</AvatarFallback>
+                          </Avatar>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>{pipeline.createdBy?.name ?? pipeline.createdBy?.email ?? "Unknown"}</TooltipContent>
+                    </Tooltip>
+                    <span className="text-sm text-muted-foreground">
+                      {new Date(pipeline.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                </TableCell>
+                {/* Last Updated */}
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Avatar className="h-5 w-5">
+                            {pipeline.updatedBy?.image && <AvatarImage src={pipeline.updatedBy.image} alt={pipeline.updatedBy.name ?? ""} />}
+                            <AvatarFallback className="text-[10px]">{getUserInitials(pipeline.updatedBy)}</AvatarFallback>
+                          </Avatar>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>{pipeline.updatedBy?.name ?? pipeline.updatedBy?.email ?? "Unknown"}</TooltipContent>
+                    </Tooltip>
+                    <span className="text-sm text-muted-foreground">
+                      {new Date(pipeline.updatedAt).toLocaleDateString()}
+                    </span>
+                  </div>
                 </TableCell>
                 <TableCell>
                   <DropdownMenu>

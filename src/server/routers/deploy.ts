@@ -68,7 +68,7 @@ export const deployRouter = router({
     }),
 
   agent: protectedProcedure
-    .input(z.object({ pipelineId: z.string() }))
+    .input(z.object({ pipelineId: z.string(), changelog: z.string().min(1) }))
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("deploy.agent", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
@@ -77,7 +77,7 @@ export const deployRouter = router({
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
-      return deployAgent(input.pipelineId, userId);
+      return deployAgent(input.pipelineId, userId, input.changelog);
     }),
 
   undeploy: protectedProcedure
