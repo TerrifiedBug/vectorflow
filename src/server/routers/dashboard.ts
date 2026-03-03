@@ -26,10 +26,35 @@ export const dashboardRouter = router({
       const degraded = healthyCounts.find((h) => h.status === "DEGRADED")?._count.status ?? 0;
       const unreachable = healthyCounts.find((h) => h.status === "UNREACHABLE")?._count.status ?? 0;
 
+      // Query recent metrics for log reduction calculation
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const reductionMetrics = await prisma.pipelineMetric.aggregate({
+        where: {
+          nodeId: null, // aggregate rows only
+          timestamp: { gte: oneHourAgo },
+          pipeline: { environmentId: input.environmentId },
+        },
+        _sum: {
+          eventsIn: true,
+          eventsOut: true,
+        },
+      });
+
+      const totalEventsIn = Number(reductionMetrics._sum.eventsIn ?? 0);
+      const totalEventsOut = Number(reductionMetrics._sum.eventsOut ?? 0);
+      const reductionPercent = totalEventsIn > 0
+        ? (1 - totalEventsOut / totalEventsIn) * 100
+        : null;
+
       return {
         pipelines: pipelineCount,
         nodes: nodeCount,
         fleet: { healthy, degraded, unreachable },
+        reduction: {
+          percent: reductionPercent,
+          eventsIn: totalEventsIn,
+          eventsOut: totalEventsOut,
+        },
       };
     }),
 
