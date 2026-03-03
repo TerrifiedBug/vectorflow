@@ -4,6 +4,7 @@ import { router, protectedProcedure, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { withAudit } from "@/server/middleware/audit";
+import { invalidateAuthCache } from "@/auth";
 import { checkServerVersion, checkAgentVersion } from "@/server/services/version-check";
 
 const SETTINGS_ID = "singleton";
@@ -98,10 +99,12 @@ export const settingsRouter = router({
         data.oidcClientSecret = encrypt(input.clientSecret);
       }
 
-      return prisma.systemSettings.update({
+      const result = await prisma.systemSettings.update({
         where: { id: SETTINGS_ID },
         data,
       });
+      invalidateAuthCache();
+      return result;
     }),
 
   updateOidcRoleMapping: protectedProcedure
