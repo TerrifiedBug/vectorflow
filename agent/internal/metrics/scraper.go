@@ -90,45 +90,50 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 
 		componentID := labels["component_id"]
 		componentKind := labels["component_kind"]
+		isInternal := strings.HasPrefix(componentID, "vf_")
 
-		// Per-component pipeline metrics
+		// Per-component pipeline metrics (exclude injected vf_ components from pipeline totals)
 		switch name {
 		case "vector_component_received_events_total", "component_received_events_total":
 			v := int64(value)
-			if componentKind == "source" {
+			if componentKind == "source" && !isInternal {
 				sr.Pipeline.EventsIn += v
 			}
 			getOrCreate(componentMap, componentID, componentKind).ReceivedEvents = v
 
 		case "vector_component_sent_events_total", "component_sent_events_total":
 			v := int64(value)
-			if componentKind == "sink" {
+			if componentKind == "sink" && !isInternal {
 				sr.Pipeline.EventsOut += v
 			}
 			getOrCreate(componentMap, componentID, componentKind).SentEvents = v
 
 		case "vector_component_received_bytes_total", "component_received_bytes_total":
 			v := int64(value)
-			if componentKind == "source" {
+			if componentKind == "source" && !isInternal {
 				sr.Pipeline.BytesIn += v
 			}
 			getOrCreate(componentMap, componentID, componentKind).ReceivedBytes = v
 
 		case "vector_component_sent_bytes_total", "component_sent_bytes_total":
 			v := int64(value)
-			if componentKind == "sink" {
+			if componentKind == "sink" && !isInternal {
 				sr.Pipeline.BytesOut += v
 			}
 			getOrCreate(componentMap, componentID, componentKind).SentBytes = v
 
 		case "vector_component_errors_total", "component_errors_total":
 			v := int64(value)
-			sr.Pipeline.ErrorsTotal += v
+			if !isInternal {
+				sr.Pipeline.ErrorsTotal += v
+			}
 			getOrCreate(componentMap, componentID, componentKind).ErrorsTotal += v
 
 		case "vector_component_discarded_events_total", "component_discarded_events_total":
 			v := int64(value)
-			sr.Pipeline.EventsDiscarded += v
+			if !isInternal {
+				sr.Pipeline.EventsDiscarded += v
+			}
 			getOrCreate(componentMap, componentID, componentKind).DiscardedEvents += v
 
 		// Host metrics – use += to aggregate across CPU cores, devices, interfaces, etc.
