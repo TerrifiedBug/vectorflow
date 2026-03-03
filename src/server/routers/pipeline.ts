@@ -14,6 +14,8 @@ import {
 import { encryptNodeConfig, decryptNodeConfig } from "@/server/services/config-crypto";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { getOrCreateSystemEnvironment } from "@/server/services/system-environment";
+import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
+import { stripEnvRefs, type StrippedRef } from "@/server/services/strip-env-refs";
 
 /** Pipeline names must be safe identifiers */
 const pipelineNameSchema = z
@@ -408,7 +410,12 @@ export const pipelineRouter = router({
     .mutation(async ({ input, ctx }) => {
       const source = await prisma.pipeline.findUnique({
         where: { id: input.pipelineId },
-        include: { nodes: true, edges: true },
+        select: {
+          name: true,
+          description: true,
+          environmentId: true,
+          globalConfig: true,
+        },
       });
       if (!source) {
         throw new TRPCError({
@@ -418,7 +425,6 @@ export const pipelineRouter = router({
       }
 
       return prisma.$transaction(async (tx) => {
-        // Create the new pipeline as a draft
         const cloned = await tx.pipeline.create({
           data: {
             name: `${source.name} (Copy)`,
@@ -430,42 +436,136 @@ export const pipelineRouter = router({
           },
         });
 
-        // Build old→new node ID mapping
-        const nodeIdMap = new Map<string, string>();
-        for (const node of source.nodes) {
-          const created = await tx.pipelineNode.create({
-            data: {
-              pipelineId: cloned.id,
-              componentKey: node.componentKey,
-              componentType: node.componentType,
-              kind: node.kind,
-              config: node.config ?? {},
-              positionX: node.positionX,
-              positionY: node.positionY,
-              disabled: node.disabled,
-            },
-          });
-          nodeIdMap.set(node.id, created.id);
-        }
-
-        // Copy edges, remapping source/target to new node IDs
-        for (const edge of source.edges) {
-          const newSource = nodeIdMap.get(edge.sourceNodeId);
-          const newTarget = nodeIdMap.get(edge.targetNodeId);
-          if (newSource && newTarget) {
-            await tx.pipelineEdge.create({
-              data: {
-                pipelineId: cloned.id,
-                sourceNodeId: newSource,
-                targetNodeId: newTarget,
-                sourcePort: edge.sourcePort,
-              },
-            });
-          }
-        }
+        await copyPipelineGraph(tx, {
+          sourcePipelineId: input.pipelineId,
+          targetPipelineId: cloned.id,
+        });
 
         return { id: cloned.id, name: cloned.name };
       });
+    }),
+
+  promote: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        targetEnvironmentId: z.string(),
+        name: pipelineNameSchema.optional(),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.promoted", "Pipeline"))
+    .mutation(async ({ input, ctx }) => {
+      const source = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        select: {
+          name: true,
+          description: true,
+          environmentId: true,
+          globalConfig: true,
+          isSystem: true,
+          environment: { select: { teamId: true } },
+        },
+      });
+      if (!source) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Pipeline not found",
+        });
+      }
+      if (source.isSystem) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "System pipelines cannot be promoted",
+        });
+      }
+
+      if (source.environmentId === input.targetEnvironmentId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Target environment must be different from source environment",
+        });
+      }
+
+      const targetEnv = await prisma.environment.findUnique({
+        where: { id: input.targetEnvironmentId },
+        select: { teamId: true, name: true },
+      });
+      if (!targetEnv) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Target environment not found",
+        });
+      }
+      if (targetEnv.teamId !== source.environment.teamId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Target environment must belong to the same team",
+        });
+      }
+
+      const pipelineName = input.name ?? source.name;
+
+      const allStrippedSecrets: StrippedRef[] = [];
+      const allStrippedCertificates: StrippedRef[] = [];
+
+      // Strip secrets/certs from globalConfig if present
+      let strippedGlobalConfig = source.globalConfig ?? undefined;
+      if (strippedGlobalConfig && typeof strippedGlobalConfig === "object" && !Array.isArray(strippedGlobalConfig)) {
+        const globalResult = stripEnvRefs(strippedGlobalConfig as Record<string, unknown>, "__global__");
+        strippedGlobalConfig = globalResult.config as typeof strippedGlobalConfig;
+        allStrippedSecrets.push(...globalResult.strippedSecrets);
+        allStrippedCertificates.push(...globalResult.strippedCertificates);
+      }
+
+      const promoted = await prisma.$transaction(async (tx) => {
+        // Check name collision inside transaction to avoid TOCTOU race
+        const existing = await tx.pipeline.findFirst({
+          where: {
+            name: pipelineName,
+            environmentId: input.targetEnvironmentId,
+          },
+        });
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `A pipeline named "${pipelineName}" already exists in the target environment`,
+          });
+        }
+
+        const created = await tx.pipeline.create({
+          data: {
+            name: pipelineName,
+            description: source.description,
+            environmentId: input.targetEnvironmentId,
+            globalConfig: strippedGlobalConfig,
+            isDraft: true,
+            createdById: ctx.session.user?.id ?? null,
+            updatedById: ctx.session.user?.id,
+          },
+        });
+
+        await copyPipelineGraph(tx, {
+          sourcePipelineId: input.pipelineId,
+          targetPipelineId: created.id,
+          transformConfig: (config, componentKey) => {
+            const result = stripEnvRefs(config, componentKey);
+            allStrippedSecrets.push(...result.strippedSecrets);
+            allStrippedCertificates.push(...result.strippedCertificates);
+            return result.config;
+          },
+        });
+
+        return created;
+      });
+
+      return {
+        id: promoted.id,
+        name: promoted.name,
+        targetEnvironmentName: targetEnv.name,
+        strippedSecrets: allStrippedSecrets,
+        strippedCertificates: allStrippedCertificates,
+      };
     }),
 
   saveGraph: protectedProcedure

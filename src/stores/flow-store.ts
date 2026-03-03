@@ -562,6 +562,9 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   },
 
   pasteFromSession: () => {
+    const state = get() as InternalState;
+    if (state.isSystemPipeline) return;
+
     let raw: string | null = null;
     try {
       raw = sessionStorage.getItem("vf:clipboard");
@@ -592,7 +595,6 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     }
     if (!payload.nodes || payload.nodes.length === 0) return;
 
-    const state = get() as InternalState;
     const history = pushSnapshot(state);
 
     // Place at center of viewport area (approximate)
