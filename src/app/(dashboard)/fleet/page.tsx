@@ -28,7 +28,7 @@ import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { isVersionOlder } from "@/lib/version";
 
-const AGENT_REPO = "terrifiedbug/vectorflow-agent";
+const AGENT_REPO = "TerrifiedBug/vectorflow";
 
 export default function FleetPage() {
   const trpc = useTRPC();

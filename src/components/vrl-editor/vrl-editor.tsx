@@ -317,7 +317,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSo
 
       {/* Full-screen modal: editor (left) + tools (right) */}
       <Dialog open={expanded} onOpenChange={setExpanded}>
-        <DialogContent className="sm:max-w-[calc(100vw-4rem)] xl:max-w-6xl h-[85vh] flex flex-col">
+        <DialogContent className="sm:max-w-[calc(100vw-4rem)] xl:max-w-6xl h-[85vh] flex flex-col" onKeyDown={(e) => e.stopPropagation()}>
           <DialogHeader>
             <DialogTitle>VRL Editor</DialogTitle>
           </DialogHeader>

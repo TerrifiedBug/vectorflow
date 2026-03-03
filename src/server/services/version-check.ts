@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
 
 const GITHUB_API = "https://api.github.com";
-const SERVER_REPO = "terrifiedbug/vectorflow-server";
-const AGENT_REPO = "terrifiedbug/vectorflow-agent";
+const SERVER_REPO = "TerrifiedBug/vectorflow";
+const AGENT_REPO = "TerrifiedBug/vectorflow";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface GitHubRelease {
