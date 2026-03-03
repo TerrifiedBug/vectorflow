@@ -31,6 +31,7 @@ export async function checkServerVersion(force = false): Promise<{
   currentVersion: string;
   updateAvailable: boolean;
   releaseUrl?: string;
+  checkedAt: Date | null;
 }> {
   const currentVersion = process.env.VF_VERSION ?? "dev";
   const settings = await prisma.systemSettings.findUnique({
@@ -45,22 +46,24 @@ export async function checkServerVersion(force = false): Promise<{
 
   let latestVersion = settings?.latestServerRelease ?? null;
   let releaseUrl: string | undefined;
+  let checkedAt: Date | null = lastChecked ?? null;
 
   if (needsCheck) {
     const release = await fetchLatestRelease(SERVER_REPO);
     if (release) {
       latestVersion = release.tag_name.replace(/^v/, "");
       releaseUrl = release.html_url;
+      checkedAt = new Date();
       await prisma.systemSettings.upsert({
         where: { id: "singleton" },
         update: {
           latestServerRelease: latestVersion,
-          latestServerReleaseCheckedAt: new Date(),
+          latestServerReleaseCheckedAt: checkedAt,
         },
         create: {
           id: "singleton",
           latestServerRelease: latestVersion,
-          latestServerReleaseCheckedAt: new Date(),
+          latestServerReleaseCheckedAt: checkedAt,
         },
       });
     }
@@ -79,11 +82,13 @@ export async function checkServerVersion(force = false): Promise<{
       latestVersion !== currentVersion &&
       currentVersion !== "dev",
     releaseUrl,
+    checkedAt,
   };
 }
 
 export async function checkAgentVersion(force = false): Promise<{
   latestVersion: string | null;
+  checkedAt: Date | null;
 }> {
   const settings = await prisma.systemSettings.findUnique({
     where: { id: "singleton" },
@@ -96,25 +101,27 @@ export async function checkAgentVersion(force = false): Promise<{
     Date.now() - lastChecked.getTime() > CHECK_INTERVAL_MS;
 
   let latestVersion = settings?.latestAgentRelease ?? null;
+  let checkedAt: Date | null = lastChecked ?? null;
 
   if (needsCheck) {
     const release = await fetchLatestRelease(AGENT_REPO);
     if (release) {
       latestVersion = release.tag_name.replace(/^v/, "");
+      checkedAt = new Date();
       await prisma.systemSettings.upsert({
         where: { id: "singleton" },
         update: {
           latestAgentRelease: latestVersion,
-          latestAgentReleaseCheckedAt: new Date(),
+          latestAgentReleaseCheckedAt: checkedAt,
         },
         create: {
           id: "singleton",
           latestAgentRelease: latestVersion,
-          latestAgentReleaseCheckedAt: new Date(),
+          latestAgentReleaseCheckedAt: checkedAt,
         },
       });
     }
   }
 
-  return { latestVersion };
+  return { latestVersion, checkedAt };
 }
