@@ -25,6 +25,7 @@ model User {
   totpBackupCodes    String?
   auditLogs          AuditLog[]
   pipelinesUpdated   Pipeline[]   @relation("PipelineUpdatedBy")
+  pipelinesCreated   Pipeline[]   @relation("PipelineCreatedBy")
   vrlSnippets        VrlSnippet[]
   createdAt          DateTime     @default(now())
 }
@@ -196,6 +197,8 @@ model Pipeline {
   isDraft       Boolean              @default(true)
   isSystem      Boolean              @default(false)
   deployedAt    DateTime?
+  createdById   String?
+  createdBy     User?                @relation("PipelineCreatedBy", fields: [createdById], references: [id])
   updatedById   String?
   updatedBy     User?                @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
   nodeStatuses  NodePipelineStatus[]
