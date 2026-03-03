@@ -226,7 +226,7 @@ export function MetricChart({
                       second: "2-digit",
                     });
                   }}
-                  formatter={(value: number | string, name: string) => (
+                  formatter={(value, name) => (
                     <div className="flex w-full items-center justify-between gap-2">
                       <span className="text-muted-foreground">
                         {chartConfig[name as string]?.label ?? name}
