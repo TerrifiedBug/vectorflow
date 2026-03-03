@@ -232,7 +232,7 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
                 <ChartTooltip
                   content={
                     <ChartTooltipContent
-                      formatter={(value: number | string, name: string) => (
+                      formatter={(value, name) => (
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="text-muted-foreground">{cpuChartConfig[name as keyof typeof cpuChartConfig]?.label ?? name}</span>
                           <span className="font-mono font-medium text-foreground">{formatPercent(Number(value) ?? 0)}</span>
@@ -276,7 +276,7 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
                 <ChartTooltip
                   content={
                     <ChartTooltipContent
-                      formatter={(value: number | string, name: string) => (
+                      formatter={(value, name) => (
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="text-muted-foreground">{memoryChartConfig[name as keyof typeof memoryChartConfig]?.label ?? name}</span>
                           <span className="font-mono font-medium text-foreground">{formatPercent(Number(value) ?? 0)}</span>
@@ -319,7 +319,7 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
                 <ChartTooltip
                   content={
                     <ChartTooltipContent
-                      formatter={(value: number | string, name: string) => (
+                      formatter={(value, name) => (
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="text-muted-foreground">{diskChartConfig[name as keyof typeof diskChartConfig]?.label ?? name}</span>
                           <span className="font-mono font-medium text-foreground">{formatBytesRate(Number(value) ?? 0)}</span>

@@ -4,6 +4,8 @@ import * as React from "react"
 import * as RechartsPrimitive from "recharts"
 import type {
   NameType,
+  Payload,
+  Props as TooltipContentProps,
   ValueType,
 } from "recharts/types/component/DefaultTooltipContent"
 
@@ -123,11 +125,11 @@ function ChartTooltipContent({
   nameKey,
   labelKey,
 }: Omit<
-    RechartsPrimitive.TooltipContentProps<ValueType, NameType>,
+    TooltipContentProps<ValueType, NameType>,
     "active" | "payload" | "label" | "coordinate" | "accessibilityLayer" | "activeIndex"
   > & {
     active?: boolean
-    payload?: ReadonlyArray<RechartsPrimitive.TooltipPayloadEntry<ValueType, NameType>>
+    payload?: Array<Payload<ValueType, NameType>>
     label?: string | number
     coordinate?: { x: number; y: number }
     accessibilityLayer?: boolean
