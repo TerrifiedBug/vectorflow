@@ -401,6 +401,7 @@ export const dashboardRouter = router({
         nodeIds: z.array(z.string()).default([]),
         pipelineIds: z.array(z.string()).default([]),
         range: z.enum(["1h", "6h", "1d", "7d"]).default("1h"),
+        groupBy: z.enum(["pipeline", "node", "aggregate"]).default("pipeline"),
       })
     )
     .query(async ({ input }) => {
@@ -435,24 +436,39 @@ export const dashboardRouter = router({
       const nodeNameMap = new Map<string, string>(allNodes.map((n: { id: string; name: string }) => [n.id, n.name]));
       const pipelineNameMap = new Map<string, string>(allPipelines.map((p: { id: string; name: string }) => [p.id, p.name]));
 
+      // Resolve effective filters — nodes ↔ pipelines cross-lookup
+      let effectivePipelineIds = pipelineIds;
       let effectiveNodeIds = nodeIds;
+
+      // If nodes are filtered, restrict pipelines to those running on selected nodes
+      if (input.nodeIds.length > 0) {
+        const nodeStatuses = await prisma.nodePipelineStatus.findMany({
+          where: { nodeId: { in: input.nodeIds } },
+          select: { pipelineId: true },
+          distinct: ["pipelineId"],
+        });
+        const pipelinesOnNodes = new Set(nodeStatuses.map((ns: { pipelineId: string }) => ns.pipelineId));
+        effectivePipelineIds = effectivePipelineIds.filter((id: string) => pipelinesOnNodes.has(id));
+      }
+
+      // If pipelines are filtered but nodes aren't, restrict nodes to those running selected pipelines
       if (input.pipelineIds.length > 0 && input.nodeIds.length === 0) {
         const nodeStatuses = await prisma.nodePipelineStatus.findMany({
-          where: { pipelineId: { in: pipelineIds } },
+          where: { pipelineId: { in: effectivePipelineIds } },
           select: { nodeId: true },
           distinct: ["nodeId"],
         });
         effectiveNodeIds = nodeStatuses.map((ns: { nodeId: string }) => ns.nodeId);
       }
 
-      const usePerNode = input.nodeIds.length > 0;
-
       const [pipelineRows, nodeRows] = await Promise.all([
         prisma.pipelineMetric.findMany({
           where: {
-            pipelineId: { in: pipelineIds },
+            pipelineId: { in: effectivePipelineIds },
             timestamp: { gte: since },
-            ...(usePerNode ? { nodeId: { in: nodeIds } } : { nodeId: null }),
+            ...(input.groupBy === "node"
+              ? { nodeId: { in: effectiveNodeIds } }
+              : { nodeId: null }),
           },
           orderBy: { timestamp: "asc" },
           select: {
@@ -524,18 +540,67 @@ export const dashboardRouter = router({
       const errors: TSMap = {};
       const discarded: TSMap = {};
 
-      for (const row of pipelineRows) {
-        const label = usePerNode
-          ? (nodeNameMap.get(row.nodeId ?? "") ?? row.nodeId ?? "unknown")
-          : (pipelineNameMap.get(row.pipelineId) ?? row.pipelineId);
-        const t = new Date(row.timestamp).getTime();
-
-        addPoint(eventsIn, label, t, Number(row.eventsIn) / 60);
-        addPoint(eventsOut, label, t, Number(row.eventsOut) / 60);
-        addPoint(bytesIn, label, t, Number(row.bytesIn) / 60);
-        addPoint(bytesOut, label, t, Number(row.bytesOut) / 60);
-        addPoint(errors, label, t, Number(row.errorsTotal) / 60);
-        addPoint(discarded, label, t, Number(row.eventsDiscarded) / 60);
+      if (input.groupBy === "node") {
+        // Sum pipeline values per (node, timestamp) since multiple pipelines on one node produce multiple rows
+        const acc = new Map<string, Map<number, { ei: number; eo: number; bi: number; bo: number; er: number; di: number }>>();
+        for (const row of pipelineRows) {
+          const label = nodeNameMap.get(row.nodeId ?? "") ?? row.nodeId ?? "unknown";
+          const t = new Date(row.timestamp).getTime();
+          if (!acc.has(label)) acc.set(label, new Map());
+          const timeMap = acc.get(label)!;
+          const s = timeMap.get(t) ?? { ei: 0, eo: 0, bi: 0, bo: 0, er: 0, di: 0 };
+          s.ei += Number(row.eventsIn) / 60;
+          s.eo += Number(row.eventsOut) / 60;
+          s.bi += Number(row.bytesIn) / 60;
+          s.bo += Number(row.bytesOut) / 60;
+          s.er += Number(row.errorsTotal) / 60;
+          s.di += Number(row.eventsDiscarded) / 60;
+          timeMap.set(t, s);
+        }
+        for (const [label, timeMap] of acc) {
+          for (const [t, s] of timeMap) {
+            addPoint(eventsIn, label, t, s.ei);
+            addPoint(eventsOut, label, t, s.eo);
+            addPoint(bytesIn, label, t, s.bi);
+            addPoint(bytesOut, label, t, s.bo);
+            addPoint(errors, label, t, s.er);
+            addPoint(discarded, label, t, s.di);
+          }
+        }
+      } else if (input.groupBy === "aggregate") {
+        // Sum all pipelines into a single "Total" series per timestamp
+        const acc = new Map<number, { ei: number; eo: number; bi: number; bo: number; er: number; di: number }>();
+        for (const row of pipelineRows) {
+          const t = new Date(row.timestamp).getTime();
+          const s = acc.get(t) ?? { ei: 0, eo: 0, bi: 0, bo: 0, er: 0, di: 0 };
+          s.ei += Number(row.eventsIn) / 60;
+          s.eo += Number(row.eventsOut) / 60;
+          s.bi += Number(row.bytesIn) / 60;
+          s.bo += Number(row.bytesOut) / 60;
+          s.er += Number(row.errorsTotal) / 60;
+          s.di += Number(row.eventsDiscarded) / 60;
+          acc.set(t, s);
+        }
+        for (const [t, s] of acc) {
+          addPoint(eventsIn, "Total", t, s.ei);
+          addPoint(eventsOut, "Total", t, s.eo);
+          addPoint(bytesIn, "Total", t, s.bi);
+          addPoint(bytesOut, "Total", t, s.bo);
+          addPoint(errors, "Total", t, s.er);
+          addPoint(discarded, "Total", t, s.di);
+        }
+      } else {
+        // groupBy === "pipeline" — direct mapping, one series per pipeline
+        for (const row of pipelineRows) {
+          const label = pipelineNameMap.get(row.pipelineId) ?? row.pipelineId;
+          const t = new Date(row.timestamp).getTime();
+          addPoint(eventsIn, label, t, Number(row.eventsIn) / 60);
+          addPoint(eventsOut, label, t, Number(row.eventsOut) / 60);
+          addPoint(bytesIn, label, t, Number(row.bytesIn) / 60);
+          addPoint(bytesOut, label, t, Number(row.bytesOut) / 60);
+          addPoint(errors, label, t, Number(row.errorsTotal) / 60);
+          addPoint(discarded, label, t, Number(row.eventsDiscarded) / 60);
+        }
       }
 
       const cpu: TSMap = {};
@@ -590,6 +655,55 @@ export const dashboardRouter = router({
           addPoint(netRx, label, t, Math.max(0, rx));
           addPoint(netTx, label, t, Math.max(0, tx));
         }
+      }
+
+      // For aggregate grouping, collapse system metrics into single "Total" series
+      if (input.groupBy === "aggregate") {
+        function avgSeries(map: TSMap): TSMap {
+          const acc = new Map<number, { sum: number; count: number }>();
+          for (const points of Object.values(map)) {
+            for (const p of points) {
+              const s = acc.get(p.t) ?? { sum: 0, count: 0 };
+              s.sum += p.v;
+              s.count++;
+              acc.set(p.t, s);
+            }
+          }
+          const sorted = Array.from(acc.entries()).sort((a, b) => a[0] - b[0]);
+          return { Total: sorted.map(([t, s]) => ({ t, v: s.sum / s.count })) };
+        }
+        function sumSeries(map: TSMap): TSMap {
+          const acc = new Map<number, number>();
+          for (const points of Object.values(map)) {
+            for (const p of points) {
+              acc.set(p.t, (acc.get(p.t) ?? 0) + p.v);
+            }
+          }
+          const sorted = Array.from(acc.entries()).sort((a, b) => a[0] - b[0]);
+          return { Total: sorted.map(([t, v]) => ({ t, v })) };
+        }
+
+        // CPU & memory: average across nodes. Disk & network: sum rates.
+        const cpuAgg = avgSeries(cpu);
+        const memAgg = avgSeries(memory);
+        const drAgg = sumSeries(diskRead);
+        const dwAgg = sumSeries(diskWrite);
+        const rxAgg = sumSeries(netRx);
+        const txAgg = sumSeries(netTx);
+
+        // Clear and replace
+        for (const key of Object.keys(cpu)) delete cpu[key];
+        Object.assign(cpu, cpuAgg);
+        for (const key of Object.keys(memory)) delete memory[key];
+        Object.assign(memory, memAgg);
+        for (const key of Object.keys(diskRead)) delete diskRead[key];
+        Object.assign(diskRead, drAgg);
+        for (const key of Object.keys(diskWrite)) delete diskWrite[key];
+        Object.assign(diskWrite, dwAgg);
+        for (const key of Object.keys(netRx)) delete netRx[key];
+        Object.assign(netRx, rxAgg);
+        for (const key of Object.keys(netTx)) delete netTx[key];
+        Object.assign(netTx, txAgg);
       }
 
       return {
