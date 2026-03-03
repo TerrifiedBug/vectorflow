@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
 import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
+import { isVersionOlder } from "@/lib/version";
 
 export default function FleetPage() {
   const trpc = useTRPC();
@@ -50,6 +51,14 @@ export default function FleetPage() {
     nodesQuery.isLoading;
 
   const nodes = nodesQuery.data ?? [];
+
+  const versionQuery = useQuery(
+    trpc.settings.checkVersion.queryOptions(undefined, {
+      refetchInterval: false,
+      staleTime: Infinity,
+    }),
+  );
+  const latestAgentVersion = versionQuery.data?.agent.latestVersion ?? null;
 
   return (
     <div className="space-y-6">
@@ -83,6 +92,7 @@ export default function FleetPage() {
               <TableHead>Host:Port</TableHead>
               <TableHead>Environment</TableHead>
               <TableHead>Version</TableHead>
+              <TableHead>Agent Version</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Last Seen</TableHead>
             </TableRow>
@@ -106,6 +116,30 @@ export default function FleetPage() {
                 </TableCell>
                 <TableCell className="font-mono text-sm text-muted-foreground">
                   {node.vectorVersion?.split(" ")[1] ?? "—"}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm text-muted-foreground">
+                      {node.agentVersion ?? "—"}
+                    </span>
+                    {latestAgentVersion &&
+                      node.agentVersion &&
+                      isVersionOlder(node.agentVersion, latestAgentVersion) && (
+                        <Badge variant="outline" className="text-amber-600">
+                          Update available
+                        </Badge>
+                      )}
+                    {node.deploymentMode === "DOCKER" && (
+                      <Badge variant="secondary" className="text-xs">
+                        Docker
+                      </Badge>
+                    )}
+                    {node.deploymentMode === "STANDALONE" && (
+                      <Badge variant="secondary" className="text-xs">
+                        Binary
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <StatusBadge variant={nodeStatusVariant(node.status)}>
