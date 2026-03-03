@@ -22,6 +22,7 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import {
   MetricsFilterBar,
   type TimeRange,
+  type GroupBy,
 } from "@/components/dashboard/metrics-filter-bar";
 import { MetricsSection } from "@/components/dashboard/metrics-section";
 import { MetricChart } from "@/components/dashboard/metric-chart";
@@ -67,6 +68,7 @@ export default function DashboardPage() {
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedPipelineIds, setSelectedPipelineIds] = useState<string[]>([]);
   const [timeRange, setTimeRange] = useState<TimeRange>("1h");
+  const [groupBy, setGroupBy] = useState<GroupBy>("pipeline");
 
   const refreshInterval: Record<TimeRange, number> = {
     "1h": 15_000,
@@ -81,6 +83,7 @@ export default function DashboardPage() {
       nodeIds: selectedNodeIds,
       pipelineIds: selectedPipelineIds,
       range: timeRange,
+      groupBy,
     }),
     refetchInterval: refreshInterval[timeRange],
     enabled: !!selectedEnvironmentId,
@@ -186,6 +189,8 @@ export default function DashboardPage() {
         onNodeChange={setSelectedNodeIds}
         onPipelineChange={setSelectedPipelineIds}
         onTimeRangeChange={setTimeRange}
+        groupBy={groupBy}
+        onGroupByChange={setGroupBy}
       />
 
       {/* Pipeline Metrics */}
