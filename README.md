@@ -22,11 +22,9 @@ Stop hand-editing YAML. Build observability pipelines with drag-and-drop<br>and 
 
 <br>
 
-<!-- TODO: Add hero screenshot — drag the pipeline editor screenshot into a GitHub issue to get a CDN URL, then uncomment:
 <p align="center">
-  <img src="REPLACE_WITH_GITHUB_CDN_URL" alt="VectorFlow Pipeline Editor — drag-and-drop canvas with component palette, visual node graph, and configuration panel" width="800">
+  <img src="docs/screenshots/pipeline-editor.png" alt="VectorFlow Pipeline Editor — drag-and-drop canvas with component palette, visual node graph, and configuration panel" width="800">
 </p>
--->
 
 ## Why VectorFlow?
 
@@ -51,13 +49,17 @@ Build Vector pipelines with a drag-and-drop canvas. Browse 100+ components from 
 
 Deploy pipeline configs to your entire fleet with a single click. The deploy dialog shows a full YAML diff against the previous version before you confirm. Agents pull configs automatically — no SSH, no Ansible, no manual intervention.
 
-<!-- TODO: Add pipeline list screenshot -->
+<p align="center">
+  <img src="docs/screenshots/fleet.png" alt="VectorFlow Fleet — manage and monitor all your agents" width="800">
+</p>
 
 ### 📊 Real-Time Monitoring
 
 Track pipeline throughput, error rates, and host metrics (CPU, memory, disk, network) per node and per pipeline. Live event rates display directly on the pipeline canvas while you're editing.
 
-<!-- TODO: Add node detail screenshot -->
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="VectorFlow Dashboard — real-time metrics per node including CPU, memory, and pipeline throughput" width="800">
+</p>
 
 ### 🔄 Version Control & Rollback
 
@@ -72,13 +74,9 @@ Every deployment creates an immutable version snapshot with a changelog. Browse 
 - **Certificate management** — TLS cert storage referenced directly in pipeline configs
 - **Audit log** — immutable record of every action with before/after diffs
 
-<!-- TODO: Add audit log screenshot -->
-
 ### ⚡ Alerting & Webhooks
 
 Set threshold-based alert rules on CPU, memory, disk, error rates, and more. Deliver notifications via HMAC-signed webhooks to Slack, Discord, PagerDuty, or any HTTP endpoint.
-
-<!-- TODO: Add alerts screenshot -->
 
 ## 🏗️ Architecture
 
