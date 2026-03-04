@@ -31,6 +31,7 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL}
     volumes:
       - vfdata:/app/.vectorflow
+      - backups:/backups
     restart: unless-stopped
 
 volumes:
@@ -38,3 +39,5 @@ volumes:
     name: vectorflow-pgdata
   vfdata:
     name: vectorflow-data
+  backups:
+    name: vectorflow-backups
