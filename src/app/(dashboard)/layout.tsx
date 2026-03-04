@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
 import { LogOut, User } from "lucide-react";
@@ -12,8 +12,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { EnvironmentSelector } from "@/components/environment-selector";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -27,33 +26,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { UpdateBanner } from "@/components/update-banner";
 
-const pageTitles: Record<string, string> = {
-  "/": "Dashboard",
-  "/pipelines": "Pipelines",
-  "/fleet": "Fleet",
-  "/environments": "Environments",
-  "/templates": "Templates",
-  "/audit": "Audit Log",
-  "/settings": "Settings",
-  "/profile": "Profile",
-};
-
-function getPageTitle(pathname: string): string {
-  if (pageTitles[pathname]) return pageTitles[pathname];
-  for (const [path, title] of Object.entries(pageTitles)) {
-    if (path !== "/" && pathname.startsWith(path)) return title;
-  }
-  return "Dashboard";
-}
-
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
   const router = useRouter();
-  const pageTitle = getPageTitle(pathname);
 
   const { data: session } = useSession();
   const trpc = useTRPC();
@@ -95,9 +73,6 @@ export default function DashboardLayout({
       <AppSidebar />
       <SidebarInset>
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <h1 className="text-base font-semibold">{pageTitle}</h1>
           <div className="ml-auto flex items-center gap-2">
             <EnvironmentSelector />
             <ThemeToggle />

@@ -12,6 +12,8 @@ import {
   ScrollText,
   Bell,
   Settings,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { TeamSelector } from "@/components/team-selector";
@@ -22,6 +24,7 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -29,6 +32,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 const navItems = [
@@ -71,20 +75,24 @@ export function AppSidebar() {
     return (roleLevel[userRole] ?? 0) >= (roleLevel[item.requiredRole] ?? 0);
   });
 
+  const { state, toggleSidebar } = useSidebar();
+  const isCollapsed = state === "collapsed";
+
   return (
-    <Sidebar>
-      <SidebarHeader className="px-4 pt-3 pb-0">
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="px-4 pt-3 pb-0 group-data-[collapsible=icon]:px-2">
         <Link href="/" className="flex items-center gap-2">
-          <span className="text-lg tracking-tight">
+          <span className="text-lg tracking-tight group-data-[collapsible=icon]:hidden">
             <span className="font-bold">Vector</span>
             <span className="font-light">Flow</span>
           </span>
+          <span className="hidden text-lg font-bold group-data-[collapsible=icon]:block">V</span>
         </Link>
-        <Separator className="my-2" />
-        <div className="px-3 pb-3">
+        <Separator className="my-2 group-data-[collapsible=icon]:hidden" />
+        <div className="px-3 pb-3 group-data-[collapsible=icon]:hidden">
           <TeamSelector />
         </div>
-        <Separator />
+        <Separator className="group-data-[collapsible=icon]:hidden" />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -116,6 +124,16 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={toggleSidebar} tooltip={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+              {isCollapsed ? <ChevronsRight /> : <ChevronsLeft />}
+              <span>Collapse</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }
