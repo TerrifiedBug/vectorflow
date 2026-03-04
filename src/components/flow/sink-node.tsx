@@ -2,9 +2,8 @@
 
 import { memo, useMemo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { VectorComponentDef, DataType } from "@/lib/vector/types";
+import type { VectorComponentDef } from "@/lib/vector/types";
 import type { NodeMetricsData } from "@/stores/flow-store";
 import { getIcon } from "./node-icon";
 import { NodeSparkline } from "./node-sparkline";
@@ -23,36 +22,9 @@ type SinkNodeData = {
 
 type SinkNodeType = Node<SinkNodeData, "sink">;
 
-const dataTypeBadgeColor: Record<DataType, string> = {
-  log: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-  metric:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  trace:
-    "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300",
-};
-
-function getConfigSummary(config: Record<string, unknown>): string | null {
-  const entries = Object.entries(config);
-  if (entries.length === 0) return null;
-
-  const [key, value] = entries[0];
-  if (value === undefined || value === null) return null;
-  if (typeof value === "object" && !Array.isArray(value)) return `${key}: configured`;
-  const display =
-    typeof value === "string"
-      ? value
-      : Array.isArray(value)
-        ? value.slice(0, 2).join(", ")
-        : String(value);
-
-  const truncated = display.length > 30 ? display.slice(0, 27) + "..." : display;
-  return `${key}: ${truncated}`;
-}
-
 function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
-  const { componentDef, componentKey, config, metrics, disabled } = data;
+  const { componentDef, componentKey, metrics, disabled } = data;
   const Icon = useMemo(() => getIcon(componentDef.icon), [componentDef.icon]);
-  const configSummary = getConfigSummary(config);
 
   return (
     <div
@@ -82,28 +54,11 @@ function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
       <div className="space-y-2 px-3 py-2.5">
         <p className="truncate text-xs font-medium text-foreground">{componentKey}</p>
 
-        {metrics ? (
+        {metrics && (
           <p className="truncate text-xs font-mono text-purple-400">
             {formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}
           </p>
-        ) : configSummary ? (
-          <p className="truncate text-xs text-muted-foreground">
-            {configSummary}
-          </p>
-        ) : null}
-
-        {/* Data type badges */}
-        <div className="flex flex-wrap gap-1">
-          {(componentDef.inputTypes ?? []).map((dt) => (
-            <Badge
-              key={dt}
-              variant="secondary"
-              className={cn("px-1.5 py-0 text-xs", dataTypeBadgeColor[dt])}
-            >
-              {dt.charAt(0).toUpperCase() + dt.slice(1)}
-            </Badge>
-          ))}
-        </div>
+        )}
       </div>
 
       {/* Monitoring overlay */}
