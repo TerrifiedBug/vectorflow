@@ -33,6 +33,7 @@ services:
       AUTH_TRUST_HOST: "true"
     volumes:
       - vfdata:/app/.vectorflow
+      - backups:/backups
     env_file:
       - path: .env
         required: false
@@ -42,3 +43,5 @@ volumes:
     name: vectorflow-pgdata
   vfdata:
     name: vectorflow-data
+  backups:
+    name: vectorflow-backups    
