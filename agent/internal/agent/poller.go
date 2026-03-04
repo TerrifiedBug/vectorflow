@@ -73,7 +73,13 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 
 		// Write cert files if present
 		for _, cf := range pc.CertFiles {
-			certPath := filepath.Join(certsDir, cf.Filename)
+			// Sanitize filename to prevent path traversal
+			safeName := filepath.Base(cf.Filename)
+			if safeName == "." || safeName == ".." || safeName == string(filepath.Separator) {
+				slog.Warn("rejected unsafe cert filename", "cert", cf.Name, "filename", cf.Filename)
+				continue
+			}
+			certPath := filepath.Join(certsDir, safeName)
 			data, err := base64.StdEncoding.DecodeString(cf.Data)
 			if err != nil {
 				slog.Warn("failed to decode cert", "cert", cf.Name, "error", err)

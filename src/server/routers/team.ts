@@ -61,6 +61,7 @@ export const teamRouter = router({
 
   get: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const team = await prisma.team.findUnique({
         where: { id: input.id },
@@ -256,6 +257,15 @@ export const teamRouter = router({
       });
       if (!member) throw new TRPCError({ code: "NOT_FOUND", message: "Team member not found" });
 
+      // Prevent team admins from locking super admin accounts
+      const targetUser = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { isSuperAdmin: true },
+      });
+      if (targetUser?.isSuperAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot lock a super admin account" });
+      }
+
       return prisma.user.update({
         where: { id: input.userId },
         data: { lockedAt: new Date(), lockedBy: adminId },
@@ -273,6 +283,15 @@ export const teamRouter = router({
       });
       if (!member) throw new TRPCError({ code: "NOT_FOUND", message: "Team member not found" });
 
+      // Prevent team admins from unlocking super admin accounts
+      const targetUser = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { isSuperAdmin: true },
+      });
+      if (targetUser?.isSuperAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot modify a super admin account" });
+      }
+
       return prisma.user.update({
         where: { id: input.userId },
         data: { lockedAt: null, lockedBy: null },
@@ -287,9 +306,14 @@ export const teamRouter = router({
     .mutation(async ({ input }) => {
       const member = await prisma.teamMember.findUnique({
         where: { userId_teamId: { userId: input.userId, teamId: input.teamId } },
-        include: { user: { select: { authMethod: true } } },
+        include: { user: { select: { authMethod: true, isSuperAdmin: true } } },
       });
       if (!member) throw new TRPCError({ code: "NOT_FOUND", message: "Team member not found" });
+
+      // Prevent team admins from resetting super admin passwords
+      if (member.user.isSuperAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot reset a super admin password" });
+      }
       if (member.user.authMethod === "OIDC") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot reset password for SSO-only users" });
       }
@@ -314,6 +338,46 @@ export const teamRouter = router({
         where: { id: input.teamId },
         data: { requireTwoFactor: input.requireTwoFactor },
         select: { id: true, requireTwoFactor: true },
+      });
+    }),
+
+  linkMemberToOidc: protectedProcedure
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.member_linked_oidc", "User"))
+    .input(z.object({ teamId: z.string(), userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const adminId = ctx.session!.user!.id!;
+      if (input.userId === adminId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot link your own account — sign in via SSO directly" });
+      }
+
+      const member = await prisma.teamMember.findUnique({
+        where: { userId_teamId: { userId: input.userId, teamId: input.teamId } },
+      });
+      if (!member) throw new TRPCError({ code: "NOT_FOUND", message: "Team member not found" });
+
+      const targetUser = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { authMethod: true, isSuperAdmin: true },
+      });
+      if (!targetUser) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+      if (targetUser.isSuperAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot modify a super admin account" });
+      }
+      if (targetUser.authMethod !== "LOCAL") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "User is already using SSO" });
+      }
+
+      return prisma.user.update({
+        where: { id: input.userId },
+        data: {
+          authMethod: "OIDC",
+          passwordHash: null,
+          totpEnabled: false,
+          totpSecret: null,
+          totpBackupCodes: null,
+        },
+        select: { id: true, authMethod: true },
       });
     }),
 });

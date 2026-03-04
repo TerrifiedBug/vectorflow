@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
@@ -11,6 +12,60 @@ import { evaluateAlerts } from "@/server/services/alert-evaluator";
 import { deliverWebhooks } from "@/server/services/webhook-delivery";
 import { DeploymentMode } from "@/generated/prisma";
 import { isVersionOlder } from "@/lib/version";
+
+const heartbeatSchema = z.object({
+  agentVersion: z.string().max(100).optional(),
+  vectorVersion: z.string().max(100).optional(),
+  deploymentMode: z.nativeEnum(DeploymentMode).optional(),
+  pipelines: z.array(z.object({
+    pipelineId: z.string(),
+    version: z.number(),
+    status: z.enum(["RUNNING", "STARTING", "STOPPED", "CRASHED", "PENDING"]),
+    pid: z.number().optional(),
+    uptimeSeconds: z.number().optional(),
+    eventsIn: z.number().optional(),
+    eventsOut: z.number().optional(),
+    errorsTotal: z.number().optional(),
+    bytesIn: z.number().optional(),
+    bytesOut: z.number().optional(),
+    eventsDiscarded: z.number().optional(),
+    componentMetrics: z.array(z.object({
+      componentId: z.string(),
+      componentKind: z.string(),
+      receivedEvents: z.number(),
+      sentEvents: z.number(),
+      receivedBytes: z.number().optional(),
+      sentBytes: z.number().optional(),
+      errorsTotal: z.number().optional(),
+      discardedEvents: z.number().optional(),
+    })).optional(),
+    utilization: z.number().optional(),
+    recentLogs: z.array(z.string()).optional(),
+  })),
+  hostMetrics: z.object({
+    memoryTotalBytes: z.number().optional(),
+    memoryUsedBytes: z.number().optional(),
+    memoryFreeBytes: z.number().optional(),
+    cpuSecondsTotal: z.number().optional(),
+    loadAvg1: z.number().optional(),
+    loadAvg5: z.number().optional(),
+    loadAvg15: z.number().optional(),
+    fsTotalBytes: z.number().optional(),
+    fsUsedBytes: z.number().optional(),
+    fsFreeBytes: z.number().optional(),
+    diskReadBytes: z.number().optional(),
+    diskWrittenBytes: z.number().optional(),
+    netRxBytes: z.number().optional(),
+    netTxBytes: z.number().optional(),
+  }).optional(),
+  sampleResults: z.array(z.object({
+    requestId: z.string(),
+    componentKey: z.string().optional(),
+    events: z.array(z.unknown()).optional(),
+    schema: z.array(z.object({ path: z.string(), type: z.string(), sample: z.string() })).optional(),
+    error: z.string().optional(),
+  })).optional(),
+});
 
 let lastCleanup = 0;
 
@@ -40,22 +95,6 @@ interface PipelineStatus {
   recentLogs?: string[];
 }
 
-interface HostMetrics {
-  memoryTotalBytes?: number;
-  memoryUsedBytes?: number;
-  memoryFreeBytes?: number;
-  cpuSecondsTotal?: number;
-  loadAvg1?: number;
-  loadAvg5?: number;
-  loadAvg15?: number;
-  fsTotalBytes?: number;
-  fsUsedBytes?: number;
-  fsFreeBytes?: number;
-  diskReadBytes?: number;
-  diskWrittenBytes?: number;
-  netRxBytes?: number;
-  netTxBytes?: number;
-}
 
 export async function POST(request: Request) {
   const agent = await authenticateAgent(request);
@@ -65,20 +104,24 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { pipelines, hostMetrics, agentVersion, vectorVersion, deploymentMode } = body as {
-      pipelines: PipelineStatus[];
-      hostMetrics?: HostMetrics;
-      agentVersion?: string;
-      vectorVersion?: string;
-      deploymentMode?: DeploymentMode;
-    };
-
-    if (!Array.isArray(pipelines)) {
+    const parsed = heartbeatSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "pipelines array is required" },
+        { error: "Invalid input", details: parsed.error.flatten().fieldErrors },
         { status: 400 },
       );
     }
+
+    const { pipelines: rawPipelines, hostMetrics, agentVersion, vectorVersion, deploymentMode } = parsed.data;
+
+    // Validate pipeline ownership: only accept pipelines belonging to this agent's environment
+    const validPipelineIds = new Set(
+      (await prisma.pipeline.findMany({
+        where: { environmentId: agent.environmentId },
+        select: { id: true },
+      })).map((p) => p.id),
+    );
+    const pipelines = rawPipelines.filter((p) => validPipelineIds.has(p.pipelineId)) as PipelineStatus[];
 
     const now = new Date();
 
@@ -285,13 +328,7 @@ export async function POST(request: Request) {
     }
 
     // Process event sample results from the agent
-    const sampleResults = body.sampleResults as Array<{
-      requestId: string;
-      componentKey: string;
-      events?: unknown[];
-      schema?: Array<{ path: string; type: string; sample: string }>;
-      error?: string;
-    }> | undefined;
+    const sampleResults = parsed.data.sampleResults;
 
     if (Array.isArray(sampleResults) && sampleResults.length > 0) {
       for (const result of sampleResults) {

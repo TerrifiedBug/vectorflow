@@ -29,7 +29,7 @@ const pipelineNameSchema = z
 
 const nodeSchema = z.object({
   id: z.string().optional(),
-  componentKey: z.string().min(1),
+  componentKey: z.string().min(1).max(128).regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/),
   componentType: z.string().min(1),
   kind: z.nativeEnum(ComponentKind),
   config: z.record(z.string(), z.any()),
@@ -182,6 +182,7 @@ export const pipelineRouter = router({
 
   get: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const pipeline = await prisma.pipeline.findUnique({
         where: { id: input.id },
@@ -576,7 +577,7 @@ export const pipelineRouter = router({
         pipelineId: z.string(),
         nodes: z.array(nodeSchema),
         edges: z.array(edgeSchema),
-        globalConfig: z.record(z.string(), z.any()).nullable().optional(),
+        globalConfig: z.record(z.string().max(128).regex(/^[a-zA-Z_][a-zA-Z0-9_.]*$/), z.any()).nullable().optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
@@ -699,6 +700,7 @@ export const pipelineRouter = router({
 
   getVersion: protectedProcedure
     .input(z.object({ versionId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return getVersion(input.versionId);
     }),
@@ -855,6 +857,7 @@ export const pipelineRouter = router({
         limit: z.number().min(1).max(50).default(5),
       }),
     )
+    .use(withTeamAccess("EDITOR"))
     .mutation(async ({ input }) => {
       const pipeline = await prisma.pipeline.findUnique({
         where: { id: input.pipelineId },
@@ -887,6 +890,7 @@ export const pipelineRouter = router({
 
   sampleResult: protectedProcedure
     .input(z.object({ requestId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const request = await prisma.eventSampleRequest.findUnique({
         where: { id: input.requestId },

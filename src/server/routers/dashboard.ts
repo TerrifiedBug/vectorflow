@@ -8,6 +8,7 @@ import { decryptNodeConfig } from "@/server/services/config-crypto";
 export const dashboardRouter = router({
   stats: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const envFilter = { environment: { id: input.environmentId } };
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -56,26 +57,64 @@ export const dashboardRouter = router({
       };
     }),
 
-  recentPipelines: protectedProcedure.query(async () => {
+  recentPipelines: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session!.user!.id!;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+
+    const teamFilter = user?.isSuperAdmin
+      ? {}
+      : { environment: { team: { members: { some: { userId } } } } };
+
     return prisma.pipeline.findMany({
+      where: teamFilter,
       take: 5,
       orderBy: { updatedAt: "desc" },
       include: { environment: { select: { name: true } } },
     });
   }),
 
-  recentAudit: protectedProcedure.query(async () => {
+  recentAudit: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session!.user!.id!;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+
+    let teamIdFilter: { teamId?: { in: string[] } } = {};
+    if (!user?.isSuperAdmin) {
+      const memberships = await prisma.teamMember.findMany({
+        where: { userId },
+        select: { teamId: true },
+      });
+      teamIdFilter = { teamId: { in: memberships.map((m) => m.teamId) } };
+    }
+
     return prisma.auditLog.findMany({
+      where: teamIdFilter,
       take: 10,
       orderBy: { createdAt: "desc" },
       include: { user: { select: { name: true, email: true } } },
     });
   }),
 
-  nodeCards: protectedProcedure.query(async () => {
+  nodeCards: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session!.user!.id!;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+
+    const teamFilter = user?.isSuperAdmin
+      ? {}
+      : { environment: { team: { members: { some: { userId } } } } };
+
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
     const nodes = await prisma.vectorNode.findMany({
+      where: teamFilter,
       include: {
         environment: { select: { id: true, name: true } },
         pipelineStatuses: {
@@ -365,12 +404,22 @@ export const dashboardRouter = router({
     });
   }),
 
-  operationalOverview: protectedProcedure.query(async () => {
+  operationalOverview: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session!.user!.id!;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+
+    const teamFilter = user?.isSuperAdmin
+      ? {}
+      : { environment: { team: { members: { some: { userId } } } } };
+
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
 
     const [unhealthyNodes, deployedPipelines, recentMetrics] = await Promise.all([
       prisma.vectorNode.findMany({
-        where: { status: { not: "HEALTHY" } },
+        where: { status: { not: "HEALTHY" }, ...teamFilter },
         select: {
           id: true,
           name: true,
@@ -384,7 +433,7 @@ export const dashboardRouter = router({
       }),
 
       prisma.pipeline.findMany({
-        where: { isDraft: false, deployedAt: { not: null } },
+        where: { isDraft: false, deployedAt: { not: null }, ...teamFilter },
         select: {
           id: true,
           name: true,
@@ -408,6 +457,7 @@ export const dashboardRouter = router({
         where: {
           nodeId: null,
           timestamp: { gte: fiveMinAgo },
+          ...(user?.isSuperAdmin ? {} : { pipeline: teamFilter }),
         },
         _sum: {
           eventsIn: true,
