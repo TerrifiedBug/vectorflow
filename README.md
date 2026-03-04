@@ -23,7 +23,7 @@ Stop hand-editing YAML. Build observability pipelines with drag-and-drop<br>and 
 <br>
 
 <p align="center">
-  <img src="docs/screenshots/pipeline-editor.png" alt="VectorFlow Pipeline Editor — drag-and-drop canvas with component palette, visual node graph, and configuration panel" width="800">
+  <img src="https://github.com/user-attachments/assets/6c1003be-9e54-46b3-8bc3-1ccfe48cbbdd" alt="VectorFlow Pipeline Editor — drag-and-drop canvas with component palette, visual node graph, and configuration panel" width="800">
 </p>
 
 ## Why VectorFlow?
@@ -50,7 +50,7 @@ Build Vector pipelines with a drag-and-drop canvas. Browse 100+ components from 
 Deploy pipeline configs to your entire fleet with a single click. The deploy dialog shows a full YAML diff against the previous version before you confirm. Agents pull configs automatically — no SSH, no Ansible, no manual intervention.
 
 <p align="center">
-  <img src="docs/screenshots/fleet.png" alt="VectorFlow Fleet — manage and monitor all your agents" width="800">
+  <img src="https://github.com/user-attachments/assets/207e5f17-eca4-490a-abfe-f1d86402840f" alt="VectorFlow Fleet — manage and monitor all your agents" width="800">
 </p>
 
 ### 📊 Real-Time Monitoring
@@ -58,7 +58,7 @@ Deploy pipeline configs to your entire fleet with a single click. The deploy dia
 Track pipeline throughput, error rates, and host metrics (CPU, memory, disk, network) per node and per pipeline. Live event rates display directly on the pipeline canvas while you're editing.
 
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" alt="VectorFlow Dashboard — real-time metrics per node including CPU, memory, and pipeline throughput" width="800">
+  <img src="https://github.com/user-attachments/assets/c7f7e5be-df2a-4877-b716-b125a343f902" alt="VectorFlow Dashboard — real-time metrics per node including CPU, memory, and pipeline throughput" width="800">
 </p>
 
 ### 🔄 Version Control & Rollback
