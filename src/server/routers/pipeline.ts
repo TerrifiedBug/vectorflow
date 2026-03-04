@@ -401,6 +401,14 @@ export const pipelineRouter = router({
         });
       }
 
+      // Undeploy before deleting so agents stop the pipeline on next poll
+      if (existing.deployedAt) {
+        await prisma.pipeline.update({
+          where: { id: input.id },
+          data: { isDraft: true, deployedAt: null },
+        });
+      }
+
       return prisma.pipeline.delete({
         where: { id: input.id },
       });
