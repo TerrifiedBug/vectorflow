@@ -1,0 +1,36 @@
+name: Label PRs
+
+on:
+  pull_request:
+    types: [opened, edited]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  conventional-label:
+    name: Conventional Commit Labels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: bcoe/conventional-release-labels@v1
+        with:
+          type_labels: |
+            {
+              "feat": "feature",
+              "fix": "fix",
+              "bug": "fix",
+              "refactor": "refactor",
+              "perf": "performance",
+              "docs": "documentation",
+              "ci": "ci",
+              "chore": "improvement",
+              "security": "security"
+            }
+
+  path-label:
+    name: Path-Based Labels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          sync-labels: false
