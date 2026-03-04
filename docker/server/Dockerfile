@@ -44,7 +44,7 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV VF_VERSION=${VF_VERSION}
 
-RUN apk add --no-cache git openssh-client && \
+RUN apk add --no-cache git openssh-client postgresql-client && \
     addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 vectorflow
 
@@ -70,6 +70,9 @@ RUN npm install --global prisma@$(cat /tmp/prisma-version) && \
 
 # Create runtime data directory for system vector config and audit logs
 RUN mkdir -p /app/.vectorflow && chown vectorflow:nodejs /app/.vectorflow
+
+# Create backup directory
+RUN mkdir -p /backups && chown vectorflow:nodejs /backups
 
 # Copy entrypoint script
 COPY --chown=vectorflow:nodejs docker/server/entrypoint.sh ./entrypoint.sh
