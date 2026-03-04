@@ -403,6 +403,14 @@ model SystemSettings {
   metricsRetentionDays    Int @default(7)
   logsRetentionDays       Int @default(3)
 
+  // Backup configuration
+  backupEnabled        Boolean  @default(false)
+  backupCron           String   @default("0 2 * * *")
+  backupRetentionCount Int      @default(7)
+  lastBackupAt         DateTime?
+  lastBackupStatus     String?
+  lastBackupError      String?
+
   latestServerRelease          String?
   latestServerReleaseCheckedAt DateTime?
   latestAgentRelease           String?
