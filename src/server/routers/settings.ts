@@ -6,6 +6,15 @@ import { encrypt, decrypt } from "@/server/services/crypto";
 import { withAudit } from "@/server/middleware/audit";
 import { invalidateAuthCache } from "@/auth";
 import { checkServerVersion, checkAgentVersion } from "@/server/services/version-check";
+import {
+  createBackup,
+  listBackups,
+  deleteBackup,
+  restoreFromBackup,
+  runRetentionCleanup,
+} from "@/server/services/backup";
+import { rescheduleBackup, isValidCron } from "@/server/services/backup-scheduler";
+import { validatePublicUrl } from "@/server/services/url-validation";
 
 const SETTINGS_ID = "singleton";
 
@@ -69,6 +78,12 @@ export const settingsRouter = router({
         fleetUnhealthyThreshold: settings.fleetUnhealthyThreshold,
         metricsRetentionDays: settings.metricsRetentionDays,
         logsRetentionDays: settings.logsRetentionDays,
+        backupEnabled: settings.backupEnabled,
+        backupCron: settings.backupCron,
+        backupRetentionCount: settings.backupRetentionCount,
+        lastBackupAt: settings.lastBackupAt,
+        lastBackupStatus: settings.lastBackupStatus,
+        lastBackupError: settings.lastBackupError,
         updatedAt: settings.updatedAt,
       };
     }),
@@ -219,6 +234,7 @@ export const settingsRouter = router({
       })
     )
     .mutation(async ({ input }) => {
+      await validatePublicUrl(input.issuer);
       const discoveryUrl = `${input.issuer.replace(/\/$/, "")}/.well-known/openid-configuration`;
 
       try {
@@ -266,5 +282,72 @@ export const settingsRouter = router({
         checkAgentVersion(input?.force),
       ]);
       return { server, agent };
+    }),
+
+  // ─── Backup & Restore ─────────────────────────────────────────────────────
+
+  createBackup: protectedProcedure
+    .use(requireSuperAdmin())
+    .use(withAudit("settings.backup_created", "SystemSettings"))
+    .mutation(async () => {
+      const metadata = await createBackup();
+      await runRetentionCleanup();
+      return metadata;
+    }),
+
+  listBackups: protectedProcedure
+    .use(requireSuperAdmin())
+    .query(async () => {
+      return listBackups();
+    }),
+
+  deleteBackup: protectedProcedure
+    .use(requireSuperAdmin())
+    .input(z.object({ filename: z.string().min(1) }))
+    .use(withAudit("settings.backup_deleted", "SystemSettings"))
+    .mutation(async ({ input }) => {
+      await deleteBackup(input.filename);
+      return { success: true };
+    }),
+
+  restoreBackup: protectedProcedure
+    .use(requireSuperAdmin())
+    .input(z.object({ filename: z.string().min(1) }))
+    .use(withAudit("settings.backup_restored", "SystemSettings"))
+    .mutation(async ({ input }) => {
+      await restoreFromBackup(input.filename);
+      return { success: true };
+    }),
+
+  updateBackupSchedule: protectedProcedure
+    .use(requireSuperAdmin())
+    .input(
+      z.object({
+        enabled: z.boolean(),
+        cron: z.string().min(1),
+        retentionCount: z.number().int().min(1).max(100),
+      })
+    )
+    .use(withAudit("settings.backup_schedule_updated", "SystemSettings"))
+    .mutation(async ({ input }) => {
+      if (!isValidCron(input.cron)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid cron expression",
+        });
+      }
+
+      await getOrCreateSettings();
+      const result = await prisma.systemSettings.update({
+        where: { id: SETTINGS_ID },
+        data: {
+          backupEnabled: input.enabled,
+          backupCron: input.cron,
+          backupRetentionCount: input.retentionCount,
+        },
+      });
+
+      rescheduleBackup(input.enabled, input.cron);
+      return result;
     }),
 });
