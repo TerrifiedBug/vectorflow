@@ -3,8 +3,20 @@ name: CodeQL
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "agent/**"
+      - "prisma/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
   push:
     branches: [main]
+    paths:
+      - "src/**"
+      - "agent/**"
+      - "prisma/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
   schedule:
     - cron: "30 5 * * 1" # Monday 5:30 UTC
 
