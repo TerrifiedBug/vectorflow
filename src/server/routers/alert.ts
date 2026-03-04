@@ -9,6 +9,7 @@ import {
   type WebhookPayload,
   formatWebhookMessage,
 } from "@/server/services/webhook-delivery";
+import { validatePublicUrl } from "@/server/services/url-validation";
 
 export const alertRouter = router({
   // ─── Alert Rules ───────────────────────────────────────────────────
@@ -160,6 +161,7 @@ export const alertRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("alertWebhook.created", "AlertWebhook"))
     .mutation(async ({ input }) => {
+      await validatePublicUrl(input.url);
       const env = await prisma.environment.findUnique({
         where: { id: input.environmentId },
       });
@@ -193,6 +195,9 @@ export const alertRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("alertWebhook.updated", "AlertWebhook"))
     .mutation(async ({ input }) => {
+      if (input.url) {
+        await validatePublicUrl(input.url);
+      }
       const { id, headers, ...rest } = input;
       const existing = await prisma.alertWebhook.findUnique({
         where: { id },
@@ -252,6 +257,8 @@ export const alertRouter = router({
           message: "Alert webhook not found",
         });
       }
+
+      await validatePublicUrl(webhook.url);
 
       const payload: WebhookPayload = {
         alertId: "test-alert-id",

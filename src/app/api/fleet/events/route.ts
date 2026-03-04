@@ -1,13 +1,47 @@
+import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+
 export async function GET() {
+  // Require authenticated session
+  const session = await auth();
+  if (!session?.user?.id) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Determine which environments this user can see
+  const userId = session.user.id;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true },
+  });
+
+  let environmentFilter: { id: { in: string[] } } | undefined;
+  if (!user?.isSuperAdmin) {
+    const memberships = await prisma.teamMember.findMany({
+      where: { userId },
+      select: { teamId: true },
+    });
+    const teamIds = memberships.map((m) => m.teamId);
+    const environments = await prisma.environment.findMany({
+      where: { teamId: { in: teamIds } },
+      select: { id: true },
+    });
+    environmentFilter = { id: { in: environments.map((e) => e.id) } };
+  }
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
     start(controller) {
       const interval = setInterval(async () => {
         try {
-          // Import prisma and query current node statuses
-          const { prisma } = await import("@/lib/prisma");
           const nodes = await prisma.vectorNode.findMany({
+            where: environmentFilter
+              ? { environment: environmentFilter }
+              : undefined,
             select: {
               id: true,
               status: true,
@@ -32,11 +66,10 @@ export async function GET() {
         } catch {
           // Silently continue on errors
         }
-      }, 5000); // Update every 5 seconds
+      }, 5000);
 
       // Cleanup on close
       const cleanup = () => clearInterval(interval);
-      // Note: controller.close() will be called when the connection drops
       void cleanup;
     },
   });

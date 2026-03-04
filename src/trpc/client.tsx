@@ -34,6 +34,7 @@ export function TRPCClientProvider({
         httpBatchStreamLink({
           url: `${getBaseUrl()}/api/trpc`,
           transformer: superjson,
+          headers: () => ({ "x-trpc-source": "client" }),
         }),
       ],
     })

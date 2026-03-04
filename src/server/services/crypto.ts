@@ -1,7 +1,12 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from "crypto";
 
 function deriveKey(): Buffer {
-  const secret = process.env.NEXTAUTH_SECRET || "default-secret";
+  const secret = process.env.NEXTAUTH_SECRET;
+  if (!secret) {
+    throw new Error(
+      "NEXTAUTH_SECRET environment variable is required but not set",
+    );
+  }
   return createHash("sha256").update(secret).digest();
 }
 

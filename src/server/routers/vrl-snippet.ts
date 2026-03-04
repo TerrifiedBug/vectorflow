@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
 import { withAudit } from "@/server/middleware/audit";
@@ -7,6 +7,7 @@ import { withAudit } from "@/server/middleware/audit";
 export const vrlSnippetRouter = router({
   list: protectedProcedure
     .input(z.object({ teamId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const custom = await prisma.vrlSnippet.findMany({
         where: { teamId: input.teamId },
@@ -35,6 +36,7 @@ export const vrlSnippetRouter = router({
         code: z.string().min(1),
       })
     )
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("vrlSnippet.created", "VrlSnippet"))
     .mutation(async ({ input, ctx }) => {
       return prisma.vrlSnippet.create({
@@ -59,6 +61,7 @@ export const vrlSnippetRouter = router({
         code: z.string().min(1).optional(),
       })
     )
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("vrlSnippet.updated", "VrlSnippet"))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
@@ -67,6 +70,7 @@ export const vrlSnippetRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("vrlSnippet.deleted", "VrlSnippet"))
     .mutation(async ({ input }) => {
       return prisma.vrlSnippet.delete({ where: { id: input.id } });

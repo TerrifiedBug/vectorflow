@@ -27,7 +27,10 @@ export const certificateRouter = router({
           /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/,
           "Name must start with a letter or number and contain only letters, numbers, hyphens, and underscores",
         ),
-        filename: z.string().min(1),
+        filename: z.string().min(1).max(255).regex(
+          /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
+          "Filename must start with a letter or number and contain only letters, numbers, dots, hyphens, and underscores",
+        ),
         fileType: z.enum(["ca", "cert", "key"]),
         dataBase64: z.string().min(1),
       }),

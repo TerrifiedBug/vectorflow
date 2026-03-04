@@ -216,6 +216,61 @@ export const withTeamAccess = (minRole: Role) =>
       }
     }
 
+    // Resolve requestId → EventSampleRequest → pipeline → environment.teamId
+    if (!teamId && rawInput?.requestId) {
+      const req = await prisma.eventSampleRequest.findUnique({
+        where: { id: rawInput.requestId as string },
+        select: { pipeline: { select: { environment: { select: { teamId: true } } } } },
+      });
+      if (req) {
+        teamId = req.pipeline.environment.teamId ?? undefined;
+      }
+    }
+
+    // Resolve versionId → PipelineVersion → pipeline → environment.teamId
+    if (!teamId && rawInput?.versionId) {
+      const version = await prisma.pipelineVersion.findUnique({
+        where: { id: rawInput.versionId as string },
+        select: { pipeline: { select: { environment: { select: { teamId: true } } } } },
+      });
+      if (version) {
+        teamId = version.pipeline.environment.teamId ?? undefined;
+      }
+    }
+
+    // Resolve nodeId → VectorNode → environment.teamId (for fleet.nodeLogs, fleet.nodeMetrics)
+    if (!teamId && rawInput?.nodeId) {
+      const node = await prisma.vectorNode.findUnique({
+        where: { id: rawInput.nodeId as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (node) {
+        teamId = node.environment.teamId ?? undefined;
+      }
+    }
+
+    // Resolve id as VrlSnippet → teamId (for vrl-snippet update/delete)
+    if (!teamId && rawInput?.id) {
+      const snippet = await prisma.vrlSnippet.findUnique({
+        where: { id: rawInput.id as string },
+        select: { teamId: true },
+      });
+      if (snippet) {
+        teamId = snippet.teamId;
+      }
+    }
+
+    // Resolve id as Team → teamId (for team.get)
+    if (!teamId && rawInput?.id) {
+      const team = await prisma.team.findUnique({
+        where: { id: rawInput.id as string },
+        select: { id: true },
+      });
+      if (team) {
+        teamId = team.id;
+      }
+    }
+
     if (!teamId) {
       throw new TRPCError({
         code: "BAD_REQUEST",

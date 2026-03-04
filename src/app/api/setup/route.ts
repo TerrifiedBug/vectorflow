@@ -12,6 +12,19 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    // CSRF protection: verify origin matches host
+    const origin = request.headers.get("origin");
+    const host = request.headers.get("host");
+    if (origin && host) {
+      const originHost = new URL(origin).host;
+      if (originHost !== host) {
+        return NextResponse.json(
+          { error: "Origin mismatch" },
+          { status: 403 }
+        );
+      }
+    }
+
     const setupRequired = await isSetupRequired();
     if (!setupRequired) {
       return NextResponse.json(

@@ -178,7 +178,7 @@ async function getAuthInstance() {
           issuer: oidc.issuer,
           clientId: oidc.clientId,
           clientSecret: oidc.clientSecret,
-          allowDangerousEmailAccountLinking: true,
+          allowDangerousEmailAccountLinking: false,
           client: {
             token_endpoint_auth_method: oidc.tokenEndpointAuthMethod,
           },
@@ -221,11 +221,17 @@ async function getAuthInstance() {
                   ipAddress, userEmail: dbUser.email, userName: dbUser.name,
                 }).catch(() => {});
               } else if (dbUser.authMethod === "LOCAL") {
-                // SSO takeover: convert local user to OIDC (removes local login)
-                await prisma.user.update({
-                  where: { id: dbUser.id },
-                  data: { authMethod: "OIDC", passwordHash: null },
-                });
+                // Block OIDC login for existing local accounts — admin must explicitly link
+                const ipAddress = await getClientIp();
+                writeAuditLog({
+                  userId: dbUser.id, action: "auth.oidc_link_blocked", entityType: "Auth", entityId: "oidc",
+                  ipAddress, userEmail: dbUser.email, userName: dbUser.name,
+                  metadata: { reason: "local_account_exists" },
+                }).catch(() => {});
+                console.warn(
+                  `OIDC login blocked: local account exists for ${dbUser.email}. Admin must explicitly link accounts.`,
+                );
+                return false;
               }
 
               // Refresh profile picture on each OIDC sign-in

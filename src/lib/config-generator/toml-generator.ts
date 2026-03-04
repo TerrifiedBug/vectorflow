@@ -126,8 +126,16 @@ function formatTomlValue(lines: string[], key: string, value: unknown): void {
 }
 
 function tomlString(s: string): string {
-  // Use basic strings — escape backslashes and double quotes
-  const escaped = s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  // Escape backslashes, double quotes, and control characters per TOML spec
+  const escaped = s
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t")
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, (ch) => {
+      return "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0");
+    });
   return `"${escaped}"`;
 }
 

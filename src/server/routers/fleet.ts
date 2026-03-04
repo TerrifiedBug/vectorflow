@@ -21,6 +21,7 @@ export const fleetRouter = router({
 
   get: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const node = await prisma.vectorNode.findUnique({
         where: { id: input.id },
@@ -135,6 +136,7 @@ export const fleetRouter = router({
         pipelineId: z.string().optional(),
       }),
     )
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const { nodeId, cursor, limit, levels, pipelineId } = input;
       const take = limit;
@@ -174,6 +176,7 @@ export const fleetRouter = router({
         hours: z.number().min(1).max(168).default(1),
       }),
     )
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const since = new Date(Date.now() - input.hours * 60 * 60 * 1000);
 

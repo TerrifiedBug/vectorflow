@@ -30,6 +30,7 @@ import {
   Download,
   AlertTriangle,
   Clock,
+  Link2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -1046,11 +1047,26 @@ function TeamSettings() {
     })
   );
 
+  const settingsQuery = useQuery(trpc.settings.get.queryOptions());
+  const oidcConfigured = !!(settingsQuery.data?.oidcIssuer && settingsQuery.data?.oidcClientId);
+
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [tempPassword, setTempPassword] = useState("");
   const [resetPasswordConfirm, setResetPasswordConfirm] = useState<{ userId: string; name: string } | null>(null);
   const [lockConfirm, setLockConfirm] = useState<{ userId: string; name: string; action: "lock" | "unlock" } | null>(null);
   const [removeMember, setRemoveMember] = useState<{ userId: string; name: string } | null>(null);
+  const [linkToOidcConfirm, setLinkToOidcConfirm] = useState<{ userId: string; name: string } | null>(null);
+
+  const linkToOidcMutation = useMutation(
+    trpc.team.linkMemberToOidc.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.team.get.queryKey({ id: selectedTeamId! }) });
+        toast.success("User linked to SSO");
+        setLinkToOidcConfirm(null);
+      },
+      onError: (error) => toast.error(error.message),
+    })
+  );
 
   const lockMutation = useMutation(
     trpc.team.lockMember.mutationOptions({
@@ -1329,6 +1345,18 @@ function TeamSettings() {
                           <KeyRound className="h-4 w-4" />
                         </Button>
                       )}
+                      {member.user.authMethod === "LOCAL" && oidcConfigured && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Link to SSO"
+                          aria-label="Link to SSO"
+                          onClick={() => setLinkToOidcConfirm({ userId: member.user.id, name: member.user.name || member.user.email })}
+                        >
+                          <Link2 className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -1447,6 +1475,44 @@ function TeamSettings() {
               }}
             >
               {lockConfirm?.action === "lock" ? "Lock" : "Unlock"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Link to SSO Confirmation Dialog */}
+      <Dialog open={!!linkToOidcConfirm} onOpenChange={(open) => !open && setLinkToOidcConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Link to SSO?</DialogTitle>
+            <DialogDescription>
+              This will convert <span className="font-medium">{linkToOidcConfirm?.name}</span> from local authentication to SSO. This action:
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="list-disc pl-6 text-sm text-muted-foreground space-y-1">
+            <li>Removes their password — they can no longer log in with email/password</li>
+            <li>Disables their TOTP 2FA — the SSO provider handles MFA</li>
+            <li>Requires them to log in via SSO going forward</li>
+          </ul>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkToOidcConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={linkToOidcMutation.isPending}
+              onClick={() => {
+                if (!linkToOidcConfirm) return;
+                linkToOidcMutation.mutate({ teamId: team.id, userId: linkToOidcConfirm.userId });
+              }}
+            >
+              {linkToOidcMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Linking...
+                </>
+              ) : (
+                "Link to SSO"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

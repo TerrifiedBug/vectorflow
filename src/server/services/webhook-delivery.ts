@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
+import { validatePublicUrl } from "@/server/services/url-validation";
 
 export interface WebhookPayload {
   alertId: string;
@@ -47,6 +48,14 @@ export async function deliverWebhooks(
   });
 
   for (const webhook of webhooks) {
+    // SSRF protection: validate webhook URL resolves to a public IP
+    try {
+      await validatePublicUrl(webhook.url);
+    } catch {
+      console.error(`Webhook delivery skipped for ${webhook.url}: private/reserved IP`);
+      continue;
+    }
+
     // Always include a `content` field with a human-readable summary.
     // Chat platforms (Discord, Slack, etc.) use this field; generic
     // consumers can ignore it and read the structured fields instead.

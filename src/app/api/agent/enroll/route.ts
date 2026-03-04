@@ -1,18 +1,28 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyEnrollmentToken, generateNodeToken } from "@/server/services/agent-token";
+
+const enrollSchema = z.object({
+  token: z.string().min(1),
+  hostname: z.string().min(1).max(253),
+  os: z.string().max(100).optional(),
+  agentVersion: z.string().max(100).optional(),
+  vectorVersion: z.string().max(100).optional(),
+});
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { token, hostname, os, agentVersion, vectorVersion } = body;
-
-    if (!token || !hostname) {
+    const parsed = enrollSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "token and hostname are required" },
+        { error: "Invalid input", details: parsed.error.flatten().fieldErrors },
         { status: 400 },
       );
     }
+
+    const { token, hostname, os, agentVersion, vectorVersion } = parsed.data;
 
     // Find all environments that have an enrollment token
     const environments = await prisma.environment.findMany({
