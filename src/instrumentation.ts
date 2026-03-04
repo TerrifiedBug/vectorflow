@@ -38,4 +38,14 @@ export async function register() {
     // Startup failure should not prevent the server from booting.
     console.error("Failed to start system Vector on boot:", error);
   }
+
+  // Start backup scheduler if enabled.
+  try {
+    const { initBackupScheduler } = await import(
+      "@/server/services/backup-scheduler"
+    );
+    await initBackupScheduler();
+  } catch (error) {
+    console.error("Failed to initialize backup scheduler:", error);
+  }
 }
