@@ -206,8 +206,6 @@ VF_URL=${VF_URL}
 VF_TOKEN=${VF_TOKEN}
 VF_DATA_DIR=${DATA_DIR}
 VF_VECTOR_BIN=${INSTALL_DIR}/vector
-# Channel is for human reference only — the agent infers channel from its version string
-VF_CHANNEL=${CHANNEL}
 ENVEOF
     chmod 0600 "${ENV_FILE}"
     ok "Environment file written"
