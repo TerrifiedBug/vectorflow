@@ -69,6 +69,15 @@ export default function FleetPage() {
   );
   const latestAgentVersion = versionQuery.data?.agent.latestVersion ?? null;
   const agentChecksums = versionQuery.data?.agent.checksums ?? {};
+  const latestDevAgentVersion = versionQuery.data?.devAgent?.latestVersion ?? null;
+  const devAgentChecksums = versionQuery.data?.devAgent?.checksums ?? {};
+
+  const getNodeLatest = (node: { agentVersion: string | null }) => {
+    if (node.agentVersion?.startsWith("dev-")) {
+      return { version: latestDevAgentVersion, checksums: devAgentChecksums, tag: "dev" };
+    }
+    return { version: latestAgentVersion, checksums: agentChecksums, tag: `v${latestAgentVersion}` };
+  };
 
   const triggerUpdate = useMutation(
     trpc.fleet.triggerAgentUpdate.mutationOptions({
@@ -132,9 +141,9 @@ export default function FleetPage() {
                     <span className="font-mono text-sm text-muted-foreground">
                       {node.agentVersion ?? "—"}
                     </span>
-                    {latestAgentVersion &&
+                    {getNodeLatest(node).version &&
                       node.agentVersion &&
-                      isVersionOlder(node.agentVersion, latestAgentVersion) && (
+                      isVersionOlder(node.agentVersion, getNodeLatest(node).version ?? "") && (
                         <Badge variant="outline" className="text-amber-600">
                           Update available
                         </Badge>
@@ -165,9 +174,9 @@ export default function FleetPage() {
                       Update pending...
                     </Badge>
                   ) : node.deploymentMode === "DOCKER" ? (
-                    latestAgentVersion &&
+                    getNodeLatest(node).version &&
                     node.agentVersion &&
-                    isVersionOlder(node.agentVersion, latestAgentVersion) ? (
+                    isVersionOlder(node.agentVersion, getNodeLatest(node).version ?? "") ? (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span>
@@ -179,20 +188,21 @@ export default function FleetPage() {
                         <TooltipContent>Update via Docker image pull</TooltipContent>
                       </Tooltip>
                     ) : null
-                  ) : latestAgentVersion &&
+                  ) : getNodeLatest(node).version &&
                     node.agentVersion &&
-                    isVersionOlder(node.agentVersion, latestAgentVersion) ? (
+                    isVersionOlder(node.agentVersion, getNodeLatest(node).version ?? "") ? (
                     <Button
                       variant="outline"
                       size="sm"
                       disabled={triggerUpdate.isPending}
                       onClick={(e) => {
                         e.preventDefault();
+                        const latest = getNodeLatest(node);
                         triggerUpdate.mutate({
                           nodeId: node.id,
-                          targetVersion: latestAgentVersion,
-                          downloadUrl: `https://github.com/${AGENT_REPO}/releases/download/v${latestAgentVersion}/vf-agent-linux-amd64`,
-                          checksum: `sha256:${agentChecksums["vf-agent-linux-amd64"] ?? ""}`,
+                          targetVersion: latest.version!,
+                          downloadUrl: `https://github.com/${AGENT_REPO}/releases/download/${latest.tag}/vf-agent-linux-amd64`,
+                          checksum: `sha256:${latest.checksums["vf-agent-linux-amd64"] ?? ""}`,
                         });
                       }}
                     >
