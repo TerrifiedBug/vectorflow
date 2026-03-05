@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "NodeMetric" ADD COLUMN "cpuSecondsIdle" DOUBLE PRECISION NOT NULL DEFAULT 0;

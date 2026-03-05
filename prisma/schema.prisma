@@ -118,6 +118,7 @@ model NodeMetric {
   memoryUsedBytes  BigInt     @default(0)
   memoryFreeBytes  BigInt     @default(0)
   cpuSecondsTotal  Float      @default(0)
+  cpuSecondsIdle   Float      @default(0)
   loadAvg1         Float      @default(0)
   loadAvg5         Float      @default(0)
   loadAvg15        Float      @default(0)

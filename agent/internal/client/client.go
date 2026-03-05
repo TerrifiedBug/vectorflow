@@ -181,6 +181,7 @@ type HostMetrics struct {
 	MemoryUsedBytes   int64   `json:"memoryUsedBytes"`
 	MemoryFreeBytes   int64   `json:"memoryFreeBytes"`
 	CpuSecondsTotal   float64 `json:"cpuSecondsTotal"`
+	CpuSecondsIdle    float64 `json:"cpuSecondsIdle"`
 	LoadAvg1          float64 `json:"loadAvg1"`
 	LoadAvg5          float64 `json:"loadAvg5"`
 	LoadAvg15         float64 `json:"loadAvg15"`
