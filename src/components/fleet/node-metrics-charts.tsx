@@ -93,17 +93,14 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
     const fsUsed = Number(m.fsUsedBytes);
     const fsPercent = fsTotal > 0 ? (fsUsed / fsTotal) * 100 : 0;
 
-    // CPU% computed as delta of cpuSecondsTotal between consecutive samples
+    // CPU% = (busy time / total time) across all cores
     let cpuPercent = 0;
     if (i > 0) {
       const prev = raw[i - 1];
-      const dtSeconds =
-        (new Date(m.timestamp).getTime() -
-          new Date(prev.timestamp).getTime()) /
-        1000;
-      if (dtSeconds > 0) {
-        const cpuDelta = m.cpuSecondsTotal - prev.cpuSecondsTotal;
-        cpuPercent = (cpuDelta / dtSeconds) * 100;
+      const totalDelta = m.cpuSecondsTotal - prev.cpuSecondsTotal;
+      const idleDelta = m.cpuSecondsIdle - prev.cpuSecondsIdle;
+      if (totalDelta > 0) {
+        cpuPercent = ((totalDelta - idleDelta) / totalDelta) * 100;
         if (cpuPercent < 0) cpuPercent = 0;
         if (cpuPercent > 100) cpuPercent = 100;
       }

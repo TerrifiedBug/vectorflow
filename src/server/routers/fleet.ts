@@ -192,6 +192,7 @@ export const fleetRouter = router({
           memoryUsedBytes: true,
           memoryFreeBytes: true,
           cpuSecondsTotal: true,
+          cpuSecondsIdle: true,
           loadAvg1: true,
           loadAvg5: true,
           loadAvg15: true,
