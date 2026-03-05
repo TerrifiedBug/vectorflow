@@ -76,7 +76,7 @@ export default function FleetPage() {
     if (node.agentVersion?.startsWith("dev-")) {
       return { version: latestDevAgentVersion, checksums: devAgentChecksums, tag: "dev" };
     }
-    return { version: latestAgentVersion, checksums: agentChecksums, tag: `v${latestAgentVersion}` };
+    return { version: latestAgentVersion, checksums: agentChecksums, tag: latestAgentVersion ? `v${latestAgentVersion}` : null };
   };
 
   const triggerUpdate = useMutation(

@@ -152,6 +152,9 @@ jobs:
     needs: check
     if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    concurrency:
+      group: dev-release
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
 

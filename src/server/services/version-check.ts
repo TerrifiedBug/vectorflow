@@ -217,26 +217,26 @@ export async function checkDevAgentVersion(force = false): Promise<{
   if (needsCheck) {
     const release = await fetchDevRelease();
     if (release) {
+      checkedAt = new Date();
       const versionString = await fetchDevVersionString(release);
       if (versionString) {
         latestVersion = versionString;
         checksums = await fetchChecksums(release);
-        checkedAt = new Date();
-        await prisma.systemSettings.upsert({
-          where: { id: "singleton" },
-          update: {
-            latestDevAgentRelease: latestVersion,
-            latestDevAgentReleaseCheckedAt: checkedAt,
-            latestDevAgentChecksums: JSON.stringify(checksums),
-          },
-          create: {
-            id: "singleton",
-            latestDevAgentRelease: latestVersion,
-            latestDevAgentReleaseCheckedAt: checkedAt,
-            latestDevAgentChecksums: JSON.stringify(checksums),
-          },
-        });
       }
+      await prisma.systemSettings.upsert({
+        where: { id: "singleton" },
+        update: {
+          latestDevAgentRelease: latestVersion,
+          latestDevAgentReleaseCheckedAt: checkedAt,
+          ...(versionString ? { latestDevAgentChecksums: JSON.stringify(checksums) } : {}),
+        },
+        create: {
+          id: "singleton",
+          latestDevAgentRelease: latestVersion,
+          latestDevAgentReleaseCheckedAt: checkedAt,
+          ...(versionString ? { latestDevAgentChecksums: JSON.stringify(checksums) } : {}),
+        },
+      });
     }
   } else if (settings?.latestDevAgentChecksums) {
     try { checksums = JSON.parse(settings.latestDevAgentChecksums); } catch { /* ignore */ }
