@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { withAudit } from "@/server/middleware/audit";
 import { invalidateAuthCache } from "@/auth";
-import { checkServerVersion, checkAgentVersion } from "@/server/services/version-check";
+import { checkServerVersion, checkAgentVersion, checkDevAgentVersion } from "@/server/services/version-check";
 import {
   createBackup,
   listBackups,
@@ -277,11 +277,20 @@ export const settingsRouter = router({
   checkVersion: protectedProcedure
     .input(z.object({ force: z.boolean().optional() }).optional())
     .query(async ({ input }) => {
-      const [server, agent] = await Promise.all([
+      const [server, agent, devAgent] = await Promise.all([
         checkServerVersion(input?.force),
         checkAgentVersion(input?.force),
+        checkDevAgentVersion(input?.force),
       ]);
-      return { server, agent };
+      return {
+        server,
+        agent,
+        devAgent: {
+          latestVersion: devAgent.latestVersion,
+          checksums: devAgent.checksums,
+          checkedAt: devAgent.checkedAt,
+        },
+      };
     }),
 
   // ─── Backup & Restore ─────────────────────────────────────────────────────

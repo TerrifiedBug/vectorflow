@@ -411,10 +411,14 @@ model SystemSettings {
   lastBackupStatus     String?
   lastBackupError      String?
 
-  latestServerRelease          String?
-  latestServerReleaseCheckedAt DateTime?
-  latestAgentRelease           String?
-  latestAgentReleaseCheckedAt  DateTime?
+  latestServerRelease            String?
+  latestServerReleaseCheckedAt   DateTime?
+  latestAgentRelease             String?
+  latestAgentReleaseCheckedAt    DateTime?
+  latestAgentChecksums           String?    // JSON: {"vf-agent-linux-amd64":"sha256..."}
+  latestDevAgentRelease          String?
+  latestDevAgentReleaseCheckedAt DateTime?
+  latestDevAgentChecksums        String?    // JSON: {"vf-agent-linux-amd64":"sha256..."}
 
   updatedAt DateTime @updatedAt
 }
