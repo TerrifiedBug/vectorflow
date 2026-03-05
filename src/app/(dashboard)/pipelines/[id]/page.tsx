@@ -34,6 +34,7 @@ import { DeployDialog } from "@/components/flow/deploy-dialog";
 import { SaveTemplateDialog } from "@/components/flow/save-template-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PipelineMetricsChart } from "@/components/pipeline/metrics-chart";
+import { PipelineLogs } from "@/components/pipeline/pipeline-logs";
 
 function aggregateProcessStatus(
   statuses: Array<{ status: string }>
@@ -114,6 +115,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [undeployOpen, setUndeployOpen] = useState(false);
   const [metricsOpen, setMetricsOpen] = useState(false);
+  const [logsOpen, setLogsOpen] = useState(false);
 
   const loadGraph = useFlowStore((s) => s.loadGraph);
   const isDirty = useFlowStore((s) => s.isDirty);
@@ -156,6 +158,15 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       { enabled: !!isDeployed, refetchInterval: 5000 },
     ),
   );
+
+  // Lightweight check for recent errors (for toolbar badge)
+  const recentErrorsQuery = useQuery(
+    trpc.pipeline.logs.queryOptions(
+      { pipelineId, levels: ["ERROR"], limit: 1 },
+      { enabled: !!isDeployed && !logsOpen, refetchInterval: 10000 },
+    ),
+  );
+  const hasRecentErrors = (recentErrorsQuery.data?.items?.length ?? 0) > 0;
 
   // Merge component metrics into flow node data
   useEffect(() => {
@@ -367,6 +378,9 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             isDirty={isDirty}
             metricsOpen={metricsOpen}
             onToggleMetrics={() => setMetricsOpen((v) => !v)}
+            logsOpen={logsOpen}
+            onToggleLogs={() => setLogsOpen((v) => !v)}
+            hasRecentErrors={hasRecentErrors}
             processStatus={
               pipelineQuery.data?.nodeStatuses
                 ? aggregateProcessStatus(pipelineQuery.data.nodeStatuses)
@@ -415,6 +429,11 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       {metricsOpen && (
         <div className="shrink-0 border-t">
           <PipelineMetricsChart pipelineId={pipelineId} />
+        </div>
+      )}
+      {logsOpen && (
+        <div className="h-[300px] shrink-0 border-t">
+          <PipelineLogs pipelineId={pipelineId} />
         </div>
       )}
       <DeployDialog pipelineId={pipelineId} open={deployOpen} onOpenChange={setDeployOpen} />
