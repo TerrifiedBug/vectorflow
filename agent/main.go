@@ -10,6 +10,32 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--version", "-v":
+			fmt.Printf("vf-agent %s\n", agent.Version)
+			os.Exit(0)
+		case "--help", "-h":
+			fmt.Print(`VectorFlow Agent
+
+Usage: vf-agent [flags]
+
+Flags:
+  --version, -v   Print version and exit
+  --help, -h      Show this help
+
+Environment variables:
+  VF_URL            Server URL (required)
+  VF_TOKEN          Enrollment token
+  VF_DATA_DIR       Data directory (default: /var/lib/vf-agent)
+  VF_VECTOR_BIN     Path to Vector binary (default: vector)
+  VF_POLL_INTERVAL  Poll interval duration (default: 15s)
+  VF_LOG_LEVEL      Log level: debug|info|warn|error (default: info)
+`)
+			os.Exit(0)
+		}
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
