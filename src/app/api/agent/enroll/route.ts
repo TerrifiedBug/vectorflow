@@ -24,8 +24,8 @@ export async function POST(request: Request) {
     }
 
     const { token, hostname, os, agentVersion, vectorVersion } = parsed.data;
-    const safeHostname = hostname.replace(/[\r\n\t]/g, " ");
-    const safeVersion = (agentVersion ?? "unknown").replace(/[\r\n\t]/g, " ");
+    const safeHostname = hostname.replace(/[\r\n\t"]/g, " ");
+    const safeVersion = (agentVersion ?? "unknown").replace(/[\r\n\t"]/g, " ");
     console.log(`[enroll] attempt from hostname="${safeHostname}" agentVersion="${safeVersion}"`);
 
     // Find all environments that have an enrollment token
