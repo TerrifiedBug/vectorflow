@@ -151,6 +151,10 @@ func (a *Agent) handlePendingAction(action *client.PendingAction) {
 			a.updateError = "running in Docker"
 			return
 		}
+		if action.TargetVersion == Version {
+			slog.Debug("already running target version, skipping update", "version", Version)
+			return
+		}
 		if action.TargetVersion == a.failedUpdateVersion {
 			return // already failed for this version, don't retry
 		}

@@ -84,6 +84,11 @@ func (a *Agent) handleSelfUpdate(action *client.PendingAction) error {
 		return fmt.Errorf("replace executable: %w", err)
 	}
 
+	// Shut down all pipelines before re-exec to avoid orphaned Vector processes
+	// and port conflicts when the new agent starts them again.
+	slog.Info("stopping all pipelines before re-exec")
+	a.supervisor.ShutdownAll()
+
 	slog.Info("binary replaced, re-executing", "path", execPath, "version", action.TargetVersion)
 
 	// Re-exec the process — this replaces the current process entirely
