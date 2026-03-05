@@ -16,6 +16,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const parsed = enrollSchema.safeParse(body);
     if (!parsed.success) {
+      console.error("[enroll] invalid input:", parsed.error.flatten().fieldErrors);
       return NextResponse.json(
         { error: "Invalid input", details: parsed.error.flatten().fieldErrors },
         { status: 400 },
@@ -23,6 +24,9 @@ export async function POST(request: Request) {
     }
 
     const { token, hostname, os, agentVersion, vectorVersion } = parsed.data;
+    const safeHostname = hostname.replace(/[\r\n\t"]/g, " ");
+    const safeVersion = (agentVersion ?? "unknown").replace(/[\r\n\t"]/g, " ");
+    console.log(`[enroll] attempt from hostname="${safeHostname}" agentVersion="${safeVersion}"`);
 
     // Find all environments that have an enrollment token
     const environments = await prisma.environment.findMany({
@@ -37,6 +41,7 @@ export async function POST(request: Request) {
         team: { select: { id: true } },
       },
     });
+    console.log(`[enroll] found ${environments.length} candidate environment(s)`);
 
     // Try each environment's enrollment token
     let matchedEnv: (typeof environments)[0] | null = null;
@@ -48,6 +53,7 @@ export async function POST(request: Request) {
     }
 
     if (!matchedEnv) {
+      console.error(`[enroll] REJECTED -- no matching environment (checked ${environments.length})`);
       return NextResponse.json(
         { error: "Invalid enrollment token" },
         { status: 401 },
@@ -73,6 +79,7 @@ export async function POST(request: Request) {
         metadata: { enrolledVia: "agent" },
       },
     });
+    console.log(`[enroll] SUCCESS -- node ${node.id} enrolled in "${matchedEnv.name}"`);
 
     return NextResponse.json({
       nodeId: node.id,
@@ -81,7 +88,7 @@ export async function POST(request: Request) {
       environmentName: matchedEnv.name,
     });
   } catch (error) {
-    console.error("Agent enrollment error:", error);
+    console.error("[enroll] unexpected error:", error);
     return NextResponse.json(
       { error: "Enrollment failed" },
       { status: 500 },
