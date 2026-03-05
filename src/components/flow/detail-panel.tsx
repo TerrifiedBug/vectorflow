@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Copy, Trash2, Lock, Info } from "lucide-react";
 import { useFlowStore } from "@/stores/flow-store";
@@ -122,6 +122,13 @@ export function DetailPanel() {
     ? nodes.find((n) => n.id === selectedNodeId)
     : null;
 
+  const storeKey = (selectedNode?.data as { componentKey?: string })?.componentKey ?? "";
+  const [displayKey, setDisplayKey] = useState(storeKey);
+
+  useEffect(() => {
+    setDisplayKey(storeKey);
+  }, [storeKey]);
+
   const upstream = useMemo(
     () =>
       selectedNodeId
@@ -141,12 +148,13 @@ export function DetailPanel() {
 
   const handleKeyChange = useCallback(
     (raw: string) => {
+      setDisplayKey(raw);
       if (selectedNodeId) {
         const sanitized = raw
           .replace(/\s+/g, "_")
           .replace(/[^a-zA-Z0-9_]/g, "")
           .replace(/^(\d+)/, "_$1");
-        updateNodeKey(selectedNodeId, sanitized);
+        if (sanitized) updateNodeKey(selectedNodeId, sanitized);
       }
     },
     [selectedNodeId, updateNodeKey],
@@ -266,7 +274,7 @@ export function DetailPanel() {
                 <Label htmlFor="component-key">Component Key</Label>
                 <Input
                   id="component-key"
-                  value={componentKey}
+                  value={displayKey}
                   onChange={(e) => handleKeyChange(e.target.value)}
                   disabled={isSystemLocked}
                 />
