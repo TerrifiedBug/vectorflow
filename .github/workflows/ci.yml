@@ -15,15 +15,7 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
-    paths:
-      - "src/**"
-      - "agent/**"
-      - "prisma/**"
-      - "docker/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "tsconfig.json"
-      - ".github/workflows/ci.yml"
+  workflow_dispatch:
 
 permissions:
   contents: write
