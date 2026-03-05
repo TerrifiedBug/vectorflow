@@ -160,3 +160,76 @@ export async function checkAgentVersion(force = false): Promise<{
 
   return { latestVersion, checksums, checkedAt };
 }
+
+async function fetchDevRelease(): Promise<GitHubReleaseWithAssets | null> {
+  try {
+    const res = await fetch(
+      `${GITHUB_API}/repos/${AGENT_REPO}/releases/tags/dev`,
+      {
+        headers: { Accept: "application/vnd.github.v3+json" },
+        next: { revalidate: 0 },
+      },
+    );
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchDevVersionString(
+  release: GitHubReleaseWithAssets,
+): Promise<string | null> {
+  const asset = release.assets.find((a) => a.name === "dev-version.txt");
+  if (!asset) return null;
+  try {
+    const res = await fetch(asset.browser_download_url);
+    if (!res.ok) return null;
+    return (await res.text()).trim();
+  } catch {
+    return null;
+  }
+}
+
+export async function checkDevAgentVersion(force = false): Promise<{
+  latestVersion: string | null;
+  checksums: Record<string, string>;
+  checkedAt: Date | null;
+}> {
+  const settings = await prisma.systemSettings.findUnique({
+    where: { id: "singleton" },
+  });
+
+  const lastChecked = settings?.latestDevAgentReleaseCheckedAt;
+  const needsCheck =
+    force ||
+    !lastChecked ||
+    Date.now() - lastChecked.getTime() > CHECK_INTERVAL_MS;
+
+  let latestVersion = settings?.latestDevAgentRelease ?? null;
+  let checksums: Record<string, string> = {};
+  let checkedAt: Date | null = lastChecked ?? null;
+
+  if (needsCheck) {
+    const release = await fetchDevRelease();
+    if (release) {
+      latestVersion = await fetchDevVersionString(release) ?? "dev-unknown";
+      checksums = await fetchChecksums(release);
+      checkedAt = new Date();
+      await prisma.systemSettings.upsert({
+        where: { id: "singleton" },
+        update: {
+          latestDevAgentRelease: latestVersion,
+          latestDevAgentReleaseCheckedAt: checkedAt,
+        },
+        create: {
+          id: "singleton",
+          latestDevAgentRelease: latestVersion,
+          latestDevAgentReleaseCheckedAt: checkedAt,
+        },
+      });
+    }
+  }
+
+  return { latestVersion, checksums, checkedAt };
+}
