@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
@@ -23,6 +24,18 @@ export function EnvironmentSelector() {
   const { selectedEnvironmentId, setSelectedEnvironmentId, setIsSystemEnvironment } =
     useEnvironmentStore();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  // Navigate back to list pages when switching environments from a detail page
+  const handleEnvironmentChange = useCallback((id: string) => {
+    setSelectedEnvironmentId(id);
+    const detailRoutes = ["/pipelines/", "/fleet/"];
+    if (detailRoutes.some((route) => pathname.startsWith(route) && pathname !== route)) {
+      const parentRoute = detailRoutes.find((route) => pathname.startsWith(route));
+      if (parentRoute) router.push(parentRoute.replace(/\/$/, ""));
+    }
+  }, [setSelectedEnvironmentId, pathname, router]);
 
   const envsQuery = useQuery(
     trpc.environment.list.queryOptions(
@@ -79,7 +92,7 @@ export function EnvironmentSelector() {
   return (
     <Select
       value={selectedEnvironmentId ?? ""}
-      onValueChange={setSelectedEnvironmentId}
+      onValueChange={handleEnvironmentChange}
     >
       <SelectTrigger className="h-8 w-[180px] text-xs">
         <Layers className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />

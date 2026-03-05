@@ -42,7 +42,7 @@ export const dashboardRouter = router({
       const totalEventsIn = Number(reductionMetrics._sum.eventsIn ?? 0);
       const totalEventsOut = Number(reductionMetrics._sum.eventsOut ?? 0);
       const reductionPercent = totalEventsIn > 0
-        ? (1 - totalEventsOut / totalEventsIn) * 100
+        ? Math.max(0, (1 - totalEventsOut / totalEventsIn) * 100)
         : null;
 
       return {
