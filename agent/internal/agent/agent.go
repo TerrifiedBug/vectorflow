@@ -104,6 +104,8 @@ func (a *Agent) pollAndApply() {
 		return
 	}
 
+	slog.Debug("poll complete", "actions", len(actions))
+
 	for _, action := range actions {
 		switch action.Action {
 		case ActionStart:
@@ -170,6 +172,8 @@ func (a *Agent) sendHeartbeat() {
 			a.sampleResults = append(results, a.sampleResults...)
 			a.mu.Unlock()
 		}
+	} else {
+		slog.Debug("heartbeat sent", "pipelines", len(hb.Pipelines), "sampleResults", len(results))
 	}
 }
 
