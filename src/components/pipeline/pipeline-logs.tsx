@@ -166,8 +166,12 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
               {log.level}
             </span>
             {"  "}
-            <span className="text-blue-400/70">[{log.node.name}]</span>
-            {"  "}
+            {log.node?.name && (
+              <>
+                <span className="text-blue-400/70">[{log.node.name}]</span>
+                {"  "}
+              </>
+            )}
             <span className="text-gray-300">{log.message}</span>
           </div>
         ))}
