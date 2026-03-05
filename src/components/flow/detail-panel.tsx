@@ -148,16 +148,20 @@ export function DetailPanel() {
 
   const handleKeyChange = useCallback(
     (raw: string) => {
-      setDisplayKey(raw);
       if (selectedNodeId) {
         const sanitized = raw
           .replace(/\s+/g, "_")
           .replace(/[^a-zA-Z0-9_]/g, "")
           .replace(/^(\d+)/, "_$1");
-        if (sanitized) updateNodeKey(selectedNodeId, sanitized);
+        if (sanitized) {
+          setDisplayKey(raw);
+          updateNodeKey(selectedNodeId, sanitized);
+        } else {
+          setDisplayKey(storeKey);
+        }
       }
     },
-    [selectedNodeId, updateNodeKey],
+    [selectedNodeId, updateNodeKey, storeKey],
   );
 
   const handleDelete = useCallback(() => {
