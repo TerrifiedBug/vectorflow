@@ -202,6 +202,7 @@ type HeartbeatRequest struct {
 	VectorVersion  string            `json:"vectorVersion,omitempty"`
 	DeploymentMode string            `json:"deploymentMode,omitempty"`
 	SampleResults  []SampleResultMsg `json:"sampleResults,omitempty"`
+	UpdateError    string            `json:"updateError,omitempty"`
 }
 
 // SampleRequestMsg is received from the server via config poll.

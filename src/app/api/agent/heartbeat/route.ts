@@ -66,6 +66,7 @@ const heartbeatSchema = z.object({
     schema: z.array(z.object({ path: z.string(), type: z.string(), sample: z.string() })).optional(),
     error: z.string().optional(),
   })).optional(),
+  updateError: z.string().optional(),
 });
 
 let lastCleanup = 0;
@@ -113,7 +114,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { pipelines: rawPipelines, hostMetrics, agentVersion, vectorVersion, deploymentMode } = parsed.data;
+    const { pipelines: rawPipelines, hostMetrics, agentVersion, vectorVersion, deploymentMode, updateError } = parsed.data;
 
     // Validate pipeline ownership: only accept pipelines belonging to this agent's environment
     const validPipelineIds = new Set(
@@ -126,9 +127,13 @@ export async function POST(request: Request) {
 
     const now = new Date();
 
-    // Check if pendingAction should be cleared (agent has updated to target version)
+    // Check if pendingAction should be cleared
     let clearPendingAction = false;
-    if (agentVersion) {
+    if (updateError) {
+      // Agent reported update failure — clear to stop retry loop
+      clearPendingAction = true;
+      console.warn("Agent update failed, clearing pending action:", agent.nodeId, updateError);
+    } else if (agentVersion) {
       const currentNode = await prisma.vectorNode.findUnique({
         where: { id: agent.nodeId },
         select: { pendingAction: true },
