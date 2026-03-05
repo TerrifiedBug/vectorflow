@@ -148,14 +148,18 @@ export async function checkAgentVersion(force = false): Promise<{
         update: {
           latestAgentRelease: latestVersion,
           latestAgentReleaseCheckedAt: checkedAt,
+          latestAgentChecksums: JSON.stringify(checksums),
         },
         create: {
           id: "singleton",
           latestAgentRelease: latestVersion,
           latestAgentReleaseCheckedAt: checkedAt,
+          latestAgentChecksums: JSON.stringify(checksums),
         },
       });
     }
+  } else if (settings?.latestAgentChecksums) {
+    try { checksums = JSON.parse(settings.latestAgentChecksums); } catch { /* ignore */ }
   }
 
   return { latestVersion, checksums, checkedAt };
@@ -223,15 +227,19 @@ export async function checkDevAgentVersion(force = false): Promise<{
           update: {
             latestDevAgentRelease: latestVersion,
             latestDevAgentReleaseCheckedAt: checkedAt,
+            latestDevAgentChecksums: JSON.stringify(checksums),
           },
           create: {
             id: "singleton",
             latestDevAgentRelease: latestVersion,
             latestDevAgentReleaseCheckedAt: checkedAt,
+            latestDevAgentChecksums: JSON.stringify(checksums),
           },
         });
       }
     }
+  } else if (settings?.latestDevAgentChecksums) {
+    try { checksums = JSON.parse(settings.latestDevAgentChecksums); } catch { /* ignore */ }
   }
 
   return { latestVersion, checksums, checkedAt };
