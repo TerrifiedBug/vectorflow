@@ -28,8 +28,10 @@ type Agent struct {
 	vectorVersion  string
 	deploymentMode string
 
-	mu            sync.Mutex
-	sampleResults []client.SampleResultMsg
+	mu                  sync.Mutex
+	sampleResults       []client.SampleResultMsg
+	failedUpdateVersion string // skip retries for this version
+	updateError         string // report failure to server
 }
 
 func New(cfg *config.Config) (*Agent, error) {
@@ -146,10 +148,16 @@ func (a *Agent) handlePendingAction(action *client.PendingAction) {
 		if a.deploymentMode == "DOCKER" {
 			slog.Warn("received update command but running in Docker — ignoring",
 				"targetVersion", action.TargetVersion)
+			a.updateError = "running in Docker"
 			return
+		}
+		if action.TargetVersion == a.failedUpdateVersion {
+			return // already failed for this version, don't retry
 		}
 		if err := a.handleSelfUpdate(action); err != nil {
 			slog.Error("self-update failed", "error", err)
+			a.failedUpdateVersion = action.TargetVersion
+			a.updateError = err.Error()
 		}
 	default:
 		slog.Warn("unknown pending action type", "type", action.Type)
@@ -164,6 +172,10 @@ func (a *Agent) sendHeartbeat() {
 	a.mu.Unlock()
 
 	hb := buildHeartbeat(a.supervisor, a.vectorVersion, a.deploymentMode, results)
+	updateErr := a.updateError
+	if updateErr != "" {
+		hb.UpdateError = updateErr
+	}
 	if err := a.client.SendHeartbeat(hb); err != nil {
 		slog.Warn("heartbeat error", "error", err)
 		// Put results back so they retry on the next heartbeat
@@ -173,6 +185,7 @@ func (a *Agent) sendHeartbeat() {
 			a.mu.Unlock()
 		}
 	} else {
+		a.updateError = "" // clear only after successful delivery
 		slog.Debug("heartbeat sent", "pipelines", len(hb.Pipelines), "sampleResults", len(results))
 	}
 }
