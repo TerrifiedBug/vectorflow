@@ -66,7 +66,7 @@ const heartbeatSchema = z.object({
     schema: z.array(z.object({ path: z.string(), type: z.string(), sample: z.string() })).optional(),
     error: z.string().optional(),
   })).optional(),
-  updateError: z.string().optional(),
+  updateError: z.string().max(500).optional(),
 });
 
 let lastCleanup = 0;
