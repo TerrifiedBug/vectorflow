@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -57,14 +58,17 @@ func (c *Client) Enroll(req EnrollRequest) (*EnrollResponse, error) {
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
+	slog.Debug("http request", "method", "POST", "url", c.baseURL+"/api/agent/enroll")
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
+		slog.Debug("http error", "method", "POST", "url", "/api/agent/enroll", "error", err)
 		return nil, fmt.Errorf("enroll request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
+		slog.Debug("http response", "method", "POST", "url", "/api/agent/enroll", "status", resp.StatusCode, "body", string(respBody))
 		return nil, fmt.Errorf("enroll failed (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
@@ -72,6 +76,7 @@ func (c *Client) Enroll(req EnrollRequest) (*EnrollResponse, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode enroll response: %w", err)
 	}
+	slog.Debug("http response", "method", "POST", "url", "/api/agent/enroll", "status", 200)
 	return &result, nil
 }
 
@@ -118,14 +123,17 @@ func (c *Client) GetConfig() (*ConfigResponse, error) {
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+c.nodeToken)
 
+	slog.Debug("http request", "method", "GET", "url", c.baseURL+"/api/agent/config")
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
+		slog.Debug("http error", "method", "GET", "url", "/api/agent/config", "error", err)
 		return nil, fmt.Errorf("config request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
+		slog.Debug("http response", "method", "GET", "url", "/api/agent/config", "status", resp.StatusCode, "body", string(respBody))
 		return nil, fmt.Errorf("config request failed (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
@@ -133,6 +141,7 @@ func (c *Client) GetConfig() (*ConfigResponse, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode config response: %w", err)
 	}
+	slog.Debug("http response", "method", "GET", "url", "/api/agent/config", "status", 200, "pipelines", len(result.Pipelines))
 	return &result, nil
 }
 
@@ -231,14 +240,17 @@ func (c *Client) SendHeartbeat(req HeartbeatRequest) error {
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+c.nodeToken)
 
+	slog.Debug("http request", "method", "POST", "url", c.baseURL+"/api/agent/heartbeat")
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
+		slog.Debug("http error", "method", "POST", "url", "/api/agent/heartbeat", "error", err)
 		return fmt.Errorf("heartbeat request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
+		slog.Debug("http response", "method", "POST", "url", "/api/agent/heartbeat", "status", resp.StatusCode, "body", string(respBody))
 		return fmt.Errorf("heartbeat failed (status %d): %s", resp.StatusCode, string(respBody))
 	}
 	return nil

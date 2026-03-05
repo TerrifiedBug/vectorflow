@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,9 +24,12 @@ func loadOrEnroll(cfg *config.Config, c *client.Client) (string, error) {
 	if err == nil {
 		token := strings.TrimSpace(string(data))
 		if token != "" {
+			slog.Debug("loaded existing node token", "path", tokenPath)
 			return token, nil
 		}
 	}
+
+	slog.Debug("no existing node token", "path", tokenPath)
 
 	// Need to enroll
 	if cfg.Token == "" {
@@ -34,6 +38,12 @@ func loadOrEnroll(cfg *config.Config, c *client.Client) (string, error) {
 
 	hostname, _ := os.Hostname()
 	vectorVersion := detectVectorVersion(cfg.VectorBin)
+
+	prefix := cfg.Token
+	if len(cfg.Token) > 24 {
+		prefix = cfg.Token[:24] + "..."
+	}
+	slog.Debug("enrolling", "hostname", hostname, "os", runtime.GOOS+"/"+runtime.GOARCH, "tokenPrefix", prefix)
 
 	resp, err := c.Enroll(client.EnrollRequest{
 		Token:         cfg.Token,
@@ -54,7 +64,7 @@ func loadOrEnroll(cfg *config.Config, c *client.Client) (string, error) {
 		return "", fmt.Errorf("persist node token: %w", err)
 	}
 
-	fmt.Printf("Enrolled as node %s in environment %q\n", resp.NodeID, resp.EnvironmentName)
+	slog.Info("enrolled successfully", "nodeId", resp.NodeID, "environment", resp.EnvironmentName)
 	return resp.NodeToken, nil
 }
 
