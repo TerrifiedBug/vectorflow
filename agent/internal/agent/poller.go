@@ -154,7 +154,9 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 	// Reconcile: remove any pipeline files on disk not in the server response.
 	// This catches orphans from previous enrollments or missed undeploys.
 	entries, readErr := os.ReadDir(pipelinesDir)
-	if readErr == nil {
+	if readErr != nil {
+		slog.Warn("failed to read pipelines dir for reconciliation", "error", readErr)
+	} else {
 		for _, entry := range entries {
 			name := entry.Name()
 			if strings.HasSuffix(name, ".vf-metrics.yaml") {
@@ -166,8 +168,12 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 			id := strings.TrimSuffix(name, ".yaml")
 			if !seen[id] {
 				slog.Warn("removing orphaned pipeline config", "pipelineId", id)
-				os.Remove(filepath.Join(pipelinesDir, name))
-				os.Remove(filepath.Join(pipelinesDir, name+".vf-metrics.yaml"))
+				if err := os.Remove(filepath.Join(pipelinesDir, name)); err != nil && !os.IsNotExist(err) {
+					slog.Warn("failed to remove orphaned pipeline config", "path", name, "error", err)
+				}
+				if err := os.Remove(filepath.Join(pipelinesDir, name+".vf-metrics.yaml")); err != nil && !os.IsNotExist(err) {
+					slog.Warn("failed to remove orphaned metrics sidecar", "path", name+".vf-metrics.yaml", "error", err)
+				}
 			}
 		}
 	}
