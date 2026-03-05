@@ -29,14 +29,6 @@ func (c *Client) SetNodeToken(token string) {
 	c.nodeToken = token
 }
 
-// tokenPrefix returns the first N chars of a token for safe debug logging.
-func tokenPrefix(token string, n int) string {
-	if len(token) <= n {
-		return token
-	}
-	return token[:n] + "..."
-}
-
 // EnrollRequest is sent to POST /api/agent/enroll
 type EnrollRequest struct {
 	Token         string `json:"token"`

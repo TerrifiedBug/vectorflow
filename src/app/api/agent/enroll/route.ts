@@ -24,8 +24,7 @@ export async function POST(request: Request) {
     }
 
     const { token, hostname, os, agentVersion, vectorVersion } = parsed.data;
-    const tokenPrefix = token.slice(0, 24) + "...";
-    console.log(`[enroll] attempt from hostname="${hostname}" tokenPrefix="${tokenPrefix}" agentVersion="${agentVersion ?? "unknown"}"`);
+    console.log(`[enroll] attempt from hostname="${hostname}" agentVersion="${agentVersion ?? "unknown"}"`);
 
     // Find all environments that have an enrollment token
     const environments = await prisma.environment.findMany({
