@@ -17,6 +17,7 @@ VECTOR_VERSION="0.44.0"
 VF_URL=""
 VF_TOKEN=""
 VERSION="latest"
+CHANNEL="stable"
 
 # ─────────────────────────────────────────────────
 # Helpers
@@ -39,6 +40,7 @@ Options:
   --url <url>        VectorFlow server URL (e.g. https://vectorflow.example.com)
   --token <token>    One-time enrollment token from the VectorFlow UI
   --version <tag>    Release version to install (default: latest)
+  --channel <name>   Release channel: stable or dev (default: stable)
   --help             Show this help message
 
 Examples:
@@ -50,6 +52,9 @@ Examples:
 
   # Install specific version
   curl -sSfL .../install.sh | sudo bash -s -- --version v0.3.0
+
+  # Install dev channel
+  curl -sSfL .../install.sh | sudo bash -s -- --channel dev --url https://vf.example.com --token abc123
 EOF
     exit 0
 }
@@ -63,10 +68,15 @@ while [ $# -gt 0 ]; do
         --url)    VF_URL="$2";   shift 2 ;;
         --token)  VF_TOKEN="$2"; shift 2 ;;
         --version) VERSION="$2"; shift 2 ;;
+        --channel) CHANNEL="$2";  shift 2 ;;
         --help)   usage ;;
         *)        fatal "Unknown option: $1 (use --help for usage)" ;;
     esac
 done
+
+if [ "${CHANNEL}" = "dev" ] && [ "${VERSION}" != "latest" ]; then
+    fatal "--channel dev and --version are mutually exclusive"
+fi
 
 # ─────────────────────────────────────────────────
 # Preflight checks
@@ -96,21 +106,29 @@ info "Detected architecture: ${ARCH}"
 # Resolve version
 # ─────────────────────────────────────────────────
 
-if [ "${VERSION}" = "latest" ]; then
-    info "Resolving latest release..."
-    VERSION=$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" \
-        | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
-    [ -n "${VERSION}" ] || fatal "Could not determine latest release version"
+if [ "${CHANNEL}" = "dev" ]; then
+    info "Using dev channel..."
+    VERSION="dev"
+    BINARY_NAME="vf-agent-linux-${ARCH}"
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/dev/${BINARY_NAME}"
+    CHECKSUM_URL="https://github.com/${REPO}/releases/download/dev/checksums.txt"
+else
+    if [ "${VERSION}" = "latest" ]; then
+        info "Resolving latest release..."
+        VERSION=$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" \
+            | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+        [ -n "${VERSION}" ] || fatal "Could not determine latest release version"
+    fi
+    info "Target version: ${VERSION}"
+
+    BINARY_NAME="vf-agent-linux-${ARCH}"
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
+    CHECKSUM_URL="https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt"
 fi
-info "Target version: ${VERSION}"
 
 # ─────────────────────────────────────────────────
 # Download and verify agent binary
 # ─────────────────────────────────────────────────
-
-BINARY_NAME="vf-agent-linux-${ARCH}"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
-CHECKSUM_URL="https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt"
 
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "${TMPDIR}"' EXIT
@@ -188,6 +206,7 @@ VF_URL=${VF_URL}
 VF_TOKEN=${VF_TOKEN}
 VF_DATA_DIR=${DATA_DIR}
 VF_VECTOR_BIN=${INSTALL_DIR}/vector
+VF_CHANNEL=${CHANNEL}
 ENVEOF
     chmod 0600 "${ENV_FILE}"
     ok "Environment file written"
