@@ -71,7 +71,7 @@ function getReductionPercent(totals: { eventsIn: bigint; eventsOut: bigint }): n
   const evIn = Number(totals.eventsIn);
   const evOut = Number(totals.eventsOut);
   if (evIn === 0) return null;
-  return (1 - evOut / evIn) * 100;
+  return Math.max(0, (1 - evOut / evIn) * 100);
 }
 
 function reductionColor(pct: number): string {
