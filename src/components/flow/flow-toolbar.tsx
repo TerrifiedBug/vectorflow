@@ -16,6 +16,7 @@ import {
   BookTemplate,
   History,
   BarChart3,
+  ScrollText,
   Settings,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -61,6 +62,9 @@ interface FlowToolbarProps {
   isDirty?: boolean;
   metricsOpen?: boolean;
   onToggleMetrics?: () => void;
+  logsOpen?: boolean;
+  onToggleLogs?: () => void;
+  hasRecentErrors?: boolean;
   processStatus?: ProcessStatusValue | null;
 }
 
@@ -87,6 +91,9 @@ export function FlowToolbar({
   isDirty = false,
   metricsOpen = false,
   onToggleMetrics,
+  logsOpen = false,
+  onToggleLogs,
+  hasRecentErrors = false,
   processStatus,
 }: FlowToolbarProps) {
   const globalConfig = useFlowStore((s) => s.globalConfig);
@@ -314,6 +321,26 @@ export function FlowToolbar({
               </Button>
             </TooltipTrigger>
             <TooltipContent>{metricsOpen ? "Hide metrics" : "Show metrics"}</TooltipContent>
+          </Tooltip>
+        )}
+
+        {onToggleLogs && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={logsOpen ? "secondary" : "ghost"}
+                size="sm"
+                onClick={onToggleLogs}
+                className="relative h-7 w-7 p-0"
+                aria-label="Toggle logs panel"
+              >
+                <ScrollText className="h-4 w-4" />
+                {hasRecentErrors && !logsOpen && (
+                  <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{logsOpen ? "Hide logs" : "Show logs"}</TooltipContent>
           </Tooltip>
         )}
 

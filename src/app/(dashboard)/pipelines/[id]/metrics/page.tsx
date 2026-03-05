@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SummaryCards } from "@/components/metrics/summary-cards";
 import { MetricsChart } from "@/components/metrics/component-chart";
+import { PipelineLogs } from "@/components/pipeline/pipeline-logs";
 
 const TIME_RANGES = [
   { label: "5m", minutes: 5 },
@@ -116,6 +117,18 @@ export default function PipelineMetricsPage() {
           </Card>
         </>
       )}
+
+      {/* Pipeline Logs */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Logs</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="h-[400px]">
+            <PipelineLogs pipelineId={params.id} />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
