@@ -48,8 +48,6 @@ export async function POST(request: Request) {
       if (env.enrollmentTokenHash && await verifyEnrollmentToken(token, env.enrollmentTokenHash)) {
         matchedEnv = env;
         break;
-      } else {
-        console.log(`[enroll] env "${env.name}" -- token mismatch`);
       }
     }
 

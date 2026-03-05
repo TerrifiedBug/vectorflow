@@ -131,7 +131,7 @@ func (c *Client) GetConfig() (*ConfigResponse, error) {
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+c.nodeToken)
 
-	slog.Debug("http request", "method", "GET", "url", c.baseURL+"/api/agent/config", "tokenPrefix", tokenPrefix(c.nodeToken, 16))
+	slog.Debug("http request", "method", "GET", "url", c.baseURL+"/api/agent/config")
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		slog.Debug("http error", "method", "GET", "url", "/api/agent/config", "error", err)
