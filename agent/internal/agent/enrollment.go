@@ -64,7 +64,6 @@ func loadOrEnroll(cfg *config.Config, c *client.Client) (string, error) {
 		return "", fmt.Errorf("persist node token: %w", err)
 	}
 
-	fmt.Printf("Enrolled as node %s in environment %q\n", resp.NodeID, resp.EnvironmentName)
 	slog.Info("enrolled successfully", "nodeId", resp.NodeID, "environment", resp.EnvironmentName)
 	return resp.NodeToken, nil
 }
