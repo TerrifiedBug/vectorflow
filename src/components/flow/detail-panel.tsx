@@ -140,9 +140,13 @@ export function DetailPanel() {
   );
 
   const handleKeyChange = useCallback(
-    (key: string) => {
+    (raw: string) => {
       if (selectedNodeId) {
-        updateNodeKey(selectedNodeId, key);
+        const sanitized = raw
+          .replace(/\s+/g, "_")
+          .replace(/[^a-zA-Z0-9_]/g, "")
+          .replace(/^(\d+)/, "_$1");
+        updateNodeKey(selectedNodeId, sanitized);
       }
     },
     [selectedNodeId, updateNodeKey],
@@ -266,6 +270,9 @@ export function DetailPanel() {
                   onChange={(e) => handleKeyChange(e.target.value)}
                   disabled={isSystemLocked}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Letters, numbers, and underscores only (e.g. traefik_logs)
+                </p>
               </div>
 
               {/* Enabled toggle */}
