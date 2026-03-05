@@ -6,10 +6,15 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
 )
+
+type configFetcher interface {
+	GetConfig() (*client.ConfigResponse, error)
+}
 
 type pipelineState struct {
 	checksum string
@@ -18,13 +23,13 @@ type pipelineState struct {
 
 type poller struct {
 	cfg            *config.Config
-	client         *client.Client
+	client         configFetcher
 	known          map[string]pipelineState // pipelineId -> last known state
 	sampleRequests []client.SampleRequestMsg
 	pendingAction  *client.PendingAction
 }
 
-func newPoller(cfg *config.Config, c *client.Client) *poller {
+func newPoller(cfg *config.Config, c configFetcher) *poller {
 	return &poller{
 		cfg:    cfg,
 		client: c,
@@ -143,6 +148,33 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 			delete(p.known, id)
 			// Clean up config file
 			os.Remove(filepath.Join(pipelinesDir, id+".yaml"))
+		}
+	}
+
+	// Reconcile: remove any pipeline files on disk not in the server response.
+	// This catches orphans from previous enrollments or missed undeploys.
+	entries, readErr := os.ReadDir(pipelinesDir)
+	if readErr != nil {
+		slog.Warn("failed to read pipelines dir for reconciliation", "error", readErr)
+	} else {
+		for _, entry := range entries {
+			name := entry.Name()
+			if strings.HasSuffix(name, ".vf-metrics.yaml") {
+				continue
+			}
+			if !strings.HasSuffix(name, ".yaml") {
+				continue
+			}
+			id := strings.TrimSuffix(name, ".yaml")
+			if !seen[id] {
+				slog.Warn("removing orphaned pipeline config", "pipelineId", id)
+				if err := os.Remove(filepath.Join(pipelinesDir, name)); err != nil && !os.IsNotExist(err) {
+					slog.Warn("failed to remove orphaned pipeline config", "path", name, "error", err)
+				}
+				if err := os.Remove(filepath.Join(pipelinesDir, name+".vf-metrics.yaml")); err != nil && !os.IsNotExist(err) {
+					slog.Warn("failed to remove orphaned metrics sidecar", "path", name+".vf-metrics.yaml", "error", err)
+				}
+			}
 		}
 	}
 
