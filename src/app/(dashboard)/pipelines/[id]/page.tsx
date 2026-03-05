@@ -159,10 +159,10 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     ),
   );
 
-  // Lightweight check for recent errors (for toolbar badge)
+  // Lightweight check for recent errors (for toolbar badge) — 24h window
   const recentErrorsQuery = useQuery(
     trpc.pipeline.logs.queryOptions(
-      { pipelineId, levels: ["ERROR"], limit: 1 },
+      { pipelineId, levels: ["ERROR"], limit: 1, since: new Date(Date.now() - 24 * 60 * 60 * 1000) },
       { enabled: !!isDeployed && !logsOpen, refetchInterval: 10000 },
     ),
   );

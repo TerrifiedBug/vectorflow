@@ -124,7 +124,9 @@ export default function PipelineMetricsPage() {
           <CardTitle>Logs</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <PipelineLogs pipelineId={params.id} />
+          <div className="h-[400px]">
+            <PipelineLogs pipelineId={params.id} />
+          </div>
         </CardContent>
       </Card>
     </div>
