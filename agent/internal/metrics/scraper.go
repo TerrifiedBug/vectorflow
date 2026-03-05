@@ -37,6 +37,7 @@ type HostMetrics struct {
 	MemoryUsedBytes   int64
 	MemoryFreeBytes   int64
 	CpuSecondsTotal   float64
+	CpuSecondsIdle    float64
 	LoadAvg1          float64
 	LoadAvg5          float64
 	LoadAvg15         float64
@@ -145,6 +146,10 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 			sr.Host.MemoryFreeBytes += int64(value)
 		case "host_cpu_seconds_total":
 			sr.Host.CpuSecondsTotal += value
+			mode := labels["mode"]
+			if mode == "idle" || mode == "iowait" {
+				sr.Host.CpuSecondsIdle += value
+			}
 		case "host_load1":
 			sr.Host.LoadAvg1 += value
 		case "host_load5":
