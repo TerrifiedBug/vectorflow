@@ -172,9 +172,9 @@ func (a *Agent) sendHeartbeat() {
 	a.mu.Unlock()
 
 	hb := buildHeartbeat(a.supervisor, a.vectorVersion, a.deploymentMode, results)
-	if a.updateError != "" {
-		hb.UpdateError = a.updateError
-		a.updateError = "" // only report once
+	updateErr := a.updateError
+	if updateErr != "" {
+		hb.UpdateError = updateErr
 	}
 	if err := a.client.SendHeartbeat(hb); err != nil {
 		slog.Warn("heartbeat error", "error", err)
@@ -185,6 +185,7 @@ func (a *Agent) sendHeartbeat() {
 			a.mu.Unlock()
 		}
 	} else {
+		a.updateError = "" // clear only after successful delivery
 		slog.Debug("heartbeat sent", "pipelines", len(hb.Pipelines), "sampleResults", len(results))
 	}
 }
