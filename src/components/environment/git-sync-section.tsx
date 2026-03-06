@@ -42,9 +42,7 @@ export function GitSyncSection({
   const updateMutation = useMutation(
     trpc.environment.update.mutationOptions({
       onSuccess: () => {
-        toast.success("Git integration settings saved");
         queryClient.invalidateQueries({ queryKey: trpc.environment.get.queryKey({ id: environmentId }) });
-        setToken(""); // Clear token input after save
       },
       onError: (err) => toast.error(err.message || "Failed to save Git settings"),
     })
@@ -68,12 +66,20 @@ export function GitSyncSection({
   );
 
   function handleSave() {
-    updateMutation.mutate({
-      id: environmentId,
-      gitRepoUrl: repoUrl || null,
-      gitBranch: branch || null,
-      gitToken: token || undefined, // Only send if user entered a new token
-    });
+    updateMutation.mutate(
+      {
+        id: environmentId,
+        gitRepoUrl: repoUrl || null,
+        gitBranch: branch || null,
+        gitToken: token || undefined, // Only send if user entered a new token
+      },
+      {
+        onSuccess: () => {
+          toast.success("Git integration settings saved");
+          setToken("");
+        },
+      },
+    );
   }
 
   function handleTest() {
@@ -86,12 +92,11 @@ export function GitSyncSection({
       toast.error("Enter an access token first");
       return;
     }
-    setIsTesting(true);
     if (testToken) {
+      setIsTesting(true);
       testMutation.mutate({ environmentId, repoUrl, branch, token: testToken });
     } else {
       toast.warning("Enter a new token to test the connection");
-      setIsTesting(false);
     }
   }
 
@@ -105,6 +110,7 @@ export function GitSyncSection({
       },
       {
         onSuccess: () => {
+          toast.success("Git integration disconnected");
           setRepoUrl("");
           setBranch("main");
           setToken("");
