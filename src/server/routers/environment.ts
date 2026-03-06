@@ -136,11 +136,13 @@ export const environmentRouter = router({
 
   testGitConnection: protectedProcedure
     .input(z.object({
+      environmentId: z.string(),
       repoUrl: z.string().url(),
       branch: z.string().min(1).max(100).regex(/^[a-zA-Z0-9._\/-]+$/),
       token: z.string().min(1),
     }))
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("environment.gitConnection.tested", "Environment"))
     .mutation(async ({ input }) => {
       const parsedUrl = new URL(input.repoUrl);
       if (parsedUrl.protocol !== "https:") {
@@ -166,9 +168,11 @@ export const environmentRouter = router({
         ]);
         return { success: true };
       } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err);
+        const sanitized = raw.replace(/https?:\/\/[^@\s]+@/g, "https://[redacted]@");
         return {
           success: false,
-          error: err instanceof Error ? err.message : String(err),
+          error: sanitized,
         };
       } finally {
         if (workdir) {

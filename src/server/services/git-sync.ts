@@ -33,6 +33,10 @@ function authenticatedUrl(repoUrl: string, token: string): string {
   return url.toString();
 }
 
+function sanitizeError(message: string): string {
+  return message.replace(/https?:\/\/[^@\s]+@/g, "https://[redacted]@");
+}
+
 function sanitizeAuthor(name: string, email: string): string {
   const cleanName = (name || "VectorFlow User").replace(/[<>\n\r]/g, "");
   const cleanEmail = email.replace(/[<>\n\r]/g, "");
@@ -98,7 +102,7 @@ export async function gitSyncCommitPipeline(
     const log = await repoGit.log({ maxCount: 1 });
     return { success: true, commitSha: log.latest?.hash };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = sanitizeError(err instanceof Error ? err.message : String(err));
     console.error("[git-sync] Commit failed:", message);
     return { success: false, error: message };
   } finally {
@@ -149,7 +153,7 @@ export async function gitSyncDeletePipeline(
     const log = await repoGit.log({ maxCount: 1 });
     return { success: true, commitSha: log.latest?.hash };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = sanitizeError(err instanceof Error ? err.message : String(err));
     console.error("[git-sync] Delete failed:", message);
     return { success: false, error: message };
   } finally {

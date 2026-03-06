@@ -88,7 +88,7 @@ export function GitSyncSection({
     }
     setIsTesting(true);
     if (testToken) {
-      testMutation.mutate({ repoUrl, branch, token: testToken });
+      testMutation.mutate({ environmentId, repoUrl, branch, token: testToken });
     } else {
       toast.warning("Enter a new token to test the connection");
       setIsTesting(false);
