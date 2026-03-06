@@ -56,6 +56,22 @@ export async function GET(request: Request) {
     const pipelineConfigs = [];
     const certBasePath = "/var/lib/vf-agent/certs";
 
+    // Pre-resolve all environment secrets once (shared across all pipelines)
+    const secrets: Record<string, string> = {};
+    if (environment.secretBackend === "BUILTIN") {
+      const envSecrets = await prisma.secret.findMany({
+        where: { environmentId: agent.environmentId },
+        orderBy: { name: "asc" },
+      });
+      for (const s of envSecrets) {
+        const envKey = secretNameToEnvVar(s.name);
+        if (secrets[envKey] !== undefined) {
+          console.warn(`[agent-config] Secret name collision: "${s.name}" normalizes to "${envKey}" which is already set`);
+        }
+        secrets[envKey] = decrypt(s.encryptedValue);
+      }
+    }
+
     for (const pipeline of pipelines) {
       try {
         const latestVersion = pipeline.versions[0];
@@ -63,7 +79,6 @@ export async function GET(request: Request) {
 
         const version = latestVersion.version;
         let configYaml = latestVersion.configYaml;
-        const secrets: Record<string, string> = {};
         let certFiles: Array<{ name: string; filename: string; data: string }> = [];
 
         if (environment.secretBackend === "BUILTIN") {
@@ -86,18 +101,6 @@ export async function GET(request: Request) {
 
           // Re-dump to YAML with proper quoting for special characters
           configYaml = yaml.dump(withCerts, { indent: 2, lineWidth: -1, noRefs: true });
-
-          // Deliver all environment secrets as env vars for the agent to set
-          const envSecrets = await prisma.secret.findMany({
-            where: { environmentId: agent.environmentId },
-          });
-          for (const s of envSecrets) {
-            const envKey = secretNameToEnvVar(s.name);
-            if (secrets[envKey] !== undefined) {
-              console.warn(`[agent-config] Secret name collision: "${s.name}" normalizes to "${envKey}" which is already set`);
-            }
-            secrets[envKey] = decrypt(s.encryptedValue);
-          }
         }
         // External backend: configYaml is used as-is with references intact
 
