@@ -5,6 +5,7 @@ import { validateConfig } from "@/server/services/validator";
 import { createVersion } from "@/server/services/pipeline-version";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { startSystemVector, stopSystemVector } from "@/server/services/system-vector";
+import { gitSyncCommitPipeline } from "@/server/services/git-sync";
 
 export interface AgentDeployResult {
   success: boolean;
@@ -12,6 +13,7 @@ export interface AgentDeployResult {
   versionId?: string;
   versionNumber?: number;
   validationErrors?: Array<{ message: string; componentKey?: string }>;
+  gitSyncError?: string;
 }
 
 /**
@@ -87,6 +89,30 @@ export async function deployAgent(
     gc,
   );
 
+  // 3b. Git sync (non-blocking side effect)
+  let gitSyncError: string | undefined;
+  const environment = await prisma.environment.findUnique({
+    where: { id: pipeline.environmentId },
+  });
+  if (environment?.gitRepoUrl && environment?.gitToken) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const result = await gitSyncCommitPipeline(
+      {
+        repoUrl: environment.gitRepoUrl,
+        branch: environment.gitBranch ?? "main",
+        encryptedToken: environment.gitToken,
+      },
+      environment.name,
+      pipeline.name,
+      configYaml,
+      { name: user?.name ?? "VectorFlow User", email: user?.email ?? "noreply@vectorflow" },
+      changelog ?? `Deploy pipeline: ${pipeline.name}`,
+    );
+    if (!result.success) {
+      gitSyncError = result.error;
+    }
+  }
+
   // 4. For system pipelines, start the local Vector process instead of
   //    relying on agents to pick up the config.
   if (pipeline.isSystem) {
@@ -97,6 +123,7 @@ export async function deployAgent(
     success: true,
     versionId: version.id,
     versionNumber: version.version,
+    gitSyncError,
   };
 }
 

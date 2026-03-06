@@ -93,3 +93,35 @@ Secrets and certificates are stripped during promotion. After promoting a pipeli
 
 - **Edit** -- Click the **Edit** button on the environment detail page to rename the environment or change its secret backend configuration.
 - **Delete** -- Click the **Delete** button to permanently remove the environment. You must have the Admin role on the team to delete an environment.
+
+## Git Integration
+
+VectorFlow can automatically commit pipeline YAML files to a Git repository whenever a pipeline is deployed or deleted. This provides an audit trail, version history, and hook points for external CI/CD workflows.
+
+### Setup
+
+{% stepper %}
+{% step %}
+### Navigate to Environment Settings
+Go to **Environments** and click on the environment you want to configure.
+{% endstep %}
+{% step %}
+### Configure Git Integration
+In the **Git Integration** card, enter:
+- **Repository URL**: The HTTPS URL of your Git repo (e.g., `https://github.com/org/pipeline-configs.git`)
+- **Branch**: The branch to commit to (default: `main`)
+- **Access Token**: A personal access token with write access to the repo
+{% endstep %}
+{% step %}
+### Test Connection
+Click **Test Connection** to verify VectorFlow can reach the repository.
+{% endstep %}
+{% endstepper %}
+
+### How It Works
+
+When you deploy a pipeline, VectorFlow commits the generated YAML to `{environment-name}/{pipeline-name}.yaml` in the configured repository. When you delete a pipeline, the file is removed with a commit.
+
+{% hint style="info" %}
+Git sync is a post-deploy side effect. If the Git push fails, the pipeline deploy still succeeds — you will see a warning toast in the UI.
+{% endhint %}
