@@ -93,6 +93,40 @@ export async function resolveCertRefs(
   return { config: resolved, certFiles };
 }
 
+/**
+ * Walk a config object and convert SECRET[name] references to
+ * ${VF_SECRET_NAME} env var placeholders for Vector interpolation.
+ * Pure string transformation — no DB lookups or decryption.
+ */
+export function convertSecretRefsToEnvVars(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  return walkConvertSecretRefs(config);
+}
+
+function walkConvertSecretRefs(
+  obj: Record<string, unknown>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === "string") {
+      const match = value.match(SECRET_REF_PATTERN);
+      if (match) {
+        result[key] = `\${VF_SECRET_${match[1]}}`;
+      } else {
+        result[key] = value;
+      }
+    } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      result[key] = walkConvertSecretRefs(value as Record<string, unknown>);
+    } else {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
