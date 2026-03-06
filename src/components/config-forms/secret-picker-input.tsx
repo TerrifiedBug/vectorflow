@@ -168,7 +168,7 @@ export function SecretPickerInput({ value, onChange }: SecretPickerInputProps) {
                 <Label className="text-xs">Value</Label>
                 <Input
                   type="password"
-                  autoComplete="off"
+                  autoComplete="new-password"
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
                   placeholder="secret value"
