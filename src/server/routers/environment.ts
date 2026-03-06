@@ -4,6 +4,7 @@ import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { generateEnrollmentToken } from "@/server/services/agent-token";
+import { encrypt } from "@/server/services/crypto";
 
 export const environmentRouter = router({
   list: protectedProcedure
@@ -94,12 +95,15 @@ export const environmentRouter = router({
         name: z.string().min(1).max(100).optional(),
         secretBackend: z.enum(["BUILTIN", "VAULT", "AWS_SM", "EXEC"]).optional(),
         secretBackendConfig: z.any().optional(),
+        gitRepoUrl: z.string().url().optional().nullable(),
+        gitBranch: z.string().min(1).max(100).optional().nullable(),
+        gitToken: z.string().optional().nullable(),
       })
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("environment.updated", "Environment"))
     .mutation(async ({ input }) => {
-      const { id, ...data } = input;
+      const { id, gitToken, ...rest } = input;
       const existing = await prisma.environment.findUnique({
         where: { id },
       });
@@ -115,10 +119,55 @@ export const environmentRouter = router({
           message: "The system environment cannot be modified directly",
         });
       }
+
+      // Build update data, encrypting git token if provided
+      const data: Record<string, unknown> = { ...rest };
+      if (gitToken !== undefined) {
+        data.gitToken = gitToken ? encrypt(gitToken) : null;
+      }
+
       return prisma.environment.update({
         where: { id },
         data,
       });
+    }),
+
+  testGitConnection: protectedProcedure
+    .input(z.object({
+      repoUrl: z.string().url(),
+      branch: z.string().min(1),
+      token: z.string().min(1),
+    }))
+    .use(withTeamAccess("EDITOR"))
+    .mutation(async ({ input }) => {
+      const simpleGit = (await import("simple-git")).default;
+      const { mkdtemp, rm } = await import("fs/promises");
+      const { join } = await import("path");
+      const { tmpdir } = await import("os");
+
+      let workdir: string | null = null;
+      try {
+        workdir = await mkdtemp(join(tmpdir(), "vf-git-test-"));
+        const git = simpleGit(workdir);
+        const url = new URL(input.repoUrl);
+        url.username = input.token;
+        url.password = "";
+        await git.clone(url.toString(), workdir, [
+          "--branch", input.branch,
+          "--depth", "1",
+          "--single-branch",
+        ]);
+        return { success: true };
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      } finally {
+        if (workdir) {
+          await rm(workdir, { recursive: true, force: true }).catch(() => {});
+        }
+      }
     }),
 
   delete: protectedProcedure
