@@ -49,6 +49,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { SecretsSection } from "@/components/environment/secrets-section";
 import { CertificatesSection } from "@/components/environment/certificates-section";
+import { GitSyncSection } from "@/components/environment/git-sync-section";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 
 export default function EnvironmentDetailPage({
@@ -513,6 +514,13 @@ export default function EnvironmentDetailPage({
       <h3 className="text-lg font-semibold">Secrets & Certificates</h3>
       <SecretsSection environmentId={id} />
       <CertificatesSection environmentId={id} />
+
+      <GitSyncSection
+        environmentId={id}
+        gitRepoUrl={env.gitRepoUrl}
+        gitBranch={env.gitBranch}
+        hasGitToken={env.hasGitToken}
+      />
 
       {/* Created info */}
       <p className="text-xs text-muted-foreground">

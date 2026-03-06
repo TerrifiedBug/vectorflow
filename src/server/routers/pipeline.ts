@@ -16,6 +16,7 @@ import { generateVectorYaml } from "@/lib/config-generator";
 import { getOrCreateSystemEnvironment } from "@/server/services/system-environment";
 import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
 import { stripEnvRefs, type StrippedRef } from "@/server/services/strip-env-refs";
+import { gitSyncDeletePipeline } from "@/server/services/git-sync";
 
 /** Pipeline names must be safe identifiers */
 const pipelineNameSchema = z
@@ -384,7 +385,7 @@ export const pipelineRouter = router({
     .input(z.object({ id: z.string() }))
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.deleted", "Pipeline"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const existing = await prisma.pipeline.findUnique({
         where: { id: input.id },
       });
@@ -406,6 +407,29 @@ export const pipelineRouter = router({
         await prisma.pipeline.update({
           where: { id: input.id },
           data: { isDraft: true, deployedAt: null },
+        });
+      }
+
+      // Git sync: delete pipeline YAML from repo (non-blocking)
+      const environment = await prisma.environment.findUnique({
+        where: { id: existing.environmentId },
+      });
+      if (environment?.gitRepoUrl && environment?.gitToken) {
+        const user = ctx.session?.user;
+        const dbUser = user?.id
+          ? await prisma.user.findUnique({ where: { id: user.id } })
+          : null;
+        await gitSyncDeletePipeline(
+          {
+            repoUrl: environment.gitRepoUrl,
+            branch: environment.gitBranch ?? "main",
+            encryptedToken: environment.gitToken,
+          },
+          environment.name,
+          existing.name,
+          { name: dbUser?.name ?? "VectorFlow User", email: dbUser?.email ?? "noreply@vectorflow" },
+        ).catch((err) => {
+          console.error("[git-sync] Delete failed for pipeline:", existing.name, err);
         });
       }
 

@@ -59,6 +59,7 @@ VectorFlow encrypts sensitive data before storing it in PostgreSQL:
 | Certificates | AES-256-GCM | SHA-256 hash of `NEXTAUTH_SECRET` |
 | OIDC client secret | AES-256-GCM | SHA-256 hash of `NEXTAUTH_SECRET` |
 | Sensitive node config fields | AES-256-GCM | SHA-256 hash of `NEXTAUTH_SECRET` |
+| Git access tokens | AES-256-GCM | SHA-256 hash of `NEXTAUTH_SECRET` |
 | User passwords | bcrypt (cost 12) | Built-in salt |
 | TOTP secrets | AES-256-GCM | SHA-256 hash of `NEXTAUTH_SECRET` |
 | 2FA backup codes | SHA-256 hash | -- |

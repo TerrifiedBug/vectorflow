@@ -57,6 +57,12 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
         toast.success("Pipeline published to agents", {
           description: result.versionNumber ? `Version v${result.versionNumber}` : undefined,
         });
+        if (result.gitSyncError) {
+          toast.warning("Pipeline deployed but Git sync failed", {
+            description: result.gitSyncError,
+            duration: 8000,
+          });
+        }
         onOpenChange(false);
       },
       onError: (err) => {
