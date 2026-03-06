@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import yaml from "js-yaml";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
-import { resolveSecretRefs, resolveCertRefs } from "@/server/services/secret-resolver";
+import { convertSecretRefsToEnvVars, resolveCertRefs } from "@/server/services/secret-resolver";
 import { decrypt } from "@/server/services/crypto";
 import { createHash } from "crypto";
 
@@ -67,17 +67,18 @@ export async function GET(request: Request) {
         let certFiles: Array<{ name: string; filename: string; data: string }> = [];
 
         if (environment.secretBackend === "BUILTIN") {
-          // Parse versioned YAML back to objects so we can resolve SECRET[]/CERT[]
-          // references at the object level. This ensures js-yaml properly quotes
-          // values containing special characters when we re-dump.
+          // Parse versioned YAML back to objects so we can resolve references
+          // at the object level. This ensures js-yaml properly quotes values
+          // containing special characters when we re-dump.
           const parsedConfig = yaml.load(configYaml) as Record<string, unknown>;
 
-          // Walk config objects and resolve all SECRET[name] → actual values
-          const withSecrets = await resolveSecretRefs(parsedConfig, agent.environmentId);
+          // Convert SECRET[name] → ${VF_SECRET_NAME} env var placeholders.
+          // Vector interpolates these from environment variables set by the agent.
+          const withEnvVars = convertSecretRefsToEnvVars(parsedConfig);
 
           // Walk config objects and resolve all CERT[name] → deploy file paths
           const { config: withCerts, certFiles: certs } = await resolveCertRefs(
-            withSecrets,
+            withEnvVars,
             agent.environmentId,
             certBasePath,
           );
@@ -86,7 +87,7 @@ export async function GET(request: Request) {
           // Re-dump to YAML with proper quoting for special characters
           configYaml = yaml.dump(withCerts, { indent: 2, lineWidth: -1, noRefs: true });
 
-          // Deliver all environment secrets as env vars
+          // Deliver all environment secrets as env vars for the agent to set
           const envSecrets = await prisma.secret.findMany({
             where: { environmentId: agent.environmentId },
           });
