@@ -417,11 +417,14 @@ model SystemSettings {
 
   latestServerRelease            String?
   latestServerReleaseCheckedAt   DateTime?
+  latestServerReleaseEtag        String?
   latestAgentRelease             String?
   latestAgentReleaseCheckedAt    DateTime?
+  latestAgentReleaseEtag         String?
   latestAgentChecksums           String?    // JSON: {"vf-agent-linux-amd64":"sha256..."}
   latestDevAgentRelease          String?
   latestDevAgentReleaseCheckedAt DateTime?
+  latestDevAgentReleaseEtag      String?
   latestDevAgentChecksums        String?    // JSON: {"vf-agent-linux-amd64":"sha256..."}
 
   updatedAt DateTime @updatedAt

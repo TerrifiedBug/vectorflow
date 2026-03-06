@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 const GITHUB_API = "https://api.github.com";
 const SERVER_REPO = "TerrifiedBug/vectorflow";
 const AGENT_REPO = "TerrifiedBug/vectorflow";
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes (ETag keeps most checks free)
 
 interface GitHubRelease {
   tag_name: string;
@@ -20,18 +20,33 @@ interface GitHubReleaseWithAssets extends GitHubRelease {
   assets: GitHubAsset[];
 }
 
-async function fetchLatestRelease(
-  repo: string,
-): Promise<GitHubReleaseWithAssets | null> {
+interface FetchResult {
+  release: GitHubReleaseWithAssets | null;
+  etag: string | null;
+  notModified: boolean;
+}
+
+async function fetchRelease(
+  url: string,
+  etag?: string | null,
+): Promise<FetchResult> {
   try {
-    const res = await fetch(`${GITHUB_API}/repos/${repo}/releases/latest`, {
-      headers: { Accept: "application/vnd.github.v3+json" },
-      next: { revalidate: 0 },
-    });
-    if (!res.ok) return null;
-    return res.json();
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github.v3+json",
+    };
+    if (etag) {
+      headers["If-None-Match"] = etag;
+    }
+    const res = await fetch(url, { headers, next: { revalidate: 0 } });
+    if (res.status === 304) {
+      return { release: null, etag: etag ?? null, notModified: true };
+    }
+    if (!res.ok) return { release: null, etag: null, notModified: false };
+    const newEtag = res.headers.get("etag");
+    const release = await res.json();
+    return { release, etag: newEtag, notModified: false };
   } catch {
-    return null;
+    return { release: null, etag: null, notModified: false };
   }
 }
 
@@ -81,21 +96,34 @@ export async function checkServerVersion(force = false): Promise<{
   let checkedAt: Date | null = lastChecked ?? null;
 
   if (needsCheck) {
-    const release = await fetchLatestRelease(SERVER_REPO);
-    if (release) {
+    const { release, etag, notModified } = await fetchRelease(
+      `${GITHUB_API}/repos/${SERVER_REPO}/releases/latest`,
+      settings?.latestServerReleaseEtag,
+    );
+    checkedAt = new Date();
+
+    if (notModified) {
+      // Nothing changed — just bump the check timestamp
+      await prisma.systemSettings.upsert({
+        where: { id: "singleton" },
+        update: { latestServerReleaseCheckedAt: checkedAt },
+        create: { id: "singleton", latestServerReleaseCheckedAt: checkedAt },
+      });
+    } else if (release) {
       latestVersion = release.tag_name.replace(/^v/, "");
       releaseUrl = release.html_url;
-      checkedAt = new Date();
       await prisma.systemSettings.upsert({
         where: { id: "singleton" },
         update: {
           latestServerRelease: latestVersion,
           latestServerReleaseCheckedAt: checkedAt,
+          latestServerReleaseEtag: etag,
         },
         create: {
           id: "singleton",
           latestServerRelease: latestVersion,
           latestServerReleaseCheckedAt: checkedAt,
+          latestServerReleaseEtag: etag,
         },
       });
     }
@@ -138,22 +166,38 @@ export async function checkAgentVersion(force = false): Promise<{
   let checkedAt: Date | null = lastChecked ?? null;
 
   if (needsCheck) {
-    const release = await fetchLatestRelease(AGENT_REPO);
-    if (release) {
+    const { release, etag, notModified } = await fetchRelease(
+      `${GITHUB_API}/repos/${AGENT_REPO}/releases/latest`,
+      settings?.latestAgentReleaseEtag,
+    );
+    checkedAt = new Date();
+
+    if (notModified) {
+      await prisma.systemSettings.upsert({
+        where: { id: "singleton" },
+        update: { latestAgentReleaseCheckedAt: checkedAt },
+        create: { id: "singleton", latestAgentReleaseCheckedAt: checkedAt },
+      });
+      // Return cached checksums
+      if (settings?.latestAgentChecksums) {
+        try { checksums = JSON.parse(settings.latestAgentChecksums); } catch { /* ignore */ }
+      }
+    } else if (release) {
       latestVersion = release.tag_name.replace(/^v/, "");
       checksums = await fetchChecksums(release);
-      checkedAt = new Date();
       await prisma.systemSettings.upsert({
         where: { id: "singleton" },
         update: {
           latestAgentRelease: latestVersion,
           latestAgentReleaseCheckedAt: checkedAt,
+          latestAgentReleaseEtag: etag,
           latestAgentChecksums: JSON.stringify(checksums),
         },
         create: {
           id: "singleton",
           latestAgentRelease: latestVersion,
           latestAgentReleaseCheckedAt: checkedAt,
+          latestAgentReleaseEtag: etag,
           latestAgentChecksums: JSON.stringify(checksums),
         },
       });
@@ -163,22 +207,6 @@ export async function checkAgentVersion(force = false): Promise<{
   }
 
   return { latestVersion, checksums, checkedAt };
-}
-
-async function fetchDevRelease(): Promise<GitHubReleaseWithAssets | null> {
-  try {
-    const res = await fetch(
-      `${GITHUB_API}/repos/${AGENT_REPO}/releases/tags/dev`,
-      {
-        headers: { Accept: "application/vnd.github.v3+json" },
-        next: { revalidate: 0 },
-      },
-    );
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
 }
 
 async function fetchDevVersionString(
@@ -215,9 +243,22 @@ export async function checkDevAgentVersion(force = false): Promise<{
   let checkedAt: Date | null = lastChecked ?? null;
 
   if (needsCheck) {
-    const release = await fetchDevRelease();
-    if (release) {
-      checkedAt = new Date();
+    const { release, etag, notModified } = await fetchRelease(
+      `${GITHUB_API}/repos/${AGENT_REPO}/releases/tags/dev`,
+      settings?.latestDevAgentReleaseEtag,
+    );
+    checkedAt = new Date();
+
+    if (notModified) {
+      await prisma.systemSettings.upsert({
+        where: { id: "singleton" },
+        update: { latestDevAgentReleaseCheckedAt: checkedAt },
+        create: { id: "singleton", latestDevAgentReleaseCheckedAt: checkedAt },
+      });
+      if (settings?.latestDevAgentChecksums) {
+        try { checksums = JSON.parse(settings.latestDevAgentChecksums); } catch { /* ignore */ }
+      }
+    } else if (release) {
       const versionString = await fetchDevVersionString(release);
       if (versionString) {
         latestVersion = versionString;
@@ -228,12 +269,14 @@ export async function checkDevAgentVersion(force = false): Promise<{
         update: {
           latestDevAgentRelease: latestVersion,
           latestDevAgentReleaseCheckedAt: checkedAt,
+          latestDevAgentReleaseEtag: etag,
           ...(versionString ? { latestDevAgentChecksums: JSON.stringify(checksums) } : {}),
         },
         create: {
           id: "singleton",
           latestDevAgentRelease: latestVersion,
           latestDevAgentReleaseCheckedAt: checkedAt,
+          latestDevAgentReleaseEtag: etag,
           ...(versionString ? { latestDevAgentChecksums: JSON.stringify(checksums) } : {}),
         },
       });
