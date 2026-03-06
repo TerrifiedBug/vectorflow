@@ -79,6 +79,9 @@ model Environment {
   enrollmentTokenHint String?
   secretBackend       SecretBackend @default(BUILTIN)
   secretBackendConfig Json?
+  gitRepoUrl          String?
+  gitBranch           String?       @default("main")
+  gitToken            String?       // Stored encrypted via crypto.ts
   alertRules          AlertRule[]
   alertWebhooks       AlertWebhook[]
   createdAt           DateTime      @default(now())
