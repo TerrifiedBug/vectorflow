@@ -259,7 +259,6 @@ export async function checkDevAgentVersion(force = false): Promise<{
         try { checksums = JSON.parse(settings.latestDevAgentChecksums); } catch { /* ignore */ }
       }
     } else if (release) {
-      checkedAt = new Date();
       const versionString = await fetchDevVersionString(release);
       if (versionString) {
         latestVersion = versionString;
