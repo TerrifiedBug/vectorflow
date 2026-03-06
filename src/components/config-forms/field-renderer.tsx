@@ -329,7 +329,6 @@ export function FieldRenderer({
         <SecretPickerInput
           value={(value as string) ?? ""}
           onChange={(v) => onChange(v)}
-          placeholder={placeholder}
         />
       ) : isCertFile ? (
         <CertPickerInput
