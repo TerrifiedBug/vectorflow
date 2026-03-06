@@ -142,7 +142,7 @@ Called on every poll cycle. Returns all deployed pipeline configurations for thi
       "checksum": "sha256:abc123...",
       "logLevel": "info",
       "secrets": {
-        "SECRET_AWS_KEY": "AKIAIOSFODNN7EXAMPLE"
+        "VF_SECRET_AWS_KEY": "AKIAIOSFODNN7EXAMPLE"
       },
       "certFiles": [
         {
@@ -161,7 +161,7 @@ Called on every poll cycle. Returns all deployed pipeline configurations for thi
 ```
 
 Key fields:
-- **`secrets`**: Pre-resolved secret values. The agent injects these as environment variables into the Vector process.
+- **`secrets`**: Pre-resolved secret values with `VF_SECRET_` prefix. The agent injects these as environment variables into the Vector process.
 - **`certFiles`**: Certificate data written to `<VF_DATA_DIR>/certs/` before starting the pipeline.
 - **`checksum`**: Used to detect config changes without re-parsing YAML.
 - **`pendingAction`**: Server-initiated action (currently only `self_update`).
@@ -226,7 +226,7 @@ The agent manages Vector processes with full lifecycle control:
 
 Each Vector process receives:
 - `VECTOR_LOG=<logLevel>` -- controls Vector's log verbosity
-- All resolved secrets as environment variables (e.g., `SECRET_AWS_KEY=value`)
+- All resolved secrets as environment variables with `VF_SECRET_` prefix (e.g., `VF_SECRET_AWS_KEY=value`)
 
 ### Metrics sidecar
 

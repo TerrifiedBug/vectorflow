@@ -116,8 +116,8 @@ sinks:
     encoding:
       codec: json
     auth:
-      access_key_id: "${SECRET_AWS_ACCESS_KEY}"
-      secret_access_key: "${SECRET_AWS_SECRET_KEY}"
+      access_key_id: "${VF_SECRET_AWS_ACCESS_KEY}"
+      secret_access_key: "${VF_SECRET_AWS_SECRET_KEY}"
 ```
 
 ---
@@ -151,7 +151,7 @@ Secrets stored in VectorFlow can be referenced in pipeline component configurati
 2. Reference it in a component config field using the `SECRET[name]` syntax in the visual editor
 3. At deploy time, the server resolves all secret references
 4. The agent receives the resolved values in the config response and injects them as environment variables
-5. In the generated YAML, secrets appear as `${SECRET_AWS_ACCESS_KEY}` -- standard Vector environment variable interpolation
+5. In the generated YAML, secrets appear as `${VF_SECRET_AWS_ACCESS_KEY}` -- standard Vector environment variable interpolation (all secrets use the `VF_SECRET_` prefix)
 
 ### Example
 
@@ -167,11 +167,11 @@ sinks:
       - "https://es.example.com:9200"
     auth:
       strategy: basic
-      user: "${SECRET_ES_USER}"
-      password: "${SECRET_ES_PASSWORD}"
+      user: "${VF_SECRET_ES_USER}"
+      password: "${VF_SECRET_ES_PASSWORD}"
 ```
 
-The agent injects environment variables `SECRET_ES_USER` and `SECRET_ES_PASSWORD` with the decrypted values when starting the Vector process.
+The agent injects environment variables `VF_SECRET_ES_USER` and `VF_SECRET_ES_PASSWORD` with the decrypted values when starting the Vector process.
 
 ---
 
