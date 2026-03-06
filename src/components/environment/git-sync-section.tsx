@@ -83,21 +83,21 @@ export function GitSyncSection({
   }
 
   function handleTest() {
-    const testToken = token || undefined;
     if (!repoUrl) {
       toast.error("Enter a repository URL first");
       return;
     }
-    if (!testToken && !hasGitToken) {
+    if (!token && !hasGitToken) {
       toast.error("Enter an access token first");
       return;
     }
-    if (testToken) {
-      setIsTesting(true);
-      testMutation.mutate({ environmentId, repoUrl, branch, token: testToken });
-    } else {
-      toast.warning("Enter a new token to test the connection");
-    }
+    setIsTesting(true);
+    testMutation.mutate({
+      environmentId,
+      repoUrl,
+      branch,
+      ...(token ? { token } : {}),
+    });
   }
 
   function handleDisconnect() {

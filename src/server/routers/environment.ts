@@ -4,7 +4,7 @@ import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { generateEnrollmentToken } from "@/server/services/agent-token";
-import { encrypt } from "@/server/services/crypto";
+import { encrypt, decrypt } from "@/server/services/crypto";
 
 export const environmentRouter = router({
   list: protectedProcedure
@@ -145,11 +145,24 @@ export const environmentRouter = router({
       environmentId: z.string(),
       repoUrl: z.string().url(),
       branch: z.string().min(1).max(100).regex(/^[a-zA-Z0-9._\/-]+$/),
-      token: z.string().min(1),
+      token: z.string().min(1).optional(),
     }))
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("environment.gitConnection.tested", "Environment"))
     .mutation(async ({ input }) => {
+      // Resolve token: use provided token, or fall back to stored encrypted token
+      let resolvedToken = input.token;
+      if (!resolvedToken) {
+        const env = await prisma.environment.findUnique({
+          where: { id: input.environmentId },
+          select: { gitToken: true },
+        });
+        if (!env?.gitToken) {
+          return { success: false, error: "No access token configured" };
+        }
+        resolvedToken = decrypt(env.gitToken);
+      }
+
       const parsedUrl = new URL(input.repoUrl);
       if (parsedUrl.protocol !== "https:") {
         return { success: false, error: "Only HTTPS repository URLs are supported" };
@@ -165,7 +178,7 @@ export const environmentRouter = router({
         workdir = await mkdtemp(join(tmpdir(), "vf-git-test-"));
         const repoDir = join(workdir, "repo");
         const git = simpleGit(workdir);
-        parsedUrl.username = input.token;
+        parsedUrl.username = resolvedToken;
         parsedUrl.password = "";
         await git.clone(parsedUrl.toString(), repoDir, [
           "--branch", input.branch,
