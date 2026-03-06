@@ -94,6 +94,15 @@ export async function resolveCertRefs(
 }
 
 /**
+ * Normalize a secret name to a valid environment variable name.
+ * Replaces non-alphanumeric characters with underscores and uppercases.
+ * e.g. "db-password" → "DB_PASSWORD", "my.api.key" → "MY_API_KEY"
+ */
+export function secretNameToEnvVar(name: string): string {
+  return `VF_SECRET_${name.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase()}`;
+}
+
+/**
  * Walk a config object and convert SECRET[name] references to
  * ${VF_SECRET_NAME} env var placeholders for Vector interpolation.
  * Pure string transformation — no DB lookups or decryption.
@@ -113,7 +122,7 @@ function walkConvertSecretRefs(
     if (typeof value === "string") {
       const match = value.match(SECRET_REF_PATTERN);
       if (match) {
-        result[key] = `\${VF_SECRET_${match[1]}}`;
+        result[key] = `\${${secretNameToEnvVar(match[1])}}`;
       } else {
         result[key] = value;
       }

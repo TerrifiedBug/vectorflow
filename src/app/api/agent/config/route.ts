@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import yaml from "js-yaml";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
-import { convertSecretRefsToEnvVars, resolveCertRefs } from "@/server/services/secret-resolver";
+import { convertSecretRefsToEnvVars, resolveCertRefs, secretNameToEnvVar } from "@/server/services/secret-resolver";
 import { decrypt } from "@/server/services/crypto";
 import { createHash } from "crypto";
 
@@ -92,7 +92,7 @@ export async function GET(request: Request) {
             where: { environmentId: agent.environmentId },
           });
           for (const s of envSecrets) {
-            secrets[`VF_SECRET_${s.name}`] = decrypt(s.encryptedValue);
+            secrets[secretNameToEnvVar(s.name)] = decrypt(s.encryptedValue);
           }
         }
         // External backend: configYaml is used as-is with references intact
