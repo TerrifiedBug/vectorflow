@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import yaml from "js-yaml";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
-import { resolveSecretRefs, resolveCertRefs } from "@/server/services/secret-resolver";
+import { convertSecretRefsToEnvVars, resolveCertRefs, secretNameToEnvVar } from "@/server/services/secret-resolver";
 import { decrypt } from "@/server/services/crypto";
 import { createHash } from "crypto";
 
@@ -56,6 +56,22 @@ export async function GET(request: Request) {
     const pipelineConfigs = [];
     const certBasePath = "/var/lib/vf-agent/certs";
 
+    // Pre-resolve all environment secrets once (shared across all pipelines)
+    const secrets: Record<string, string> = {};
+    if (environment.secretBackend === "BUILTIN") {
+      const envSecrets = await prisma.secret.findMany({
+        where: { environmentId: agent.environmentId },
+        orderBy: { name: "asc" },
+      });
+      for (const s of envSecrets) {
+        const envKey = secretNameToEnvVar(s.name);
+        if (secrets[envKey] !== undefined) {
+          console.warn(`[agent-config] Secret name collision: "${s.name}" normalizes to "${envKey}" which is already set`);
+        }
+        secrets[envKey] = decrypt(s.encryptedValue);
+      }
+    }
+
     for (const pipeline of pipelines) {
       try {
         const latestVersion = pipeline.versions[0];
@@ -63,21 +79,21 @@ export async function GET(request: Request) {
 
         const version = latestVersion.version;
         let configYaml = latestVersion.configYaml;
-        const secrets: Record<string, string> = {};
         let certFiles: Array<{ name: string; filename: string; data: string }> = [];
 
         if (environment.secretBackend === "BUILTIN") {
-          // Parse versioned YAML back to objects so we can resolve SECRET[]/CERT[]
-          // references at the object level. This ensures js-yaml properly quotes
-          // values containing special characters when we re-dump.
+          // Parse versioned YAML back to objects so we can resolve references
+          // at the object level. This ensures js-yaml properly quotes values
+          // containing special characters when we re-dump.
           const parsedConfig = yaml.load(configYaml) as Record<string, unknown>;
 
-          // Walk config objects and resolve all SECRET[name] → actual values
-          const withSecrets = await resolveSecretRefs(parsedConfig, agent.environmentId);
+          // Convert SECRET[name] → ${VF_SECRET_NAME} env var placeholders.
+          // Vector interpolates these from environment variables set by the agent.
+          const withEnvVars = convertSecretRefsToEnvVars(parsedConfig);
 
           // Walk config objects and resolve all CERT[name] → deploy file paths
           const { config: withCerts, certFiles: certs } = await resolveCertRefs(
-            withSecrets,
+            withEnvVars,
             agent.environmentId,
             certBasePath,
           );
@@ -85,18 +101,14 @@ export async function GET(request: Request) {
 
           // Re-dump to YAML with proper quoting for special characters
           configYaml = yaml.dump(withCerts, { indent: 2, lineWidth: -1, noRefs: true });
-
-          // Deliver all environment secrets as env vars
-          const envSecrets = await prisma.secret.findMany({
-            where: { environmentId: agent.environmentId },
-          });
-          for (const s of envSecrets) {
-            secrets[`VF_SECRET_${s.name}`] = decrypt(s.encryptedValue);
-          }
         }
         // External backend: configYaml is used as-is with references intact
 
-        const checksum = createHash("sha256").update(configYaml).digest("hex");
+        // Include secrets in checksum so secret rotation triggers agent restart
+        const checksumInput = Object.keys(secrets).length > 0
+          ? configYaml + JSON.stringify(secrets, Object.keys(secrets).sort())
+          : configYaml;
+        const checksum = createHash("sha256").update(checksumInput).digest("hex");
 
         pipelineConfigs.push({
           pipelineId: pipeline.id,
