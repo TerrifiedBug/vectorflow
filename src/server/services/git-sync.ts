@@ -47,10 +47,11 @@ function sanitizeAuthor(name: string, email: string): string {
  * Slugify a string for use as a filename.
  */
 export function toFilenameSlug(name: string): string {
-  return name
+  const slug = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+  return slug || "unnamed";
 }
 
 /**

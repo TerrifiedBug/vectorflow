@@ -128,10 +128,16 @@ export const environmentRouter = router({
         data.gitToken = gitToken ? encrypt(gitToken) : null;
       }
 
-      return prisma.environment.update({
+      const updated = await prisma.environment.update({
         where: { id },
         data,
       });
+      const { gitToken: _gt, enrollmentTokenHash: _eth, ...safeUpdate } = updated;
+      return {
+        ...safeUpdate,
+        hasEnrollmentToken: !!_eth,
+        hasGitToken: !!_gt,
+      };
     }),
 
   testGitConnection: protectedProcedure
