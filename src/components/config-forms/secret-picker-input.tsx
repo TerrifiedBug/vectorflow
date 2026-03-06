@@ -1,14 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
-import { Lock, X } from "lucide-react";
+import { Lock, X, AlertTriangle, Plus } from "lucide-react";
+import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
@@ -32,9 +34,13 @@ interface SecretPickerInputProps {
   placeholder?: string;
 }
 
-export function SecretPickerInput({ value, onChange, placeholder }: SecretPickerInputProps) {
+export function SecretPickerInput({ value, onChange }: SecretPickerInputProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newValue, setNewValue] = useState("");
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const environmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
 
   const secretsQuery = useQuery(
@@ -45,9 +51,38 @@ export function SecretPickerInput({ value, onChange, placeholder }: SecretPicker
   );
   const secrets = secretsQuery.data ?? [];
 
-  const secretRef = typeof value === "string" ? parseSecretRef(value) : null;
+  const createMutation = useMutation(
+    trpc.secret.create.mutationOptions({
+      onSuccess: (created) => {
+        queryClient.invalidateQueries({ queryKey: trpc.secret.list.queryKey({ environmentId: environmentId! }) });
+        onChange(makeSecretRef(created.name));
+        setPopoverOpen(false);
+        resetCreateForm();
+        toast.success(`Secret "${created.name}" created`);
+      },
+      onError: (err) => toast.error(err.message),
+    })
+  );
 
-  // When a secret reference is active, show a badge instead of the input
+  function resetCreateForm() {
+    setShowCreate(false);
+    setNewName("");
+    setNewValue("");
+  }
+
+  function handleCreate() {
+    if (!environmentId || !newName.trim() || !newValue.trim()) return;
+    createMutation.mutate({
+      environmentId,
+      name: newName.trim(),
+      value: newValue.trim(),
+    });
+  }
+
+  const secretRef = typeof value === "string" ? parseSecretRef(value) : null;
+  const isPlaintextLegacy = !!value && !secretRef;
+
+  // State 1: Secret reference selected — show badge
   if (secretRef) {
     return (
       <div className="flex items-center gap-2">
@@ -69,59 +104,140 @@ export function SecretPickerInput({ value, onChange, placeholder }: SecretPicker
     );
   }
 
-  return (
-    <div className="flex items-center gap-1">
-      <Input
-        type="password"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="flex-1"
-      />
-      {environmentId && (
-        <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-          <PopoverTrigger asChild>
+  // Shared popover content
+  const pickerPopover = environmentId ? (
+    <Popover open={popoverOpen} onOpenChange={(open) => { setPopoverOpen(open); if (!open) resetCreateForm(); }}>
+      <PopoverTrigger asChild>
+        {isPlaintextLegacy ? (
+          <Button type="button" variant="outline" size="sm">
+            <Lock className="h-3.5 w-3.5 mr-2" />
+            Select secret to replace
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" size="sm" className="text-muted-foreground">
+            <Lock className="h-3.5 w-3.5 mr-2" />
+            Select secret...
+          </Button>
+        )}
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-0">
+        <div className="p-3 pb-2">
+          <p className="text-sm font-medium">Select Secret</p>
+          <p className="text-xs text-muted-foreground">
+            Choose a secret from this environment
+          </p>
+        </div>
+        <div className="max-h-48 overflow-y-auto border-t">
+          {secrets.length === 0 && !secretsQuery.isLoading ? (
+            <p className="p-3 text-xs text-muted-foreground text-center">
+              No secrets yet
+            </p>
+          ) : secretsQuery.isLoading ? (
+            <p className="p-3 text-xs text-muted-foreground text-center">
+              Loading...
+            </p>
+          ) : (
+            secrets.map((secret) => (
+              <button
+                key={secret.id}
+                type="button"
+                className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors font-mono"
+                onClick={() => {
+                  onChange(makeSecretRef(secret.name));
+                  setPopoverOpen(false);
+                  resetCreateForm();
+                }}
+              >
+                {secret.name}
+              </button>
+            ))
+          )}
+        </div>
+        <div className="border-t p-2">
+          {showCreate ? (
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Name</Label>
+                <Input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="MY_SECRET_NAME"
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Value</Label>
+                <Input
+                  type="password"
+                  value={newValue}
+                  onChange={(e) => setNewValue(e.target.value)}
+                  placeholder="secret value"
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 text-xs flex-1"
+                  disabled={!newName.trim() || !newValue.trim() || createMutation.isPending}
+                  onClick={handleCreate}
+                >
+                  {createMutation.isPending ? "Creating..." : "Create & Use"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={resetCreateForm}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
             <Button
               type="button"
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              aria-label="Use a secret"
+              variant="ghost"
+              size="sm"
+              className="w-full h-8 text-xs"
+              onClick={() => setShowCreate(true)}
             >
-              <Lock className="h-3.5 w-3.5" />
+              <Plus className="h-3.5 w-3.5 mr-1.5" />
+              Create new secret
             </Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-64 p-0">
-            <div className="p-3 pb-2">
-              <p className="text-sm font-medium">Use Secret</p>
-              <p className="text-xs text-muted-foreground">
-                Select a secret from this environment
-              </p>
-            </div>
-            <div className="max-h-48 overflow-y-auto border-t">
-              {secrets.length === 0 ? (
-                <p className="p-3 text-xs text-muted-foreground text-center">
-                  {secretsQuery.isLoading ? "Loading..." : "No secrets available"}
-                </p>
-              ) : (
-                secrets.map((secret) => (
-                  <button
-                    key={secret.id}
-                    type="button"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors font-mono"
-                    onClick={() => {
-                      onChange(makeSecretRef(secret.name));
-                      setPopoverOpen(false);
-                    }}
-                  >
-                    {secret.name}
-                  </button>
-                ))
-              )}
-            </div>
-          </PopoverContent>
-        </Popover>
-      )}
-    </div>
-  );
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  ) : null;
+
+  // State 2: Legacy plaintext value — show warning + picker
+  if (isPlaintextLegacy) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Badge variant="destructive" className="flex items-center gap-1.5 px-3 py-1.5">
+            <AlertTriangle className="h-3 w-3" />
+            <span className="text-xs">Plaintext value — select a secret to replace</span>
+          </Badge>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            aria-label="Clear value"
+            onClick={() => onChange("")}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        {pickerPopover}
+      </div>
+    );
+  }
+
+  // State 3: No value — show picker button
+  return pickerPopover ?? <p className="text-xs text-muted-foreground">No environment selected</p>;
 }
