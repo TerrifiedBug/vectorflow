@@ -31,7 +31,6 @@ export function makeSecretRef(name: string): string {
 interface SecretPickerInputProps {
   value: string;
   onChange: (value: string) => void;
-  placeholder?: string;
 }
 
 export function SecretPickerInput({ value, onChange }: SecretPickerInputProps) {
@@ -169,6 +168,7 @@ export function SecretPickerInput({ value, onChange }: SecretPickerInputProps) {
                 <Label className="text-xs">Value</Label>
                 <Input
                   type="password"
+                  autoComplete="off"
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
                   placeholder="secret value"
@@ -233,7 +233,11 @@ export function SecretPickerInput({ value, onChange }: SecretPickerInputProps) {
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
-        {pickerPopover}
+        {pickerPopover ?? (
+          <p className="text-xs text-muted-foreground">
+            Select an environment to choose a replacement secret
+          </p>
+        )}
       </div>
     );
   }
