@@ -39,7 +39,7 @@ async function fetchRelease(
     }
     const res = await fetch(url, { headers, next: { revalidate: 0 } });
     if (res.status === 304) {
-      return { release: null, etag, notModified: true };
+      return { release: null, etag: etag ?? null, notModified: true };
     }
     if (!res.ok) return { release: null, etag: null, notModified: false };
     const newEtag = res.headers.get("etag");
