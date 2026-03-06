@@ -33,6 +33,12 @@ function authenticatedUrl(repoUrl: string, token: string): string {
   return url.toString();
 }
 
+function sanitizeAuthor(name: string, email: string): string {
+  const cleanName = (name || "VectorFlow User").replace(/[<>\n\r]/g, "");
+  const cleanEmail = email.replace(/[<>\n\r]/g, "");
+  return `${cleanName} <${cleanEmail}>`;
+}
+
 /**
  * Slugify a string for use as a filename.
  */
@@ -61,33 +67,35 @@ export async function gitSyncCommitPipeline(
     const token = decrypt(config.encryptedToken);
     const url = authenticatedUrl(config.repoUrl, token);
     workdir = await mkdtemp(join(tmpdir(), "vf-git-sync-"));
+    const repoDir = join(workdir, "repo");
 
     const git: SimpleGit = simpleGit(workdir);
-    await git.clone(url, workdir, ["--branch", config.branch, "--depth", "1", "--single-branch"]);
+    await git.clone(url, repoDir, ["--branch", config.branch, "--depth", "1", "--single-branch"]);
+    const repoGit: SimpleGit = simpleGit(repoDir);
 
     // Write the pipeline YAML file
     const envDir = toFilenameSlug(environmentName);
     const filename = `${toFilenameSlug(pipelineName)}.yaml`;
     const filePath = join(envDir, filename);
-    const fullPath = join(workdir, filePath);
+    const fullPath = join(repoDir, filePath);
 
-    await mkdir(join(workdir, envDir), { recursive: true });
+    await mkdir(join(repoDir, envDir), { recursive: true });
     await writeFile(fullPath, configYaml, "utf-8");
 
-    await git.add(filePath);
+    await repoGit.add(filePath);
 
     // Check if there are actually changes to commit
-    const status = await git.status();
+    const status = await repoGit.status();
     if (status.isClean()) {
       return { success: true, commitSha: "no-change" };
     }
 
-    await git.commit(commitMessage, filePath, {
-      "--author": `${author.name || "VectorFlow User"} <${author.email}>`,
+    await repoGit.commit(commitMessage, filePath, {
+      "--author": sanitizeAuthor(author.name, author.email),
     });
-    await git.push("origin", config.branch);
+    await repoGit.push("origin", config.branch);
 
-    const log = await git.log({ maxCount: 1 });
+    const log = await repoGit.log({ maxCount: 1 });
     return { success: true, commitSha: log.latest?.hash };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -116,21 +124,29 @@ export async function gitSyncDeletePipeline(
     const token = decrypt(config.encryptedToken);
     const url = authenticatedUrl(config.repoUrl, token);
     workdir = await mkdtemp(join(tmpdir(), "vf-git-sync-"));
+    const repoDir = join(workdir, "repo");
 
     const git: SimpleGit = simpleGit(workdir);
-    await git.clone(url, workdir, ["--branch", config.branch, "--depth", "1", "--single-branch"]);
+    await git.clone(url, repoDir, ["--branch", config.branch, "--depth", "1", "--single-branch"]);
+    const repoGit: SimpleGit = simpleGit(repoDir);
 
     const envDir = toFilenameSlug(environmentName);
     const filename = `${toFilenameSlug(pipelineName)}.yaml`;
     const filePath = join(envDir, filename);
 
-    await git.rm(filePath);
-    await git.commit(`Delete pipeline: ${pipelineName}`, filePath, {
-      "--author": `${author.name || "VectorFlow User"} <${author.email}>`,
-    });
-    await git.push("origin", config.branch);
+    try {
+      await repoGit.rm(filePath);
+    } catch {
+      // File not tracked in repo — nothing to delete
+      return { success: true, commitSha: "no-file" };
+    }
 
-    const log = await git.log({ maxCount: 1 });
+    await repoGit.commit(`Delete pipeline: ${pipelineName}`, filePath, {
+      "--author": sanitizeAuthor(author.name, author.email),
+    });
+    await repoGit.push("origin", config.branch);
+
+    const log = await repoGit.log({ maxCount: 1 });
     return { success: true, commitSha: log.latest?.hash };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

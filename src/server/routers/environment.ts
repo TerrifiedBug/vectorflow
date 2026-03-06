@@ -53,9 +53,11 @@ export const environmentRouter = router({
         });
       }
 
+      const { gitToken, enrollmentTokenHash, ...safe } = environment;
       return {
-        ...environment,
-        hasEnrollmentToken: !!environment.enrollmentTokenHash,
+        ...safe,
+        hasEnrollmentToken: !!enrollmentTokenHash,
+        hasGitToken: !!gitToken,
       };
     }),
 
@@ -135,11 +137,16 @@ export const environmentRouter = router({
   testGitConnection: protectedProcedure
     .input(z.object({
       repoUrl: z.string().url(),
-      branch: z.string().min(1),
+      branch: z.string().min(1).max(100).regex(/^[a-zA-Z0-9._\/-]+$/),
       token: z.string().min(1),
     }))
     .use(withTeamAccess("EDITOR"))
     .mutation(async ({ input }) => {
+      const parsedUrl = new URL(input.repoUrl);
+      if (parsedUrl.protocol !== "https:") {
+        return { success: false, error: "Only HTTPS repository URLs are supported" };
+      }
+
       const simpleGit = (await import("simple-git")).default;
       const { mkdtemp, rm } = await import("fs/promises");
       const { join } = await import("path");
@@ -148,11 +155,11 @@ export const environmentRouter = router({
       let workdir: string | null = null;
       try {
         workdir = await mkdtemp(join(tmpdir(), "vf-git-test-"));
+        const repoDir = join(workdir, "repo");
         const git = simpleGit(workdir);
-        const url = new URL(input.repoUrl);
-        url.username = input.token;
-        url.password = "";
-        await git.clone(url.toString(), workdir, [
+        parsedUrl.username = input.token;
+        parsedUrl.password = "";
+        await git.clone(parsedUrl.toString(), repoDir, [
           "--branch", input.branch,
           "--depth", "1",
           "--single-branch",

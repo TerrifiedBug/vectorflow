@@ -519,7 +519,7 @@ export default function EnvironmentDetailPage({
         environmentId={id}
         gitRepoUrl={env.gitRepoUrl}
         gitBranch={env.gitBranch}
-        hasGitToken={!!env.gitToken}
+        hasGitToken={env.hasGitToken}
       />
 
       {/* Created info */}
