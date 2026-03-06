@@ -92,12 +92,20 @@ export async function GET(request: Request) {
             where: { environmentId: agent.environmentId },
           });
           for (const s of envSecrets) {
-            secrets[secretNameToEnvVar(s.name)] = decrypt(s.encryptedValue);
+            const envKey = secretNameToEnvVar(s.name);
+            if (secrets[envKey] !== undefined) {
+              console.warn(`[agent-config] Secret name collision: "${s.name}" normalizes to "${envKey}" which is already set`);
+            }
+            secrets[envKey] = decrypt(s.encryptedValue);
           }
         }
         // External backend: configYaml is used as-is with references intact
 
-        const checksum = createHash("sha256").update(configYaml).digest("hex");
+        // Include secrets in checksum so secret rotation triggers agent restart
+        const checksumInput = Object.keys(secrets).length > 0
+          ? configYaml + JSON.stringify(secrets, Object.keys(secrets).sort())
+          : configYaml;
+        const checksum = createHash("sha256").update(checksumInput).digest("hex");
 
         pipelineConfigs.push({
           pipelineId: pipeline.id,
