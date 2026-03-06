@@ -96,15 +96,21 @@ export function GitSyncSection({
   }
 
   function handleDisconnect() {
-    updateMutation.mutate({
-      id: environmentId,
-      gitRepoUrl: null,
-      gitBranch: null,
-      gitToken: null,
-    });
-    setRepoUrl("");
-    setBranch("main");
-    setToken("");
+    updateMutation.mutate(
+      {
+        id: environmentId,
+        gitRepoUrl: null,
+        gitBranch: null,
+        gitToken: null,
+      },
+      {
+        onSuccess: () => {
+          setRepoUrl("");
+          setBranch("main");
+          setToken("");
+        },
+      },
+    );
   }
 
   const hasChanges = repoUrl !== (gitRepoUrl ?? "") || branch !== (gitBranch ?? "main") || token !== "";
