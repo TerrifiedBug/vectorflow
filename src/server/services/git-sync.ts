@@ -94,6 +94,8 @@ export async function gitSyncCommitPipeline(
       return { success: true, commitSha: "no-change" };
     }
 
+    await repoGit.addConfig("user.name", author.name || "VectorFlow User");
+    await repoGit.addConfig("user.email", author.email || "noreply@vectorflow");
     await repoGit.commit(commitMessage, filePath, {
       "--author": sanitizeAuthor(author.name, author.email),
     });
@@ -145,6 +147,8 @@ export async function gitSyncDeletePipeline(
       return { success: true, commitSha: "no-file" };
     }
 
+    await repoGit.addConfig("user.name", author.name || "VectorFlow User");
+    await repoGit.addConfig("user.email", author.email || "noreply@vectorflow");
     await repoGit.commit(`Delete pipeline: ${pipelineName}`, filePath, {
       "--author": sanitizeAuthor(author.name, author.email),
     });
