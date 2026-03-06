@@ -1,0 +1,182 @@
+# Authentication
+
+VectorFlow supports multiple authentication methods: local credentials, OIDC/SSO, and two-factor authentication (2FA). This page covers initial setup, login methods, user management, and role-based access control.
+
+![Login](../screenshots/login.png)
+
+## Initial setup
+
+When VectorFlow starts for the first time with an empty database, it redirects to a setup wizard. The wizard creates the first admin account and the first team.
+
+{% stepper %}
+{% step %}
+### Create admin account
+Enter your name, email address, and a password (minimum 8 characters).
+{% endstep %}
+{% step %}
+### Name your team
+Choose a name for your first team (e.g., "Platform Engineering"). Teams organize environments and pipelines.
+{% endstep %}
+{% step %}
+### Start using VectorFlow
+After setup completes, you are redirected to the login page. Sign in with the credentials you just created.
+{% endstep %}
+{% endstepper %}
+
+The first user is automatically a **Super Admin** with full platform access.
+
+## Credentials authentication
+
+By default, users log in with an email address and password. Passwords are hashed with bcrypt before storage.
+
+When a Super Admin creates a new user, VectorFlow generates a random temporary password. The new user must change their password on first login.
+
+## OIDC / SSO
+
+VectorFlow supports any OpenID Connect provider (Okta, Entra ID, Keycloak, Google Workspace, Auth0, etc.). SSO is configured from the Settings page by a Super Admin.
+
+{% stepper %}
+{% step %}
+### Register VectorFlow with your identity provider
+Create an OAuth2/OIDC application in your identity provider. Use the following redirect URI:
+
+```
+https://your-vectorflow-url/api/auth/callback/oidc
+```
+{% endstep %}
+{% step %}
+### Open Settings in VectorFlow
+Navigate to **Settings > Authentication** (Super Admin required).
+{% endstep %}
+{% step %}
+### Enter provider details
+Fill in the OIDC configuration:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| Issuer URL | OIDC discovery endpoint | `https://accounts.google.com` |
+| Client ID | OAuth2 client ID from your provider | `abc123.apps.googleusercontent.com` |
+| Client Secret | OAuth2 client secret | `GOCSPX-xxxxxxxxxxxx` |
+| Display Name | Button label on the login page | `Sign in with Okta` |
+| Token Auth Method | How the client authenticates to the token endpoint | `client_secret_post` (default) or `client_secret_basic` |
+
+{% endstep %}
+{% step %}
+### Test the connection
+Click **Test Connection** to verify VectorFlow can reach your provider's discovery endpoint. The test fetches `/.well-known/openid-configuration` and validates that required fields are present.
+{% endstep %}
+{% step %}
+### Save and verify
+Save the settings. An SSO button will appear on the login page. Test the flow by logging in with an SSO account.
+{% endstep %}
+{% endstepper %}
+
+{% hint style="info" %}
+OIDC settings are stored encrypted in the database. The client secret is encrypted with AES-256-GCM before storage.
+{% endhint %}
+
+### OIDC role mapping
+
+Map identity provider groups to VectorFlow roles so users are automatically assigned the correct permissions when they sign in via SSO.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Groups Claim | `groups` | JWT claim containing group memberships |
+| Default Role | VIEWER | Role assigned to users not matching any group rule |
+| Admin Groups | -- | Comma-separated group names that map to the **Admin** role |
+| Editor Groups | -- | Comma-separated group names that map to the **Editor** role |
+
+### OIDC team mapping
+
+For more granular control, map identity provider groups directly to VectorFlow teams with specific roles:
+
+```json
+[
+  { "group": "platform-admins", "teamId": "team_abc", "role": "ADMIN" },
+  { "group": "sre-team", "teamId": "team_abc", "role": "EDITOR" },
+  { "group": "developers", "teamId": "team_xyz", "role": "VIEWER" }
+]
+```
+
+You can also set a **default team** as a fallback for users who do not match any group mapping.
+
+## Two-factor authentication (2FA)
+
+VectorFlow supports TOTP-based two-factor authentication compatible with any authenticator app (Google Authenticator, Authy, 1Password, etc.).
+
+### Enabling 2FA
+
+Users can enable 2FA from their **Profile** page. Teams can also require 2FA for all members -- when enabled, users who have not set up 2FA are redirected to the enrollment page on their next login.
+
+{% stepper %}
+{% step %}
+### Start 2FA setup
+Navigate to your **Profile** page and click **Enable Two-Factor Authentication**, or you will be redirected automatically if your team requires it.
+{% endstep %}
+{% step %}
+### Scan the QR code
+Scan the displayed QR code with your authenticator app. Alternatively, enter the secret key manually.
+{% endstep %}
+{% step %}
+### Save backup codes
+VectorFlow generates **10 single-use backup codes**. Save these in a secure location. Each code can be used once to log in if you lose access to your authenticator app.
+{% endstep %}
+{% step %}
+### Verify
+Enter the 6-digit code from your authenticator app to confirm setup. 2FA is now active on your account.
+{% endstep %}
+{% endstepper %}
+
+### Logging in with 2FA
+
+After entering your email and password, you are prompted for a 6-digit verification code. Enter the code from your authenticator app, or use one of your backup codes.
+
+{% hint style="info" %}
+2FA is only available for local (credentials) accounts. OIDC/SSO users should configure MFA through their identity provider.
+{% endhint %}
+
+## User management
+
+Super Admins can manage users from the **Settings > Users** page.
+
+### Creating users
+
+Super Admins can create new local user accounts. VectorFlow generates a random temporary password that must be shared with the user securely. The user is required to change their password on first login.
+
+When creating a user, you can optionally assign them to a team with a specific role immediately.
+
+### Managing users
+
+| Action | Description |
+|--------|-------------|
+| **Assign to team** | Add a user to a team with a specified role (Viewer, Editor, or Admin) |
+| **Remove from team** | Remove a user's membership from a specific team |
+| **Reset password** | Generate a new temporary password (local accounts only) |
+| **Lock account** | Prevent the user from logging in. Locked users see an error on the login page |
+| **Unlock account** | Restore login access for a locked account |
+| **Toggle Super Admin** | Grant or revoke platform-wide Super Admin privileges |
+| **Delete user** | Permanently remove the user and all their data |
+
+{% hint style="warning" %}
+You cannot delete your own account, remove your own Super Admin status, or lock your own account.
+{% endhint %}
+
+## Roles and permissions
+
+VectorFlow uses a hierarchical role system. Roles are assigned **per team**, so a user can be an Admin in one team and a Viewer in another.
+
+| Role | Permissions |
+|------|-------------|
+| **Viewer** | View pipelines, fleet status, dashboards, and audit logs. Cannot make changes. |
+| **Editor** | Everything a Viewer can do, plus: create/edit/delete pipelines, manage secrets and certificates, deploy pipelines, manage alerts. |
+| **Admin** | Everything an Editor can do, plus: manage environments, manage team members and roles, configure team settings (e.g., require 2FA). |
+| **Super Admin** | Platform-wide access. Can manage all teams, configure system settings (OIDC, fleet, backups), create and delete users. Super Admin is a flag on the user, not a team role. |
+
+### Role hierarchy
+
+```
+Viewer  <  Editor  <  Admin  <  Super Admin
+  (0)       (1)       (2)       (bypass)
+```
+
+Higher roles inherit all permissions from lower roles. Super Admin bypasses all team-level access checks.
