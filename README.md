@@ -11,12 +11,13 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/TerrifiedBug/vectorflow/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/TerrifiedBug/vectorflow/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/TerrifiedBug/vectorflow?style=flat-square)](https://github.com/TerrifiedBug/vectorflow/releases)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
+[![Docs](https://img.shields.io/badge/Docs-GitBook-blue?style=flat-square)](https://terrifiedbug.gitbook.io/vectorflow)
 
 **🔀 Design, deploy, and monitor [Vector](https://vector.dev) data pipelines — visually**
 
 Stop hand-editing YAML. Build observability pipelines with drag-and-drop<br>and deploy them across your entire fleet from a single dashboard.
 
-[Quick Start](#-quick-start) · [Deployment](#-deployment) · [Features](#-features) · [Configuration](#%EF%B8%8F-configuration) · [Development](#-development)
+[Documentation](https://terrifiedbug.gitbook.io/vectorflow) · [Quick Start](#-quick-start) · [Deployment](#-deployment) · [Features](#-features) · [Configuration](#%EF%B8%8F-configuration) · [Development](#-development)
 
 </div>
 
