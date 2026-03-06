@@ -100,7 +100,7 @@ export async function GET(request: Request) {
           certFiles = certs;
 
           // Re-dump to YAML with proper quoting for special characters
-          configYaml = yaml.dump(withCerts, { indent: 2, lineWidth: -1, noRefs: true });
+          configYaml = yaml.dump(withCerts, { indent: 2, lineWidth: -1, noRefs: true, forceQuotes: true, quotingType: '"' });
         }
         // External backend: configYaml is used as-is with references intact
 
