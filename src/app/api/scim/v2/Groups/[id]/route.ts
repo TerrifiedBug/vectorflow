@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
 import { authenticateScim } from "../../auth";
-import { resolveScimRole } from "@/server/services/scim";
+import {
+  loadGroupMappings,
+  getMappingsForGroup,
+  applyMappedMemberships,
+} from "@/server/services/group-mappings";
 
 function scimError(detail: string, status: number) {
   return NextResponse.json(
@@ -15,26 +19,15 @@ function scimError(detail: string, status: number) {
   );
 }
 
-interface ScimGroup {
-  schemas: string[];
-  id: string;
-  displayName: string;
-  members: Array<{ value: string; display?: string }>;
-}
-
-function toScimGroup(team: {
-  id: string;
-  name: string;
-  members: Array<{ userId: string; user: { email: string } }>;
-}): ScimGroup {
+function toScimGroupResponse(
+  group: { id: string; displayName: string },
+  members: Array<{ value: string; display?: string }> = [],
+) {
   return {
     schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"],
-    id: team.id,
-    displayName: team.name,
-    members: team.members.map((m) => ({
-      value: m.userId,
-      display: m.user.email,
-    })),
+    id: group.id,
+    displayName: group.displayName,
+    members,
   };
 }
 
@@ -47,22 +40,13 @@ export async function GET(
   }
 
   const { id } = await params;
-  const team = await prisma.team.findUnique({
-    where: { id },
-    include: {
-      members: {
-        include: {
-          user: { select: { email: true } },
-        },
-      },
-    },
-  });
+  const group = await prisma.scimGroup.findUnique({ where: { id } });
 
-  if (!team) {
+  if (!group) {
     return scimError("Group not found", 404);
   }
 
-  return NextResponse.json(toScimGroup(team));
+  return NextResponse.json(toScimGroupResponse(group));
 }
 
 export async function PATCH(
@@ -74,106 +58,66 @@ export async function PATCH(
   }
 
   const { id } = await params;
-
-  const team = await prisma.team.findUnique({ where: { id } });
-  if (!team) {
+  const group = await prisma.scimGroup.findUnique({ where: { id } });
+  if (!group) {
     return scimError("Group not found", 404);
   }
 
   try {
     const body = await req.json();
     const operations = body.Operations ?? body.operations ?? [];
+    const allMappings = await loadGroupMappings();
+    let groupMappings = getMappingsForGroup(allMappings, group.displayName);
 
     await prisma.$transaction(async (tx) => {
       for (const op of operations) {
         const operation = op.op?.toLowerCase();
 
+        if (operation === "replace" && op.path === "displayName" && typeof op.value === "string") {
+          await tx.scimGroup.update({
+            where: { id },
+            data: { displayName: op.value },
+          });
+          // Re-resolve mappings so subsequent member ops use the new name
+          groupMappings = getMappingsForGroup(allMappings, op.value);
+        }
+
         if (operation === "add" && op.path === "members") {
-          // Add members to the group
           const members = Array.isArray(op.value) ? op.value : [op.value];
           for (const member of members) {
             const userId = member.value;
             if (typeof userId !== "string") continue;
-            // Check if the user exists
-            const user = await tx.user.findUnique({
-              where: { id: userId },
-            });
+            const user = await tx.user.findUnique({ where: { id: userId } });
             if (!user) continue;
-
-            // Check if already a member
-            const existing = await tx.teamMember.findUnique({
-              where: { userId_teamId: { userId, teamId: id } },
-            });
-            if (!existing) {
-              await tx.teamMember.create({
-                data: {
-                  userId,
-                  teamId: id,
-                  role: await resolveScimRole(id),
-                },
-              });
-            }
+            await applyMappedMemberships(tx, userId, groupMappings);
           }
         }
 
-        if (operation === "remove" && op.path) {
-          // Parse path like 'members[value eq "userId"]'
-          const memberMatch = (op.path as string).match(
-            /^members\[value eq "([^"]+)"\]$/,
-          );
-          if (memberMatch) {
-            const userId = memberMatch[1];
-            await tx.teamMember.deleteMany({
-              where: { userId, teamId: id },
-            });
-          }
-
-          // Handle value-array form: { op: "remove", path: "members", value: [{ value: "userId" }, ...] }
-          if (op.path === "members" && Array.isArray(op.value)) {
-            for (const member of op.value as Array<{ value?: unknown }>) {
-              if (typeof member.value === "string") {
-                await tx.teamMember.deleteMany({
-                  where: { userId: member.value, teamId: id },
-                });
-              }
-            }
-          }
-        }
-
-        if (operation === "replace" && op.path === "displayName" && typeof op.value === "string") {
-          await tx.team.update({
-            where: { id },
-            data: { name: op.value },
-          });
-        }
+        // Member remove is intentionally a no-op. Without tracking which
+        // group granted each TeamMember, removing here would silently
+        // revoke access still legitimately granted by other groups, OIDC,
+        // or manual assignment. Memberships reconcile on next OIDC login.
       }
     });
 
     await writeAuditLog({
       userId: null,
       action: "scim.group_patched",
-      entityType: "Team",
+      entityType: "ScimGroup",
       entityId: id,
-      metadata: { operations: operations.map((o: { op: string; path?: string }) => ({ op: o.op, path: o.path })) },
-    });
-
-    // Return the updated group
-    const updated = await prisma.team.findUnique({
-      where: { id },
-      include: {
-        members: {
-          include: {
-            user: { select: { email: true } },
-          },
-        },
+      metadata: {
+        displayName: group.displayName,
+        mappedTeams: groupMappings.map((m) => m.teamId),
+        operations: operations.map((o: { op: string; path?: string }) => ({ op: o.op, path: o.path })),
       },
     });
 
+    const updated = await prisma.scimGroup.findUnique({ where: { id } });
     if (!updated) {
       return scimError("Group not found", 404);
     }
 
-    return NextResponse.json(toScimGroup(updated));
+    return NextResponse.json(toScimGroupResponse(updated));
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to patch group";
@@ -190,45 +134,39 @@ export async function PUT(
   }
 
   const { id } = await params;
-
-  const team = await prisma.team.findUnique({ where: { id } });
-  if (!team) {
+  const group = await prisma.scimGroup.findUnique({ where: { id } });
+  if (!group) {
     return scimError("Group not found", 404);
   }
 
   try {
     const body = await req.json();
+    const allMappings = await loadGroupMappings();
+    let groupMappings = getMappingsForGroup(allMappings, group.displayName);
 
     await prisma.$transaction(async (tx) => {
-      // Update team name if provided
       if (body.displayName && typeof body.displayName === "string") {
-        await tx.team.update({
+        await tx.scimGroup.update({
           where: { id },
-          data: { name: body.displayName },
+          data: { displayName: body.displayName },
         });
+        // Re-resolve mappings so member sync uses the new name
+        groupMappings = getMappingsForGroup(allMappings, body.displayName);
       }
 
-      // Sync members: replace all memberships with the provided list
-      if (body.members && Array.isArray(body.members)) {
-        // Remove all existing memberships
-        await tx.teamMember.deleteMany({ where: { teamId: id } });
+      // Additive-only member sync through mappings. We cannot remove members
+      // here because we don't track which group granted each membership —
+      // removing would silently deprovision users from other groups, OIDC, or
+      // manual assignment that share the same mapped team.
+      if (body.members && Array.isArray(body.members) && groupMappings.length > 0) {
+        const memberUserIds = body.members
+          .map((m: { value?: unknown }) => m.value)
+          .filter((v: unknown): v is string => typeof v === "string");
 
-        // Add new memberships
-        for (const member of body.members) {
-          const userId = member.value;
-          if (typeof userId !== "string") continue;
-          const user = await tx.user.findUnique({
-            where: { id: userId },
-          });
-          if (user) {
-            await tx.teamMember.create({
-              data: {
-                userId,
-                teamId: id,
-                role: await resolveScimRole(id),
-              },
-            });
-          }
+        for (const userId of memberUserIds) {
+          const user = await tx.user.findUnique({ where: { id: userId } });
+          if (!user) continue;
+          await applyMappedMemberships(tx, userId, groupMappings);
         }
       }
     });
@@ -236,27 +174,21 @@ export async function PUT(
     await writeAuditLog({
       userId: null,
       action: "scim.group_updated",
-      entityType: "Team",
+      entityType: "ScimGroup",
       entityId: id,
-      metadata: { displayName: body.displayName, memberCount: body.members?.length },
-    });
-
-    const updated = await prisma.team.findUnique({
-      where: { id },
-      include: {
-        members: {
-          include: {
-            user: { select: { email: true } },
-          },
-        },
+      metadata: {
+        displayName: body.displayName ?? group.displayName,
+        memberCount: body.members?.length,
+        mappedTeams: groupMappings.map((m) => m.teamId),
       },
     });
 
+    const updated = await prisma.scimGroup.findUnique({ where: { id } });
     if (!updated) {
       return scimError("Group not found", 404);
     }
 
-    return NextResponse.json(toScimGroup(updated));
+    return NextResponse.json(toScimGroupResponse(updated));
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to update group";
@@ -273,22 +205,22 @@ export async function DELETE(
   }
 
   const { id } = await params;
-
-  const team = await prisma.team.findUnique({ where: { id } });
-  if (!team) {
+  const group = await prisma.scimGroup.findUnique({ where: { id } });
+  if (!group) {
     return scimError("Group not found", 404);
   }
 
-  // Remove all memberships but keep the team (soft approach — avoids
-  // cascading deletes of environments, pipelines, etc.)
-  await prisma.teamMember.deleteMany({ where: { teamId: id } });
+  // Don't cascade to TeamMembers — we cannot determine which members were
+  // granted by this specific group vs other groups, OIDC login, or manual
+  // assignment. Memberships are corrected on next OIDC login or SCIM sync.
+  await prisma.scimGroup.delete({ where: { id } });
 
   await writeAuditLog({
     userId: null,
     action: "scim.group_deleted",
-    entityType: "Team",
+    entityType: "ScimGroup",
     entityId: id,
-    metadata: { displayName: team.name },
+    metadata: { displayName: group.displayName },
   });
 
   return new NextResponse(null, { status: 204 });

@@ -75,14 +75,19 @@ Save the settings. An SSO button will appear on the login page. Test the flow by
 OIDC settings are stored encrypted in the database. The client secret is encrypted with AES-256-GCM before storage.
 {% endhint %}
 
-### OIDC group sync
+### Group mapping
 
-VectorFlow can automatically assign users to teams based on their identity provider group memberships. Group sync is **off by default** and must be explicitly enabled from **Settings > OIDC Team & Role Mapping**.
+VectorFlow can automatically assign users to teams based on their identity provider group memberships. Group mappings are configured from **Settings > Team & Role Mapping** and are **shared between OIDC and SCIM** — the same mapping table drives both protocols:
+
+- **OIDC-only deployments:** Team access is assigned on each login based on the groups claim in the OIDC token.
+- **SCIM + OIDC deployments:** SCIM pre-provisions team access when your IdP pushes group membership changes. OIDC then refreshes team access on each sign-in, keeping mappings current.
+
+Group sync is **off by default** and must be explicitly enabled.
 
 {% stepper %}
 {% step %}
 ### Enable group sync
-Toggle **Enable Group Sync** on. This tells VectorFlow to request group information from your OIDC provider and process group-to-team mappings on each sign-in.
+Toggle **Enable Group Sync** on. This tells VectorFlow to process group-to-team mappings. When enabled, OIDC logins read group claims from the token, and SCIM group pushes use the same mapping table to assign team memberships.
 {% endstep %}
 {% step %}
 ### Configure scope and claim
@@ -98,11 +103,11 @@ Toggle **Enable Group Sync** on. This tells VectorFlow to request group informat
 {% endstep %}
 {% step %}
 ### Add group mappings
-Map identity provider groups to VectorFlow teams with specific roles. When a user signs in via SSO, VectorFlow checks their group memberships and creates or updates team memberships accordingly.
+Map identity provider groups to VectorFlow teams with specific roles. These mappings apply to both OIDC sign-ins and SCIM group pushes — you only need to configure them once.
 
 | Column | Description |
 |--------|-------------|
-| Group Name | The group name as it appears in the OIDC token |
+| Group Name | The group name as it appears in the OIDC token or SCIM Group displayName |
 | Team | The VectorFlow team to assign the user to |
 | Role | The role to assign: Viewer, Editor, or Admin |
 
@@ -120,9 +125,13 @@ Changing group sync settings takes effect immediately — the OIDC provider conf
 
 ## SCIM provisioning
 
-VectorFlow supports SCIM 2.0 for automated user provisioning and deprovisioning from your identity provider. When SCIM is enabled, your IdP can automatically create, update, and deactivate VectorFlow user accounts, and manage team membership via SCIM Groups.
+VectorFlow supports SCIM 2.0 for automated user provisioning and deprovisioning from your identity provider. When SCIM is enabled, your IdP can automatically create, update, and deactivate VectorFlow user accounts.
 
 SCIM is configured from **Settings > SCIM** by a Super Admin. You will need to generate a bearer token and enter it along with the SCIM base URL (`{your-vectorflow-url}/api/scim/v2`) into your IdP's SCIM configuration.
+
+{% hint style="info" %}
+SCIM group provisioning does **not** create teams automatically. Instead, SCIM groups are resolved through the shared [group mapping table](#group-mapping) to assign users to existing teams. Make sure your group mappings are configured before enabling SCIM group pushes.
+{% endhint %}
 
 {% hint style="info" %}
 SCIM works best alongside OIDC/SSO. Users created via SCIM should authenticate through your identity provider rather than with local credentials. See the [SCIM Provisioning](scim.md) page for detailed setup instructions and IdP-specific guides.
