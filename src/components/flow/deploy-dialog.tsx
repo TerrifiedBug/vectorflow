@@ -236,7 +236,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
   return (
     <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) { setChangelog(""); setSelectedLabels([]); setRejectNote(""); } onOpenChange(val); }}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {isReviewMode ? (
@@ -261,6 +261,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
           </DialogDescription>
         </DialogHeader>
 
+        <div className="flex-1 overflow-y-auto min-h-0">
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -295,12 +296,14 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 <span className="text-xs font-medium text-muted-foreground">
                   {preview.currentConfigYaml ? "Changes" : "Generated Config"}
                 </span>
-                <ConfigDiff
-                  oldConfig={preview.currentConfigYaml ?? ""}
-                  newConfig={pendingRequest.configYaml}
-                  oldLabel={preview.currentVersion != null ? `v${preview.currentVersion}` : "empty"}
-                  newLabel="pending"
-                />
+                <div className="max-h-48 overflow-y-auto rounded-md">
+                  <ConfigDiff
+                    oldConfig={preview.currentConfigYaml ?? ""}
+                    newConfig={pendingRequest.configYaml}
+                    oldLabel={preview.currentVersion != null ? `v${preview.currentVersion}` : "empty"}
+                    newLabel="pending"
+                  />
+                </div>
               </div>
             )}
 
@@ -465,12 +468,14 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 <span className="text-xs font-medium text-muted-foreground">
                   {preview.currentConfigYaml ? "Changes" : "Generated Config"}
                 </span>
-                <ConfigDiff
-                  oldConfig={preview.currentConfigYaml ?? ""}
-                  newConfig={preview.configYaml}
-                  oldLabel={preview.currentVersion != null ? `v${preview.currentVersion}` : "empty"}
-                  newLabel="pending"
-                />
+                <div className="max-h-48 overflow-y-auto rounded-md">
+                  <ConfigDiff
+                    oldConfig={preview.currentConfigYaml ?? ""}
+                    newConfig={preview.configYaml}
+                    oldLabel={preview.currentVersion != null ? `v${preview.currentVersion}` : "empty"}
+                    newLabel="pending"
+                  />
+                </div>
               </div>
             )}
 
@@ -504,6 +509,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
             </div>
           </div>
         )}
+        </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

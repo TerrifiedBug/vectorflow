@@ -33,16 +33,7 @@ export default function EnvironmentsPage() {
   const environments = environmentsQuery.data ?? [];
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-end">
-        <Button asChild>
-          <Link href="/environments/new">
-            <Plus className="mr-2 h-4 w-4" />
-            New Environment
-          </Link>
-        </Button>
-      </div>
-
+    <div className="space-y-4">
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -63,6 +54,14 @@ export default function EnvironmentsPage() {
               <TableHead>Name</TableHead>
               <TableHead>Nodes</TableHead>
               <TableHead>Created</TableHead>
+              <TableHead className="text-right">
+                <Button asChild size="sm">
+                  <Link href="/environments/new">
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    New Environment
+                  </Link>
+                </Button>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -80,6 +79,7 @@ export default function EnvironmentsPage() {
                 <TableCell>
                   {new Date(env.createdAt).toLocaleDateString()}
                 </TableCell>
+                <TableCell />
               </TableRow>
             ))}
           </TableBody>

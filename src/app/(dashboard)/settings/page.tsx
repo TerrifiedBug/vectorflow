@@ -2955,7 +2955,7 @@ function BackupSettings() {
 
       {/* Warning Banner */}
       <Card className="border-yellow-500/50">
-        <CardContent className="flex items-start gap-3 pt-6">
+        <CardContent className="flex items-start gap-3 p-4">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-yellow-500" />
           <div className="text-sm text-muted-foreground">
             <p className="font-medium text-foreground">Important</p>
