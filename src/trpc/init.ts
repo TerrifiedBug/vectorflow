@@ -259,6 +259,17 @@ export const withTeamAccess = (minRole: Role) =>
       }
     }
 
+    // Resolve id as ServiceAccount → environment.teamId
+    if (!teamId && rawInput?.id) {
+      const sa = await prisma.serviceAccount.findUnique({
+        where: { id: rawInput.id as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (sa) {
+        teamId = sa.environment.teamId ?? undefined;
+      }
+    }
+
     // Resolve id as VrlSnippet → teamId (for vrl-snippet update/delete)
     if (!teamId && rawInput?.id) {
       const snippet = await prisma.vrlSnippet.findUnique({

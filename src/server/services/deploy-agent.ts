@@ -95,7 +95,9 @@ export async function deployAgent(
     where: { id: pipeline.environmentId },
   });
   if (environment?.gitRepoUrl && environment?.gitToken) {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    // Service account IDs are prefixed with "sa:" — skip the User lookup for them
+    const isServiceAccount = userId.startsWith("sa:");
+    const user = isServiceAccount ? null : await prisma.user.findUnique({ where: { id: userId } });
     const result = await gitSyncCommitPipeline(
       {
         repoUrl: environment.gitRepoUrl,
@@ -105,7 +107,7 @@ export async function deployAgent(
       environment.name,
       pipeline.name,
       configYaml,
-      { name: user?.name ?? "VectorFlow User", email: user?.email ?? "noreply@vectorflow" },
+      { name: user?.name ?? (isServiceAccount ? "VectorFlow Service Account" : "VectorFlow User"), email: user?.email ?? "noreply@vectorflow" },
       changelog ?? `Deploy pipeline: ${pipeline.name}`,
     );
     if (!result.success) {
