@@ -242,7 +242,7 @@ export default function PipelinesPage() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Health</TableHead>
+              <TableHead className="text-center">Health</TableHead>
               <TableHead className="text-right">Events/sec In</TableHead>
               <TableHead className="text-right">Bytes/sec In</TableHead>
               <TableHead className="text-right">Reduction</TableHead>
@@ -302,7 +302,7 @@ export default function PipelinesPage() {
                   </div>
                 </TableCell>
                 {/* Health */}
-                <TableCell>
+                <TableCell className="text-center">
                   {pipeline.isDraft ? (
                     <span className="text-sm text-muted-foreground">--</span>
                   ) : (
