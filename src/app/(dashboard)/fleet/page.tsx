@@ -190,7 +190,7 @@ export default function FleetPage() {
                     <Button
                       variant={node.maintenanceMode ? "default" : "outline"}
                       size="sm"
-                      disabled={setMaintenance.isPending}
+                      disabled={setMaintenance.isPending && setMaintenance.variables?.nodeId === node.id}
                       onClick={(e) => {
                         e.preventDefault();
                         if (!node.maintenanceMode) {
