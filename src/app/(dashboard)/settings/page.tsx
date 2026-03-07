@@ -698,10 +698,9 @@ function AuthSettings() {
 
     <Card>
       <CardHeader>
-        <CardTitle>OIDC Team & Role Mapping</CardTitle>
+        <CardTitle>IdP Group Mappings</CardTitle>
         <CardDescription>
-          Map OIDC groups to specific teams and roles. Users are assigned to teams
-          based on their group membership when signing in via SSO.
+          Map identity provider groups to teams and roles. Used by both OIDC login (via groups claim) and SCIM sync (via group membership).
         </CardDescription>
       </CardHeader>
       <CardContent>
