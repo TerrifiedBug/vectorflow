@@ -215,6 +215,7 @@ model Pipeline {
   alertRules      AlertRule[]
   sampleRequests  EventSampleRequest[]
   eventSamples    EventSample[]
+  slis            PipelineSli[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 }
@@ -258,6 +259,21 @@ model PipelineMetric {
 
   @@index([pipelineId, timestamp])
   @@index([timestamp])
+}
+
+model PipelineSli {
+  id            String   @id @default(cuid())
+  pipelineId    String
+  pipeline      Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  metric        String   // "error_rate" | "throughput_floor" | "discard_rate"
+  condition     String   // "lt" | "gt"
+  threshold     Float
+  windowMinutes Int      @default(5)
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@unique([pipelineId, metric])
+  @@index([pipelineId])
 }
 
 model EventSampleRequest {
