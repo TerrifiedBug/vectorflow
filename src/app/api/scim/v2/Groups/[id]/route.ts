@@ -142,7 +142,7 @@ export async function PUT(
   try {
     const body = await req.json();
     const allMappings = await loadGroupMappings();
-    const groupMappings = getMappingsForGroup(allMappings, group.displayName);
+    let groupMappings = getMappingsForGroup(allMappings, group.displayName);
 
     await prisma.$transaction(async (tx) => {
       if (body.displayName && typeof body.displayName === "string") {
@@ -150,6 +150,8 @@ export async function PUT(
           where: { id },
           data: { displayName: body.displayName },
         });
+        // Re-resolve mappings so member sync uses the new name
+        groupMappings = getMappingsForGroup(allMappings, body.displayName);
       }
 
       // Additive-only member sync through mappings. We cannot remove members

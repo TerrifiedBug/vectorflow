@@ -44,9 +44,13 @@ export function getMappingsForGroup(
   return mappings.filter((m) => m.group === groupName);
 }
 
+const ROLE_RANK: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
+
 /**
  * Apply team memberships for a user based on group mappings.
- * Creates or updates TeamMember records for each mapped team.
+ * Creates TeamMember records or upgrades roles, but never downgrades —
+ * without provenance tracking we can't know if a higher role was granted
+ * by another group, OIDC login, or manual assignment.
  */
 export async function applyMappedMemberships(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
@@ -61,7 +65,7 @@ export async function applyMappedMemberships(
       await tx.teamMember.create({
         data: { userId, teamId: mapping.teamId, role: mapping.role },
       });
-    } else if (existing.role !== mapping.role) {
+    } else if ((ROLE_RANK[mapping.role] ?? 0) > (ROLE_RANK[existing.role] ?? 0)) {
       await tx.teamMember.update({
         where: { id: existing.id },
         data: { role: mapping.role },
