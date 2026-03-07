@@ -129,7 +129,7 @@ export async function deployAgent(
       },
       environment.name,
       pipeline.name,
-      configYaml,
+      version.configYaml,
       { name: user?.name ?? (isServiceAccount ? "VectorFlow Service Account" : "VectorFlow User"), email: user?.email ?? "noreply@vectorflow" },
       changelog ?? `Deploy pipeline: ${pipeline.name}`,
     );
@@ -141,7 +141,7 @@ export async function deployAgent(
   // 4. For system pipelines, start the local Vector process instead of
   //    relying on agents to pick up the config.
   if (pipeline.isSystem) {
-    await startSystemVector(configYaml);
+    await startSystemVector(version.configYaml);
   }
 
   return {

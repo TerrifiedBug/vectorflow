@@ -137,6 +137,20 @@ function LoginPageContent() {
     );
   }
 
+  if (oidcStatus?.localAuthDisabled && !oidcStatus?.enabled) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl">Sign in unavailable</CardTitle>
+          <CardDescription>
+            Local authentication is disabled but SSO is not configured.
+            Contact your administrator.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
   return oidcStatus?.localAuthDisabled && oidcStatus?.enabled ? (
     <Card>
       <CardHeader>
