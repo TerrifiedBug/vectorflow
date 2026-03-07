@@ -3278,6 +3278,16 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
+      {isTeamAdmin && (
+        <div className="flex items-center gap-4">
+          <Link href="/settings/service-accounts">
+            <Button variant="outline">
+              <KeyRound className="mr-2 h-4 w-4" />
+              Service Accounts &amp; API Keys
+            </Button>
+          </Link>
+        </div>
+      )}
       <Tabs defaultValue={isTeamAdmin ? "team" : isSuperAdmin ? "auth" : "team"}>
         <TabsList>
           {isTeamAdmin && (

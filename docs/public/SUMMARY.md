@@ -26,6 +26,7 @@
 * [Configuration](operations/configuration.md)
 * [Authentication](operations/authentication.md)
 * [SCIM Provisioning](operations/scim.md)
+* [Service Accounts](operations/service-accounts.md)
 * [Backup &amp; Restore](operations/backup-restore.md)
 * [Security](operations/security.md)
 * [Upgrading](operations/upgrading.md)

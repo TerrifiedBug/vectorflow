@@ -29,6 +29,7 @@ model User {
   pipelinesCreated   Pipeline[]   @relation("PipelineCreatedBy")
   vrlSnippets        VrlSnippet[]
   dashboardViews     DashboardView[]
+  serviceAccounts    ServiceAccount[]
   createdAt          DateTime     @default(now())
 }
 
@@ -88,6 +89,7 @@ model Environment {
   alertRules              AlertRule[]
   alertWebhooks           AlertWebhook[]
   notificationChannels    NotificationChannel[]
+  serviceAccounts         ServiceAccount[]
   createdAt               DateTime      @default(now())
 }
 
@@ -609,4 +611,24 @@ model AlertRuleChannel {
   channel     NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   @@unique([alertRuleId, channelId])
+}
+
+model ServiceAccount {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  hashedKey       String   @unique
+  keyPrefix       String
+  environmentId   String
+  environment     Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  permissions     Json     // string[] of permission names
+  createdById     String
+  createdBy       User     @relation(fields: [createdById], references: [id])
+  lastUsedAt      DateTime?
+  expiresAt       DateTime?
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  @@index([hashedKey])
+  @@index([environmentId])
 }

@@ -100,10 +100,13 @@ const pipeline = result.data.json;
 
 All API procedures (except the agent enrollment endpoint) require an authenticated session.
 
-VectorFlow uses [Auth.js](https://authjs.dev/) session cookies for authentication. When you sign in through the web UI, a `authjs.session-token` cookie is set. Include this cookie in API requests.
+VectorFlow supports two authentication methods:
+
+1. **Session cookies** -- Used by the web UI. When you sign in, an `authjs.session-token` cookie is set. Include this cookie in tRPC API requests.
+2. **Service account API keys** -- Used for programmatic access via the REST API (`/api/v1/*`). Pass the key as a Bearer token in the `Authorization` header.
 
 {% hint style="info" %}
-There is no separate API key mechanism. If you need to call the API programmatically, sign in via the UI and extract the session cookie, or use the tRPC client with your session context.
+For CI/CD and automation, create a [Service Account](../operations/service-accounts.md) to get a dedicated API key with scoped permissions.
 {% endhint %}
 
 ### Roles
@@ -472,3 +475,370 @@ Common error codes:
 | `BAD_REQUEST` | 400 | Invalid input |
 | `CONFLICT` | 409 | Resource already exists (duplicate name) |
 | `PRECONDITION_FAILED` | 412 | Operation requires a precondition (e.g., pipeline must be deployed) |
+
+---
+
+## REST API (v1)
+
+The REST API provides a standard HTTP interface for automation and CI/CD. All endpoints require a [Service Account](../operations/service-accounts.md) API key.
+
+### Authentication
+
+Include your API key in the `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer vf_live_abc123..." \
+  https://vectorflow.example.com/api/v1/pipelines
+```
+
+Responses use standard HTTP status codes and return JSON:
+
+```json
+{ "error": "Unauthorized" }     // 401
+{ "error": "Forbidden" }        // 403
+{ "error": "Pipeline not found" } // 404
+```
+
+### Service Account Management
+
+Service accounts are managed via the tRPC API (Settings UI) or programmatically:
+
+| Procedure | Type | Min Role | Description |
+|-----------|------|----------|-------------|
+| `serviceAccount.list` | query | ADMIN | List service accounts for an environment |
+| `serviceAccount.create` | mutation | ADMIN | Create a service account (returns raw key once) |
+| `serviceAccount.revoke` | mutation | ADMIN | Disable a service account |
+| `serviceAccount.delete` | mutation | ADMIN | Permanently delete a service account |
+
+---
+
+### Pipelines
+
+#### List pipelines
+
+```bash
+GET /api/v1/pipelines
+```
+
+Permission: `pipelines.read`
+
+Returns all pipelines in the service account's environment.
+
+```bash
+curl -s https://vectorflow.example.com/api/v1/pipelines \
+  -H "Authorization: Bearer vf_live_..."
+```
+
+Response:
+
+```json
+{
+  "pipelines": [
+    {
+      "id": "clxyz123",
+      "name": "syslog-to-s3",
+      "description": "Ship syslog to S3",
+      "isDraft": false,
+      "deployedAt": "2026-03-01T12:00:00.000Z",
+      "createdAt": "2026-02-15T10:00:00.000Z",
+      "updatedAt": "2026-03-01T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+#### Get pipeline details
+
+```bash
+GET /api/v1/pipelines/:id
+```
+
+Permission: `pipelines.read`
+
+```bash
+curl -s https://vectorflow.example.com/api/v1/pipelines/clxyz123 \
+  -H "Authorization: Bearer vf_live_..."
+```
+
+#### Deploy pipeline
+
+```bash
+POST /api/v1/pipelines/:id/deploy
+```
+
+Permission: `pipelines.deploy`
+
+Validates the pipeline config, creates a new version, and marks it as deployed. Agents pick up the change on their next poll.
+
+```bash
+curl -s -X POST https://vectorflow.example.com/api/v1/pipelines/clxyz123/deploy \
+  -H "Authorization: Bearer vf_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{"changelog": "Deployed from CI"}'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "versionId": "clversion456",
+  "versionNumber": 5
+}
+```
+
+#### Undeploy pipeline
+
+```bash
+POST /api/v1/pipelines/:id/undeploy
+```
+
+Permission: `pipelines.deploy`
+
+Marks the pipeline as a draft. Agents stop running it on their next poll.
+
+```bash
+curl -s -X POST https://vectorflow.example.com/api/v1/pipelines/clxyz123/undeploy \
+  -H "Authorization: Bearer vf_live_..."
+```
+
+#### List pipeline versions
+
+```bash
+GET /api/v1/pipelines/:id/versions
+```
+
+Permission: `pipelines.read`
+
+```bash
+curl -s https://vectorflow.example.com/api/v1/pipelines/clxyz123/versions \
+  -H "Authorization: Bearer vf_live_..."
+```
+
+Response:
+
+```json
+{
+  "versions": [
+    {
+      "id": "clversion456",
+      "version": 5,
+      "changelog": "Added error handling transform",
+      "createdById": "user123",
+      "createdAt": "2026-03-01T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+#### Rollback pipeline
+
+```bash
+POST /api/v1/pipelines/:id/rollback
+```
+
+Permission: `pipelines.deploy`
+
+Rolls back to a previous version by creating a new version with the target version's config.
+
+```bash
+curl -s -X POST https://vectorflow.example.com/api/v1/pipelines/clxyz123/rollback \
+  -H "Authorization: Bearer vf_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{"targetVersionId": "clversion123"}'
+```
+
+---
+
+### Nodes
+
+#### List nodes
+
+```bash
+GET /api/v1/nodes
+GET /api/v1/nodes?label=role:production
+```
+
+Permission: `nodes.read`
+
+Supports optional label filtering via `?label=key:value`.
+
+```bash
+curl -s https://vectorflow.example.com/api/v1/nodes \
+  -H "Authorization: Bearer vf_live_..."
+```
+
+#### Get node details
+
+```bash
+GET /api/v1/nodes/:id
+```
+
+Permission: `nodes.read`
+
+```bash
+curl -s https://vectorflow.example.com/api/v1/nodes/clnode789 \
+  -H "Authorization: Bearer vf_live_..."
+```
+
+#### Toggle maintenance mode
+
+```bash
+POST /api/v1/nodes/:id/maintenance
+```
+
+Permission: `nodes.manage`
+
+```bash
+curl -s -X POST https://vectorflow.example.com/api/v1/nodes/clnode789/maintenance \
+  -H "Authorization: Bearer vf_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+```
+
+---
+
+### Secrets
+
+#### List secrets
+
+```bash
+GET /api/v1/secrets
+```
+
+Permission: `secrets.read`
+
+Returns secret names and timestamps (never values).
+
+```bash
+curl -s https://vectorflow.example.com/api/v1/secrets \
+  -H "Authorization: Bearer vf_live_..."
+```
+
+#### Create secret
+
+```bash
+POST /api/v1/secrets
+```
+
+Permission: `secrets.manage`
+
+```bash
+curl -s -X POST https://vectorflow.example.com/api/v1/secrets \
+  -H "Authorization: Bearer vf_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{"name": "AWS_ACCESS_KEY", "value": "AKIA..."}'
+```
+
+#### Update secret
+
+```bash
+PUT /api/v1/secrets
+```
+
+Permission: `secrets.manage`
+
+Identify the secret by `id` or `name`:
+
+```bash
+curl -s -X PUT https://vectorflow.example.com/api/v1/secrets \
+  -H "Authorization: Bearer vf_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{"name": "AWS_ACCESS_KEY", "value": "AKIA_NEW..."}'
+```
+
+#### Delete secret
+
+```bash
+DELETE /api/v1/secrets?name=AWS_ACCESS_KEY
+DELETE /api/v1/secrets?id=clsecret123
+```
+
+Permission: `secrets.manage`
+
+```bash
+curl -s -X DELETE "https://vectorflow.example.com/api/v1/secrets?name=AWS_ACCESS_KEY" \
+  -H "Authorization: Bearer vf_live_..."
+```
+
+---
+
+### Alert Rules
+
+#### List alert rules
+
+```bash
+GET /api/v1/alerts/rules
+```
+
+Permission: `alerts.read`
+
+```bash
+curl -s https://vectorflow.example.com/api/v1/alerts/rules \
+  -H "Authorization: Bearer vf_live_..."
+```
+
+#### Create alert rule
+
+```bash
+POST /api/v1/alerts/rules
+```
+
+Permission: `alerts.manage`
+
+```bash
+curl -s -X POST https://vectorflow.example.com/api/v1/alerts/rules \
+  -H "Authorization: Bearer vf_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "High CPU Alert",
+    "metric": "cpu_usage",
+    "condition": "gt",
+    "threshold": 80,
+    "durationSeconds": 120,
+    "teamId": "clteam123"
+  }'
+```
+
+---
+
+### Audit Log
+
+#### Poll audit events
+
+```bash
+GET /api/v1/audit
+GET /api/v1/audit?after=cursor123&limit=100&action=deploy.agent
+```
+
+Permission: `audit.read`
+
+Supports cursor-based pagination for polling:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `after` | string | -- | Cursor from previous response (for pagination) |
+| `limit` | number | 50 | Max events to return (1-200) |
+| `action` | string | -- | Filter by action type (e.g., `deploy.agent`) |
+
+```bash
+curl -s "https://vectorflow.example.com/api/v1/audit?limit=100" \
+  -H "Authorization: Bearer vf_live_..."
+```
+
+Response:
+
+```json
+{
+  "events": [ ... ],
+  "cursor": "claudit789",
+  "hasMore": true
+}
+```
+
+To poll for new events, pass the `cursor` from the previous response:
+
+```bash
+curl -s "https://vectorflow.example.com/api/v1/audit?after=claudit789&limit=100" \
+  -H "Authorization: Bearer vf_live_..."
+```
