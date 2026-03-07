@@ -61,6 +61,7 @@ export const settingsRouter = router({
         oidcDisplayName: settings.oidcDisplayName,
         oidcDefaultRole: settings.oidcDefaultRole,
         oidcGroupSyncEnabled: settings.oidcGroupSyncEnabled,
+        oidcGroupsScope: settings.oidcGroupsScope,
         oidcGroupsClaim: settings.oidcGroupsClaim,
         oidcAdminGroups: settings.oidcAdminGroups,
         oidcEditorGroups: settings.oidcEditorGroups,
@@ -159,6 +160,7 @@ export const settingsRouter = router({
       defaultTeamId: z.string().optional(),
       defaultRole: z.enum(["VIEWER", "EDITOR", "ADMIN"]),
       groupSyncEnabled: z.boolean(),
+      groupsScope: z.string(),
       groupsClaim: z.string().min(1),
     }))
     .use(withAudit("settings.oidc_team_mapping_updated", "SystemSettings"))
@@ -193,6 +195,7 @@ export const settingsRouter = router({
         where: { id: SETTINGS_ID },
         data: {
           oidcGroupSyncEnabled: input.groupSyncEnabled,
+          oidcGroupsScope: input.groupsScope || null,
           oidcTeamMappings: JSON.stringify(input.mappings),
           oidcDefaultTeamId: input.defaultTeamId || null,
           oidcDefaultRole: input.defaultRole,

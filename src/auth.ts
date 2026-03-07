@@ -53,6 +53,7 @@ async function getOidcSettings() {
         displayName: settings.oidcDisplayName ?? "SSO",
         tokenEndpointAuthMethod: settings.oidcTokenEndpointAuthMethod ?? "client_secret_post",
         groupSyncEnabled: settings.oidcGroupSyncEnabled,
+        groupsScope: settings.oidcGroupsScope ?? "groups",
         groupsClaim: settings.oidcGroupsClaim ?? "groups",
       };
     }
@@ -181,7 +182,7 @@ async function getAuthInstance() {
           clientId: oidc.clientId,
           clientSecret: oidc.clientSecret,
           allowDangerousEmailAccountLinking: true,
-          ...(oidc.groupSyncEnabled && { authorization: { params: { scope: `openid profile email ${oidc.groupsClaim}` } } }),
+          ...(oidc.groupSyncEnabled && oidc.groupsScope && { authorization: { params: { scope: `openid profile email ${oidc.groupsScope}` } } }),
           client: {
             token_endpoint_auth_method: oidc.tokenEndpointAuthMethod,
           },
