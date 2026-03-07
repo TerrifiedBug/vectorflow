@@ -84,9 +84,10 @@ model Environment {
   gitRepoUrl          String?
   gitBranch           String?       @default("main")
   gitToken            String?       // Stored encrypted via crypto.ts
-  alertRules          AlertRule[]
-  alertWebhooks       AlertWebhook[]
-  createdAt           DateTime      @default(now())
+  alertRules              AlertRule[]
+  alertWebhooks           AlertWebhook[]
+  notificationChannels    NotificationChannel[]
+  createdAt               DateTime      @default(now())
 }
 
 model VectorNode {
@@ -526,6 +527,7 @@ model AlertRule {
   threshold       Float
   durationSeconds Int            @default(60)
   events          AlertEvent[]
+  channels        AlertRuleChannel[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -577,4 +579,30 @@ model DashboardView {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+}
+
+model NotificationChannel {
+  id              String   @id @default(cuid())
+  environmentId   String
+  environment     Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  name            String
+  type            String   // "slack" | "email" | "pagerduty" | "webhook"
+  config          Json     // Type-specific config
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  alertRules      AlertRuleChannel[]
+
+  @@index([environmentId])
+}
+
+model AlertRuleChannel {
+  id          String   @id @default(cuid())
+  alertRuleId String
+  alertRule   AlertRule @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+  channelId   String
+  channel     NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([alertRuleId, channelId])
 }
