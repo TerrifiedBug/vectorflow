@@ -135,7 +135,7 @@ export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
     if (scimUser.active) {
       // Only clear SCIM-originated locks; preserve admin-initiated locks
       const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
-      if (!existing?.lockedBy || existing.lockedBy === "SCIM") {
+      if (existing?.lockedBy === "SCIM") {
         data.lockedAt = null;
         data.lockedBy = null;
       }
@@ -185,7 +185,7 @@ export async function scimPatchUser(
       if (op.value) {
         // Only clear SCIM-originated locks; preserve admin-initiated locks
         const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
-        if (!existing?.lockedBy || existing.lockedBy === "SCIM") {
+        if (existing?.lockedBy === "SCIM") {
           data.lockedAt = null;
           data.lockedBy = null;
         }
@@ -210,7 +210,7 @@ export async function scimPatchUser(
         if (val.active) {
           // Only clear SCIM-originated locks; preserve admin-initiated locks
           const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
-          if (!existing?.lockedBy || existing.lockedBy === "SCIM") {
+          if (existing?.lockedBy === "SCIM") {
             data.lockedAt = null;
             data.lockedBy = null;
           }
