@@ -92,6 +92,7 @@ export default function FleetPage() {
     trpc.fleet.setMaintenanceMode.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: trpc.fleet.list.queryKey() });
+        queryClient.invalidateQueries({ queryKey: trpc.fleet.listWithPipelineStatus.queryKey() });
       },
     }),
   );

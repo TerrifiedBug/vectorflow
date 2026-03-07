@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     if (node?.maintenanceMode) {
       const environment = await prisma.environment.findUnique({
         where: { id: agent.environmentId },
-        select: { secretBackend: true, secretBackendConfig: true },
+        select: { secretBackend: true },
       });
       const settings = await prisma.systemSettings.findUnique({
         where: { id: "singleton" },
