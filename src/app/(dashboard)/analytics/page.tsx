@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { ArrowUp, ArrowDown, Minus, BarChart3 } from "lucide-react";
@@ -88,14 +88,14 @@ export default function AnalyticsPage() {
   const bytesOutTrend = trendPercent(totalBytesOut, prevBytesOut);
 
   // Chart data
-  const chartData = useMemo(() => {
-    if (!data?.timeSeries) return [];
-    return data.timeSeries.map((ts) => ({
-      t: new Date(ts.bucket).getTime(),
-      bytesIn: ts.bytesIn,
-      bytesOut: ts.bytesOut,
-    }));
-  }, [data?.timeSeries]);
+  const timeSeries = data?.timeSeries;
+  const chartData = timeSeries
+    ? timeSeries.map((ts) => ({
+        t: new Date(ts.bucket).getTime(),
+        bytesIn: ts.bytesIn,
+        bytesOut: ts.bytesOut,
+      }))
+    : [];
 
   const chartConfig: ChartConfig = {
     bytesIn: { label: "Bytes In", color: "oklch(0.55 0.24 265)" },
@@ -103,9 +103,10 @@ export default function AnalyticsPage() {
   };
 
   // Per-pipeline table with sorting
-  const sortedPipelines = useMemo(() => {
-    if (!data?.perPipeline) return [];
-    const rows: PipelineRow[] = data.perPipeline.map((p: Omit<PipelineRow, "reduction">) => ({
+  const perPipeline = data?.perPipeline;
+  const sortedPipelines = (() => {
+    if (!perPipeline) return [];
+    const rows: PipelineRow[] = perPipeline.map((p: Omit<PipelineRow, "reduction">) => ({
       ...p,
       reduction: p.bytesIn > 0 ? (1 - p.bytesOut / p.bytesIn) * 100 : 0,
     }));
@@ -119,7 +120,7 @@ export default function AnalyticsPage() {
         ? (aVal as number) - (bVal as number)
         : (bVal as number) - (aVal as number);
     });
-  }, [data?.perPipeline, sortKey, sortDir]);
+  })();
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
