@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import {
@@ -138,8 +138,19 @@ export function CustomView({ view }: CustomViewProps) {
     savedFilters.layout ?? defaultLayout
   );
 
+  // Refs for latest filter values so the debounce timer never captures stale state
+  const filtersRef = useRef({ pipelineIds: selectedPipelineIds, nodeIds: selectedNodeIds });
+  filtersRef.current = { pipelineIds: selectedPipelineIds, nodeIds: selectedNodeIds };
+
   // Debounce layout save to avoid excessive mutations
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear pending timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
 
   const updateMutation = useMutation(
     trpc.dashboard.updateView.mutationOptions({
@@ -163,24 +174,19 @@ export function CustomView({ view }: CustomViewProps) {
       }));
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
+        const { pipelineIds, nodeIds } = filtersRef.current;
         updateMutation.mutate({
           environmentId: selectedEnvironmentId,
           id: view.id,
           filters: {
-            pipelineIds: selectedPipelineIds,
-            nodeIds: selectedNodeIds,
+            pipelineIds,
+            nodeIds,
             layout: cleanLayout,
           },
         });
       }, 800);
     },
-    [
-      selectedEnvironmentId,
-      view.id,
-      selectedPipelineIds,
-      selectedNodeIds,
-      updateMutation,
-    ]
+    [selectedEnvironmentId, view.id, updateMutation]
   );
 
   const handleLayoutChange = useCallback(
