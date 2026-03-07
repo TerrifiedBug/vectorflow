@@ -49,13 +49,16 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to create user";
+    // RFC 7644 §3.3: uniqueness conflicts use 409
+    const isConflict = error instanceof Error && (error as Error & { scimConflict?: boolean }).scimConflict === true;
+    const status = isConflict ? 409 : 400;
     return NextResponse.json(
       {
         schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
         detail: message,
-        status: "400",
+        status: String(status),
       },
-      { status: 400 },
+      { status },
     );
   }
 }

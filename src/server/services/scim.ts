@@ -108,10 +108,12 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
     // Only adopt users already created via SSO or previously SCIM-linked.
     // Local-credential accounts require explicit admin action to link.
     if (existing.authMethod !== "OIDC" && !existing.scimExternalId) {
-      throw new Error(
+      const err = new Error(
         `User ${email} exists as a local account and cannot be adopted via SCIM. ` +
         "An administrator must link or convert the account first.",
       );
+      (err as Error & { scimConflict: boolean }).scimConflict = true;
+      throw err;
     }
 
     // Adopt: link the SCIM externalId to the existing SSO user
