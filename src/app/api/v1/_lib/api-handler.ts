@@ -27,8 +27,8 @@ export function apiRoute(
       const resolvedParams = params ? await params : undefined;
       return await handler(req, ctx, resolvedParams);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Internal error";
-      return NextResponse.json({ error: message }, { status: 500 });
+      console.error("[api-handler] unhandled error:", err);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
   };
 }
