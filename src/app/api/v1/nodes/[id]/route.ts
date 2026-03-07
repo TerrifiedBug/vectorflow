@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { apiRoute } from "../../_lib/api-handler";
+import { apiRoute, jsonResponse } from "../../_lib/api-handler";
 
 export const GET = apiRoute("nodes.read", async (_req, ctx, params) => {
   const id = params?.id;
@@ -41,5 +41,5 @@ export const GET = apiRoute("nodes.read", async (_req, ctx, params) => {
     return NextResponse.json({ error: "Node not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ node });
+  return jsonResponse({ node });
 });
