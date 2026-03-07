@@ -131,8 +131,17 @@ export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
   if (scimUser.name?.formatted) data.name = scimUser.name.formatted;
   if (scimUser.emails?.[0]?.value) data.email = scimUser.emails[0].value;
   if (scimUser.active !== undefined) {
-    data.lockedAt = scimUser.active ? null : new Date();
-    data.lockedBy = scimUser.active ? null : "SCIM";
+    if (scimUser.active) {
+      // Only clear SCIM-originated locks; preserve admin-initiated locks
+      const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
+      if (!existing?.lockedBy || existing.lockedBy === "SCIM") {
+        data.lockedAt = null;
+        data.lockedBy = null;
+      }
+    } else {
+      data.lockedAt = new Date();
+      data.lockedBy = "SCIM";
+    }
   }
   if (scimUser.externalId) data.scimExternalId = scimUser.externalId;
 
@@ -163,8 +172,17 @@ export async function scimPatchUser(
     // RFC 7644: operation names are case-insensitive (e.g. Azure AD sends "Replace")
     const opName = op.op?.toLowerCase();
     if (opName === "replace" && op.path === "active" && typeof op.value === "boolean") {
-      data.lockedAt = op.value ? null : new Date();
-      data.lockedBy = op.value ? null : "SCIM";
+      if (op.value) {
+        // Only clear SCIM-originated locks; preserve admin-initiated locks
+        const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
+        if (!existing?.lockedBy || existing.lockedBy === "SCIM") {
+          data.lockedAt = null;
+          data.lockedBy = null;
+        }
+      } else {
+        data.lockedAt = new Date();
+        data.lockedBy = "SCIM";
+      }
     }
     if (opName === "replace" && op.path === "name.formatted" && typeof op.value === "string") {
       data.name = op.value;
@@ -179,8 +197,17 @@ export async function scimPatchUser(
     if (opName === "replace" && !op.path && typeof op.value === "object" && op.value !== null) {
       const val = op.value as Record<string, unknown>;
       if (typeof val.active === "boolean") {
-        data.lockedAt = val.active ? null : new Date();
-        data.lockedBy = val.active ? null : "SCIM";
+        if (val.active) {
+          // Only clear SCIM-originated locks; preserve admin-initiated locks
+          const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
+          if (!existing?.lockedBy || existing.lockedBy === "SCIM") {
+            data.lockedAt = null;
+            data.lockedBy = null;
+          }
+        } else {
+          data.lockedAt = new Date();
+          data.lockedBy = "SCIM";
+        }
       }
       if (typeof val.userName === "string") data.email = val.userName;
       if (typeof val.externalId === "string") data.scimExternalId = val.externalId;
