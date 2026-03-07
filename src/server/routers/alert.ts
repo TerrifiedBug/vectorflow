@@ -519,8 +519,8 @@ export const alertRouter = router({
         });
       }
 
-      // Validate URLs if config is being updated for slack/webhook
       if (config) {
+        // 1. SSRF-validate any new URLs supplied by the caller
         if (existing.type === "slack") {
           const webhookUrl = config.webhookUrl as string | undefined;
           if (webhookUrl) await validatePublicUrl(webhookUrl);
@@ -530,17 +530,12 @@ export const alertRouter = router({
           if (url) await validatePublicUrl(url);
         }
         if (existing.type === "email") {
-          const { smtpHost, from, recipients } = config as Record<string, unknown>;
-          if (!smtpHost || typeof smtpHost !== "string")
-            throw new TRPCError({ code: "BAD_REQUEST", message: "Email channels require smtpHost" });
-          if (!from || typeof from !== "string")
-            throw new TRPCError({ code: "BAD_REQUEST", message: "Email channels require a from address" });
-          if (!Array.isArray(recipients) || recipients.length === 0)
-            throw new TRPCError({ code: "BAD_REQUEST", message: "Email channels require at least one recipient" });
-          await validateSmtpHost(smtpHost);
+          const smtpHost = config.smtpHost as string | undefined;
+          if (smtpHost) await validateSmtpHost(smtpHost);
         }
-        // Preserve sensitive fields that the client cannot see (redacted in listChannels).
-        // When editing, the form sends empty strings for secrets it didn't change.
+
+        // 2. Preserve sensitive fields that the client cannot see (redacted in listChannels).
+        //    When editing, the form sends empty strings for secrets it didn't change.
         const existingCfg = (existing.config ?? {}) as Record<string, unknown>;
         const PRESERVE_IF_ABSENT = ["smtpPass", "integrationKey", "hmacSecret"] as const;
         for (const field of PRESERVE_IF_ABSENT) {
@@ -551,7 +546,27 @@ export const alertRouter = router({
           }
         }
 
-        // Validate pagerduty integrationKey after preserve logic (key may have been restored from DB)
+        // 3. Validate the MERGED config still has all required fields.
+        //    This prevents saving a broken channel via `config: {}`.
+        if (existing.type === "slack") {
+          const webhookUrl = config.webhookUrl as string | undefined;
+          if (!webhookUrl)
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Slack channels require a webhookUrl" });
+        }
+        if (existing.type === "webhook") {
+          const url = config.url as string | undefined;
+          if (!url)
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Webhook channels require a url" });
+        }
+        if (existing.type === "email") {
+          const { smtpHost, from, recipients } = config as Record<string, unknown>;
+          if (!smtpHost || typeof smtpHost !== "string")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Email channels require smtpHost" });
+          if (!from || typeof from !== "string")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Email channels require a from address" });
+          if (!Array.isArray(recipients) || recipients.length === 0)
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Email channels require at least one recipient" });
+        }
         if (existing.type === "pagerduty") {
           const { integrationKey } = config as Record<string, unknown>;
           if (!integrationKey || typeof integrationKey !== "string")
