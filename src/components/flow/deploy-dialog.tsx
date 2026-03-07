@@ -4,8 +4,9 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
+import { useSession } from "next-auth/react";
 import { toast } from "sonner";
-import { Rocket, CheckCircle, XCircle, Loader2, Radio, ChevronsUpDown, Check, X, ShieldCheck, ShieldX, Clock } from "lucide-react";
+import { Rocket, CheckCircle, XCircle, Loader2, Radio, ChevronsUpDown, Check, X, ShieldCheck, ShieldX, Clock, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -42,6 +43,7 @@ interface DeployDialogProps {
 export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const { data: session } = useSession();
   const [deploying, setDeploying] = useState(false);
   const [changelog, setChangelog] = useState("");
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
@@ -201,11 +203,14 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   const isLoading = previewQuery.isLoading || envQuery.isLoading || roleQuery.isLoading;
   const isValid = preview?.validation?.valid ?? false;
 
+  const isAdmin = userRole === "ADMIN";
   const requiresApproval = env?.requireDeployApproval && userRole === "EDITOR";
+  const adminBypassingApproval = env?.requireDeployApproval && isAdmin;
   const pendingRequests = pendingRequestsQuery.data ?? [];
   const pendingRequest = pendingRequests[0];
-  const isAdmin = userRole === "ADMIN";
-  const isReviewMode = isAdmin && !!pendingRequest;
+  const isOwnRequest = pendingRequest?.requestedById === session?.user?.id;
+  const canReview = !!pendingRequest && !isOwnRequest && (userRole === "EDITOR" || isAdmin);
+  const isReviewMode = canReview;
 
   const pendingRequestTimeAgo = useMemo(() => {
     if (!pendingRequest) return "";
@@ -329,6 +334,15 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {env.nodes.length} node{env.nodes.length !== 1 ? "s" : ""} enrolled — agents will pick up changes on next poll
+                </p>
+              </div>
+            )}
+
+            {adminBypassingApproval && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  This environment requires deploy approval for editors. As an admin, your deploy will proceed immediately.
                 </p>
               </div>
             )}
