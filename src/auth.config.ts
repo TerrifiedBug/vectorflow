@@ -30,9 +30,12 @@ export const authConfig: NextAuthConfig = {
       const isApiAuth = nextUrl.pathname.startsWith("/api/auth");
       const isHealth = nextUrl.pathname.startsWith("/api/health");
       const isSetupApi = nextUrl.pathname.startsWith("/api/setup");
+      const isApiV1 = nextUrl.pathname.startsWith("/api/v1");
+      const isAgentApi = nextUrl.pathname.startsWith("/api/agent");
 
-      // Always allow auth pages, auth API, health check, and setup API
-      if (isAuthPage || isApiAuth || isHealth || isSetupApi) return true;
+      // Always allow auth pages, auth API, health check, setup API,
+      // REST API v1 (uses Bearer token auth), and agent API (uses enrollment tokens)
+      if (isAuthPage || isApiAuth || isHealth || isSetupApi || isApiV1 || isAgentApi) return true;
 
       // Redirect unauthenticated users to login
       if (!isLoggedIn) return false;
