@@ -74,6 +74,8 @@ export const pipelineRouter = router({
           updatedAt: true,
           globalConfig: true,
           tags: true,
+          enrichMetadata: true,
+          environment: { select: { name: true } },
           createdBy: { select: { name: true, email: true, image: true } },
           updatedBy: { select: { name: true, email: true, image: true } },
           nodeStatuses: {
@@ -146,10 +148,17 @@ export const pipelineRouter = router({
                 target: e.targetNodeId,
                 ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
               }));
+              const enrichment = p.enrichMetadata
+                ? {
+                    environmentName: p.environment.name,
+                    pipelineVersion: latestVersion.version,
+                  }
+                : null;
               const currentYaml = generateVectorYaml(
                 flowNodes as Parameters<typeof generateVectorYaml>[0],
                 flowEdges as Parameters<typeof generateVectorYaml>[1],
                 p.globalConfig as Record<string, unknown> | null,
+                enrichment,
               );
               hasUndeployedChanges = currentYaml !== latestVersion.configYaml;
               if (!hasUndeployedChanges) {
