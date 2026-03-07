@@ -237,9 +237,7 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
       <Tabs defaultValue="config" className="flex min-h-0 flex-1 flex-col">
         <TabsList variant="line" className="w-full shrink-0 justify-start border-b px-2">
           <TabsTrigger value="config" className="text-xs">Config</TabsTrigger>
-          {isDeployed && (
-            <TabsTrigger value="live-tail" className="text-xs">Live Tail</TabsTrigger>
-          )}
+          <TabsTrigger value="live-tail" className="text-xs">Live Tail</TabsTrigger>
         </TabsList>
 
         <TabsContent value="config" className="min-h-0 flex-1 overflow-y-auto">
@@ -422,15 +420,13 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
           </div>
         </TabsContent>
 
-        {isDeployed && (
-          <TabsContent value="live-tail" className="min-h-0 flex-1 overflow-y-auto">
-            <LiveTailPanel
-              pipelineId={pipelineId}
-              componentKey={componentKey}
-              isDeployed={isDeployed}
-            />
-          </TabsContent>
-        )}
+        <TabsContent value="live-tail" className="min-h-0 flex-1 overflow-y-auto">
+          <LiveTailPanel
+            pipelineId={pipelineId}
+            componentKey={componentKey}
+            isDeployed={isDeployed}
+          />
+        </TabsContent>
       </Tabs>
     </div>
   );

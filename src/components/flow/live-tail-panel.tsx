@@ -17,6 +17,7 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
   const [requestId, setRequestId] = useState<string | null>(null);
   const [events, setEvents] = useState<Array<{ data: unknown; expanded: boolean }>>([]);
   const [hasExpired, setHasExpired] = useState(false);
+  const [completedEmpty, setCompletedEmpty] = useState(false);
 
   // Track which requestId we've already processed to avoid double-processing
   const processedRequestRef = useRef<string | null>(null);
@@ -28,6 +29,7 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
     setEvents([]);
     setRequestId(null);
     setHasExpired(false);
+    setCompletedEmpty(false);
   }
 
   const processResults = useCallback((data: { status: string; samples?: Array<{ componentKey: string; events: unknown }> }) => {
@@ -50,6 +52,9 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
 
     if (newEvents.length > 0) {
       setEvents((prev) => [...newEvents, ...prev].slice(0, 50));
+      setCompletedEmpty(false);
+    } else {
+      setCompletedEmpty(true);
     }
 
     processedRequestRef.current = requestId;
@@ -85,6 +90,7 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
     processedRequestRef.current = null;
     setRequestId(null);
     setHasExpired(false);
+    setCompletedEmpty(false);
     requestMutation.mutate({
       pipelineId,
       componentKeys: [componentKey],
@@ -139,7 +145,13 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
         </div>
       )}
 
-      {events.length === 0 && !isPending && !hasExpired && (
+      {completedEmpty && events.length === 0 && !isPending && !hasExpired && (
+        <div className="rounded-md bg-muted p-2 text-xs text-muted-foreground">
+          No matching events found for this component. It may not have received data during the sampling window.
+        </div>
+      )}
+
+      {events.length === 0 && !isPending && !hasExpired && !completedEmpty && (
         <div className="text-center text-sm text-muted-foreground py-6">
           Click &quot;Sample 10 Events&quot; to see data flowing through this component.
         </div>
