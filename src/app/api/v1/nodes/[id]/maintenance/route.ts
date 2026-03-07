@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute } from "../../../_lib/api-handler";
 
 export const POST = apiRoute(
@@ -55,6 +56,19 @@ export const POST = apiRoute(
         maintenanceModeAt: true,
       },
     });
+
+    writeAuditLog({
+      action: "api.node_maintenance_toggled",
+      entityType: "VectorNode",
+      entityId: updated.id,
+      userId: null,
+      userEmail: null,
+      userName: ctx.serviceAccountName ?? "service-account",
+      teamId: null,
+      environmentId: ctx.environmentId,
+      ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0] ?? null,
+      metadata: { nodeName: updated.name, maintenanceMode: updated.maintenanceMode },
+    }).catch(() => {});
 
     return NextResponse.json({ node: updated });
   },

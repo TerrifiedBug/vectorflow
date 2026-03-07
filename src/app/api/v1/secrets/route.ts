@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute } from "../_lib/api-handler";
 import { encrypt } from "@/server/services/crypto";
 
@@ -68,6 +69,19 @@ export const POST = apiRoute(
       select: { id: true, name: true, createdAt: true, updatedAt: true },
     });
 
+    writeAuditLog({
+      action: "api.secret_created",
+      entityType: "Secret",
+      entityId: secret.id,
+      userId: null,
+      userEmail: null,
+      userName: ctx.serviceAccountName ?? "service-account",
+      teamId: null,
+      environmentId: ctx.environmentId,
+      ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0] ?? null,
+      metadata: { name: body.name },
+    }).catch(() => {});
+
     return NextResponse.json({ secret }, { status: 201 });
   },
 );
@@ -120,6 +134,19 @@ export const PUT = apiRoute(
       select: { id: true, name: true, updatedAt: true },
     });
 
+    writeAuditLog({
+      action: "api.secret_updated",
+      entityType: "Secret",
+      entityId: updated.id,
+      userId: null,
+      userEmail: null,
+      userName: ctx.serviceAccountName ?? "service-account",
+      teamId: null,
+      environmentId: ctx.environmentId,
+      ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0] ?? null,
+      metadata: { name: updated.name },
+    }).catch(() => {});
+
     return NextResponse.json({ secret: updated });
   },
 );
@@ -152,6 +179,20 @@ export const DELETE = apiRoute(
     }
 
     await prisma.secret.delete({ where: { id: secret.id } });
+
+    writeAuditLog({
+      action: "api.secret_deleted",
+      entityType: "Secret",
+      entityId: secret.id,
+      userId: null,
+      userEmail: null,
+      userName: ctx.serviceAccountName ?? "service-account",
+      teamId: null,
+      environmentId: ctx.environmentId,
+      ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0] ?? null,
+      metadata: { name: secret.name },
+    }).catch(() => {});
+
     return NextResponse.json({ deleted: true });
   },
 );

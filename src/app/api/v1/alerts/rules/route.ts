@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute } from "../../_lib/api-handler";
 
 export const GET = apiRoute("alerts.read", async (_req, ctx) => {
@@ -24,7 +25,6 @@ export const POST = apiRoute(
       condition?: string;
       threshold?: number;
       durationSeconds?: number;
-      teamId?: string;
     };
     try {
       body = await req.json();
@@ -35,11 +35,11 @@ export const POST = apiRoute(
       );
     }
 
-    if (!body.name || !body.metric || !body.condition || body.threshold === undefined || !body.teamId) {
+    if (!body.name || !body.metric || !body.condition || body.threshold === undefined) {
       return NextResponse.json(
         {
           error:
-            "name, metric, condition, threshold, and teamId are required",
+            "name, metric, condition, and threshold are required",
         },
         { status: 400 },
       );
@@ -84,18 +84,42 @@ export const POST = apiRoute(
       }
     }
 
+    const env = await prisma.environment.findUnique({
+      where: { id: ctx.environmentId },
+      select: { teamId: true },
+    });
+    if (!env || !env.teamId) {
+      return NextResponse.json(
+        { error: "Environment not found or has no team" },
+        { status: 500 },
+      );
+    }
+
     const rule = await prisma.alertRule.create({
       data: {
         name: body.name,
         environmentId: ctx.environmentId,
         pipelineId: body.pipelineId,
-        teamId: body.teamId,
+        teamId: env.teamId,
         metric: body.metric as "cpu_usage",
         condition: body.condition as "gt",
         threshold: body.threshold,
         durationSeconds: body.durationSeconds ?? 60,
       },
     });
+
+    writeAuditLog({
+      action: "api.alert_rule_created",
+      entityType: "AlertRule",
+      entityId: rule.id,
+      userId: null,
+      userEmail: null,
+      userName: ctx.serviceAccountName ?? "service-account",
+      teamId: env.teamId,
+      environmentId: ctx.environmentId,
+      ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0] ?? null,
+      metadata: { name: body.name, metric: body.metric, condition: body.condition, threshold: body.threshold },
+    }).catch(() => {});
 
     return NextResponse.json({ rule }, { status: 201 });
   },
