@@ -229,6 +229,7 @@ model Pipeline {
   sampleRequests  EventSampleRequest[]
   eventSamples    EventSample[]
   slis            PipelineSli[]
+  enrichMetadata    Boolean              @default(false)
   tags              Json?                @default("[]")   // string[] of classification tags like ["PII", "PCI-DSS"]
   deployRequests  DeployRequest[]
   createdAt       DateTime             @default(now())
