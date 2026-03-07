@@ -3,11 +3,12 @@
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowLeft, ShieldOff, Trash2, Activity, Terminal, Server, Pencil, Check, X, Wrench } from "lucide-react";
+import { ArrowLeft, ShieldOff, Trash2, Activity, Terminal, Server, Pencil, Check, X, Wrench, Plus, Tag } from "lucide-react";
 import { NodeLogs } from "@/components/fleet/node-logs";
 import { toast } from "sonner";
 import { useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Input } from "@/components/ui/input";
@@ -57,6 +58,8 @@ export default function NodeDetailPage() {
 
   const [isRenaming, setIsRenaming] = useState(false);
   const [editName, setEditName] = useState("");
+  const [isEditingLabels, setIsEditingLabels] = useState(false);
+  const [editLabels, setEditLabels] = useState<Array<{ key: string; value: string }>>([]);
 
   const nodeQuery = useQuery(
     trpc.fleet.get.queryOptions(
@@ -140,6 +143,35 @@ export default function NodeDetailPage() {
       },
     }),
   );
+
+  const labelsMutation = useMutation(
+    trpc.fleet.updateLabels.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.fleet.get.queryKey({ id: params.nodeId }) });
+        queryClient.invalidateQueries({ queryKey: trpc.fleet.list.queryKey() });
+        toast.success("Labels updated");
+        setIsEditingLabels(false);
+      },
+    }),
+  );
+
+  function handleStartEditLabels() {
+    const labels = (node?.labels as Record<string, string>) ?? {};
+    const entries = Object.entries(labels).map(([key, value]) => ({ key, value }));
+    if (entries.length === 0) entries.push({ key: "", value: "" });
+    setEditLabels(entries);
+    setIsEditingLabels(true);
+  }
+
+  function handleSaveLabels() {
+    if (!node) return;
+    const labels: Record<string, string> = {};
+    for (const { key, value } of editLabels) {
+      const k = key.trim();
+      if (k) labels[k] = value.trim();
+    }
+    labelsMutation.mutate({ nodeId: node.id, labels });
+  }
 
   function handleMaintenanceToggle() {
     if (!node) return;
@@ -354,6 +386,96 @@ export default function NodeDetailPage() {
                 </p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Node Labels */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Tag className="h-5 w-5" />
+                Labels
+              </span>
+              {!isEditingLabels && (
+                <Button variant="outline" size="sm" onClick={handleStartEditLabels}>
+                  <Pencil className="mr-1 h-3.5 w-3.5" />
+                  Edit
+                </Button>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isEditingLabels ? (
+              <div className="space-y-3">
+                {editLabels.map((label, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Input
+                      placeholder="Key"
+                      value={label.key}
+                      onChange={(e) => {
+                        const next = [...editLabels];
+                        next[idx] = { ...next[idx], key: e.target.value };
+                        setEditLabels(next);
+                      }}
+                      className="flex-1"
+                    />
+                    <span className="text-muted-foreground">=</span>
+                    <Input
+                      placeholder="Value"
+                      value={label.value}
+                      onChange={(e) => {
+                        const next = [...editLabels];
+                        next[idx] = { ...next[idx], value: e.target.value };
+                        setEditLabels(next);
+                      }}
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => {
+                        setEditLabels(editLabels.filter((_, i) => i !== idx));
+                      }}
+                      aria-label="Remove label"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditLabels([...editLabels, { key: "", value: "" }])}
+                >
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  Add Label
+                </Button>
+                <div className="flex items-center gap-2 pt-2">
+                  <Button size="sm" onClick={handleSaveLabels} disabled={labelsMutation.isPending}>
+                    {labelsMutation.isPending ? "Saving..." : "Save Labels"}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setIsEditingLabels(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {Object.entries((node.labels as Record<string, string>) ?? {}).length > 0 ? (
+                  Object.entries((node.labels as Record<string, string>) ?? {}).map(
+                    ([k, v]) => (
+                      <Badge key={k} variant="outline">
+                        {k}={v}
+                      </Badge>
+                    ),
+                  )
+                ) : (
+                  <p className="text-sm text-muted-foreground">No labels assigned</p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
