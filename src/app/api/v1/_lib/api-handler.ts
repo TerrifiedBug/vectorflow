@@ -6,6 +6,18 @@ import {
   type ServiceAccountContext,
 } from "@/server/middleware/api-auth";
 
+/** BigInt-safe NextResponse.json() — converts BigInts to numbers before serialization. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function jsonResponse(data: any, init?: { status?: number }) {
+  const body = JSON.stringify(data, (_key, value) =>
+    typeof value === "bigint" ? Number(value) : value,
+  );
+  return new NextResponse(body, {
+    status: init?.status ?? 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 const TRPC_TO_HTTP: Record<string, number> = {
   NOT_FOUND: 404,
   BAD_REQUEST: 400,
