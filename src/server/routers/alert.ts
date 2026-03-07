@@ -470,8 +470,20 @@ export const alertRouter = router({
       }
 
       if (input.type === "email") {
-        const smtpHost = input.config.smtpHost as string | undefined;
-        if (smtpHost) await validateSmtpHost(smtpHost);
+        const { smtpHost, from, recipients } = input.config as Record<string, unknown>;
+        if (!smtpHost || typeof smtpHost !== "string")
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Email channels require smtpHost" });
+        if (!from || typeof from !== "string")
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Email channels require a from address" });
+        if (!Array.isArray(recipients) || recipients.length === 0)
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Email channels require at least one recipient" });
+        await validateSmtpHost(smtpHost);
+      }
+
+      if (input.type === "pagerduty") {
+        const { integrationKey } = input.config as Record<string, unknown>;
+        if (!integrationKey || typeof integrationKey !== "string")
+          throw new TRPCError({ code: "BAD_REQUEST", message: "PagerDuty channels require an integrationKey" });
       }
 
       return prisma.notificationChannel.create({
@@ -518,10 +530,15 @@ export const alertRouter = router({
           if (url) await validatePublicUrl(url);
         }
         if (existing.type === "email") {
-          const smtpHost = config.smtpHost as string | undefined;
-          if (smtpHost) await validateSmtpHost(smtpHost);
+          const { smtpHost, from, recipients } = config as Record<string, unknown>;
+          if (!smtpHost || typeof smtpHost !== "string")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Email channels require smtpHost" });
+          if (!from || typeof from !== "string")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Email channels require a from address" });
+          if (!Array.isArray(recipients) || recipients.length === 0)
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Email channels require at least one recipient" });
+          await validateSmtpHost(smtpHost);
         }
-
         // Preserve sensitive fields that the client cannot see (redacted in listChannels).
         // When editing, the form sends empty strings for secrets it didn't change.
         const existingCfg = (existing.config ?? {}) as Record<string, unknown>;
@@ -532,6 +549,13 @@ export const alertRouter = router({
               (config as Record<string, unknown>)[field] = existingCfg[field];
             }
           }
+        }
+
+        // Validate pagerduty integrationKey after preserve logic (key may have been restored from DB)
+        if (existing.type === "pagerduty") {
+          const { integrationKey } = config as Record<string, unknown>;
+          if (!integrationKey || typeof integrationKey !== "string")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "PagerDuty channels require an integrationKey" });
         }
       }
 
