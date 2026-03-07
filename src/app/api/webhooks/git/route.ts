@@ -120,9 +120,20 @@ export async function POST(req: NextRequest) {
       const content = await contentRes.text();
 
       // Derive pipeline name from filename (strip directory prefix and extension)
-      const pipelineName = file
-        .replace(/^[^/]+\//, "")
-        .replace(/\.(yaml|yml)$/, "");
+      // Use only the basename (last path segment) to avoid slashes in the name
+      const basename = file.split("/").pop() ?? file;
+      const pipelineName = basename.replace(/\.(yaml|yml)$/, "");
+
+      // Validate the pipeline name matches the schema used by the tRPC router
+      const PIPELINE_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9 _-]*$/;
+      if (!pipelineName || pipelineName.length > 100 || !PIPELINE_NAME_RE.test(pipelineName)) {
+        results.push({
+          file,
+          status: "skipped",
+          error: `Invalid pipeline name "${pipelineName}" — must start with alphanumeric and contain only letters, numbers, spaces, hyphens, underscores`,
+        });
+        continue;
+      }
 
       // Find or create pipeline by name in this environment
       let pipeline = await prisma.pipeline.findFirst({
