@@ -191,7 +191,7 @@ export const settingsRouter = router({
         }
       }
 
-      return prisma.systemSettings.update({
+      const result = await prisma.systemSettings.update({
         where: { id: SETTINGS_ID },
         data: {
           oidcGroupSyncEnabled: input.groupSyncEnabled,
@@ -205,6 +205,8 @@ export const settingsRouter = router({
           oidcEditorGroups: null,
         },
       });
+      invalidateAuthCache();
+      return result;
     }),
 
   updateFleet: protectedProcedure
