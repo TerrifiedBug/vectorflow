@@ -117,7 +117,7 @@ export function VersionHistoryDialog({
           onOpenChange(next);
         }}
       >
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Version History</DialogTitle>
             <DialogDescription>
@@ -139,7 +139,7 @@ export function VersionHistoryDialog({
               </p>
             </div>
           ) : (
-            <ScrollArea className="max-h-[60vh]">
+            <ScrollArea className="flex-1 min-h-0">
               <Table>
                 <TableHeader>
                   <TableRow>

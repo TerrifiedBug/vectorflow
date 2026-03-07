@@ -340,12 +340,12 @@ export default function AuditPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[30px]" />
-                <TableHead>Timestamp</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>IP Address</TableHead>
-                <TableHead>Action</TableHead>
-                <TableHead>Entity Type</TableHead>
-                <TableHead>Entity ID</TableHead>
+                <TableHead className="w-[170px]">Timestamp</TableHead>
+                <TableHead className="w-[100px]">User</TableHead>
+                <TableHead className="w-[120px]">IP Address</TableHead>
+                <TableHead className="w-[180px]">Action</TableHead>
+                <TableHead className="w-[110px]">Entity Type</TableHead>
+                <TableHead className="w-[180px]">Entity ID</TableHead>
                 <TableHead>Details</TableHead>
               </TableRow>
             </TableHeader>
@@ -388,7 +388,8 @@ export default function AuditPage() {
                       <TableCell>
                         <Badge
                           variant="outline"
-                          className={getActionColor(entry.action)}
+                          className={`max-w-full truncate ${getActionColor(entry.action)}`}
+                          title={entry.action}
                         >
                           {entry.action}
                         </Badge>
