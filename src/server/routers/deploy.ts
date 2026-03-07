@@ -85,8 +85,10 @@ export const deployRouter = router({
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
-      // Save nodeSelector to pipeline before deploying
-      if (input.nodeSelector !== undefined) {
+      const result = await deployAgent(input.pipelineId, userId, input.changelog);
+
+      // Only persist nodeSelector if the deploy actually succeeded
+      if (result.success && input.nodeSelector !== undefined) {
         await prisma.pipeline.update({
           where: { id: input.pipelineId },
           data: {
@@ -98,7 +100,7 @@ export const deployRouter = router({
         });
       }
 
-      return deployAgent(input.pipelineId, userId, input.changelog);
+      return result;
     }),
 
   undeploy: protectedProcedure
