@@ -21,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import {
   Card,
   CardContent,
@@ -284,39 +283,38 @@ export default function EnvironmentDetailPage({
       </div>
 
       {/* Deploy Settings */}
-      <>
-        <Separator />
-        <h3 className="text-lg font-semibold">Deploy Settings</h3>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                  <Label htmlFor="require-approval-toggle" className="text-sm font-medium">
-                    Require approval for deploys
-                  </Label>
-                </div>
-                <p className="text-xs text-muted-foreground ml-6">
-                  When enabled, editors must request admin approval before deploying pipelines.
-                  {!isAdmin && " Only admins can change this setting."}
-                </p>
+      <Card>
+        <CardHeader className="pb-0">
+          <CardTitle className="text-base">Deploy Settings</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-3">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                <Label htmlFor="require-approval-toggle" className="text-sm font-medium">
+                  Require approval for deploys
+                </Label>
               </div>
-              <Switch
-                id="require-approval-toggle"
-                checked={env.requireDeployApproval ?? false}
-                disabled={!isAdmin}
-                onCheckedChange={(checked) => {
-                  updateMutation.mutate({ id, requireDeployApproval: checked }, {
-                    onSuccess: () => toast.success(checked ? "Deploy approval enabled" : "Deploy approval disabled"),
-                    onError: (err) => toast.error(err.message),
-                  });
-                }}
-              />
+              <p className="text-xs text-muted-foreground ml-6">
+                When enabled, editors must request admin approval before deploying pipelines.
+                {!isAdmin && " Only admins can change this setting."}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-      </>
+            <Switch
+              id="require-approval-toggle"
+              checked={env.requireDeployApproval ?? false}
+              disabled={!isAdmin}
+              onCheckedChange={(checked) => {
+                updateMutation.mutate({ id, requireDeployApproval: checked }, {
+                  onSuccess: () => toast.success(checked ? "Deploy approval enabled" : "Deploy approval disabled"),
+                  onError: (err) => toast.error(err.message),
+                });
+              }}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Nodes Table */}
       <Card>
@@ -379,12 +377,9 @@ export default function EnvironmentDetailPage({
       </Card>
 
       {/* Agent Enrollment */}
-      <>
-        <Separator />
-          <h3 className="text-lg font-semibold">Agent Enrollment</h3>
           <Card>
             <CardHeader>
-              <CardTitle>Enrollment Token</CardTitle>
+              <CardTitle className="text-base">Agent Enrollment</CardTitle>
               <CardDescription>
                 Generate a token for agents to enroll in this environment.
                 The token is shown once — save it immediately.
@@ -441,18 +436,17 @@ export default function EnvironmentDetailPage({
               </div>
             </CardContent>
           </Card>
-      </>
 
       {/* Secret Backend */}
-      <>
-        <Separator className="my-6" />
-          <h3 className="text-lg font-semibold mb-4">Secret Backend</h3>
-          <div className="rounded-lg border">
-            <div className="p-4 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Secret Backend</CardTitle>
+              <CardDescription>
+                Choose how pipelines on this environment resolve secret references.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div>
-                <p className="text-sm text-muted-foreground mb-2">
-                  Choose how pipelines on this environment resolve secret references.
-                </p>
                 {editing ? (
                   <Select value={editSecretBackend} onValueChange={(val) => setEditSecretBackend(val as "BUILTIN" | "VAULT" | "AWS_SM" | "EXEC")}>
                     <SelectTrigger className="w-full">
@@ -550,13 +544,10 @@ export default function EnvironmentDetailPage({
                   )}
                 </div>
               )}
-            </div>
-          </div>
-      </>
+            </CardContent>
+          </Card>
 
       {/* Secrets & Certificates */}
-      <Separator />
-      <h3 className="text-lg font-semibold">Secrets & Certificates</h3>
       <SecretsSection environmentId={id} />
       <CertificatesSection environmentId={id} />
 
