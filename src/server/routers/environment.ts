@@ -109,8 +109,18 @@ export const environmentRouter = router({
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("environment.updated", "Environment"))
-    .mutation(async ({ input }) => {
-      const { id, gitToken, ...rest } = input;
+    .mutation(async ({ input, ctx }) => {
+      const { id, gitToken, requireDeployApproval, ...rest } = input;
+
+      // Only ADMINs can toggle the approval requirement
+      const userRole = (ctx as Record<string, unknown>).userRole as string;
+      if (requireDeployApproval !== undefined && userRole === "EDITOR") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only admins can change the deploy approval requirement",
+        });
+      }
+
       const existing = await prisma.environment.findUnique({
         where: { id },
       });
@@ -130,6 +140,9 @@ export const environmentRouter = router({
       // Build update data, encrypting git token if provided
       const { gitOpsMode: gitOpsModeInput, ...restWithoutGitOps } = rest;
       const data: Record<string, unknown> = { ...restWithoutGitOps };
+      if (requireDeployApproval !== undefined) {
+        data.requireDeployApproval = requireDeployApproval;
+      }
       if (gitToken !== undefined) {
         data.gitToken = gitToken ? encrypt(gitToken) : null;
       }

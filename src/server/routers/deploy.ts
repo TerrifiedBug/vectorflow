@@ -138,6 +138,17 @@ export const deployRouter = router({
           });
         }
 
+        // Prevent duplicate pending requests for the same pipeline
+        const existingPending = await prisma.deployRequest.findFirst({
+          where: { pipelineId: input.pipelineId, status: "PENDING" },
+        });
+        if (existingPending) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "A pending deploy request already exists for this pipeline",
+          });
+        }
+
         const request = await prisma.deployRequest.create({
           data: {
             pipelineId: input.pipelineId,
@@ -295,8 +306,9 @@ export const deployRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Deploy request not found or not pending" });
       }
 
-      await prisma.deployRequest.update({
-        where: { id: input.requestId },
+      // Atomically reject — prevents race with concurrent approve
+      const updated = await prisma.deployRequest.updateMany({
+        where: { id: input.requestId, status: "PENDING" },
         data: {
           status: "REJECTED",
           reviewedById: ctx.session.user.id,
@@ -304,6 +316,9 @@ export const deployRouter = router({
           reviewedAt: new Date(),
         },
       });
+      if (updated.count === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Request is no longer pending" });
+      }
 
       return { rejected: true };
     }),
