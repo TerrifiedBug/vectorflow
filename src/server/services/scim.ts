@@ -282,3 +282,50 @@ export async function scimDeleteUser(id: string) {
     entityId: id,
   });
 }
+
+/**
+ * Resolve the role for a SCIM-provisioned team member.
+ *
+ * SCIM group operations don't carry OIDC group context — we know the
+ * target team but not which IdP group triggered the provisioning.
+ *
+ * Resolution order:
+ * 1. If exactly one oidcTeamMapping exists for this team, use its role
+ *    (unambiguous case — safe to use directly).
+ * 2. Otherwise fall back to oidcDefaultRole, then VIEWER.
+ *
+ * When multiple mappings exist for a team, we cannot determine which
+ * group triggered the SCIM operation, so we use the safe default to
+ * avoid silent privilege escalation. The correct per-group role is
+ * applied on the user's next OIDC login, which has the groups claim.
+ */
+export async function resolveScimRole(
+  teamId: string,
+): Promise<"VIEWER" | "EDITOR" | "ADMIN"> {
+  const settings = await prisma.systemSettings.findUnique({
+    where: { id: "singleton" },
+    select: { oidcTeamMappings: true, oidcDefaultRole: true },
+  });
+
+  const defaultRole = (settings?.oidcDefaultRole as "VIEWER" | "EDITOR" | "ADMIN") ?? "VIEWER";
+
+  if (settings?.oidcTeamMappings) {
+    try {
+      const mappings: Array<{ group: string; teamId: string; role: string }> =
+        JSON.parse(settings.oidcTeamMappings);
+      const teamMappings = mappings.filter((m) => m.teamId === teamId);
+
+      // Only use the mapped role when unambiguous (exactly one mapping)
+      if (teamMappings.length === 1) {
+        const role = teamMappings[0].role;
+        if (role === "VIEWER" || role === "EDITOR" || role === "ADMIN") {
+          return role;
+        }
+      }
+    } catch {
+      // Invalid JSON — fall through to default
+    }
+  }
+
+  return defaultRole;
+}

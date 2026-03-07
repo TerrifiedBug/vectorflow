@@ -21,7 +21,7 @@ SCIM Groups are mapped to VectorFlow Teams. When your IdP pushes group membershi
 {% step %}
 ### Enable SCIM in VectorFlow
 
-Navigate to **Settings > SCIM** (Super Admin required). Toggle **Enable SCIM** on.
+Navigate to **Settings > Auth** (Super Admin required). Toggle **Enable SCIM** on.
 {% endstep %}
 {% step %}
 ### Generate a bearer token
@@ -52,6 +52,16 @@ Enter the SCIM base URL and bearer token into your IdP's SCIM provisioning setti
 Test the SCIM connection from your IdP, then assign users and groups to the VectorFlow application in your IdP.
 {% endstep %}
 {% endstepper %}
+
+## Group role mapping
+
+When SCIM pushes group membership changes, VectorFlow assigns roles using the same team mappings configured for OIDC:
+
+1. If **OIDC Team Mappings** are configured in **Settings > Auth**, the mapping's role is used
+2. If no mapping matches, the **Default Role** is used
+3. If no default role is set, `VIEWER` is assigned
+
+This ensures consistent role assignment regardless of whether sync happens via SCIM push or OIDC login.
 
 ## IdP-specific instructions
 
@@ -148,4 +158,18 @@ SCIM provisioning works best alongside OIDC/SSO. Users created via SCIM receive 
 | Users not being created | Check that "Create Users" is enabled in your IdP's provisioning settings. Review the IdP provisioning logs for error details. |
 | Users not being deactivated | Check that "Deactivate Users" is enabled in your IdP. VectorFlow locks the account (sets `lockedAt`) rather than deleting it. |
 | Group membership not syncing | SCIM Groups map to VectorFlow Teams. Ensure the groups are assigned to the VectorFlow application in your IdP. New members are added with the Viewer role by default. |
-| Token expired/invalid | Generate a new token from **Settings > SCIM** and update it in your IdP. The previous token is invalidated immediately. |
+| Token expired/invalid | Generate a new token from **Settings > Auth** and update it in your IdP. The previous token is invalidated immediately. |
+
+### SCIM sync returns HTML error
+
+If your IdP reports an error like `invalid character '<' looking for beginning of value`, the SCIM base URL may be incorrect. Ensure it is set to:
+
+```
+https://your-vectorflow-url/api/scim/v2
+```
+
+VectorFlow exposes a `ServiceProviderConfig` endpoint at `/api/scim/v2/ServiceProviderConfig` that your IdP can use to verify connectivity.
+
+### Roles not updating via SCIM
+
+Ensure that **OIDC Team Mappings** are configured in **Settings > Auth**. Without team mappings, all SCIM-provisioned members default to the **VIEWER** role.
