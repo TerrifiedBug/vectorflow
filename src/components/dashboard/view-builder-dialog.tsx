@@ -36,6 +36,8 @@ export type PanelId = (typeof AVAILABLE_PANELS)[number]["id"];
 interface ViewBuilderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Current environment ID for team-scoped access */
+  environmentId: string;
   /** If provided, the dialog operates in edit mode */
   editView?: {
     id: string;
@@ -47,6 +49,7 @@ interface ViewBuilderDialogProps {
 export function ViewBuilderDialog({
   open,
   onOpenChange,
+  environmentId,
   editView,
 }: ViewBuilderDialogProps) {
   return (
@@ -56,6 +59,7 @@ export function ViewBuilderDialog({
         {open && (
           <ViewBuilderForm
             editView={editView}
+            environmentId={environmentId}
             onClose={() => onOpenChange(false)}
           />
         )}
@@ -66,9 +70,11 @@ export function ViewBuilderDialog({
 
 function ViewBuilderForm({
   editView,
+  environmentId,
   onClose,
 }: {
   editView?: ViewBuilderDialogProps["editView"];
+  environmentId: string;
   onClose: () => void;
 }) {
   const trpc = useTRPC();
@@ -109,12 +115,14 @@ function ViewBuilderForm({
 
     if (editView) {
       updateMutation.mutate({
+        environmentId,
         id: editView.id,
         name: name.trim(),
         panels: selectedPanels,
       });
     } else {
       createMutation.mutate({
+        environmentId,
         name: name.trim(),
         panels: selectedPanels,
       });

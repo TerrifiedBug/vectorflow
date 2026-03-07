@@ -187,7 +187,7 @@ export default function DashboardPage() {
                 onClick={(e) => {
                   e.stopPropagation();
                   if (confirm(`Delete "${view.name}"?`)) {
-                    deleteMutation.mutate({ id: view.id });
+                    deleteMutation.mutate({ environmentId: selectedEnvironmentId!, id: view.id });
                   }
                 }}
                 className="rounded p-0.5 hover:bg-muted text-destructive"
@@ -416,12 +416,14 @@ export default function DashboardPage() {
       <ViewBuilderDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
+        environmentId={selectedEnvironmentId ?? ""}
       />
       <ViewBuilderDialog
         open={editView !== null}
         onOpenChange={(open) => {
           if (!open) setEditView(null);
         }}
+        environmentId={selectedEnvironmentId ?? ""}
         editView={editView ?? undefined}
       />
     </div>
