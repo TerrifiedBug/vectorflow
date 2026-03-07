@@ -145,6 +145,7 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
       email,
       name,
       passwordHash,
+      authMethod: "OIDC",
       scimExternalId: scimUser.externalId,
       lockedAt: scimUser.active === false ? new Date() : null,
       lockedBy: scimUser.active === false ? "SCIM" : null,
