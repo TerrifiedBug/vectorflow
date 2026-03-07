@@ -18,7 +18,7 @@ When you create or update a secret, the value is encrypted with **AES-256-GCM** 
 
 ### How secrets are resolved
 
-When a pipeline is deployed, VectorFlow generates the Vector configuration file. During generation, it scans the configuration for **secret references** and replaces them with the actual decrypted values.
+When a pipeline is deployed, VectorFlow generates the Vector configuration file. During generation, it scans the configuration for **secret references** and converts them into environment variable placeholders. The actual secret values are delivered separately to the agent and injected as environment variables into the Vector process.
 
 Secret references use the syntax:
 
@@ -34,7 +34,38 @@ sasl:
   password: SECRET[KAFKA_PASSWORD]
 ```
 
-At deploy time, `SECRET[KAFKA_PASSWORD]` is resolved to the decrypted value of the `KAFKA_PASSWORD` secret in the pipeline's environment.
+At deploy time, VectorFlow converts this to:
+
+```yaml
+sasl:
+  username: "my-user"
+  password: "${VF_SECRET_KAFKA_PASSWORD}"
+```
+
+The actual decrypted value of `KAFKA_PASSWORD` is delivered to the agent in a separate `secrets` dictionary alongside the YAML. The agent sets `VF_SECRET_KAFKA_PASSWORD` as an environment variable when starting the Vector process, and Vector's built-in environment variable interpolation resolves the placeholder at runtime.
+
+{% hint style="info" %}
+Secret values never appear in pipeline YAML files -- not in the database, not on disk, and not in transit. Only environment variable placeholders are embedded in the configuration.
+{% endhint %}
+
+#### Secret name normalization
+
+Secret names are converted to valid environment variable names using these rules:
+
+- Prefixed with `VF_SECRET_`
+- All non-alphanumeric characters replaced with underscores
+- Converted to uppercase
+
+For example, `my-api.key` becomes `VF_SECRET_MY_API_KEY`. If two secrets normalize to the same environment variable name (e.g., `db-password` and `db_password` both become `VF_SECRET_DB_PASSWORD`), VectorFlow logs a warning and uses the first match alphabetically.
+
+### Sensitive fields
+
+Pipeline component fields that contain credentials -- passwords, API keys, tokens -- are restricted to **secret references only** in the pipeline editor. You cannot type a plaintext value into a sensitive field. Instead, the editor presents a secret picker that lets you select an existing secret or create a new one inline.
+
+Fields are treated as sensitive when:
+
+- The Vector component schema marks them as `sensitive: true`
+- The field name matches a pattern like `password`, `secret`, `token`, or `api_key`
 
 ### Certificate references
 
@@ -59,7 +90,7 @@ VectorFlow encrypts sensitive data before storing it in PostgreSQL:
 | Certificates | AES-256-GCM | SHA-256 hash of `NEXTAUTH_SECRET` |
 | OIDC client secret | AES-256-GCM | SHA-256 hash of `NEXTAUTH_SECRET` |
 | Sensitive node config fields | AES-256-GCM | SHA-256 hash of `NEXTAUTH_SECRET` |
-| Git access tokens | AES-256-GCM | SHA-256 hash of `NEXTAUTH_SECRET` |
+| Git access tokens (audit trail) | AES-256-GCM | SHA-256 hash of `NEXTAUTH_SECRET` |
 | User passwords | bcrypt (cost 12) | Built-in salt |
 | TOTP secrets | AES-256-GCM | SHA-256 hash of `NEXTAUTH_SECRET` |
 | 2FA backup codes | SHA-256 hash | -- |
