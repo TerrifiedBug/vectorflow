@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { writeAuditLog } from "@/server/services/audit";
 import { authenticateScim } from "../../auth";
 
 function scimError(detail: string, status: number) {
@@ -124,6 +125,17 @@ export async function PATCH(
             where: { userId, teamId: id },
           });
         }
+
+        // Handle value-array form: { op: "remove", path: "members", value: [{ value: "userId" }, ...] }
+        if (op.path === "members" && Array.isArray(op.value)) {
+          for (const member of op.value as Array<{ value?: unknown }>) {
+            if (typeof member.value === "string") {
+              await prisma.teamMember.deleteMany({
+                where: { userId: member.value, teamId: id },
+              });
+            }
+          }
+        }
       }
 
       if (operation === "replace" && op.path === "displayName" && typeof op.value === "string") {
@@ -133,6 +145,14 @@ export async function PATCH(
         });
       }
     }
+
+    await writeAuditLog({
+      userId: null,
+      action: "scim.group_patched",
+      entityType: "Team",
+      entityId: id,
+      metadata: { operations: operations.map((o: { op: string; path?: string }) => ({ op: o.op, path: o.path })) },
+    });
 
     // Return the updated group
     const updated = await prisma.team.findUnique({
@@ -208,6 +228,14 @@ export async function PUT(
           }
         }
       }
+    });
+
+    await writeAuditLog({
+      userId: null,
+      action: "scim.group_updated",
+      entityType: "Team",
+      entityId: id,
+      metadata: { displayName: body.displayName, memberCount: body.members?.length },
     });
 
     const updated = await prisma.team.findUnique({

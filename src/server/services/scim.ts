@@ -157,20 +157,22 @@ export async function scimPatchUser(
   const data: Record<string, unknown> = {};
 
   for (const op of operations) {
-    if (op.op === "replace" && op.path === "active" && typeof op.value === "boolean") {
+    // RFC 7644: operation names are case-insensitive (e.g. Azure AD sends "Replace")
+    const opName = op.op?.toLowerCase();
+    if (opName === "replace" && op.path === "active" && typeof op.value === "boolean") {
       data.lockedAt = op.value ? null : new Date();
     }
-    if (op.op === "replace" && op.path === "name.formatted" && typeof op.value === "string") {
+    if (opName === "replace" && op.path === "name.formatted" && typeof op.value === "string") {
       data.name = op.value;
     }
-    if (op.op === "replace" && op.path === "userName" && typeof op.value === "string") {
+    if (opName === "replace" && op.path === "userName" && typeof op.value === "string") {
       data.email = op.value;
     }
-    if (op.op === "replace" && op.path === "externalId" && typeof op.value === "string") {
+    if (opName === "replace" && op.path === "externalId" && typeof op.value === "string") {
       data.scimExternalId = op.value;
     }
     // Handle bulk replace (no path, value is an object)
-    if (op.op === "replace" && !op.path && typeof op.value === "object" && op.value !== null) {
+    if (opName === "replace" && !op.path && typeof op.value === "object" && op.value !== null) {
       const val = op.value as Record<string, unknown>;
       if (typeof val.active === "boolean") data.lockedAt = val.active ? null : new Date();
       if (typeof val.userName === "string") data.email = val.userName;
