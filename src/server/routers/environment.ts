@@ -154,20 +154,14 @@ export const environmentRouter = router({
       });
       const { gitToken: _gt, enrollmentTokenHash: _eth, gitWebhookSecret: _gws, ...safeUpdate } = updated;
 
-      // Return the plaintext webhook secret only when freshly generated;
-      // otherwise decrypt the stored value so the UI can display it.
-      let webhookSecretForDisplay: string | null = null;
-      if (plaintextWebhookSecret) {
-        webhookSecretForDisplay = plaintextWebhookSecret;
-      } else if (_gws) {
-        webhookSecretForDisplay = decrypt(_gws);
-      }
-
+      // Only return the plaintext webhook secret when freshly generated;
+      // never decrypt and return the stored secret on unrelated updates.
       return {
         ...safeUpdate,
         hasEnrollmentToken: !!_eth,
         hasGitToken: !!_gt,
-        gitWebhookSecret: webhookSecretForDisplay,
+        hasWebhookSecret: !!_gws,
+        gitWebhookSecret: plaintextWebhookSecret,
       };
     }),
 

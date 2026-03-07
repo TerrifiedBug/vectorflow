@@ -294,7 +294,8 @@ export function GitSyncSection({
             )}
             {!webhookSecretFromMutation && hasWebhookSecret && (
               <p className="text-xs text-muted-foreground">
-                Webhook secret is configured. Save settings again to reveal the secret.
+                Webhook secret is configured. For security, the secret is only shown once when first generated.
+                To get a new secret, switch GitOps mode off and back to bi-directional.
               </p>
             )}
             {!webhookSecretFromMutation && !hasWebhookSecret && (
