@@ -8,6 +8,7 @@ import { generateVectorYaml } from "@/lib/config-generator";
 import { validateConfig } from "@/server/services/validator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { withAudit } from "@/server/middleware/audit";
+import { writeAuditLog } from "@/server/services/audit";
 
 export const deployRouter = router({
   preview: protectedProcedure
@@ -78,7 +79,6 @@ export const deployRouter = router({
       }),
     )
     .use(withTeamAccess("EDITOR"))
-    .use(withAudit("deploy.agent", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) {
@@ -160,6 +160,22 @@ export const deployRouter = router({
           },
         });
 
+        writeAuditLog({
+          userId,
+          action: "deploy.request_submitted",
+          entityType: "DeployRequest",
+          entityId: request.id,
+          metadata: {
+            timestamp: new Date().toISOString(),
+            input: { pipelineId: input.pipelineId, changelog: input.changelog },
+          },
+          teamId: (ctx as Record<string, unknown>).teamId as string | null ?? null,
+          environmentId: pipeline.environment.id,
+          ipAddress: (ctx as Record<string, unknown>).ipAddress as string | null ?? null,
+          userEmail: ctx.session?.user?.email ?? null,
+          userName: ctx.session?.user?.name ?? null,
+        }).catch(() => {});
+
         return {
           success: true,
           pendingApproval: true,
@@ -180,6 +196,24 @@ export const deployRouter = router({
                 : Prisma.DbNull,
           },
         });
+      }
+
+      if (result.success) {
+        writeAuditLog({
+          userId,
+          action: "deploy.agent",
+          entityType: "Pipeline",
+          entityId: input.pipelineId,
+          metadata: {
+            timestamp: new Date().toISOString(),
+            input: { pipelineId: input.pipelineId, changelog: input.changelog },
+          },
+          teamId: (ctx as Record<string, unknown>).teamId as string | null ?? null,
+          environmentId: pipeline.environment.id,
+          ipAddress: (ctx as Record<string, unknown>).ipAddress as string | null ?? null,
+          userEmail: ctx.session?.user?.email ?? null,
+          userName: ctx.session?.user?.name ?? null,
+        }).catch(() => {});
       }
 
       return result;
@@ -246,13 +280,30 @@ export const deployRouter = router({
       pipelineId: z.string().optional(),
     }))
     .use(withTeamAccess("VIEWER"))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const where: Record<string, unknown> = { status: "PENDING" };
       if (input.environmentId) where.environmentId = input.environmentId;
       if (input.pipelineId) where.pipelineId = input.pipelineId;
+
+      const userRole = (ctx as Record<string, unknown>).userRole as string;
+      const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
+
       return prisma.deployRequest.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          pipelineId: true,
+          environmentId: true,
+          status: true,
+          changelog: true,
+          nodeSelector: true,
+          createdAt: true,
+          reviewedAt: true,
+          reviewNote: true,
+          requestedById: true,
+          reviewedById: true,
+          // configYaml only included for admins — contains decrypted secrets
+          configYaml: isAdmin,
           requestedBy: { select: { name: true, email: true } },
           pipeline: { select: { name: true } },
         },
@@ -294,6 +345,19 @@ export const deployRouter = router({
           request.changelog,
           request.configYaml,
         );
+
+        // Persist nodeSelector from the original deploy request
+        if (result.success && request.nodeSelector) {
+          const ns = request.nodeSelector as Record<string, string>;
+          await prisma.pipeline.update({
+            where: { id: request.pipelineId },
+            data: {
+              nodeSelector:
+                Object.keys(ns).length > 0 ? ns : Prisma.DbNull,
+            },
+          });
+        }
+
         return result;
       } catch (err) {
         await prisma.deployRequest.updateMany({
