@@ -365,12 +365,13 @@ export const pipelineRouter = router({
           (arr) => new Set(arr).size === arr.length,
           { message: "Duplicate tags are not allowed" },
         ).optional(),
+        enrichMetadata: z.boolean().optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.updated", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
-      const { id, tags, ...data } = input;
+      const { id, tags, enrichMetadata, ...data } = input;
       const existing = await prisma.pipeline.findUnique({
         where: { id },
         select: { id: true, tags: true, environment: { select: { teamId: true } } },
@@ -411,6 +412,7 @@ export const pipelineRouter = router({
         data: {
           ...data,
           ...(tags !== undefined ? { tags } : {}),
+          ...(enrichMetadata !== undefined ? { enrichMetadata } : {}),
           updatedById: ctx.session.user?.id,
         },
       });
