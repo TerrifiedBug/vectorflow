@@ -70,16 +70,30 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
   );
   const availableTags = availableTagsQuery.data ?? [];
 
-  // Mutation to update pipeline tags
+  // Mutation to update pipeline tags (optimistic updates prevent stale-state races)
+  const pipelineQueryKey = trpc.pipeline.get.queryKey({ id: pipelineId! });
   const updateTagsMutation = useMutation(
     trpc.pipeline.update.mutationOptions({
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId! }) });
-        queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
-        toast.success("Tags updated");
+      onMutate: async (variables) => {
+        await queryClient.cancelQueries({ queryKey: pipelineQueryKey });
+        const previous = queryClient.getQueryData(pipelineQueryKey);
+        queryClient.setQueryData(pipelineQueryKey, (old: typeof pipeline) =>
+          old ? { ...old, tags: (variables.tags ?? old.tags) } : old,
+        );
+        return { previous };
       },
-      onError: (error) => {
+      onError: (error, _variables, context) => {
+        if (context?.previous) {
+          queryClient.setQueryData(pipelineQueryKey, context.previous);
+        }
         toast.error(error.message || "Failed to update tags");
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: pipelineQueryKey });
+        queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
+      },
+      onSuccess: () => {
+        toast.success("Tags updated");
       },
     }),
   );

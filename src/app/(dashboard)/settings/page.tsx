@@ -1168,15 +1168,27 @@ function TeamSettings() {
     ),
   );
   const availableTags = availableTagsQuery.data ?? [];
+  const tagsQueryKey = trpc.team.getAvailableTags.queryKey({ teamId: selectedTeamId! });
 
   const updateTagsMutation = useMutation(
     trpc.team.updateAvailableTags.mutationOptions({
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: trpc.team.getAvailableTags.queryKey() });
-        toast.success("Tags updated");
+      onMutate: async (variables) => {
+        await queryClient.cancelQueries({ queryKey: tagsQueryKey });
+        const previous = queryClient.getQueryData(tagsQueryKey);
+        queryClient.setQueryData(tagsQueryKey, variables.tags);
+        return { previous };
       },
-      onError: (error) => {
+      onError: (error, _variables, context) => {
+        if (context?.previous !== undefined) {
+          queryClient.setQueryData(tagsQueryKey, context.previous);
+        }
         toast.error(error.message || "Failed to update tags");
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: tagsQueryKey });
+      },
+      onSuccess: () => {
+        toast.success("Tags updated");
       },
     }),
   );
@@ -1189,11 +1201,10 @@ function TeamSettings() {
       toast.error("Tag already exists");
       return;
     }
+    setNewTag("");
     updateTagsMutation.mutate({
       teamId: selectedTeamId,
       tags: [...availableTags, trimmed],
-    }, {
-      onSuccess: () => setNewTag(""),
     });
   };
 
