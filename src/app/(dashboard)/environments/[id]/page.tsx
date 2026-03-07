@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowLeft, Copy, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, Pencil, Trash2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { copyToClipboard } from "@/lib/utils";
@@ -52,6 +52,7 @@ import { SecretsSection } from "@/components/environment/secrets-section";
 import { CertificatesSection } from "@/components/environment/certificates-section";
 import { GitSyncSection } from "@/components/environment/git-sync-section";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
+import { useTeamStore } from "@/stores/team-store";
 
 export default function EnvironmentDetailPage({
   params,
@@ -66,6 +67,14 @@ export default function EnvironmentDetailPage({
   const envQuery = useQuery(trpc.environment.get.queryOptions({ id }));
   const env = envQuery.data;
 
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const roleQuery = useQuery({
+    ...trpc.team.teamRole.queryOptions({ teamId: selectedTeamId! }),
+    enabled: !!selectedTeamId,
+  });
+  const userRole = roleQuery.data?.role;
+  const isAdmin = userRole === "ADMIN";
+
   const [editing, setEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editName, setEditName] = useState("");
@@ -76,7 +85,6 @@ export default function EnvironmentDetailPage({
     mountPath: "secret/data/vectorflow",
     role: "",
   });
-  const [editRequireApproval, setEditRequireApproval] = useState(false);
   const [enrollmentToken, setEnrollmentToken] = useState<string | null>(null);
 
   const updateMutation = useMutation(
@@ -123,7 +131,6 @@ export default function EnvironmentDetailPage({
   function startEditing() {
     if (!env) return;
     setEditName(env.name);
-    setEditRequireApproval(env.requireDeployApproval ?? false);
     setEditSecretBackend(env.secretBackend ?? "BUILTIN");
     const vaultCfg = (env.secretBackendConfig as Record<string, string>) ?? {};
     setEditVaultConfig({
@@ -139,7 +146,6 @@ export default function EnvironmentDetailPage({
     updateMutation.mutate({
       id,
       name: editName,
-      requireDeployApproval: editRequireApproval,
       secretBackend: editSecretBackend,
       ...(editSecretBackend === "VAULT" ? {
         secretBackendConfig: editVaultConfig,
@@ -238,19 +244,6 @@ export default function EnvironmentDetailPage({
                 onChange={(e) => setEditName(e.target.value)}
               />
             </div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div className="space-y-0.5">
-                <Label htmlFor="require-approval">Require approval for deploys</Label>
-                <p className="text-xs text-muted-foreground">
-                  When enabled, editors must request admin approval before deploying pipelines.
-                </p>
-              </div>
-              <Switch
-                id="require-approval"
-                checked={editRequireApproval}
-                onCheckedChange={setEditRequireApproval}
-              />
-            </div>
             <div className="flex gap-2">
               <Button onClick={handleSave} disabled={updateMutation.isPending}>
                 {updateMutation.isPending ? "Saving..." : "Save"}
@@ -274,11 +267,6 @@ export default function EnvironmentDetailPage({
             <p className="text-xs text-muted-foreground">
               {env.hasEnrollmentToken ? "Enrollment token configured" : "No enrollment token"}
             </p>
-            {env.requireDeployApproval && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">
-                Deploy approval required
-              </p>
-            )}
           </CardContent>
         </Card>
         <Card>
@@ -294,6 +282,41 @@ export default function EnvironmentDetailPage({
           </CardHeader>
         </Card>
       </div>
+
+      {/* Deploy Settings */}
+      <>
+        <Separator />
+        <h3 className="text-lg font-semibold">Deploy Settings</h3>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                  <Label htmlFor="require-approval-toggle" className="text-sm font-medium">
+                    Require approval for deploys
+                  </Label>
+                </div>
+                <p className="text-xs text-muted-foreground ml-6">
+                  When enabled, editors must request admin approval before deploying pipelines.
+                  {!isAdmin && " Only admins can change this setting."}
+                </p>
+              </div>
+              <Switch
+                id="require-approval-toggle"
+                checked={env.requireDeployApproval ?? false}
+                disabled={!isAdmin}
+                onCheckedChange={(checked) => {
+                  updateMutation.mutate({ id, requireDeployApproval: checked }, {
+                    onSuccess: () => toast.success(checked ? "Deploy approval enabled" : "Deploy approval disabled"),
+                    onError: (err) => toast.error(err.message),
+                  });
+                }}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </>
 
       {/* Nodes Table */}
       <Card>
