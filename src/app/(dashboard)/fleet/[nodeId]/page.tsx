@@ -134,7 +134,7 @@ export default function NodeDetailPage() {
   const maintenanceMutation = useMutation(
     trpc.fleet.setMaintenanceMode.mutationOptions({
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: trpc.fleet.get.queryKey() });
+        queryClient.invalidateQueries({ queryKey: trpc.fleet.get.queryKey({ id: params.nodeId }) });
       },
     }),
   );
