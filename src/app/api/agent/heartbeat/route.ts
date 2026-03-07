@@ -169,13 +169,14 @@ export async function POST(request: Request) {
 
     // Merge agent-reported labels with existing UI-set labels.
     // UI-set labels take precedence over agent-reported labels.
+    // Uses a single atomic operation to avoid TOCTOU race with fleet.updateLabels:
+    // agent labels are the base, existing DB labels override on top.
     if (parsed.data.labels) {
-      const existingLabels = (node.labels as Record<string, string>) ?? {};
-      const mergedLabels = { ...parsed.data.labels, ...existingLabels };
-      await prisma.vectorNode.update({
-        where: { id: node.id },
-        data: { labels: mergedLabels },
-      });
+      await prisma.$executeRaw`
+        UPDATE "VectorNode"
+        SET labels = ${JSON.stringify(parsed.data.labels)}::jsonb || labels
+        WHERE id = ${node.id}
+      `;
     }
 
     // Read previous snapshots BEFORE upserting so we can compute deltas correctly

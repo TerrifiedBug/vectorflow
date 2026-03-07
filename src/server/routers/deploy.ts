@@ -65,6 +65,7 @@ export const deployRouter = router({
         currentVersion: latestVersion?.version ?? null,
         currentLogLevel: latestVersion?.logLevel ?? "info",
         newLogLevel: ((pipeline.globalConfig as Record<string, unknown>)?.log_level as string) ?? "info",
+        nodeSelector: pipeline.nodeSelector as Record<string, string> | null,
       };
     }),
 

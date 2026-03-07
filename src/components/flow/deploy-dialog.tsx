@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
@@ -64,6 +64,16 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     ),
     enabled: open && !!environmentId,
   });
+
+  // Seed selectedLabels from existing pipeline nodeSelector when dialog opens
+  useEffect(() => {
+    if (!open) return;
+    const existing = previewQuery.data?.nodeSelector ?? {};
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelectedLabels(
+      Object.entries(existing).map(([k, v]) => `${k}=${v}`),
+    );
+  }, [open, previewQuery.data?.nodeSelector]);
 
   // Build flat list of "key=value" options from the label map
   const availableLabelOptions = useMemo(() => {
@@ -204,28 +214,38 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                       <CommandList>
                         <CommandEmpty>No labels found.</CommandEmpty>
                         <CommandGroup>
-                          {availableLabelOptions.map((option) => (
-                            <CommandItem
-                              key={option}
-                              value={option}
-                              onSelect={() => {
-                                setSelectedLabels((prev) =>
-                                  prev.includes(option)
-                                    ? prev.filter((l) => l !== option)
-                                    : [...prev, option],
-                                );
-                              }}
-                            >
-                              <Check
-                                className={`mr-2 h-4 w-4 ${
-                                  selectedLabels.includes(option)
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                }`}
-                              />
-                              {option}
-                            </CommandItem>
-                          ))}
+                          {(() => {
+                            const selectedKeys = new Set(selectedLabels.map((l) => l.split("=")[0]));
+                            return availableLabelOptions.map((option) => {
+                              const optionKey = option.split("=")[0];
+                              const isSelected = selectedLabels.includes(option);
+                              const keyAlreadyUsed = selectedKeys.has(optionKey) && !isSelected;
+                              return (
+                                <CommandItem
+                                  key={option}
+                                  value={option}
+                                  disabled={keyAlreadyUsed}
+                                  onSelect={() => {
+                                    if (keyAlreadyUsed) return;
+                                    setSelectedLabels((prev) =>
+                                      prev.includes(option)
+                                        ? prev.filter((l) => l !== option)
+                                        : [...prev, option],
+                                    );
+                                  }}
+                                >
+                                  <Check
+                                    className={`mr-2 h-4 w-4 ${
+                                      isSelected
+                                        ? "opacity-100"
+                                        : "opacity-0"
+                                    }`}
+                                  />
+                                  {option}
+                                </CommandItem>
+                              );
+                            });
+                          })()}
                         </CommandGroup>
                       </CommandList>
                     </Command>
