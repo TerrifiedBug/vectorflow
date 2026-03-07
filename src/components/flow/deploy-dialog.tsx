@@ -3,9 +3,9 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
+import { useTeamStore } from "@/stores/team-store";
 import { toast } from "sonner";
-import { Rocket, CheckCircle, XCircle, Loader2, Radio, ChevronsUpDown, Check, X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Rocket, CheckCircle, XCircle, Loader2, Radio, ChevronsUpDown, Check, X, ShieldCheck, ShieldX, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { ConfigDiff } from "@/components/ui/config-diff";
 
 interface DeployDialogProps {
@@ -45,6 +46,14 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   const [changelog, setChangelog] = useState("");
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [labelPopoverOpen, setLabelPopoverOpen] = useState(false);
+  const [rejectNote, setRejectNote] = useState("");
+
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+
+  const roleQuery = useQuery({
+    ...trpc.team.teamRole.queryOptions({ teamId: selectedTeamId! }),
+    enabled: open && !!selectedTeamId,
+  });
 
   const previewQuery = useQuery({
     ...trpc.deploy.preview.queryOptions({ pipelineId }),
@@ -114,24 +123,37 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
   const totalNodeCount = envQuery.data?.nodes.length ?? 0;
 
+  // Fetch pending deploy requests for this pipeline
+  const pendingRequestsQuery = useQuery({
+    ...trpc.deploy.listPendingRequests.queryOptions({ pipelineId }),
+    enabled: open,
+  });
   const agentMutation = useMutation(
     trpc.deploy.agent.mutationOptions({
       onSuccess: (result) => {
         setDeploying(false);
         queryClient.invalidateQueries();
 
+        if ("pendingApproval" in result && result.pendingApproval) {
+          toast.success("Deploy request submitted", {
+            description: "An admin will review your request.",
+          });
+          onOpenChange(false);
+          return;
+        }
+
         if (!result.success) {
-          const errorMsg = result.validationErrors?.map((e: { message: string }) => e.message).join("; ")
-            || result.error
-            || "Unknown error";
-          toast.error("Deploy failed", { description: errorMsg });
+          const errorMsg = ("validationErrors" in result && result.validationErrors)
+            ? result.validationErrors.map((e: { message: string }) => e.message).join("; ")
+            : ("error" in result ? result.error : "Unknown error");
+          toast.error("Deploy failed", { description: errorMsg as string });
           return;
         }
 
         toast.success("Pipeline published to agents", {
-          description: result.versionNumber ? `Version v${result.versionNumber}` : undefined,
+          description: "versionNumber" in result && result.versionNumber ? `Version v${result.versionNumber}` : undefined,
         });
-        if (result.gitSyncError) {
+        if ("gitSyncError" in result && result.gitSyncError) {
           toast.warning("Pipeline deployed but Git sync failed", {
             description: result.gitSyncError,
             duration: 8000,
@@ -146,10 +168,44 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     })
   );
 
+  const approveMutation = useMutation(
+    trpc.deploy.approveDeployRequest.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries();
+        toast.success("Deploy request approved and deployed");
+        onOpenChange(false);
+      },
+      onError: (err) => {
+        toast.error("Approval failed", { description: err.message });
+      },
+    })
+  );
+
+  const rejectMutation = useMutation(
+    trpc.deploy.rejectDeployRequest.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries();
+        toast.success("Deploy request rejected");
+        setRejectNote("");
+        onOpenChange(false);
+      },
+      onError: (err) => {
+        toast.error("Rejection failed", { description: err.message });
+      },
+    })
+  );
+
   const env = envQuery.data;
   const preview = previewQuery.data;
-  const isLoading = previewQuery.isLoading || envQuery.isLoading;
+  const userRole = roleQuery.data?.role;
+  const isLoading = previewQuery.isLoading || envQuery.isLoading || roleQuery.isLoading;
   const isValid = preview?.validation?.valid ?? false;
+
+  const requiresApproval = env?.requireDeployApproval && userRole === "EDITOR";
+  const pendingRequests = pendingRequestsQuery.data ?? [];
+  const pendingRequest = pendingRequests[0];
+  const isAdmin = userRole === "ADMIN";
+  const isReviewMode = isAdmin && !!pendingRequest;
 
   function handleDeploy() {
     setDeploying(true);
@@ -160,16 +216,42 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     });
   }
 
+  function formatTimeAgo(date: Date | string) {
+    const d = new Date(date);
+    const seconds = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (seconds < 60) return "just now";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  }
+
   return (
-    <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) { setChangelog(""); setSelectedLabels([]); } onOpenChange(val); }}>
+    <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) { setChangelog(""); setSelectedLabels([]); setRejectNote(""); } onOpenChange(val); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Rocket className="h-5 w-5" />
-            Deploy Pipeline
+            {isReviewMode ? (
+              <>
+                <ShieldCheck className="h-5 w-5" />
+                Review Deploy Request
+              </>
+            ) : (
+              <>
+                <Rocket className="h-5 w-5" />
+                {requiresApproval ? "Request Deploy" : "Deploy Pipeline"}
+              </>
+            )}
           </DialogTitle>
           <DialogDescription>
-            Review and deploy to your environment.
+            {isReviewMode
+              ? "Review and approve or reject this deploy request."
+              : requiresApproval
+                ? "This environment requires admin approval for deployments."
+                : "Review and deploy to your environment."
+            }
           </DialogDescription>
         </DialogHeader>
 
@@ -177,12 +259,72 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
+        ) : isReviewMode && pendingRequest ? (
+          /* Review mode for admins */
+          <div className="space-y-4">
+            <div className="rounded-md border p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">{env?.environmentName}</span>
+                <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                  <Clock className="mr-1 h-3 w-3" />
+                  Pending Approval
+                </Badge>
+              </div>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>
+                  Requested by <span className="font-medium text-foreground">{pendingRequest.requestedBy.name ?? pendingRequest.requestedBy.email}</span>
+                  {" "}{formatTimeAgo(pendingRequest.createdAt)}
+                </p>
+                <p>
+                  Reason: <span className="italic">{pendingRequest.changelog}</span>
+                </p>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Config diff for review */}
+            {pendingRequest.configYaml && preview && (
+              <div className="space-y-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {preview.currentConfigYaml ? "Changes" : "Generated Config"}
+                </span>
+                <ConfigDiff
+                  oldConfig={preview.currentConfigYaml ?? ""}
+                  newConfig={pendingRequest.configYaml}
+                  oldLabel={preview.currentVersion != null ? `v${preview.currentVersion}` : "empty"}
+                  newLabel="pending"
+                />
+              </div>
+            )}
+
+            {/* Reject note */}
+            <div className="space-y-1">
+              <label htmlFor="reject-note" className="text-xs font-medium">
+                Rejection note (optional)
+              </label>
+              <Textarea
+                id="reject-note"
+                placeholder="Reason for rejection..."
+                value={rejectNote}
+                onChange={(e) => setRejectNote(e.target.value)}
+                rows={2}
+                className="resize-none text-sm"
+              />
+            </div>
+          </div>
         ) : (
+          /* Normal deploy / request mode */
           <div className="space-y-4">
             {env && (
               <div className="rounded-md border p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">{env.environmentName}</span>
+                  {requiresApproval && (
+                    <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                      Approval required
+                    </Badge>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {env.nodes.length} node{env.nodes.length !== 1 ? "s" : ""} enrolled — agents will pick up changes on next poll
@@ -352,16 +494,46 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleDeploy}
-            disabled={isLoading || !isValid || deploying || !changelog.trim()}
-          >
-            {deploying ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Deploying...</>
-            ) : (
-              <><Radio className="mr-2 h-4 w-4" />Publish to Agents</>
-            )}
-          </Button>
+          {isReviewMode && pendingRequest ? (
+            /* Review mode buttons */
+            <>
+              <Button
+                variant="destructive"
+                onClick={() => rejectMutation.mutate({ requestId: pendingRequest.id, note: rejectNote || undefined })}
+                disabled={rejectMutation.isPending || approveMutation.isPending}
+              >
+                {rejectMutation.isPending ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Rejecting...</>
+                ) : (
+                  <><ShieldX className="mr-2 h-4 w-4" />Reject</>
+                )}
+              </Button>
+              <Button
+                onClick={() => approveMutation.mutate({ requestId: pendingRequest.id })}
+                disabled={rejectMutation.isPending || approveMutation.isPending}
+              >
+                {approveMutation.isPending ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Approving...</>
+                ) : (
+                  <><ShieldCheck className="mr-2 h-4 w-4" />Approve & Deploy</>
+                )}
+              </Button>
+            </>
+          ) : (
+            /* Normal deploy / request button */
+            <Button
+              onClick={handleDeploy}
+              disabled={isLoading || !isValid || deploying || !changelog.trim()}
+            >
+              {deploying ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{requiresApproval ? "Requesting..." : "Deploying..."}</>
+              ) : requiresApproval ? (
+                <><Clock className="mr-2 h-4 w-4" />Request Deploy</>
+              ) : (
+                <><Radio className="mr-2 h-4 w-4" />Publish to Agents</>
+              )}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
