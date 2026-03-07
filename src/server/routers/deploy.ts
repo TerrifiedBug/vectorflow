@@ -265,14 +265,22 @@ export const deployRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Cannot approve your own deploy request" });
       }
 
-      // Update request status
-      await prisma.deployRequest.update({
-        where: { id: input.requestId },
+      // Atomically claim the request — prevents double-approval race condition
+      const updated = await prisma.deployRequest.updateMany({
+        where: { id: input.requestId, status: "PENDING" },
         data: { status: "APPROVED", reviewedById: ctx.session.user.id, reviewedAt: new Date() },
       });
+      if (updated.count === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Request is no longer pending" });
+      }
 
-      // Actually deploy
-      const result = await deployAgent(request.pipelineId, request.requestedById, request.changelog);
+      // Deploy the reviewed YAML snapshot — NOT the current pipeline state
+      const result = await deployAgent(
+        request.pipelineId,
+        request.requestedById,
+        request.changelog,
+        request.configYaml,
+      );
 
       return result;
     }),
@@ -303,6 +311,7 @@ export const deployRouter = router({
   cancelDeployRequest: protectedProcedure
     .input(z.object({ requestId: z.string() }))
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("deploy.cancel_request", "DeployRequest"))
     .mutation(async ({ input, ctx }) => {
       const request = await prisma.deployRequest.findUnique({ where: { id: input.requestId } });
       if (!request || request.status !== "PENDING" || request.requestedById !== ctx.session.user.id) {
