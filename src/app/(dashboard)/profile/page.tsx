@@ -10,6 +10,7 @@ import { Loader2, AlertTriangle, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -18,12 +19,21 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { TotpSetupCard } from "@/components/totp-setup-card";
+import { useTeamStore } from "@/stores/team-store";
 
 export default function ProfilePage() {
   const trpc = useTRPC();
   const router = useRouter();
   const { data: me } = useQuery(trpc.user.me.queryOptions());
   const isLocalUser = me?.authMethod !== "OIDC";
+
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const roleQuery = useQuery(
+    trpc.team.teamRole.queryOptions(
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId },
+    ),
+  );
 
   // --- Personal Info ---
   const [name, setName] = useState("");
@@ -138,6 +148,26 @@ export default function ProfilePage() {
                 <Input value={me?.name ?? ""} disabled className="bg-muted" />
               </div>
             )}
+            {/* Role */}
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <div className="flex items-center gap-2">
+                {roleQuery.data ? (
+                  <>
+                    <Badge variant="secondary">
+                      {roleQuery.data.role}
+                    </Badge>
+                    {roleQuery.data.isSuperAdmin && (
+                      <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-400">
+                        Super Admin
+                      </Badge>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-sm text-muted-foreground">—</span>
+                )}
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
