@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiRoute } from "../_lib/api-handler";
-import { encrypt, decrypt } from "@/server/services/crypto";
+import { encrypt } from "@/server/services/crypto";
 
 export const GET = apiRoute("secrets.read", async (_req, ctx) => {
   const secrets = await prisma.secret.findMany({
