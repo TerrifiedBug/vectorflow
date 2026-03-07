@@ -43,22 +43,17 @@ async function getCpuUsage(nodeId: string): Promise<number | null> {
     where: { nodeId },
     orderBy: { timestamp: "desc" },
     take: 2,
-    select: { cpuSecondsTotal: true, timestamp: true },
+    select: { cpuSecondsTotal: true, cpuSecondsIdle: true },
   });
 
   if (rows.length < 2) return null;
 
   const [newer, older] = rows;
-  const dtSeconds =
-    (newer.timestamp.getTime() - older.timestamp.getTime()) / 1000;
-  if (dtSeconds <= 0) return null;
+  const totalDelta = newer.cpuSecondsTotal - older.cpuSecondsTotal;
+  if (totalDelta <= 0) return null; // counter reset or no change
 
-  // cpuSecondsTotal is cumulative; the delta / wall-clock-delta gives
-  // fraction of one core used. Multiply by 100 for a percentage.
-  const cpuDelta = newer.cpuSecondsTotal - older.cpuSecondsTotal;
-  if (cpuDelta < 0) return null; // counter reset
-
-  return (cpuDelta / dtSeconds) * 100;
+  const idleDelta = newer.cpuSecondsIdle - older.cpuSecondsIdle;
+  return Math.max(0, Math.min(100, ((totalDelta - idleDelta) / totalDelta) * 100));
 }
 
 /** Compute memory usage percentage from the latest NodeMetric row. */
