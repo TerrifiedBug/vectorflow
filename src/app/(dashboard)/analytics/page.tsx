@@ -88,9 +88,8 @@ export default function AnalyticsPage() {
   const bytesOutTrend = trendPercent(totalBytesOut, prevBytesOut);
 
   // Chart data
-  const timeSeries = data?.timeSeries;
-  const chartData = timeSeries
-    ? timeSeries.map((ts) => ({
+  const chartData = data?.timeSeries
+    ? data.timeSeries.map((ts) => ({
         t: new Date(ts.bucket).getTime(),
         bytesIn: ts.bytesIn,
         bytesOut: ts.bytesOut,
@@ -103,10 +102,9 @@ export default function AnalyticsPage() {
   };
 
   // Per-pipeline table with sorting
-  const perPipeline = data?.perPipeline;
   const sortedPipelines = (() => {
-    if (!perPipeline) return [];
-    const rows: PipelineRow[] = perPipeline.map((p: Omit<PipelineRow, "reduction">) => ({
+    if (!data?.perPipeline) return [];
+    const rows: PipelineRow[] = data.perPipeline.map((p: Omit<PipelineRow, "reduction">) => ({
       ...p,
       reduction: p.bytesIn > 0 ? (1 - p.bytesOut / p.bytesIn) * 100 : 0,
     }));
