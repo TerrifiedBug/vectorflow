@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { NodeMetricsData } from "@/stores/flow-store";
@@ -160,9 +160,8 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   );
 
   // Lightweight check for recent errors (for toolbar badge) — 24h window
-  const errorCheckSince = useMemo(
+  const [errorCheckSince] = useState(
     () => new Date(Date.now() - 24 * 60 * 60 * 1000),
-    [],
   );
   const recentErrorsQuery = useQuery(
     trpc.pipeline.logs.queryOptions(
