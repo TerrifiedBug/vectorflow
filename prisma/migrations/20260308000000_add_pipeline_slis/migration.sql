@@ -13,6 +13,9 @@ CREATE TABLE "PipelineSli" (
 );
 
 -- CreateIndex
+CREATE UNIQUE INDEX "PipelineSli_pipelineId_metric_key" ON "PipelineSli"("pipelineId", "metric");
+
+-- CreateIndex
 CREATE INDEX "PipelineSli_pipelineId_idx" ON "PipelineSli"("pipelineId");
 
 -- AddForeignKey

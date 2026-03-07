@@ -270,6 +270,7 @@ model PipelineSli {
   enabled       Boolean  @default(true)
   createdAt     DateTime @default(now())
 
+  @@unique([pipelineId, metric])
   @@index([pipelineId])
 }
 

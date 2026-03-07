@@ -1025,23 +1025,19 @@ export const pipelineRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.sli_upserted", "Pipeline"))
     .mutation(async ({ input }) => {
-      const existing = await prisma.pipelineSli.findFirst({
-        where: { pipelineId: input.pipelineId, metric: input.metric },
-      });
-
-      if (existing) {
-        return prisma.pipelineSli.update({
-          where: { id: existing.id },
-          data: {
-            condition: input.condition,
-            threshold: input.threshold,
-            windowMinutes: input.windowMinutes,
+      return prisma.pipelineSli.upsert({
+        where: {
+          pipelineId_metric: {
+            pipelineId: input.pipelineId,
+            metric: input.metric,
           },
-        });
-      }
-
-      return prisma.pipelineSli.create({
-        data: {
+        },
+        update: {
+          condition: input.condition,
+          threshold: input.threshold,
+          windowMinutes: input.windowMinutes,
+        },
+        create: {
           pipelineId: input.pipelineId,
           metric: input.metric,
           condition: input.condition,
@@ -1052,14 +1048,14 @@ export const pipelineRouter = router({
     }),
 
   deleteSli: protectedProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.string(), pipelineId: z.string() }))
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.sli_deleted", "Pipeline"))
     .mutation(async ({ input }) => {
       const sli = await prisma.pipelineSli.findUnique({
         where: { id: input.id },
       });
-      if (!sli) {
+      if (!sli || sli.pipelineId !== input.pipelineId) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "SLI not found",

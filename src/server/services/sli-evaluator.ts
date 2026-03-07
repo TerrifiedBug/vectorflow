@@ -24,11 +24,15 @@ export async function evaluatePipelineHealth(pipelineId: string): Promise<{
 
   for (const sli of sliDefs) {
     const since = new Date(Date.now() - sli.windowMinutes * 60_000);
-    const metrics = await prisma.pipelineMetric.findMany({
+
+    // Use aggregate to avoid transferring all metric rows to the application
+    const agg = await prisma.pipelineMetric.aggregate({
       where: { pipelineId, timestamp: { gte: since } },
+      _sum: { eventsIn: true, errorsTotal: true, eventsDiscarded: true },
+      _count: true,
     });
 
-    if (metrics.length === 0) {
+    if (agg._count === 0) {
       results.push({
         metric: sli.metric,
         status: "breached",
@@ -40,25 +44,16 @@ export async function evaluatePipelineHealth(pipelineId: string): Promise<{
     }
 
     let value: number;
-    const totalEventsIn = metrics.reduce(
-      (s, m) => s + Number(m.eventsIn ?? 0),
-      0,
-    );
+    const totalEventsIn = Number(agg._sum.eventsIn ?? 0);
 
     switch (sli.metric) {
       case "error_rate": {
-        const totalErrors = metrics.reduce(
-          (s, m) => s + Number(m.errorsTotal ?? 0),
-          0,
-        );
+        const totalErrors = Number(agg._sum.errorsTotal ?? 0);
         value = totalEventsIn > 0 ? totalErrors / totalEventsIn : 0;
         break;
       }
       case "discard_rate": {
-        const totalDiscarded = metrics.reduce(
-          (s, m) => s + Number(m.eventsDiscarded ?? 0),
-          0,
-        );
+        const totalDiscarded = Number(agg._sum.eventsDiscarded ?? 0);
         value = totalEventsIn > 0 ? totalDiscarded / totalEventsIn : 0;
         break;
       }
