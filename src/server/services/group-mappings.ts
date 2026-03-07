@@ -70,17 +70,3 @@ export async function applyMappedMemberships(
   }
 }
 
-/**
- * Remove team memberships for a user based on group mappings.
- */
-export async function removeMappedMemberships(
-  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
-  userId: string,
-  groupMappings: GroupMapping[],
-): Promise<void> {
-  for (const mapping of groupMappings) {
-    await tx.teamMember.deleteMany({
-      where: { userId, teamId: mapping.teamId },
-    });
-  }
-}

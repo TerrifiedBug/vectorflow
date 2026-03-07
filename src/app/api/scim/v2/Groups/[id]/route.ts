@@ -6,7 +6,6 @@ import {
   loadGroupMappings,
   getMappingsForGroup,
   applyMappedMemberships,
-  removeMappedMemberships,
 } from "@/server/services/group-mappings";
 
 function scimError(detail: string, status: number) {
@@ -68,11 +67,20 @@ export async function PATCH(
     const body = await req.json();
     const operations = body.Operations ?? body.operations ?? [];
     const allMappings = await loadGroupMappings();
-    const groupMappings = getMappingsForGroup(allMappings, group.displayName);
+    let groupMappings = getMappingsForGroup(allMappings, group.displayName);
 
     await prisma.$transaction(async (tx) => {
       for (const op of operations) {
         const operation = op.op?.toLowerCase();
+
+        if (operation === "replace" && op.path === "displayName" && typeof op.value === "string") {
+          await tx.scimGroup.update({
+            where: { id },
+            data: { displayName: op.value },
+          });
+          // Re-resolve mappings so subsequent member ops use the new name
+          groupMappings = getMappingsForGroup(allMappings, op.value);
+        }
 
         if (operation === "add" && op.path === "members") {
           const members = Array.isArray(op.value) ? op.value : [op.value];
@@ -85,31 +93,10 @@ export async function PATCH(
           }
         }
 
-        if (operation === "remove" && op.path) {
-          // Parse path like 'members[value eq "userId"]'
-          const memberMatch = (op.path as string).match(
-            /^members\[value eq "([^"]+)"\]$/,
-          );
-          if (memberMatch) {
-            await removeMappedMemberships(tx, memberMatch[1], groupMappings);
-          }
-
-          // Handle value-array form: { op: "remove", path: "members", value: [...] }
-          if (op.path === "members" && Array.isArray(op.value)) {
-            for (const member of op.value as Array<{ value?: unknown }>) {
-              if (typeof member.value === "string") {
-                await removeMappedMemberships(tx, member.value, groupMappings);
-              }
-            }
-          }
-        }
-
-        if (operation === "replace" && op.path === "displayName" && typeof op.value === "string") {
-          await tx.scimGroup.update({
-            where: { id },
-            data: { displayName: op.value },
-          });
-        }
+        // Member remove is intentionally a no-op. Without tracking which
+        // group granted each TeamMember, removing here would silently
+        // revoke access still legitimately granted by other groups, OIDC,
+        // or manual assignment. Memberships reconcile on next OIDC login.
       }
     });
 
