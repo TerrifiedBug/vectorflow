@@ -31,7 +31,7 @@ interface GitSyncSectionProps {
   gitBranch: string | null;
   hasGitToken: boolean;
   gitOpsMode?: string;
-  gitWebhookSecret?: string | null;
+  hasWebhookSecret?: boolean;
 }
 
 export function GitSyncSection({
@@ -40,7 +40,7 @@ export function GitSyncSection({
   gitBranch,
   hasGitToken,
   gitOpsMode = "off",
-  gitWebhookSecret,
+  hasWebhookSecret = false,
 }: GitSyncSectionProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -51,11 +51,19 @@ export function GitSyncSection({
   const [showToken, setShowToken] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [selectedGitOpsMode, setSelectedGitOpsMode] = useState(gitOpsMode);
+  // The actual webhook secret is only available from the update mutation response
+  const [webhookSecretFromMutation, setWebhookSecretFromMutation] = useState<string | null>(null);
 
   const updateMutation = useMutation(
     trpc.environment.update.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: trpc.environment.get.queryKey({ id: environmentId }) });
+        // Capture the webhook secret from the EDITOR-gated mutation response
+        if (data.gitWebhookSecret) {
+          setWebhookSecretFromMutation(data.gitWebhookSecret);
+        } else {
+          setWebhookSecretFromMutation(null);
+        }
       },
       onError: (err) => toast.error(err.message || "Failed to save Git settings"),
     })
@@ -262,17 +270,17 @@ export function GitSyncSection({
               </div>
             </div>
 
-            {gitWebhookSecret && (
+            {webhookSecretFromMutation && (
               <div className="space-y-2">
                 <Label>Webhook Secret</Label>
                 <div className="flex items-center gap-2">
-                  <Input readOnly value={gitWebhookSecret} className="font-mono text-xs" />
+                  <Input readOnly value={webhookSecretFromMutation} className="font-mono text-xs" />
                   <Button
                     variant="outline"
                     size="icon"
                     aria-label="Copy webhook secret"
                     onClick={async () => {
-                      await copyToClipboard(gitWebhookSecret);
+                      await copyToClipboard(webhookSecretFromMutation);
                       toast.success("Webhook secret copied");
                     }}
                   >
@@ -284,7 +292,12 @@ export function GitSyncSection({
                 </p>
               </div>
             )}
-            {!gitWebhookSecret && (
+            {!webhookSecretFromMutation && hasWebhookSecret && (
+              <p className="text-xs text-muted-foreground">
+                Webhook secret is configured. Save settings again to reveal the secret.
+              </p>
+            )}
+            {!webhookSecretFromMutation && !hasWebhookSecret && (
               <p className="text-xs text-muted-foreground">
                 Save settings to generate a webhook secret.
               </p>

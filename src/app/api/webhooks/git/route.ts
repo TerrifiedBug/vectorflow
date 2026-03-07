@@ -73,33 +73,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "No YAML changes", processed: 0 });
   }
 
-  // 5. For each changed file, fetch content and import
+  // 5. Extract owner/repo and decrypt token once (invariant across files)
+  const repoUrl = matchedEnv.gitRepoUrl ?? "";
+  const repoMatch = repoUrl.match(/github\.com[:/](.+?)(?:\.git)?$/);
+  if (!repoMatch) {
+    return NextResponse.json(
+      { error: "Cannot parse repo URL" },
+      { status: 422 },
+    );
+  }
+  const repoPath = repoMatch[1];
+
+  const token = matchedEnv.gitToken ? decrypt(matchedEnv.gitToken) : null;
+  if (!token) {
+    return NextResponse.json(
+      { error: "No git token configured" },
+      { status: 422 },
+    );
+  }
+
+  // 6. For each changed file, fetch content and import
   const results: Array<{ file: string; status: string; error?: string }> = [];
 
   for (const file of changedFiles) {
     try {
-      // Extract owner/repo from URL
-      const repoUrl = matchedEnv.gitRepoUrl ?? "";
-      const match = repoUrl.match(/github\.com[:/](.+?)(?:\.git)?$/);
-      if (!match) {
-        results.push({
-          file,
-          status: "skipped",
-          error: "Cannot parse repo URL",
-        });
-        continue;
-      }
-      const repoPath = match[1];
-
-      // Decrypt git token
-      const token = matchedEnv.gitToken
-        ? decrypt(matchedEnv.gitToken)
-        : null;
-      if (!token) {
-        results.push({ file, status: "skipped", error: "No git token" });
-        continue;
-      }
-
       const contentRes = await fetch(
         `https://api.github.com/repos/${repoPath}/contents/${file}?ref=${branch}`,
         {

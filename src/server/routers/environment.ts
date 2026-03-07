@@ -38,6 +38,7 @@ export const environmentRouter = router({
 
   get: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const environment = await prisma.environment.findUnique({
         where: { id: input.id },
@@ -59,7 +60,7 @@ export const environmentRouter = router({
         ...safe,
         hasEnrollmentToken: !!enrollmentTokenHash,
         hasGitToken: !!gitToken,
-        gitWebhookSecret: encryptedWebhookSecret ? decrypt(encryptedWebhookSecret) : null,
+        hasWebhookSecret: !!encryptedWebhookSecret,
       };
     }),
 
