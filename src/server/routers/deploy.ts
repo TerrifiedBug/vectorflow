@@ -68,13 +68,32 @@ export const deployRouter = router({
     }),
 
   agent: protectedProcedure
-    .input(z.object({ pipelineId: z.string(), changelog: z.string().min(1) }))
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        changelog: z.string().min(1),
+        nodeSelector: z.record(z.string(), z.string()).optional(),
+      }),
+    )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("deploy.agent", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) {
         throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+
+      // Save nodeSelector to pipeline before deploying
+      if (input.nodeSelector !== undefined) {
+        await prisma.pipeline.update({
+          where: { id: input.pipelineId },
+          data: {
+            nodeSelector:
+              Object.keys(input.nodeSelector).length > 0
+                ? input.nodeSelector
+                : null,
+          },
+        });
       }
 
       return deployAgent(input.pipelineId, userId, input.changelog);
@@ -112,6 +131,7 @@ export const deployRouter = router({
                   host: true,
                   apiPort: true,
                   status: true,
+                  labels: true,
                 },
               },
             },

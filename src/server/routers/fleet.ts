@@ -264,6 +264,43 @@ export const fleetRouter = router({
       });
     }),
 
+  updateLabels: protectedProcedure
+    .input(
+      z.object({
+        nodeId: z.string(),
+        labels: z.record(z.string(), z.string()),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("vectorNode.updated", "VectorNode"))
+    .mutation(async ({ input }) => {
+      return prisma.vectorNode.update({
+        where: { id: input.nodeId },
+        data: { labels: input.labels },
+      });
+    }),
+
+  listLabels: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const nodes = await prisma.vectorNode.findMany({
+        where: { environmentId: input.environmentId },
+        select: { labels: true },
+      });
+      const labelMap: Record<string, Set<string>> = {};
+      for (const node of nodes) {
+        const labels = (node.labels as Record<string, string>) ?? {};
+        for (const [key, value] of Object.entries(labels)) {
+          if (!labelMap[key]) labelMap[key] = new Set();
+          labelMap[key].add(value);
+        }
+      }
+      return Object.fromEntries(
+        Object.entries(labelMap).map(([k, v]) => [k, [...v].sort()]),
+      );
+    }),
+
   setMaintenanceMode: protectedProcedure
     .input(
       z.object({
