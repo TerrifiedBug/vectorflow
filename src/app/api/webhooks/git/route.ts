@@ -172,16 +172,18 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      // Find or create pipeline by name in this environment
-      let pipeline = await prisma.pipeline.findFirst({
-        where: { environmentId: matchedEnv.id, name: pipelineName },
-      });
-
-      if (!pipeline) {
-        pipeline = await prisma.pipeline.create({
+      // Find or create pipeline by name in this environment (atomic)
+      // Use a serializable transaction to prevent concurrent webhooks from
+      // racing and creating duplicate pipelines with the same name.
+      const pipeline = await prisma.$transaction(async (tx) => {
+        const existing = await tx.pipeline.findFirst({
+          where: { environmentId: matchedEnv.id, name: pipelineName },
+        });
+        if (existing) return existing;
+        return tx.pipeline.create({
           data: { name: pipelineName, environmentId: matchedEnv.id },
         });
-      }
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
       // Import config into pipeline graph nodes/edges
       // Only YAML files are collected (see filter above), so format is always "yaml"
