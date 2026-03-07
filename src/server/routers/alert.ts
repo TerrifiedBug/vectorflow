@@ -9,7 +9,7 @@ import {
   type WebhookPayload,
   formatWebhookMessage,
 } from "@/server/services/webhook-delivery";
-import { validatePublicUrl } from "@/server/services/url-validation";
+import { validatePublicUrl, validateSmtpHost } from "@/server/services/url-validation";
 import { getDriver } from "@/server/services/channels";
 
 export const alertRouter = router({
@@ -469,6 +469,11 @@ export const alertRouter = router({
         await validatePublicUrl(url);
       }
 
+      if (input.type === "email") {
+        const smtpHost = input.config.smtpHost as string | undefined;
+        if (smtpHost) await validateSmtpHost(smtpHost);
+      }
+
       return prisma.notificationChannel.create({
         data: {
           environmentId: input.environmentId,
@@ -511,6 +516,22 @@ export const alertRouter = router({
         if (existing.type === "webhook") {
           const url = config.url as string | undefined;
           if (url) await validatePublicUrl(url);
+        }
+        if (existing.type === "email") {
+          const smtpHost = config.smtpHost as string | undefined;
+          if (smtpHost) await validateSmtpHost(smtpHost);
+        }
+
+        // Preserve sensitive fields that the client cannot see (redacted in listChannels).
+        // When editing, the form sends empty strings for secrets it didn't change.
+        const existingCfg = (existing.config ?? {}) as Record<string, unknown>;
+        const PRESERVE_IF_ABSENT = ["smtpPass", "integrationKey", "hmacSecret"] as const;
+        for (const field of PRESERVE_IF_ABSENT) {
+          if (!(field in config) || config[field] === "" || config[field] === undefined) {
+            if (field in existingCfg) {
+              (config as Record<string, unknown>)[field] = existingCfg[field];
+            }
+          }
         }
       }
 
