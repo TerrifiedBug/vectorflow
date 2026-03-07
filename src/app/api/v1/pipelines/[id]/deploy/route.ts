@@ -39,7 +39,7 @@ export const POST = apiRoute(
 
     const result = await deployAgent(
       pipeline.id,
-      ctx.serviceAccountId,
+      `sa:${ctx.serviceAccountId}`,
       changelog,
     );
 

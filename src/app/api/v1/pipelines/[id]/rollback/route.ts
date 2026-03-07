@@ -47,7 +47,7 @@ export const POST = apiRoute(
     const version = await rollback(
       pipeline.id,
       body.targetVersionId,
-      ctx.serviceAccountId,
+      `sa:${ctx.serviceAccountId}`,
     );
 
     writeAuditLog({
