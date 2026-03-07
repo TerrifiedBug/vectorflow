@@ -67,7 +67,7 @@ export const teamRouter = router({
         where: { id: input.id },
         include: {
           members: {
-            include: { user: { select: { id: true, name: true, email: true, image: true, authMethod: true, totpEnabled: true, lockedAt: true } } },
+            include: { user: { select: { id: true, name: true, email: true, image: true, authMethod: true, totpEnabled: true, lockedAt: true, scimExternalId: true } } },
           },
           _count: { select: { environments: true } },
         },

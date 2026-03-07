@@ -1363,26 +1363,37 @@ function TeamSettings() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Select
-                      value={member.role}
-                      disabled={updateRoleMutation.isPending}
-                      onValueChange={(role: "VIEWER" | "EDITOR" | "ADMIN") => {
-                        updateRoleMutation.mutate({
-                          teamId: team.id,
-                          userId: member.user.id,
-                          role,
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="w-[120px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="VIEWER">Viewer</SelectItem>
-                        <SelectItem value="EDITOR">Editor</SelectItem>
-                        <SelectItem value="ADMIN">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {(member.user.authMethod === "OIDC" || member.user.scimExternalId) ? (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="w-[120px] justify-center">
+                          {member.role}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground" title="Role managed by identity provider">
+                          <Lock className="h-3 w-3" />
+                        </span>
+                      </div>
+                    ) : (
+                      <Select
+                        value={member.role}
+                        disabled={updateRoleMutation.isPending}
+                        onValueChange={(role: "VIEWER" | "EDITOR" | "ADMIN") => {
+                          updateRoleMutation.mutate({
+                            teamId: team.id,
+                            userId: member.user.id,
+                            role,
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="w-[120px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="VIEWER">Viewer</SelectItem>
+                          <SelectItem value="EDITOR">Editor</SelectItem>
+                          <SelectItem value="ADMIN">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                   </TableCell>
                   <TableCell>
                     {member.user.totpEnabled ? (
