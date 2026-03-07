@@ -166,17 +166,6 @@ export const pipelineRouter = router({
           }
         }
 
-        // Evaluate pipeline health for deployed pipelines
-        let healthStatus: "healthy" | "degraded" | "no_data" = "no_data";
-        if (!p.isDraft && p.deployedAt) {
-          try {
-            const health = await evaluatePipelineHealth(p.id);
-            healthStatus = health.status;
-          } catch {
-            healthStatus = "no_data";
-          }
-        }
-
         return {
           id: p.id,
           name: p.name,
@@ -189,7 +178,7 @@ export const pipelineRouter = router({
           updatedBy: p.updatedBy,
           nodeStatuses: p.nodeStatuses,
           hasUndeployedChanges,
-          healthStatus,
+          healthStatus: null as "healthy" | "degraded" | "no_data" | null,
         };
       }));
 
