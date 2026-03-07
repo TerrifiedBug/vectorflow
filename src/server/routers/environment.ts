@@ -104,6 +104,7 @@ export const environmentRouter = router({
         gitBranch: z.string().min(1).max(100).optional().nullable(),
         gitToken: z.string().optional().nullable(),
         gitOpsMode: z.enum(["off", "push", "bidirectional"]).optional(),
+        requireDeployApproval: z.boolean().optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))

@@ -85,6 +85,77 @@ export const deployRouter = router({
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
+      // Check if approval is required for this environment
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        include: {
+          environment: { select: { id: true, requireDeployApproval: true } },
+          nodes: true,
+          edges: true,
+        },
+      });
+
+      if (!pipeline) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+
+      const userRole = (ctx as Record<string, unknown>).userRole as string;
+
+      // When approval is required AND user is EDITOR (not ADMIN/SUPER_ADMIN),
+      // create a deploy request instead of deploying directly
+      if (pipeline.environment.requireDeployApproval && userRole === "EDITOR") {
+        // Generate the config YAML to store with the request
+        const flowNodes = pipeline.nodes.map((n) => ({
+          id: n.id,
+          type: n.kind.toLowerCase(),
+          position: { x: n.positionX, y: n.positionY },
+          data: {
+            componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
+            componentKey: n.componentKey,
+            config: decryptNodeConfig(n.componentType, (n.config as Record<string, unknown>) ?? {}),
+            disabled: n.disabled,
+          },
+        }));
+
+        const flowEdges = pipeline.edges.map((e) => ({
+          id: e.id,
+          source: e.sourceNodeId,
+          target: e.targetNodeId,
+          ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
+        }));
+
+        const configYaml = generateVectorYaml(
+          flowNodes as Parameters<typeof generateVectorYaml>[0],
+          flowEdges as Parameters<typeof generateVectorYaml>[1],
+          pipeline.globalConfig as Record<string, unknown> | null,
+        );
+
+        const validation = validateConfig(configYaml);
+        if (!validation.valid) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Invalid pipeline configuration: " + (validation.errors?.join(", ") ?? "unknown error"),
+          });
+        }
+
+        const request = await prisma.deployRequest.create({
+          data: {
+            pipelineId: input.pipelineId,
+            environmentId: pipeline.environment.id,
+            requestedById: userId,
+            configYaml,
+            changelog: input.changelog,
+            nodeSelector: input.nodeSelector ?? undefined,
+          },
+        });
+
+        return {
+          success: true,
+          pendingApproval: true,
+          requestId: request.id,
+        };
+      }
+
       const result = await deployAgent(input.pipelineId, userId, input.changelog);
 
       // Only persist nodeSelector if the deploy actually succeeded
@@ -153,7 +224,96 @@ export const deployRouter = router({
       return {
         environmentId: pipeline.environment.id,
         environmentName: pipeline.environment.name,
+        requireDeployApproval: pipeline.environment.requireDeployApproval,
         nodes: pipeline.environment.nodes,
       };
+    }),
+
+  listPendingRequests: protectedProcedure
+    .input(z.object({
+      environmentId: z.string().optional(),
+      pipelineId: z.string().optional(),
+    }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const where: Record<string, unknown> = { status: "PENDING" };
+      if (input.environmentId) where.environmentId = input.environmentId;
+      if (input.pipelineId) where.pipelineId = input.pipelineId;
+      return prisma.deployRequest.findMany({
+        where,
+        include: {
+          requestedBy: { select: { name: true, email: true } },
+          pipeline: { select: { name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    }),
+
+  approveDeployRequest: protectedProcedure
+    .input(z.object({ requestId: z.string() }))
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("deployRequest.approved", "DeployRequest"))
+    .mutation(async ({ input, ctx }) => {
+      const request = await prisma.deployRequest.findUnique({
+        where: { id: input.requestId },
+        include: { pipeline: true },
+      });
+      if (!request || request.status !== "PENDING") {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Deploy request not found or not pending" });
+      }
+      if (request.requestedById === ctx.session.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot approve your own deploy request" });
+      }
+
+      // Update request status
+      await prisma.deployRequest.update({
+        where: { id: input.requestId },
+        data: { status: "APPROVED", reviewedById: ctx.session.user.id, reviewedAt: new Date() },
+      });
+
+      // Actually deploy
+      const result = await deployAgent(request.pipelineId, request.requestedById, request.changelog);
+
+      return result;
+    }),
+
+  rejectDeployRequest: protectedProcedure
+    .input(z.object({ requestId: z.string(), note: z.string().optional() }))
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("deployRequest.rejected", "DeployRequest"))
+    .mutation(async ({ input, ctx }) => {
+      const request = await prisma.deployRequest.findUnique({ where: { id: input.requestId } });
+      if (!request || request.status !== "PENDING") {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Deploy request not found or not pending" });
+      }
+
+      await prisma.deployRequest.update({
+        where: { id: input.requestId },
+        data: {
+          status: "REJECTED",
+          reviewedById: ctx.session.user.id,
+          reviewNote: input.note,
+          reviewedAt: new Date(),
+        },
+      });
+
+      return { rejected: true };
+    }),
+
+  cancelDeployRequest: protectedProcedure
+    .input(z.object({ requestId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .mutation(async ({ input, ctx }) => {
+      const request = await prisma.deployRequest.findUnique({ where: { id: input.requestId } });
+      if (!request || request.status !== "PENDING" || request.requestedById !== ctx.session.user.id) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      await prisma.deployRequest.update({
+        where: { id: input.requestId },
+        data: { status: "CANCELLED" },
+      });
+
+      return { cancelled: true };
     }),
 });
