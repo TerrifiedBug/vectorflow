@@ -16,6 +16,7 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
   const trpc = useTRPC();
   const [requestId, setRequestId] = useState<string | null>(null);
   const [events, setEvents] = useState<Array<{ data: unknown; expanded: boolean }>>([]);
+  const [hasExpired, setHasExpired] = useState(false);
 
   // Track which requestId we've already processed to avoid double-processing
   const processedRequestRef = useRef<string | null>(null);
@@ -26,11 +27,19 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
     setPrevComponentKey(componentKey);
     setEvents([]);
     setRequestId(null);
+    setHasExpired(false);
   }
 
   const processResults = useCallback((data: { status: string; samples?: Array<{ componentKey: string; events: unknown }> }) => {
     if (!requestId || processedRequestRef.current === requestId) return;
-    if (data.status !== "COMPLETED" || !data.samples) return;
+    if (data.status !== "COMPLETED" || !data.samples) {
+      if (data.status === "EXPIRED") {
+        setHasExpired(true);
+        processedRequestRef.current = requestId;
+        setRequestId(null); // allow clean re-sample
+      }
+      return;
+    }
 
     const newEvents = data.samples
       .filter((s) => s.componentKey === componentKey)
@@ -75,6 +84,7 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
   const handleSample = useCallback(() => {
     processedRequestRef.current = null;
     setRequestId(null);
+    setHasExpired(false);
     requestMutation.mutate({
       pipelineId,
       componentKeys: [componentKey],
@@ -123,7 +133,13 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
         </div>
       )}
 
-      {events.length === 0 && !isPending && (
+      {hasExpired && events.length === 0 && !isPending && (
+        <div className="rounded-md bg-muted p-2 text-xs text-muted-foreground">
+          Sampling timed out — no events were captured. Try again or check that the component is receiving data.
+        </div>
+      )}
+
+      {events.length === 0 && !isPending && !hasExpired && (
         <div className="text-center text-sm text-muted-foreground py-6">
           Click &quot;Sample 10 Events&quot; to see data flowing through this component.
         </div>

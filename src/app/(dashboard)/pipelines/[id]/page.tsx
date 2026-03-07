@@ -429,7 +429,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         </div>
         <DetailPanel
           pipelineId={pipelineId}
-          isDeployed={!pipelineQuery.data?.isDraft && !!pipelineQuery.data?.deployedAt}
+          isDeployed={!!isDeployed}
         />
       </div>
       {metricsOpen && (
