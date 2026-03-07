@@ -57,7 +57,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 4. Find changed YAML files
+  // 4. Find changed YAML files scoped to this environment's directory prefix
+  const envSlug = matchedEnv.name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
   const commits = (payload.commits ?? []) as Array<{
     added?: string[];
     modified?: string[];
@@ -65,7 +66,12 @@ export async function POST(req: NextRequest) {
   const changedFiles = new Set<string>();
   for (const commit of commits) {
     for (const f of [...(commit.added ?? []), ...(commit.modified ?? [])]) {
-      if (f.endsWith(".yaml") || f.endsWith(".yml")) changedFiles.add(f);
+      if (
+        (f.endsWith(".yaml") || f.endsWith(".yml")) &&
+        f.startsWith(`${envSlug}/`)
+      ) {
+        changedFiles.add(f);
+      }
     }
   }
 
@@ -212,21 +218,25 @@ export async function POST(req: NextRequest) {
         });
       });
 
-      // Write audit log for the import
-      await writeAuditLog({
-        userId: null,
-        action: "gitops.pipeline.imported",
-        entityType: "Pipeline",
-        entityId: pipeline.id,
-        environmentId: matchedEnv.id,
-        teamId: matchedEnv.teamId,
-        metadata: {
-          file,
-          branch,
-          commitRef: payload.after ?? null,
-          pusher: payload.pusher?.name ?? null,
-        },
-      });
+      // Write audit log for the import — failures must not mask a successful transaction
+      try {
+        await writeAuditLog({
+          userId: null,
+          action: "gitops.pipeline.imported",
+          entityType: "Pipeline",
+          entityId: pipeline.id,
+          environmentId: matchedEnv.id,
+          teamId: matchedEnv.teamId,
+          metadata: {
+            file,
+            branch,
+            commitRef: payload.after ?? null,
+            pusher: payload.pusher?.name ?? null,
+          },
+        });
+      } catch (auditErr) {
+        console.error("Failed to write audit log for gitops import:", auditErr);
+      }
 
       results.push({ file, status: "imported" });
     } catch (err) {
