@@ -253,27 +253,30 @@ export const fleetRouter = router({
         });
       }
 
-      let { targetVersion, checksum } = input;
       const { downloadUrl } = input;
+      let { targetVersion, checksum } = input;
 
       // Dev releases are rolling — the binary at the download URL may have been
       // replaced since the UI cached the version/checksum. Force-refresh to get
       // the current release data and avoid checksum mismatch on the agent.
       if (targetVersion.startsWith("dev-")) {
         const fresh = await checkDevAgentVersion(true);
-        if (fresh.latestVersion && fresh.latestVersion !== targetVersion) {
-          const binaryName = downloadUrl.split("/").pop() ?? "vf-agent-linux-amd64";
-          const freshChecksum = fresh.checksums[binaryName];
-          if (!freshChecksum) {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message:
-                "Dev release has been updated but fresh checksum could not be retrieved. Please retry.",
-            });
-          }
-          targetVersion = fresh.latestVersion;
-          checksum = `sha256:${freshChecksum}`;
+        if (!fresh.latestVersion) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Unable to fetch current dev release info — retry the update",
+          });
         }
+        const binaryName = downloadUrl.split("/").pop() ?? "vf-agent-linux-amd64";
+        const freshChecksum = fresh.checksums[binaryName];
+        if (!freshChecksum) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to retrieve fresh checksum for ${binaryName} — retry the update`,
+          });
+        }
+        targetVersion = fresh.latestVersion;
+        checksum = `sha256:${freshChecksum}`;
       }
 
       return prisma.vectorNode.update({
