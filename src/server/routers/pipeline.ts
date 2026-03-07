@@ -384,7 +384,10 @@ export const pipelineRouter = router({
           where: { id: existing.environment.teamId },
           select: { availableTags: true },
         });
-        const availableTags = (team?.availableTags as string[]) ?? [];
+        if (!team) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Team not found" });
+        }
+        const availableTags = (team.availableTags as string[]) ?? [];
         const invalid = tags.filter((t) => !availableTags.includes(t));
         if (invalid.length > 0) {
           throw new TRPCError({

@@ -1192,8 +1192,9 @@ function TeamSettings() {
     updateTagsMutation.mutate({
       teamId: selectedTeamId,
       tags: [...availableTags, trimmed],
+    }, {
+      onSuccess: () => setNewTag(""),
     });
-    setNewTag("");
   };
 
   const handleRemoveTag = (tag: string) => {

@@ -344,7 +344,10 @@ export const teamRouter = router({
   updateAvailableTags: protectedProcedure
     .input(z.object({
       teamId: z.string(),
-      tags: z.array(z.string().min(1).max(30)),
+      tags: z.array(z.string().min(1).max(30)).refine(
+        (arr) => new Set(arr).size === arr.length,
+        { message: "Duplicate tags are not allowed" },
+      ),
     }))
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.updated", "Team"))
