@@ -165,39 +165,19 @@ export async function PUT(
         });
       }
 
-      // Sync members through mappings
+      // Additive-only member sync through mappings. We cannot remove members
+      // here because we don't track which group granted each membership —
+      // removing would silently deprovision users from other groups, OIDC, or
+      // manual assignment that share the same mapped team.
       if (body.members && Array.isArray(body.members) && groupMappings.length > 0) {
         const memberUserIds = body.members
           .map((m: { value?: unknown }) => m.value)
           .filter((v: unknown): v is string => typeof v === "string");
 
-        for (const mapping of groupMappings) {
-          // Remove members not in the new list
-          const currentMembers = await tx.teamMember.findMany({
-            where: { teamId: mapping.teamId },
-            select: { userId: true },
-          });
-          for (const cm of currentMembers) {
-            if (!memberUserIds.includes(cm.userId)) {
-              await tx.teamMember.deleteMany({
-                where: { userId: cm.userId, teamId: mapping.teamId },
-              });
-            }
-          }
-
-          // Add/update members from the new list
-          for (const userId of memberUserIds) {
-            const user = await tx.user.findUnique({ where: { id: userId } });
-            if (!user) continue;
-            const existing = await tx.teamMember.findUnique({
-              where: { userId_teamId: { userId, teamId: mapping.teamId } },
-            });
-            if (!existing) {
-              await tx.teamMember.create({
-                data: { userId, teamId: mapping.teamId, role: mapping.role },
-              });
-            }
-          }
+        for (const userId of memberUserIds) {
+          const user = await tx.user.findUnique({ where: { id: userId } });
+          if (!user) continue;
+          await applyMappedMemberships(tx, userId, groupMappings);
         }
       }
     });
@@ -241,15 +221,9 @@ export async function DELETE(
     return scimError("Group not found", 404);
   }
 
-  // Remove mapped team memberships
-  const allMappings = await loadGroupMappings();
-  const groupMappings = getMappingsForGroup(allMappings, group.displayName);
-  if (groupMappings.length > 0) {
-    for (const mapping of groupMappings) {
-      await prisma.teamMember.deleteMany({ where: { teamId: mapping.teamId } });
-    }
-  }
-
+  // Don't cascade to TeamMembers — we cannot determine which members were
+  // granted by this specific group vs other groups, OIDC login, or manual
+  // assignment. Memberships are corrected on next OIDC login or SCIM sync.
   await prisma.scimGroup.delete({ where: { id } });
 
   await writeAuditLog({

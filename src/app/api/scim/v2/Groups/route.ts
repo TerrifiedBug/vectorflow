@@ -92,8 +92,9 @@ export async function POST(req: NextRequest) {
     });
 
     if (existing) {
+      let adopted = existing;
       if (body.externalId && body.externalId !== existing.externalId) {
-        await prisma.scimGroup.update({
+        adopted = await prisma.scimGroup.update({
           where: { id: existing.id },
           data: { externalId: body.externalId },
         });
@@ -103,11 +104,11 @@ export async function POST(req: NextRequest) {
         userId: null,
         action: "scim.group_adopted",
         entityType: "ScimGroup",
-        entityId: existing.id,
+        entityId: adopted.id,
         metadata: { displayName },
       });
 
-      return NextResponse.json(toScimGroupResponse(existing), { status: 200 });
+      return NextResponse.json(toScimGroupResponse(adopted), { status: 200 });
     }
 
     const group = await prisma.scimGroup.create({
