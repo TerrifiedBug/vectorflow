@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { Prisma } from "@/generated/prisma";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { deployAgent, undeployAgent } from "@/server/services/deploy-agent";
@@ -91,7 +92,7 @@ export const deployRouter = router({
             nodeSelector:
               Object.keys(input.nodeSelector).length > 0
                 ? input.nodeSelector
-                : null,
+                : Prisma.DbNull,
           },
         });
       }
