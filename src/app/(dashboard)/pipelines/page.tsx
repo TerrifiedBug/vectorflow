@@ -99,7 +99,23 @@ function PipelineHealthBadge({ pipelineId }: { pipelineId: string }) {
     ),
   );
   const status = healthQuery.data?.status ?? null;
-  if (!status || status === "no_data") return null;
+  const hasSlis = (healthQuery.data?.slis?.length ?? 0) > 0;
+
+  if (!status) return null;
+
+  if (status === "no_data" && hasSlis) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-block h-2 w-2 rounded-full bg-gray-400" />
+        </TooltipTrigger>
+        <TooltipContent>No Data — SLIs configured but no traffic yet</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  if (status === "no_data") return null;
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
