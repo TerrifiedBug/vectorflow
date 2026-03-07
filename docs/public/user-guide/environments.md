@@ -89,6 +89,38 @@ You can copy a pipeline from one environment to another using the **Promote to..
 Secrets and certificates are stripped during promotion. After promoting a pipeline, configure the appropriate secrets in the target environment before deploying.
 {% endhint %}
 
+## Deploy approval
+
+Environments can require **admin approval** before pipelines are deployed. This is useful for production environments where you want a second pair of eyes on every configuration change.
+
+### Enabling approval
+
+{% stepper %}
+{% step %}
+### Open environment settings
+Navigate to **Environments**, click the environment name, and click **Edit**.
+{% endstep %}
+{% step %}
+### Enable the toggle
+Turn on **Require approval for deploys**.
+{% endstep %}
+{% step %}
+### Save
+Click **Save** to apply the change.
+{% endstep %}
+{% endstepper %}
+
+When enabled:
+- Users with the **Editor** role will see a **Request Deploy** button instead of **Publish to Agents** in the deploy dialog. Their deploy requests are queued for review.
+- Users with the **Admin** role can deploy directly (no approval needed) and can review, approve, or reject pending requests from other users.
+- A **Pending Approval** badge appears on the pipeline list and in the pipeline editor toolbar while a request is outstanding.
+
+{% hint style="info" %}
+An admin cannot approve their own deploy request. This ensures a genuine four-eyes review process.
+{% endhint %}
+
+For more details on how the approval workflow operates, see [Pipelines -- Deploy approval workflows](pipelines.md#deploy-approval-workflows).
+
 ## Editing and deleting environments
 
 - **Edit** -- Click the **Edit** button on the environment detail page to rename the environment or change its secret backend configuration.
