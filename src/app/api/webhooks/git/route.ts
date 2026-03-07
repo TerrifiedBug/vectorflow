@@ -46,9 +46,26 @@ export async function POST(req: NextRequest) {
   }
 
   // 3. Parse GitHub push event
-  const payload = JSON.parse(body);
-  const ref: string | undefined = payload.ref; // "refs/heads/main"
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON payload" },
+      { status: 400 },
+    );
+  }
+  const ref: string | undefined = payload.ref as string | undefined; // "refs/heads/main"
   const branch = ref?.replace("refs/heads/", "");
+
+  // Sanitize branch — only allow alphanumeric, slashes, dashes, dots, underscores
+  const BRANCH_RE = /^[a-zA-Z0-9\/_.-]+$/;
+  if (!branch || !BRANCH_RE.test(branch)) {
+    return NextResponse.json(
+      { error: "Invalid branch ref" },
+      { status: 400 },
+    );
+  }
 
   if (branch !== (matchedEnv.gitBranch ?? "main")) {
     return NextResponse.json(
@@ -90,6 +107,15 @@ export async function POST(req: NextRequest) {
   }
   const repoPath = repoMatch[1];
 
+  // Validate repoPath is a safe owner/repo format (no path traversal or encoded chars)
+  const REPO_PATH_RE = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
+  if (!REPO_PATH_RE.test(repoPath)) {
+    return NextResponse.json(
+      { error: "Invalid repository path" },
+      { status: 422 },
+    );
+  }
+
   const token = matchedEnv.gitToken ? decrypt(matchedEnv.gitToken) : null;
   if (!token) {
     return NextResponse.json(
@@ -103,8 +129,16 @@ export async function POST(req: NextRequest) {
 
   for (const file of changedFiles) {
     try {
+      // Sanitize file path — reject traversal sequences and non-printable chars
+      if (file.includes("..") || file.startsWith("/") || /[^\x20-\x7E]/.test(file)) {
+        results.push({ file, status: "skipped", error: "Invalid file path" });
+        continue;
+      }
+
+      // Build the URL safely with encoded path components
+      const encodedFile = file.split("/").map(encodeURIComponent).join("/");
       const contentRes = await fetch(
-        `https://api.github.com/repos/${repoPath}/contents/${file}?ref=${branch}`,
+        `https://api.github.com/repos/${repoPath}/contents/${encodedFile}?ref=${encodeURIComponent(branch)}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -230,8 +264,8 @@ export async function POST(req: NextRequest) {
           metadata: {
             file,
             branch,
-            commitRef: payload.after ?? null,
-            pusher: payload.pusher?.name ?? null,
+            commitRef: (payload.after as string) ?? null,
+            pusher: (payload.pusher as { name?: string } | undefined)?.name ?? null,
           },
         });
       } catch (auditErr) {
