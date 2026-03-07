@@ -58,6 +58,53 @@ export async function validatePublicUrl(url: string): Promise<void> {
   }
 }
 
+/**
+ * SSRF protection for SMTP hosts: validates that a hostname resolves to a
+ * public IP address. Same private-IP logic as `validatePublicUrl` but accepts
+ * a bare hostname instead of a full URL.
+ */
+export async function validateSmtpHost(host: string): Promise<void> {
+  // Strip brackets from IPv6 literal
+  const bare = host.replace(/^\[/, "").replace(/\]$/, "");
+
+  // Check if the host is already an IP literal
+  if (isPrivateIP(bare)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "SMTP host resolves to a private or reserved IP address",
+    });
+  }
+
+  // Resolve hostname to IP addresses
+  try {
+    const addresses = await dns.resolve4(host).catch(() => [] as string[]);
+    const addresses6 = await dns.resolve6(host).catch(() => [] as string[]);
+    const all = [...addresses, ...addresses6];
+
+    if (all.length === 0) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Could not resolve SMTP hostname",
+      });
+    }
+
+    for (const ip of all) {
+      if (isPrivateIP(ip)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "SMTP host resolves to a private or reserved IP address",
+        });
+      }
+    }
+  } catch (err) {
+    if (err instanceof TRPCError) throw err;
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Could not resolve SMTP hostname",
+    });
+  }
+}
+
 function isPrivateIP(ip: string): boolean {
   // IPv4 private/reserved ranges
   if (/^127\./.test(ip)) return true; // loopback
