@@ -4,10 +4,11 @@ The **Alerts** page lets you configure rules that monitor your pipelines and nod
 
 ## Overview
 
-The Alerts page is organized into three sections:
+The Alerts page is organized into four sections:
 
 - **Alert Rules** -- Define the conditions that trigger alerts.
-- **Webhooks** -- Configure HTTP endpoints that receive notifications when alerts fire or resolve.
+- **Notification Channels** -- Configure where alert notifications are delivered (Slack, Email, PagerDuty, or Webhook).
+- **Legacy Webhooks** -- Existing HTTP webhook endpoints (shown only if legacy webhooks exist).
 - **Alert History** -- Browse a chronological log of all alert events.
 
 ## Alert rules
@@ -34,6 +35,7 @@ Fill in the rule form:
 - **Metric** -- The metric to evaluate (see supported metrics below).
 - **Threshold** -- The numeric value that triggers the alert (not required for binary metrics).
 - **Duration** -- How many seconds the condition must persist before firing. Defaults to 60 seconds.
+- **Notification Channels** (optional) -- Select specific channels for this rule. If none are selected, all enabled channels in the environment receive notifications.
 {% endstep %}
 {% step %}
 ### Save
@@ -72,39 +74,155 @@ The duration setting prevents transient spikes from triggering alerts. A 60-seco
 ### Managing rules
 
 - **Enable / Disable** -- Toggle the switch in the rules table to enable or disable a rule without deleting it.
-- **Edit** -- Click the pencil icon to update the rule name, threshold, or duration.
+- **Edit** -- Click the pencil icon to update the rule name, threshold, duration, or linked notification channels.
 - **Delete** -- Click the trash icon to permanently remove the rule and stop future evaluations.
 
-## Webhooks
+## Notification channels
 
-Webhooks deliver alert notifications to external systems via HTTP POST requests. When an alert fires or resolves, VectorFlow sends a JSON payload to all enabled webhooks in the environment.
+Notification channels define where alert notifications are delivered. VectorFlow supports four channel types: **Slack**, **Email**, **PagerDuty**, and **Webhook**. When an alert fires or resolves, notifications are sent to all enabled channels -- or to specific channels linked to the alert rule.
 
-### Adding a webhook
+### Adding a channel
 
 {% stepper %}
 {% step %}
-### Click Add Webhook
-In the Webhooks section, click **Add Webhook**.
+### Click Add Channel
+In the Notification Channels section, click **Add Channel**.
 {% endstep %}
 {% step %}
-### Configure the endpoint
-- **URL** -- The HTTPS endpoint that will receive alert payloads.
-- **Headers** (optional) -- A JSON object of custom headers to include with each request (e.g., `{"Authorization": "Bearer token"}`).
-- **HMAC Secret** (optional) -- If set, each request includes an `X-VectorFlow-Signature` header containing a SHA-256 HMAC of the request body. Use this to verify that payloads originate from VectorFlow.
+### Choose a type
+Select the channel type from the dropdown: Slack, Email, PagerDuty, or Webhook. Each type has its own configuration form.
 {% endstep %}
 {% step %}
-### Test the webhook
-After creating the webhook, click the **send** icon in the webhooks table to deliver a test payload. VectorFlow reports the HTTP status code so you can confirm your endpoint is reachable.
+### Configure the channel
+Fill in the type-specific settings (see setup examples below).
+{% endstep %}
+{% step %}
+### Test the channel
+After creating the channel, click the **send** icon in the channels table to deliver a test payload. VectorFlow reports whether delivery succeeded.
 {% endstep %}
 {% endstepper %}
 
 {% hint style="warning" %}
-Make sure to test your webhook endpoint after creating it. A misconfigured URL or authentication header will silently drop alert notifications.
+Always test your channel after creating it. Misconfigured credentials or URLs will silently drop alert notifications.
+{% endhint %}
+
+### Channel types
+
+{% tabs %}
+{% tab title="Slack" %}
+#### Slack setup
+
+Deliver alerts to a Slack channel using an Incoming Webhook.
+
+**Configuration:**
+
+- **Webhook URL** -- The Slack Incoming Webhook URL (e.g., `https://hooks.slack.com/services/T00.../B00.../xxx`).
+
+**How to get a webhook URL:**
+
+1. Go to [Slack API: Incoming Webhooks](https://api.slack.com/messaging/webhooks).
+2. Create a new app or select an existing one.
+3. Enable Incoming Webhooks and add a new webhook to a channel.
+4. Copy the webhook URL and paste it into VectorFlow.
+
+Alerts are delivered using Slack Block Kit formatting with color-coded status indicators, metric details, and a link to the VectorFlow dashboard.
+{% endtab %}
+
+{% tab title="Email" %}
+#### Email setup
+
+Deliver alerts via SMTP email.
+
+**Configuration:**
+
+- **SMTP Host** -- Your mail server hostname (e.g., `smtp.gmail.com`).
+- **SMTP Port** -- The SMTP port (typically `587` for STARTTLS or `465` for SSL).
+- **SMTP User** (optional) -- Username for SMTP authentication.
+- **SMTP Password** (optional) -- Password for SMTP authentication.
+- **From Address** -- The sender email address.
+- **Recipients** -- Comma-separated list of recipient email addresses.
+
+**Example with Gmail:**
+
+| Setting | Value |
+|---------|-------|
+| SMTP Host | `smtp.gmail.com` |
+| SMTP Port | `587` |
+| SMTP User | `alerts@yourcompany.com` |
+| SMTP Password | App-specific password |
+| From | `alerts@yourcompany.com` |
+| Recipients | `ops@yourcompany.com, oncall@yourcompany.com` |
+
+{% hint style="info" %}
+If your SMTP server does not require authentication, leave the SMTP User and Password fields empty.
+{% endhint %}
+{% endtab %}
+
+{% tab title="PagerDuty" %}
+#### PagerDuty setup
+
+Trigger and resolve PagerDuty incidents using the Events API v2.
+
+**Configuration:**
+
+- **Integration Key** -- The routing key from your PagerDuty service integration.
+
+**How to get an integration key:**
+
+1. In PagerDuty, go to **Services** and select (or create) a service.
+2. Under **Integrations**, add a new integration of type **Events API v2**.
+3. Copy the **Integration Key** and paste it into VectorFlow.
+
+**Behavior:**
+
+- **Firing** alerts create a `trigger` event in PagerDuty.
+- **Resolved** alerts send a `resolve` event, automatically closing the PagerDuty incident.
+- VectorFlow uses the alert event ID as the PagerDuty `dedup_key`, so repeated firings of the same alert update the same incident.
+{% endtab %}
+
+{% tab title="Webhook" %}
+#### Webhook setup
+
+Deliver alerts to any HTTP endpoint via a JSON POST request. This is the most flexible option, suitable for custom integrations, chat platforms, or automation tools.
+
+**Configuration:**
+
+- **URL** -- The HTTPS endpoint that will receive alert payloads.
+- **Headers** (optional) -- A JSON object of custom headers (e.g., `{"Authorization": "Bearer token"}`).
+- **HMAC Secret** (optional) -- If set, each request includes an `X-VectorFlow-Signature` header with a SHA-256 HMAC of the body.
+
+The webhook payload is a JSON object containing all alert details including `alertId`, `status`, `ruleName`, `metric`, `value`, `threshold`, `message`, `timestamp`, and a `dashboardUrl` link.
+{% endtab %}
+{% endtabs %}
+
+### Channel routing
+
+By default, all enabled notification channels in an environment receive every alert. To send specific alerts to specific channels:
+
+1. Edit an alert rule (or create a new one).
+2. In the **Notification Channels** section of the rule form, click the channel badges to select which channels should receive notifications for that rule.
+3. Save the rule.
+
+If no channels are explicitly selected for a rule, all enabled channels are used as a fallback.
+
+### Managing channels
+
+- **Enable / Disable** -- Toggle the switch to pause or resume deliveries without deleting the channel.
+- **Edit** -- Click the pencil icon to update the channel name or configuration.
+- **Test** -- Click the send icon to deliver a test payload.
+- **Delete** -- Click the trash icon to permanently remove the channel.
+
+## Legacy webhooks
+
+If you previously configured webhooks before notification channels were introduced, they continue to work. The **Legacy Webhooks** section appears only when legacy webhooks exist.
+
+{% hint style="info" %}
+Consider migrating legacy webhooks to Notification Channels for a unified configuration experience. Create a new **Webhook** type notification channel with the same URL, headers, and HMAC secret, then delete the legacy webhook.
 {% endhint %}
 
 ### Webhook payload
 
-Each webhook delivery sends a JSON POST body with the following fields:
+Each webhook delivery (both legacy and Webhook-type notification channels) sends a JSON POST body with the following fields:
 
 ```json
 {
@@ -130,15 +248,8 @@ The `content` field contains a pre-formatted, human-readable summary suitable fo
 ### Webhook security
 
 - **HMAC signing** -- When an HMAC secret is configured, VectorFlow computes `sha256=<hex-digest>` over the raw JSON body and includes it in the `X-VectorFlow-Signature` header. Verify this on your server to ensure payload authenticity.
-- **SSRF protection** -- VectorFlow validates that webhook URLs resolve to public IP addresses. Private and reserved IP ranges are blocked.
-- **Timeout** -- Webhook deliveries time out after 10 seconds.
-
-### Managing webhooks
-
-- **Enable / Disable** -- Toggle the switch to pause or resume deliveries without deleting the webhook.
-- **Edit** -- Click the pencil icon to update the URL, headers, or HMAC secret.
-- **Test** -- Click the send icon to deliver a test payload.
-- **Delete** -- Click the trash icon to permanently remove the webhook.
+- **SSRF protection** -- VectorFlow validates that webhook and Slack URLs resolve to public IP addresses. Private and reserved IP ranges are blocked.
+- **Timeout** -- All notification channel deliveries time out after 10 seconds.
 
 ## Alert history
 
@@ -160,5 +271,5 @@ Click **Load more** at the bottom of the table to fetch older events. Events are
 
 An alert event transitions through two states:
 
-- **Firing** -- The rule's condition has been met for the required duration. The alert is active and webhook notifications have been sent.
-- **Resolved** -- The condition is no longer met. The alert closes automatically and a resolution notification is sent to all enabled webhooks.
+- **Firing** -- The rule's condition has been met for the required duration. The alert is active and notifications have been sent to all configured channels.
+- **Resolved** -- The condition is no longer met. The alert closes automatically and a resolution notification is sent to all configured channels.
