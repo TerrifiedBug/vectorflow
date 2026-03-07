@@ -109,6 +109,7 @@ export async function scimCreateUser(scimUser: ScimUser) {
       passwordHash,
       scimExternalId: scimUser.externalId,
       lockedAt: scimUser.active === false ? new Date() : null,
+      lockedBy: scimUser.active === false ? "SCIM" : null,
     },
     select: USER_SELECT,
   });

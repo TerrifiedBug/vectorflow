@@ -39,8 +39,14 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const filter = url.searchParams.get("filter") ?? undefined;
-  const startIndex = parseInt(url.searchParams.get("startIndex") ?? "1");
-  const count = parseInt(url.searchParams.get("count") ?? "100");
+  const startIndexRaw = parseInt(url.searchParams.get("startIndex") ?? "1");
+  const countRaw = parseInt(url.searchParams.get("count") ?? "100");
+  const startIndex =
+    Number.isFinite(startIndexRaw) && startIndexRaw >= 1 ? startIndexRaw : 1;
+  const count =
+    Number.isFinite(countRaw) && countRaw >= 1
+      ? Math.min(countRaw, 1000)
+      : 100;
 
   const where: Record<string, unknown> = {};
   if (filter) {

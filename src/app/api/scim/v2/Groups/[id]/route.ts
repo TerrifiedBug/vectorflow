@@ -83,68 +83,70 @@ export async function PATCH(
     const body = await req.json();
     const operations = body.Operations ?? body.operations ?? [];
 
-    for (const op of operations) {
-      const operation = op.op?.toLowerCase();
+    await prisma.$transaction(async (tx) => {
+      for (const op of operations) {
+        const operation = op.op?.toLowerCase();
 
-      if (operation === "add" && op.path === "members") {
-        // Add members to the group
-        const members = Array.isArray(op.value) ? op.value : [op.value];
-        for (const member of members) {
-          const userId = member.value;
-          if (typeof userId !== "string") continue;
-          // Check if the user exists
-          const user = await prisma.user.findUnique({
-            where: { id: userId },
-          });
-          if (!user) continue;
-
-          // Check if already a member
-          const existing = await prisma.teamMember.findUnique({
-            where: { userId_teamId: { userId, teamId: id } },
-          });
-          if (!existing) {
-            await prisma.teamMember.create({
-              data: {
-                userId,
-                teamId: id,
-                role: "VIEWER", // Default role for SCIM-provisioned members
-              },
+        if (operation === "add" && op.path === "members") {
+          // Add members to the group
+          const members = Array.isArray(op.value) ? op.value : [op.value];
+          for (const member of members) {
+            const userId = member.value;
+            if (typeof userId !== "string") continue;
+            // Check if the user exists
+            const user = await tx.user.findUnique({
+              where: { id: userId },
             });
-          }
-        }
-      }
+            if (!user) continue;
 
-      if (operation === "remove" && op.path) {
-        // Parse path like 'members[value eq "userId"]'
-        const memberMatch = (op.path as string).match(
-          /members\[value\s+eq\s+"(.+?)"\]/,
-        );
-        if (memberMatch) {
-          const userId = memberMatch[1];
-          await prisma.teamMember.deleteMany({
-            where: { userId, teamId: id },
-          });
-        }
-
-        // Handle value-array form: { op: "remove", path: "members", value: [{ value: "userId" }, ...] }
-        if (op.path === "members" && Array.isArray(op.value)) {
-          for (const member of op.value as Array<{ value?: unknown }>) {
-            if (typeof member.value === "string") {
-              await prisma.teamMember.deleteMany({
-                where: { userId: member.value, teamId: id },
+            // Check if already a member
+            const existing = await tx.teamMember.findUnique({
+              where: { userId_teamId: { userId, teamId: id } },
+            });
+            if (!existing) {
+              await tx.teamMember.create({
+                data: {
+                  userId,
+                  teamId: id,
+                  role: "VIEWER", // Default role for SCIM-provisioned members
+                },
               });
             }
           }
         }
-      }
 
-      if (operation === "replace" && op.path === "displayName" && typeof op.value === "string") {
-        await prisma.team.update({
-          where: { id },
-          data: { name: op.value },
-        });
+        if (operation === "remove" && op.path) {
+          // Parse path like 'members[value eq "userId"]'
+          const memberMatch = (op.path as string).match(
+            /members\[value\s+eq\s+"(.+?)"\]/,
+          );
+          if (memberMatch) {
+            const userId = memberMatch[1];
+            await tx.teamMember.deleteMany({
+              where: { userId, teamId: id },
+            });
+          }
+
+          // Handle value-array form: { op: "remove", path: "members", value: [{ value: "userId" }, ...] }
+          if (op.path === "members" && Array.isArray(op.value)) {
+            for (const member of op.value as Array<{ value?: unknown }>) {
+              if (typeof member.value === "string") {
+                await tx.teamMember.deleteMany({
+                  where: { userId: member.value, teamId: id },
+                });
+              }
+            }
+          }
+        }
+
+        if (operation === "replace" && op.path === "displayName" && typeof op.value === "string") {
+          await tx.team.update({
+            where: { id },
+            data: { name: op.value },
+          });
+        }
       }
-    }
+    });
 
     await writeAuditLog({
       userId: null,
