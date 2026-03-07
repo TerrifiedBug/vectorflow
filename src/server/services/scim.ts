@@ -141,7 +141,11 @@ export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
       }
     } else {
       data.lockedAt = new Date();
-      data.lockedBy = "SCIM";
+      // Only claim SCIM ownership if not already locked by another source
+      const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
+      if (!existing?.lockedBy || existing.lockedBy === "SCIM") {
+        data.lockedBy = "SCIM";
+      }
     }
   }
   if (scimUser.externalId) data.scimExternalId = scimUser.externalId;
@@ -191,7 +195,11 @@ export async function scimPatchUser(
         }
       } else {
         data.lockedAt = new Date();
-        data.lockedBy = "SCIM";
+        // Only claim SCIM ownership if not already locked by another source
+        const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
+        if (!existing?.lockedBy || existing.lockedBy === "SCIM") {
+          data.lockedBy = "SCIM";
+        }
       }
     }
     if (opName === "replace" && op.path === "name.formatted" && typeof op.value === "string") {
@@ -216,7 +224,11 @@ export async function scimPatchUser(
           }
         } else {
           data.lockedAt = new Date();
-          data.lockedBy = "SCIM";
+          // Only claim SCIM ownership if not already locked by another source
+          const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
+          if (!existing?.lockedBy || existing.lockedBy === "SCIM") {
+            data.lockedBy = "SCIM";
+          }
         }
       }
       if (typeof val.userName === "string") data.email = val.userName;
@@ -255,9 +267,12 @@ export async function scimPatchUser(
 
 export async function scimDeleteUser(id: string) {
   // Don't actually delete -- lock the account
+  // Only claim SCIM ownership if not already locked by another source
+  const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
+  const lockedBy = (!existing?.lockedBy || existing.lockedBy === "SCIM") ? "SCIM" : existing.lockedBy;
   await prisma.user.update({
     where: { id },
-    data: { lockedAt: new Date(), lockedBy: "SCIM" },
+    data: { lockedAt: new Date(), lockedBy },
   });
 
   await writeAuditLog({
