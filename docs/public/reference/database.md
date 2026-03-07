@@ -125,6 +125,8 @@ Represents an enrolled agent node.
 | `vectorVersion` | `String?` | Reported Vector binary version |
 | `os` | `String?` | Operating system and architecture (e.g., `linux/amd64`) |
 | `deploymentMode` | `DeploymentMode` | `STANDALONE`, `DOCKER`, or `UNKNOWN` |
+| `maintenanceMode` | `Boolean` | Whether the node is in maintenance mode (pipelines are stopped) |
+| `maintenanceModeAt` | `DateTime?` | When the node entered maintenance mode (null if not in maintenance) |
 | `pendingAction` | `Json?` | Server-initiated action (e.g., self-update command) |
 | `createdAt` | `DateTime` | Registration timestamp |
 
@@ -142,6 +144,9 @@ Logical grouping that contains nodes, pipelines, secrets, and certificates.
 | `enrollmentTokenHint` | `String?` | First few characters of the token for display |
 | `secretBackend` | `SecretBackend` | Secret storage: `BUILTIN`, `VAULT`, `AWS_SM`, `EXEC` |
 | `secretBackendConfig` | `Json?` | Configuration for external secret backends |
+| `gitRepoUrl` | `String?` | HTTPS URL of the Git repository for pipeline audit trail |
+| `gitBranch` | `String?` | Git branch to commit pipeline YAML to (default: `main`) |
+| `gitToken` | `String?` | Encrypted access token for Git repository authentication |
 | `createdAt` | `DateTime` | Creation timestamp |
 
 ### PipelineVersion
