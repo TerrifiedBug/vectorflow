@@ -80,3 +80,46 @@ Dashboard data refreshes automatically based on the selected time range:
 | 7 days | 5 minutes |
 
 Pipeline status cards also poll every 15 seconds regardless of the selected time range, so you will see status changes (Running, Stopped, Crashed) promptly.
+
+## Custom dashboard views
+
+You can create personalized dashboard views that display only the panels you care about. Custom views are saved per-user and persist across sessions.
+
+### Creating a view
+
+{% stepper %}
+{% step %}
+### Open the view builder
+Click the **+ New View** button in the tab bar at the top of the dashboard.
+{% endstep %}
+{% step %}
+### Name your view
+Enter a short, descriptive name (up to 50 characters).
+{% endstep %}
+{% step %}
+### Select panels
+Check the panels you want to include. Panels are grouped into three categories:
+
+| Category | Available panels |
+|----------|-----------------|
+| **Pipeline** | Events In/Out, Bytes In/Out, Error Rate, Data Reduction % |
+| **System** | CPU Usage, Memory Usage, Disk I/O, Network I/O |
+| **Summary** | Node Health Summary, Pipeline Health Summary |
+{% endstep %}
+{% step %}
+### Save
+Click **Create**. Your new view will appear as a tab in the tab bar.
+{% endstep %}
+{% endstepper %}
+
+### Switching views
+
+The tab bar at the top of the dashboard shows all your custom views alongside the **Default** view. Click any tab to switch to that view. Each custom view has its own time range picker and filter bar for any chart panels it includes.
+
+### Editing and deleting views
+
+Hover over a custom view tab to reveal the edit and delete icons. Click the pencil icon to update the view name or panel selection, or click the trash icon to remove the view.
+
+{% hint style="info" %}
+Custom views are scoped to your user account. Other team members will not see your custom views, and you will not see theirs.
+{% endhint %}
