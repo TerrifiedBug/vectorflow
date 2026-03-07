@@ -10,6 +10,7 @@ import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
 import { metricStore } from "@/server/services/metric-store";
 import { evaluateAlerts } from "@/server/services/alert-evaluator";
 import { deliverWebhooks } from "@/server/services/webhook-delivery";
+import { deliverToChannels } from "@/server/services/channels";
 import { DeploymentMode } from "@/generated/prisma";
 import { isVersionOlder } from "@/lib/version";
 
@@ -411,7 +412,7 @@ export async function POST(request: Request) {
               })
             : null;
 
-          await deliverWebhooks(alert.rule.environmentId, {
+          const channelPayload = {
             alertId: alert.event.id,
             status: alert.event.status as "firing" | "resolved",
             ruleName: alert.rule.name,
@@ -426,7 +427,19 @@ export async function POST(request: Request) {
             message: alert.event.message ?? "",
             timestamp: alert.event.firedAt.toISOString(),
             dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/alerts`,
-          });
+          };
+
+          // Deliver to legacy webhooks (backward compatibility)
+          await deliverWebhooks(alert.rule.environmentId, channelPayload);
+
+          // Deliver to notification channels
+          deliverToChannels(
+            alert.rule.environmentId,
+            alert.rule.id,
+            channelPayload,
+          ).catch((err) =>
+            console.error("Channel delivery error:", err),
+          );
         }
       }
     } catch (err) {
