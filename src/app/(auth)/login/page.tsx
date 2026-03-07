@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Shield, KeyRound, Loader2 } from "lucide-react";
 import {
   Card,
@@ -17,14 +17,30 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 
+const SSO_ERROR_MESSAGES: Record<string, string> = {
+  local_account: "This email is registered as a local account. Ask an admin to link it to SSO before signing in.",
+  OAuthAccountNotLinked: "This email is already associated with another account. Ask an admin to link it to SSO.",
+  OAuthCallback: "SSO sign-in failed. Please try again or contact your administrator.",
+  AccessDenied: "Access denied. You may not have permission to sign in via SSO.",
+};
+
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [totpRequired, setTotpRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const errorParam = searchParams.get("error");
+    if (errorParam) {
+      setError(SSO_ERROR_MESSAGES[errorParam] ?? "An error occurred during sign-in. Please try again.");
+      window.history.replaceState({}, "", "/login");
+    }
+  }, [searchParams]);
   const [oidcStatus, setOidcStatus] = useState<{
     enabled: boolean;
     displayName: string;
