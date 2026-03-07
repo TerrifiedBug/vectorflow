@@ -397,6 +397,8 @@ model SystemSettings {
   oidcClientSecret            String?
   oidcDisplayName             String? @default("SSO")
   oidcDefaultRole             Role    @default(VIEWER)
+  oidcGroupSyncEnabled        Boolean @default(false)
+  oidcGroupsScope             String? @default("groups")
   oidcGroupsClaim             String? @default("groups")
   oidcAdminGroups             String? // Comma-separated group names → ADMIN role
   oidcEditorGroups            String? // Comma-separated group names → EDITOR role
