@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     // Fetch the node to check for pending actions (e.g., self-update)
     const node = await prisma.vectorNode.findUnique({
       where: { id: agent.nodeId },
-      select: { pendingAction: true, maintenanceMode: true },
+      select: { pendingAction: true, maintenanceMode: true, labels: true },
     });
 
     if (node?.maintenanceMode) {
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     // Agents receive the config snapshot from PipelineVersion — NOT live node/edge
     // data — so that saving in the editor doesn't affect agents until an explicit
     // deploy confirms the change.
-    const pipelines = await prisma.pipeline.findMany({
+    const deployedPipelines = await prisma.pipeline.findMany({
       where: {
         environmentId: agent.environmentId,
         isDraft: false,
@@ -62,12 +62,23 @@ export async function GET(request: Request) {
       select: {
         id: true,
         name: true,
+        nodeSelector: true,
         versions: {
           orderBy: { version: "desc" },
           take: 1,
           select: { version: true, configYaml: true, logLevel: true },
         },
       },
+    });
+
+    // Filter pipelines by nodeSelector matching this node's labels.
+    // Pipelines without a nodeSelector (or empty selector) deploy to all nodes.
+    const nodeLabels = (node?.labels as Record<string, string>) ?? {};
+    const pipelines = deployedPipelines.filter((p) => {
+      const selector = (p.nodeSelector as Record<string, string>) ?? {};
+      return Object.entries(selector).every(
+        ([key, value]) => nodeLabels[key] === value,
+      );
     });
 
     const pipelineConfigs = [];

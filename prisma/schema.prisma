@@ -108,6 +108,7 @@ model VectorNode {
   pendingAction    Json?
   maintenanceMode  Boolean              @default(false)
   maintenanceModeAt DateTime?
+  labels           Json?                @default("{}")
   pipelineStatuses NodePipelineStatus[]
   nodeMetrics      NodeMetric[]
   pipelineLogs     PipelineLog[]
@@ -201,6 +202,7 @@ model Pipeline {
   edges         PipelineEdge[]
   versions      PipelineVersion[]
   globalConfig  Json?
+  nodeSelector  Json?
   isDraft       Boolean              @default(true)
   isSystem      Boolean              @default(false)
   deployedAt    DateTime?
@@ -214,6 +216,7 @@ model Pipeline {
   alertRules      AlertRule[]
   sampleRequests  EventSampleRequest[]
   eventSamples    EventSample[]
+  slis            PipelineSli[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 }
@@ -257,6 +260,21 @@ model PipelineMetric {
 
   @@index([pipelineId, timestamp])
   @@index([timestamp])
+}
+
+model PipelineSli {
+  id            String   @id @default(cuid())
+  pipelineId    String
+  pipeline      Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  metric        String   // "error_rate" | "throughput_floor" | "discard_rate"
+  condition     String   // "lt" | "gt"
+  threshold     Float
+  windowMinutes Int      @default(5)
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@unique([pipelineId, metric])
+  @@index([pipelineId])
 }
 
 model EventSampleRequest {
@@ -398,6 +416,8 @@ model SystemSettings {
   oidcClientSecret            String?
   oidcDisplayName             String? @default("SSO")
   oidcDefaultRole             Role    @default(VIEWER)
+  oidcGroupSyncEnabled        Boolean @default(false)
+  oidcGroupsScope             String? @default("groups")
   oidcGroupsClaim             String? @default("groups")
   oidcAdminGroups             String? // Comma-separated group names → ADMIN role
   oidcEditorGroups            String? // Comma-separated group names → EDITOR role

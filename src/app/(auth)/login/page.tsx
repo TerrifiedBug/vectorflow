@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shield, KeyRound, Loader2 } from "lucide-react";
@@ -25,6 +25,22 @@ const SSO_ERROR_MESSAGES: Record<string, string> = {
 };
 
 export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </CardContent>
+        </Card>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
