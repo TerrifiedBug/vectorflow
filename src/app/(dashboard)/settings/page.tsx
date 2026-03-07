@@ -488,6 +488,8 @@ function AuthSettings() {
   const [teamMappings, setTeamMappings] = useState<Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>>([]);
   const [defaultTeamId, setDefaultTeamId] = useState("");
   const [defaultRole, setDefaultRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
+  const [groupSyncEnabled, setGroupSyncEnabled] = useState(false);
+  const [groupsScope, setGroupsScope] = useState("groups");
   const [groupsClaim, setGroupsClaim] = useState("groups");
 
   const teamsQuery = useQuery(trpc.admin.listTeams.queryOptions());
@@ -496,6 +498,8 @@ function AuthSettings() {
     if (!settings) return;
     if (hasLoadedRef.current && isDirty) return; // Don't overwrite dirty state on refetch
     setDefaultRole((settings.oidcDefaultRole as "VIEWER" | "EDITOR" | "ADMIN") ?? "VIEWER");
+    setGroupSyncEnabled(settings.oidcGroupSyncEnabled ?? false);
+    setGroupsScope(settings.oidcGroupsScope ?? "");
     setGroupsClaim(settings.oidcGroupsClaim ?? "groups");
     setTeamMappings((settings.oidcTeamMappings ?? []) as Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>);
     setDefaultTeamId(settings.oidcDefaultTeamId ?? "");
@@ -706,21 +710,52 @@ function AuthSettings() {
             mappings: teamMappings.filter((m) => m.group && m.teamId),
             defaultTeamId: defaultTeamId || undefined,
             defaultRole,
+            groupSyncEnabled,
+            groupsScope,
             groupsClaim,
           });
         }} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="oidc-groups-claim">Groups Claim</Label>
-            <Input
-              id="oidc-groups-claim"
-              placeholder="groups"
-              value={groupsClaim}
-              onChange={(e) => { setGroupsClaim(e.target.value); }}
-              required
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="oidc-group-sync">Enable Group Sync</Label>
+              <p className="text-xs text-muted-foreground">
+                Request group claims from your OIDC provider and sync team memberships
+              </p>
+            </div>
+            <Switch
+              id="oidc-group-sync"
+              checked={groupSyncEnabled}
+              onCheckedChange={setGroupSyncEnabled}
             />
-            <p className="text-xs text-muted-foreground">
-              The OIDC token claim that contains group names (usually &quot;groups&quot;)
-            </p>
+          </div>
+
+          {groupSyncEnabled && (<>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="oidc-groups-scope">Groups Scope</Label>
+              <Input
+                id="oidc-groups-scope"
+                placeholder="groups"
+                value={groupsScope}
+                onChange={(e) => { setGroupsScope(e.target.value); }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Extra scope to request. Leave empty if your provider includes groups automatically (e.g., Azure AD, Cognito).
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="oidc-groups-claim">Groups Claim</Label>
+              <Input
+                id="oidc-groups-claim"
+                placeholder="groups"
+                value={groupsClaim}
+                onChange={(e) => { setGroupsClaim(e.target.value); }}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Token claim containing group names (e.g., &quot;groups&quot;, &quot;cognito:groups&quot;)
+              </p>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -839,6 +874,7 @@ function AuthSettings() {
             </div>
           </div>
 
+          </>)}
           <Button type="submit" disabled={updateTeamMappingMutation.isPending}>
             {updateTeamMappingMutation.isPending ? (
               <>
