@@ -101,7 +101,12 @@ When a pipeline is deployed, each node displays live throughput metrics directly
 
 Click any node on the canvas to open its configuration in the detail panel on the right.
 
-The panel shows:
+The panel has two tabs:
+
+- **Config** -- The component configuration form (always visible).
+- **Live Tail** -- Sample live events flowing through the component (visible only when the pipeline is deployed). See [Live Tail](#live-tail) below.
+
+The **Config** tab shows:
 
 - **Component name and kind** -- The display name, a badge indicating source/transform/sink, and a delete button.
 - **Component Key** -- A unique identifier for this component within the pipeline (e.g. `traefik_logs`). Must contain only letters, numbers, and underscores.
@@ -158,6 +163,46 @@ Toggle the logs panel from the toolbar to view real-time logs from the running p
 
 {% hint style="info" %}
 The logs panel only shows data for deployed pipelines. Draft pipelines have no running processes to produce logs.
+{% endhint %}
+
+## Live Tail
+
+Live Tail lets you sample real events flowing through any component in a deployed pipeline, directly from the detail panel. This is useful for verifying that data is being ingested, transformed, and routed as expected.
+
+### How to use Live Tail
+
+{% stepper %}
+
+{% step %}
+### Deploy the pipeline
+Live Tail requires a running pipeline. If the pipeline is still a draft, deploy it first using the **Deploy** button in the toolbar.
+{% endstep %}
+
+{% step %}
+### Select a component
+Click any node on the canvas to open the detail panel.
+{% endstep %}
+
+{% step %}
+### Switch to the Live Tail tab
+In the detail panel, click the **Live Tail** tab. This tab only appears for deployed pipelines.
+{% endstep %}
+
+{% step %}
+### Sample events
+Click **Sample 10 Events** to request a batch of live events from the selected component. The panel polls for results and displays them as they arrive.
+{% endstep %}
+
+{% endstepper %}
+
+Each sampled event appears as a collapsed row showing a JSON preview. Click any row to expand it and view the full event payload with formatted JSON.
+
+- Events are shown newest-first, and the panel retains up to 50 events across multiple sampling requests.
+- Each sampling request has a two-minute expiry. If no events are captured within that window, the request expires silently.
+- You can sample from any component type -- sources, transforms, or sinks.
+
+{% hint style="info" %}
+Live Tail uses the agent's event sampling infrastructure. The agent captures a snapshot of events passing through the selected component and returns them on its next heartbeat. There is no persistent stream -- each click of "Sample 10 Events" triggers a new one-shot capture.
 {% endhint %}
 
 ## Pipeline rename
