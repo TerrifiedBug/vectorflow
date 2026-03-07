@@ -26,6 +26,7 @@
 * [Configuration](operations/configuration.md)
 * [Authentication](operations/authentication.md)
 * [Backup &amp; Restore](operations/backup-restore.md)
+* [GitOps](operations/gitops.md)
 * [Security](operations/security.md)
 * [Upgrading](operations/upgrading.md)
 
