@@ -117,6 +117,7 @@ model VectorNode {
   os               String?
   deploymentMode   DeploymentMode       @default(UNKNOWN)
   pendingAction    Json?
+  lastUpdateError  String?
   maintenanceMode  Boolean              @default(false)
   maintenanceModeAt DateTime?
   labels           Json?                @default("{}")
