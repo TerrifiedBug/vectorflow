@@ -103,6 +103,18 @@ export function secretNameToEnvVar(name: string): string {
 }
 
 /**
+ * Walk a config object and collect all SECRET[name] references.
+ * Returns the set of secret names (not env var names) referenced in the config.
+ */
+export function collectSecretRefs(
+  config: Record<string, unknown>,
+): Set<string> {
+  const refs = new Set<string>();
+  collectStringRefs(config, SECRET_REF_PATTERN, refs);
+  return refs;
+}
+
+/**
  * Walk a config object and convert SECRET[name] references to
  * ${VF_SECRET_NAME} env var placeholders for Vector interpolation.
  * Pure string transformation — no DB lookups or decryption.
