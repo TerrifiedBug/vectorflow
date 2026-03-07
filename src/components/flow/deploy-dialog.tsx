@@ -278,7 +278,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
               </div>
               <div className="text-xs text-muted-foreground space-y-1">
                 <p>
-                  Requested by <span className="font-medium text-foreground">{pendingRequest.requestedBy.name ?? pendingRequest.requestedBy.email}</span>
+                  Requested by <span className="font-medium text-foreground">{pendingRequest.requestedBy?.name ?? pendingRequest.requestedBy?.email ?? "Unknown"}</span>
                   {" "}{pendingRequestTimeAgo}
                 </p>
                 <p>

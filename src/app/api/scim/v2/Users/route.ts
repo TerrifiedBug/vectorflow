@@ -43,28 +43,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const user = await scimCreateUser(body);
-    return NextResponse.json(user, { status: 201 });
+    const { user, adopted } = await scimCreateUser(body);
+    // Return 200 for adopted (existing) users, 201 for newly created
+    return NextResponse.json(user, { status: adopted ? 200 : 201 });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to create user";
-    // Handle unique constraint violation (duplicate email or externalId)
-    if (message.includes("Unique constraint")) {
-      let detail = "User already exists";
-      if (message.includes("User_email_key"))
-        detail = "A user with this email already exists";
-      else if (message.includes("User_scimExternalId_key"))
-        detail = "A user with this external ID already exists";
-      return NextResponse.json(
-        {
-          schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
-          detail,
-          status: "409",
-          scimType: "uniqueness",
-        },
-        { status: 409 },
-      );
-    }
     return NextResponse.json(
       {
         schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
