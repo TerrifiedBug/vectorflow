@@ -80,6 +80,51 @@ function reductionColor(pct: number): string {
   return "bg-muted text-muted-foreground";
 }
 
+/** Lazily fetches SLI health for a single deployed pipeline. */
+function PipelineHealthBadge({ pipelineId }: { pipelineId: string }) {
+  const trpc = useTRPC();
+  const healthQuery = useQuery(
+    trpc.pipeline.health.queryOptions(
+      { pipelineId },
+      { refetchInterval: 30_000 },
+    ),
+  );
+
+  const status = healthQuery.data?.status ?? null;
+  const hasSlis = (healthQuery.data?.slis.length ?? 0) > 0;
+
+  if (healthQuery.isLoading) {
+    return <Skeleton className="h-5 w-14" />;
+  }
+
+  if (status === "healthy") {
+    return (
+      <Badge variant="outline" className="bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30">
+        Healthy
+      </Badge>
+    );
+  }
+  if (status === "degraded") {
+    return (
+      <Badge variant="outline" className="bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30">
+        Degraded
+      </Badge>
+    );
+  }
+  if (status === "no_data" && hasSlis) {
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        No Data
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-muted-foreground">
+      No SLIs
+    </Badge>
+  );
+}
+
 export default function PipelinesPage() {
   const trpc = useTRPC();
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
@@ -177,6 +222,7 @@ export default function PipelinesPage() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Health</TableHead>
               <TableHead className="text-right">Events/sec In</TableHead>
               <TableHead className="text-right">Bytes/sec In</TableHead>
               <TableHead className="text-right">Reduction</TableHead>
@@ -217,6 +263,14 @@ export default function PipelinesPage() {
                     </Badge>
                   )}
                   </div>
+                </TableCell>
+                {/* Health */}
+                <TableCell>
+                  {pipeline.isDraft ? (
+                    <span className="text-sm text-muted-foreground">--</span>
+                  ) : (
+                    <PipelineHealthBadge pipelineId={pipeline.id} />
+                  )}
                 </TableCell>
                 {/* Events/sec In */}
                 <TableCell className="text-right font-mono text-sm text-muted-foreground">

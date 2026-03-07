@@ -17,6 +17,7 @@ import { getOrCreateSystemEnvironment } from "@/server/services/system-environme
 import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
 import { stripEnvRefs, type StrippedRef } from "@/server/services/strip-env-refs";
 import { gitSyncDeletePipeline } from "@/server/services/git-sync";
+import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 
 /** Pipeline names must be safe identifiers */
 const pipelineNameSchema = z
@@ -114,7 +115,7 @@ export const pipelineRouter = router({
         orderBy: { updatedAt: "desc" },
       });
 
-      return pipelines.map((p) => {
+      const mapped = await Promise.all(pipelines.map(async (p) => {
         let hasUndeployedChanges = false;
         if (!p.isDraft && p.deployedAt) {
           const latestVersion = p.versions[0];
@@ -178,7 +179,9 @@ export const pipelineRouter = router({
           nodeStatuses: p.nodeStatuses,
           hasUndeployedChanges,
         };
-      });
+      }));
+
+      return mapped;
     }),
 
   get: protectedProcedure
@@ -985,5 +988,76 @@ export const pipelineRouter = router({
       }
 
       return deduplicated;
+    }),
+
+  listSlis: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return prisma.pipelineSli.findMany({
+        where: { pipelineId: input.pipelineId },
+        orderBy: { createdAt: "asc" },
+      });
+    }),
+
+  upsertSli: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        metric: z.enum(["error_rate", "throughput_floor", "discard_rate"]),
+        condition: z.enum(["lt", "gt"]),
+        threshold: z.number().min(0),
+        windowMinutes: z.number().int().min(1).max(1440).default(5),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.sli_upserted", "Pipeline"))
+    .mutation(async ({ input }) => {
+      return prisma.pipelineSli.upsert({
+        where: {
+          pipelineId_metric: {
+            pipelineId: input.pipelineId,
+            metric: input.metric,
+          },
+        },
+        update: {
+          condition: input.condition,
+          threshold: input.threshold,
+          windowMinutes: input.windowMinutes,
+        },
+        create: {
+          pipelineId: input.pipelineId,
+          metric: input.metric,
+          condition: input.condition,
+          threshold: input.threshold,
+          windowMinutes: input.windowMinutes,
+        },
+      });
+    }),
+
+  deleteSli: protectedProcedure
+    .input(z.object({ id: z.string(), pipelineId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.sli_deleted", "Pipeline"))
+    .mutation(async ({ input }) => {
+      const sli = await prisma.pipelineSli.findUnique({
+        where: { id: input.id },
+      });
+      if (!sli || sli.pipelineId !== input.pipelineId) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "SLI not found",
+        });
+      }
+      return prisma.pipelineSli.delete({
+        where: { id: input.id },
+      });
+    }),
+
+  health: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return evaluatePipelineHealth(input.pipelineId);
     }),
 });

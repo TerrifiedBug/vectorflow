@@ -44,7 +44,7 @@ import { cn } from "@/lib/utils";
 import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml, generateVectorToml, importVectorConfig } from "@/lib/config-generator";
 import { useTRPC } from "@/trpc/client";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { VersionHistoryDialog } from "@/components/pipeline/version-history-dialog";
 
 type ProcessStatusValue = "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING";
@@ -113,6 +113,15 @@ export function FlowToolbar({
   const [versionsOpen, setVersionsOpen] = useState(false);
 
   const trpc = useTRPC();
+
+  const healthQuery = useQuery(
+    trpc.pipeline.health.queryOptions(
+      { pipelineId: pipelineId! },
+      { enabled: !!pipelineId && !isDraft && !!deployedAt, refetchInterval: 30_000 },
+    ),
+  );
+  const healthStatus = healthQuery.data?.status ?? null;
+
   const validateMutation = useMutation(trpc.validator.validate.mutationOptions({
     onSuccess: (result) => {
       if (result.valid) {
@@ -359,7 +368,7 @@ export function FlowToolbar({
             <TooltipContent>Pipeline settings</TooltipContent>
           </Tooltip>
           <PopoverContent align="end" className="w-80">
-            <PipelineSettings />
+            <PipelineSettings pipelineId={pipelineId} />
           </PopoverContent>
         </Popover>
 
@@ -386,6 +395,23 @@ export function FlowToolbar({
               {processStatus === "CRASHED" && "Crashed"}
               {processStatus === "PENDING" && "Pending..."}
             </span>
+            {/* Health SLI indicator dot */}
+            {healthStatus === "healthy" && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="h-2 w-2 rounded-full bg-green-500" />
+                </TooltipTrigger>
+                <TooltipContent>All SLIs met</TooltipContent>
+              </Tooltip>
+            )}
+            {healthStatus === "degraded" && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="h-2 w-2 rounded-full bg-yellow-500" />
+                </TooltipTrigger>
+                <TooltipContent>One or more SLIs breached</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         )}
 
