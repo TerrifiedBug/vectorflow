@@ -403,12 +403,11 @@ export const settingsRouter = router({
       // Generate a secure random token
       const token = crypto.randomBytes(32).toString("hex");
 
-      // Store encrypted
+      // Store encrypted — does not enable SCIM; admin must toggle via updateScim
       await prisma.systemSettings.update({
         where: { id: SETTINGS_ID },
         data: {
           scimBearerToken: encrypt(token),
-          scimEnabled: true,
         },
       });
 
