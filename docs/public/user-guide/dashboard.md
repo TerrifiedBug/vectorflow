@@ -81,41 +81,45 @@ Dashboard data refreshes automatically based on the selected time range:
 
 Pipeline status cards also poll every 15 seconds regardless of the selected time range, so you will see status changes (Running, Stopped, Crashed) promptly.
 
-## Data Volume Analytics
+## Custom dashboard views
 
-The **Analytics** page (accessible from the sidebar) provides a dedicated view of data volume across your pipelines. It is designed to help you understand how much data is flowing through your environment and how effectively your pipelines are reducing it over time.
+You can create personalized dashboard views that display only the panels you care about. Custom views are saved per-user and persist across sessions.
 
-### Time range selector
+### Creating a view
 
-At the top of the page, choose from **1h**, **6h**, **1d**, **7d**, or **30d**. The selected window determines the data shown in the KPI cards, chart, and per-pipeline table. It also sets the previous comparison period -- for example, selecting **1d** compares the last 24 hours against the 24 hours before that.
+{% stepper %}
+{% step %}
+### Open the view builder
+Click the **+ New View** button in the tab bar at the top of the dashboard.
+{% endstep %}
+{% step %}
+### Name your view
+Enter a short, descriptive name (up to 50 characters).
+{% endstep %}
+{% step %}
+### Select panels
+Check the panels you want to include. Panels are grouped into three categories:
 
-### KPI cards
+| Category | Available panels |
+|----------|-----------------|
+| **Pipeline** | Events In/Out, Bytes In/Out, Error Rate, Data Reduction % |
+| **System** | CPU Usage, Memory Usage, Disk I/O, Network I/O |
+| **Summary** | Node Health Summary, Pipeline Health Summary |
+{% endstep %}
+{% step %}
+### Save
+Click **Create**. Your new view will appear as a tab in the tab bar.
+{% endstep %}
+{% endstepper %}
 
-Three summary cards appear at the top:
+### Switching views
 
-| Card | What it shows |
-|------|--------------|
-| **Total In** | The total bytes received across all pipelines in the selected period. Includes a trend arrow and percentage change compared to the previous period. |
-| **Total Out** | The total bytes sent by all sinks. Also shows trend vs. the previous period. |
-| **Reduction %** | The data reduction percentage: `(1 - bytesOut / bytesIn) * 100`. Shows the percentage-point change compared to the previous period. Color-coded green (≥50%), amber (20–50%), or red (<20%). |
+The tab bar at the top of the dashboard shows all your custom views alongside the **Default** view. Click any tab to switch to that view. Each custom view has its own time range picker and filter bar for any chart panels it includes.
 
-### Volume over time chart
+### Editing and deleting views
 
-An area chart shows **Bytes In** (blue) and **Bytes Out** (green) over the selected time window. The X-axis adapts its label format to the time range -- times for shorter windows, dates for longer ones. Hover over data points to see exact values.
-
-### Per-pipeline breakdown table
-
-Below the chart, a table lists every pipeline that processed data during the selected period:
-
-| Column | Description |
-|--------|------------|
-| **Pipeline Name** | The name of the pipeline. |
-| **Bytes In** | Total bytes received by that pipeline's sources. |
-| **Bytes Out** | Total bytes sent by that pipeline's sinks. |
-| **Reduction %** | Per-pipeline reduction percentage, shown with a colored bar. Higher reduction values display a longer, greener bar; lower values show shorter, red-tinted bars. |
-
-Click any column header to sort the table by that column. Click again to toggle between ascending and descending order.
+Hover over a custom view tab to reveal the edit and delete icons. Click the pencil icon to update the view name or panel selection, or click the trash icon to remove the view.
 
 {% hint style="info" %}
-The Analytics page auto-refreshes at the same intervals as the dashboard: every 15 seconds for 1h, 60 seconds for 6h, and 120 seconds for longer ranges.
+Custom views are scoped to your user account. Other team members will not see your custom views, and you will not see theirs.
 {% endhint %}
