@@ -70,6 +70,10 @@ const credentialsProvider = Credentials({
     totpCode: { label: "2FA Code", type: "text" },
   },
   async authorize(credentials) {
+    if (process.env.VF_DISABLE_LOCAL_AUTH === "true") {
+      throw new Error("Local authentication is disabled");
+    }
+
     if (!credentials?.email || !credentials?.password) return null;
 
     const ipAddress = await getClientIp();
@@ -395,10 +399,12 @@ export async function signOut(...args: any[]) {
 export async function getOidcStatus(): Promise<{
   enabled: boolean;
   displayName: string;
+  localAuthDisabled: boolean;
 }> {
   const oidc = await getOidcSettings();
   return {
     enabled: !!oidc,
     displayName: oidc?.displayName ?? "SSO",
+    localAuthDisabled: process.env.VF_DISABLE_LOCAL_AUTH === "true",
   };
 }

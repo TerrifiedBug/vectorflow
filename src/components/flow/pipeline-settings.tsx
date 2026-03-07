@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -98,6 +99,18 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
     }),
   );
 
+  const updateEnrichMutation = useMutation(
+    trpc.pipeline.update.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: pipelineQueryKey });
+        toast.success("Metadata enrichment updated");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to update enrichment setting");
+      },
+    }),
+  );
+
   const handleAddTag = (tag: string) => {
     if (!pipelineId || currentTags.includes(tag)) return;
     const newTags = [...currentTags, tag];
@@ -175,6 +188,28 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Metadata Enrichment */}
+      {pipelineId && (
+        <>
+          <Separator />
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>Enrich with VectorFlow metadata</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                Adds <code>.vectorflow.environment</code> and <code>.vectorflow.pipeline_version</code> fields to all events before they reach sinks.
+              </p>
+            </div>
+            <Switch
+              checked={pipeline?.enrichMetadata ?? false}
+              onCheckedChange={(checked) => {
+                if (!pipelineId) return;
+                updateEnrichMutation.mutate({ id: pipelineId, enrichMetadata: checked });
+              }}
+            />
+          </div>
+        </>
+      )}
 
       {/* Classification Tags */}
       {pipelineId && (availableTags.length > 0 || currentTags.length > 0) && (
