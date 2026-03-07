@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
 import { Copy, Trash2, Lock, Info } from "lucide-react";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
@@ -13,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LiveTailPanel } from "@/components/flow/live-tail-panel";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import type { Node, Edge } from "@xyflow/react";
 
@@ -105,9 +106,12 @@ function getUpstreamSources(
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export function DetailPanel() {
-  const params = useParams<{ id: string }>();
-  const pipelineId = params?.id;
+interface DetailPanelProps {
+  pipelineId: string;
+  isDeployed: boolean;
+}
+
+export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
   const selectedNodeIds = useFlowStore((s) => s.selectedNodeIds);
   const copySelectedNodes = useFlowStore((s) => s.copySelectedNodes);
@@ -230,185 +234,204 @@ export function DetailPanel() {
 
   return (
     <div className="flex h-full w-80 shrink-0 flex-col border-l bg-background">
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="space-y-6 p-4">
-          {/* ---- System locked banner ---- */}
-          {isSystemLocked && (
-            <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
-              <Info className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>This source is managed by VectorFlow and cannot be edited.</span>
-            </div>
+      <Tabs defaultValue="config" className="flex min-h-0 flex-1 flex-col">
+        <TabsList variant="line" className="w-full shrink-0 justify-start border-b px-2">
+          <TabsTrigger value="config" className="text-xs">Config</TabsTrigger>
+          {isDeployed && (
+            <TabsTrigger value="live-tail" className="text-xs">Live Tail</TabsTrigger>
           )}
+        </TabsList>
 
-          {/* ---- Header ---- */}
-          <Card className="gap-4 py-4">
-            <CardHeader className="pb-0">
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="truncate text-base">
-                  {componentDef.displayName}
-                </CardTitle>
-                <div className="flex items-center gap-1.5">
-                  <Badge
-                    variant="secondary"
-                    className={kindVariant[componentDef.kind] ?? ""}
-                  >
-                    {componentDef.kind}
-                  </Badge>
-                  {isSystemLocked ? (
-                    <div className="flex h-7 w-7 items-center justify-center text-blue-500">
-                      <Lock className="h-3.5 w-3.5" />
-                    </div>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={handleDelete}
-                      aria-label="Delete component"
+        <TabsContent value="config" className="min-h-0 flex-1 overflow-y-auto">
+          <div className="space-y-6 p-4">
+            {/* ---- System locked banner ---- */}
+            {isSystemLocked && (
+              <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>This source is managed by VectorFlow and cannot be edited.</span>
+              </div>
+            )}
+
+            {/* ---- Header ---- */}
+            <Card className="gap-4 py-4">
+              <CardHeader className="pb-0">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="truncate text-base">
+                    {componentDef.displayName}
+                  </CardTitle>
+                  <div className="flex items-center gap-1.5">
+                    <Badge
+                      variant="secondary"
+                      className={kindVariant[componentDef.kind] ?? ""}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                      {componentDef.kind}
+                    </Badge>
+                    {isSystemLocked ? (
+                      <div className="flex h-7 w-7 items-center justify-center text-blue-500">
+                        <Lock className="h-3.5 w-3.5" />
+                      </div>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={handleDelete}
+                        aria-label="Delete component"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Component Key */}
+                <div className="space-y-2">
+                  <Label htmlFor="component-key">Component Key</Label>
+                  <Input
+                    id="component-key"
+                    value={displayKey}
+                    onChange={(e) => handleKeyChange(e.target.value)}
+                    disabled={isSystemLocked}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Letters, numbers, and underscores only (e.g. traefik_logs)
+                  </p>
+                </div>
+
+                {/* Enabled toggle */}
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="node-enabled">Enabled</Label>
+                  <Switch
+                    id="node-enabled"
+                    checked={!disabled}
+                    onCheckedChange={() => {
+                      if (selectedNodeId) toggleNodeDisabled(selectedNodeId);
+                    }}
+                    disabled={isSystemLocked}
+                  />
+                </div>
+
+                {/* Component Type (read-only) */}
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground">Type</Label>
+                  <p className="text-sm">{componentDef.type}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Separator />
+
+            {/* ---- Configuration ---- */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold">Configuration</h3>
+
+              {isSystemLocked ? (
+                /* Read-only config display for locked nodes */
+                <div className="space-y-3">
+                  {Object.entries(config).map(([key, value]) => (
+                    <div key={key} className="space-y-1">
+                      <Label className="text-muted-foreground">{key}</Label>
+                      <p className="truncate text-sm font-mono">
+                        {typeof value === "object" ? JSON.stringify(value) : String(value ?? "")}
+                      </p>
+                    </div>
+                  ))}
+                  {Object.keys(config).length === 0 && (
+                    <p className="text-sm text-muted-foreground">No configuration</p>
                   )}
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Component Key */}
-              <div className="space-y-2">
-                <Label htmlFor="component-key">Component Key</Label>
-                <Input
-                  id="component-key"
-                  value={displayKey}
-                  onChange={(e) => handleKeyChange(e.target.value)}
-                  disabled={isSystemLocked}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Letters, numbers, and underscores only (e.g. traefik_logs)
-                </p>
-              </div>
-
-              {/* Enabled toggle */}
-              <div className="flex items-center justify-between">
-                <Label htmlFor="node-enabled">Enabled</Label>
-                <Switch
-                  id="node-enabled"
-                  checked={!disabled}
-                  onCheckedChange={() => {
-                    if (selectedNodeId) toggleNodeDisabled(selectedNodeId);
-                  }}
-                  disabled={isSystemLocked}
-                />
-              </div>
-
-              {/* Component Type (read-only) */}
-              <div className="space-y-1">
-                <Label className="text-muted-foreground">Type</Label>
-                <p className="text-sm">{componentDef.type}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Separator />
-
-          {/* ---- Configuration ---- */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold">Configuration</h3>
-
-            {isSystemLocked ? (
-              /* Read-only config display for locked nodes */
-              <div className="space-y-3">
-                {Object.entries(config).map(([key, value]) => (
-                  <div key={key} className="space-y-1">
-                    <Label className="text-muted-foreground">{key}</Label>
-                    <p className="truncate text-sm font-mono">
-                      {typeof value === "object" ? JSON.stringify(value) : String(value ?? "")}
-                    </p>
-                  </div>
-                ))}
-                {Object.keys(config).length === 0 && (
-                  <p className="text-sm text-muted-foreground">No configuration</p>
-                )}
-              </div>
-            ) : (
-              <>
-                {/* VRL Editor for remap source field */}
-                {componentDef.type === "remap" && (
-                  <div className="space-y-2">
-                    <Label>VRL Source</Label>
-                    <VrlEditor
-                      value={(config.source as string) ?? ""}
-                      onChange={(v) => handleConfigChange({ ...config, source: v })}
-                      sourceTypes={upstream.sourceTypes}
-                      pipelineId={pipelineId}
-                      upstreamSourceKeys={upstream.sourceKeys}
-                    />
-                  </div>
-                )}
-
-                {/* VRL Editor for filter condition field */}
-                {componentDef.type === "filter" && (
-                  <div className="space-y-2">
-                    <Label>VRL Condition</Label>
-                    <VrlEditor
-                      value={(config.condition as string) ?? ""}
-                      onChange={(v) => handleConfigChange({ ...config, condition: v })}
-                      sourceTypes={upstream.sourceTypes}
-                      pipelineId={pipelineId}
-                      upstreamSourceKeys={upstream.sourceKeys}
-                    />
-                  </div>
-                )}
-
-                {/* VRL Editors for route conditions */}
-                {componentDef.type === "route" && (
-                  <div className="space-y-3">
-                    <Label>Route Conditions</Label>
-                    {Object.entries(
-                      (config.route as Record<string, string>) ?? {},
-                    ).map(([routeName, condition]) => (
-                      <div key={routeName} className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">
-                          {routeName}
-                        </Label>
-                        <VrlEditor
-                          value={condition ?? ""}
-                          onChange={(v) =>
-                            handleConfigChange({
-                              ...config,
-                              route: {
-                                ...((config.route as Record<string, string>) ?? {}),
-                                [routeName]: v,
-                              },
-                            })
-                          }
-                          height="120px"
-                          sourceTypes={upstream.sourceTypes}
-                          pipelineId={pipelineId}
-                          upstreamSourceKeys={upstream.sourceKeys}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Standard schema form for remaining fields (exclude VRL-managed fields) */}
-                <SchemaForm
-                  schema={filterSchema(
-                    componentDef.configSchema as {
-                      type?: string;
-                      properties?: Record<string, Record<string, unknown>>;
-                      required?: string[];
-                    },
-                    componentDef.type,
+              ) : (
+                <>
+                  {/* VRL Editor for remap source field */}
+                  {componentDef.type === "remap" && (
+                    <div className="space-y-2">
+                      <Label>VRL Source</Label>
+                      <VrlEditor
+                        value={(config.source as string) ?? ""}
+                        onChange={(v) => handleConfigChange({ ...config, source: v })}
+                        sourceTypes={upstream.sourceTypes}
+                        pipelineId={pipelineId}
+                        upstreamSourceKeys={upstream.sourceKeys}
+                      />
+                    </div>
                   )}
-                  values={config}
-                  onChange={handleConfigChange}
-                />
-              </>
-            )}
+
+                  {/* VRL Editor for filter condition field */}
+                  {componentDef.type === "filter" && (
+                    <div className="space-y-2">
+                      <Label>VRL Condition</Label>
+                      <VrlEditor
+                        value={(config.condition as string) ?? ""}
+                        onChange={(v) => handleConfigChange({ ...config, condition: v })}
+                        sourceTypes={upstream.sourceTypes}
+                        pipelineId={pipelineId}
+                        upstreamSourceKeys={upstream.sourceKeys}
+                      />
+                    </div>
+                  )}
+
+                  {/* VRL Editors for route conditions */}
+                  {componentDef.type === "route" && (
+                    <div className="space-y-3">
+                      <Label>Route Conditions</Label>
+                      {Object.entries(
+                        (config.route as Record<string, string>) ?? {},
+                      ).map(([routeName, condition]) => (
+                        <div key={routeName} className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">
+                            {routeName}
+                          </Label>
+                          <VrlEditor
+                            value={condition ?? ""}
+                            onChange={(v) =>
+                              handleConfigChange({
+                                ...config,
+                                route: {
+                                  ...((config.route as Record<string, string>) ?? {}),
+                                  [routeName]: v,
+                                },
+                              })
+                            }
+                            height="120px"
+                            sourceTypes={upstream.sourceTypes}
+                            pipelineId={pipelineId}
+                            upstreamSourceKeys={upstream.sourceKeys}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Standard schema form for remaining fields (exclude VRL-managed fields) */}
+                  <SchemaForm
+                    schema={filterSchema(
+                      componentDef.configSchema as {
+                        type?: string;
+                        properties?: Record<string, Record<string, unknown>>;
+                        required?: string[];
+                      },
+                      componentDef.type,
+                    )}
+                    values={config}
+                    onChange={handleConfigChange}
+                  />
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
+        </TabsContent>
+
+        {isDeployed && (
+          <TabsContent value="live-tail" className="min-h-0 flex-1 overflow-y-auto">
+            <LiveTailPanel
+              pipelineId={pipelineId}
+              componentKey={componentKey}
+              isDeployed={isDeployed}
+            />
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }

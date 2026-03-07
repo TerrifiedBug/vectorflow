@@ -429,7 +429,10 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         <div className="flex-1">
           <FlowCanvas />
         </div>
-        <DetailPanel />
+        <DetailPanel
+          pipelineId={pipelineId}
+          isDeployed={!pipelineQuery.data?.isDraft && !!pipelineQuery.data?.deployedAt}
+        />
       </div>
       {metricsOpen && (
         <div className="shrink-0 border-t">
