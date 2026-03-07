@@ -264,10 +264,15 @@ export const fleetRouter = router({
         if (fresh.latestVersion && fresh.latestVersion !== targetVersion) {
           const binaryName = downloadUrl.split("/").pop() ?? "vf-agent-linux-amd64";
           const freshChecksum = fresh.checksums[binaryName];
-          if (freshChecksum) {
-            targetVersion = fresh.latestVersion;
-            checksum = `sha256:${freshChecksum}`;
+          if (!freshChecksum) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message:
+                "Dev release has been updated but fresh checksum could not be retrieved. Please retry.",
+            });
           }
+          targetVersion = fresh.latestVersion;
+          checksum = `sha256:${freshChecksum}`;
         }
       }
 
