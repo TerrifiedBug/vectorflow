@@ -80,3 +80,42 @@ Dashboard data refreshes automatically based on the selected time range:
 | 7 days | 5 minutes |
 
 Pipeline status cards also poll every 15 seconds regardless of the selected time range, so you will see status changes (Running, Stopped, Crashed) promptly.
+
+## Data Volume Analytics
+
+The **Analytics** page (accessible from the sidebar) provides a dedicated view of data volume across your pipelines. It is designed to help you understand how much data is flowing through your environment and how effectively your pipelines are reducing it over time.
+
+### Time range selector
+
+At the top of the page, choose from **1h**, **6h**, **1d**, **7d**, or **30d**. The selected window determines the data shown in the KPI cards, chart, and per-pipeline table. It also sets the previous comparison period -- for example, selecting **1d** compares the last 24 hours against the 24 hours before that.
+
+### KPI cards
+
+Three summary cards appear at the top:
+
+| Card | What it shows |
+|------|--------------|
+| **Total In** | The total bytes received across all pipelines in the selected period. Includes a trend arrow and percentage change compared to the previous period. |
+| **Total Out** | The total bytes sent by all sinks. Also shows trend vs. the previous period. |
+| **Reduction %** | The data reduction percentage: `(1 - bytesOut / bytesIn) * 100`. Shows the percentage-point change compared to the previous period. Color-coded green (≥50%), amber (20–50%), or red (<20%). |
+
+### Volume over time chart
+
+An area chart shows **Bytes In** (blue) and **Bytes Out** (green) over the selected time window. The X-axis adapts its label format to the time range -- times for shorter windows, dates for longer ones. Hover over data points to see exact values.
+
+### Per-pipeline breakdown table
+
+Below the chart, a table lists every pipeline that processed data during the selected period:
+
+| Column | Description |
+|--------|------------|
+| **Pipeline Name** | The name of the pipeline. |
+| **Bytes In** | Total bytes received by that pipeline's sources. |
+| **Bytes Out** | Total bytes sent by that pipeline's sinks. |
+| **Reduction %** | Per-pipeline reduction percentage, shown with a colored bar. Higher reduction values display a longer, greener bar; lower values show shorter, red-tinted bars. |
+
+Click any column header to sort the table by that column. Click again to toggle between ascending and descending order.
+
+{% hint style="info" %}
+The Analytics page auto-refreshes at the same intervals as the dashboard: every 15 seconds for 1h, 60 seconds for 6h, and 120 seconds for longer ranges.
+{% endhint %}
