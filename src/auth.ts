@@ -178,7 +178,7 @@ async function getAuthInstance() {
           issuer: oidc.issuer,
           clientId: oidc.clientId,
           clientSecret: oidc.clientSecret,
-          allowDangerousEmailAccountLinking: false,
+          allowDangerousEmailAccountLinking: true,
           client: {
             token_endpoint_auth_method: oidc.tokenEndpointAuthMethod,
           },
@@ -201,6 +201,7 @@ async function getAuthInstance() {
               const groupsClaim = settings?.oidcGroupsClaim ?? "groups";
               const profileData = profile as Record<string, unknown> | undefined;
               const userGroups = (profileData?.[groupsClaim] as string[] | undefined) ?? [];
+              console.log(`[oidc] User ${user.email} groups (claim "${groupsClaim}"):`, userGroups);
 
               // Ensure user exists in the database
               let dbUser = await prisma.user.findUnique({
@@ -231,7 +232,7 @@ async function getAuthInstance() {
                 console.warn(
                   `OIDC login blocked: local account exists for ${dbUser.email}. Admin must explicitly link accounts.`,
                 );
-                return false;
+                return "/login?error=local_account";
               }
 
               // Refresh profile picture on each OIDC sign-in
