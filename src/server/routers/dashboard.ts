@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { metricStore } from "@/server/services/metric-store";
@@ -807,5 +808,84 @@ export const dashboardRouter = router({
           pipelines: allPipelines.map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })),
         },
       };
+    }),
+
+  /* ── Custom Dashboard Views CRUD ───────────────────────────────── */
+
+  listViews: protectedProcedure.query(async ({ ctx }) => {
+    return prisma.dashboardView.findMany({
+      where: { userId: ctx.session.user!.id! },
+      orderBy: { sortOrder: "asc" },
+    });
+  }),
+
+  createView: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().min(1).max(50),
+        panels: z.array(z.string()).min(1),
+        filters: z
+          .object({
+            pipelineIds: z.array(z.string()).optional(),
+            nodeIds: z.array(z.string()).optional(),
+          })
+          .optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user!.id!;
+      const count = await prisma.dashboardView.count({
+        where: { userId },
+      });
+      return prisma.dashboardView.create({
+        data: {
+          userId,
+          name: input.name,
+          panels: input.panels,
+          filters: input.filters ?? {},
+          sortOrder: count,
+        },
+      });
+    }),
+
+  updateView: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string().min(1).max(50).optional(),
+        panels: z.array(z.string()).min(1).optional(),
+        filters: z
+          .object({
+            pipelineIds: z.array(z.string()).optional(),
+            nodeIds: z.array(z.string()).optional(),
+          })
+          .optional(),
+        sortOrder: z.number().int().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user!.id!;
+      const view = await prisma.dashboardView.findUnique({
+        where: { id: input.id },
+      });
+      if (!view || view.userId !== userId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+      const { id, ...data } = input;
+      return prisma.dashboardView.update({ where: { id }, data });
+    }),
+
+  deleteView: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user!.id!;
+      const view = await prisma.dashboardView.findUnique({
+        where: { id: input.id },
+      });
+      if (!view || view.userId !== userId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+      await prisma.dashboardView.delete({ where: { id: input.id } });
+      return { deleted: true };
     }),
 });
