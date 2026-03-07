@@ -23,6 +23,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Wrench } from "lucide-react";
 import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
 import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
@@ -83,6 +84,15 @@ export default function FleetPage() {
     trpc.fleet.triggerAgentUpdate.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: trpc.fleet.list.queryKey() });
+      },
+    }),
+  );
+
+  const setMaintenance = useMutation(
+    trpc.fleet.setMaintenanceMode.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.fleet.list.queryKey() });
+        queryClient.invalidateQueries({ queryKey: trpc.fleet.listWithPipelineStatus.queryKey() });
       },
     }),
   );
@@ -161,54 +171,83 @@ export default function FleetPage() {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <StatusBadge variant={nodeStatusVariant(node.status)}>
-                    {nodeStatusLabel(node.status)}
-                  </StatusBadge>
+                  {node.maintenanceMode ? (
+                    <Badge variant="outline" className="text-orange-600 border-orange-500/50">
+                      <Wrench className="mr-1 h-3 w-3" />
+                      Maintenance
+                    </Badge>
+                  ) : (
+                    <StatusBadge variant={nodeStatusVariant(node.status)}>
+                      {nodeStatusLabel(node.status)}
+                    </StatusBadge>
+                  )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {formatLastSeen(node.lastSeen)}
                 </TableCell>
                 <TableCell>
-                  {node.pendingAction ? (
-                    <Badge variant="outline" className="text-blue-600">
-                      Update pending...
-                    </Badge>
-                  ) : node.deploymentMode === "DOCKER" ? (
-                    getNodeLatest(node).version &&
-                    node.agentVersion &&
-                    isVersionOlder(node.agentVersion, getNodeLatest(node).version ?? "") ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span>
-                            <Button variant="outline" size="sm" disabled>
-                              Update
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>Update via Docker image pull</TooltipContent>
-                      </Tooltip>
-                    ) : null
-                  ) : getNodeLatest(node).version &&
-                    node.agentVersion &&
-                    isVersionOlder(node.agentVersion, getNodeLatest(node).version ?? "") ? (
+                  <div className="flex items-center gap-2">
                     <Button
-                      variant="outline"
+                      variant={node.maintenanceMode ? "default" : "outline"}
                       size="sm"
-                      disabled={triggerUpdate.isPending}
+                      disabled={setMaintenance.isPending && setMaintenance.variables?.nodeId === node.id}
                       onClick={(e) => {
                         e.preventDefault();
-                        const latest = getNodeLatest(node);
-                        triggerUpdate.mutate({
+                        if (!node.maintenanceMode) {
+                          if (!confirm(
+                            `Enter maintenance mode for "${node.name}"?\n\nThis will stop all running pipelines on this node. Pipelines will automatically resume when maintenance mode is turned off.`
+                          )) return;
+                        }
+                        setMaintenance.mutate({
                           nodeId: node.id,
-                          targetVersion: latest.version!,
-                          downloadUrl: `https://github.com/${AGENT_REPO}/releases/download/${latest.tag}/vf-agent-linux-amd64`,
-                          checksum: `sha256:${latest.checksums["vf-agent-linux-amd64"] ?? ""}`,
+                          enabled: !node.maintenanceMode,
                         });
                       }}
                     >
-                      {triggerUpdate.isPending ? "Updating..." : "Update"}
+                      <Wrench className="mr-1 h-3.5 w-3.5" />
+                      {node.maintenanceMode ? "Exit Maintenance" : "Maintenance"}
                     </Button>
-                  ) : null}
+                    {node.pendingAction ? (
+                      <Badge variant="outline" className="text-blue-600">
+                        Update pending...
+                      </Badge>
+                    ) : node.deploymentMode === "DOCKER" ? (
+                      getNodeLatest(node).version &&
+                      node.agentVersion &&
+                      isVersionOlder(node.agentVersion, getNodeLatest(node).version ?? "") ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button variant="outline" size="sm" disabled>
+                                Update
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>Update via Docker image pull</TooltipContent>
+                        </Tooltip>
+                      ) : null
+                    ) : getNodeLatest(node).version &&
+                      node.agentVersion &&
+                      isVersionOlder(node.agentVersion, getNodeLatest(node).version ?? "") ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={triggerUpdate.isPending}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const latest = getNodeLatest(node);
+                          triggerUpdate.mutate({
+                            nodeId: node.id,
+                            targetVersion: latest.version!,
+                            downloadUrl: `https://github.com/${AGENT_REPO}/releases/download/${latest.tag}/vf-agent-linux-amd64`,
+                            checksum: `sha256:${latest.checksums["vf-agent-linux-amd64"] ?? ""}`,
+                          });
+                        }}
+                      >
+                        {triggerUpdate.isPending ? "Updating..." : "Update"}
+                      </Button>
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
