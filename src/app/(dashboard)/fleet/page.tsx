@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
@@ -22,8 +23,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Tag, Wrench } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Wrench } from "lucide-react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
 import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
@@ -97,6 +104,11 @@ export default function FleetPage() {
     }),
   );
 
+  const [maintenanceTarget, setMaintenanceTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
   return (
     <div className="space-y-6">
       {isLoading ? (
@@ -145,15 +157,34 @@ export default function FleetPage() {
                   <Badge variant="secondary">{node.environment.name}</Badge>
                 </TableCell>
                 <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {Object.entries(
+                  {(() => {
+                    const entries = Object.entries(
                       (node.labels as Record<string, string>) ?? {},
-                    ).map(([k, v]) => (
-                      <Badge key={k} variant="outline" className="text-xs">
-                        {k}={v}
-                      </Badge>
-                    ))}
-                  </div>
+                    );
+                    if (entries.length === 0) return null;
+                    return (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted transition-colors"
+                          >
+                            <Tag className="h-3 w-3" />
+                            {entries.length} {entries.length === 1 ? "label" : "labels"}
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-2" align="start">
+                          <div className="flex flex-wrap gap-1">
+                            {entries.map(([k, v]) => (
+                              <Badge key={k} variant="outline" className="text-xs">
+                                {k}={v}
+                              </Badge>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    );
+                  })()}
                 </TableCell>
                 <TableCell className="font-mono text-sm text-muted-foreground">
                   {node.vectorVersion?.split(" ")[1] ?? "—"}
@@ -206,14 +237,13 @@ export default function FleetPage() {
                       onClick={(e) => {
                         e.preventDefault();
                         if (!node.maintenanceMode) {
-                          if (!confirm(
-                            `Enter maintenance mode for "${node.name}"?\n\nThis will stop all running pipelines on this node. Pipelines will automatically resume when maintenance mode is turned off.`
-                          )) return;
+                          setMaintenanceTarget({ id: node.id, name: node.name });
+                        } else {
+                          setMaintenance.mutate({
+                            nodeId: node.id,
+                            enabled: false,
+                          });
                         }
-                        setMaintenance.mutate({
-                          nodeId: node.id,
-                          enabled: !node.maintenanceMode,
-                        });
                       }}
                     >
                       <Wrench className="mr-1 h-3.5 w-3.5" />
@@ -273,6 +303,30 @@ export default function FleetPage() {
           <DeploymentMatrix environmentId={activeEnvId} />
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!maintenanceTarget}
+        onOpenChange={(open) => { if (!open) setMaintenanceTarget(null); }}
+        title="Enter maintenance mode?"
+        description={
+          <>
+            This will stop all running pipelines on &quot;{maintenanceTarget?.name}&quot;.
+            Pipelines will automatically resume when maintenance mode is turned off.
+          </>
+        }
+        confirmLabel="Enter Maintenance"
+        variant="default"
+        isPending={setMaintenance.isPending}
+        pendingLabel="Entering..."
+        onConfirm={() => {
+          if (maintenanceTarget) {
+            setMaintenance.mutate(
+              { nodeId: maintenanceTarget.id, enabled: true },
+              { onSuccess: () => setMaintenanceTarget(null) },
+            );
+          }
+        }}
+      />
     </div>
   );
 }

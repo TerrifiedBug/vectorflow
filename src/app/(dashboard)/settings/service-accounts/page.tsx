@@ -127,7 +127,7 @@ type PermissionValue = (typeof PERMISSION_GROUPS)[number]["permissions"][number]
 
 // ─── Main Page ──────────────────────────────────────────────────────────────────
 
-export default function ServiceAccountsPage() {
+export function ServiceAccountsSettings() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const { selectedTeamId } = useTeamStore();
@@ -255,20 +255,12 @@ export default function ServiceAccountsPage() {
   const isLoading = serviceAccountsQuery.isLoading || environmentsQuery.isLoading;
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-6xl mx-auto">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link href="/settings">
-          <Button variant="ghost" size="icon">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-2xl font-semibold">Service Accounts</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage API keys for programmatic access to the REST API
-          </p>
-        </div>
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Manage API keys for programmatic access to the REST API
+        </p>
         <Button onClick={() => setCreateOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Create Service Account
@@ -643,6 +635,24 @@ export default function ServiceAccountsPage() {
         }}
         isPending={deleteMutation.isPending}
       />
+    </div>
+  );
+}
+
+// ─── Page Wrapper ────────────────────────────────────────────────────────────────
+
+export default function ServiceAccountsPage() {
+  return (
+    <div className="p-6 max-w-6xl mx-auto">
+      <div className="flex items-center gap-4 mb-6">
+        <Link href="/settings">
+          <Button variant="ghost" size="icon">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+        <h1 className="text-2xl font-semibold">Service Accounts</h1>
+      </div>
+      <ServiceAccountsSettings />
     </div>
   );
 }

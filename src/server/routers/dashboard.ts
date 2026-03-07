@@ -938,6 +938,17 @@ export const dashboardRouter = router({
           .object({
             pipelineIds: z.array(z.string()).optional(),
             nodeIds: z.array(z.string()).optional(),
+            layout: z
+              .array(
+                z.object({
+                  i: z.string(),
+                  x: z.number(),
+                  y: z.number(),
+                  w: z.number(),
+                  h: z.number(),
+                })
+              )
+              .optional(),
           })
           .optional(),
       })
@@ -973,6 +984,17 @@ export const dashboardRouter = router({
           .object({
             pipelineIds: z.array(z.string()).optional(),
             nodeIds: z.array(z.string()).optional(),
+            layout: z
+              .array(
+                z.object({
+                  i: z.string(),
+                  x: z.number(),
+                  y: z.number(),
+                  w: z.number(),
+                  h: z.number(),
+                })
+              )
+              .optional(),
           })
           .optional(),
         sortOrder: z.number().int().optional(),

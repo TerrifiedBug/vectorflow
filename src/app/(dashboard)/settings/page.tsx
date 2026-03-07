@@ -77,6 +77,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { ServiceAccountsSettings } from "@/app/(dashboard)/settings/service-accounts/page";
 
 
 // ─── Relative Time Helper ───────────────────────────────────────────────────────
@@ -3278,22 +3279,18 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      {isTeamAdmin && (
-        <div className="flex items-center gap-4">
-          <Link href="/settings/service-accounts">
-            <Button variant="outline">
-              <KeyRound className="mr-2 h-4 w-4" />
-              Service Accounts &amp; API Keys
-            </Button>
-          </Link>
-        </div>
-      )}
       <Tabs defaultValue={isTeamAdmin ? "team" : isSuperAdmin ? "auth" : "team"}>
         <TabsList>
           {isTeamAdmin && (
             <TabsTrigger value="team">
               <Users className="mr-2 h-4 w-4" />
               Team
+            </TabsTrigger>
+          )}
+          {isTeamAdmin && (
+            <TabsTrigger value="api-keys">
+              <KeyRound className="mr-2 h-4 w-4" />
+              API Keys
             </TabsTrigger>
           )}
           {isSuperAdmin && (
@@ -3337,6 +3334,11 @@ export default function SettingsPage() {
         {isTeamAdmin && (
           <TabsContent value="team" className="mt-6">
             <TeamSettings />
+          </TabsContent>
+        )}
+        {isTeamAdmin && (
+          <TabsContent value="api-keys" className="mt-6">
+            <ServiceAccountsSettings />
           </TabsContent>
         )}
 
