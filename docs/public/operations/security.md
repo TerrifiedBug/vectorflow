@@ -45,7 +45,7 @@ sasl:
 The actual decrypted value of `KAFKA_PASSWORD` is delivered to the agent in a separate `secrets` dictionary alongside the YAML. The agent sets `VF_SECRET_KAFKA_PASSWORD` as an environment variable when starting the Vector process, and Vector's built-in environment variable interpolation resolves the placeholder at runtime.
 
 {% hint style="info" %}
-Secret values never appear in pipeline YAML files -- not in the database, not on disk, and not in transit. Only environment variable placeholders are embedded in the configuration.
+Secret values never appear in pipeline YAML -- not in the database, not in config files on disk, and not in the YAML sent to agents. Only environment variable placeholders are embedded in the configuration. The actual values are delivered separately in the config response and injected as process environment variables.
 {% endhint %}
 
 #### Secret name normalization
