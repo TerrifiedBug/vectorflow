@@ -1,11 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
-import { Rocket, CheckCircle, XCircle, Loader2, Radio } from "lucide-react";
+import { Rocket, CheckCircle, XCircle, Loader2, Radio, ChevronsUpDown, Check, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +23,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfigDiff } from "@/components/ui/config-diff";
@@ -29,6 +43,8 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   const queryClient = useQueryClient();
   const [deploying, setDeploying] = useState(false);
   const [changelog, setChangelog] = useState("");
+  const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
+  const [labelPopoverOpen, setLabelPopoverOpen] = useState(false);
 
   const previewQuery = useQuery({
     ...trpc.deploy.preview.queryOptions({ pipelineId }),
@@ -39,6 +55,54 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     ...trpc.deploy.environmentInfo.queryOptions({ pipelineId }),
     enabled: open,
   });
+
+  const environmentId = envQuery.data?.environmentId;
+
+  const labelsQuery = useQuery({
+    ...trpc.fleet.listLabels.queryOptions(
+      { environmentId: environmentId! },
+    ),
+    enabled: open && !!environmentId,
+  });
+
+  // Build flat list of "key=value" options from the label map
+  const availableLabelOptions = useMemo(() => {
+    const data = labelsQuery.data;
+    if (!data) return [];
+    const options: string[] = [];
+    for (const [key, values] of Object.entries(data)) {
+      for (const val of values as string[]) {
+        options.push(`${key}=${val}`);
+      }
+    }
+    return options.sort();
+  }, [labelsQuery.data]);
+
+  // Build nodeSelector from selected labels
+  const nodeSelector = useMemo(() => {
+    const sel: Record<string, string> = {};
+    for (const label of selectedLabels) {
+      const idx = label.indexOf("=");
+      if (idx > 0) {
+        sel[label.slice(0, idx)] = label.slice(idx + 1);
+      }
+    }
+    return sel;
+  }, [selectedLabels]);
+
+  // Compute matching node count
+  const matchingNodeCount = useMemo(() => {
+    const nodes = envQuery.data?.nodes ?? [];
+    if (selectedLabels.length === 0) return nodes.length;
+    return nodes.filter((n) => {
+      const nodeLabels = (n.labels as Record<string, string>) ?? {};
+      return Object.entries(nodeSelector).every(
+        ([key, value]) => nodeLabels[key] === value,
+      );
+    }).length;
+  }, [envQuery.data?.nodes, selectedLabels, nodeSelector]);
+
+  const totalNodeCount = envQuery.data?.nodes.length ?? 0;
 
   const agentMutation = useMutation(
     trpc.deploy.agent.mutationOptions({
@@ -79,11 +143,15 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
   function handleDeploy() {
     setDeploying(true);
-    agentMutation.mutate({ pipelineId, changelog: changelog.trim() });
+    agentMutation.mutate({
+      pipelineId,
+      changelog: changelog.trim(),
+      ...(selectedLabels.length > 0 ? { nodeSelector } : { nodeSelector: {} }),
+    });
   }
 
   return (
-    <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) setChangelog(""); onOpenChange(val); }}>
+    <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) { setChangelog(""); setSelectedLabels([]); } onOpenChange(val); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -108,6 +176,85 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {env.nodes.length} node{env.nodes.length !== 1 ? "s" : ""} enrolled — agents will pick up changes on next poll
+                </p>
+              </div>
+            )}
+
+            {/* Node selector */}
+            {availableLabelOptions.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-xs font-medium">Target Nodes (optional)</label>
+                <Popover open={labelPopoverOpen} onOpenChange={setLabelPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={labelPopoverOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      {selectedLabels.length > 0
+                        ? `${selectedLabels.length} label${selectedLabels.length !== 1 ? "s" : ""} selected`
+                        : "All nodes (no filter)"}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                    <Command>
+                      <CommandInput placeholder="Search labels..." />
+                      <CommandList>
+                        <CommandEmpty>No labels found.</CommandEmpty>
+                        <CommandGroup>
+                          {availableLabelOptions.map((option) => (
+                            <CommandItem
+                              key={option}
+                              value={option}
+                              onSelect={() => {
+                                setSelectedLabels((prev) =>
+                                  prev.includes(option)
+                                    ? prev.filter((l) => l !== option)
+                                    : [...prev, option],
+                                );
+                              }}
+                            >
+                              <Check
+                                className={`mr-2 h-4 w-4 ${
+                                  selectedLabels.includes(option)
+                                    ? "opacity-100"
+                                    : "opacity-0"
+                                }`}
+                              />
+                              {option}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+
+                {selectedLabels.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {selectedLabels.map((label) => (
+                      <Badge key={label} variant="secondary" className="gap-1">
+                        {label}
+                        <button
+                          type="button"
+                          className="ml-0.5 rounded-full outline-none hover:bg-muted"
+                          onClick={() =>
+                            setSelectedLabels((prev) =>
+                              prev.filter((l) => l !== label),
+                            )
+                          }
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground">
+                  {matchingNodeCount} of {totalNodeCount} node{totalNodeCount !== 1 ? "s" : ""} match
                 </p>
               </div>
             )}
