@@ -178,7 +178,6 @@ export const pipelineRouter = router({
           updatedBy: p.updatedBy,
           nodeStatuses: p.nodeStatuses,
           hasUndeployedChanges,
-          healthStatus: null as "healthy" | "degraded" | "no_data" | null,
         };
       }));
 

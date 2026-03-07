@@ -80,6 +80,43 @@ function reductionColor(pct: number): string {
   return "bg-muted text-muted-foreground";
 }
 
+/** Lazily fetches SLI health for a single deployed pipeline. */
+function PipelineHealthBadge({ pipelineId }: { pipelineId: string }) {
+  const trpc = useTRPC();
+  const healthQuery = useQuery(
+    trpc.pipeline.health.queryOptions(
+      { pipelineId },
+      { refetchInterval: 30_000 },
+    ),
+  );
+
+  const status = healthQuery.data?.status ?? null;
+
+  if (healthQuery.isLoading) {
+    return <Skeleton className="h-5 w-14" />;
+  }
+
+  if (status === "healthy") {
+    return (
+      <Badge variant="outline" className="bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30">
+        Healthy
+      </Badge>
+    );
+  }
+  if (status === "degraded") {
+    return (
+      <Badge variant="outline" className="bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30">
+        Degraded
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-muted-foreground">
+      No SLIs
+    </Badge>
+  );
+}
+
 export default function PipelinesPage() {
   const trpc = useTRPC();
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
@@ -223,18 +260,8 @@ export default function PipelinesPage() {
                 <TableCell>
                   {pipeline.isDraft ? (
                     <span className="text-sm text-muted-foreground">--</span>
-                  ) : pipeline.healthStatus === "healthy" ? (
-                    <Badge variant="outline" className="bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30">
-                      Healthy
-                    </Badge>
-                  ) : pipeline.healthStatus === "degraded" ? (
-                    <Badge variant="outline" className="bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30">
-                      Degraded
-                    </Badge>
                   ) : (
-                    <Badge variant="outline" className="text-muted-foreground">
-                      No SLIs
-                    </Badge>
+                    <PipelineHealthBadge pipelineId={pipeline.id} />
                   )}
                 </TableCell>
                 {/* Events/sec In */}
