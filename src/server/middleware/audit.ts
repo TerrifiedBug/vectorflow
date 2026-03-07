@@ -116,6 +116,14 @@ async function resolveTeamId(
     return snippet?.teamId ?? null;
   }
 
+  if (inputData.id && entityType === "ServiceAccount") {
+    const sa = await prisma.serviceAccount.findUnique({
+      where: { id: inputData.id as string },
+      select: { environment: { select: { teamId: true } } },
+    });
+    return sa?.environment.teamId ?? null;
+  }
+
   return null;
 }
 
@@ -198,6 +206,14 @@ async function resolveEnvironmentId(
       select: { environmentId: true },
     });
     return channel?.environmentId ?? null;
+  }
+
+  if (inputData.id && entityType === "ServiceAccount") {
+    const sa = await prisma.serviceAccount.findUnique({
+      where: { id: inputData.id as string },
+      select: { environmentId: true },
+    });
+    return sa?.environmentId ?? null;
   }
 
   return null;
@@ -295,6 +311,15 @@ const ENTITY_LOADERS: Record<string, (id: string) => Promise<Record<string, unkn
     prisma.team.findUnique({ where: { id } }) as Promise<Record<string, unknown> | null>,
   Template: (id) =>
     prisma.template.findUnique({ where: { id } }) as Promise<Record<string, unknown> | null>,
+  ServiceAccount: (id) =>
+    prisma.serviceAccount.findUnique({
+      where: { id },
+      select: {
+        id: true, name: true, description: true, keyPrefix: true,
+        environmentId: true, permissions: true, enabled: true,
+        expiresAt: true, createdAt: true,
+      },
+    }) as Promise<Record<string, unknown> | null>,
 };
 
 async function loadEntity(
