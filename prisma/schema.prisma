@@ -23,6 +23,7 @@ model User {
   totpSecret         String?
   totpEnabled        Boolean      @default(false)
   totpBackupCodes    String?
+  scimExternalId     String?      @unique
   auditLogs          AuditLog[]
   pipelinesUpdated   Pipeline[]   @relation("PipelineUpdatedBy")
   pipelinesCreated   Pipeline[]   @relation("PipelineCreatedBy")
@@ -452,6 +453,9 @@ model SystemSettings {
   latestDevAgentReleaseCheckedAt DateTime?
   latestDevAgentReleaseEtag      String?
   latestDevAgentChecksums        String?    // JSON: {"vf-agent-linux-amd64":"sha256..."}
+
+  scimEnabled      Boolean  @default(false)
+  scimBearerToken  String?  // Encrypted token for SCIM auth
 
   updatedAt DateTime @updatedAt
 }

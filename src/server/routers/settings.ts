@@ -1,4 +1,5 @@
 import { z } from "zod";
+import crypto from "crypto";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
@@ -86,6 +87,8 @@ export const settingsRouter = router({
         lastBackupAt: settings.lastBackupAt,
         lastBackupStatus: settings.lastBackupStatus,
         lastBackupError: settings.lastBackupError,
+        scimEnabled: settings.scimEnabled,
+        scimTokenConfigured: !!settings.scimBearerToken,
         updatedAt: settings.updatedAt,
       };
     }),
@@ -366,5 +369,50 @@ export const settingsRouter = router({
 
       rescheduleBackup(input.enabled, input.cron);
       return result;
+    }),
+
+  // ─── SCIM Provisioning ────────────────────────────────────────────────────
+
+  updateScim: protectedProcedure
+    .use(requireSuperAdmin())
+    .input(z.object({ enabled: z.boolean() }))
+    .use(withAudit("settings.scim_updated", "SystemSettings"))
+    .mutation(async ({ input }) => {
+      await getOrCreateSettings();
+
+      // If disabling, also clear the token
+      const data: Record<string, unknown> = {
+        scimEnabled: input.enabled,
+      };
+      if (!input.enabled) {
+        data.scimBearerToken = null;
+      }
+
+      return prisma.systemSettings.update({
+        where: { id: SETTINGS_ID },
+        data,
+      });
+    }),
+
+  generateScimToken: protectedProcedure
+    .use(requireSuperAdmin())
+    .use(withAudit("settings.scim_token_generated", "SystemSettings"))
+    .mutation(async () => {
+      await getOrCreateSettings();
+
+      // Generate a secure random token
+      const token = crypto.randomBytes(32).toString("hex");
+
+      // Store encrypted
+      await prisma.systemSettings.update({
+        where: { id: SETTINGS_ID },
+        data: {
+          scimBearerToken: encrypt(token),
+          scimEnabled: true,
+        },
+      });
+
+      // Return the plaintext token (shown once to the user)
+      return { token };
     }),
 });
