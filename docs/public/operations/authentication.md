@@ -118,6 +118,16 @@ Configure a **Default Team** and **Default Role** as a fallback for users who do
 Changing group sync settings takes effect immediately — the OIDC provider configuration is rebuilt without requiring a server restart.
 {% endhint %}
 
+## SCIM provisioning
+
+VectorFlow supports SCIM 2.0 for automated user provisioning and deprovisioning from your identity provider. When SCIM is enabled, your IdP can automatically create, update, and deactivate VectorFlow user accounts, and manage team membership via SCIM Groups.
+
+SCIM is configured from **Settings > SCIM** by a Super Admin. You will need to generate a bearer token and enter it along with the SCIM base URL (`{your-vectorflow-url}/api/scim/v2`) into your IdP's SCIM configuration.
+
+{% hint style="info" %}
+SCIM works best alongside OIDC/SSO. Users created via SCIM should authenticate through your identity provider rather than with local credentials. See the [SCIM Provisioning](scim.md) page for detailed setup instructions and IdP-specific guides.
+{% endhint %}
+
 ## Two-factor authentication (2FA)
 
 VectorFlow supports TOTP-based two-factor authentication compatible with any authenticator app (Google Authenticator, Authy, 1Password, etc.).
