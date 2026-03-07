@@ -889,6 +889,8 @@ function AuthSettings() {
         </form>
       </CardContent>
     </Card>
+    <Separator className="my-8" />
+    <ScimSettings />
     </div>
   );
 }
@@ -3330,10 +3332,6 @@ export default function SettingsPage() {
                 <ExternalLink className="mr-2 h-4 w-4" />
                 Audit Shipping
               </TabsTrigger>
-              <TabsTrigger value="scim">
-                <UserPlus className="mr-2 h-4 w-4" />
-                SCIM
-              </TabsTrigger>
               <TabsTrigger value="backup">
                 <HardDrive className="mr-2 h-4 w-4" />
                 Backup
@@ -3372,9 +3370,6 @@ export default function SettingsPage() {
             </TabsContent>
             <TabsContent value="audit-shipping" className="mt-6">
               <AuditLogShippingSection />
-            </TabsContent>
-            <TabsContent value="scim" className="mt-6">
-              <ScimSettings />
             </TabsContent>
             <TabsContent value="backup" className="mt-6">
               <BackupSettings />
