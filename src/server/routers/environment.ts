@@ -54,11 +54,12 @@ export const environmentRouter = router({
         });
       }
 
-      const { gitToken, enrollmentTokenHash, ...safe } = environment;
+      const { gitToken, enrollmentTokenHash, gitWebhookSecret: encryptedWebhookSecret, ...safe } = environment;
       return {
         ...safe,
         hasEnrollmentToken: !!enrollmentTokenHash,
         hasGitToken: !!gitToken,
+        gitWebhookSecret: encryptedWebhookSecret ? decrypt(encryptedWebhookSecret) : null,
       };
     }),
 
@@ -132,11 +133,13 @@ export const environmentRouter = router({
       }
 
       // Handle gitOpsMode — auto-generate webhook secret when switching to bidirectional
+      let plaintextWebhookSecret: string | null = null;
       if (gitOpsModeInput !== undefined) {
         data.gitOpsMode = gitOpsModeInput;
 
         if (gitOpsModeInput === "bidirectional" && !existing.gitWebhookSecret) {
-          data.gitWebhookSecret = crypto.randomBytes(32).toString("hex");
+          plaintextWebhookSecret = crypto.randomBytes(32).toString("hex");
+          data.gitWebhookSecret = encrypt(plaintextWebhookSecret);
         }
         // Clear webhook secret when disabling bidirectional mode
         if (gitOpsModeInput !== "bidirectional") {
@@ -149,11 +152,21 @@ export const environmentRouter = router({
         data,
       });
       const { gitToken: _gt, enrollmentTokenHash: _eth, gitWebhookSecret: _gws, ...safeUpdate } = updated;
+
+      // Return the plaintext webhook secret only when freshly generated;
+      // otherwise decrypt the stored value so the UI can display it.
+      let webhookSecretForDisplay: string | null = null;
+      if (plaintextWebhookSecret) {
+        webhookSecretForDisplay = plaintextWebhookSecret;
+      } else if (_gws) {
+        webhookSecretForDisplay = decrypt(_gws);
+      }
+
       return {
         ...safeUpdate,
         hasEnrollmentToken: !!_eth,
         hasGitToken: !!_gt,
-        gitWebhookSecret: _gws,
+        gitWebhookSecret: webhookSecretForDisplay,
       };
     }),
 

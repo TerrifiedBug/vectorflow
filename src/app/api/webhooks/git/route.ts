@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { importVectorConfig } from "@/lib/config-generator";
 import { decrypt } from "@/server/services/crypto";
 import { encryptNodeConfig } from "@/server/services/config-crypto";
+import { writeAuditLog } from "@/server/services/audit";
 import { ComponentKind, Prisma } from "@/generated/prisma";
 
 export async function POST(req: NextRequest) {
@@ -23,10 +24,11 @@ export async function POST(req: NextRequest) {
   let matchedEnv = null;
   for (const env of environments) {
     if (!env.gitWebhookSecret) continue;
+    const webhookSecret = decrypt(env.gitWebhookSecret);
     const expected =
       "sha256=" +
       crypto
-        .createHmac("sha256", env.gitWebhookSecret)
+        .createHmac("sha256", webhookSecret)
         .update(body)
         .digest("hex");
 
@@ -134,8 +136,8 @@ export async function POST(req: NextRequest) {
       }
 
       // Import config into pipeline graph nodes/edges
-      const format = file.endsWith(".toml") ? "toml" : "yaml";
-      const { nodes, edges, globalConfig } = importVectorConfig(content, format);
+      // Only YAML files are collected (see filter above), so format is always "yaml"
+      const { nodes, edges, globalConfig } = importVectorConfig(content, "yaml");
 
       // Map the component kind strings to the Prisma enum
       const kindMap: Record<string, ComponentKind> = {
@@ -200,6 +202,22 @@ export async function POST(req: NextRequest) {
             globalConfig: (globalConfig ?? undefined) as Prisma.InputJsonValue | undefined,
           },
         });
+      });
+
+      // Write audit log for the import
+      await writeAuditLog({
+        userId: null,
+        action: "gitops.pipeline.imported",
+        entityType: "Pipeline",
+        entityId: pipeline.id,
+        environmentId: matchedEnv.id,
+        teamId: matchedEnv.teamId,
+        metadata: {
+          file,
+          branch,
+          commitRef: payload.after ?? null,
+          pusher: payload.pusher?.name ?? null,
+        },
       });
 
       results.push({ file, status: "imported" });
