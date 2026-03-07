@@ -23,14 +23,16 @@ model User {
   totpSecret         String?
   totpEnabled        Boolean      @default(false)
   totpBackupCodes    String?
-  scimExternalId     String?      @unique
-  auditLogs          AuditLog[]
-  pipelinesUpdated   Pipeline[]   @relation("PipelineUpdatedBy")
-  pipelinesCreated   Pipeline[]   @relation("PipelineCreatedBy")
-  vrlSnippets        VrlSnippet[]
-  dashboardViews     DashboardView[]
-  serviceAccounts    ServiceAccount[]
-  createdAt          DateTime     @default(now())
+  scimExternalId         String?      @unique
+  auditLogs              AuditLog[]
+  pipelinesUpdated       Pipeline[]       @relation("PipelineUpdatedBy")
+  pipelinesCreated       Pipeline[]       @relation("PipelineCreatedBy")
+  vrlSnippets            VrlSnippet[]
+  dashboardViews         DashboardView[]
+  serviceAccounts        ServiceAccount[]
+  deployRequestsMade     DeployRequest[]  @relation("deployRequester")
+  deployRequestsReviewed DeployRequest[]  @relation("deployReviewer")
+  createdAt              DateTime         @default(now())
 }
 
 enum AuthMethod {
@@ -88,10 +90,12 @@ model Environment {
   gitToken            String?       // Stored encrypted via crypto.ts
   gitOpsMode          String        @default("off")   // "off" | "push" | "bidirectional"
   gitWebhookSecret    String?       // HMAC secret for validating incoming git webhooks
+  requireDeployApproval   Boolean       @default(false)
   alertRules              AlertRule[]
   alertWebhooks           AlertWebhook[]
   notificationChannels    NotificationChannel[]
   serviceAccounts         ServiceAccount[]
+  deployRequests          DeployRequest[]
   createdAt               DateTime      @default(now())
 }
 
@@ -225,6 +229,7 @@ model Pipeline {
   eventSamples    EventSample[]
   slis            PipelineSli[]
   tags              Json?                @default("[]")   // string[] of classification tags like ["PII", "PCI-DSS"]
+  deployRequests  DeployRequest[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 }
@@ -497,6 +502,28 @@ model VrlSnippet {
 
   @@unique([teamId, name])
   @@index([teamId])
+}
+
+model DeployRequest {
+  id              String      @id @default(cuid())
+  pipelineId      String
+  pipeline        Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  environmentId   String
+  environment     Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  requestedById   String
+  requestedBy     User        @relation("deployRequester", fields: [requestedById], references: [id])
+  configYaml      String
+  changelog       String
+  nodeSelector    Json?
+  status          String      @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  reviewedById    String?
+  reviewedBy      User?       @relation("deployReviewer", fields: [reviewedById], references: [id])
+  reviewNote      String?
+  createdAt       DateTime    @default(now())
+  reviewedAt      DateTime?
+
+  @@index([pipelineId, status])
+  @@index([environmentId, status])
 }
 
 enum AlertMetric {

@@ -29,6 +29,7 @@ A pipeline moves through several states during its lifecycle:
 - **Stopped** -- The pipeline is deployed but all agent nodes have stopped processing it.
 - **Crashed** -- One or more agent nodes report that the pipeline has crashed. Check the pipeline logs for details.
 - **Pending deploy** -- Shown as an additional badge when the saved configuration differs from what is currently deployed. Deploy the pipeline to push the latest changes.
+- **Pending Approval** -- Shown when an editor has submitted a deploy request that is waiting for admin approval. See [Deploy approval workflows](#deploy-approval-workflows).
 
 ## Creating a pipeline
 
@@ -177,6 +178,31 @@ Tags are color-coded in the pipeline list for quick visual identification:
 {% hint style="info" %}
 Tags are metadata labels only -- they do not enforce any access controls or data-handling policies. Use them as a visual aid for compliance awareness and pipeline organization.
 {% endhint %}
+
+
+## Deploy approval workflows
+
+Environments can optionally require **admin approval** before a pipeline is deployed. When enabled, editors who click **Deploy** will submit a deploy request instead of deploying directly. Admins can then review, approve, or reject the request.
+
+### How it works
+
+1. An admin enables **Require approval for deploys** on the environment settings page (see [Environments](environments.md#deploy-approval)).
+2. When an editor clicks **Deploy** in the pipeline editor, the deploy dialog shows a **Request Deploy** button instead of **Publish to Agents**.
+3. The editor submits a deploy request with a changelog entry. The pipeline list and pipeline editor toolbar show a **Pending Approval** badge.
+4. An admin opens the deploy dialog for the pipeline and sees the request in **review mode** -- displaying the requester, changelog, and a config diff.
+5. The admin can **Approve & Deploy** (which immediately deploys the pipeline) or **Reject** (with an optional note).
+
+{% hint style="info" %}
+Admins can always deploy directly, even when approval is required. The approval gate only applies to users with the Editor role.
+{% endhint %}
+
+### Cancelling a request
+
+The editor who submitted a pending deploy request can cancel it from the pipeline editor toolbar by clicking the **X** button next to the **Pending Approval** badge.
+
+### Pipeline list indicators
+
+Pipelines with pending deploy requests show a **Pending Approval** badge in the status column on the Pipelines page, so admins can quickly identify which pipelines need attention.
 
 ## Filtering by environment
 

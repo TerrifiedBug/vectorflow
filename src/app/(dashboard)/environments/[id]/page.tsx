@@ -46,6 +46,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SecretsSection } from "@/components/environment/secrets-section";
 import { CertificatesSection } from "@/components/environment/certificates-section";
@@ -75,6 +76,7 @@ export default function EnvironmentDetailPage({
     mountPath: "secret/data/vectorflow",
     role: "",
   });
+  const [editRequireApproval, setEditRequireApproval] = useState(false);
   const [enrollmentToken, setEnrollmentToken] = useState<string | null>(null);
 
   const updateMutation = useMutation(
@@ -121,6 +123,7 @@ export default function EnvironmentDetailPage({
   function startEditing() {
     if (!env) return;
     setEditName(env.name);
+    setEditRequireApproval(env.requireDeployApproval ?? false);
     setEditSecretBackend(env.secretBackend ?? "BUILTIN");
     const vaultCfg = (env.secretBackendConfig as Record<string, string>) ?? {};
     setEditVaultConfig({
@@ -136,6 +139,7 @@ export default function EnvironmentDetailPage({
     updateMutation.mutate({
       id,
       name: editName,
+      requireDeployApproval: editRequireApproval,
       secretBackend: editSecretBackend,
       ...(editSecretBackend === "VAULT" ? {
         secretBackendConfig: editVaultConfig,
@@ -234,6 +238,19 @@ export default function EnvironmentDetailPage({
                 onChange={(e) => setEditName(e.target.value)}
               />
             </div>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="require-approval">Require approval for deploys</Label>
+                <p className="text-xs text-muted-foreground">
+                  When enabled, editors must request admin approval before deploying pipelines.
+                </p>
+              </div>
+              <Switch
+                id="require-approval"
+                checked={editRequireApproval}
+                onCheckedChange={setEditRequireApproval}
+              />
+            </div>
             <div className="flex gap-2">
               <Button onClick={handleSave} disabled={updateMutation.isPending}>
                 {updateMutation.isPending ? "Saving..." : "Save"}
@@ -257,6 +274,11 @@ export default function EnvironmentDetailPage({
             <p className="text-xs text-muted-foreground">
               {env.hasEnrollmentToken ? "Enrollment token configured" : "No enrollment token"}
             </p>
+            {env.requireDeployApproval && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">
+                Deploy approval required
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card>
