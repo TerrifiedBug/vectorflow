@@ -108,6 +108,7 @@ The panel shows:
 - **Enabled toggle** -- Disable a component to exclude it from the generated configuration without removing it from the canvas.
 - **Type** -- The Vector component type (read-only).
 - **Configuration form** -- Auto-generated form fields based on the component's configuration schema. Required fields are marked, and each field has contextual help.
+- **Secret picker** -- Sensitive fields (passwords, API keys, tokens) display a secret picker instead of a text input. You must select an existing secret or create a new one inline -- plaintext values cannot be entered directly into sensitive fields. See [Security](../operations/security.md#sensitive-fields) for details.
 
 ### VRL editor for transforms
 
