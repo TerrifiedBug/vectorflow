@@ -41,6 +41,16 @@ function trendPercent(current: number, previous: number): number | null {
   return ((current - previous) / previous) * 100;
 }
 
+interface PipelineRow {
+  pipelineId: string;
+  pipelineName: string;
+  bytesIn: number;
+  bytesOut: number;
+  eventsIn: number;
+  eventsOut: number;
+  reduction: number;
+}
+
 type SortKey = "pipelineName" | "bytesIn" | "bytesOut" | "reduction";
 type SortDir = "asc" | "desc";
 
@@ -95,11 +105,11 @@ export default function AnalyticsPage() {
   // Per-pipeline table with sorting
   const sortedPipelines = useMemo(() => {
     if (!data?.perPipeline) return [];
-    const rows = data.perPipeline.map((p) => ({
+    const rows: PipelineRow[] = data.perPipeline.map((p: Omit<PipelineRow, "reduction">) => ({
       ...p,
       reduction: p.bytesIn > 0 ? (1 - p.bytesOut / p.bytesIn) * 100 : 0,
     }));
-    return rows.sort((a, b) => {
+    return rows.sort((a: PipelineRow, b: PipelineRow) => {
       const aVal = a[sortKey];
       const bVal = b[sortKey];
       if (typeof aVal === "string" && typeof bVal === "string") {
@@ -355,7 +365,7 @@ export default function AnalyticsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedPipelines.map((p) => (
+                {sortedPipelines.map((p: PipelineRow) => (
                   <TableRow key={p.pipelineId}>
                     <TableCell className="font-medium">{p.pipelineName}</TableCell>
                     <TableCell className="text-right font-mono">
