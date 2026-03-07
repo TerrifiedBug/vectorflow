@@ -98,47 +98,40 @@ export async function POST(req: NextRequest) {
       return scimError("displayName is required", 400);
     }
 
-    const existing = await prisma.scimGroup.findUnique({
-      where: { displayName },
-    });
+    const { group, memberResponses, isNew } = await prisma.$transaction(async (tx) => {
+      const existing = await tx.scimGroup.findUnique({
+        where: { displayName },
+      });
 
-    if (existing) {
-      let adopted = existing;
-      if (body.externalId && body.externalId !== existing.externalId) {
-        adopted = await prisma.scimGroup.update({
-          where: { id: existing.id },
-          data: { externalId: body.externalId },
+      let scimGroup;
+      let adopted = false;
+
+      if (existing) {
+        scimGroup = existing;
+        adopted = true;
+        if (body.externalId && body.externalId !== existing.externalId) {
+          scimGroup = await tx.scimGroup.update({
+            where: { id: existing.id },
+            data: { externalId: body.externalId },
+          });
+        }
+      } else {
+        scimGroup = await tx.scimGroup.create({
+          data: {
+            displayName,
+            externalId: body.externalId ?? null,
+          },
         });
       }
 
-      const memberResponses = await processGroupMembers(adopted.id, body.members);
+      const members = await processGroupMembers(tx, scimGroup.id, body.members);
 
-      await writeAuditLog({
-        userId: null,
-        action: "scim.group_adopted",
-        entityType: "ScimGroup",
-        entityId: adopted.id,
-        metadata: { displayName },
-      });
-
-      return NextResponse.json(
-        toScimGroupResponse(adopted, memberResponses),
-        { status: 200 },
-      );
-    }
-
-    const group = await prisma.scimGroup.create({
-      data: {
-        displayName,
-        externalId: body.externalId ?? null,
-      },
+      return { group: scimGroup, memberResponses: members, isNew: !adopted };
     });
-
-    const memberResponses = await processGroupMembers(group.id, body.members);
 
     await writeAuditLog({
       userId: null,
-      action: "scim.group_created",
+      action: isNew ? "scim.group_created" : "scim.group_adopted",
       entityType: "ScimGroup",
       entityId: group.id,
       metadata: { displayName },
@@ -146,7 +139,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       toScimGroupResponse(group, memberResponses),
-      { status: 201 },
+      { status: isNew ? 201 : 200 },
     );
   } catch (error) {
     const message =
@@ -158,8 +151,11 @@ export async function POST(req: NextRequest) {
 /**
  * Create ScimGroupMember records for members in a group POST/PUT,
  * then reconcile each user's team memberships.
+ * Accepts a transaction client so the caller can wrap group creation
+ * and member processing in a single atomic transaction.
  */
 async function processGroupMembers(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   scimGroupId: string,
   members: unknown,
 ): Promise<Array<{ value: string; display?: string }>> {
@@ -167,29 +163,27 @@ async function processGroupMembers(
 
   const results: Array<{ value: string; display?: string }> = [];
 
-  await prisma.$transaction(async (tx) => {
-    for (const member of members) {
-      const userId = (member as { value?: unknown }).value;
-      if (typeof userId !== "string") continue;
+  for (const member of members) {
+    const userId = (member as { value?: unknown }).value;
+    if (typeof userId !== "string") continue;
 
-      const user = await tx.user.findUnique({
-        where: { id: userId },
-        select: { id: true, email: true },
-      });
-      if (!user) continue;
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+    if (!user) continue;
 
-      await tx.scimGroupMember.upsert({
-        where: { scimGroupId_userId: { scimGroupId, userId } },
-        create: { scimGroupId, userId },
-        update: {},
-      });
+    await tx.scimGroupMember.upsert({
+      where: { scimGroupId_userId: { scimGroupId, userId } },
+      create: { scimGroupId, userId },
+      update: {},
+    });
 
-      const groupNames = await getScimGroupNamesForUser(tx, userId);
-      await reconcileUserTeamMemberships(tx, userId, groupNames);
+    const groupNames = await getScimGroupNamesForUser(tx, userId);
+    await reconcileUserTeamMemberships(tx, userId, groupNames);
 
-      results.push({ value: userId, display: user.email });
-    }
-  });
+    results.push({ value: userId, display: user.email });
+  }
 
   return results;
 }
