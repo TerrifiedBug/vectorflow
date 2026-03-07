@@ -263,3 +263,33 @@ export async function PUT(
     return scimError(message, 400);
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  if (!(await authenticateScim(req))) {
+    return scimError("Unauthorized", 401);
+  }
+
+  const { id } = await params;
+
+  const team = await prisma.team.findUnique({ where: { id } });
+  if (!team) {
+    return scimError("Group not found", 404);
+  }
+
+  // Remove all memberships but keep the team (soft approach — avoids
+  // cascading deletes of environments, pipelines, etc.)
+  await prisma.teamMember.deleteMany({ where: { teamId: id } });
+
+  await writeAuditLog({
+    userId: null,
+    action: "scim.group_deleted",
+    entityType: "Team",
+    entityId: id,
+    metadata: { displayName: team.name },
+  });
+
+  return new NextResponse(null, { status: 204 });
+}
