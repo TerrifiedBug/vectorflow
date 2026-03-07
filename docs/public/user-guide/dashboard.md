@@ -97,7 +97,7 @@ Three summary cards appear at the top:
 |------|--------------|
 | **Total In** | The total bytes received across all pipelines in the selected period. Includes a trend arrow and percentage change compared to the previous period. |
 | **Total Out** | The total bytes sent by all sinks. Also shows trend vs. the previous period. |
-| **Reduction %** | The data reduction percentage: `(1 - bytesOut / bytesIn) * 100`. Shows the percentage-point change compared to the previous period. Color-coded green (above 50%), amber (10--50%), or neutral. |
+| **Reduction %** | The data reduction percentage: `(1 - bytesOut / bytesIn) * 100`. Shows the percentage-point change compared to the previous period. Color-coded green (≥50%), amber (20–50%), or red (<20%). |
 
 ### Volume over time chart
 

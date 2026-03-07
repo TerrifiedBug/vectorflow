@@ -534,9 +534,9 @@ export const dashboardRouter = router({
       const bucketMs =
         hours <= 1 ? 60000 : hours <= 6 ? 300000 : hours <= 24 ? 900000 : hours <= 168 ? 3600000 : 14400000;
 
-      // Cap at 50 000 rows to prevent OOM on large 30d windows; the bucketing
-      // still produces a faithful chart because later rows simply get aggregated
-      // into their time bucket alongside earlier rows.
+      // Cap at 50 000 rows to prevent OOM on large 30d windows. With desc
+      // ordering, the most recent data is preserved; older buckets at the
+      // start of the window are the ones dropped if the cap is hit.
       const rawMetrics = await prisma.pipelineMetric.findMany({
         where: {
           pipeline: { environmentId: input.environmentId },
@@ -549,7 +549,7 @@ export const dashboardRouter = router({
           eventsIn: true,
           eventsOut: true,
         },
-        orderBy: { timestamp: "asc" },
+        orderBy: { timestamp: "desc" },
         take: 50_000,
       });
 
