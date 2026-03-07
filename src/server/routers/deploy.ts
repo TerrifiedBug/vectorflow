@@ -290,7 +290,7 @@ export const deployRouter = router({
       };
 
       const userRole = (ctx as Record<string, unknown>).userRole as string;
-      const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
+      const canReview = userRole === "ADMIN" || userRole === "EDITOR";
 
       return prisma.deployRequest.findMany({
         where,
@@ -306,8 +306,8 @@ export const deployRouter = router({
           reviewNote: true,
           requestedById: true,
           reviewedById: true,
-          // configYaml only included for admins — contains decrypted secrets
-          configYaml: isAdmin,
+          // configYaml included for editors/admins who can review
+          configYaml: canReview,
           requestedBy: { select: { name: true, email: true } },
           pipeline: { select: { name: true } },
         },
@@ -317,7 +317,7 @@ export const deployRouter = router({
 
   approveDeployRequest: protectedProcedure
     .input(z.object({ requestId: z.string() }))
-    .use(withTeamAccess("ADMIN"))
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("deployRequest.approved", "DeployRequest"))
     .mutation(async ({ input, ctx }) => {
       const request = await prisma.deployRequest.findUnique({
@@ -378,7 +378,7 @@ export const deployRouter = router({
 
   rejectDeployRequest: protectedProcedure
     .input(z.object({ requestId: z.string(), note: z.string().optional() }))
-    .use(withTeamAccess("ADMIN"))
+    .use(withTeamAccess("EDITOR"))
     .use(withAudit("deployRequest.rejected", "DeployRequest"))
     .mutation(async ({ input, ctx }) => {
       const request = await prisma.deployRequest.findUnique({ where: { id: input.requestId } });
