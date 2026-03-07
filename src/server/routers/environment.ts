@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
@@ -100,6 +101,7 @@ export const environmentRouter = router({
         gitRepoUrl: z.string().url().optional().nullable(),
         gitBranch: z.string().min(1).max(100).optional().nullable(),
         gitToken: z.string().optional().nullable(),
+        gitOpsMode: z.enum(["off", "push", "bidirectional"]).optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
@@ -123,20 +125,35 @@ export const environmentRouter = router({
       }
 
       // Build update data, encrypting git token if provided
-      const data: Record<string, unknown> = { ...rest };
+      const { gitOpsMode: gitOpsModeInput, ...restWithoutGitOps } = rest;
+      const data: Record<string, unknown> = { ...restWithoutGitOps };
       if (gitToken !== undefined) {
         data.gitToken = gitToken ? encrypt(gitToken) : null;
+      }
+
+      // Handle gitOpsMode — auto-generate webhook secret when switching to bidirectional
+      if (gitOpsModeInput !== undefined) {
+        data.gitOpsMode = gitOpsModeInput;
+
+        if (gitOpsModeInput === "bidirectional" && !existing.gitWebhookSecret) {
+          data.gitWebhookSecret = crypto.randomBytes(32).toString("hex");
+        }
+        // Clear webhook secret when disabling bidirectional mode
+        if (gitOpsModeInput !== "bidirectional") {
+          data.gitWebhookSecret = null;
+        }
       }
 
       const updated = await prisma.environment.update({
         where: { id },
         data,
       });
-      const { gitToken: _gt, enrollmentTokenHash: _eth, ...safeUpdate } = updated;
+      const { gitToken: _gt, enrollmentTokenHash: _eth, gitWebhookSecret: _gws, ...safeUpdate } = updated;
       return {
         ...safeUpdate,
         hasEnrollmentToken: !!_eth,
         hasGitToken: !!_gt,
+        gitWebhookSecret: _gws,
       };
     }),
 
