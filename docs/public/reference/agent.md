@@ -161,10 +161,15 @@ Called on every poll cycle. Returns all deployed pipeline configurations for thi
 ```
 
 Key fields:
-- **`secrets`**: Pre-resolved secret values with `VF_SECRET_` prefix. The agent injects these as environment variables into the Vector process.
+- **`configYaml`**: The generated Vector YAML. Secret references are converted to environment variable placeholders (e.g., `${VF_SECRET_AWS_KEY}`) rather than containing decrypted values.
+- **`secrets`**: Pre-resolved secret values keyed by their `VF_SECRET_` environment variable name. The agent injects these as environment variables into the Vector process, where Vector's interpolation resolves the placeholders.
+- **`checksum`**: Includes both the YAML and the secrets dictionary, so rotating a secret triggers a pipeline restart even if the YAML itself hasn't changed.
 - **`certFiles`**: Certificate data written to `<VF_DATA_DIR>/certs/` before starting the pipeline.
-- **`checksum`**: Used to detect config changes without re-parsing YAML.
 - **`pendingAction`**: Server-initiated action (currently only `self_update`).
+
+{% hint style="info" %}
+When a node is in **maintenance mode**, the config response returns an empty `pipelines` array. The agent stops all running pipelines but continues sending heartbeats. See [Fleet Management](../user-guide/fleet.md#maintenance-mode) for details.
+{% endhint %}
 
 ### `POST /api/agent/heartbeat`
 
@@ -227,6 +232,8 @@ The agent manages Vector processes with full lifecycle control:
 Each Vector process receives:
 - `VECTOR_LOG=<logLevel>` -- controls Vector's log verbosity
 - All resolved secrets as environment variables with `VF_SECRET_` prefix (e.g., `VF_SECRET_AWS_KEY=value`)
+
+Pipeline YAML references secrets as `${VF_SECRET_NAME}` placeholders. Vector's built-in environment variable interpolation resolves these at startup, so secret values never appear in configuration files on disk.
 
 ### Metrics sidecar
 
