@@ -264,6 +264,31 @@ export const fleetRouter = router({
       });
     }),
 
+  setMaintenanceMode: protectedProcedure
+    .input(
+      z.object({
+        nodeId: z.string(),
+        enabled: z.boolean(),
+      }),
+    )
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("node.maintenance_toggled", "VectorNode"))
+    .mutation(async ({ input }) => {
+      const node = await prisma.vectorNode.findUnique({
+        where: { id: input.nodeId },
+      });
+      if (!node) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Node not found" });
+      }
+      return prisma.vectorNode.update({
+        where: { id: input.nodeId },
+        data: {
+          maintenanceMode: input.enabled,
+          maintenanceModeAt: input.enabled ? new Date() : null,
+        },
+      });
+    }),
+
   listWithPipelineStatus: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))

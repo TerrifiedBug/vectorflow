@@ -3,7 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowLeft, ShieldOff, Trash2, Activity, Terminal, Server, Pencil, Check, X } from "lucide-react";
+import { ArrowLeft, ShieldOff, Trash2, Activity, Terminal, Server, Pencil, Check, X, Wrench } from "lucide-react";
 import { NodeLogs } from "@/components/fleet/node-logs";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -131,6 +131,32 @@ export default function NodeDetailPage() {
     })
   );
 
+  const maintenanceMutation = useMutation(
+    trpc.fleet.setMaintenanceMode.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.fleet.get.queryKey({ id: params.nodeId }) });
+        queryClient.invalidateQueries({ queryKey: trpc.fleet.list.queryKey() });
+        queryClient.invalidateQueries({ queryKey: trpc.fleet.listWithPipelineStatus.queryKey() });
+      },
+    }),
+  );
+
+  function handleMaintenanceToggle() {
+    if (!node) return;
+    if (!node.maintenanceMode) {
+      const runningCount = node.pipelineStatuses.filter(
+        (s) => s.status === "RUNNING"
+      ).length;
+      if (!confirm(
+        `Enter maintenance mode for "${node.name}"?\n\nThis will stop ${runningCount} running pipeline(s) on this node. Pipelines will automatically resume when maintenance mode is turned off.`
+      )) return;
+    }
+    maintenanceMutation.mutate({
+      nodeId: node.id,
+      enabled: !node.maintenanceMode,
+    });
+  }
+
   function handleRevoke() {
     if (!node) return;
     if (!confirm(`Revoke token for "${node.name}"? The agent will no longer be able to connect.`)) {
@@ -217,6 +243,19 @@ export default function NodeDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant={node.maintenanceMode ? "default" : "outline"}
+            size="sm"
+            onClick={handleMaintenanceToggle}
+            disabled={maintenanceMutation.isPending}
+          >
+            <Wrench className="mr-2 h-4 w-4" />
+            {maintenanceMutation.isPending
+              ? "Updating..."
+              : node.maintenanceMode
+                ? "Exit Maintenance"
+                : "Enter Maintenance"}
+          </Button>
           {node.nodeTokenHash && (
             <Button
               variant="outline"
@@ -239,6 +278,28 @@ export default function NodeDetailPage() {
           </Button>
         </div>
       </div>
+
+      {node.maintenanceMode && (
+        <div className="flex items-center gap-3 rounded-lg border border-orange-500/50 bg-orange-50 px-4 py-3 dark:bg-orange-950/20">
+          <Wrench className="h-5 w-5 text-orange-600" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
+              This node is in maintenance mode
+            </p>
+            <p className="text-xs text-orange-600 dark:text-orange-400">
+              All pipelines are stopped. They will automatically resume when maintenance mode is turned off.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleMaintenanceToggle}
+            disabled={maintenanceMutation.isPending}
+          >
+            Exit Maintenance
+          </Button>
+        </div>
+      )}
 
       <div>
         {/* Node Details */}
