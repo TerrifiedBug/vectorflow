@@ -4,6 +4,7 @@ import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { LogLevel } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
+import { checkDevAgentVersion } from "@/server/services/version-check";
 
 export const fleetRouter = router({
   list: protectedProcedure
@@ -251,14 +252,38 @@ export const fleetRouter = router({
           message: "Cannot auto-update Docker agents",
         });
       }
+
+      let { targetVersion, checksum } = input;
+      const { downloadUrl } = input;
+
+      // Dev releases are rolling — the binary at the download URL may have been
+      // replaced since the UI cached the version/checksum. Force-refresh to get
+      // the current release data and avoid checksum mismatch on the agent.
+      if (targetVersion.startsWith("dev-")) {
+        const fresh = await checkDevAgentVersion(true);
+        if (fresh.latestVersion && fresh.latestVersion !== targetVersion) {
+          const binaryName = downloadUrl.split("/").pop() ?? "vf-agent-linux-amd64";
+          const freshChecksum = fresh.checksums[binaryName];
+          if (!freshChecksum) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message:
+                "Dev release has been updated but fresh checksum could not be retrieved. Please retry.",
+            });
+          }
+          targetVersion = fresh.latestVersion;
+          checksum = `sha256:${freshChecksum}`;
+        }
+      }
+
       return prisma.vectorNode.update({
         where: { id: input.nodeId },
         data: {
           pendingAction: {
             type: "self_update",
-            targetVersion: input.targetVersion,
-            downloadUrl: input.downloadUrl,
-            checksum: input.checksum,
+            targetVersion,
+            downloadUrl,
+            checksum,
           },
         },
       });
