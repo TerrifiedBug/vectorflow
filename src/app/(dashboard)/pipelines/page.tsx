@@ -91,6 +91,7 @@ function PipelineHealthBadge({ pipelineId }: { pipelineId: string }) {
   );
 
   const status = healthQuery.data?.status ?? null;
+  const hasSlis = (healthQuery.data?.slis.length ?? 0) > 0;
 
   if (healthQuery.isLoading) {
     return <Skeleton className="h-5 w-14" />;
@@ -107,6 +108,13 @@ function PipelineHealthBadge({ pipelineId }: { pipelineId: string }) {
     return (
       <Badge variant="outline" className="bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30">
         Degraded
+      </Badge>
+    );
+  }
+  if (status === "no_data" && hasSlis) {
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        No Data
       </Badge>
     );
   }
