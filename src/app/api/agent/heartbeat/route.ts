@@ -165,6 +165,8 @@ export async function POST(request: Request) {
           ? { deploymentMode }
           : {}),
         ...(clearPendingAction ? { pendingAction: Prisma.DbNull } : {}),
+        ...(updateError ? { lastUpdateError: updateError } : {}),
+        ...(clearPendingAction && !updateError ? { lastUpdateError: null } : {}),
       },
     });
 

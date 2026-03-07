@@ -144,6 +144,22 @@ The toolbar runs along the top of the editor and provides the following actions 
 | **Logs** | -- | Toggle the live logs panel. A red dot appears when recent errors have been detected. |
 | **Settings** | -- | Open pipeline-level settings (log level, global configuration). A blue dot indicates active global config. |
 
+### Pipeline settings
+
+Click the **Settings** button in the toolbar to open the pipeline settings panel. Available options include:
+
+- **Log Level** -- Sets the Vector log verbosity for this pipeline (`trace`, `debug`, `info`, `warn`, `error`).
+- **Metadata Enrichment** -- When enabled, VectorFlow automatically injects a `vectorflow_metadata_enrich` remap transform before every sink at deploy time. This adds two fields to every event:
+  - `.vectorflow.environment` -- the name of the environment the pipeline is deployed in.
+  - `.vectorflow.pipeline_version` -- the version number of this deployment.
+- **Classification Tags** -- Assign data classification labels (e.g. PII, PCI-DSS) to the pipeline.
+- **Global Configuration (JSON)** -- Advanced Vector configuration such as enrichment tables.
+- **Health SLIs** -- Define service-level indicators to monitor pipeline health.
+
+{% hint style="info" %}
+The metadata enrichment transform is invisible in the editor canvas. It is only injected into the generated Vector config at deploy time, so you will see it in the deploy preview diff but not as a node on the canvas.
+{% endhint %}
+
 ### Deploy and undeploy
 
 The right side of the toolbar shows the current deployment state:

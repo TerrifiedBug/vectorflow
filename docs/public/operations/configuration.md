@@ -27,6 +27,7 @@ These variables must be set before the server can start. Without them, the appli
 | `PORT` | `3000` | HTTP listen port |
 | `NODE_ENV` | `production` | Set automatically in Docker. Use `production` for standalone deployments |
 | `VF_BACKUP_DIR` | `/backups` | Directory for database backup files |
+| `VF_DISABLE_LOCAL_AUTH` | `false` | Hide the local login form and enforce SSO-only authentication. Requires OIDC to be configured |
 
 ### Docker Compose variables
 

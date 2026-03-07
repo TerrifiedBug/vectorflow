@@ -889,6 +889,8 @@ function AuthSettings() {
         </form>
       </CardContent>
     </Card>
+    <Separator className="my-8" />
+    <ScimSettings />
     </div>
   );
 }
@@ -1363,26 +1365,37 @@ function TeamSettings() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Select
-                      value={member.role}
-                      disabled={updateRoleMutation.isPending}
-                      onValueChange={(role: "VIEWER" | "EDITOR" | "ADMIN") => {
-                        updateRoleMutation.mutate({
-                          teamId: team.id,
-                          userId: member.user.id,
-                          role,
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="w-[120px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="VIEWER">Viewer</SelectItem>
-                        <SelectItem value="EDITOR">Editor</SelectItem>
-                        <SelectItem value="ADMIN">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {(member.user.authMethod === "OIDC" || member.user.scimExternalId) ? (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="w-[120px] justify-center">
+                          {member.role}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground" title="Role managed by identity provider">
+                          <Lock className="h-3 w-3" />
+                        </span>
+                      </div>
+                    ) : (
+                      <Select
+                        value={member.role}
+                        disabled={updateRoleMutation.isPending}
+                        onValueChange={(role: "VIEWER" | "EDITOR" | "ADMIN") => {
+                          updateRoleMutation.mutate({
+                            teamId: team.id,
+                            userId: member.user.id,
+                            role,
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="w-[120px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="VIEWER">Viewer</SelectItem>
+                          <SelectItem value="EDITOR">Editor</SelectItem>
+                          <SelectItem value="ADMIN">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                   </TableCell>
                   <TableCell>
                     {member.user.totpEnabled ? (
@@ -3319,10 +3332,6 @@ export default function SettingsPage() {
                 <ExternalLink className="mr-2 h-4 w-4" />
                 Audit Shipping
               </TabsTrigger>
-              <TabsTrigger value="scim">
-                <UserPlus className="mr-2 h-4 w-4" />
-                SCIM
-              </TabsTrigger>
               <TabsTrigger value="backup">
                 <HardDrive className="mr-2 h-4 w-4" />
                 Backup
@@ -3361,9 +3370,6 @@ export default function SettingsPage() {
             </TabsContent>
             <TabsContent value="audit-shipping" className="mt-6">
               <AuditLogShippingSection />
-            </TabsContent>
-            <TabsContent value="scim" className="mt-6">
-              <ScimSettings />
             </TabsContent>
             <TabsContent value="backup" className="mt-6">
               <BackupSettings />

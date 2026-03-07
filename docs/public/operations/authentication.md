@@ -208,3 +208,28 @@ Viewer  <  Editor  <  Admin  <  Super Admin
 ```
 
 Higher roles inherit all permissions from lower roles. Super Admin bypasses all team-level access checks.
+
+## SSO-only mode
+
+To enforce SSO-only authentication and hide the local login form, set the environment variable:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VF_DISABLE_LOCAL_AUTH` | `false` | When `true`, hides the email/password form and only shows the SSO button on the login page |
+
+{% hint style="warning" %}
+Before enabling SSO-only mode, ensure your OIDC provider is correctly configured and tested. The only way to re-enable local login is to change the environment variable and restart the server.
+{% endhint %}
+
+{% hint style="info" %}
+SSO-only mode acts as a breakglass mechanism -- if SSO breaks, an administrator can re-enable local login by setting `VF_DISABLE_LOCAL_AUTH=false` and restarting the container.
+{% endhint %}
+
+## SSO-managed roles
+
+When users authenticate via OIDC or are provisioned via SCIM, their team roles are managed by the identity provider. Admins cannot change roles for SSO-managed users in the VectorFlow UI -- the role dropdown is locked with a tooltip indicating the role is managed by the identity provider.
+
+Role updates happen:
+
+- **On login** -- OIDC group claims are mapped to team roles via the configured team mappings
+- **Via SCIM** -- When SCIM group membership changes are pushed, roles are assigned based on team mappings
