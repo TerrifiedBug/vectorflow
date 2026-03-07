@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Badge } from "@/components/ui/badge";
-import { Minus } from "lucide-react";
+import { Minus, Wrench } from "lucide-react";
 import Link from "next/link";
 import { StatusDot } from "@/components/ui/status-dot";
 import { pipelineStatusVariant, pipelineStatusLabel } from "@/lib/status";
@@ -51,10 +51,18 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
             {nodes.map((node) => (
               <th
                 key={node.id}
-                className="px-3 py-2 text-center font-medium text-muted-foreground"
+                className={`px-3 py-2 text-center font-medium text-muted-foreground ${
+                  node.maintenanceMode ? "bg-orange-50/50 dark:bg-orange-950/10" : ""
+                }`}
               >
                 <div>{node.name}</div>
                 <div className="text-xs font-normal">{node.host}</div>
+                {node.maintenanceMode && (
+                  <div className="mt-1 flex items-center justify-center gap-1 text-xs text-orange-600 dark:text-orange-400">
+                    <Wrench className="h-3 w-3" />
+                    Maintenance
+                  </div>
+                )}
               </th>
             ))}
           </tr>
@@ -79,7 +87,7 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
 
                 if (!ps) {
                   return (
-                    <td key={node.id} className="px-3 py-2 text-center">
+                    <td key={node.id} className={`px-3 py-2 text-center ${node.maintenanceMode ? "opacity-30" : ""}`}>
                       <div className="flex items-center justify-center">
                         <Minus className="h-4 w-4 text-muted-foreground/50" />
                       </div>
@@ -90,7 +98,7 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
                 const isOutdated = ps.version < pipeline.latestVersion;
 
                 return (
-                  <td key={node.id} className="px-3 py-2 text-center">
+                  <td key={node.id} className={`px-3 py-2 text-center ${node.maintenanceMode ? "opacity-30" : ""}`}>
                     <div className="flex flex-col items-center gap-0.5">
                       {isOutdated ? (
                         <div

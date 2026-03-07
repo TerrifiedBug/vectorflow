@@ -105,6 +105,8 @@ model VectorNode {
   os               String?
   deploymentMode   DeploymentMode       @default(UNKNOWN)
   pendingAction    Json?
+  maintenanceMode  Boolean              @default(false)
+  maintenanceModeAt DateTime?
   pipelineStatuses NodePipelineStatus[]
   nodeMetrics      NodeMetric[]
   pipelineLogs     PipelineLog[]
