@@ -12,6 +12,7 @@ Pipelines are displayed in a table with the following columns:
 |--------|------------|
 | **Name** | The pipeline name. Click it to open the pipeline in the editor. |
 | **Status** | Current lifecycle state (see statuses below). |
+| **Health** | SLI health badge -- green **Healthy**, yellow **Degraded**, or gray **No SLIs** (see [Pipeline Health SLIs](#pipeline-health-slis) below). |
 | **Events/sec In** | Live event ingestion rate polled from the agent fleet. |
 | **Bytes/sec In** | Live byte ingestion rate. |
 | **Reduction** | Percentage of events reduced by transforms, color-coded green (>50%), amber (>10%), or neutral. |
@@ -68,6 +69,57 @@ Every time you deploy a pipeline, a new **version** is created that captures the
 - **Rollback** -- Restore a previous version if a deployment causes issues.
 
 The pipeline list shows a **Pending deploy** badge when the saved configuration differs from the most recently deployed version, so you always know if there are undeployed changes.
+
+## Pipeline Health SLIs
+
+Service Level Indicators (SLIs) let you define health thresholds for your deployed pipelines. When SLIs are configured, VectorFlow continuously evaluates pipeline metrics against your thresholds and displays the result as a health badge in the pipeline list and pipeline editor toolbar.
+
+### Health badges
+
+| Badge | Meaning |
+|-------|---------|
+| **Healthy** (green) | All configured SLIs are within their thresholds. |
+| **Degraded** (yellow) | One or more SLIs have breached their threshold. |
+| **No SLIs** (gray) | No SLI definitions have been configured for this pipeline. |
+
+Draft pipelines do not show a health badge since they are not deployed and have no metrics.
+
+### Available metrics
+
+| Metric | Description | Typical condition |
+|--------|-------------|-------------------|
+| **Error Rate** | Ratio of errors to total events ingested (`errorsTotal / eventsIn`). | `< 0.01` (less than 1% errors) |
+| **Discard Rate** | Ratio of discarded events to total events ingested (`eventsDiscarded / eventsIn`). | `< 0.05` (less than 5% discards) |
+| **Throughput Floor** | Events per second averaged over the evaluation window (`eventsIn / windowSeconds`). | `> 100` (at least 100 events/sec) |
+
+### Configuring SLIs
+
+{% stepper %}
+{% step %}
+### Open pipeline settings
+In the pipeline editor, click the **Settings** gear icon in the toolbar to open the settings popover.
+{% endstep %}
+{% step %}
+### Expand Health SLIs
+Click the **Health SLIs** collapsible section at the bottom of the settings panel.
+{% endstep %}
+{% step %}
+### Add an SLI
+Select a **Metric** (Error Rate, Throughput Floor, or Discard Rate), choose a **Condition** (less than or greater than), set a **Threshold** value, and configure the evaluation **Window** in minutes (1--1440). Click **Add SLI** to save.
+{% endstep %}
+{% step %}
+### Review and remove
+Existing SLIs are listed above the form. Click the trash icon to remove an SLI. Changes take effect immediately -- the pipeline list and toolbar health indicators update on the next evaluation cycle.
+{% endstep %}
+{% endstepper %}
+
+{% hint style="info" %}
+Each metric can only have one SLI per pipeline. Adding an SLI for a metric that already has one will update the existing definition.
+{% endhint %}
+
+{% hint style="warning" %}
+If no metric data is available for the evaluation window (for example, the pipeline was recently deployed or has no traffic), the SLI is treated as **breached** and the pipeline health will show as **Degraded**.
+{% endhint %}
 
 ## Filtering by environment
 
