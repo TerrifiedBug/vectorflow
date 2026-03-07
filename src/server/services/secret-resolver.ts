@@ -138,7 +138,9 @@ function walkConvertSecretRefs(
       } else {
         result[key] = value;
       }
-    } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    } else if (Array.isArray(value)) {
+      result[key] = walkConvertSecretRefsArray(value);
+    } else if (typeof value === "object" && value !== null) {
       result[key] = walkConvertSecretRefs(value as Record<string, unknown>);
     } else {
       result[key] = value;
@@ -148,20 +150,37 @@ function walkConvertSecretRefs(
   return result;
 }
 
+function walkConvertSecretRefsArray(arr: unknown[]): unknown[] {
+  return arr.map((value) => {
+    if (typeof value === "string") {
+      const match = value.match(SECRET_REF_PATTERN);
+      return match ? `\${${secretNameToEnvVar(match[1])}}` : value;
+    } else if (Array.isArray(value)) {
+      return walkConvertSecretRefsArray(value);
+    } else if (typeof value === "object" && value !== null) {
+      return walkConvertSecretRefs(value as Record<string, unknown>);
+    }
+    return value;
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
 function collectStringRefs(
-  obj: Record<string, unknown>,
+  obj: Record<string, unknown> | unknown[],
   pattern: RegExp,
   refs: Set<string>,
 ): void {
-  for (const value of Object.values(obj)) {
+  const values = Array.isArray(obj) ? obj : Object.values(obj);
+  for (const value of values) {
     if (typeof value === "string") {
       const match = value.match(pattern);
       if (match) refs.add(match[1]);
-    } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    } else if (Array.isArray(value)) {
+      collectStringRefs(value, pattern, refs);
+    } else if (typeof value === "object" && value !== null) {
       collectStringRefs(value as Record<string, unknown>, pattern, refs);
     }
   }
@@ -182,7 +201,9 @@ function replaceStringRefs(
       } else {
         result[key] = value;
       }
-    } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    } else if (Array.isArray(value)) {
+      result[key] = replaceStringRefsArray(value, pattern, valueMap);
+    } else if (typeof value === "object" && value !== null) {
       result[key] = replaceStringRefs(value as Record<string, unknown>, pattern, valueMap);
     } else {
       result[key] = value;
@@ -190,4 +211,22 @@ function replaceStringRefs(
   }
 
   return result;
+}
+
+function replaceStringRefsArray(
+  arr: unknown[],
+  pattern: RegExp,
+  valueMap: Map<string, string>,
+): unknown[] {
+  return arr.map((value) => {
+    if (typeof value === "string") {
+      const match = value.match(pattern);
+      return match && valueMap.has(match[1]) ? valueMap.get(match[1])! : value;
+    } else if (Array.isArray(value)) {
+      return replaceStringRefsArray(value, pattern, valueMap);
+    } else if (typeof value === "object" && value !== null) {
+      return replaceStringRefs(value as Record<string, unknown>, pattern, valueMap);
+    }
+    return value;
+  });
 }

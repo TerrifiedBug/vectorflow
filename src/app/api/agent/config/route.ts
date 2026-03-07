@@ -90,11 +90,17 @@ export async function GET(request: Request) {
     if (environment.secretBackend === "BUILTIN") {
       const referencedNames = new Set<string>();
       for (const p of pipelines) {
-        const ver = p.versions[0];
-        if (!ver?.configYaml) continue;
-        const parsed = yaml.load(ver.configYaml) as Record<string, unknown>;
-        for (const name of collectSecretRefs(parsed)) {
-          referencedNames.add(name);
+        try {
+          const ver = p.versions[0];
+          if (!ver?.configYaml) continue;
+          const parsed = yaml.load(ver.configYaml);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            for (const name of collectSecretRefs(parsed as Record<string, unknown>)) {
+              referencedNames.add(name);
+            }
+          }
+        } catch {
+          // Skip unparseable configs — they'll be caught again in the per-pipeline loop below
         }
       }
 
