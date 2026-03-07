@@ -46,18 +46,18 @@ export const deployRouter = router({
         ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
       }));
 
-      let enrichment: { environmentName: string; pipelineVersion: number } | null = null;
-      if (pipeline.enrichMetadata) {
-        const latestVer = await prisma.pipelineVersion.findFirst({
-          where: { pipelineId: input.pipelineId },
-          orderBy: { version: "desc" },
-          select: { version: true },
-        });
-        enrichment = {
-          environmentName: pipeline.environment.name,
-          pipelineVersion: (latestVer?.version ?? 0) + 1,
-        };
-      }
+      const latestVersion = await prisma.pipelineVersion.findFirst({
+        where: { pipelineId: input.pipelineId },
+        orderBy: { version: "desc" },
+        select: { configYaml: true, version: true, logLevel: true },
+      });
+
+      const enrichment = pipeline.enrichMetadata
+        ? {
+            environmentName: pipeline.environment.name,
+            pipelineVersion: (latestVersion?.version ?? 0) + 1,
+          }
+        : null;
 
       const configYaml = generateVectorYaml(
         flowNodes as Parameters<typeof generateVectorYaml>[0],
@@ -66,12 +66,6 @@ export const deployRouter = router({
         enrichment,
       );
       const validation = await validateConfig(configYaml);
-
-      const latestVersion = await prisma.pipelineVersion.findFirst({
-        where: { pipelineId: input.pipelineId },
-        orderBy: { version: "desc" },
-        select: { configYaml: true, version: true, logLevel: true },
-      });
 
       return {
         configYaml,

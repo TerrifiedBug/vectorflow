@@ -76,31 +76,22 @@ export function generateVectorYaml(
     config[section][componentKey] = entry;
   }
 
-  // Inject metadata enrichment transform before each sink
+  // Inject a per-sink metadata enrichment transform to preserve topology
   if (enrichment) {
     const sinkKeys = Object.keys(config.sinks ?? {});
-    if (sinkKeys.length > 0) {
-      const enrichKey = "vectorflow_metadata_enrich";
-      const sinkInputs = new Set<string>();
-      for (const sinkKey of sinkKeys) {
-        const sink = config.sinks[sinkKey] as Record<string, unknown>;
-        const inputs = sink.inputs as string[] | undefined;
-        if (inputs) {
-          for (const input of inputs) sinkInputs.add(input);
-        }
-      }
+    const vrl = `.vectorflow.environment = ${JSON.stringify(enrichment.environmentName)}\n.vectorflow.pipeline_version = ${enrichment.pipelineVersion}`;
 
-      config.transforms[enrichKey] = {
-        type: "remap",
-        inputs: [...sinkInputs],
-        source: `.vectorflow.environment = ${JSON.stringify(enrichment.environmentName)}\n.vectorflow.pipeline_version = ${enrichment.pipelineVersion}`,
-      };
-
-      for (const sinkKey of sinkKeys) {
-        const sink = config.sinks[sinkKey] as Record<string, unknown>;
-        if (sink.inputs) {
-          sink.inputs = [enrichKey];
-        }
+    for (const sinkKey of sinkKeys) {
+      const sink = config.sinks[sinkKey] as Record<string, unknown>;
+      const sinkInputs = sink.inputs as string[] | undefined;
+      if (sinkInputs && sinkInputs.length > 0) {
+        const enrichKey = `vectorflow_enrich_${sinkKey}`;
+        config.transforms[enrichKey] = {
+          type: "remap",
+          inputs: [...sinkInputs],
+          source: vrl,
+        };
+        sink.inputs = [enrichKey];
       }
     }
   }

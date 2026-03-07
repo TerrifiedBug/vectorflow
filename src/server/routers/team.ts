@@ -228,11 +228,18 @@ export const teamRouter = router({
     .mutation(async ({ input }) => {
       const member = await prisma.teamMember.findUnique({
         where: { userId_teamId: { userId: input.userId, teamId: input.teamId } },
+        include: { user: { select: { authMethod: true, scimExternalId: true } } },
       });
       if (!member) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Team member not found",
+        });
+      }
+      if (member.user.authMethod === "OIDC" || member.user.scimExternalId) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Role is managed by identity provider and cannot be changed manually",
         });
       }
       return prisma.teamMember.update({
