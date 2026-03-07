@@ -423,7 +423,7 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
         <TabsContent value="live-tail" className="min-h-0 flex-1 overflow-y-auto">
           <LiveTailPanel
             pipelineId={pipelineId}
-            componentKey={componentKey}
+            componentKey={storeKey}
             isDeployed={isDeployed}
           />
         </TabsContent>

@@ -1044,6 +1044,7 @@ function TeamSettings() {
   const [inviteRole, setInviteRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">(
     "VIEWER"
   );
+  const [newTag, setNewTag] = useState("");
 
   const updateRoleMutation = useMutation(
     trpc.team.updateMemberRole.mutationOptions({
@@ -1158,6 +1159,66 @@ function TeamSettings() {
       },
     })
   );
+
+  // Data classification tags
+  const availableTagsQuery = useQuery(
+    trpc.team.getAvailableTags.queryOptions(
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId },
+    ),
+  );
+  const availableTags = availableTagsQuery.data ?? [];
+  const tagsQueryKey = trpc.team.getAvailableTags.queryKey({ teamId: selectedTeamId! });
+
+  const updateTagsMutation = useMutation(
+    trpc.team.updateAvailableTags.mutationOptions({
+      onMutate: async (variables) => {
+        await queryClient.cancelQueries({ queryKey: tagsQueryKey });
+        const previous = queryClient.getQueryData(tagsQueryKey);
+        const previousInput = newTag;
+        queryClient.setQueryData(tagsQueryKey, variables.tags);
+        setNewTag("");
+        return { previous, previousInput };
+      },
+      onError: (error, _variables, context) => {
+        if (context?.previous !== undefined) {
+          queryClient.setQueryData(tagsQueryKey, context.previous);
+        }
+        if (context?.previousInput !== undefined) {
+          setNewTag(context.previousInput);
+        }
+        toast.error(error.message || "Failed to update tags");
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: tagsQueryKey });
+      },
+      onSuccess: () => {
+        toast.success("Tags updated");
+      },
+    }),
+  );
+
+  const handleAddTag = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newTag.trim();
+    if (!selectedTeamId || !trimmed) return;
+    if (availableTags.includes(trimmed)) {
+      toast.error("Tag already exists");
+      return;
+    }
+    updateTagsMutation.mutate({
+      teamId: selectedTeamId,
+      tags: [...availableTags, trimmed],
+    });
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    if (!selectedTeamId) return;
+    updateTagsMutation.mutate({
+      teamId: selectedTeamId,
+      tags: availableTags.filter((t) => t !== tag),
+    });
+  };
 
   const handleRename = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1629,6 +1690,61 @@ function TeamSettings() {
                 </>
               ) : (
                 "Add"
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Data Classification Tags</CardTitle>
+          <CardDescription>
+            Define classification tags that can be applied to pipelines in this team (e.g., PII, PHI, PCI-DSS).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {availableTags.length === 0 && (
+              <span className="text-sm text-muted-foreground">No tags defined yet.</span>
+            )}
+            {availableTags.map((tag) => (
+              <Badge key={tag} variant="outline" className="text-sm gap-1.5">
+                {tag}
+                <button
+                  type="button"
+                  className="inline-flex items-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
+                  onClick={() => handleRemoveTag(tag)}
+                  disabled={updateTagsMutation.isPending}
+                  aria-label={`Remove ${tag} tag`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+          <form onSubmit={handleAddTag} className="flex items-end gap-3">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="new-tag">Add Tag</Label>
+              <Input
+                id="new-tag"
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                placeholder="e.g., PII, Internal, PCI-DSS"
+                maxLength={30}
+              />
+            </div>
+            <Button type="submit" className="h-9" disabled={updateTagsMutation.isPending || !newTag.trim()}>
+              {updateTagsMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add
+                </>
               )}
             </Button>
           </form>
