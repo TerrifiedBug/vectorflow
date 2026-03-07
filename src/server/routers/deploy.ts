@@ -138,27 +138,29 @@ export const deployRouter = router({
           });
         }
 
-        // Prevent duplicate pending requests for the same pipeline
-        const existingPending = await prisma.deployRequest.findFirst({
-          where: { pipelineId: input.pipelineId, status: "PENDING" },
-        });
-        if (existingPending) {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: "A pending deploy request already exists for this pipeline",
+        // Atomic check-and-create to prevent duplicate pending requests
+        const request = await prisma.$transaction(async (tx) => {
+          const existingPending = await tx.deployRequest.findFirst({
+            where: { pipelineId: input.pipelineId, status: "PENDING" },
           });
-        }
+          if (existingPending) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "A pending deploy request already exists for this pipeline",
+            });
+          }
 
-        const request = await prisma.deployRequest.create({
-          data: {
-            pipelineId: input.pipelineId,
-            environmentId: pipeline.environment.id,
-            requestedById: userId,
-            configYaml,
-            changelog: input.changelog,
-            nodeSelector: input.nodeSelector ?? undefined,
-          },
-        });
+          return tx.deployRequest.create({
+            data: {
+              pipelineId: input.pipelineId,
+              environmentId: pipeline.environment.id,
+              requestedById: userId,
+              configYaml,
+              changelog: input.changelog,
+              nodeSelector: input.nodeSelector ?? undefined,
+            },
+          });
+        }, { isolationLevel: "Serializable" });
 
         writeAuditLog({
           userId,

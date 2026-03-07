@@ -414,6 +414,7 @@ export function withAudit(action: string, entityType: string) {
           input?.teamId ??
           input?.pipelineId ??
           input?.versionId ??
+          input?.requestId ??
           userId
         ) as string;
 
