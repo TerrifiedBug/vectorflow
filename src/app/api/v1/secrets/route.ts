@@ -106,6 +106,13 @@ export const PUT = apiRoute(
       );
     }
 
+    if (!body.id && !body.name) {
+      return NextResponse.json(
+        { error: "id or name is required" },
+        { status: 400 },
+      );
+    }
+
     // Look up by id or name
     let secret;
     if (body.id) {
@@ -156,6 +163,13 @@ export const DELETE = apiRoute(
   async (req: NextRequest, ctx) => {
     const id = req.nextUrl.searchParams.get("id");
     const name = req.nextUrl.searchParams.get("name");
+
+    if (!id && !name) {
+      return NextResponse.json(
+        { error: "id or name query parameter is required" },
+        { status: 400 },
+      );
+    }
 
     let secret;
     if (id) {

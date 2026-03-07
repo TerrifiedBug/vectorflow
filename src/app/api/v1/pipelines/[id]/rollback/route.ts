@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute } from "../../../_lib/api-handler";
 import { rollback } from "@/server/services/pipeline-version";
 
@@ -48,6 +49,19 @@ export const POST = apiRoute(
       body.targetVersionId,
       ctx.serviceAccountId,
     );
+
+    writeAuditLog({
+      action: "api.pipeline_rolled_back",
+      entityType: "Pipeline",
+      entityId: pipeline.id,
+      userId: null,
+      userEmail: null,
+      userName: ctx.serviceAccountName ?? "service-account",
+      teamId: null,
+      environmentId: ctx.environmentId,
+      ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0] ?? null,
+      metadata: { targetVersionId: body.targetVersionId, rolledBackToVersion: version.version },
+    }).catch(() => {});
 
     return NextResponse.json({
       success: true,

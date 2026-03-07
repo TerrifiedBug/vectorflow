@@ -7,7 +7,24 @@ export const GET = apiRoute("nodes.read", async (req: NextRequest, ctx) => {
 
   const nodes = await prisma.vectorNode.findMany({
     where: { environmentId: ctx.environmentId },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      host: true,
+      apiPort: true,
+      environmentId: true,
+      status: true,
+      lastSeen: true,
+      lastHeartbeat: true,
+      agentVersion: true,
+      vectorVersion: true,
+      os: true,
+      deploymentMode: true,
+      maintenanceMode: true,
+      maintenanceModeAt: true,
+      metadata: true,
+      enrolledAt: true,
+      createdAt: true,
       environment: { select: { id: true, name: true } },
     },
     orderBy: { createdAt: "desc" },

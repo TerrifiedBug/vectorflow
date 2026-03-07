@@ -9,6 +9,13 @@ export const GET = apiRoute("audit.read", async (req: NextRequest, ctx) => {
 
   const limit = Math.min(Math.max(parseInt(limitParam ?? "50", 10) || 50, 1), 200);
 
+  if (after) {
+    const exists = await prisma.auditLog.findUnique({ where: { id: after }, select: { id: true } });
+    if (!exists) {
+      return NextResponse.json({ error: "Invalid cursor" }, { status: 400 });
+    }
+  }
+
   const conditions: Record<string, unknown>[] = [
     { environmentId: ctx.environmentId },
   ];

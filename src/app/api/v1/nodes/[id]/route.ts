@@ -10,7 +10,24 @@ export const GET = apiRoute("nodes.read", async (_req, ctx, params) => {
 
   const node = await prisma.vectorNode.findUnique({
     where: { id, environmentId: ctx.environmentId },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      host: true,
+      apiPort: true,
+      environmentId: true,
+      status: true,
+      lastSeen: true,
+      lastHeartbeat: true,
+      agentVersion: true,
+      vectorVersion: true,
+      os: true,
+      deploymentMode: true,
+      maintenanceMode: true,
+      maintenanceModeAt: true,
+      metadata: true,
+      enrolledAt: true,
+      createdAt: true,
       environment: { select: { id: true, name: true } },
       pipelineStatuses: {
         include: {

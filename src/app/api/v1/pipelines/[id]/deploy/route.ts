@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute } from "../../../_lib/api-handler";
 import { deployAgent } from "@/server/services/deploy-agent";
 
@@ -51,6 +52,19 @@ export const POST = apiRoute(
         { status: 422 },
       );
     }
+
+    writeAuditLog({
+      action: "api.pipeline_deployed",
+      entityType: "Pipeline",
+      entityId: pipeline.id,
+      userId: null,
+      userEmail: null,
+      userName: ctx.serviceAccountName ?? "service-account",
+      teamId: null,
+      environmentId: ctx.environmentId,
+      ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0] ?? null,
+      metadata: { changelog },
+    }).catch(() => {});
 
     return NextResponse.json({
       success: true,
