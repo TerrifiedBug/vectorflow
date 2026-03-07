@@ -813,7 +813,7 @@ function NotificationChannelsSection({
         }
         break;
       case "pagerduty":
-        if (!form.integrationKey.trim()) {
+        if (!editingChannelId && !form.integrationKey.trim()) {
           toast.error("Integration key is required");
           return false;
         }
@@ -1143,7 +1143,11 @@ function NotificationChannelsSection({
                 <Input
                   id="pd-integration-key"
                   type="password"
-                  placeholder="Enter PagerDuty integration key"
+                  placeholder={
+                    editingChannelId
+                      ? "Leave blank to keep existing key"
+                      : "Enter PagerDuty integration key"
+                  }
                   value={form.integrationKey}
                   onChange={(e) =>
                     setForm((f) => ({
@@ -1153,8 +1157,9 @@ function NotificationChannelsSection({
                   }
                 />
                 <p className="text-xs text-muted-foreground">
-                  Found in PagerDuty under Service &gt; Integrations &gt; Events
-                  API v2.
+                  {editingChannelId
+                    ? "Leave blank to keep the existing key, or enter a new one to replace it."
+                    : "Found in PagerDuty under Service > Integrations > Events API v2."}
                 </p>
               </div>
             )}
