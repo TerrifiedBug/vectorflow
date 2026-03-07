@@ -341,6 +341,34 @@ export const teamRouter = router({
       });
     }),
 
+  updateAvailableTags: protectedProcedure
+    .input(z.object({
+      teamId: z.string(),
+      tags: z.array(z.string().min(1).max(30)).refine(
+        (arr) => new Set(arr).size === arr.length,
+        { message: "Duplicate tags are not allowed" },
+      ),
+    }))
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.updated", "Team"))
+    .mutation(async ({ input }) => {
+      return prisma.team.update({
+        where: { id: input.teamId },
+        data: { availableTags: input.tags },
+      });
+    }),
+
+  getAvailableTags: protectedProcedure
+    .input(z.object({ teamId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const team = await prisma.team.findUnique({
+        where: { id: input.teamId },
+        select: { availableTags: true },
+      });
+      return (team?.availableTags as string[]) ?? [];
+    }),
+
   linkMemberToOidc: protectedProcedure
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.member_linked_oidc", "User"))

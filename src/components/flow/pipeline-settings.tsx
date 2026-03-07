@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Plus, Trash2, X } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTRPC } from "@/trpc/client";
+import { toast } from "sonner";
 import { useFlowStore } from "@/stores/flow-store";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -20,15 +23,24 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { useTRPC } from "@/trpc/client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+
+function tagBadgeClass(tag: string): string {
+  const upper = tag.toUpperCase();
+  if (upper === "PII") return "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30";
+  if (upper === "PHI") return "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30";
+  if (upper === "PCI-DSS") return "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30";
+  if (upper === "INTERNAL") return "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30";
+  if (upper === "PUBLIC") return "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30";
+  return "bg-muted text-muted-foreground";
+}
 
 interface PipelineSettingsProps {
   pipelineId?: string;
 }
 
 export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const globalConfig = useFlowStore((s) => s.globalConfig);
   const updateGlobalConfig = useFlowStore((s) => s.updateGlobalConfig);
   const setGlobalConfig = useFlowStore((s) => s.setGlobalConfig);
@@ -37,6 +49,66 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
   const [jsonOpen, setJsonOpen] = useState(false);
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // Fetch pipeline to get its tags and resolve team ID
+  const pipelineQuery = useQuery(
+    trpc.pipeline.get.queryOptions(
+      { id: pipelineId! },
+      { enabled: !!pipelineId },
+    ),
+  );
+  const pipeline = pipelineQuery.data;
+  const teamId = pipeline?.environment?.teamId ?? null;
+  const currentTags = (pipeline?.tags as string[]) ?? [];
+
+  // Fetch available tags from the team
+  const availableTagsQuery = useQuery(
+    trpc.team.getAvailableTags.queryOptions(
+      { teamId: teamId! },
+      { enabled: !!teamId },
+    ),
+  );
+  const availableTags = availableTagsQuery.data ?? [];
+
+  // Mutation to update pipeline tags (optimistic updates prevent stale-state races)
+  const pipelineQueryKey = trpc.pipeline.get.queryKey({ id: pipelineId! });
+  const updateTagsMutation = useMutation(
+    trpc.pipeline.update.mutationOptions({
+      onMutate: async (variables) => {
+        await queryClient.cancelQueries({ queryKey: pipelineQueryKey });
+        const previous = queryClient.getQueryData(pipelineQueryKey);
+        queryClient.setQueryData(pipelineQueryKey, (old: typeof pipeline) =>
+          old ? { ...old, tags: (variables.tags ?? old.tags) } : old,
+        );
+        return { previous };
+      },
+      onError: (error, _variables, context) => {
+        if (context?.previous) {
+          queryClient.setQueryData(pipelineQueryKey, context.previous);
+        }
+        toast.error(error.message || "Failed to update tags");
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: pipelineQueryKey });
+        queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
+      },
+      onSuccess: () => {
+        toast.success("Tags updated");
+      },
+    }),
+  );
+
+  const handleAddTag = (tag: string) => {
+    if (!pipelineId || currentTags.includes(tag)) return;
+    const newTags = [...currentTags, tag];
+    updateTagsMutation.mutate({ id: pipelineId, tags: newTags });
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    if (!pipelineId) return;
+    const newTags = currentTags.filter((t) => t !== tag);
+    updateTagsMutation.mutate({ id: pipelineId, tags: newTags });
+  };
 
   // Derive the config object minus log_level for the JSON editor
   useEffect(() => {
@@ -74,6 +146,7 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
   };
 
   const hasJsonContent = jsonText.trim().length > 0;
+  const unselectedTags = availableTags.filter((t) => !currentTags.includes(t));
 
   return (
     <div className="space-y-4">
@@ -102,6 +175,57 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Classification Tags */}
+      {pipelineId && (availableTags.length > 0 || currentTags.length > 0) && (
+        <>
+          <Separator />
+          <div className="space-y-2">
+            <Label>Classification Tags</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {currentTags.map((tag) => (
+                <Badge
+                  key={tag}
+                  variant="outline"
+                  className={`text-xs ${tagBadgeClass(tag)}`}
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    className="ml-1 inline-flex items-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
+                    onClick={() => handleRemoveTag(tag)}
+                    disabled={updateTagsMutation.isPending}
+                    aria-label={`Remove ${tag} tag`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+              {currentTags.length === 0 && (
+                <span className="text-xs text-muted-foreground">No tags assigned</span>
+              )}
+            </div>
+            {unselectedTags.length > 0 && (
+              <Select
+                value=""
+                onValueChange={handleAddTag}
+                disabled={updateTagsMutation.isPending}
+              >
+                <SelectTrigger className="w-full text-xs h-8">
+                  <SelectValue placeholder="Add a tag..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {unselectedTags.map((tag) => (
+                    <SelectItem key={tag} value={tag}>
+                      {tag}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        </>
+      )}
 
       <Separator />
 
