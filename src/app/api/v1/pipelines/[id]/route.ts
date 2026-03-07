@@ -10,7 +10,15 @@ export const GET = apiRoute("pipelines.read", async (_req, ctx, params) => {
 
   const pipeline = await prisma.pipeline.findUnique({
     where: { id, environmentId: ctx.environmentId },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      isDraft: true,
+      deployedAt: true,
+      environmentId: true,
+      createdAt: true,
+      updatedAt: true,
       nodes: {
         select: {
           id: true,
