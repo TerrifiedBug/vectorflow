@@ -73,6 +73,7 @@ export const pipelineRouter = router({
           createdAt: true,
           updatedAt: true,
           globalConfig: true,
+          tags: true,
           createdBy: { select: { name: true, email: true, image: true } },
           updatedBy: { select: { name: true, email: true, image: true } },
           nodeStatuses: {
@@ -174,6 +175,7 @@ export const pipelineRouter = router({
           deployedAt: p.deployedAt,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt,
+          tags: (p.tags as string[]) ?? [],
           createdBy: p.createdBy,
           updatedBy: p.updatedBy,
           nodeStatuses: p.nodeStatuses,
@@ -357,14 +359,16 @@ export const pipelineRouter = router({
         id: z.string(),
         name: pipelineNameSchema.optional(),
         description: z.string().nullable().optional(),
+        tags: z.array(z.string()).optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.updated", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
-      const { id, ...data } = input;
+      const { id, tags, ...data } = input;
       const existing = await prisma.pipeline.findUnique({
         where: { id },
+        select: { id: true, environment: { select: { teamId: true } } },
       });
       if (!existing) {
         throw new TRPCError({
@@ -373,10 +377,27 @@ export const pipelineRouter = router({
         });
       }
 
+      // Validate tags against the team's available tags
+      if (tags !== undefined && existing.environment.teamId) {
+        const team = await prisma.team.findUnique({
+          where: { id: existing.environment.teamId },
+          select: { availableTags: true },
+        });
+        const availableTags = (team?.availableTags as string[]) ?? [];
+        const invalid = tags.filter((t) => !availableTags.includes(t));
+        if (invalid.length > 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Invalid tags: ${invalid.join(", ")}. Tags must be defined in team settings first.`,
+          });
+        }
+      }
+
       const updated = await prisma.pipeline.update({
         where: { id },
         data: {
           ...data,
+          ...(tags !== undefined ? { tags } : {}),
           updatedById: ctx.session.user?.id,
         },
       });
