@@ -124,6 +124,15 @@ async function resolveTeamId(
     return sa?.environment.teamId ?? null;
   }
 
+  // Resolve requestId → DeployRequest → pipeline → environment.teamId
+  if (inputData.requestId && entityType === "DeployRequest") {
+    const deployReq = await prisma.deployRequest.findUnique({
+      where: { id: inputData.requestId as string },
+      select: { pipeline: { select: { environment: { select: { teamId: true } } } } },
+    });
+    return deployReq?.pipeline.environment.teamId ?? null;
+  }
+
   return null;
 }
 
@@ -214,6 +223,15 @@ async function resolveEnvironmentId(
       select: { environmentId: true },
     });
     return sa?.environmentId ?? null;
+  }
+
+  // Resolve requestId → DeployRequest → environmentId
+  if (inputData.requestId && entityType === "DeployRequest") {
+    const deployReq = await prisma.deployRequest.findUnique({
+      where: { id: inputData.requestId as string },
+      select: { environmentId: true },
+    });
+    return deployReq?.environmentId ?? null;
   }
 
   return null;
@@ -320,6 +338,8 @@ const ENTITY_LOADERS: Record<string, (id: string) => Promise<Record<string, unkn
         expiresAt: true, createdAt: true,
       },
     }) as Promise<Record<string, unknown> | null>,
+  DeployRequest: (id) =>
+    prisma.deployRequest.findUnique({ where: { id } }) as Promise<Record<string, unknown> | null>,
 };
 
 async function loadEntity(
@@ -394,6 +414,7 @@ export function withAudit(action: string, entityType: string) {
           input?.teamId ??
           input?.pipelineId ??
           input?.versionId ??
+          input?.requestId ??
           userId
         ) as string;
 

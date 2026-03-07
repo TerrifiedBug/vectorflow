@@ -25,6 +25,9 @@ export async function deployAgent(
   pipelineId: string,
   userId: string,
   changelog?: string,
+  /** When provided, skip YAML regeneration and use this pre-built config
+   *  (e.g. the snapshot captured at deploy-request time). */
+  prebuiltConfigYaml?: string,
 ): Promise<AgentDeployResult> {
   // 1. Get pipeline with graph data
   const pipeline = await prisma.pipeline.findUnique({
@@ -39,35 +42,42 @@ export async function deployAgent(
     });
   }
 
-  // Convert DB nodes/edges to the format generateVectorYaml expects.
-  const flowNodes = pipeline.nodes.map((n) => ({
-    id: n.id,
-    type: n.kind.toLowerCase(),
-    position: { x: n.positionX, y: n.positionY },
-    data: {
-      componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
-      componentKey: n.componentKey,
-      config: decryptNodeConfig(
-        n.componentType,
-        (n.config as Record<string, unknown>) ?? {},
-      ),
-      disabled: n.disabled,
-    },
-  }));
+  let configYaml: string;
 
-  const flowEdges = pipeline.edges.map((e) => ({
-    id: e.id,
-    source: e.sourceNodeId,
-    target: e.targetNodeId,
-    ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
-  }));
+  if (prebuiltConfigYaml) {
+    // Use the reviewed snapshot as-is
+    configYaml = prebuiltConfigYaml;
+  } else {
+    // Convert DB nodes/edges to the format generateVectorYaml expects.
+    const flowNodes = pipeline.nodes.map((n) => ({
+      id: n.id,
+      type: n.kind.toLowerCase(),
+      position: { x: n.positionX, y: n.positionY },
+      data: {
+        componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
+        componentKey: n.componentKey,
+        config: decryptNodeConfig(
+          n.componentType,
+          (n.config as Record<string, unknown>) ?? {},
+        ),
+        disabled: n.disabled,
+      },
+    }));
 
-  // 2. Generate and validate YAML
-  const configYaml = generateVectorYaml(
-    flowNodes as Parameters<typeof generateVectorYaml>[0],
-    flowEdges as Parameters<typeof generateVectorYaml>[1],
-    pipeline.globalConfig as Record<string, unknown> | null,
-  );
+    const flowEdges = pipeline.edges.map((e) => ({
+      id: e.id,
+      source: e.sourceNodeId,
+      target: e.targetNodeId,
+      ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
+    }));
+
+    // 2. Generate YAML from current pipeline state
+    configYaml = generateVectorYaml(
+      flowNodes as Parameters<typeof generateVectorYaml>[0],
+      flowEdges as Parameters<typeof generateVectorYaml>[1],
+      pipeline.globalConfig as Record<string, unknown> | null,
+    );
+  }
 
   const validation = await validateConfig(configYaml);
   if (!validation.valid) {

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
-import { Plus, MoreHorizontal, Copy, Trash2, BarChart3, ArrowUpRight } from "lucide-react";
+import { Plus, MoreHorizontal, Copy, Trash2, BarChart3, ArrowUpRight, Clock } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
 
@@ -168,6 +168,19 @@ export default function PipelinesPage() {
   );
   const liveRates = liveRatesQuery.data?.rates ?? {};
 
+  // Fetch pending deploy requests for the current environment
+  const pendingRequestsQuery = useQuery(
+    trpc.deploy.listPendingRequests.queryOptions(
+      { environmentId: effectiveEnvId },
+      { enabled: !!effectiveEnvId }
+    )
+  );
+  const pendingRequests = pendingRequestsQuery.data ?? [];
+  const pendingByPipeline = new Map<string, number>();
+  for (const req of pendingRequests) {
+    pendingByPipeline.set(req.pipelineId, (pendingByPipeline.get(req.pipelineId) ?? 0) + 1);
+  }
+
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -278,6 +291,12 @@ export default function PipelinesPage() {
                   {!pipeline.isDraft && pipeline.hasUndeployedChanges && (
                     <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30">
                       Pending deploy
+                    </Badge>
+                  )}
+                  {pendingByPipeline.has(pipeline.id) && (
+                    <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 gap-1">
+                      <Clock className="h-3 w-3" />
+                      Pending Approval
                     </Badge>
                   )}
                   </div>

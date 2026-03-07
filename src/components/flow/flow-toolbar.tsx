@@ -19,9 +19,12 @@ import {
   ScrollText,
   Settings,
   Info,
+  Clock,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
@@ -45,7 +48,8 @@ import { cn } from "@/lib/utils";
 import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml, generateVectorToml, importVectorConfig } from "@/lib/config-generator";
 import { useTRPC } from "@/trpc/client";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { VersionHistoryDialog } from "@/components/pipeline/version-history-dialog";
 
 type ProcessStatusValue = "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING";
@@ -116,6 +120,8 @@ export function FlowToolbar({
   const [versionsOpen, setVersionsOpen] = useState(false);
 
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const { data: session } = useSession();
 
   const healthQuery = useQuery(
     trpc.pipeline.health.queryOptions(
@@ -124,6 +130,26 @@ export function FlowToolbar({
     ),
   );
   const healthStatus = healthQuery.data?.status ?? null;
+
+  // Query pending deploy requests for this pipeline
+  const pendingRequestsQuery = useQuery({
+    ...trpc.deploy.listPendingRequests.queryOptions({ pipelineId: pipelineId! }),
+    enabled: !!pipelineId,
+  });
+  const pendingRequest = (pendingRequestsQuery.data ?? [])[0];
+  const isMyRequest = pendingRequest?.requestedById === session?.user?.id;
+
+  const cancelRequestMutation = useMutation(
+    trpc.deploy.cancelDeployRequest.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries();
+        toast.success("Deploy request cancelled");
+      },
+      onError: (err) => {
+        toast.error("Failed to cancel request", { description: err.message });
+      },
+    })
+  );
 
   const validateMutation = useMutation(trpc.validator.validate.mutationOptions({
     onSuccess: (result) => {
@@ -387,6 +413,38 @@ export function FlowToolbar({
         </Popover>
 
         <Separator orientation="vertical" className="mx-1 h-5" />
+
+        {/* Pending approval badge */}
+        {pendingRequest && (
+          <div className="flex items-center gap-1.5 px-1">
+            <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 gap-1 text-xs">
+              <Clock className="h-3 w-3" />
+              Pending Approval
+              {pendingRequest.requestedBy && (
+                <span className="text-amber-600/70 dark:text-amber-300/70">
+                  by {pendingRequest.requestedBy.name ?? pendingRequest.requestedBy.email}
+                </span>
+              )}
+            </Badge>
+            {isMyRequest && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => cancelRequestMutation.mutate({ requestId: pendingRequest.id })}
+                    disabled={cancelRequestMutation.isPending}
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                    aria-label="Cancel deploy request"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Cancel your deploy request</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        )}
 
         {/* Process status indicator */}
         {processStatus && (
