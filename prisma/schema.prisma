@@ -107,6 +107,7 @@ model VectorNode {
   pendingAction    Json?
   maintenanceMode  Boolean              @default(false)
   maintenanceModeAt DateTime?
+  labels           Json?                @default("{}")
   pipelineStatuses NodePipelineStatus[]
   nodeMetrics      NodeMetric[]
   pipelineLogs     PipelineLog[]
@@ -200,6 +201,7 @@ model Pipeline {
   edges         PipelineEdge[]
   versions      PipelineVersion[]
   globalConfig  Json?
+  nodeSelector  Json?
   isDraft       Boolean              @default(true)
   isSystem      Boolean              @default(false)
   deployedAt    DateTime?
