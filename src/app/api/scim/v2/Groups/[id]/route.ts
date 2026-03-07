@@ -118,7 +118,7 @@ export async function PATCH(
         if (operation === "remove" && op.path) {
           // Parse path like 'members[value eq "userId"]'
           const memberMatch = (op.path as string).match(
-            /members\[value\s+eq\s+"(.+?)"\]/,
+            /^members\[value eq "([^"]+)"\]$/,
           );
           if (memberMatch) {
             const userId = memberMatch[1];
