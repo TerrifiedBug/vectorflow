@@ -177,7 +177,7 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
       </div>
 
       {/* Classification Tags */}
-      {pipelineId && availableTags.length > 0 && (
+      {pipelineId && (availableTags.length > 0 || currentTags.length > 0) && (
         <>
           <Separator />
           <div className="space-y-2">

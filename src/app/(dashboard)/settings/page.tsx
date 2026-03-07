@@ -1175,12 +1175,17 @@ function TeamSettings() {
       onMutate: async (variables) => {
         await queryClient.cancelQueries({ queryKey: tagsQueryKey });
         const previous = queryClient.getQueryData(tagsQueryKey);
+        const previousInput = newTag;
         queryClient.setQueryData(tagsQueryKey, variables.tags);
-        return { previous };
+        setNewTag("");
+        return { previous, previousInput };
       },
       onError: (error, _variables, context) => {
         if (context?.previous !== undefined) {
           queryClient.setQueryData(tagsQueryKey, context.previous);
+        }
+        if (context?.previousInput !== undefined) {
+          setNewTag(context.previousInput);
         }
         toast.error(error.message || "Failed to update tags");
       },
@@ -1201,7 +1206,6 @@ function TeamSettings() {
       toast.error("Tag already exists");
       return;
     }
-    setNewTag("");
     updateTagsMutation.mutate({
       teamId: selectedTeamId,
       tags: [...availableTags, trimmed],
