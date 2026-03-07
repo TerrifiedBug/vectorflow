@@ -457,7 +457,9 @@ export function withAudit(action: string, entityType: string) {
           environmentId,
           metadata: {
             timestamp: new Date().toISOString(),
-            ...(inputData ? { input: sanitizeInput(inputData) } : {}),
+            ...((ctx as Record<string, unknown>).auditMetadata
+              ? (ctx as Record<string, unknown>).auditMetadata as Record<string, unknown>
+              : inputData ? { input: sanitizeInput(inputData) } : {}),
           },
           ipAddress: (ctx as Record<string, unknown>).ipAddress as string | null ?? null,
           userEmail: ctx.session?.user?.email ?? null,
