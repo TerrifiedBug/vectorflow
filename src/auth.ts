@@ -53,7 +53,7 @@ async function getOidcSettings() {
         displayName: settings.oidcDisplayName ?? "SSO",
         tokenEndpointAuthMethod: settings.oidcTokenEndpointAuthMethod ?? "client_secret_post",
         groupSyncEnabled: settings.oidcGroupSyncEnabled,
-        groupsScope: settings.oidcGroupsScope ?? "groups",
+        groupsScope: settings.oidcGroupsScope,
         groupsClaim: settings.oidcGroupsClaim ?? "groups",
       };
     }
