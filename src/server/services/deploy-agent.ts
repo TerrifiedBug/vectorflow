@@ -32,7 +32,7 @@ export async function deployAgent(
   // 1. Get pipeline with graph data
   const pipeline = await prisma.pipeline.findUnique({
     where: { id: pipelineId },
-    include: { nodes: true, edges: true },
+    include: { nodes: true, edges: true, environment: { select: { name: true } } },
   });
 
   if (!pipeline) {
@@ -72,10 +72,24 @@ export async function deployAgent(
     }));
 
     // 2. Generate YAML from current pipeline state
+    let enrichment: { environmentName: string; pipelineVersion: number } | null = null;
+    if (pipeline.enrichMetadata) {
+      const latestVer = await prisma.pipelineVersion.findFirst({
+        where: { pipelineId },
+        orderBy: { version: "desc" },
+        select: { version: true },
+      });
+      enrichment = {
+        environmentName: pipeline.environment.name,
+        pipelineVersion: (latestVer?.version ?? 0) + 1,
+      };
+    }
+
     configYaml = generateVectorYaml(
       flowNodes as Parameters<typeof generateVectorYaml>[0],
       flowEdges as Parameters<typeof generateVectorYaml>[1],
       pipeline.globalConfig as Record<string, unknown> | null,
+      enrichment,
     );
   }
 

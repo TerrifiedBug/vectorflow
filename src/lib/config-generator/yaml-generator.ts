@@ -23,6 +23,7 @@ export function generateVectorYaml(
   nodes: Node[],
   edges: Edge[],
   globalConfig?: Record<string, unknown> | null,
+  enrichment?: { environmentName: string; pipelineVersion: number } | null,
 ): string {
   // Filter out disabled nodes and their edges
   const enabledNodes = nodes.filter((n) => !(n.data as unknown as FlowNodeData).disabled);
@@ -73,6 +74,35 @@ export function generateVectorYaml(
     }
 
     config[section][componentKey] = entry;
+  }
+
+  // Inject metadata enrichment transform before each sink
+  if (enrichment) {
+    const sinkKeys = Object.keys(config.sinks ?? {});
+    if (sinkKeys.length > 0) {
+      const enrichKey = "vectorflow_metadata_enrich";
+      const sinkInputs = new Set<string>();
+      for (const sinkKey of sinkKeys) {
+        const sink = config.sinks[sinkKey] as Record<string, unknown>;
+        const inputs = sink.inputs as string[] | undefined;
+        if (inputs) {
+          for (const input of inputs) sinkInputs.add(input);
+        }
+      }
+
+      config.transforms[enrichKey] = {
+        type: "remap",
+        inputs: [...sinkInputs],
+        source: `.vectorflow.environment = ${JSON.stringify(enrichment.environmentName)}\n.vectorflow.pipeline_version = ${enrichment.pipelineVersion}`,
+      };
+
+      for (const sinkKey of sinkKeys) {
+        const sink = config.sinks[sinkKey] as Record<string, unknown>;
+        if (sink.inputs) {
+          sink.inputs = [enrichKey];
+        }
+      }
+    }
   }
 
   // Remove empty sections
