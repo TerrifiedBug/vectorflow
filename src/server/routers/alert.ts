@@ -84,6 +84,20 @@ export const alertRouter = router({
       });
 
       if (input.channelIds?.length) {
+        // Validate all channels belong to the same environment
+        const channelCount = await prisma.notificationChannel.count({
+          where: {
+            id: { in: input.channelIds },
+            environmentId: input.environmentId,
+          },
+        });
+        if (channelCount !== input.channelIds.length) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "One or more channel IDs are invalid or belong to a different environment",
+          });
+        }
+
         await prisma.alertRuleChannel.createMany({
           data: input.channelIds.map((channelId) => ({
             alertRuleId: rule.id,
@@ -121,25 +135,43 @@ export const alertRouter = router({
         });
       }
 
+      if (channelIds !== undefined && channelIds.length > 0) {
+        // Validate all channels belong to the same environment as the rule
+        const channelCount = await prisma.notificationChannel.count({
+          where: {
+            id: { in: channelIds },
+            environmentId: existing.environmentId,
+          },
+        });
+        if (channelCount !== channelIds.length) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "One or more channel IDs are invalid or belong to a different environment",
+          });
+        }
+      }
+
       const rule = await prisma.alertRule.update({
         where: { id },
         data,
       });
 
       if (channelIds !== undefined) {
-        // Replace all channel links: delete old ones, create new ones
-        await prisma.alertRuleChannel.deleteMany({
-          where: { alertRuleId: id },
-        });
-        if (channelIds.length > 0) {
-          await prisma.alertRuleChannel.createMany({
-            data: channelIds.map((channelId) => ({
-              alertRuleId: id,
-              channelId,
-            })),
-            skipDuplicates: true,
+        // Replace all channel links atomically
+        await prisma.$transaction(async (tx) => {
+          await tx.alertRuleChannel.deleteMany({
+            where: { alertRuleId: id },
           });
-        }
+          if (channelIds.length > 0) {
+            await tx.alertRuleChannel.createMany({
+              data: channelIds.map((channelId) => ({
+                alertRuleId: id,
+                channelId,
+              })),
+              skipDuplicates: true,
+            });
+          }
+        });
       }
 
       return rule;
@@ -513,6 +545,7 @@ export const alertRouter = router({
   testChannel: protectedProcedure
     .input(z.object({ id: z.string() }))
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("notificationChannel.tested", "NotificationChannel"))
     .mutation(async ({ input }) => {
       const channel = await prisma.notificationChannel.findUnique({
         where: { id: input.id },

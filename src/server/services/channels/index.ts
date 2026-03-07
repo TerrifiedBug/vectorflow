@@ -55,14 +55,15 @@ export async function deliverToChannels(
       },
     });
 
-    const enabledLinked = linkedChannels
-      .filter((lc) => lc.channel.enabled)
-      .map((lc) => lc.channel);
-
-    if (enabledLinked.length > 0) {
-      channels = enabledLinked;
+    if (linkedChannels.length > 0) {
+      // Explicit routing exists — only use enabled linked channels.
+      // If all linked channels are disabled, do NOT fall back to
+      // all env channels; the user explicitly scoped this rule.
+      channels = linkedChannels
+        .filter((lc) => lc.channel.enabled)
+        .map((lc) => lc.channel);
     } else {
-      // Fall back to all enabled channels in the environment
+      // No explicit routing — broadcast to all enabled env channels
       channels = await prisma.notificationChannel.findMany({
         where: { environmentId, enabled: true },
         select: { id: true, type: true, config: true },
