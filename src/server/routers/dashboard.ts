@@ -472,6 +472,114 @@ export const dashboardRouter = router({
     return { unhealthyNodes, deployedPipelines, recentMetrics: recentMetrics._sum };
   }),
 
+  volumeAnalytics: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        range: z.enum(["1h", "6h", "1d", "7d", "30d"]),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const hours = { "1h": 1, "6h": 6, "1d": 24, "7d": 168, "30d": 720 }[input.range];
+      const since = new Date(Date.now() - hours * 3600000);
+      const prevSince = new Date(since.getTime() - hours * 3600000);
+
+      // Current period aggregates
+      const current = await prisma.pipelineMetric.aggregate({
+        where: {
+          pipeline: { environmentId: input.environmentId },
+          timestamp: { gte: since },
+        },
+        _sum: { eventsIn: true, eventsOut: true, bytesIn: true, bytesOut: true },
+      });
+
+      // Previous period for trend comparison
+      const previous = await prisma.pipelineMetric.aggregate({
+        where: {
+          pipeline: { environmentId: input.environmentId },
+          timestamp: { gte: prevSince, lt: since },
+        },
+        _sum: { eventsIn: true, eventsOut: true, bytesIn: true, bytesOut: true },
+      });
+
+      // Per-pipeline breakdown
+      const byPipeline = await prisma.pipelineMetric.groupBy({
+        by: ["pipelineId"],
+        where: {
+          pipeline: { environmentId: input.environmentId },
+          timestamp: { gte: since },
+        },
+        _sum: { eventsIn: true, eventsOut: true, bytesIn: true, bytesOut: true },
+      });
+
+      // Fetch pipeline names
+      const pipelineIds = byPipeline.map((p) => p.pipelineId);
+      const pipelines = await prisma.pipeline.findMany({
+        where: { id: { in: pipelineIds } },
+        select: { id: true, name: true },
+      });
+      const nameMap = Object.fromEntries(pipelines.map((p) => [p.id, p.name]));
+
+      const perPipeline = byPipeline.map((p) => ({
+        pipelineId: p.pipelineId,
+        pipelineName: nameMap[p.pipelineId] ?? "Unknown",
+        bytesIn: Number(p._sum.bytesIn ?? 0),
+        bytesOut: Number(p._sum.bytesOut ?? 0),
+        eventsIn: Number(p._sum.eventsIn ?? 0),
+        eventsOut: Number(p._sum.eventsOut ?? 0),
+      }));
+
+      // Time series for volume chart — bucket raw metrics in JS for portability
+      const bucketMs =
+        hours <= 1 ? 60000 : hours <= 6 ? 300000 : hours <= 24 ? 900000 : hours <= 168 ? 3600000 : 14400000;
+
+      // Cap at 50 000 rows to prevent OOM on large 30d windows. With desc
+      // ordering, the most recent data is preserved; older buckets at the
+      // start of the window are the ones dropped if the cap is hit.
+      const rawMetrics = await prisma.pipelineMetric.findMany({
+        where: {
+          pipeline: { environmentId: input.environmentId },
+          timestamp: { gte: since },
+        },
+        select: {
+          timestamp: true,
+          bytesIn: true,
+          bytesOut: true,
+          eventsIn: true,
+          eventsOut: true,
+        },
+        orderBy: { timestamp: "desc" },
+        take: 50_000,
+      });
+
+      const buckets = new Map<
+        number,
+        { bytesIn: number; bytesOut: number; eventsIn: number; eventsOut: number }
+      >();
+      for (const m of rawMetrics) {
+        const t = Math.floor(new Date(m.timestamp).getTime() / bucketMs) * bucketMs;
+        const b = buckets.get(t) ?? { bytesIn: 0, bytesOut: 0, eventsIn: 0, eventsOut: 0 };
+        b.bytesIn += Number(m.bytesIn ?? 0);
+        b.bytesOut += Number(m.bytesOut ?? 0);
+        b.eventsIn += Number(m.eventsIn ?? 0);
+        b.eventsOut += Number(m.eventsOut ?? 0);
+        buckets.set(t, b);
+      }
+
+      const timeSeries = Array.from(buckets.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([t, b]) => ({
+          bucket: new Date(t).toISOString(),
+          bytesIn: b.bytesIn,
+          bytesOut: b.bytesOut,
+          eventsIn: b.eventsIn,
+          eventsOut: b.eventsOut,
+        }));
+
+      return { current, previous, perPipeline, timeSeries };
+    }),
+
   chartMetrics: protectedProcedure
     .use(withTeamAccess("VIEWER"))
     .input(

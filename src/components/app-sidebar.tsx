@@ -11,6 +11,7 @@ import {
   FileText,
   ScrollText,
   Bell,
+  BarChart3,
   Settings,
   ChevronsLeft,
   ChevronsRight,
@@ -43,6 +44,7 @@ const navItems = [
   { title: "Templates", href: "/templates", icon: FileText },
   { title: "Audit Log", href: "/audit", icon: ScrollText },
   { title: "Alerts", href: "/alerts", icon: Bell },
+  { title: "Analytics", href: "/analytics", icon: BarChart3 },
   { title: "Settings", href: "/settings", icon: Settings, requiredRole: "ADMIN" as const },
 ];
 
