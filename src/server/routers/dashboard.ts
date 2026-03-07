@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { withAudit } from "@/server/middleware/audit";
 import { prisma } from "@/lib/prisma";
 import { metricStore } from "@/server/services/metric-store";
 import { generateVectorYaml } from "@/lib/config-generator";
@@ -915,5 +917,95 @@ export const dashboardRouter = router({
           pipelines: allPipelines.map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })),
         },
       };
+    }),
+
+  /* ── Custom Dashboard Views CRUD ───────────────────────────────── */
+
+  listViews: protectedProcedure.query(async ({ ctx }) => {
+    return prisma.dashboardView.findMany({
+      where: { userId: ctx.session.user!.id! },
+      orderBy: { sortOrder: "asc" },
+    });
+  }),
+
+  createView: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        name: z.string().min(1).max(50),
+        panels: z.array(z.string()).min(1),
+        filters: z
+          .object({
+            pipelineIds: z.array(z.string()).optional(),
+            nodeIds: z.array(z.string()).optional(),
+          })
+          .optional(),
+      })
+    )
+    .use(withTeamAccess("VIEWER"))
+    .use(withAudit("dashboard.create_view", "DashboardView"))
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user!.id!;
+      const maxOrder = await prisma.dashboardView.aggregate({
+        where: { userId },
+        _max: { sortOrder: true },
+      });
+      const nextOrder = (maxOrder._max.sortOrder ?? -1) + 1;
+      return prisma.dashboardView.create({
+        data: {
+          userId,
+          name: input.name,
+          panels: input.panels,
+          filters: input.filters ?? {},
+          sortOrder: nextOrder,
+        },
+      });
+    }),
+
+  updateView: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        id: z.string(),
+        name: z.string().min(1).max(50).optional(),
+        panels: z.array(z.string()).min(1).optional(),
+        filters: z
+          .object({
+            pipelineIds: z.array(z.string()).optional(),
+            nodeIds: z.array(z.string()).optional(),
+          })
+          .optional(),
+        sortOrder: z.number().int().optional(),
+      })
+    )
+    .use(withTeamAccess("VIEWER"))
+    .use(withAudit("dashboard.update_view", "DashboardView"))
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user!.id!;
+      const view = await prisma.dashboardView.findUnique({
+        where: { id: input.id },
+      });
+      if (!view || view.userId !== userId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id, environmentId, ...data } = input;
+      return prisma.dashboardView.update({ where: { id }, data });
+    }),
+
+  deleteView: protectedProcedure
+    .input(z.object({ environmentId: z.string(), id: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .use(withAudit("dashboard.delete_view", "DashboardView"))
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user!.id!;
+      const view = await prisma.dashboardView.findUnique({
+        where: { id: input.id },
+      });
+      if (!view || view.userId !== userId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+      await prisma.dashboardView.delete({ where: { id: input.id } });
+      return { deleted: true };
     }),
 });
