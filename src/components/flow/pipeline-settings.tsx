@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { ChevronRight, Plus, Trash2, X } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTRPC } from "@/trpc/client";
+import { toast } from "sonner";
 import { useFlowStore } from "@/stores/flow-store";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -20,9 +23,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { useTRPC } from "@/trpc/client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 
 function tagBadgeClass(tag: string): string {
   const upper = tag.toUpperCase();

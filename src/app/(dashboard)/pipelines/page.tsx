@@ -80,51 +80,6 @@ function reductionColor(pct: number): string {
   return "bg-muted text-muted-foreground";
 }
 
-/** Lazily fetches SLI health for a single deployed pipeline. */
-function PipelineHealthBadge({ pipelineId }: { pipelineId: string }) {
-  const trpc = useTRPC();
-  const healthQuery = useQuery(
-    trpc.pipeline.health.queryOptions(
-      { pipelineId },
-      { refetchInterval: 30_000 },
-    ),
-  );
-
-  const status = healthQuery.data?.status ?? null;
-  const hasSlis = (healthQuery.data?.slis.length ?? 0) > 0;
-
-  if (healthQuery.isLoading) {
-    return <Skeleton className="h-5 w-14" />;
-  }
-
-  if (status === "healthy") {
-    return (
-      <Badge variant="outline" className="bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30">
-        Healthy
-      </Badge>
-    );
-  }
-  if (status === "degraded") {
-    return (
-      <Badge variant="outline" className="bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30">
-        Degraded
-      </Badge>
-    );
-  }
-  if (status === "no_data" && hasSlis) {
-    return (
-      <Badge variant="outline" className="text-muted-foreground">
-        No Data
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="outline" className="text-muted-foreground">
-      No SLIs
-    </Badge>
-  );
-}
-
 function tagBadgeClass(tag: string): string {
   const upper = tag.toUpperCase();
   if (upper === "PII") return "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30";
@@ -133,6 +88,32 @@ function tagBadgeClass(tag: string): string {
   if (upper === "INTERNAL") return "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30";
   if (upper === "PUBLIC") return "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30";
   return "bg-muted text-muted-foreground";
+}
+
+function PipelineHealthBadge({ pipelineId }: { pipelineId: string }) {
+  const trpc = useTRPC();
+  const healthQuery = useQuery(
+    trpc.pipeline.health.queryOptions(
+      { pipelineId },
+      { refetchInterval: 30_000 },
+    ),
+  );
+  const status = healthQuery.data?.status ?? null;
+  if (!status || status === "no_data") return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={`inline-block h-2 w-2 rounded-full ${
+            status === "healthy" ? "bg-green-500" : "bg-yellow-500"
+          }`}
+        />
+      </TooltipTrigger>
+      <TooltipContent>
+        {status === "healthy" ? "All SLIs met" : "One or more SLIs breached"}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export default function PipelinesPage() {
