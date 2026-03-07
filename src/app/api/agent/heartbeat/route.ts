@@ -67,6 +67,7 @@ const heartbeatSchema = z.object({
     error: z.string().optional(),
   })).optional(),
   updateError: z.string().max(500).optional(),
+  labels: z.record(z.string(), z.string()).optional(),
 });
 
 let lastCleanup = 0;
@@ -151,7 +152,7 @@ export async function POST(request: Request) {
     }
 
     // Update node heartbeat and metadata
-    await prisma.vectorNode.update({
+    const node = await prisma.vectorNode.update({
       where: { id: agent.nodeId },
       data: {
         lastHeartbeat: now,
@@ -165,6 +166,18 @@ export async function POST(request: Request) {
         ...(clearPendingAction ? { pendingAction: Prisma.DbNull } : {}),
       },
     });
+
+    // Merge agent-reported labels with existing UI-set labels.
+    // UI-set labels take precedence over agent-reported labels.
+    // Uses a single atomic operation to avoid TOCTOU race with fleet.updateLabels:
+    // agent labels are the base, existing DB labels override on top.
+    if (parsed.data.labels) {
+      await prisma.$executeRaw`
+        UPDATE "VectorNode"
+        SET labels = ${JSON.stringify(parsed.data.labels)}::jsonb || labels
+        WHERE id = ${node.id}
+      `;
+    }
 
     // Read previous snapshots BEFORE upserting so we can compute deltas correctly
     const prevSnapshots = new Map<string, {
