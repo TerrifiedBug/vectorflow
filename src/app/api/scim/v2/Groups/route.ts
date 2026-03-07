@@ -113,6 +113,14 @@ export async function POST(req: NextRequest) {
     });
 
     if (existing) {
+      await writeAuditLog({
+        userId: null,
+        action: "scim.group_adopted",
+        entityType: "Team",
+        entityId: existing.id,
+        metadata: { displayName },
+      });
+
       return NextResponse.json(toScimGroup(existing), { status: 200 });
     }
 

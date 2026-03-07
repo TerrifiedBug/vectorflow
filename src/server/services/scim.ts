@@ -101,11 +101,20 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
   // Check if user already exists (e.g. created via OIDC login before SCIM provisioning)
   const existing = await prisma.user.findUnique({
     where: { email },
-    select: USER_SELECT,
+    select: { ...USER_SELECT, authMethod: true },
   });
 
   if (existing) {
-    // Adopt: link the SCIM externalId to the existing user
+    // Only adopt users already created via SSO or previously SCIM-linked.
+    // Local-credential accounts require explicit admin action to link.
+    if (existing.authMethod !== "OIDC" && !existing.scimExternalId) {
+      throw new Error(
+        `User ${email} exists as a local account and cannot be adopted via SCIM. ` +
+        "An administrator must link or convert the account first.",
+      );
+    }
+
+    // Adopt: link the SCIM externalId to the existing SSO user
     const updated = await prisma.user.update({
       where: { id: existing.id },
       data: {
