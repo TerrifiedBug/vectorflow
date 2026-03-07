@@ -389,6 +389,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
                 ? aggregateProcessStatus(pipelineQuery.data.nodeStatuses)
                 : null
             }
+            gitOpsMode={pipelineQuery.data?.gitOpsMode}
           />
         </div>
         <div className="flex items-center px-3">

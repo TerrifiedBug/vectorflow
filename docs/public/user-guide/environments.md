@@ -123,5 +123,21 @@ Click **Test Connection** to verify VectorFlow can reach the repository.
 When you deploy a pipeline, VectorFlow commits the generated YAML to `{environment-name}/{pipeline-name}.yaml` in the configured repository. When you delete a pipeline, the file is removed with a commit.
 
 {% hint style="info" %}
-Git sync is a post-deploy side effect. If the Git push fails, the pipeline deploy still succeeds — you will see a warning toast in the UI.
+Git sync is a post-deploy side effect. If the Git push fails, the pipeline deploy still succeeds -- you will see a warning toast in the UI.
+{% endhint %}
+
+### GitOps Mode
+
+Each environment has a **GitOps Mode** setting that controls the direction of Git synchronization:
+
+| Mode | Description |
+|------|-------------|
+| **Off** | Git integration is disabled (default). |
+| **Push Only** | Pipeline YAML is committed to the repo on deploy. Changes in git are not pulled back. |
+| **Bi-directional** | Pipeline YAML is committed on deploy AND pushes to the repo trigger pipeline imports via webhook. |
+
+When **Bi-directional** mode is enabled, a webhook URL and secret are generated. Configure these in your GitHub repository webhook settings to enable automatic pipeline imports on push. See the [GitOps guide](../operations/gitops.md) for detailed setup instructions.
+
+{% hint style="warning" %}
+In bi-directional mode the Git repository is the source of truth. Manual edits in the VectorFlow UI may be overwritten on the next push. The pipeline editor displays a banner to remind users of this.
 {% endhint %}

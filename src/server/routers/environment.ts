@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
@@ -37,6 +38,7 @@ export const environmentRouter = router({
 
   get: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const environment = await prisma.environment.findUnique({
         where: { id: input.id },
@@ -53,11 +55,12 @@ export const environmentRouter = router({
         });
       }
 
-      const { gitToken, enrollmentTokenHash, ...safe } = environment;
+      const { gitToken, enrollmentTokenHash, gitWebhookSecret: encryptedWebhookSecret, ...safe } = environment;
       return {
         ...safe,
         hasEnrollmentToken: !!enrollmentTokenHash,
         hasGitToken: !!gitToken,
+        hasWebhookSecret: !!encryptedWebhookSecret,
       };
     }),
 
@@ -100,6 +103,7 @@ export const environmentRouter = router({
         gitRepoUrl: z.string().url().optional().nullable(),
         gitBranch: z.string().min(1).max(100).optional().nullable(),
         gitToken: z.string().optional().nullable(),
+        gitOpsMode: z.enum(["off", "push", "bidirectional"]).optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
@@ -123,20 +127,41 @@ export const environmentRouter = router({
       }
 
       // Build update data, encrypting git token if provided
-      const data: Record<string, unknown> = { ...rest };
+      const { gitOpsMode: gitOpsModeInput, ...restWithoutGitOps } = rest;
+      const data: Record<string, unknown> = { ...restWithoutGitOps };
       if (gitToken !== undefined) {
         data.gitToken = gitToken ? encrypt(gitToken) : null;
+      }
+
+      // Handle gitOpsMode — auto-generate webhook secret when switching to bidirectional
+      let plaintextWebhookSecret: string | null = null;
+      if (gitOpsModeInput !== undefined) {
+        data.gitOpsMode = gitOpsModeInput;
+
+        if (gitOpsModeInput === "bidirectional" && !existing.gitWebhookSecret) {
+          plaintextWebhookSecret = crypto.randomBytes(32).toString("hex");
+          data.gitWebhookSecret = encrypt(plaintextWebhookSecret);
+        }
+        // Clear webhook secret when disabling bidirectional mode
+        if (gitOpsModeInput !== "bidirectional") {
+          data.gitWebhookSecret = null;
+        }
       }
 
       const updated = await prisma.environment.update({
         where: { id },
         data,
       });
-      const { gitToken: _gt, enrollmentTokenHash: _eth, ...safeUpdate } = updated;
+      const { gitToken: _gt, enrollmentTokenHash: _eth, gitWebhookSecret: _gws, ...safeUpdate } = updated;
+
+      // Only return the plaintext webhook secret when freshly generated;
+      // never decrypt and return the stored secret on unrelated updates.
       return {
         ...safeUpdate,
         hasEnrollmentToken: !!_eth,
         hasGitToken: !!_gt,
+        hasWebhookSecret: !!_gws,
+        gitWebhookSecret: plaintextWebhookSecret,
       };
     }),
 
