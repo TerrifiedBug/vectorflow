@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
@@ -414,18 +413,22 @@ export function FlowToolbar({
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 
-        {/* Pending approval badge */}
+        {/* Pending approval indicator */}
         {pendingRequest && (
-          <div className="flex items-center gap-1.5 px-1">
-            <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 gap-1 text-xs">
-              <Clock className="h-3 w-3" />
-              Pending Approval
-              {pendingRequest.requestedBy && (
-                <span className="text-amber-600/70 dark:text-amber-300/70">
-                  by {pendingRequest.requestedBy.name ?? pendingRequest.requestedBy.email}
+          <div className="flex items-center gap-0.5 px-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-md text-amber-600 dark:text-amber-400">
+                  <Clock className="h-4 w-4" />
                 </span>
-              )}
-            </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                Pending Approval
+                {pendingRequest.requestedBy && (
+                  <> by {pendingRequest.requestedBy.name ?? pendingRequest.requestedBy.email}</>
+                )}
+              </TooltipContent>
+            </Tooltip>
             {isMyRequest && (
               <Tooltip>
                 <TooltipTrigger asChild>

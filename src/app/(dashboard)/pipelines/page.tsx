@@ -213,11 +213,11 @@ export default function PipelinesPage() {
     pipelinesQuery.isLoading;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       <div className="flex justify-end">
-        <Button asChild>
+        <Button asChild size="sm">
           <Link href="/pipelines/new">
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
             New Pipeline
           </Link>
         </Button>
@@ -289,15 +289,20 @@ export default function PipelinesPage() {
                     return <Badge variant="default">Deployed</Badge>;
                   })()}
                   {!pipeline.isDraft && pipeline.hasUndeployedChanges && (
-                    <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30">
-                      Pending deploy
-                    </Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
+                      </TooltipTrigger>
+                      <TooltipContent>Undeployed changes</TooltipContent>
+                    </Tooltip>
                   )}
                   {pendingByPipeline.has(pipeline.id) && (
-                    <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 gap-1">
-                      <Clock className="h-3 w-3" />
-                      Pending Approval
-                    </Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                      </TooltipTrigger>
+                      <TooltipContent>Pending Approval</TooltipContent>
+                    </Tooltip>
                   )}
                   </div>
                 </TableCell>
