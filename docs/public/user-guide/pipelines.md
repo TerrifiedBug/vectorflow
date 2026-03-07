@@ -121,6 +121,63 @@ Each metric can only have one SLI per pipeline. Adding an SLI for a metric that 
 If no metric data is available for the evaluation window (for example, the pipeline was recently deployed or has no traffic), the SLI is treated as **breached** and the pipeline health will show as **Degraded**.
 {% endhint %}
 
+## Data classification tags
+
+Classification tags let you label pipelines with compliance or sensitivity markers such as **PII**, **PHI**, **PCI-DSS**, **Internal**, or **Public**. Tags appear as color-coded badges next to pipeline names in the list and help teams quickly identify which data-handling rules apply to each pipeline.
+
+### Defining available tags (Admin)
+
+Tags are defined at the **team** level. Only team admins can manage the list of available tags.
+
+{% stepper %}
+{% step %}
+### Open team settings
+Navigate to **Settings** and select the **Team** tab.
+{% endstep %}
+{% step %}
+### Add tags
+Scroll to the **Data Classification Tags** card. Type a tag name (up to 30 characters) and click **Add**. Repeat for each tag you want to make available.
+{% endstep %}
+{% step %}
+### Remove tags
+Click the **X** button on any existing tag to remove it from the available list. Removing a tag from the team does not automatically remove it from pipelines that already have it applied.
+{% endstep %}
+{% endstepper %}
+
+### Applying tags to pipelines
+
+{% stepper %}
+{% step %}
+### Open pipeline settings
+Open a pipeline in the editor, then click the **gear icon** in the toolbar to open Pipeline Settings.
+{% endstep %}
+{% step %}
+### Select tags
+In the **Classification Tags** section, use the dropdown to add tags from the team's available list. Tags are saved immediately.
+{% endstep %}
+{% step %}
+### Remove tags
+Click the **X** on any applied tag badge to remove it from the pipeline.
+{% endstep %}
+{% endstepper %}
+
+### Tag color coding
+
+Tags are color-coded in the pipeline list for quick visual identification:
+
+| Tag | Color |
+|-----|-------|
+| PII | Red |
+| PHI | Orange |
+| PCI-DSS | Purple |
+| Internal | Blue |
+| Public | Green |
+| Other | Gray |
+
+{% hint style="info" %}
+Tags are metadata labels only -- they do not enforce any access controls or data-handling policies. Use them as a visual aid for compliance awareness and pipeline organization.
+{% endhint %}
+
 ## Filtering by environment
 
 Pipelines are scoped to the currently selected **environment** (shown in the sidebar). Switch environments to view pipelines in a different environment. Each environment maintains its own independent set of pipelines, agent nodes, and secrets.
