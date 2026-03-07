@@ -90,13 +90,40 @@ export async function scimGetUser(id: string) {
   return toScimUser(user);
 }
 
-export async function scimCreateUser(scimUser: ScimUser) {
+export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUser; adopted: boolean }> {
   const email =
     scimUser.emails?.[0]?.value ?? scimUser.userName;
   const name =
     scimUser.name?.formatted ??
     scimUser.name?.givenName ??
     email.split("@")[0];
+
+  // Check if user already exists (e.g. created via OIDC login before SCIM provisioning)
+  const existing = await prisma.user.findUnique({
+    where: { email },
+    select: USER_SELECT,
+  });
+
+  if (existing) {
+    // Adopt: link the SCIM externalId to the existing user
+    const updated = await prisma.user.update({
+      where: { id: existing.id },
+      data: {
+        scimExternalId: scimUser.externalId ?? existing.scimExternalId,
+      },
+      select: USER_SELECT,
+    });
+
+    await writeAuditLog({
+      userId: null,
+      action: "scim.user_adopted",
+      entityType: "User",
+      entityId: updated.id,
+      metadata: { email, scimExternalId: scimUser.externalId },
+    });
+
+    return { user: toScimUser(updated), adopted: true };
+  }
 
   // Generate random password (SCIM users authenticate via SSO, not local credentials)
   const tempPassword = crypto.randomBytes(32).toString("hex");
@@ -122,7 +149,7 @@ export async function scimCreateUser(scimUser: ScimUser) {
     metadata: { email, scimExternalId: scimUser.externalId },
   });
 
-  return toScimUser(user);
+  return { user: toScimUser(user), adopted: false };
 }
 
 export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {

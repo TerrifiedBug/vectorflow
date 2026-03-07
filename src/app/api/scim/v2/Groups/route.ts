@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { writeAuditLog } from "@/server/services/audit";
 import { authenticateScim } from "../auth";
 
 interface ScimGroup {
@@ -77,4 +78,68 @@ export async function GET(req: NextRequest) {
     itemsPerPage: count,
     Resources: teams.map(toScimGroup),
   });
+}
+
+export async function POST(req: NextRequest) {
+  if (!(await authenticateScim(req))) {
+    return NextResponse.json(
+      {
+        schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
+        detail: "Unauthorized",
+        status: "401",
+      },
+      { status: 401 },
+    );
+  }
+
+  try {
+    const body = await req.json();
+    const displayName = body.displayName;
+    if (!displayName || typeof displayName !== "string") {
+      return NextResponse.json(
+        {
+          schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
+          detail: "displayName is required",
+          status: "400",
+        },
+        { status: 400 },
+      );
+    }
+
+    // Check if a team with this name already exists — adopt it
+    const existing = await prisma.team.findFirst({
+      where: { name: displayName },
+      include: { members: { include: { user: { select: { email: true } } } } },
+    });
+
+    if (existing) {
+      return NextResponse.json(toScimGroup(existing), { status: 200 });
+    }
+
+    const team = await prisma.team.create({
+      data: { name: displayName },
+      include: { members: { include: { user: { select: { email: true } } } } },
+    });
+
+    await writeAuditLog({
+      userId: null,
+      action: "scim.group_created",
+      entityType: "Team",
+      entityId: team.id,
+      metadata: { displayName },
+    });
+
+    return NextResponse.json(toScimGroup(team), { status: 201 });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to create group";
+    return NextResponse.json(
+      {
+        schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
+        detail: message,
+        status: "400",
+      },
+      { status: 400 },
+    );
+  }
 }

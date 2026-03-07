@@ -367,7 +367,7 @@ export const deployRouter = router({
       try {
         const result = await deployAgent(
           request.pipelineId,
-          request.requestedById,
+          request.requestedById ?? ctx.session.user.id,
           request.changelog,
           request.configYaml,
         );
