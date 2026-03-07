@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import type { ChannelDriver, ChannelPayload, ChannelDeliveryResult } from "./types";
+import { validateSmtpHost } from "@/server/services/url-validation";
 
 /** Escape user-controlled strings before interpolating into HTML. */
 function escapeHtml(s: string): string {
@@ -75,6 +76,16 @@ export const emailDriver: ChannelDriver = {
         channelId: "",
         success: false,
         error: "Missing required email config (smtpHost, smtpPort, from, recipients)",
+      };
+    }
+
+    try {
+      await validateSmtpHost(smtpHost);
+    } catch (err) {
+      return {
+        channelId: "",
+        success: false,
+        error: err instanceof Error ? err.message : "SMTP host validation failed",
       };
     }
 
