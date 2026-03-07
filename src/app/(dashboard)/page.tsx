@@ -132,7 +132,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* ── Tab Bar ────────────────────────────────────────────── */}
-      <div className="-mb-4 flex items-center gap-1 border-b px-1 overflow-x-auto">
+      <div className="flex items-center gap-1 border-b px-1 overflow-x-auto">
         <button
           type="button"
           onClick={() => setActiveView(null)}
