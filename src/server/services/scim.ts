@@ -282,3 +282,45 @@ export async function scimDeleteUser(id: string) {
     entityId: id,
   });
 }
+
+/**
+ * Resolve the role for a SCIM-provisioned team member.
+ * Uses oidcTeamMappings if configured, falls back to oidcDefaultRole, then VIEWER.
+ */
+export async function resolveScimRole(
+  teamId: string,
+): Promise<"VIEWER" | "EDITOR" | "ADMIN"> {
+  const settings = await prisma.systemSettings.findUnique({
+    where: { id: "singleton" },
+    select: {
+      oidcTeamMappings: true,
+      oidcDefaultRole: true,
+    },
+  });
+
+  if (!settings?.oidcTeamMappings) {
+    return (settings?.oidcDefaultRole as "VIEWER" | "EDITOR" | "ADMIN") ?? "VIEWER";
+  }
+
+  let mappings: Array<{ group: string; teamId: string; role: string }> = [];
+  try {
+    mappings = JSON.parse(settings.oidcTeamMappings);
+  } catch {
+    return (settings?.oidcDefaultRole as "VIEWER" | "EDITOR" | "ADMIN") ?? "VIEWER";
+  }
+
+  const teamMappings = mappings.filter((m) => m.teamId === teamId);
+  if (teamMappings.length === 0) {
+    return (settings?.oidcDefaultRole as "VIEWER" | "EDITOR" | "ADMIN") ?? "VIEWER";
+  }
+
+  const roleLevel: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
+  let highest = "VIEWER";
+  for (const m of teamMappings) {
+    if ((roleLevel[m.role] ?? 0) > (roleLevel[highest] ?? 0)) {
+      highest = m.role;
+    }
+  }
+
+  return highest as "VIEWER" | "EDITOR" | "ADMIN";
+}
