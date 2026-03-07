@@ -360,7 +360,10 @@ export const pipelineRouter = router({
         id: z.string(),
         name: pipelineNameSchema.optional(),
         description: z.string().nullable().optional(),
-        tags: z.array(z.string()).optional(),
+        tags: z.array(z.string()).refine(
+          (arr) => new Set(arr).size === arr.length,
+          { message: "Duplicate tags are not allowed" },
+        ).optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
@@ -379,7 +382,10 @@ export const pipelineRouter = router({
       }
 
       // Validate tags against the team's available tags
-      if (tags !== undefined && existing.environment.teamId) {
+      if (tags !== undefined) {
+        if (!existing.environment.teamId) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Team not found" });
+        }
         const team = await prisma.team.findUnique({
           where: { id: existing.environment.teamId },
           select: { availableTags: true },
