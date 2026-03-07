@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
 import { authenticateScim } from "../auth";
+import {
+  reconcileUserTeamMemberships,
+  getScimGroupNamesForUser,
+} from "@/server/services/group-mappings";
 
 interface ScimGroupResponse {
   schemas: string[];
@@ -61,6 +65,9 @@ export async function GET(req: NextRequest) {
       skip: startIndex - 1,
       take: count,
       orderBy: { createdAt: "asc" },
+      include: {
+        members: { select: { userId: true, user: { select: { email: true } } } },
+      },
     }),
     prisma.scimGroup.count({ where }),
   ]);
@@ -70,7 +77,12 @@ export async function GET(req: NextRequest) {
     totalResults: total,
     startIndex,
     itemsPerPage: count,
-    Resources: groups.map((g) => toScimGroupResponse(g)),
+    Resources: groups.map((g) =>
+      toScimGroupResponse(
+        g,
+        g.members.map((m) => ({ value: m.userId, display: m.user.email })),
+      ),
+    ),
   });
 }
 
@@ -86,7 +98,6 @@ export async function POST(req: NextRequest) {
       return scimError("displayName is required", 400);
     }
 
-    // Check if ScimGroup already exists — adopt it
     const existing = await prisma.scimGroup.findUnique({
       where: { displayName },
     });
@@ -100,6 +111,8 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      const memberResponses = await processGroupMembers(adopted.id, body.members);
+
       await writeAuditLog({
         userId: null,
         action: "scim.group_adopted",
@@ -108,7 +121,10 @@ export async function POST(req: NextRequest) {
         metadata: { displayName },
       });
 
-      return NextResponse.json(toScimGroupResponse(adopted), { status: 200 });
+      return NextResponse.json(
+        toScimGroupResponse(adopted, memberResponses),
+        { status: 200 },
+      );
     }
 
     const group = await prisma.scimGroup.create({
@@ -118,6 +134,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    const memberResponses = await processGroupMembers(group.id, body.members);
+
     await writeAuditLog({
       userId: null,
       action: "scim.group_created",
@@ -126,10 +144,52 @@ export async function POST(req: NextRequest) {
       metadata: { displayName },
     });
 
-    return NextResponse.json(toScimGroupResponse(group), { status: 201 });
+    return NextResponse.json(
+      toScimGroupResponse(group, memberResponses),
+      { status: 201 },
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to create group";
     return scimError(message, 400);
   }
+}
+
+/**
+ * Create ScimGroupMember records for members in a group POST/PUT,
+ * then reconcile each user's team memberships.
+ */
+async function processGroupMembers(
+  scimGroupId: string,
+  members: unknown,
+): Promise<Array<{ value: string; display?: string }>> {
+  if (!Array.isArray(members) || members.length === 0) return [];
+
+  const results: Array<{ value: string; display?: string }> = [];
+
+  await prisma.$transaction(async (tx) => {
+    for (const member of members) {
+      const userId = (member as { value?: unknown }).value;
+      if (typeof userId !== "string") continue;
+
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true },
+      });
+      if (!user) continue;
+
+      await tx.scimGroupMember.upsert({
+        where: { scimGroupId_userId: { scimGroupId, userId } },
+        create: { scimGroupId, userId },
+        update: {},
+      });
+
+      const groupNames = await getScimGroupNamesForUser(tx, userId);
+      await reconcileUserTeamMemberships(tx, userId, groupNames);
+
+      results.push({ value: userId, display: user.email });
+    }
+  });
+
+  return results;
 }
