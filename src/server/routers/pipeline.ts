@@ -662,6 +662,15 @@ export const pipelineRouter = router({
         });
       }
 
+      // Set audit metadata summary instead of full input
+      const nodeTypes = input.nodes.map((n) => `${n.kind.toLowerCase()}:${n.componentType}`);
+      (ctx as Record<string, unknown>).auditMetadata = {
+        pipelineId: input.pipelineId,
+        nodeCount: input.nodes.length,
+        edgeCount: input.edges.length,
+        nodeTypes: [...new Set(nodeTypes)],
+      };
+
       return prisma.$transaction(async (tx) => {
         await tx.pipeline.update({
           where: { id: input.pipelineId },
