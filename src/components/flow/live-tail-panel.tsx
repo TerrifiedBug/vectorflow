@@ -20,6 +20,14 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
   // Track which requestId we've already processed to avoid double-processing
   const processedRequestRef = useRef<string | null>(null);
 
+  // Reset events and any in-flight request when the selected component changes
+  const [prevComponentKey, setPrevComponentKey] = useState(componentKey);
+  if (prevComponentKey !== componentKey) {
+    setPrevComponentKey(componentKey);
+    setEvents([]);
+    setRequestId(null);
+  }
+
   const processResults = useCallback((data: { status: string; samples?: Array<{ componentKey: string; events: unknown }> }) => {
     if (!requestId || processedRequestRef.current === requestId) return;
     if (data.status !== "COMPLETED" || !data.samples) return;
@@ -88,7 +96,7 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
     );
   }
 
-  const isPending = requestMutation.isPending || (!!requestId && resultQuery.data?.status === "PENDING");
+  const isPending = requestMutation.isPending || (!!requestId && (resultQuery.isFetching || resultQuery.data?.status === "PENDING"));
 
   return (
     <div className="space-y-3 p-3">
