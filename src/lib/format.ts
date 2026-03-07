@@ -7,6 +7,7 @@ export function formatCount(n: number | bigint | null): string {
 
 export function formatBytes(n: number | bigint | null): string {
   const v = Number(n ?? 0);
+  if (v >= 1_099_511_627_776) return `${(v / 1_099_511_627_776).toFixed(1)} TB`;
   if (v >= 1_073_741_824) return `${(v / 1_073_741_824).toFixed(1)} GB`;
   if (v >= 1_048_576) return `${(v / 1_048_576).toFixed(1)} MB`;
   if (v >= 1_024) return `${(v / 1_024).toFixed(1)} KB`;

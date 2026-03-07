@@ -26,14 +26,6 @@ import { cn } from "@/lib/utils";
 
 type VolumeRange = "1h" | "6h" | "1d" | "7d" | "30d";
 
-/** Format bytes with auto-scaling to TB/GB/MB/KB */
-function formatVolumeBytes(n: number): string {
-  if (n >= 1_099_511_627_776) return `${(n / 1_099_511_627_776).toFixed(1)} TB`;
-  if (n >= 1_073_741_824) return `${(n / 1_073_741_824).toFixed(1)} GB`;
-  if (n >= 1_048_576) return `${(n / 1_048_576).toFixed(1)} MB`;
-  if (n >= 1_024) return `${(n / 1_024).toFixed(1)} KB`;
-  return `${n} B`;
-}
 
 /** Compute percentage change between previous and current values */
 function trendPercent(current: number, previous: number): number | null {
@@ -183,7 +175,7 @@ export default function AnalyticsPage() {
               <TrendArrow value={bytesInTrend} />
             </div>
             <p className="mt-1 text-2xl font-bold">
-              {data ? formatVolumeBytes(totalBytesIn) : "--"}
+              {data ? formatBytes(totalBytesIn) : "--"}
             </p>
             {bytesInTrend != null && (
               <p className="text-xs text-muted-foreground">
@@ -202,7 +194,7 @@ export default function AnalyticsPage() {
               <TrendArrow value={bytesOutTrend} />
             </div>
             <p className="mt-1 text-2xl font-bold">
-              {data ? formatVolumeBytes(totalBytesOut) : "--"}
+              {data ? formatBytes(totalBytesOut) : "--"}
             </p>
             {bytesOutTrend != null && (
               <p className="text-xs text-muted-foreground">
@@ -270,7 +262,7 @@ export default function AnalyticsPage() {
                 <YAxis
                   tick={{ fontSize: 10 }}
                   width={65}
-                  tickFormatter={formatVolumeBytes}
+                  tickFormatter={formatBytes}
                   domain={["auto", "auto"]}
                 />
                 <ChartTooltip
@@ -292,7 +284,7 @@ export default function AnalyticsPage() {
                             {chartConfig[name as string]?.label ?? name}
                           </span>
                           <span className="font-mono font-medium tabular-nums text-foreground">
-                            {formatVolumeBytes(value as number)}
+                            {formatBytes(value as number)}
                           </span>
                         </div>
                       )}
