@@ -16,8 +16,25 @@ export async function GET(request: Request) {
     // Fetch the node to check for pending actions (e.g., self-update)
     const node = await prisma.vectorNode.findUnique({
       where: { id: agent.nodeId },
-      select: { pendingAction: true },
+      select: { pendingAction: true, maintenanceMode: true },
     });
+
+    if (node?.maintenanceMode) {
+      const environment = await prisma.environment.findUnique({
+        where: { id: agent.environmentId },
+        select: { secretBackend: true, secretBackendConfig: true },
+      });
+      const settings = await prisma.systemSettings.findUnique({
+        where: { id: "singleton" },
+        select: { fleetPollIntervalMs: true },
+      });
+      return NextResponse.json({
+        pipelines: [],
+        pollIntervalMs: settings?.fleetPollIntervalMs ?? 15_000,
+        secretBackend: environment?.secretBackend ?? "BUILTIN",
+        pendingAction: node.pendingAction ?? undefined,
+      });
+    }
 
     const environment = await prisma.environment.findUnique({
       where: { id: agent.environmentId },
