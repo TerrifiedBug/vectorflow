@@ -27,6 +27,7 @@ model User {
   pipelinesUpdated   Pipeline[]   @relation("PipelineUpdatedBy")
   pipelinesCreated   Pipeline[]   @relation("PipelineCreatedBy")
   vrlSnippets        VrlSnippet[]
+  dashboardViews     DashboardView[]
   createdAt          DateTime     @default(now())
 }
 
@@ -540,4 +541,18 @@ model AlertEvent {
   @@index([alertRuleId])
   @@index([nodeId])
   @@index([firedAt])
+}
+
+model DashboardView {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  panels    Json     // string[] of panel names
+  filters   Json?    // { pipelineIds?: string[], nodeIds?: string[] }
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
