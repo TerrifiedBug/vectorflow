@@ -54,8 +54,8 @@ interface MetricChartProps {
   dataSecondary?: TSMap;
   /** "line" (default) or "area" */
   variant?: "line" | "area";
-  /** Chart height in pixels */
-  height?: number;
+  /** Chart height in pixels or CSS value */
+  height?: number | string;
   /** Y-axis formatter */
   yFormatter?: (v: number) => string;
   /** Fixed Y-axis domain [min, max], or undefined for auto */
@@ -187,14 +187,14 @@ export function MetricChart({
     : [];
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm font-medium">
           {icon}
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1 min-h-0">
         <ChartContainer
           config={chartConfig}
           className="w-full"
