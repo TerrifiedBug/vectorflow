@@ -52,6 +52,8 @@ async function getOidcSettings() {
         clientSecret,
         displayName: settings.oidcDisplayName ?? "SSO",
         tokenEndpointAuthMethod: settings.oidcTokenEndpointAuthMethod ?? "client_secret_post",
+        groupSyncEnabled: settings.oidcGroupSyncEnabled,
+        groupsClaim: settings.oidcGroupsClaim ?? "groups",
       };
     }
   } catch {
@@ -179,6 +181,7 @@ async function getAuthInstance() {
           clientId: oidc.clientId,
           clientSecret: oidc.clientSecret,
           allowDangerousEmailAccountLinking: true,
+          ...(oidc.groupSyncEnabled && { authorization: { params: { scope: `openid profile email ${oidc.groupsClaim}` } } }),
           client: {
             token_endpoint_auth_method: oidc.tokenEndpointAuthMethod,
           },
@@ -198,10 +201,7 @@ async function getAuthInstance() {
               const settings = await prisma.systemSettings.findUnique({
                 where: { id: "singleton" },
               });
-              const groupsClaim = settings?.oidcGroupsClaim ?? "groups";
               const profileData = profile as Record<string, unknown> | undefined;
-              const userGroups = (profileData?.[groupsClaim] as string[] | undefined) ?? [];
-              console.log(`[oidc] User ${user.email} groups (claim "${groupsClaim}"):`, userGroups);
 
               // Ensure user exists in the database
               let dbUser = await prisma.user.findUnique({
@@ -244,51 +244,53 @@ async function getAuthInstance() {
                 });
               }
 
-              // Parse team mappings (new system)
-              const teamMappings: Array<{group: string; teamId: string; role: string}> =
-                settings?.oidcTeamMappings ? (() => { try { return JSON.parse(settings.oidcTeamMappings!); } catch { return []; } })() : [];
+              // Group sync: map OIDC groups to teams/roles when enabled
+              if (settings?.oidcGroupSyncEnabled) {
+                const groupsClaim = settings.oidcGroupsClaim ?? "groups";
+                const userGroups = (profileData?.[groupsClaim] as string[] | undefined) ?? [];
+                console.log(`[oidc] User ${user.email} groups (claim "${groupsClaim}"):`, userGroups);
 
-              if (teamMappings.length > 0) {
-                // New team mapping logic
-                const matchedMappings = teamMappings.filter((m) => userGroups.includes(m.group));
+                const teamMappings: Array<{group: string; teamId: string; role: string}> =
+                  settings.oidcTeamMappings ? (() => { try { return JSON.parse(settings.oidcTeamMappings!); } catch { return []; } })() : [];
 
-                if (matchedMappings.length > 0) {
-                  // Group by teamId, take highest role per team
-                  const roleLevel: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
-                  const teamRoleMap = new Map<string, string>();
-                  for (const m of matchedMappings) {
-                    const current = teamRoleMap.get(m.teamId);
-                    if (!current || (roleLevel[m.role] ?? 0) > (roleLevel[current] ?? 0)) {
-                      teamRoleMap.set(m.teamId, m.role);
+                if (teamMappings.length > 0) {
+                  const matchedMappings = teamMappings.filter((m) => userGroups.includes(m.group));
+
+                  if (matchedMappings.length > 0) {
+                    const roleLevel: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
+                    const teamRoleMap = new Map<string, string>();
+                    for (const m of matchedMappings) {
+                      const current = teamRoleMap.get(m.teamId);
+                      if (!current || (roleLevel[m.role] ?? 0) > (roleLevel[current] ?? 0)) {
+                        teamRoleMap.set(m.teamId, m.role);
+                      }
                     }
-                  }
 
-                  // Create or update memberships for matched teams
-                  for (const [teamId, role] of teamRoleMap) {
+                    for (const [teamId, role] of teamRoleMap) {
+                      const membership = await prisma.teamMember.findUnique({
+                        where: { userId_teamId: { userId: dbUser.id, teamId } },
+                      });
+                      if (!membership) {
+                        await prisma.teamMember.create({
+                          data: { userId: dbUser.id, teamId, role: role as "VIEWER" | "EDITOR" | "ADMIN" },
+                        });
+                      } else {
+                        await prisma.teamMember.update({
+                          where: { id: membership.id },
+                          data: { role: role as "VIEWER" | "EDITOR" | "ADMIN" },
+                        });
+                      }
+                    }
+                  } else if (settings.oidcDefaultTeamId) {
+                    const defaultRole = settings.oidcDefaultRole ?? "VIEWER";
                     const membership = await prisma.teamMember.findUnique({
-                      where: { userId_teamId: { userId: dbUser.id, teamId } },
+                      where: { userId_teamId: { userId: dbUser.id, teamId: settings.oidcDefaultTeamId } },
                     });
                     if (!membership) {
                       await prisma.teamMember.create({
-                        data: { userId: dbUser.id, teamId, role: role as "VIEWER" | "EDITOR" | "ADMIN" },
-                      });
-                    } else {
-                      await prisma.teamMember.update({
-                        where: { id: membership.id },
-                        data: { role: role as "VIEWER" | "EDITOR" | "ADMIN" },
+                        data: { userId: dbUser.id, teamId: settings.oidcDefaultTeamId, role: defaultRole },
                       });
                     }
-                  }
-                } else if (settings?.oidcDefaultTeamId) {
-                  // No mappings matched — assign to default team with default role
-                  const defaultRole = settings.oidcDefaultRole ?? "VIEWER";
-                  const membership = await prisma.teamMember.findUnique({
-                    where: { userId_teamId: { userId: dbUser.id, teamId: settings.oidcDefaultTeamId } },
-                  });
-                  if (!membership) {
-                    await prisma.teamMember.create({
-                      data: { userId: dbUser.id, teamId: settings.oidcDefaultTeamId, role: defaultRole },
-                    });
                   }
                 }
               }
