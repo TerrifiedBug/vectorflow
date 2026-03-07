@@ -13,6 +13,7 @@ All enrolled agent nodes are displayed in a table with the following columns:
 | **Name** | The node name. Click it to open the node detail page. You can rename nodes from the detail view. |
 | **Host:Port** | The hostname or IP address and API port the agent is listening on. |
 | **Environment** | The environment the node is enrolled in. |
+| **Labels** | Key-value labels assigned to the node, shown as `key=value` badges. See [Node Labels](#node-labels) below. |
 | **Version** | The Vector version running on the node. |
 | **Agent Version** | The VectorFlow agent version, plus deployment mode (Docker or Binary). An **Update available** badge appears when a newer version exists. |
 | **Status** | Current health status (see statuses below). |
@@ -103,6 +104,53 @@ Docker-based agents are updated by pulling the latest image. The **Update** butt
 ## Pipeline deployment matrix
 
 Below the node list, the **Pipeline Deployment Matrix** shows a grid of all deployed pipelines across all nodes in the environment. This lets you see at a glance which pipelines are running on which nodes and their current status.
+
+## Node labels
+
+Labels are key-value pairs you can attach to nodes for organization and selective deployment. Common uses include tagging nodes by region, role, tier, or any custom dimension relevant to your infrastructure.
+
+### Viewing labels
+
+Labels appear as `key=value` badges in the **Labels** column of the fleet table. Nodes with no labels show an empty column.
+
+### Adding and editing labels
+
+{% stepper %}
+{% step %}
+### Open the node detail page
+Click a node name in the fleet table to open its detail page.
+{% endstep %}
+{% step %}
+### Edit labels
+In the **Labels** card, click the **Edit** button.
+{% endstep %}
+{% step %}
+### Add or modify labels
+Use the key-value input pairs to add, modify, or remove labels. Click **Add Label** to add a new pair, or click the **X** button to remove a row.
+{% endstep %}
+{% step %}
+### Save
+Click **Save Labels** to persist the changes.
+{% endstep %}
+{% endstepper %}
+
+{% hint style="info" %}
+Editing labels requires the **Editor** role or above on the team.
+{% endhint %}
+
+### Agent-reported labels
+
+Agents can also report labels in their heartbeat payload. When a label is reported by the agent and also set via the UI, the **UI value takes precedence**. This lets you override agent-reported labels without them being overwritten on the next heartbeat.
+
+### Selective deployment with labels
+
+When deploying a pipeline, you can optionally restrict deployment to nodes matching specific labels. In the deploy dialog, the **Target Nodes** selector lets you pick from all labels in the environment. Selected labels are combined with AND logic -- a node must have all selected labels to receive the pipeline.
+
+The deploy dialog shows a live count of matching nodes (e.g., "3 of 5 nodes match") so you can verify your selection before deploying. When no labels are selected, the pipeline deploys to all nodes in the environment (backward compatible).
+
+{% hint style="warning" %}
+Changing a pipeline's node selector on a subsequent deploy updates the targeting. Nodes that no longer match will stop the pipeline on their next poll.
+{% endhint %}
 
 ## Maintenance mode
 
