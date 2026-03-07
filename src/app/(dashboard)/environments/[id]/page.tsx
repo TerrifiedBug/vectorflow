@@ -520,6 +520,8 @@ export default function EnvironmentDetailPage({
         gitRepoUrl={env.gitRepoUrl}
         gitBranch={env.gitBranch}
         hasGitToken={env.hasGitToken}
+        gitOpsMode={env.gitOpsMode}
+        hasWebhookSecret={env.hasWebhookSecret}
       />
 
       {/* Created info */}

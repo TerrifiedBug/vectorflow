@@ -195,7 +195,7 @@ export const pipelineRouter = router({
         include: {
           nodes: true,
           edges: true,
-          environment: { select: { teamId: true } },
+          environment: { select: { teamId: true, gitOpsMode: true } },
           nodeStatuses: {
             select: { status: true },
           },
@@ -267,6 +267,7 @@ export const pipelineRouter = router({
         ...pipeline,
         nodes: decryptedNodes,
         hasConfigChanges,
+        gitOpsMode: pipeline.environment.gitOpsMode,
       };
     }),
 
