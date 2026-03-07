@@ -56,7 +56,7 @@ Secret names are converted to valid environment variable names using these rules
 - All non-alphanumeric characters replaced with underscores
 - Converted to uppercase
 
-For example, `my-api.key` becomes `VF_SECRET_MY_API_KEY`. If two secrets normalize to the same environment variable name (e.g., `db-password` and `db_password` both become `VF_SECRET_DB_PASSWORD`), VectorFlow logs a warning and uses the first match alphabetically.
+For example, `my-api.key` becomes `VF_SECRET_MY_API_KEY`. If two secrets normalize to the same environment variable name (e.g., `db-password` and `db_password` both become `VF_SECRET_DB_PASSWORD`), VectorFlow logs a warning and the last match in alphabetical order takes precedence.
 
 ### Sensitive fields
 
