@@ -60,6 +60,7 @@ function LoginPageContent() {
   const [oidcStatus, setOidcStatus] = useState<{
     enabled: boolean;
     displayName: string;
+    localAuthDisabled: boolean;
   } | null>(null);
   const [checkingSetup, setCheckingSetup] = useState(true);
 
@@ -76,7 +77,7 @@ function LoginPageContent() {
         router.replace("/setup");
         return;
       }
-      setOidcStatus(oidc as { enabled: boolean; displayName: string });
+      setOidcStatus(oidc as { enabled: boolean; displayName: string; localAuthDisabled: boolean });
       setCheckingSetup(false);
     });
   }, [router]);
@@ -136,7 +137,33 @@ function LoginPageContent() {
     );
   }
 
-  return (
+  return oidcStatus?.localAuthDisabled && oidcStatus?.enabled ? (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-2xl">Sign in</CardTitle>
+        <CardDescription>
+          Use your organization&apos;s single sign-on to access your account.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {error && (
+          <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+      </CardContent>
+      <CardFooter className="flex flex-col gap-3 pt-6">
+        <Button
+          type="button"
+          className="w-full"
+          onClick={handleSsoLogin}
+        >
+          <Shield className="mr-2 h-4 w-4" />
+          Sign in with {oidcStatus.displayName}
+        </Button>
+      </CardFooter>
+    </Card>
+  ) : (
     <Card>
       <CardHeader>
         <CardTitle className="text-2xl">
