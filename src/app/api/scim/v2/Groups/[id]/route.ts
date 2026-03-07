@@ -1,22 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { decrypt } from "@/server/services/crypto";
-
-async function authenticateScim(req: NextRequest): Promise<boolean> {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return false;
-
-  const token = auth.slice(7);
-  const settings = await prisma.systemSettings.findFirst();
-  if (!settings?.scimEnabled || !settings?.scimBearerToken) return false;
-
-  try {
-    const storedToken = decrypt(settings.scimBearerToken);
-    return token === storedToken;
-  } catch {
-    return false;
-  }
-}
+import { authenticateScim } from "../../auth";
 
 function scimError(detail: string, status: number) {
   return NextResponse.json(
@@ -106,6 +90,7 @@ export async function PATCH(
         const members = Array.isArray(op.value) ? op.value : [op.value];
         for (const member of members) {
           const userId = member.value;
+          if (typeof userId !== "string") continue;
           // Check if the user exists
           const user = await prisma.user.findUnique({
             where: { id: userId },
@@ -141,10 +126,10 @@ export async function PATCH(
         }
       }
 
-      if (operation === "replace" && op.path === "displayName") {
+      if (operation === "replace" && op.path === "displayName" && typeof op.value === "string") {
         await prisma.team.update({
           where: { id },
-          data: { name: op.value as string },
+          data: { name: op.value },
         });
       }
     }
@@ -191,36 +176,39 @@ export async function PUT(
   try {
     const body = await req.json();
 
-    // Update team name if provided
-    if (body.displayName) {
-      await prisma.team.update({
-        where: { id },
-        data: { name: body.displayName },
-      });
-    }
-
-    // Sync members: replace all memberships with the provided list
-    if (body.members && Array.isArray(body.members)) {
-      // Remove all existing memberships
-      await prisma.teamMember.deleteMany({ where: { teamId: id } });
-
-      // Add new memberships
-      for (const member of body.members) {
-        const userId = member.value;
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
+    await prisma.$transaction(async (tx) => {
+      // Update team name if provided
+      if (body.displayName && typeof body.displayName === "string") {
+        await tx.team.update({
+          where: { id },
+          data: { name: body.displayName },
         });
-        if (user) {
-          await prisma.teamMember.create({
-            data: {
-              userId,
-              teamId: id,
-              role: "VIEWER",
-            },
+      }
+
+      // Sync members: replace all memberships with the provided list
+      if (body.members && Array.isArray(body.members)) {
+        // Remove all existing memberships
+        await tx.teamMember.deleteMany({ where: { teamId: id } });
+
+        // Add new memberships
+        for (const member of body.members) {
+          const userId = member.value;
+          if (typeof userId !== "string") continue;
+          const user = await tx.user.findUnique({
+            where: { id: userId },
           });
+          if (user) {
+            await tx.teamMember.create({
+              data: {
+                userId,
+                teamId: id,
+                role: "VIEWER",
+              },
+            });
+          }
         }
       }
-    }
+    });
 
     const updated = await prisma.team.findUnique({
       where: { id },

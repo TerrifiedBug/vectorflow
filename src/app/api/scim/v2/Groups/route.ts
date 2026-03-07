@@ -1,22 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { decrypt } from "@/server/services/crypto";
-
-async function authenticateScim(req: NextRequest): Promise<boolean> {
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return false;
-
-  const token = auth.slice(7);
-  const settings = await prisma.systemSettings.findFirst();
-  if (!settings?.scimEnabled || !settings?.scimBearerToken) return false;
-
-  try {
-    const storedToken = decrypt(settings.scimBearerToken);
-    return token === storedToken;
-  } catch {
-    return false;
-  }
-}
+import { authenticateScim } from "../auth";
 
 interface ScimGroup {
   schemas: string[];

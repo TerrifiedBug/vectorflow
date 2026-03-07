@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { writeAuditLog } from "@/server/services/audit";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
@@ -39,6 +40,14 @@ function toScimUser(user: {
   };
 }
 
+const USER_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  scimExternalId: true,
+  lockedAt: true,
+} as const;
+
 export async function scimListUsers(
   filter?: string,
   startIndex = 1,
@@ -58,13 +67,7 @@ export async function scimListUsers(
       where,
       skip: startIndex - 1,
       take: count,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        scimExternalId: true,
-        lockedAt: true,
-      },
+      select: USER_SELECT,
     }),
     prisma.user.count({ where }),
   ]);
@@ -81,13 +84,7 @@ export async function scimListUsers(
 export async function scimGetUser(id: string) {
   const user = await prisma.user.findUnique({
     where: { id },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      scimExternalId: true,
-      lockedAt: true,
-    },
+    select: USER_SELECT,
   });
   if (!user) return null;
   return toScimUser(user);
@@ -113,13 +110,15 @@ export async function scimCreateUser(scimUser: ScimUser) {
       scimExternalId: scimUser.externalId,
       lockedAt: scimUser.active === false ? new Date() : null,
     },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      scimExternalId: true,
-      lockedAt: true,
-    },
+    select: USER_SELECT,
+  });
+
+  await writeAuditLog({
+    userId: null,
+    action: "scim.user_created",
+    entityType: "User",
+    entityId: user.id,
+    metadata: { email, scimExternalId: scimUser.externalId },
   });
 
   return toScimUser(user);
@@ -137,14 +136,17 @@ export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
   const user = await prisma.user.update({
     where: { id },
     data,
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      scimExternalId: true,
-      lockedAt: true,
-    },
+    select: USER_SELECT,
   });
+
+  await writeAuditLog({
+    userId: null,
+    action: "scim.user_updated",
+    entityType: "User",
+    entityId: id,
+    metadata: { fields: Object.keys(data) },
+  });
+
   return toScimUser(user);
 }
 
@@ -155,22 +157,22 @@ export async function scimPatchUser(
   const data: Record<string, unknown> = {};
 
   for (const op of operations) {
-    if (op.op === "replace" && op.path === "active") {
+    if (op.op === "replace" && op.path === "active" && typeof op.value === "boolean") {
       data.lockedAt = op.value ? null : new Date();
     }
-    if (op.op === "replace" && op.path === "name.formatted") {
+    if (op.op === "replace" && op.path === "name.formatted" && typeof op.value === "string") {
       data.name = op.value;
     }
-    if (op.op === "replace" && op.path === "userName") {
+    if (op.op === "replace" && op.path === "userName" && typeof op.value === "string") {
       data.email = op.value;
     }
-    if (op.op === "replace" && op.path === "externalId") {
+    if (op.op === "replace" && op.path === "externalId" && typeof op.value === "string") {
       data.scimExternalId = op.value;
     }
     // Handle bulk replace (no path, value is an object)
     if (op.op === "replace" && !op.path && typeof op.value === "object" && op.value !== null) {
       const val = op.value as Record<string, unknown>;
-      if (val.active !== undefined) data.lockedAt = val.active ? null : new Date();
+      if (typeof val.active === "boolean") data.lockedAt = val.active ? null : new Date();
       if (typeof val.userName === "string") data.email = val.userName;
       if (typeof val.externalId === "string") data.scimExternalId = val.externalId;
       if (val.name && typeof val.name === "object") {
@@ -184,26 +186,23 @@ export async function scimPatchUser(
     const user = await prisma.user.update({
       where: { id },
       data,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        scimExternalId: true,
-        lockedAt: true,
-      },
+      select: USER_SELECT,
     });
+
+    await writeAuditLog({
+      userId: null,
+      action: "scim.user_patched",
+      entityType: "User",
+      entityId: id,
+      metadata: { fields: Object.keys(data), operations: operations.map((o) => o.op) },
+    });
+
     return toScimUser(user);
   }
 
   const user = await prisma.user.findUnique({
     where: { id },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      scimExternalId: true,
-      lockedAt: true,
-    },
+    select: USER_SELECT,
   });
   return user ? toScimUser(user) : null;
 }
@@ -213,5 +212,12 @@ export async function scimDeleteUser(id: string) {
   await prisma.user.update({
     where: { id },
     data: { lockedAt: new Date(), lockedBy: "SCIM" },
+  });
+
+  await writeAuditLog({
+    userId: null,
+    action: "scim.user_deactivated",
+    entityType: "User",
+    entityId: id,
   });
 }
