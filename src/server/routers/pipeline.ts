@@ -372,7 +372,7 @@ export const pipelineRouter = router({
       const { id, tags, ...data } = input;
       const existing = await prisma.pipeline.findUnique({
         where: { id },
-        select: { id: true, environment: { select: { teamId: true } } },
+        select: { id: true, tags: true, environment: { select: { teamId: true } } },
       });
       if (!existing) {
         throw new TRPCError({
@@ -394,7 +394,9 @@ export const pipelineRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Team not found" });
         }
         const availableTags = (team.availableTags as string[]) ?? [];
-        const invalid = tags.filter((t) => !availableTags.includes(t));
+        const existingTags = (existing.tags as string[] | null) ?? [];
+        const newlyAdded = tags.filter((t: string) => !existingTags.includes(t));
+        const invalid = newlyAdded.filter((t: string) => !availableTags.includes(t));
         if (invalid.length > 0) {
           throw new TRPCError({
             code: "BAD_REQUEST",
