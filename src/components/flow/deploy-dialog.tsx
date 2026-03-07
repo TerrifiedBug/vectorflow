@@ -207,18 +207,10 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   const isAdmin = userRole === "ADMIN";
   const isReviewMode = isAdmin && !!pendingRequest;
 
-  function handleDeploy() {
-    setDeploying(true);
-    agentMutation.mutate({
-      pipelineId,
-      changelog: changelog.trim(),
-      ...(selectedLabels.length > 0 ? { nodeSelector } : { nodeSelector: {} }),
-    });
-  }
-
-  function formatTimeAgo(date: Date | string) {
-    const d = new Date(date);
-    const seconds = Math.floor((Date.now() - d.getTime()) / 1000);
+  const pendingRequestTimeAgo = useMemo(() => {
+    if (!pendingRequest) return "";
+    const d = new Date(pendingRequest.createdAt);
+    const seconds = Math.floor((new Date().getTime() - d.getTime()) / 1000);
     if (seconds < 60) return "just now";
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
@@ -226,6 +218,15 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     if (hours < 24) return `${hours}h ago`;
     const days = Math.floor(hours / 24);
     return `${days}d ago`;
+  }, [pendingRequest]);
+
+  function handleDeploy() {
+    setDeploying(true);
+    agentMutation.mutate({
+      pipelineId,
+      changelog: changelog.trim(),
+      ...(selectedLabels.length > 0 ? { nodeSelector } : { nodeSelector: {} }),
+    });
   }
 
   return (
@@ -273,7 +274,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
               <div className="text-xs text-muted-foreground space-y-1">
                 <p>
                   Requested by <span className="font-medium text-foreground">{pendingRequest.requestedBy.name ?? pendingRequest.requestedBy.email}</span>
-                  {" "}{formatTimeAgo(pendingRequest.createdAt)}
+                  {" "}{pendingRequestTimeAgo}
                 </p>
                 <p>
                   Reason: <span className="italic">{pendingRequest.changelog}</span>
