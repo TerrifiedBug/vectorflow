@@ -153,20 +153,21 @@ function LoginPageContent() {
 
   return oidcStatus?.localAuthDisabled && oidcStatus?.enabled ? (
     <Card>
-      <CardHeader>
+      <CardHeader className="text-center pb-4">
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+          <Shield className="h-6 w-6 text-primary" />
+        </div>
         <CardTitle className="text-2xl">Sign in</CardTitle>
         <CardDescription>
           Use your organization&apos;s single sign-on to access your account.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex flex-col gap-4 pt-0">
         {error && (
-          <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive text-center">
             {error}
           </div>
         )}
-      </CardContent>
-      <CardFooter className="flex flex-col gap-3 pt-6">
         <Button
           type="button"
           className="w-full"
@@ -175,7 +176,7 @@ function LoginPageContent() {
           <Shield className="mr-2 h-4 w-4" />
           Sign in with {oidcStatus.displayName}
         </Button>
-      </CardFooter>
+      </CardContent>
     </Card>
   ) : (
     <Card>
