@@ -4,11 +4,19 @@ import { useState } from "react";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { GitBranch, Eye, EyeOff, Loader2 } from "lucide-react";
+import { GitBranch, Eye, EyeOff, Loader2, Copy, Info } from "lucide-react";
 
+import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Card,
   CardContent,
@@ -22,6 +30,8 @@ interface GitSyncSectionProps {
   gitRepoUrl: string | null;
   gitBranch: string | null;
   hasGitToken: boolean;
+  gitOpsMode?: string;
+  hasWebhookSecret?: boolean;
 }
 
 export function GitSyncSection({
@@ -29,6 +39,8 @@ export function GitSyncSection({
   gitRepoUrl,
   gitBranch,
   hasGitToken,
+  gitOpsMode = "off",
+  hasWebhookSecret = false,
 }: GitSyncSectionProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -38,11 +50,20 @@ export function GitSyncSection({
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [selectedGitOpsMode, setSelectedGitOpsMode] = useState(gitOpsMode);
+  // The actual webhook secret is only available from the update mutation response
+  const [webhookSecretFromMutation, setWebhookSecretFromMutation] = useState<string | null>(null);
 
   const updateMutation = useMutation(
     trpc.environment.update.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: trpc.environment.get.queryKey({ id: environmentId }) });
+        // Capture the webhook secret from the EDITOR-gated mutation response
+        if (data.gitWebhookSecret) {
+          setWebhookSecretFromMutation(data.gitWebhookSecret);
+        } else {
+          setWebhookSecretFromMutation(null);
+        }
       },
       onError: (err) => toast.error(err.message || "Failed to save Git settings"),
     })
@@ -72,6 +93,7 @@ export function GitSyncSection({
         gitRepoUrl: repoUrl || null,
         gitBranch: branch || null,
         gitToken: token || undefined, // Only send if user entered a new token
+        gitOpsMode: selectedGitOpsMode as "off" | "push" | "bidirectional",
       },
       {
         onSuccess: () => {
@@ -107,6 +129,7 @@ export function GitSyncSection({
         gitRepoUrl: null,
         gitBranch: null,
         gitToken: null,
+        gitOpsMode: "off",
       },
       {
         onSuccess: () => {
@@ -114,13 +137,23 @@ export function GitSyncSection({
           setRepoUrl("");
           setBranch("main");
           setToken("");
+          setSelectedGitOpsMode("off");
         },
       },
     );
   }
 
-  const hasChanges = repoUrl !== (gitRepoUrl ?? "") || branch !== (gitBranch ?? "main") || token !== "";
+  const hasChanges =
+    repoUrl !== (gitRepoUrl ?? "") ||
+    branch !== (gitBranch ?? "main") ||
+    token !== "" ||
+    selectedGitOpsMode !== gitOpsMode;
   const isConfigured = !!gitRepoUrl;
+
+  const webhookUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/api/webhooks/git`
+      : "/api/webhooks/git";
 
   return (
     <Card>
@@ -182,6 +215,96 @@ export function GitSyncSection({
             </div>
           </div>
         </div>
+
+        {/* GitOps Mode */}
+        <div className="space-y-2">
+          <Label htmlFor="gitops-mode">GitOps Mode</Label>
+          <Select
+            value={selectedGitOpsMode}
+            onValueChange={setSelectedGitOpsMode}
+          >
+            <SelectTrigger id="gitops-mode" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">Off</SelectItem>
+              <SelectItem value="push">Push Only (deploy commits YAML to repo)</SelectItem>
+              <SelectItem value="bidirectional">Bi-directional (push + git webhooks import changes)</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {selectedGitOpsMode === "off" && "Git sync is disabled."}
+            {selectedGitOpsMode === "push" && "Pipeline YAML is committed to the repo on deploy. Changes in git are not pulled back."}
+            {selectedGitOpsMode === "bidirectional" && "Pipeline YAML is committed on deploy AND pushes to the repo trigger pipeline imports via webhook."}
+          </p>
+        </div>
+
+        {/* Webhook configuration for bidirectional mode */}
+        {selectedGitOpsMode === "bidirectional" && (
+          <div className="space-y-3 rounded-md border bg-muted/30 p-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Info className="h-4 w-4 text-blue-500" />
+              Webhook Configuration
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Configure a webhook in your GitHub repository settings to enable bi-directional sync.
+              Set the content type to <code className="rounded bg-muted px-1">application/json</code> and
+              select the <strong>push</strong> event.
+            </p>
+
+            <div className="space-y-2">
+              <Label>Webhook URL</Label>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={webhookUrl} className="font-mono text-xs" />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Copy webhook URL"
+                  onClick={async () => {
+                    await copyToClipboard(webhookUrl);
+                    toast.success("Webhook URL copied");
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {webhookSecretFromMutation && (
+              <div className="space-y-2">
+                <Label>Webhook Secret</Label>
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={webhookSecretFromMutation} className="font-mono text-xs" />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Copy webhook secret"
+                    onClick={async () => {
+                      await copyToClipboard(webhookSecretFromMutation);
+                      toast.success("Webhook secret copied");
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Paste this secret into your GitHub webhook settings to enable HMAC signature verification.
+                </p>
+              </div>
+            )}
+            {!webhookSecretFromMutation && hasWebhookSecret && (
+              <p className="text-xs text-muted-foreground">
+                Webhook secret is configured. For security, the secret is only shown once when first generated.
+                To get a new secret, switch GitOps mode off and back to bi-directional.
+              </p>
+            )}
+            {!webhookSecretFromMutation && !hasWebhookSecret && (
+              <p className="text-xs text-muted-foreground">
+                Save settings to generate a webhook secret.
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="flex gap-2 pt-2">
           <Button

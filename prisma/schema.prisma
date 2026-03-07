@@ -86,6 +86,8 @@ model Environment {
   gitRepoUrl          String?
   gitBranch           String?       @default("main")
   gitToken            String?       // Stored encrypted via crypto.ts
+  gitOpsMode          String        @default("off")   // "off" | "push" | "bidirectional"
+  gitWebhookSecret    String?       // HMAC secret for validating incoming git webhooks
   alertRules              AlertRule[]
   alertWebhooks           AlertWebhook[]
   notificationChannels    NotificationChannel[]

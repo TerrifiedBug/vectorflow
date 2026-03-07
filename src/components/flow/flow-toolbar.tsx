@@ -18,6 +18,7 @@ import {
   BarChart3,
   ScrollText,
   Settings,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,7 @@ interface FlowToolbarProps {
   onToggleLogs?: () => void;
   hasRecentErrors?: boolean;
   processStatus?: ProcessStatusValue | null;
+  gitOpsMode?: string;
 }
 
 function downloadFile(content: string, filename: string) {
@@ -95,6 +97,7 @@ export function FlowToolbar({
   onToggleLogs,
   hasRecentErrors = false,
   processStatus,
+  gitOpsMode,
 }: FlowToolbarProps) {
   const globalConfig = useFlowStore((s) => s.globalConfig);
   const canUndo = useFlowStore((s) => s.canUndo);
@@ -180,6 +183,17 @@ export function FlowToolbar({
   return (
     <TooltipProvider>
       <div className="flex h-10 items-center gap-1 px-3">
+        {gitOpsMode === "bidirectional" && (
+          <div className="flex items-center gap-1.5 rounded bg-blue-50 px-2 py-1 text-xs text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+            <Info className="h-3.5 w-3.5 shrink-0" />
+            <span>GitOps managed — changes may be overwritten on next git push</span>
+          </div>
+        )}
+
+        {gitOpsMode === "bidirectional" && (
+          <Separator orientation="vertical" className="mx-1 h-5" />
+        )}
+
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="sm" onClick={onSave} disabled={isSaving || !isDirty} className={cn("relative h-7 w-7 p-0", !isDirty && "opacity-50")} aria-label="Save pipeline">

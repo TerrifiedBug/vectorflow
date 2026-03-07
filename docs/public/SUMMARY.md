@@ -28,6 +28,7 @@
 * [SCIM Provisioning](operations/scim.md)
 * [Service Accounts](operations/service-accounts.md)
 * [Backup &amp; Restore](operations/backup-restore.md)
+* [GitOps](operations/gitops.md)
 * [Security](operations/security.md)
 * [Upgrading](operations/upgrading.md)
 

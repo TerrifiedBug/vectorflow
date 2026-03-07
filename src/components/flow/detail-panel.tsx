@@ -224,7 +224,7 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
     );
   }
 
-  const { componentDef, config, disabled, isSystemLocked } = selectedNode.data as {
+  const { componentDef, componentKey, config, disabled, isSystemLocked } = selectedNode.data as {
     componentDef: VectorComponentDef;
     componentKey: string; // used via displayKey/storeKey above
     config: Record<string, unknown>;
