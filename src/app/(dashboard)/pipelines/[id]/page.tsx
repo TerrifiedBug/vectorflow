@@ -162,7 +162,6 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   // Lightweight check for recent errors (for toolbar badge) — 24h window
   const errorCheckSince = useMemo(
     () => new Date(Date.now() - 24 * 60 * 60 * 1000),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
   const recentErrorsQuery = useQuery(

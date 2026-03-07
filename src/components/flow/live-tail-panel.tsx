@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,27 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
   const [requestId, setRequestId] = useState<string | null>(null);
   const [events, setEvents] = useState<Array<{ data: unknown; expanded: boolean }>>([]);
 
-  // Track which requestId we've already processed to avoid infinite re-renders
+  // Track which requestId we've already processed to avoid double-processing
   const processedRequestRef = useRef<string | null>(null);
+
+  const processResults = useCallback((data: { status: string; samples?: Array<{ componentKey: string; events: unknown }> }) => {
+    if (!requestId || processedRequestRef.current === requestId) return;
+    if (data.status !== "COMPLETED" || !data.samples) return;
+
+    const newEvents = data.samples
+      .filter((s) => s.componentKey === componentKey)
+      .flatMap((s) => {
+        const evts = (s.events as unknown[]) ?? [];
+        return evts.map((e) => ({ data: e, expanded: false }));
+      });
+
+    if (newEvents.length > 0) {
+      setEvents((prev) => [...newEvents, ...prev].slice(0, 50));
+    }
+
+    processedRequestRef.current = requestId;
+    setRequestId(null); // Stop polling
+  }, [requestId, componentKey]);
 
   // Request samples mutation
   const requestMutation = useMutation(
@@ -33,32 +52,17 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
   const resultQuery = useQuery({
     ...trpc.pipeline.sampleResult.queryOptions({ requestId: requestId! }),
     enabled: !!requestId,
+    select: (data) => {
+      // Process results via select callback (not in an effect)
+      processResults(data);
+      return data;
+    },
     refetchInterval: (query) => {
       const data = query.state.data;
       if (data?.status === "COMPLETED" || data?.status === "ERROR" || data?.status === "EXPIRED") return false;
       return 1000; // Poll every second while pending
     },
   });
-
-  // When results come in, update events
-  useEffect(() => {
-    if (!requestId || processedRequestRef.current === requestId) return;
-    if (resultQuery.data?.status !== "COMPLETED" || !resultQuery.data.samples) return;
-
-    const newEvents = resultQuery.data.samples
-      .filter((s: { componentKey: string }) => s.componentKey === componentKey)
-      .flatMap((s: { events: unknown }) => {
-        const evts = (s.events as unknown[]) ?? [];
-        return evts.map((e) => ({ data: e, expanded: false }));
-      });
-
-    if (newEvents.length > 0) {
-      setEvents((prev) => [...newEvents, ...prev].slice(0, 50));
-    }
-
-    processedRequestRef.current = requestId;
-    setRequestId(null); // Stop polling
-  }, [requestId, resultQuery.data, componentKey]);
 
   const handleSample = useCallback(() => {
     processedRequestRef.current = null;
