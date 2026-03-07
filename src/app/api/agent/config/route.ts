@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import yaml from "js-yaml";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
-import { convertSecretRefsToEnvVars, resolveCertRefs, secretNameToEnvVar } from "@/server/services/secret-resolver";
+import { collectSecretRefs, convertSecretRefsToEnvVars, resolveCertRefs, secretNameToEnvVar } from "@/server/services/secret-resolver";
 import { decrypt } from "@/server/services/crypto";
 import { createHash } from "crypto";
 
@@ -84,19 +84,40 @@ export async function GET(request: Request) {
     const pipelineConfigs = [];
     const certBasePath = "/var/lib/vf-agent/certs";
 
-    // Pre-resolve all environment secrets once (shared across all pipelines)
+    // Collect secret names actually referenced across all pipeline configs,
+    // then fetch and decrypt only those — not every secret in the environment.
     const secrets: Record<string, string> = {};
     if (environment.secretBackend === "BUILTIN") {
-      const envSecrets = await prisma.secret.findMany({
-        where: { environmentId: agent.environmentId },
-        orderBy: { name: "asc" },
-      });
-      for (const s of envSecrets) {
-        const envKey = secretNameToEnvVar(s.name);
-        if (secrets[envKey] !== undefined) {
-          console.warn(`[agent-config] Secret name collision: "${s.name}" normalizes to "${envKey}" which is already set`);
+      const referencedNames = new Set<string>();
+      for (const p of pipelines) {
+        try {
+          const ver = p.versions[0];
+          if (!ver?.configYaml) continue;
+          const parsed = yaml.load(ver.configYaml);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            for (const name of collectSecretRefs(parsed as Record<string, unknown>)) {
+              referencedNames.add(name);
+            }
+          }
+        } catch {
+          // Skip unparseable configs — they'll be caught again in the per-pipeline loop below
         }
-        secrets[envKey] = decrypt(s.encryptedValue);
+      }
+
+      if (referencedNames.size > 0) {
+        const envSecrets = await prisma.secret.findMany({
+          where: {
+            environmentId: agent.environmentId,
+            name: { in: Array.from(referencedNames) },
+          },
+        });
+        for (const s of envSecrets) {
+          const envKey = secretNameToEnvVar(s.name);
+          if (secrets[envKey] !== undefined) {
+            console.warn(`[agent-config] Secret name collision: "${s.name}" normalizes to "${envKey}" which is already set`);
+          }
+          secrets[envKey] = decrypt(s.encryptedValue);
+        }
       }
     }
 
