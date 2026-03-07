@@ -70,6 +70,22 @@ export const alertRouter = router({
         }
       }
 
+      // Validate channels BEFORE creating the rule to avoid orphans on failure
+      if (input.channelIds?.length) {
+        const channelCount = await prisma.notificationChannel.count({
+          where: {
+            id: { in: input.channelIds },
+            environmentId: input.environmentId,
+          },
+        });
+        if (channelCount !== input.channelIds.length) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "One or more channel IDs are invalid or belong to a different environment",
+          });
+        }
+      }
+
       const rule = await prisma.alertRule.create({
         data: {
           name: input.name,
@@ -84,20 +100,6 @@ export const alertRouter = router({
       });
 
       if (input.channelIds?.length) {
-        // Validate all channels belong to the same environment
-        const channelCount = await prisma.notificationChannel.count({
-          where: {
-            id: { in: input.channelIds },
-            environmentId: input.environmentId,
-          },
-        });
-        if (channelCount !== input.channelIds.length) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "One or more channel IDs are invalid or belong to a different environment",
-          });
-        }
-
         await prisma.alertRuleChannel.createMany({
           data: input.channelIds.map((channelId) => ({
             alertRuleId: rule.id,
