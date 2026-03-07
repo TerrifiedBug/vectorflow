@@ -198,23 +198,21 @@ export const deployRouter = router({
         });
       }
 
-      if (result.success) {
-        writeAuditLog({
-          userId,
-          action: "deploy.agent",
-          entityType: "Pipeline",
-          entityId: input.pipelineId,
-          metadata: {
-            timestamp: new Date().toISOString(),
-            input: { pipelineId: input.pipelineId, changelog: input.changelog },
-          },
-          teamId: (ctx as Record<string, unknown>).teamId as string | null ?? null,
-          environmentId: pipeline.environment.id,
-          ipAddress: (ctx as Record<string, unknown>).ipAddress as string | null ?? null,
-          userEmail: ctx.session?.user?.email ?? null,
-          userName: ctx.session?.user?.name ?? null,
-        }).catch(() => {});
-      }
+      writeAuditLog({
+        userId,
+        action: result.success ? "deploy.agent" : "deploy.agent_failed",
+        entityType: "Pipeline",
+        entityId: input.pipelineId,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          input: { pipelineId: input.pipelineId, changelog: input.changelog },
+        },
+        teamId: (ctx as Record<string, unknown>).teamId as string | null ?? null,
+        environmentId: pipeline.environment.id,
+        ipAddress: (ctx as Record<string, unknown>).ipAddress as string | null ?? null,
+        userEmail: ctx.session?.user?.email ?? null,
+        userName: ctx.session?.user?.name ?? null,
+      }).catch(() => {});
 
       return result;
     }),
@@ -281,9 +279,13 @@ export const deployRouter = router({
     }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input, ctx }) => {
-      const where: Record<string, unknown> = { status: "PENDING" };
-      if (input.environmentId) where.environmentId = input.environmentId;
-      if (input.pipelineId) where.pipelineId = input.pipelineId;
+      const teamId = (ctx as Record<string, unknown>).teamId as string | null ?? null;
+      const where: Record<string, unknown> = {
+        status: "PENDING",
+        ...(input.environmentId && { environmentId: input.environmentId }),
+        ...(input.pipelineId && { pipelineId: input.pipelineId }),
+        environment: { teamId },
+      };
 
       const userRole = (ctx as Record<string, unknown>).userRole as string;
       const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
