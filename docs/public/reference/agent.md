@@ -62,6 +62,7 @@ After each poll, the agent sends a heartbeat (`POST /api/agent/heartbeat`) that 
 - Host system metrics (CPU, memory, disk, network)
 - Recent stdout/stderr log lines from each pipeline process
 - Agent and Vector version information
+- Node labels (optional key-value metadata for selective deployment)
 
 ---
 
@@ -75,6 +76,7 @@ After each poll, the agent sends a heartbeat (`POST /api/agent/heartbeat`) that 
 | `VF_VECTOR_BIN` | No | `vector` | Path to the Vector binary. Use if Vector is not on the system `PATH`. |
 | `VF_POLL_INTERVAL` | No | `15s` | How often to poll the server for config changes. Accepts Go duration syntax (e.g., `10s`, `1m`). |
 | `VF_LOG_LEVEL` | No | `info` | Agent log level: `debug`, `info`, `warn`, `error` |
+| `VF_LABELS` | No | -- | Comma-separated key=value pairs reported to the server on each heartbeat (e.g., `region=us-east-1,tier=production`). Labels set via the UI take precedence over agent-reported values. Used for selective pipeline deployment. |
 
 {% hint style="warning" %}
 `VF_URL` is the only strictly required variable. However, `VF_TOKEN` must be set on the first run for enrollment. After the agent writes its node token to disk, `VF_TOKEN` can be removed.
@@ -168,6 +170,10 @@ Key fields:
 - **`pendingAction`**: Server-initiated action (currently only `self_update`).
 
 {% hint style="info" %}
+When a pipeline has a **node selector** configured (via the deploy dialog), the config response only includes pipelines whose selector labels match this node's labels. A pipeline with no node selector deploys to all nodes.
+{% endhint %}
+
+{% hint style="info" %}
 When a node is in **maintenance mode**, the config response returns an empty `pipelines` array. The agent stops all running pipelines but continues sending heartbeats. See [Fleet Management](../user-guide/fleet.md#maintenance-mode) for details.
 {% endhint %}
 
@@ -176,6 +182,9 @@ When a node is in **maintenance mode**, the config response returns an empty `pi
 Called after every poll. Sends status and metrics for all managed pipelines.
 
 **Headers:** `Authorization: Bearer <node-token>`, `Content-Type: application/json`
+
+Key fields:
+- **`labels`** (optional): Key-value pairs describing this node. Labels set via the `VF_LABELS` environment variable are reported here. The server merges them with any labels set through the UI, with UI-set labels taking precedence.
 
 **Request:**
 ```json
@@ -212,7 +221,11 @@ Called after every poll. Sends status and metrics for all managed pipelines.
   },
   "agentVersion": "0.5.0",
   "vectorVersion": "vector 0.41.1",
-  "deploymentMode": "STANDALONE"
+  "deploymentMode": "STANDALONE",
+  "labels": {
+    "region": "us-east-1",
+    "tier": "production"
+  }
 }
 ```
 
