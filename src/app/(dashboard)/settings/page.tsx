@@ -499,7 +499,7 @@ function AuthSettings() {
     if (hasLoadedRef.current && isDirty) return; // Don't overwrite dirty state on refetch
     setDefaultRole((settings.oidcDefaultRole as "VIEWER" | "EDITOR" | "ADMIN") ?? "VIEWER");
     setGroupSyncEnabled(settings.oidcGroupSyncEnabled ?? false);
-    setGroupsScope(settings.oidcGroupsScope ?? "groups");
+    setGroupsScope(settings.oidcGroupsScope ?? "");
     setGroupsClaim(settings.oidcGroupsClaim ?? "groups");
     setTeamMappings((settings.oidcTeamMappings ?? []) as Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>);
     setDefaultTeamId(settings.oidcDefaultTeamId ?? "");
