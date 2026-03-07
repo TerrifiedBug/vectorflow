@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useRef } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import {
   Cpu,
@@ -107,6 +107,7 @@ interface CustomViewProps {
 
 export function CustomView({ view }: CustomViewProps) {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const { selectedEnvironmentId } = useEnvironmentStore();
   const { width, containerRef, mounted } = useContainerWidth();
 
@@ -141,7 +142,13 @@ export function CustomView({ view }: CustomViewProps) {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const updateMutation = useMutation(
-    trpc.dashboard.updateView.mutationOptions()
+    trpc.dashboard.updateView.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: [["dashboard", "listViews"]],
+        });
+      },
+    })
   );
 
   const persistLayout = useCallback(
