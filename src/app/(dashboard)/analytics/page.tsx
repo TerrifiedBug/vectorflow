@@ -219,7 +219,9 @@ export default function AnalyticsPage() {
                   ? "text-green-600 dark:text-green-400"
                   : reductionPercent != null && reductionPercent >= 20
                     ? "text-amber-600 dark:text-amber-400"
-                    : "text-muted-foreground",
+                    : reductionPercent != null
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-muted-foreground",
               )}
             >
               {reductionPercent != null ? `${reductionPercent.toFixed(1)}%` : "--"}
