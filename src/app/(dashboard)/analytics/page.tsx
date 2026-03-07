@@ -223,9 +223,9 @@ export default function AnalyticsPage() {
             <p
               className={cn(
                 "mt-1 text-2xl font-bold",
-                reductionPercent != null && reductionPercent > 50
+                reductionPercent != null && reductionPercent >= 50
                   ? "text-green-600 dark:text-green-400"
-                  : reductionPercent != null && reductionPercent > 10
+                  : reductionPercent != null && reductionPercent >= 20
                     ? "text-amber-600 dark:text-amber-400"
                     : "text-muted-foreground",
               )}

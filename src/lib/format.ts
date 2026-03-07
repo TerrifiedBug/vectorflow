@@ -66,7 +66,7 @@ export function formatSI(n: number): string {
 /** Time axis formatter — adapts label density to range */
 export function formatTimeAxis(timestamp: number | string, range: string): string {
   const d = new Date(Number(timestamp));
-  if (range === "7d") {
+  if (range === "7d" || range === "30d") {
     return d.toLocaleDateString([], { month: "short", day: "numeric" });
   }
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
