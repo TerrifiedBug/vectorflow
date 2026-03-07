@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { importVectorConfig } from "@/lib/config-generator";
 import { decrypt } from "@/server/services/crypto";
 import { encryptNodeConfig } from "@/server/services/config-crypto";
-import { ComponentKind } from "@/generated/prisma";
+import { ComponentKind, Prisma } from "@/generated/prisma";
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -173,7 +173,7 @@ export async function POST(req: NextRequest) {
               config: encryptNodeConfig(
                 componentType,
                 data.config,
-              ) as unknown as Record<string, unknown>,
+              ) as unknown as Prisma.InputJsonValue,
               positionX: node.position.x,
               positionY: node.position.y,
             },
@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
         await tx.pipeline.update({
           where: { id: pipeline!.id },
           data: {
-            globalConfig: globalConfig ?? undefined,
+            globalConfig: (globalConfig ?? undefined) as Prisma.InputJsonValue | undefined,
           },
         });
       });
