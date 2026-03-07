@@ -119,6 +119,7 @@ export default function FleetPage() {
               <TableHead>Name</TableHead>
               <TableHead>Host:Port</TableHead>
               <TableHead>Environment</TableHead>
+              <TableHead>Labels</TableHead>
               <TableHead>Version</TableHead>
               <TableHead>Agent Version</TableHead>
               <TableHead>Status</TableHead>
@@ -142,6 +143,17 @@ export default function FleetPage() {
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary">{node.environment.name}</Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(
+                      (node.labels as Record<string, string>) ?? {},
+                    ).map(([k, v]) => (
+                      <Badge key={k} variant="outline" className="text-xs">
+                        {k}={v}
+                      </Badge>
+                    ))}
+                  </div>
                 </TableCell>
                 <TableCell className="font-mono text-sm text-muted-foreground">
                   {node.vectorVersion?.split(" ")[1] ?? "—"}
