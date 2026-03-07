@@ -112,7 +112,7 @@ export function CustomView({ view }: CustomViewProps) {
   const { width, containerRef, mounted } = useContainerWidth();
 
   // Parse view data
-  const panels = (view.panels ?? []) as PanelId[];
+  const panels = useMemo(() => (view.panels ?? []) as PanelId[], [view.panels]);
   const savedFilters = (view.filters ?? {}) as {
     pipelineIds?: string[];
     nodeIds?: string[];
@@ -140,7 +140,9 @@ export function CustomView({ view }: CustomViewProps) {
 
   // Refs for latest filter values so the debounce timer never captures stale state
   const filtersRef = useRef({ pipelineIds: selectedPipelineIds, nodeIds: selectedNodeIds });
-  filtersRef.current = { pipelineIds: selectedPipelineIds, nodeIds: selectedNodeIds };
+  useEffect(() => {
+    filtersRef.current = { pipelineIds: selectedPipelineIds, nodeIds: selectedNodeIds };
+  }, [selectedPipelineIds, selectedNodeIds]);
 
   // Debounce layout save to avoid excessive mutations
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
