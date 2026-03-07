@@ -204,7 +204,7 @@ export const pipelineRouter = router({
         include: {
           nodes: true,
           edges: true,
-          environment: { select: { teamId: true, gitOpsMode: true } },
+          environment: { select: { teamId: true, gitOpsMode: true, name: true } },
           nodeStatuses: {
             select: { status: true },
           },
@@ -231,7 +231,7 @@ export const pipelineRouter = router({
         const latestVersion = await prisma.pipelineVersion.findFirst({
           where: { pipelineId: input.id },
           orderBy: { version: "desc" },
-          select: { configYaml: true, logLevel: true },
+          select: { configYaml: true, logLevel: true, version: true },
         });
 
         if (latestVersion) {
@@ -252,10 +252,17 @@ export const pipelineRouter = router({
             target: e.targetNodeId,
             ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
           }));
+          const enrichment = pipeline.enrichMetadata
+            ? {
+                environmentName: pipeline.environment.name,
+                pipelineVersion: latestVersion.version,
+              }
+            : null;
           const currentYaml = generateVectorYaml(
             flowNodes as Parameters<typeof generateVectorYaml>[0],
             flowEdges as Parameters<typeof generateVectorYaml>[1],
             pipeline.globalConfig as Record<string, unknown> | null,
+            enrichment,
           );
           hasConfigChanges = currentYaml !== latestVersion.configYaml;
 
