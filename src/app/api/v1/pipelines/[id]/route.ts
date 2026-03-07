@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { apiRoute } from "../../_lib/api-handler";
+import { apiRoute, jsonResponse } from "../../_lib/api-handler";
 
 export const GET = apiRoute("pipelines.read", async (_req, ctx, params) => {
   const id = params?.id;
@@ -58,5 +58,5 @@ export const GET = apiRoute("pipelines.read", async (_req, ctx, params) => {
     );
   }
 
-  return NextResponse.json({ pipeline });
+  return jsonResponse({ pipeline });
 });
