@@ -177,6 +177,7 @@ export default function PipelinesPage() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Health</TableHead>
               <TableHead className="text-right">Events/sec In</TableHead>
               <TableHead className="text-right">Bytes/sec In</TableHead>
               <TableHead className="text-right">Reduction</TableHead>
@@ -217,6 +218,24 @@ export default function PipelinesPage() {
                     </Badge>
                   )}
                   </div>
+                </TableCell>
+                {/* Health */}
+                <TableCell>
+                  {pipeline.isDraft ? (
+                    <span className="text-sm text-muted-foreground">--</span>
+                  ) : pipeline.healthStatus === "healthy" ? (
+                    <Badge variant="outline" className="bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30">
+                      Healthy
+                    </Badge>
+                  ) : pipeline.healthStatus === "degraded" ? (
+                    <Badge variant="outline" className="bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30">
+                      Degraded
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      No SLIs
+                    </Badge>
+                  )}
                 </TableCell>
                 {/* Events/sec In */}
                 <TableCell className="text-right font-mono text-sm text-muted-foreground">
