@@ -75,30 +75,48 @@ Save the settings. An SSO button will appear on the login page. Test the flow by
 OIDC settings are stored encrypted in the database. The client secret is encrypted with AES-256-GCM before storage.
 {% endhint %}
 
-### OIDC role mapping
+### OIDC group sync
 
-Map identity provider groups to VectorFlow roles so users are automatically assigned the correct permissions when they sign in via SSO.
+VectorFlow can automatically assign users to teams based on their identity provider group memberships. Group sync is **off by default** and must be explicitly enabled from **Settings > OIDC Team & Role Mapping**.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Groups Claim | `groups` | JWT claim containing group memberships |
-| Default Role | VIEWER | Role assigned to users not matching any group rule |
-| Admin Groups | -- | Comma-separated group names that map to the **Admin** role |
-| Editor Groups | -- | Comma-separated group names that map to the **Editor** role |
+{% stepper %}
+{% step %}
+### Enable group sync
+Toggle **Enable Group Sync** on. This tells VectorFlow to request group information from your OIDC provider and process group-to-team mappings on each sign-in.
+{% endstep %}
+{% step %}
+### Configure scope and claim
 
-### OIDC team mapping
+| Field | Default | Description |
+|-------|---------|-------------|
+| Groups Scope | `groups` | Extra OIDC scope to request from the provider. Leave empty if your provider includes groups automatically (e.g., Azure AD, Cognito). |
+| Groups Claim | `groups` | Token claim containing group names (e.g., `groups`, `cognito:groups`, `roles`). |
 
-For more granular control, map identity provider groups directly to VectorFlow teams with specific roles:
+{% hint style="info" %}
+**Scope** is what you ask the provider for in the authorization URL. **Claim** is where you read the groups from in the returned token. These are usually the same value (e.g., `groups` for Keycloak, Pocket ID, Authentik), but some providers differ — for example, AWS Cognito uses no extra scope but returns groups under the `cognito:groups` claim.
+{% endhint %}
+{% endstep %}
+{% step %}
+### Add group mappings
+Map identity provider groups to VectorFlow teams with specific roles. When a user signs in via SSO, VectorFlow checks their group memberships and creates or updates team memberships accordingly.
 
-```json
-[
-  { "group": "platform-admins", "teamId": "team_abc", "role": "ADMIN" },
-  { "group": "sre-team", "teamId": "team_abc", "role": "EDITOR" },
-  { "group": "developers", "teamId": "team_xyz", "role": "VIEWER" }
-]
-```
+| Column | Description |
+|--------|-------------|
+| Group Name | The group name as it appears in the OIDC token |
+| Team | The VectorFlow team to assign the user to |
+| Role | The role to assign: Viewer, Editor, or Admin |
 
-You can also set a **default team** as a fallback for users who do not match any group mapping.
+If a user matches multiple mappings for the same team, the highest role wins.
+{% endstep %}
+{% step %}
+### Set defaults
+Configure a **Default Team** and **Default Role** as a fallback for users who do not match any group mapping. Users with no group matches are assigned to the default team with the default role.
+{% endstep %}
+{% endstepper %}
+
+{% hint style="warning" %}
+Changing group sync settings takes effect immediately — the OIDC provider configuration is rebuilt without requiring a server restart.
+{% endhint %}
 
 ## Two-factor authentication (2FA)
 
