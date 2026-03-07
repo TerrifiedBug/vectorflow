@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
 import { authenticateScim } from "../../auth";
+import { resolveScimRole } from "@/server/services/scim";
 
 function scimError(detail: string, status: number) {
   return NextResponse.json(
@@ -108,7 +109,7 @@ export async function PATCH(
                 data: {
                   userId,
                   teamId: id,
-                  role: "VIEWER", // Default role for SCIM-provisioned members
+                  role: await resolveScimRole(id),
                 },
               });
             }
@@ -224,7 +225,7 @@ export async function PUT(
               data: {
                 userId,
                 teamId: id,
-                role: "VIEWER",
+                role: await resolveScimRole(id),
               },
             });
           }

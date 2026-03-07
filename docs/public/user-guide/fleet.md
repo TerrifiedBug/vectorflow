@@ -101,6 +101,20 @@ Docker-based agents are updated by pulling the latest image. The **Update** butt
 {% endtab %}
 {% endtabs %}
 
+## Update errors
+
+When a binary agent update fails (for example, due to a download error or checksum mismatch), the fleet page shows an **Update failed** badge on the affected node. Hover over the badge to see the error details.
+
+Common causes:
+
+| Error | Resolution |
+|-------|------------|
+| **404 / download failed** | The release asset may not exist. Check that the release tag and binary name are correct on GitHub. |
+| **checksum mismatch** | The downloaded binary does not match the expected hash. This may indicate a corrupted download or a release that was re-published. Retry the update. |
+| **permission denied** | The agent process does not have write access to its own binary. Check file permissions on the agent host. |
+
+The error badge clears automatically after the next successful update.
+
 ## Pipeline deployment matrix
 
 Below the node list, the **Pipeline Deployment Matrix** shows a grid of all deployed pipelines across all nodes in the environment. This lets you see at a glance which pipelines are running on which nodes and their current status.

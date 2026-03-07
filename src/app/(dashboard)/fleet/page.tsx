@@ -35,6 +35,7 @@ import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
 import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { isVersionOlder } from "@/lib/version";
+import { toast } from "sonner";
 
 const AGENT_REPO = "TerrifiedBug/vectorflow";
 
@@ -72,7 +73,7 @@ export default function FleetPage() {
   const versionQuery = useQuery(
     trpc.settings.checkVersion.queryOptions(undefined, {
       refetchInterval: false,
-      staleTime: Infinity,
+      staleTime: 5 * 60 * 1000,
     }),
   );
   const latestAgentVersion = versionQuery.data?.agent.latestVersion ?? null;
@@ -91,6 +92,10 @@ export default function FleetPage() {
     trpc.fleet.triggerAgentUpdate.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: trpc.fleet.list.queryKey() });
+        toast.success("Update triggered");
+      },
+      onError: (error) => {
+        toast.error("Failed to trigger update: " + error.message);
       },
     }),
   );
@@ -289,6 +294,16 @@ export default function FleetPage() {
                         {triggerUpdate.isPending ? "Updating..." : "Update"}
                       </Button>
                     ) : null}
+                    {node.lastUpdateError && !node.pendingAction && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge variant="destructive" className="text-xs">
+                            Update failed
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>{node.lastUpdateError}</TooltipContent>
+                      </Tooltip>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
