@@ -42,7 +42,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { PipelineSettings, useHasGlobalConfigContent } from "@/components/flow/pipeline-settings";
+import { PipelineSettings } from "@/components/flow/pipeline-settings";
 import { cn } from "@/lib/utils";
 import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml, generateVectorToml, importVectorConfig } from "@/lib/config-generator";
@@ -115,7 +115,6 @@ export function FlowToolbar({
   const removeEdge = useFlowStore((s) => s.removeEdge);
   const loadGraph = useFlowStore((s) => s.loadGraph);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const hasGlobalContent = useHasGlobalConfigContent();
   const [versionsOpen, setVersionsOpen] = useState(false);
 
   const trpc = useTRPC();
@@ -396,11 +395,8 @@ export function FlowToolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="relative h-7 w-7 p-0" aria-label="Pipeline settings">
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Pipeline settings">
                   <Settings className="h-4 w-4" />
-                  {hasGlobalContent && (
-                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-blue-500" />
-                  )}
                 </Button>
               </PopoverTrigger>
             </TooltipTrigger>

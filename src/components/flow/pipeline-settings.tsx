@@ -197,7 +197,7 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
             <div>
               <Label>Enrich with VectorFlow metadata</Label>
               <p className="text-xs text-muted-foreground mt-1">
-                Adds <code>.vectorflow.environment</code> and <code>.vectorflow.pipeline_version</code> fields to all events before they reach sinks.
+                Adds <code>.vectorflow.environment</code>, <code>.vectorflow.pipeline_version</code>, and <code>.vectorflow.host</code> fields to all events before they reach sinks.
               </p>
             </div>
             <Switch
@@ -504,15 +504,4 @@ function SliSettings({ pipelineId }: { pipelineId: string }) {
       </CollapsibleContent>
     </Collapsible>
   );
-}
-
-/**
- * Returns true when globalConfig has content beyond just log_level.
- * Used by the toolbar to show a dot indicator on the gear icon.
- */
-export function useHasGlobalConfigContent(): boolean {
-  const globalConfig = useFlowStore((s) => s.globalConfig);
-  if (!globalConfig) return false;
-  const keys = Object.keys(globalConfig).filter((k) => k !== "log_level");
-  return keys.length > 0;
 }
