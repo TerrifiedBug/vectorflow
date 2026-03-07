@@ -100,6 +100,14 @@ async function resolveTeamId(
     return webhook?.environment.teamId ?? null;
   }
 
+  if (inputData.id && entityType === "NotificationChannel") {
+    const channel = await prisma.notificationChannel.findUnique({
+      where: { id: inputData.id as string },
+      select: { environment: { select: { teamId: true } } },
+    });
+    return channel?.environment.teamId ?? null;
+  }
+
   if (inputData.id && entityType === "VrlSnippet") {
     const snippet = await prisma.vrlSnippet.findUnique({
       where: { id: inputData.id as string },
@@ -184,6 +192,14 @@ async function resolveEnvironmentId(
     return webhook?.environmentId ?? null;
   }
 
+  if (inputData.id && entityType === "NotificationChannel") {
+    const channel = await prisma.notificationChannel.findUnique({
+      where: { id: inputData.id as string },
+      select: { environmentId: true },
+    });
+    return channel?.environmentId ?? null;
+  }
+
   return null;
 }
 
@@ -256,6 +272,14 @@ const ENTITY_LOADERS: Record<string, (id: string) => Promise<Record<string, unkn
       where: { id },
       select: {
         id: true, url: true, environmentId: true,
+        enabled: true, createdAt: true, updatedAt: true,
+      },
+    }) as Promise<Record<string, unknown> | null>,
+  NotificationChannel: (id) =>
+    prisma.notificationChannel.findUnique({
+      where: { id },
+      select: {
+        id: true, name: true, type: true, environmentId: true,
         enabled: true, createdAt: true, updatedAt: true,
       },
     }) as Promise<Record<string, unknown> | null>,
