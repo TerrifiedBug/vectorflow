@@ -253,7 +253,8 @@ export const fleetRouter = router({
         });
       }
 
-      let { targetVersion, downloadUrl, checksum } = input;
+      let { targetVersion, checksum } = input;
+      const { downloadUrl } = input;
 
       // Dev releases are rolling — the binary at the download URL may have been
       // replaced since the UI cached the version/checksum. Force-refresh to get
