@@ -61,12 +61,14 @@ export default function DashboardPage() {
 
   const deleteMutation = useMutation(
     trpc.dashboard.deleteView.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (_data, variables) => {
         queryClient.invalidateQueries({
           queryKey: [["dashboard", "listViews"]],
         });
-        // If the deleted view was active, switch back to default
-        setActiveView(null);
+        // Only reset to default if the deleted view was the one being viewed
+        if (activeView === variables.id) {
+          setActiveView(null);
+        }
       },
     })
   );
