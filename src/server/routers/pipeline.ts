@@ -195,6 +195,7 @@ export const pipelineRouter = router({
         include: {
           nodes: true,
           edges: true,
+          environment: { select: { teamId: true } },
           nodeStatuses: {
             select: { status: true },
           },
