@@ -129,7 +129,8 @@ export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
   const data: Record<string, unknown> = {};
 
   if (scimUser.name?.formatted) data.name = scimUser.name.formatted;
-  if (scimUser.emails?.[0]?.value) data.email = scimUser.emails[0].value;
+  const email = scimUser.emails?.[0]?.value ?? scimUser.userName;
+  if (email) data.email = email;
   if (scimUser.active !== undefined) {
     if (scimUser.active) {
       // Only clear SCIM-originated locks; preserve admin-initiated locks
@@ -144,6 +145,15 @@ export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
     }
   }
   if (scimUser.externalId) data.scimExternalId = scimUser.externalId;
+
+  if (Object.keys(data).length === 0) {
+    // No fields changed, skip update
+    const existingUser = await prisma.user.findUnique({
+      where: { id },
+      select: USER_SELECT,
+    });
+    return existingUser ? toScimUser(existingUser) : null;
+  }
 
   const user = await prisma.user.update({
     where: { id },
