@@ -63,6 +63,17 @@ export const serviceAccountRouter = router({
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
+      const existing = await prisma.serviceAccount.findFirst({
+        where: { environmentId: input.environmentId, name: input.name },
+      });
+      if (existing) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "A service account with this name already exists in this environment",
+        });
+      }
+
       const rawKey = `vf_live_${crypto.randomBytes(24).toString("hex")}`;
       const hashedKey = crypto
         .createHash("sha256")

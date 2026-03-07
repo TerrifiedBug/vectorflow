@@ -33,7 +33,7 @@ export const GET = apiRoute("audit.read", async (req: NextRequest, ctx) => {
         select: { id: true, name: true, email: true },
       },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: "asc" },
     take: limit + 1,
     ...(after ? { cursor: { id: after }, skip: 1 } : {}),
   });
