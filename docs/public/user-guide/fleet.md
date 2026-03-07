@@ -104,6 +104,39 @@ Docker-based agents are updated by pulling the latest image. The **Update** butt
 
 Below the node list, the **Pipeline Deployment Matrix** shows a grid of all deployed pipelines across all nodes in the environment. This lets you see at a glance which pipelines are running on which nodes and their current status.
 
+## Maintenance mode
+
+Maintenance mode lets you temporarily stop all pipelines on a node without removing it from the fleet. This is useful for host upgrades, kernel patches, disk maintenance, or any situation where you need the node idle but still connected.
+
+### Entering maintenance mode
+
+You can toggle maintenance mode from two places:
+
+- **Fleet list** -- Click the **Maintenance** button in the node's row.
+- **Node detail page** -- Click the **Enter Maintenance** button in the header, or the **Exit Maintenance** button in the orange banner.
+
+Both locations show a confirmation dialog before entering maintenance mode. The dialog warns that all running pipelines on the node will be stopped.
+
+### What happens in maintenance mode
+
+When maintenance mode is enabled on a node:
+
+1. The node's status badge changes to an orange **Maintenance** indicator with a wrench icon.
+2. On the next poll, the agent receives an empty pipeline list from the server, causing all running pipelines to stop gracefully.
+3. The agent continues sending heartbeats, so the node remains visible and manageable in the fleet UI.
+
+{% hint style="info" %}
+Maintenance mode is per-node. Other nodes in the same environment continue running their pipelines normally.
+{% endhint %}
+
+### Exiting maintenance mode
+
+Click **Exit Maintenance** from the fleet list or the node detail page. No confirmation is required. On the next poll cycle, the agent receives its full pipeline configuration again and automatically restarts all pipelines.
+
+{% hint style="warning" %}
+Toggling maintenance mode requires the **Admin** role on the team.
+{% endhint %}
+
 ## Node management
 
 From the node detail page you can:

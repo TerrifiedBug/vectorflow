@@ -57,3 +57,5 @@ next-env.d.ts
 .codeql/
 
 /scripts/*
+# worktrees
+.worktrees/
