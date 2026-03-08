@@ -113,7 +113,7 @@ export default function DashboardLayout({
         </header>
         <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
         <UpdateBanner />
-        <div className="flex-1 p-6">
+        <div className="flex-1 py-2 px-6">
           <ErrorBoundary>
             {children}
           </ErrorBoundary>
