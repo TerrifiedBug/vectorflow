@@ -2926,6 +2926,22 @@ function BackupSettings() {
         </CardContent>
       </Card>
 
+      {/* Failed Backup Alert */}
+      {settingsQuery.data?.lastBackupStatus === "failed" && (
+        <Card className="border-destructive/50">
+          <CardContent className="flex items-start gap-3 p-4">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+            <div className="text-sm">
+              <p className="font-medium text-destructive">Last backup failed</p>
+              <p className="text-muted-foreground">
+                {settingsQuery.data.lastBackupError || "Unknown error"} &mdash;{" "}
+                {formatRelativeTime(settingsQuery.data.lastBackupAt)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Manual Backup */}
       <Card>
         <CardHeader>
@@ -3000,6 +3016,18 @@ function BackupSettings() {
                     <TableCell>{backup.migrationCount}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                        >
+                          <a
+                            href={`/api/backups/${encodeURIComponent(backup.filename)}/download`}
+                            download
+                          >
+                            <Download className="h-4 w-4" />
+                          </a>
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
