@@ -44,6 +44,17 @@ Navigate to **Settings > Backup** (Super Admin required) to configure:
 
 After each scheduled backup completes, VectorFlow automatically runs retention cleanup to delete the oldest backups beyond the configured retention count.
 
+### Monitoring backup health
+
+The backup settings page shows the status of the most recent backup attempt:
+
+- **Success** -- The last backup completed without errors. The timestamp and file size are displayed.
+- **Failed** -- A red error banner appears at the top of the page showing the error message from the failed backup attempt (e.g., `pg_dump` timeout, disk full, permission denied). The banner persists until the next successful backup.
+
+{% hint style="warning" %}
+If automatic backups are enabled but consistently failing, the error banner provides the diagnostic message needed to troubleshoot. Common causes include insufficient disk space in `VF_BACKUP_DIR`, PostgreSQL connection issues, or `pg_dump` not being available in the container.
+{% endhint %}
+
 ## Manual backup
 
 You can trigger a backup at any time from the **Settings > Backup** page by clicking **Create Backup**. The backup runs immediately and appears in the backup list when complete.
@@ -51,6 +62,20 @@ You can trigger a backup at any time from the **Settings > Backup** page by clic
 Each backup generates two files:
 - `vectorflow-<timestamp>.dump` -- The compressed PostgreSQL dump
 - `vectorflow-<timestamp>.meta.json` -- Metadata (VectorFlow version, migration count, PostgreSQL version, file size)
+
+## Downloading backups
+
+Super Admins can download backup `.dump` files directly from the **Settings > Backup** page.
+
+Each row in the backup list includes a **Download** button. Clicking it streams the compressed dump file to your browser. Downloaded files can be used for:
+
+- Offline archival storage
+- Restoring on a different VectorFlow instance via the CLI `pg_restore` procedure
+- Disaster recovery from a separate machine
+
+{% hint style="info" %}
+The download button is only visible to Super Admins. The download streams the file directly from the server's backup directory — no temporary copies are created.
+{% endhint %}
 
 ## Backup storage
 

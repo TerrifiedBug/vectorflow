@@ -140,6 +140,7 @@ The toolbar runs along the top of the editor and provides the following actions 
 | **Export** | `Cmd+E` | Export the pipeline as a YAML or TOML file. |
 | **Save as Template** | -- | Save the current pipeline layout as a reusable template. |
 | **Version History** | -- | View all deployed versions, compare diffs, and rollback to a previous version. |
+| **Discard Changes** | -- | Revert the pipeline to its last deployed configuration. Only visible when the pipeline is deployed and has unsaved changes. |
 | **Metrics** | -- | Toggle the metrics chart panel at the bottom of the editor. |
 | **Logs** | -- | Toggle the live logs panel. A red dot appears when recent errors have been detected. |
 | **Settings** | -- | Open pipeline-level settings (log level, global configuration). A blue dot indicates active global config. |
@@ -173,9 +174,14 @@ The right side of the toolbar shows the current deployment state:
 
 Toggle the logs panel from the toolbar to view real-time logs from the running pipeline. The panel supports:
 
-- Filtering by log level (ERROR, WARN, INFO, DEBUG)
-- Filtering by agent node
-- Cursor-based pagination for scrolling through history
+- **Level filtering** -- Toggle visibility of ERROR, WARN, INFO, DEBUG, and TRACE log levels using the badges in the toolbar.
+- **Search** -- Type in the search box to filter loaded log lines by keyword. Matching text is highlighted in yellow. The line counter updates to show how many lines match (e.g., "42/318 lines").
+- **Node filtering** -- When viewing logs for a pipeline running on multiple nodes, filter by specific agent node.
+- **Pagination** -- Scroll to the top to automatically load older log entries, or click **Load older** to fetch the next page.
+
+{% hint style="info" %}
+Search filters the logs that are already loaded in the browser. It does not query the server — to find older log entries, load more pages first, then search.
+{% endhint %}
 
 {% hint style="info" %}
 The logs panel only shows data for deployed pipelines. Draft pipelines have no running processes to produce logs.
