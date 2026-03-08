@@ -9,9 +9,12 @@ import { LogOut, ShieldAlert, User } from "lucide-react";
 
 import { useTRPC } from "@/trpc/client";
 import { AppSidebar } from "@/components/app-sidebar";
+import { TeamSelector } from "@/components/team-selector";
+import { EnvironmentSelector } from "@/components/environment-selector";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -133,7 +136,10 @@ export default function DashboardLayout({
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+          <TeamSelector />
+          <Separator orientation="vertical" className="!h-5" />
+          <EnvironmentSelector />
           <div className="ml-auto flex items-center gap-4">
             <ThemeToggle />
             <DropdownMenu>
