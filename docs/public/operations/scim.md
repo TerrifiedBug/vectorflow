@@ -145,6 +145,14 @@ Any SCIM 2.0 compatible identity provider can integrate with VectorFlow. Configu
 | `PUT` | `/api/scim/v2/Groups/:id` | Replace group (full member sync) |
 | `DELETE` | `/api/scim/v2/Groups/:id` | Delete group and cascade membership removal |
 
+### Group identity fields
+
+Group responses include both the VectorFlow-assigned `id` and the IdP-provided `externalId`. The `externalId` is set when the IdP includes it in the initial POST or subsequent PUT/PATCH requests.
+
+{% hint style="info" %}
+The `externalId` field is critical for IdP sync stability. Without it, some identity providers cannot match remote groups to local groups during reconciliation, causing unnecessary delete-and-recreate cycles. If your IdP performs full group syncs, ensure it sends `externalId` in group creation requests.
+{% endhint %}
+
 ### Filtering
 
 The Users endpoint supports basic SCIM filtering:
