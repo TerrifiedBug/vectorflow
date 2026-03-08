@@ -49,7 +49,7 @@ export function TeamSelector() {
 
   return (
     <Select value={selectedTeamId ?? undefined} onValueChange={setSelectedTeamId}>
-      <SelectTrigger className="w-full h-8 text-xs">
+      <SelectTrigger className="h-8 w-[160px] text-xs">
         <Users className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
         <SelectValue placeholder="Select team" />
       </SelectTrigger>
