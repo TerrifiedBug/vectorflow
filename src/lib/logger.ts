@@ -5,8 +5,8 @@ export function debugLog(tag: string, message: string, data?: unknown): void {
   if (!isDebug) return;
   const ts = new Date().toISOString();
   if (data !== undefined) {
-    console.log(`${ts} [${tag}] ${message}`, data);
+    console.log("%s [%s] %s", ts, tag, message, data);
   } else {
-    console.log(`${ts} [${tag}] ${message}`);
+    console.log("%s [%s] %s", ts, tag, message);
   }
 }
