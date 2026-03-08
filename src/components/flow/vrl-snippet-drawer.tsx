@@ -218,7 +218,7 @@ export function VrlSnippetDrawer({ onInsert }: VrlSnippetDrawerProps) {
                   <button
                     key={snippet.id}
                     onClick={() => onInsert(snippet.code)}
-                    className="group flex w-full items-center gap-0.5 rounded px-3 py-1.5 text-left hover:bg-accent"
+                    className="group flex w-full cursor-pointer items-center gap-0.5 rounded px-3 py-1.5 text-left transition-colors hover:bg-accent"
                     title={snippet.code}
                   >
                     <div className="flex-1 min-w-0">

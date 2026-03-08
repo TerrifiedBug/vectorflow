@@ -125,7 +125,8 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
           <button
             key={level}
             onClick={() => toggleLevel(level)}
-            className={`rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${
+            aria-label={`Filter ${level.toLowerCase()} logs`}
+            className={`cursor-pointer rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${
               activeLevels.has(level)
                 ? LEVEL_BADGE_COLORS[level]
                 : "bg-transparent text-gray-700 hover:text-gray-500"

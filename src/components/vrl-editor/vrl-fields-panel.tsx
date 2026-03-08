@@ -254,7 +254,7 @@ function FieldRow({
   }, [renameValue, field.path, onInsert]);
 
   return (
-    <div className="group/row rounded px-3 py-1 hover:bg-accent">
+    <div className="group/row rounded px-3 py-1 transition-colors hover:bg-accent">
       {/* Row 1: field name + type + sample */}
       <div className="flex items-center gap-1.5">
         <button

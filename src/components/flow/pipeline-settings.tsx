@@ -218,7 +218,7 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
                   {tag}
                   <button
                     type="button"
-                    className="ml-1 inline-flex items-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
+                    className="ml-1 inline-flex cursor-pointer items-center rounded-full transition-colors hover:bg-black/10 dark:hover:bg-white/10"
                     onClick={() => handleRemoveTag(tag)}
                     disabled={updateTagsMutation.isPending}
                     aria-label={`Remove ${tag} tag`}
@@ -257,7 +257,7 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
 
       {/* Global Configuration JSON */}
       <Collapsible open={jsonOpen} onOpenChange={setJsonOpen}>
-        <CollapsibleTrigger className="flex w-full items-center gap-2 text-sm font-medium">
+        <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2 text-sm font-medium transition-colors hover:text-foreground">
           <ChevronRight
             className={`h-4 w-4 shrink-0 transition-transform ${jsonOpen ? "rotate-90" : ""}`}
           />
@@ -393,7 +393,7 @@ function SliSettings({ pipelineId }: { pipelineId: string }) {
 
   return (
     <Collapsible open={sliOpen} onOpenChange={setSliOpen}>
-      <CollapsibleTrigger className="flex w-full items-center gap-2 text-sm font-medium">
+      <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2 text-sm font-medium transition-colors hover:text-foreground">
         <ChevronRight
           className={`h-4 w-4 shrink-0 transition-transform ${sliOpen ? "rotate-90" : ""}`}
         />

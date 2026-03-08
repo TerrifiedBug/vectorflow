@@ -92,7 +92,7 @@ function CategoryGroup({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1 px-1 py-1 text-[11px] font-medium text-muted-foreground/70 transition-colors hover:text-muted-foreground"
+        className="flex w-full cursor-pointer items-center gap-1 px-1 py-1 text-[11px] font-medium text-muted-foreground/70 transition-colors hover:text-muted-foreground"
       >
         {open ? (
           <ChevronDown className="h-3 w-3" />
@@ -144,7 +144,7 @@ function CollapsibleSection({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1.5 px-1 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+        className="flex w-full cursor-pointer items-center gap-1.5 px-1 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
       >
         {open ? (
           <ChevronDown className="h-3.5 w-3.5" />

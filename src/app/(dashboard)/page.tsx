@@ -137,7 +137,7 @@ export default function DashboardPage() {
           type="button"
           onClick={() => setActiveView(null)}
           className={cn(
-            "shrink-0 px-3 py-2 text-sm font-medium transition-colors",
+            "shrink-0 cursor-pointer px-3 py-2 text-sm font-medium transition-colors",
             activeView === null
               ? "border-b-2 border-primary text-foreground"
               : "text-muted-foreground hover:text-foreground"
@@ -151,7 +151,7 @@ export default function DashboardPage() {
             type="button"
             onClick={() => setActiveView(view.id)}
             className={cn(
-              "group relative shrink-0 flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors",
+              "group relative shrink-0 flex cursor-pointer items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors",
               activeView === view.id
                 ? "border-b-2 border-primary text-foreground"
                 : "text-muted-foreground hover:text-foreground"
@@ -177,7 +177,8 @@ export default function DashboardPage() {
                     panels: view.panels as string[],
                   });
                 }}
-                className="rounded p-0.5 hover:bg-muted"
+                className="cursor-pointer rounded p-0.5 transition-colors hover:bg-muted"
+                aria-label="Edit view"
                 title="Edit view"
               >
                 <Pencil className="h-3 w-3" />
@@ -190,7 +191,8 @@ export default function DashboardPage() {
                     deleteMutation.mutate({ environmentId: selectedEnvironmentId!, id: view.id });
                   }
                 }}
-                className="rounded p-0.5 hover:bg-muted text-destructive"
+                className="cursor-pointer rounded p-0.5 transition-colors hover:bg-muted text-destructive"
+                aria-label="Delete view"
                 title="Delete view"
               >
                 <Trash2 className="h-3 w-3" />
@@ -201,7 +203,7 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => setCreateDialogOpen(true)}
-          className="ml-auto shrink-0 flex items-center gap-1 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          className="ml-auto shrink-0 flex cursor-pointer items-center gap-1 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
           New View

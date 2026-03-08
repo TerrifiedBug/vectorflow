@@ -820,7 +820,7 @@ function AuthSettings() {
                                   <button
                                     key={team.id}
                                     type="button"
-                                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                                    className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-accent"
                                     onClick={() => {
                                       const next = checked
                                         ? mapping.teamIds.filter((id) => id !== team.id)
@@ -1785,7 +1785,7 @@ function TeamSettings() {
                 {tag}
                 <button
                   type="button"
-                  className="inline-flex items-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
+                  className="inline-flex cursor-pointer items-center rounded-full transition-colors hover:bg-black/10 dark:hover:bg-white/10"
                   onClick={() => handleRemoveTag(tag)}
                   disabled={updateTagsMutation.isPending}
                   aria-label={`Remove ${tag} tag`}
@@ -2015,7 +2015,7 @@ function UsersSettings() {
                       {user.memberships.length > 0 && (
                         <Popover>
                           <PopoverTrigger asChild>
-                            <button className="flex items-center gap-1 rounded-md hover:bg-muted/50 px-1 py-0.5 transition-colors">
+                            <button className="flex cursor-pointer items-center gap-1 rounded-md hover:bg-muted/50 px-1 py-0.5 transition-colors">
                               {user.memberships.slice(0, 1).map((m) => (
                                 <Badge key={m.team.id} variant="outline" className="text-xs">
                                   {m.team.name}
@@ -2041,7 +2041,8 @@ function UsersSettings() {
                                   </div>
                                   <button
                                     type="button"
-                                    className="rounded-full hover:bg-muted p-0.5"
+                                    className="cursor-pointer rounded-full transition-colors hover:bg-muted p-0.5"
+                                    aria-label="Remove from team"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setRemoveFromTeamConfirm({ userId: user.id, userName: user.name ?? user.email, teamId: m.team.id, teamName: m.team.name });
