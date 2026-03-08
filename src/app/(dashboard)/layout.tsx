@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, User } from "lucide-react";
+import { LogOut, ShieldAlert, User } from "lucide-react";
 
 import { useTRPC } from "@/trpc/client";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -51,6 +51,10 @@ export default function DashboardLayout({
     return "U";
   })();
 
+  const teamsQuery = useQuery(trpc.team.list.queryOptions());
+  const teams = teamsQuery.data ?? [];
+  const isTeamless = teamsQuery.isSuccess && teams.length === 0;
+
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   // Force password change dialog when mustChangePassword is set
   useEffect(() => {
@@ -67,6 +71,64 @@ export default function DashboardLayout({
       router.push("/setup-2fa");
     }
   }, [me, router]);
+
+  if (isTeamless) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+          <div className="ml-auto flex items-center gap-2">
+            <ThemeToggle />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full" aria-label="User menu">
+                  <Avatar size="sm">
+                    {userImage && <AvatarImage src={userImage} alt={userName ?? "User"} />}
+                    <AvatarFallback>{initials}</AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{userName ?? "User"}</p>
+                    {userEmail && (
+                      <p className="text-xs leading-none text-muted-foreground">{userEmail}</p>
+                    )}
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/login" })}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </header>
+        <div className="flex flex-1 items-center justify-center">
+          <div className="mx-auto max-w-md text-center space-y-4">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+              <ShieldAlert className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h1 className="text-2xl font-semibold">No Team Assigned</h1>
+            <p className="text-muted-foreground">
+              Your account is active but you haven&apos;t been assigned to a team yet. Contact your administrator to get access.
+            </p>
+            {(userName || userEmail) && (
+              <p className="text-sm text-muted-foreground">
+                Signed in as <span className="font-medium text-foreground">{userName || userEmail}</span>
+              </p>
+            )}
+            <Button variant="outline" onClick={() => signOut({ callbackUrl: "/login" })}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </Button>
+          </div>
+        </div>
+        <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>
