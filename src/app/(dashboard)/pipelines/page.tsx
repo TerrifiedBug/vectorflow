@@ -36,7 +36,9 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PromotePipelineDialog } from "@/components/promote-pipeline-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { PageHeader } from "@/components/page-header";
 import { formatEventsRate, formatBytesRate } from "@/lib/format";
+import { tagBadgeClass, reductionBadgeClass } from "@/lib/badge-variants";
 
 function aggregateProcessStatus(
   statuses: Array<{ status: string }>
@@ -79,21 +81,6 @@ function getReductionPercent(totals: { eventsIn: bigint; eventsOut: bigint }): n
   return Math.max(0, (1 - evOut / evIn) * 100);
 }
 
-function reductionColor(pct: number): string {
-  if (pct > 50) return "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30";
-  if (pct > 10) return "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30";
-  return "bg-muted text-muted-foreground";
-}
-
-function tagBadgeClass(tag: string): string {
-  const upper = tag.toUpperCase();
-  if (upper === "PII") return "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30";
-  if (upper === "PHI") return "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30";
-  if (upper === "PCI-DSS") return "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30";
-  if (upper === "INTERNAL") return "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30";
-  if (upper === "PUBLIC") return "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30";
-  return "bg-muted text-muted-foreground";
-}
 
 function PipelineHealthBadge({ pipelineId }: { pipelineId: string }) {
   const trpc = useTRPC();
@@ -219,14 +206,17 @@ export default function PipelinesPage() {
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end">
-        <Button asChild size="sm">
-          <Link href="/pipelines/new">
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            New Pipeline
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Pipelines"
+        actions={
+          <Button asChild size="sm">
+            <Link href="/pipelines/new">
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              New Pipeline
+            </Link>
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <div className="space-y-3">
@@ -262,7 +252,7 @@ export default function PipelinesPage() {
               const hasStats = pipeline.nodeStatuses.length > 0;
               const totals = hasStats ? sumNodeStatuses(pipeline.nodeStatuses) : null;
               return (
-              <TableRow key={pipeline.id} className="cursor-pointer hover:bg-muted/50">
+              <TableRow key={pipeline.id} className="cursor-pointer">
                 <TableCell className="font-medium">
                   <Link
                     href={`/pipelines/${pipeline.id}`}
@@ -277,7 +267,7 @@ export default function PipelinesPage() {
                     if (tags.length === 0) return null;
                     if (tags.length === 1) {
                       return (
-                        <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${tagBadgeClass(tags[0])}`}>
+                        <Badge variant="outline" size="sm" className={tagBadgeClass(tags[0])}>
                           {tags[0]}
                         </Badge>
                       );
@@ -285,8 +275,8 @@ export default function PipelinesPage() {
                     return (
                       <Popover>
                         <PopoverTrigger asChild>
-                          <button className="rounded-md hover:bg-muted/50 px-1 py-0.5 transition-colors">
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                          <button className="cursor-pointer rounded-md hover:bg-muted/50 px-1 py-0.5 transition-colors">
+                            <Badge variant="secondary" size="sm">
                               {tags.length} labels
                             </Badge>
                           </button>
@@ -295,7 +285,7 @@ export default function PipelinesPage() {
                           <p className="mb-2 text-sm font-medium">Labels</p>
                           <div className="flex flex-wrap gap-1.5">
                             {tags.map((tag) => (
-                              <Badge key={tag} variant="outline" className={`text-[10px] px-1.5 py-0 ${tagBadgeClass(tag)}`}>
+                              <Badge key={tag} variant="outline" size="sm" className={tagBadgeClass(tag)}>
                                 {tag}
                               </Badge>
                             ))}
@@ -344,24 +334,24 @@ export default function PipelinesPage() {
                   )}
                 </TableCell>
                 {/* Events/sec In */}
-                <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                <TableCell className="text-right font-mono text-sm tabular-nums text-muted-foreground">
                   {liveRates[pipeline.id]
                     ? formatEventsRate(liveRates[pipeline.id].eventsPerSec)
                     : "—"}
                 </TableCell>
                 {/* Bytes/sec In */}
-                <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                <TableCell className="text-right font-mono text-sm tabular-nums text-muted-foreground">
                   {liveRates[pipeline.id]
                     ? formatBytesRate(liveRates[pipeline.id].bytesPerSec)
                     : "—"}
                 </TableCell>
                 {/* Reduction */}
-                <TableCell className="text-right">
+                <TableCell className="text-right tabular-nums">
                   {(() => {
                     const pct = totals ? getReductionPercent(totals) : null;
                     if (pct == null) return <span className="text-sm text-muted-foreground">—</span>;
                     return (
-                      <Badge variant="outline" className={reductionColor(pct)}>
+                      <Badge variant="outline" className={reductionBadgeClass(pct)}>
                         {pct.toFixed(0)}%
                       </Badge>
                     );

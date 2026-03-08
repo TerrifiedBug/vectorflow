@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
 import { pipelineStatusVariant } from "@/lib/status";
 
@@ -27,7 +28,7 @@ export function DeploymentStatus({ pipelineId }: DeploymentStatusProps) {
   });
 
   if (statusQuery.isLoading) {
-    return <div className="text-xs text-muted-foreground">Loading status...</div>;
+    return <Skeleton className="h-4 w-24" />;
   }
 
   const status = statusQuery.data;

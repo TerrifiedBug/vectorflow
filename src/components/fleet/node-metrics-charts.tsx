@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Cpu, MemoryStick, HardDrive, Network } from "lucide-react";
 import { useState } from "react";
 import { formatBytes, formatBytesRate, formatPercent } from "@/lib/format";
@@ -66,8 +67,9 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
 
   if (metricsQuery.isLoading) {
     return (
-      <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
-        Loading metrics...
+      <div className="grid gap-4 md:grid-cols-2">
+        <Skeleton className="h-48 w-full rounded-lg" />
+        <Skeleton className="h-48 w-full rounded-lg" />
       </div>
     );
   }

@@ -9,6 +9,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
+import { Inbox } from "lucide-react";
 import { formatBytesRate } from "@/lib/format";
 
 interface MetricRow {
@@ -63,8 +64,9 @@ export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps)
 
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center text-xs text-muted-foreground" style={{ height }}>
-        No data yet
+      <div className="flex flex-col items-center justify-center text-muted-foreground" style={{ height }}>
+        <Inbox className="h-8 w-8 text-muted-foreground/50" />
+        <p className="mt-2 text-sm">No data yet</p>
       </div>
     );
   }

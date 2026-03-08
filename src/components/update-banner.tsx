@@ -23,7 +23,7 @@ export function UpdateBanner() {
   }
 
   return (
-    <div className="flex items-center gap-2 border-b border-blue-200 bg-blue-50 px-4 py-2 text-sm dark:border-blue-800 dark:bg-blue-950">
+    <div className="flex items-center gap-2 border-b border-status-info/30 bg-status-info-bg px-4 py-2 text-sm">
       <p className="flex-1">
         VectorFlow{" "}
         <span className="font-semibold">{data.server.latestVersion}</span> is
@@ -36,7 +36,7 @@ export function UpdateBanner() {
               href={data.server.releaseUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 font-medium text-blue-700 underline underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
+              className="inline-flex items-center gap-1 font-medium text-status-info-foreground underline underline-offset-2 hover:opacity-80"
             >
               Release notes
               <ExternalLink className="h-3 w-3" />
@@ -47,7 +47,7 @@ export function UpdateBanner() {
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6 shrink-0 text-blue-700 hover:bg-blue-100 hover:text-blue-900 dark:text-blue-300 dark:hover:bg-blue-900 dark:hover:text-blue-100"
+        className="h-6 w-6 shrink-0 text-status-info-foreground transition-colors hover:bg-status-info/30 focus-visible:ring-ring"
         onClick={() => setDismissed(true)}
         aria-label="Dismiss update notification"
       >
