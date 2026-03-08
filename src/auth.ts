@@ -8,6 +8,7 @@ import { encrypt, decrypt } from "@/server/services/crypto";
 import { verifyTotpCode, verifyBackupCode } from "@/server/services/totp";
 import { authConfig } from "@/auth.config";
 import { writeAuditLog } from "@/server/services/audit";
+import { debugLog } from "@/lib/logger";
 import { headers } from "next/headers";
 
 async function getClientIp(): Promise<string | null> {
@@ -253,7 +254,7 @@ async function getAuthInstance() {
               if (settings?.oidcGroupSyncEnabled) {
                 const groupsClaim = settings.oidcGroupsClaim ?? "groups";
                 const tokenGroups = (profileData?.[groupsClaim] as string[] | undefined) ?? [];
-                console.log(`[oidc] User ${user.email} groups (claim "${groupsClaim}"):`, tokenGroups);
+                debugLog("oidc", `User ${user.email} groups (claim "${groupsClaim}"):`, tokenGroups);
 
                 let userGroupNames: string[];
 
@@ -271,7 +272,7 @@ async function getAuthInstance() {
                   userGroupNames = tokenGroups;
                 }
 
-                console.log(`[oidc] User ${user.email} scimEnabled=${settings.scimEnabled}, final groups:`, userGroupNames);
+                debugLog("oidc", `User ${user.email} scimEnabled=${settings.scimEnabled}, final groups:`, userGroupNames);
                 const { reconcileUserTeamMemberships } = await import("@/server/services/group-mappings");
                 await prisma.$transaction(async (tx) => {
                   await reconcileUserTeamMemberships(tx, dbUser.id, userGroupNames);
