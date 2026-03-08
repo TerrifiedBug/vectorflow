@@ -122,7 +122,7 @@ Map identity provider groups to VectorFlow teams with specific roles. These mapp
 | Column | Description |
 |--------|-------------|
 | Group Name | The group name as it appears in the OIDC token or SCIM Group displayName |
-| Team | The VectorFlow team to assign the user to |
+| Team(s) | One or more VectorFlow teams to assign the user to. Click the team selector to open a dropdown with checkboxes — select multiple teams to map a single group to several teams with the same role. When multiple teams are selected, the field shows a count (e.g., "3 teams") that you can click to view or modify the selection. |
 | Role | The role to assign: Viewer, Editor, or Admin |
 {% endstep %}
 {% step %}
@@ -194,6 +194,10 @@ Super Admins can create new local user accounts. VectorFlow generates a random t
 
 When creating a user, you can optionally assign them to a team with a specific role immediately.
 
+{% hint style="info" %}
+When SCIM provisioning or OIDC group sync is enabled, a banner appears in the Add Member dialog: *"SSO users are managed by your identity provider. Only local users can be added manually."* SSO-managed users should be provisioned through your IdP rather than created here.
+{% endhint %}
+
 ### Managing users
 
 | Action | Description |
@@ -238,6 +242,15 @@ To enforce SSO-only authentication and hide the local login form, set the enviro
 |----------|---------|-------------|
 | `VF_DISABLE_LOCAL_AUTH` | `false` | When `true`, hides the email/password form and only shows the SSO button on the login page |
 
+When SSO-only mode is active, the login page shows a simplified layout:
+
+- A centered card with a shield icon
+- The heading **"Sign in"**
+- The message *"Use your organization's single sign-on to access your account."*
+- A single button: **"Sign in with [Provider Name]"** (using the display name configured in OIDC settings)
+
+The email/password form and all local authentication options are hidden.
+
 {% hint style="warning" %}
 Before enabling SSO-only mode, ensure your OIDC provider is correctly configured and tested. The only way to re-enable local login is to change the environment variable and restart the server.
 {% endhint %}
@@ -257,4 +270,22 @@ Role updates happen:
 
 {% hint style="info" %}
 Manual team assignments (made in the UI) are not affected by SSO-managed role sync. Only memberships created by group sync are subject to reconciliation.
+{% endhint %}
+
+## Users without team assignments
+
+When a user authenticates successfully (via SSO or local credentials) but is not a member of any team, VectorFlow displays a full-page message instead of the normal dashboard:
+
+- A **"No Team Assigned"** heading with a shield icon
+- A message: *"Your account is active but you haven't been assigned to a team yet. Contact your administrator to get access."*
+- The user's identity (name or email)
+- A **Sign Out** button
+
+This typically occurs when:
+- A new SSO user logs in before group mappings or manual team assignments are configured
+- A SCIM-provisioned user has not been assigned to any group that maps to a VectorFlow team
+- An admin removes a user from all teams
+
+{% hint style="info" %}
+The user can still access the password change dialog if their account requires it. Once an admin assigns them to a team (or group sync places them on one), the full dashboard becomes available on next login or page refresh.
 {% endhint %}
