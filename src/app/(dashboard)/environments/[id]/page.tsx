@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowLeft, Copy, Pencil, Trash2, ShieldCheck } from "lucide-react";
+import { Copy, Pencil, Trash2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { copyToClipboard } from "@/lib/utils";
@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/page-header";
 import { SecretsSection } from "@/components/environment/secrets-section";
 import { CertificatesSection } from "@/components/environment/certificates-section";
 import { GitSyncSection } from "@/components/environment/git-sync-section";
@@ -176,57 +177,57 @@ export default function EnvironmentDetailPage({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild aria-label="Back to environments">
-            <Link href="/environments">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">{env.name}</h2>
-            <p className="text-muted-foreground">
-              {env.team?.name ?? "System"}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={startEditing}>
-            <Pencil className="mr-2 h-3.5 w-3.5" />
-            Edit
-          </Button>
-          <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <DialogTrigger asChild>
-              <Button variant="destructive" size="sm">
-                <Trash2 className="mr-2 h-3.5 w-3.5" />
-                Delete
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Delete environment?</DialogTitle>
-                <DialogDescription>
-                  This will permanently delete &ldquo;{env.name}&rdquo; and all
-                  associated pipelines and nodes. This action cannot be undone.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setDeleteOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => deleteMutation.mutate({ id })}
-                  disabled={deleteMutation.isPending}
-                >
-                  {deleteMutation.isPending ? "Deleting..." : "Delete"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-1.5 text-sm">
+        <Link href="/environments" className="text-muted-foreground hover:text-foreground transition-colors">
+          Environments
+        </Link>
+        <span className="text-muted-foreground">/</span>
+        <span className="font-medium">{env.name}</span>
       </div>
+
+      {/* Header */}
+      <PageHeader
+        title={env.name}
+        description={env.team?.name ?? "System"}
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={startEditing}>
+              <Pencil className="mr-2 h-3.5 w-3.5" />
+              Edit
+            </Button>
+            <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+              <DialogTrigger asChild>
+                <Button variant="destructive" size="sm">
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  Delete
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Delete environment?</DialogTitle>
+                  <DialogDescription>
+                    This will permanently delete &ldquo;{env.name}&rdquo; and all
+                    associated pipelines and nodes. This action cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => deleteMutation.mutate({ id })}
+                    disabled={deleteMutation.isPending}
+                  >
+                    {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        }
+      />
 
       {/* Edit Form */}
       {editing && (
