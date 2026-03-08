@@ -3,7 +3,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { ComponentKind, LogLevel } from "@/generated/prisma";
+import { ComponentKind, LogLevel, Prisma } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import {
   createVersion,
@@ -759,6 +759,89 @@ export const pipelineRouter = router({
       });
     }),
 
+  discardChanges: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.changes_discarded", "Pipeline"))
+    .mutation(async ({ input }) => {
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        select: { isDraft: true, deployedAt: true },
+      });
+      if (!pipeline) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+      if (pipeline.isDraft || !pipeline.deployedAt) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Cannot discard changes on a pipeline that has never been deployed",
+        });
+      }
+
+      const latestVersion = await prisma.pipelineVersion.findFirst({
+        where: { pipelineId: input.pipelineId },
+        orderBy: { version: "desc" },
+      });
+      if (!latestVersion) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No deployed version found" });
+      }
+      if (!latestVersion.nodesSnapshot || !latestVersion.edgesSnapshot) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Deployed version has no snapshot — deploy once more to enable discard",
+        });
+      }
+
+      const nodes = latestVersion.nodesSnapshot as Array<Record<string, unknown>>;
+      const edges = latestVersion.edgesSnapshot as Array<Record<string, unknown>>;
+
+      await prisma.$transaction(async (tx) => {
+        await tx.pipeline.update({
+          where: { id: input.pipelineId },
+          data: {
+            globalConfig: latestVersion.globalConfig as Prisma.InputJsonValue ?? undefined,
+          },
+        });
+
+        await tx.pipelineEdge.deleteMany({ where: { pipelineId: input.pipelineId } });
+        await tx.pipelineNode.deleteMany({ where: { pipelineId: input.pipelineId } });
+
+        await Promise.all(
+          nodes.map((node) =>
+            tx.pipelineNode.create({
+              data: {
+                id: node.id as string,
+                pipelineId: input.pipelineId,
+                componentKey: node.componentKey as string,
+                componentType: node.componentType as string,
+                kind: node.kind as ComponentKind,
+                config: node.config as Prisma.InputJsonValue,
+                positionX: node.positionX as number,
+                positionY: node.positionY as number,
+                disabled: (node.disabled as boolean) ?? false,
+              },
+            })
+          )
+        );
+
+        await Promise.all(
+          edges.map((edge) =>
+            tx.pipelineEdge.create({
+              data: {
+                id: edge.id as string,
+                pipelineId: input.pipelineId,
+                sourceNodeId: edge.sourceNodeId as string,
+                targetNodeId: edge.targetNodeId as string,
+                sourcePort: (edge.sourcePort as string) ?? null,
+              },
+            })
+          )
+        );
+      });
+
+      return { discarded: true };
+    }),
+
   versions: protectedProcedure
     .input(z.object({ pipelineId: z.string() }))
     .use(withTeamAccess("VIEWER"))
@@ -782,15 +865,39 @@ export const pipelineRouter = router({
       }
       const pipeline = await prisma.pipeline.findUnique({
         where: { id: input.pipelineId },
-        select: { globalConfig: true },
+        select: { globalConfig: true, nodes: true, edges: true },
       });
-      const logLevel = (pipeline?.globalConfig as Record<string, unknown>)?.log_level as string ?? null;
+      if (!pipeline) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+      const logLevel = (pipeline.globalConfig as Record<string, unknown>)?.log_level as string ?? null;
+
+      const nodesSnapshot = pipeline.nodes.map((n) => ({
+        id: n.id,
+        componentKey: n.componentKey,
+        componentType: n.componentType,
+        kind: n.kind,
+        config: n.config,
+        positionX: n.positionX,
+        positionY: n.positionY,
+        disabled: n.disabled,
+      }));
+      const edgesSnapshot = pipeline.edges.map((e) => ({
+        id: e.id,
+        sourceNodeId: e.sourceNodeId,
+        targetNodeId: e.targetNodeId,
+        sourcePort: e.sourcePort,
+      }));
+
       return createVersion(
         input.pipelineId,
         input.configYaml,
         userId,
         input.changelog,
         logLevel,
+        pipeline.globalConfig as Record<string, unknown> | null,
+        nodesSnapshot,
+        edgesSnapshot,
       );
     }),
 
