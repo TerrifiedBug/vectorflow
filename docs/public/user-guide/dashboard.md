@@ -81,6 +81,36 @@ Dashboard data refreshes automatically based on the selected time range:
 
 Pipeline status cards also poll every 15 seconds regardless of the selected time range, so you will see status changes (Running, Stopped, Crashed) promptly.
 
+## Analytics
+
+The **Analytics** page (accessible from the sidebar) provides a deeper breakdown of pipeline volume metrics compared to the dashboard summary.
+
+### KPI cards
+
+The analytics page displays four KPI cards with trend indicators comparing the current period to the previous period:
+
+| Card | What it shows |
+|------|--------------|
+| **Bytes In** | Total bytes ingested by all pipeline sources. |
+| **Bytes Out** | Total bytes emitted by all pipeline sinks. |
+| **Events Reduced** | Percentage of events reduced by transforms, calculated as `(1 - eventsOut / eventsIn) × 100`, clamped at 0%. |
+| **Bytes Saved** | Percentage of bytes saved through pipeline processing, calculated as `(1 - bytesOut / bytesIn) × 100`. Hover for a tooltip showing the absolute bytes saved. |
+
+Each card shows a trend arrow indicating whether the metric increased or decreased compared to the previous period. For reduction metrics, an upward trend (more reduction) is shown in green.
+
+### Per-pipeline table
+
+Below the KPI cards, a sortable table shows per-pipeline volume breakdown:
+
+| Column | Description |
+|--------|-------------|
+| **Pipeline** | Pipeline name |
+| **Bytes In / Out** | Total bytes ingested and emitted, formatted as human-readable sizes |
+| **Events Reduced** | Percentage of events reduced, shown with a color-coded progress bar (green > 50%, amber > 20%, red below) |
+| **Bytes Saved** | Percentage of bytes saved, shown with a color-coded progress bar |
+
+Click any column header to sort the table. The time range filter at the top controls the aggregation window.
+
 ## Custom dashboard views
 
 You can create personalized dashboard views that display only the panels you care about. Custom views are saved per-user and persist across sessions.
@@ -111,6 +141,17 @@ Check the panels you want to include. Panels are grouped into three categories:
 Click **Create**. Your new view will appear as a tab in the tab bar.
 {% endstep %}
 {% endstepper %}
+
+### Arranging panels
+
+Custom view panels support drag-and-drop reordering and resizing.
+
+1. Click the **Editing Layout** button (lock icon) in the top-right corner of the view to unlock the layout.
+2. **Drag** any panel by its header to reposition it within the grid.
+3. **Resize** a panel by dragging its bottom-right corner handle.
+4. Click **Layout Locked** to lock the layout and prevent accidental changes.
+
+Layout changes are saved automatically. Each user's layout is independent — rearranging panels does not affect other users.
 
 ### Switching views
 

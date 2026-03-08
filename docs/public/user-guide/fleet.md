@@ -125,7 +125,7 @@ Labels are key-value pairs you can attach to nodes for organization and selectiv
 
 ### Viewing labels
 
-Labels appear as `key=value` badges in the **Labels** column of the fleet table. Nodes with no labels show an empty column.
+In the fleet table, nodes with labels show a compact **"N label(s)"** button in the Labels column. Click the button to open a popover displaying all labels as `key=value` badges. Nodes with no labels show an empty column.
 
 ### Adding and editing labels
 
