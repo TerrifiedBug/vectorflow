@@ -244,6 +244,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const discardMutation = useMutation(
     trpc.pipeline.discardChanges.mutationOptions({
       onSuccess: () => {
+        markClean();
         queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey() });
         toast.success("Changes discarded — restored to last deployed state");
         setDiscardOpen(false);
