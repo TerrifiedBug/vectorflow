@@ -363,7 +363,7 @@ export default function AuditPage() {
                     <TableRow
                       className={
                         hasDetails
-                          ? "cursor-pointer hover:bg-muted/50"
+                          ? "cursor-pointer"
                           : ""
                       }
                       onClick={() => hasDetails && toggleRow(entry.id)}

@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -332,7 +333,10 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   if (pipelineQuery.isLoading) {
     return (
       <div className="-m-6 flex h-[calc(100vh-3.5rem)] items-center justify-center">
-        <p className="text-muted-foreground">Loading pipeline...</p>
+        <div className="flex flex-col items-center gap-3">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-4 w-32" />
+        </div>
       </div>
     );
   }

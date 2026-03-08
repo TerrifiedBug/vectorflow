@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowUp, ArrowDown, Minus, BarChart3, Info } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, BarChart3, Info, Inbox } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -293,10 +293,11 @@ export default function AnalyticsPage() {
         <CardContent>
           {chartData.length === 0 ? (
             <div
-              className="flex items-center justify-center text-xs text-muted-foreground"
+              className="flex flex-col items-center justify-center text-muted-foreground"
               style={{ height: 300 }}
             >
-              No data for selected time range
+              <Inbox className="h-8 w-8 text-muted-foreground/50" />
+              <p className="mt-2 text-sm">No data for selected time range</p>
             </div>
           ) : (
             <ChartContainer config={chartConfig} className="w-full" style={{ height: 300 }}>

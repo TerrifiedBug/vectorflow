@@ -27,11 +27,11 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
 };
 
 const LEVEL_BADGE_COLORS: Record<LogLevel, string> = {
-  ERROR: "bg-red-500/20 text-red-400 hover:bg-red-500/30",
-  WARN: "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30",
-  INFO: "bg-gray-500/20 text-gray-300 hover:bg-gray-500/30",
-  DEBUG: "bg-gray-600/20 text-gray-500 hover:bg-gray-600/30",
-  TRACE: "bg-gray-700/20 text-gray-600 hover:bg-gray-700/30",
+  ERROR: "bg-red-500/20 text-red-400 transition-colors hover:bg-red-500/30",
+  WARN: "bg-yellow-500/20 text-yellow-400 transition-colors hover:bg-yellow-500/30",
+  INFO: "bg-gray-500/20 text-gray-300 transition-colors hover:bg-gray-500/30",
+  DEBUG: "bg-gray-600/20 text-gray-500 transition-colors hover:bg-gray-600/30",
+  TRACE: "bg-gray-700/20 text-gray-600 transition-colors hover:bg-gray-700/30",
 };
 
 function formatTime(date: Date | string): string {

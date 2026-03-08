@@ -47,7 +47,7 @@ export function UpdateBanner() {
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6 shrink-0 text-status-info-foreground hover:bg-status-info/30 focus-visible:ring-ring"
+        className="h-6 w-6 shrink-0 text-status-info-foreground transition-colors hover:bg-status-info/30 focus-visible:ring-ring"
         onClick={() => setDismissed(true)}
         aria-label="Dismiss update notification"
       >

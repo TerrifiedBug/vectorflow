@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Search, ChevronDown, ChevronRight, Plus, Pencil, Trash2 } from "lucide-react";
+import { Search, ChevronDown, ChevronRight, Plus, Pencil, Trash2, FileQuestion } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -193,15 +193,16 @@ export function VrlSnippetDrawer({ onInsert }: VrlSnippetDrawerProps) {
       {!showForm && <ScrollArea className="flex-1 min-h-0">
         <div className="p-1">
           {grouped.size === 0 && (
-            <p className="p-3 text-center text-xs text-muted-foreground">
-              No snippets found
-            </p>
+            <div className="flex flex-col items-center justify-center p-8">
+              <FileQuestion className="h-8 w-8 text-muted-foreground/50" />
+              <p className="mt-2 text-sm text-muted-foreground">No snippets found</p>
+            </div>
           )}
           {Array.from(grouped.entries()).map(([category, snippets]) => (
             <div key={category}>
               <button
                 onClick={() => toggleCategory(category)}
-                className="flex w-full cursor-pointer items-center gap-1 rounded px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted/50"
+                className="flex w-full cursor-pointer items-center gap-1 rounded px-2 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted/50"
               >
                 {collapsed.has(category) ? (
                   <ChevronRight className="h-3 w-3" />
@@ -236,14 +237,14 @@ export function VrlSnippetDrawer({ onInsert }: VrlSnippetDrawerProps) {
                       <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleEdit(snippet); }}
-                          className="cursor-pointer rounded p-0.5 hover:bg-muted"
+                          className="cursor-pointer rounded p-0.5 transition-colors hover:bg-muted"
                           aria-label="Edit snippet"
                         >
                           <Pencil className="h-3 w-3" />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); deleteMutation.mutate({ id: snippet.id }); }}
-                          className="cursor-pointer rounded p-0.5 hover:bg-muted text-destructive"
+                          className="cursor-pointer rounded p-0.5 transition-colors hover:bg-muted text-destructive"
                           aria-label="Delete snippet"
                           disabled={deleteMutation.isPending}
                         >
