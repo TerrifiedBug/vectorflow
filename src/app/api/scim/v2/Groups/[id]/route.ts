@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
+import { debugLog } from "@/lib/logger";
 import { authenticateScim } from "../../auth";
 import {
   reconcileUserTeamMemberships,
@@ -75,6 +76,7 @@ export async function PATCH(
   try {
     const body = await req.json();
     const operations = body.Operations ?? body.operations ?? [];
+    debugLog("scim", `PATCH /Groups/${id}`, { displayName: group.displayName, operations: operations.map((o: { op: string; path?: string; value?: unknown }) => ({ op: o.op, path: o.path, valueType: typeof o.value, valueLength: Array.isArray(o.value) ? o.value.length : undefined })) });
 
     await prisma.$transaction(async (tx) => {
       for (const op of operations) {
@@ -211,6 +213,12 @@ export async function PUT(
 
   try {
     const body = await req.json();
+    const membersProvided = Array.isArray(body.members);
+    debugLog("scim", `PUT /Groups/${id}`, {
+      displayName: body.displayName,
+      membersProvided,
+      memberCount: membersProvided ? body.members.length : undefined,
+    });
 
     await prisma.$transaction(async (tx) => {
       // Update displayName if provided
@@ -223,7 +231,7 @@ export async function PUT(
 
       // Full member sync: compute desired set, diff against current
       const desiredUserIds = new Set<string>();
-      if (body.members && Array.isArray(body.members)) {
+      if (membersProvided) {
         for (const m of body.members) {
           const userId = (m as { value?: unknown }).value;
           if (typeof userId !== "string") continue;
@@ -247,10 +255,22 @@ export async function PUT(
         }
       }
 
-      // Remove absent members
-      for (const member of currentMembers) {
-        if (!desiredUserIds.has(member.userId)) {
-          await tx.scimGroupMember.delete({ where: { id: member.id } });
+      // Skip member removal when the incoming member list is empty but
+      // current members exist. Many SCIM providers (e.g. pocket-id) send
+      // intermediate PUTs with members:[] during background sync before
+      // re-adding members individually — treating this as "remove all" causes
+      // destructive churn (team memberships deleted then re-created).
+      const skipRemoval = desiredUserIds.size === 0 && currentMembers.length > 0;
+      if (skipRemoval) {
+        debugLog("scim", `PUT /Groups/${id}: skipping member removal (empty incoming list with ${currentMembers.length} current members)`);
+      }
+
+      if (!skipRemoval) {
+        // Remove absent members
+        for (const member of currentMembers) {
+          if (!desiredUserIds.has(member.userId)) {
+            await tx.scimGroupMember.delete({ where: { id: member.id } });
+          }
         }
       }
 

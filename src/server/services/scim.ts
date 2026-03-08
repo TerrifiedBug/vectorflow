@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
+import { debugLog } from "@/lib/logger";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
@@ -165,6 +166,7 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
 }
 
 export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
+  debugLog("scim", `PUT /Users/${id}`, { active: scimUser.active, userName: scimUser.userName, externalId: scimUser.externalId });
   const data: Record<string, unknown> = {};
 
   if (scimUser.name?.formatted) data.name = scimUser.name.formatted;
@@ -219,6 +221,7 @@ export async function scimPatchUser(
   id: string,
   operations: ScimPatchOp[],
 ) {
+  debugLog("scim", `PATCH /Users/${id}`, { operations: operations.map(o => ({ op: o.op, path: o.path, value: o.value })) });
   const data: Record<string, unknown> = {};
 
   for (const op of operations) {
@@ -305,6 +308,7 @@ export async function scimPatchUser(
 }
 
 export async function scimDeleteUser(id: string) {
+  debugLog("scim", `DELETE /Users/${id}`);
   // Don't actually delete -- lock the account
   // Only claim SCIM ownership if not already locked by another source
   const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
