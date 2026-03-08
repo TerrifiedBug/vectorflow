@@ -42,9 +42,10 @@ interface PipelineRow {
   eventsIn: number;
   eventsOut: number;
   reduction: number;
+  eventsReduced: number;
 }
 
-type SortKey = "pipelineName" | "bytesIn" | "bytesOut" | "reduction";
+type SortKey = "pipelineName" | "bytesIn" | "bytesOut" | "reduction" | "eventsReduced";
 type SortDir = "asc" | "desc";
 
 export default function AnalyticsPage() {
@@ -77,6 +78,23 @@ export default function AnalyticsPage() {
       ? reductionPercent - prevReductionPercent
       : null;
 
+  // Event-based reduction (matches pipelines table formula, clamped at 0%)
+  const totalEventsIn = Number(data?.current._sum.eventsIn ?? 0);
+  const totalEventsOut = Number(data?.current._sum.eventsOut ?? 0);
+  const eventsReducedPercent = totalEventsIn > 0 ? Math.max(0, (1 - totalEventsOut / totalEventsIn) * 100) : null;
+
+  const prevEventsIn = Number(data?.previous._sum.eventsIn ?? 0);
+  const prevEventsOut = Number(data?.previous._sum.eventsOut ?? 0);
+  const prevEventsReducedPercent = prevEventsIn > 0 ? Math.max(0, (1 - prevEventsOut / prevEventsIn) * 100) : null;
+  const eventsReducedDelta =
+    eventsReducedPercent != null && prevEventsReducedPercent != null
+      ? eventsReducedPercent - prevEventsReducedPercent
+      : null;
+
+  // Rename bytes vars for clarity
+  const bytesSavedPercent = reductionPercent;
+  const bytesSavedDelta = reductionDelta;
+
   const bytesInTrend = trendPercent(totalBytesIn, prevBytesIn);
   const bytesOutTrend = trendPercent(totalBytesOut, prevBytesOut);
 
@@ -97,9 +115,10 @@ export default function AnalyticsPage() {
   // Per-pipeline table with sorting
   const sortedPipelines = (() => {
     if (!data?.perPipeline) return [];
-    const rows: PipelineRow[] = data.perPipeline.map((p: Omit<PipelineRow, "reduction">) => ({
+    const rows: PipelineRow[] = data.perPipeline.map((p: Omit<PipelineRow, "reduction" | "eventsReduced">) => ({
       ...p,
       reduction: p.bytesIn > 0 ? (1 - p.bytesOut / p.bytesIn) * 100 : 0,
+      eventsReduced: p.eventsIn > 0 ? Math.max(0, (1 - p.eventsOut / p.eventsIn) * 100) : 0,
     }));
     return rows.sort((a: PipelineRow, b: PipelineRow) => {
       const aVal = a[sortKey];
@@ -167,7 +186,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         {/* Total In */}
         <Card>
           <CardContent className="p-4">
@@ -206,39 +225,59 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
-        {/* Reduction % */}
+        {/* Events Reduced */}
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-muted-foreground">Reduction</p>
-              <TrendArrow value={reductionDelta} invertColor />
+              <p className="text-sm font-medium text-muted-foreground">Events Reduced</p>
+              <TrendArrow value={eventsReducedDelta} invertColor />
             </div>
             <p
               className={cn(
                 "mt-1 text-2xl font-bold",
-                reductionPercent != null && reductionPercent >= 50
+                eventsReducedPercent != null && eventsReducedPercent > 50
                   ? "text-green-600 dark:text-green-400"
-                  : reductionPercent != null && reductionPercent >= 20
+                  : eventsReducedPercent != null && eventsReducedPercent > 10
                     ? "text-amber-600 dark:text-amber-400"
-                    : reductionPercent != null
-                      ? "text-red-600 dark:text-red-400"
-                      : "text-muted-foreground",
+                    : "text-muted-foreground",
               )}
             >
-              {reductionPercent != null ? `${reductionPercent.toFixed(1)}%` : "--"}
+              {eventsReducedPercent != null ? `${eventsReducedPercent.toFixed(1)}%` : "--"}
             </p>
-            {reductionDelta != null && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <p className="text-xs text-muted-foreground cursor-default">
-                    {reductionDelta >= 0 ? "+" : ""}
-                    {reductionDelta.toFixed(1)}% vs last period
-                  </p>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Change in reduction percentage compared to previous period
-                </TooltipContent>
-              </Tooltip>
+            {eventsReducedDelta != null && (
+              <p className="text-xs text-muted-foreground">
+                {eventsReducedDelta >= 0 ? "+" : ""}
+                {eventsReducedDelta.toFixed(1)}% vs last period
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Bytes Saved */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                <p className="text-sm font-medium text-muted-foreground">Bytes Saved</p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Total bytes saved including sink compression and encoding
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <TrendArrow value={bytesSavedDelta} invertColor />
+            </div>
+            <p className="mt-1 text-2xl font-bold text-muted-foreground">
+              {bytesSavedPercent != null ? `${bytesSavedPercent.toFixed(1)}%` : "--"}
+            </p>
+            {bytesSavedDelta != null && (
+              <p className="text-xs text-muted-foreground">
+                {bytesSavedDelta >= 0 ? "+" : ""}
+                {bytesSavedDelta.toFixed(1)}% vs last period
+              </p>
             )}
           </CardContent>
         </Card>
@@ -359,9 +398,15 @@ export default function AnalyticsPage() {
                   </TableHead>
                   <TableHead
                     className="cursor-pointer select-none text-right"
+                    onClick={() => toggleSort("eventsReduced")}
+                  >
+                    Events Reduced{sortIndicator("eventsReduced")}
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer select-none text-right"
                     onClick={() => toggleSort("reduction")}
                   >
-                    Reduction %{sortIndicator("reduction")}
+                    Bytes Saved{sortIndicator("reduction")}
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -374,6 +419,26 @@ export default function AnalyticsPage() {
                     </TableCell>
                     <TableCell className="text-right font-mono">
                       {formatBytes(p.bytesOut)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="h-2 w-16 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={cn(
+                              "h-full rounded-full transition-all",
+                              p.eventsReduced > 50
+                                ? "bg-green-500"
+                                : p.eventsReduced > 10
+                                  ? "bg-amber-500"
+                                  : "bg-muted-foreground/30",
+                            )}
+                            style={{ width: `${Math.max(0, Math.min(100, p.eventsReduced))}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-sm w-14 text-right">
+                          {p.eventsReduced.toFixed(1)}%
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
