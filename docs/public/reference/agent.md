@@ -86,12 +86,13 @@ After each poll, the agent sends a heartbeat (`POST /api/agent/heartbeat`) that 
 
 ## CLI flags
 
-The agent accepts two flags:
+The agent accepts the following flags:
 
 | Flag | Description |
 |------|-------------|
 | `--version`, `-v` | Print the agent version and exit |
 | `--help`, `-h` | Show usage help including the environment variable reference |
+| `--channel <name>` | Set the update channel at first enrollment: `stable` (default) or `dev`. Only effective on initial startup — the channel cannot be changed afterward without re-installing the agent. Dev channel agents receive pre-release binaries and are tracked separately in the fleet UI. |
 
 All runtime configuration is via environment variables -- there are no flags for server URL, token, etc.
 
@@ -274,6 +275,21 @@ Standalone agents (not Docker) support in-place binary updates:
 
 {% hint style="info" %}
 Docker agents ignore `self_update` actions. Update Docker agents by pulling a new image version instead.
+{% endhint %}
+
+### Update channels
+
+Agents operate on one of two update channels:
+
+| Channel | Version prefix | Description |
+|---------|---------------|-------------|
+| **stable** | `v1.2.3` | Production-ready releases. This is the default. |
+| **dev** | `dev-abc1234` | Pre-release builds for testing. Set via `--channel dev` at first startup. |
+
+The fleet UI displays the channel for each node. When triggering updates, VectorFlow targets the correct channel — stable agents receive the latest stable release, and dev agents receive the latest dev build. An agent's channel is determined by its version string prefix and cannot be changed without re-installing.
+
+{% hint style="info" %}
+Dev channel agents are intended for testing new agent features before rolling them out to production. They report a separate "latest version" in the fleet UI so you can track dev and stable fleets independently.
 {% endhint %}
 
 ---

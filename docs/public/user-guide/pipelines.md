@@ -182,18 +182,22 @@ Tags are metadata labels only -- they do not enforce any access controls or data
 
 ## Deploy approval workflows
 
-Environments can optionally require **admin approval** before a pipeline is deployed. When enabled, editors who click **Deploy** will submit a deploy request instead of deploying directly. Admins can then review, approve, or reject the request.
+Environments can optionally require **deploy approval** before a pipeline goes live. When enabled, editors who click **Deploy** will submit a deploy request instead of deploying directly. Another team member (editor or admin) can then review, approve, or reject the request.
 
 ### How it works
 
 1. An admin enables **Require approval for deploys** on the environment settings page (see [Environments](environments.md#deploy-approval)).
 2. When an editor clicks **Deploy** in the pipeline editor, the deploy dialog shows a **Request Deploy** button instead of **Publish to Agents**.
 3. The editor submits a deploy request with a changelog entry. The pipeline list and pipeline editor toolbar show a **Pending Approval** badge.
-4. An admin opens the deploy dialog for the pipeline and sees the request in **review mode** -- displaying the requester, changelog, and a config diff.
-5. The admin can **Approve & Deploy** (which immediately deploys the pipeline) or **Reject** (with an optional note).
+4. Another team member (editor or admin) opens the deploy dialog for the pipeline and sees the request in **review mode** — displaying the requester, changelog, and a config diff.
+5. The reviewer can **Approve & Deploy** (which immediately deploys the pipeline) or **Reject** (with an optional note).
+
+{% hint style="warning" %}
+**Self-approval is blocked.** The person who submitted a deploy request cannot approve their own request. This enforces a four-eyes principle — a second team member must always review and approve the deployment.
+{% endhint %}
 
 {% hint style="info" %}
-Admins can always deploy directly, even when approval is required. The approval gate only applies to users with the Editor role.
+Admins can always deploy directly, even when approval is required. When an admin deploys without going through the approval flow, a warning banner is shown to indicate the approval gate was bypassed. The approval gate only applies to users with the Editor role.
 {% endhint %}
 
 ### Cancelling a request
