@@ -40,24 +40,18 @@ export function TeamSelector() {
   // Single team — show name only, no dropdown
   if (teams.length === 1) {
     return (
-      <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2">
-        <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/10 text-primary">
-          <Users className="h-3.5 w-3.5" />
-        </div>
-        <span className="text-sm font-medium truncate">{teams[0].name}</span>
+      <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm">
+        <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="font-medium truncate">{teams[0].name}</span>
       </div>
     );
   }
 
   return (
     <Select value={selectedTeamId ?? undefined} onValueChange={setSelectedTeamId}>
-      <SelectTrigger className="w-full h-auto border-sidebar-border bg-sidebar px-3 py-2 text-sm">
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-primary/10 text-primary">
-            <Users className="h-3.5 w-3.5" />
-          </div>
-          <SelectValue placeholder="Select team" />
-        </div>
+      <SelectTrigger className="w-full h-8 text-xs">
+        <Users className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+        <SelectValue placeholder="Select team" />
       </SelectTrigger>
       <SelectContent>
         {teams.map((team) => (
