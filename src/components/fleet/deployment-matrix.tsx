@@ -31,7 +31,11 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
   const data = matrixQuery.data;
 
   if (!data || data.deployedPipelines.length === 0) {
-    return null;
+    return (
+      <div className="flex items-center justify-center rounded-lg border border-dashed p-8 text-center">
+        <p className="text-sm text-muted-foreground">No pipelines deployed</p>
+      </div>
+    );
   }
 
   const { nodes, deployedPipelines } = data;
@@ -69,7 +73,7 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
         </thead>
         <tbody className="divide-y">
           {deployedPipelines.map((pipeline) => (
-            <tr key={pipeline.id} className="hover:bg-muted/30">
+            <tr key={pipeline.id} className="hover:bg-muted/50">
               <td className="px-3 py-2 font-medium">
                 <div className="flex items-center gap-2">
                   <Link href={`/pipelines/${pipeline.id}`} className="hover:underline">
