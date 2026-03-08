@@ -72,6 +72,7 @@ interface FlowToolbarProps {
   hasRecentErrors?: boolean;
   processStatus?: ProcessStatusValue | null;
   gitOpsMode?: string;
+  onDiscardChanges?: () => void;
 }
 
 function downloadFile(content: string, filename: string) {
@@ -102,6 +103,7 @@ export function FlowToolbar({
   hasRecentErrors = false,
   processStatus,
   gitOpsMode,
+  onDiscardChanges,
 }: FlowToolbarProps) {
   const globalConfig = useFlowStore((s) => s.globalConfig);
   const canUndo = useFlowStore((s) => s.canUndo);
@@ -533,6 +535,22 @@ export function FlowToolbar({
                   </TooltipTrigger>
                   <TooltipContent>Changes detected — deploy to update</TooltipContent>
                 </Tooltip>
+                {onDiscardChanges && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onDiscardChanges}
+                        className="h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" />
+                        Discard
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Revert to last deployed state</TooltipContent>
+                  </Tooltip>
+                )}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button

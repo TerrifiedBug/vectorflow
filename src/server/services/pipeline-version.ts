@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@/generated/prisma";
+import { type Prisma, type ComponentKind } from "@/generated/prisma";
 import { TRPCError } from "@trpc/server";
 
 /**
@@ -14,6 +14,8 @@ export async function createVersion(
   changelog?: string,
   logLevel?: string | null,
   globalConfig?: Record<string, unknown> | null,
+  nodesSnapshot?: unknown,
+  edgesSnapshot?: unknown,
 ) {
   // Find the highest existing version number for this pipeline
   const latest = await prisma.pipelineVersion.findFirst({
@@ -31,6 +33,8 @@ export async function createVersion(
       configYaml,
       logLevel: logLevel ?? null,
       globalConfig: (globalConfig as Prisma.InputJsonValue) ?? undefined,
+      nodesSnapshot: nodesSnapshot ? (nodesSnapshot as Prisma.InputJsonValue) : undefined,
+      edgesSnapshot: edgesSnapshot ? (edgesSnapshot as Prisma.InputJsonValue) : undefined,
       createdById: userId,
       changelog,
     },
@@ -109,6 +113,47 @@ export async function rollback(
     });
   }
 
+  // Restore nodes and edges from snapshots if available
+  if (targetVersion.nodesSnapshot && targetVersion.edgesSnapshot) {
+    const snapshotNodes = targetVersion.nodesSnapshot as Array<Record<string, unknown>>;
+    const snapshotEdges = targetVersion.edgesSnapshot as Array<Record<string, unknown>>;
+
+    await prisma.pipelineEdge.deleteMany({ where: { pipelineId } });
+    await prisma.pipelineNode.deleteMany({ where: { pipelineId } });
+
+    await Promise.all(
+      snapshotNodes.map((node) =>
+        prisma.pipelineNode.create({
+          data: {
+            id: node.id as string,
+            pipelineId,
+            componentKey: node.componentKey as string,
+            componentType: node.componentType as string,
+            kind: node.kind as ComponentKind,
+            config: node.config as Prisma.InputJsonValue,
+            positionX: node.positionX as number,
+            positionY: node.positionY as number,
+            disabled: (node.disabled as boolean) ?? false,
+          },
+        })
+      )
+    );
+
+    await Promise.all(
+      snapshotEdges.map((edge) =>
+        prisma.pipelineEdge.create({
+          data: {
+            id: edge.id as string,
+            pipelineId,
+            sourceNodeId: edge.sourceNodeId as string,
+            targetNodeId: edge.targetNodeId as string,
+            sourcePort: (edge.sourcePort as string) ?? null,
+          },
+        })
+      )
+    );
+  }
+
   return createVersion(
     pipelineId,
     targetVersion.configYaml,
@@ -116,5 +161,7 @@ export async function rollback(
     `Rollback to version ${targetVersion.version}`,
     targetVersion.logLevel,
     targetVersion.globalConfig as Record<string, unknown> | null,
+    targetVersion.nodesSnapshot,
+    targetVersion.edgesSnapshot,
   );
 }
