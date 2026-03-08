@@ -343,42 +343,22 @@ function AuditLogShippingSection() {
                 Configure sinks
               </Link>
             </Button>
-            {isDeployed ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  undeployMutation.mutate({ pipelineId: systemPipeline.id })
-                }
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={!!isDeployed}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    deployMutation.mutate({ pipelineId: systemPipeline.id, changelog: "Enabled system pipeline from settings" });
+                  } else {
+                    undeployMutation.mutate({ pipelineId: systemPipeline.id });
+                  }
+                }}
                 disabled={isToggling}
-              >
-                {undeployMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Disabling...
-                  </>
-                ) : (
-                  "Disable"
-                )}
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                onClick={() =>
-                  deployMutation.mutate({ pipelineId: systemPipeline.id, changelog: "Enabled system pipeline from settings" })
-                }
-                disabled={isToggling}
-              >
-                {deployMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Enabling...
-                  </>
-                ) : (
-                  "Enable"
-                )}
-              </Button>
-            )}
+              />
+              <span className="text-sm text-muted-foreground">
+                {isToggling ? (isDeployed ? "Disabling..." : "Enabling...") : (isDeployed ? "Active" : "Disabled")}
+              </span>
+            </div>
           </div>
         ) : (
           <div className="flex items-center gap-3">
