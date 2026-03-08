@@ -13,11 +13,11 @@
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Docs](https://img.shields.io/badge/Docs-GitBook-blue?style=flat-square)](https://terrifiedbug.gitbook.io/vectorflow)
 
-**🔀 Design, deploy, and monitor [Vector](https://vector.dev) data pipelines — visually**
+Design, deploy, and monitor [Vector](https://vector.dev) data pipelines visually.
 
-Stop hand-editing YAML. Build observability pipelines with drag-and-drop<br>and deploy them across your entire fleet from a single dashboard.
+Stop hand-editing YAML. Build observability pipelines with drag-and-drop<br>and deploy them across your fleet from a single dashboard.
 
-[Documentation](https://terrifiedbug.gitbook.io/vectorflow) · [Quick Start](#-quick-start) · [Deployment](#-deployment) · [Features](#-features) · [Configuration](#%EF%B8%8F-configuration) · [Development](#-development)
+[Documentation](https://terrifiedbug.gitbook.io/vectorflow) · [Quick start](#quick-start) · [Deployment](#deployment) · [Features](#features) · [Configuration](#configuration) · [Development](#development)
 
 </div>
 
@@ -29,57 +29,57 @@ Stop hand-editing YAML. Build observability pipelines with drag-and-drop<br>and 
 
 ## Why VectorFlow?
 
-[Vector](https://vector.dev) is a high-performance observability data pipeline — but managing YAML configs across dozens of servers gets painful fast. VectorFlow is a self-hosted control plane that lets you visually build pipelines, deploy them to a fleet of agents, and monitor everything in real time.
+[Vector](https://vector.dev) is great at moving observability data around, but managing YAML configs across dozens of servers gets painful fast. VectorFlow is a self-hosted control plane that lets you build pipelines visually, push them to a fleet of agents, and monitor everything in real time.
 
-- **No vendor lock-in** — self-hosted, open source, runs on your infrastructure
-- **Pull-based agents** — no inbound ports required on fleet nodes
-- **Per-pipeline process isolation** — a crashed pipeline doesn't take down the others
+- Self-hosted, open source, runs on your infrastructure. No vendor lock-in.
+- Pull-based agents, so no inbound ports needed on fleet nodes.
+- Per-pipeline process isolation. A crashed pipeline doesn't take down the others.
 
-## ✨ Features
+## Features
 
-### 🎨 Visual Pipeline Editor
+### Visual pipeline editor
 
-Build Vector pipelines with a drag-and-drop canvas. Browse 100+ components from the sidebar, wire them together, and configure each one with schema-driven forms. The built-in VRL editor features Monaco-powered syntax highlighting, a snippet library, and live event schema discovery.
+Build Vector pipelines on a drag-and-drop canvas. The sidebar has 100+ components you can wire together, each configurable through schema-driven forms. The VRL editor has Monaco syntax highlighting, a snippet library, and live schema discovery.
 
-- **Connection validation** — prevents invalid data type connections at edit time
-- **Import/Export** — import existing `vector.yaml` files or export as YAML/TOML
-- **Templates** — save and reuse pipeline patterns across your team
-- **Live sampling** — tap into running pipelines to see actual events flowing through
+- Connection validation prevents invalid data type connections at edit time
+- Import existing `vector.yaml` files or export as YAML/TOML
+- Save and reuse pipeline patterns as templates across your team
+- Tap into running pipelines to sample actual events flowing through
 
-### 🚀 Fleet Deployment
+### Fleet deployment
 
-Deploy pipeline configs to your entire fleet with a single click. The deploy dialog shows a full YAML diff against the previous version before you confirm. Agents pull configs automatically — no SSH, no Ansible, no manual intervention.
+Deploy pipeline configs to your fleet with a single click. The deploy dialog shows a full YAML diff against the previous version before you confirm. Agents pull configs automatically; no SSH, no Ansible, no manual steps.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/207e5f17-eca4-490a-abfe-f1d86402840f" alt="VectorFlow Fleet — manage and monitor all your agents" width="800">
 </p>
 
-### 📊 Real-Time Monitoring
+### Real-time monitoring
 
-Track pipeline throughput, error rates, and host metrics (CPU, memory, disk, network) per node and per pipeline. Live event rates display directly on the pipeline canvas while you're editing.
+Track pipeline throughput, error rates, and host metrics (CPU, memory, disk, network) per node and per pipeline. Live event rates show directly on the pipeline canvas while you edit.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/c7f7e5be-df2a-4877-b716-b125a343f902" alt="VectorFlow Dashboard — real-time metrics per node including CPU, memory, and pipeline throughput" width="800">
 </p>
 
-### 🔄 Version Control & Rollback
+### Version control and rollback
 
-Every deployment creates an immutable version snapshot with a changelog. Browse the full history, diff any two versions, and roll back in one click. Promote pipelines between environments (e.g., staging → production) with secret reference warnings.
+Every deployment creates an immutable version snapshot with a changelog. Browse the full history, diff any two versions, and roll back in one click. Promote pipelines between environments (e.g., staging to production) with secret reference warnings.
 
-### 🔒 Enterprise Security
+### Enterprise security
 
-- **OIDC SSO** — Okta, Auth0, Keycloak, or any OIDC provider with group-to-role mapping
-- **TOTP 2FA** — optional per-user, enforceable per-team
-- **RBAC** — Viewer, Editor, Admin roles scoped per team
-- **Encrypted secrets** — AES-256-GCM at rest; HashiCorp Vault and AWS Secrets Manager backends
-- **Certificate management** — TLS cert storage referenced directly in pipeline configs
-- **Audit log** — immutable record of every action with before/after diffs
+- OIDC SSO with Okta, Auth0, Keycloak, or any OIDC provider, with group-to-role mapping
+- TOTP 2FA, optional per-user and enforceable per-team
+- RBAC with Viewer, Editor, Admin roles scoped per team
+- Encrypted secrets using AES-256-GCM at rest, with HashiCorp Vault and AWS Secrets Manager backends
+- TLS cert storage referenced directly in pipeline configs
+- Immutable audit log of every action with before/after diffs
 
-### ⚡ Alerting & Webhooks
+### Alerting and webhooks
 
 Set threshold-based alert rules on CPU, memory, disk, error rates, and more. Deliver notifications via HMAC-signed webhooks to Slack, Discord, PagerDuty, or any HTTP endpoint.
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
 graph LR
@@ -103,11 +103,11 @@ graph LR
     A3 -->|"poll · heartbeat"| Next
 ```
 
-The **server** is a Next.js application with tRPC for the API, Prisma ORM with PostgreSQL, and NextAuth for authentication. It bundles a local Vector binary for config validation and VRL testing.
+The server is a Next.js app with tRPC for the API, Prisma ORM with PostgreSQL, and NextAuth for authentication. It bundles a local Vector binary for config validation and VRL testing.
 
-The **agent** (`vf-agent`) is a single-binary Go daemon that runs alongside Vector on each managed host. It polls the server for config updates, manages per-pipeline Vector processes, and reports health via heartbeats. Zero external dependencies.
+The agent (`vf-agent`) is a single Go binary that runs alongside Vector on each managed host. It polls the server for config updates, manages per-pipeline Vector processes, and reports health via heartbeats. No external dependencies beyond Vector itself.
 
-## 🚀 Quick Start
+## Quick start
 
 ### 1. Start the server
 
@@ -124,7 +124,7 @@ EOF
 docker compose up -d
 ```
 
-Open [http://localhost:3000](http://localhost:3000) — the setup wizard creates your admin account.
+Open [http://localhost:3000](http://localhost:3000). The setup wizard creates your admin account.
 
 ### 2. Enroll your first agent
 
@@ -149,15 +149,15 @@ VF_URL=http://your-server:3000 VF_TOKEN=<token> ./vf-agent
 
 ### 3. Build your first pipeline
 
-1. **Pipelines → New Pipeline**
+1. Go to **Pipelines → New Pipeline**
 2. Drag a source (e.g., Syslog) from the component palette
 3. Add a transform (e.g., Remap) and write VRL to shape your data
 4. Connect to a sink (e.g., Elasticsearch, S3, Loki)
-5. Click **Deploy** — review the YAML diff and confirm
+5. Click **Deploy**, review the YAML diff, and confirm
 
 Your pipeline is now running across all enrolled nodes.
 
-## 📦 Deployment
+## Deployment
 
 ### Server
 
@@ -168,13 +168,13 @@ cd vectorflow/docker/server
 docker compose up -d
 ```
 
-See [Configuration → Server](#%EF%B8%8F-configuration) for all available environment variables.
+See [Configuration → Server](#configuration) for all available environment variables.
 
 ### Agent
 
 #### Option A: Docker
 
-The simplest way to run the agent — ideal for containerized environments:
+The simplest way to run the agent, and ideal for containerized environments:
 
 ```bash
 cd vectorflow/docker/agent
@@ -187,16 +187,16 @@ EOF
 docker compose up -d
 ```
 
-#### Option B: Standalone Binary (Linux)
+#### Option B: Standalone binary (Linux)
 
-Install the agent as a native systemd service. The install script downloads the agent binary, installs Vector if needed, and configures everything automatically:
+Install the agent as a native systemd service. The install script downloads the binary, installs Vector if needed, and configures everything:
 
 ```bash
 curl -sSfL https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/agent/install.sh | \
   sudo bash -s -- --url https://vectorflow.example.com --token <enrollment-token>
 ```
 
-**Managing the service:**
+Managing the service:
 
 ```bash
 systemctl status vf-agent          # Check status
@@ -204,7 +204,7 @@ journalctl -u vf-agent -f          # Follow logs
 sudo systemctl restart vf-agent    # Restart
 ```
 
-**Upgrading:**
+Upgrading:
 
 ```bash
 # Upgrade to the latest release
@@ -217,7 +217,7 @@ curl -sSfL https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/agent/
 
 Existing configuration at `/etc/vectorflow/agent.env` is preserved during upgrades.
 
-**Uninstalling:**
+Uninstalling:
 
 ```bash
 sudo systemctl stop vf-agent
@@ -228,7 +228,7 @@ sudo rm /usr/local/bin/vf-agent
 sudo rm -rf /var/lib/vf-agent /etc/vectorflow
 ```
 
-#### Option C: Manual Binary
+#### Option C: Manual binary
 
 Download the binary from [Releases](https://github.com/TerrifiedBug/vectorflow/releases) and run it directly:
 
@@ -236,9 +236,9 @@ Download the binary from [Releases](https://github.com/TerrifiedBug/vectorflow/r
 VF_URL=http://your-server:3000 VF_TOKEN=<token> ./vf-agent
 ```
 
-See [Configuration → Agent](#%EF%B8%8F-configuration) for all available environment variables.
+See [Configuration → Agent](#configuration) for all available environment variables.
 
-## 🛠️ Tech Stack
+## Tech stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -251,14 +251,14 @@ See [Configuration → Agent](#%EF%B8%8F-configuration) for all available enviro
 | Agent | Go 1.22 (zero dependencies, single binary) |
 | Data Engine | Vector 0.44.0 |
 
-## ⚙️ Configuration
+## Configuration
 
 ### Server
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
-| `NEXTAUTH_SECRET` | Yes | — | Session & encryption key (32+ chars) |
+| `NEXTAUTH_SECRET` | Yes | — | Session and encryption key (32+ chars) |
 | `NEXTAUTH_URL` | No | — | Canonical server URL |
 | `PORT` | No | `3000` | HTTP listen port |
 
@@ -273,7 +273,7 @@ See [Configuration → Agent](#%EF%B8%8F-configuration) for all available enviro
 | `VF_POLL_INTERVAL` | No | `15s` | Config poll frequency |
 | `VF_LOG_LEVEL` | No | `info` | Logging level |
 
-### Fleet Settings (Admin UI)
+### Fleet settings (admin UI)
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -282,7 +282,7 @@ See [Configuration → Agent](#%EF%B8%8F-configuration) for all available enviro
 | Metrics retention | 7 days | Time-series data retention |
 | Logs retention | 3 days | Pipeline log retention |
 
-## 🧑‍💻 Development
+## Development
 
 ### Prerequisites
 
@@ -305,11 +305,11 @@ make build        # Current platform
 make build-all    # Cross-compile linux/amd64 + linux/arm64
 ```
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome! Please see [SECURITY.md](SECURITY.md) for reporting security vulnerabilities.
+Contributions are welcome. See [SECURITY.md](SECURITY.md) for reporting security vulnerabilities.
 
-## 📄 License
+## License
 
 VectorFlow is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
 
