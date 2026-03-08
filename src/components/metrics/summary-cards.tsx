@@ -31,6 +31,12 @@ function formatBytes(perMin: number): string {
   return `${Math.round(perSec)} B/s`;
 }
 
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
 export function SummaryCards({ rows }: SummaryCardsProps) {
   // Use the latest row for "current" rates
   const latest = rows.length > 0 ? rows[rows.length - 1] : null;
@@ -63,13 +69,13 @@ export function SummaryCards({ rows }: SummaryCardsProps) {
       <Card>
         <CardContent className="pt-4">
           <p className="text-xs text-muted-foreground">Errors</p>
-          <p className="text-2xl font-bold">{errorsTotal}</p>
+          <p className="text-2xl font-bold">{formatCount(errorsTotal)}</p>
         </CardContent>
       </Card>
       <Card>
         <CardContent className="pt-4">
           <p className="text-xs text-muted-foreground">Discarded</p>
-          <p className="text-2xl font-bold">{discardedTotal}</p>
+          <p className="text-2xl font-bold">{formatCount(discardedTotal)}</p>
         </CardContent>
       </Card>
     </div>

@@ -71,6 +71,7 @@ interface FlowToolbarProps {
   hasRecentErrors?: boolean;
   processStatus?: ProcessStatusValue | null;
   gitOpsMode?: string;
+  onDiscardChanges?: () => void;
 }
 
 function downloadFile(content: string, filename: string) {
@@ -101,6 +102,7 @@ export function FlowToolbar({
   hasRecentErrors = false,
   processStatus,
   gitOpsMode,
+  onDiscardChanges,
 }: FlowToolbarProps) {
   const globalConfig = useFlowStore((s) => s.globalConfig);
   const canUndo = useFlowStore((s) => s.canUndo);
@@ -128,6 +130,8 @@ export function FlowToolbar({
     ),
   );
   const healthStatus = healthQuery.data?.status ?? null;
+  const sliTotal = healthQuery.data?.slis?.length ?? 0;
+  const slisBreached = healthQuery.data?.slis?.filter((s: { status: string }) => s.status === "breached").length ?? 0;
 
   // Query pending deploy requests for this pipeline
   const pendingRequestsQuery = useQuery({
@@ -466,22 +470,18 @@ export function FlowToolbar({
               {processStatus === "CRASHED" && "Crashed"}
               {processStatus === "PENDING" && "Pending..."}
             </span>
-            {/* Health SLI indicator dot */}
+            {/* Health SLI badge */}
             {healthStatus === "healthy" && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="h-2 w-2 rounded-full bg-green-500" />
-                </TooltipTrigger>
-                <TooltipContent>All SLIs met</TooltipContent>
-              </Tooltip>
+              <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                SLIs: OK
+              </span>
             )}
             {healthStatus === "degraded" && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="h-2 w-2 rounded-full bg-yellow-500" />
-                </TooltipTrigger>
-                <TooltipContent>One or more SLIs breached</TooltipContent>
-              </Tooltip>
+              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:text-yellow-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
+                SLIs: {slisBreached}/{sliTotal} breached
+              </span>
             )}
           </div>
         )}
@@ -532,6 +532,22 @@ export function FlowToolbar({
                   </TooltipTrigger>
                   <TooltipContent>Changes detected — deploy to update</TooltipContent>
                 </Tooltip>
+                {onDiscardChanges && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onDiscardChanges}
+                        className="h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" />
+                        Discard
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Revert to last deployed state</TooltipContent>
+                  </Tooltip>
+                )}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button

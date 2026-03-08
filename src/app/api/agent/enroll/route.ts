@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyEnrollmentToken, generateNodeToken } from "@/server/services/agent-token";
+import { debugLog } from "@/lib/logger";
 
 const enrollSchema = z.object({
   token: z.string().min(1),
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
     const { token, hostname, os, agentVersion, vectorVersion } = parsed.data;
     const safeHostname = hostname.replace(/[\r\n\t"]/g, " ");
     const safeVersion = (agentVersion ?? "unknown").replace(/[\r\n\t"]/g, " ");
-    console.log(`[enroll] attempt from hostname="${safeHostname}" agentVersion="${safeVersion}"`);
+    debugLog("enroll", `attempt from hostname="${safeHostname}" agentVersion="${safeVersion}"`);
 
     // Find all environments that have an enrollment token
     const environments = await prisma.environment.findMany({
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
         team: { select: { id: true } },
       },
     });
-    console.log(`[enroll] found ${environments.length} candidate environment(s)`);
+    debugLog("enroll", `found ${environments.length} candidate environment(s)`);
 
     // Try each environment's enrollment token
     let matchedEnv: (typeof environments)[0] | null = null;
@@ -79,7 +80,7 @@ export async function POST(request: Request) {
         metadata: { enrolledVia: "agent" },
       },
     });
-    console.log(`[enroll] SUCCESS -- node ${node.id} enrolled in "${matchedEnv.name}"`);
+    debugLog("enroll", `SUCCESS -- node ${node.id} enrolled in "${matchedEnv.name}"`);
 
     return NextResponse.json({
       nodeId: node.id,

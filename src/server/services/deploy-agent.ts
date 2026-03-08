@@ -103,6 +103,24 @@ export async function deployAgent(
   // 3. Create pipeline version (also marks pipeline as deployed)
   const gc = pipeline.globalConfig as Record<string, unknown> | null;
   const logLevel = (gc?.log_level as string) ?? null;
+
+  const nodesSnapshot = pipeline.nodes.map((n) => ({
+    id: n.id,
+    componentKey: n.componentKey,
+    componentType: n.componentType,
+    kind: n.kind,
+    config: n.config,
+    positionX: n.positionX,
+    positionY: n.positionY,
+    disabled: n.disabled,
+  }));
+  const edgesSnapshot = pipeline.edges.map((e) => ({
+    id: e.id,
+    sourceNodeId: e.sourceNodeId,
+    targetNodeId: e.targetNodeId,
+    sourcePort: e.sourcePort,
+  }));
+
   const version = await createVersion(
     pipelineId,
     configYamlBuilder ?? configYaml,
@@ -110,6 +128,8 @@ export async function deployAgent(
     changelog ?? (pipeline.isSystem ? "Deployed via system vector" : "Deployed via agent mode"),
     logLevel,
     gc,
+    nodesSnapshot,
+    edgesSnapshot,
   );
 
   // 3b. Git sync (non-blocking side effect)
