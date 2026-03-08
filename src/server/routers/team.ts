@@ -6,6 +6,35 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { withAudit } from "@/server/middleware/audit";
 
+/**
+ * Block manual team assignment/role changes for OIDC users when their
+ * memberships are managed by an identity provider (SCIM or OIDC group sync).
+ * Flat SSO deployments (OIDC without group sync) allow manual assignment.
+ */
+export async function assertManualAssignmentAllowed(userId: string): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { authMethod: true },
+  });
+  if (!user) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+  }
+  if (user.authMethod !== "OIDC") return;
+
+  const settings = await prisma.systemSettings.findUnique({
+    where: { id: "singleton" },
+    select: { scimEnabled: true, oidcGroupSyncEnabled: true },
+  });
+  if (settings?.scimEnabled || settings?.oidcGroupSyncEnabled) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "This user's team membership is managed by your identity provider. " +
+        "Update their group assignments in your IdP instead.",
+    });
+  }
+}
+
 export const teamRouter = router({
   /** Get the current user's highest role across all teams */
   myRole: protectedProcedure.query(async ({ ctx }) => {
@@ -67,7 +96,7 @@ export const teamRouter = router({
         where: { id: input.id },
         include: {
           members: {
-            include: { user: { select: { id: true, name: true, email: true, image: true, authMethod: true, totpEnabled: true, lockedAt: true } } },
+            include: { user: { select: { id: true, name: true, email: true, image: true, authMethod: true, totpEnabled: true, lockedAt: true, scimExternalId: true } } },
           },
           _count: { select: { environments: true } },
         },
@@ -169,6 +198,8 @@ export const teamRouter = router({
         });
       }
 
+      await assertManualAssignmentAllowed(user.id);
+
       const existing = await prisma.teamMember.findUnique({
         where: { userId_teamId: { userId: user.id, teamId: input.teamId } },
       });
@@ -235,6 +266,7 @@ export const teamRouter = router({
           message: "Team member not found",
         });
       }
+      await assertManualAssignmentAllowed(input.userId);
       return prisma.teamMember.update({
         where: { id: member.id },
         data: { role: input.role },

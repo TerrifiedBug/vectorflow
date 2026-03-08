@@ -344,42 +344,22 @@ function AuditLogShippingSection() {
                 Configure sinks
               </Link>
             </Button>
-            {isDeployed ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  undeployMutation.mutate({ pipelineId: systemPipeline.id })
-                }
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={!!isDeployed}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    deployMutation.mutate({ pipelineId: systemPipeline.id, changelog: "Enabled system pipeline from settings" });
+                  } else {
+                    undeployMutation.mutate({ pipelineId: systemPipeline.id });
+                  }
+                }}
                 disabled={isToggling}
-              >
-                {undeployMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Disabling...
-                  </>
-                ) : (
-                  "Disable"
-                )}
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                onClick={() =>
-                  deployMutation.mutate({ pipelineId: systemPipeline.id, changelog: "Enabled system pipeline from settings" })
-                }
-                disabled={isToggling}
-              >
-                {deployMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Enabling...
-                  </>
-                ) : (
-                  "Enable"
-                )}
-              </Button>
-            )}
+              />
+              <span className="text-sm text-muted-foreground">
+                {isToggling ? (isDeployed ? "Disabling..." : "Enabling...") : (isDeployed ? "Active" : "Disabled")}
+              </span>
+            </div>
           </div>
         ) : (
           <div className="flex items-center gap-3">
@@ -699,10 +679,9 @@ function AuthSettings() {
 
     <Card>
       <CardHeader>
-        <CardTitle>OIDC Team & Role Mapping</CardTitle>
+        <CardTitle>IdP Group Mappings</CardTitle>
         <CardDescription>
-          Map OIDC groups to specific teams and roles. Users are assigned to teams
-          based on their group membership when signing in via SSO.
+          Map identity provider groups to teams and roles. Used by both OIDC login (via groups claim) and SCIM sync (via group membership).
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -890,6 +869,8 @@ function AuthSettings() {
         </form>
       </CardContent>
     </Card>
+    <Separator className="my-8" />
+    <ScimSettings />
     </div>
   );
 }
@@ -1364,26 +1345,37 @@ function TeamSettings() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Select
-                      value={member.role}
-                      disabled={updateRoleMutation.isPending}
-                      onValueChange={(role: "VIEWER" | "EDITOR" | "ADMIN") => {
-                        updateRoleMutation.mutate({
-                          teamId: team.id,
-                          userId: member.user.id,
-                          role,
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="w-[120px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="VIEWER">Viewer</SelectItem>
-                        <SelectItem value="EDITOR">Editor</SelectItem>
-                        <SelectItem value="ADMIN">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {(member.user.authMethod === "OIDC" || member.user.scimExternalId) ? (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="w-[120px] justify-center">
+                          {member.role}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground" title="Role managed by identity provider">
+                          <Lock className="h-3 w-3" />
+                        </span>
+                      </div>
+                    ) : (
+                      <Select
+                        value={member.role}
+                        disabled={updateRoleMutation.isPending}
+                        onValueChange={(role: "VIEWER" | "EDITOR" | "ADMIN") => {
+                          updateRoleMutation.mutate({
+                            teamId: team.id,
+                            userId: member.user.id,
+                            role,
+                          });
+                        }}
+                      >
+                        <SelectTrigger className="w-[120px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="VIEWER">Viewer</SelectItem>
+                          <SelectItem value="EDITOR">Editor</SelectItem>
+                          <SelectItem value="ADMIN">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                   </TableCell>
                   <TableCell>
                     {member.user.totpEnabled ? (
@@ -2962,7 +2954,7 @@ function BackupSettings() {
 
       {/* Warning Banner */}
       <Card className="border-yellow-500/50">
-        <CardContent className="flex items-start gap-3 pt-6">
+        <CardContent className="flex items-start gap-3 p-4">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-yellow-500" />
           <div className="text-sm text-muted-foreground">
             <p className="font-medium text-foreground">Important</p>
@@ -3326,10 +3318,6 @@ export default function SettingsPage() {
                 <ExternalLink className="mr-2 h-4 w-4" />
                 Audit Shipping
               </TabsTrigger>
-              <TabsTrigger value="scim">
-                <UserPlus className="mr-2 h-4 w-4" />
-                SCIM
-              </TabsTrigger>
               <TabsTrigger value="backup">
                 <HardDrive className="mr-2 h-4 w-4" />
                 Backup
@@ -3368,9 +3356,6 @@ export default function SettingsPage() {
             </TabsContent>
             <TabsContent value="audit-shipping" className="mt-6">
               <AuditLogShippingSection />
-            </TabsContent>
-            <TabsContent value="scim" className="mt-6">
-              <ScimSettings />
             </TabsContent>
             <TabsContent value="backup" className="mt-6">
               <BackupSettings />

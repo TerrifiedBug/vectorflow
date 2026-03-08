@@ -149,6 +149,7 @@ export const dashboardRouter = router({
             memoryUsedBytes: true,
             memoryTotalBytes: true,
             cpuSecondsTotal: true,
+            cpuSecondsIdle: true,
           },
         })
       : [];
@@ -227,11 +228,22 @@ export const dashboardRouter = router({
         unhealthyPipelines,
         rates: { eventsIn: eventsInRate, eventsOut: eventsOutRate, bytesIn: bytesInRate, bytesOut: bytesOutRate, errors: errorsRate },
         totals: { eventsIn: totalEventsIn, eventsOut: totalEventsOut, bytesIn: totalBytesIn, bytesOut: totalBytesOut, errors: totalErrors },
-        sparkline: (metricsByNode.get(node.id) ?? []).map((m) => ({
-          t: m.timestamp.getTime(),
-          mem: m.memoryTotalBytes ? Number(m.memoryUsedBytes) / Number(m.memoryTotalBytes) * 100 : 0,
-          cpu: Number(m.cpuSecondsTotal ?? 0),
-        })),
+        sparkline: (metricsByNode.get(node.id) ?? []).map((m, i, arr) => {
+          let cpu = 0;
+          if (i > 0) {
+            const prev = arr[i - 1];
+            const totalDelta = m.cpuSecondsTotal - prev.cpuSecondsTotal;
+            const idleDelta = m.cpuSecondsIdle - prev.cpuSecondsIdle;
+            if (totalDelta > 0) {
+              cpu = Math.max(0, Math.min(100, ((totalDelta - idleDelta) / totalDelta) * 100));
+            }
+          }
+          return {
+            t: m.timestamp.getTime(),
+            mem: m.memoryTotalBytes ? Number(m.memoryUsedBytes) / Number(m.memoryTotalBytes) * 100 : 0,
+            cpu,
+          };
+        }),
       };
     });
   }),
@@ -683,6 +695,7 @@ export const dashboardRouter = router({
                 nodeId: true,
                 timestamp: true,
                 cpuSecondsTotal: true,
+                cpuSecondsIdle: true,
                 memoryUsedBytes: true,
                 memoryTotalBytes: true,
                 diskReadBytes: true,
@@ -803,6 +816,7 @@ export const dashboardRouter = router({
         nodeId: string;
         timestamp: Date;
         cpuSecondsTotal: number;
+        cpuSecondsIdle: number;
         memoryUsedBytes: bigint;
         memoryTotalBytes: bigint;
         diskReadBytes: bigint;
@@ -826,8 +840,11 @@ export const dashboardRouter = router({
           const dtSec = (t - new Date(prev.timestamp).getTime()) / 1000;
           if (dtSec <= 0) continue;
 
-          const cpuDelta = curr.cpuSecondsTotal - prev.cpuSecondsTotal;
-          const cpuPct = Math.max(0, Math.min(100, (cpuDelta / dtSec) * 100));
+          const cpuTotalDelta = curr.cpuSecondsTotal - prev.cpuSecondsTotal;
+          const cpuIdleDelta = curr.cpuSecondsIdle - prev.cpuSecondsIdle;
+          const cpuPct = cpuTotalDelta > 0
+            ? Math.max(0, Math.min(100, ((cpuTotalDelta - cpuIdleDelta) / cpuTotalDelta) * 100))
+            : 0;
           addPoint(cpu, label, t, cpuPct);
 
           const memTotal = Number(curr.memoryTotalBytes);

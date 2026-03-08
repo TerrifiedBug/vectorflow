@@ -3,6 +3,7 @@ import { writeFile, mkdir } from "fs/promises";
 import { dirname, join } from "path";
 import yaml from "js-yaml";
 import { AUDIT_LOG_PATH } from "@/server/services/audit";
+import { debugLog } from "@/lib/logger";
 
 const VECTOR_BIN = process.env.VF_VECTOR_BIN ?? "vector";
 const VECTORFLOW_DATA_DIR = join(process.cwd(), ".vectorflow");
@@ -49,7 +50,7 @@ export async function startSystemVector(configYaml: string): Promise<void> {
   vectorProcess = proc;
 
   proc.stdout?.on("data", (data: Buffer) => {
-    console.log(`[system-vector stdout] ${data.toString().trimEnd()}`);
+    debugLog("system-vector", data.toString().trimEnd());
   });
 
   proc.stderr?.on("data", (data: Buffer) => {
@@ -57,9 +58,7 @@ export async function startSystemVector(configYaml: string): Promise<void> {
   });
 
   proc.on("exit", (code, signal) => {
-    console.log(
-      `System Vector process exited with code ${code}, signal ${signal}`,
-    );
+    debugLog("system-vector", `process exited with code ${code}, signal ${signal}`);
     // Only nullify if this is still the current process (not replaced by a restart)
     if (vectorProcess === proc) {
       vectorProcess = null;

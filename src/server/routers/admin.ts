@@ -5,6 +5,8 @@ import bcrypt from "bcryptjs";
 import { router, protectedProcedure, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
+import { writeAuditLog } from "@/server/services/audit";
+import { assertManualAssignmentAllowed } from "@/server/routers/team";
 
 export const adminRouter = router({
   /** List all platform users with their team memberships */
@@ -43,6 +45,8 @@ export const adminRouter = router({
       role: z.enum(["VIEWER", "EDITOR", "ADMIN"]),
     }))
     .mutation(async ({ input }) => {
+      await assertManualAssignmentAllowed(input.userId);
+
       const existing = await prisma.teamMember.findUnique({
         where: { userId_teamId: { userId: input.userId, teamId: input.teamId } },
       });
@@ -57,7 +61,6 @@ export const adminRouter = router({
   /** Delete a user and all their data */
   deleteUser: protectedProcedure
     .use(requireSuperAdmin())
-    .use(withAudit("admin.user_deleted", "User"))
     .input(z.object({ userId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       if (input.userId === ctx.session.user!.id!) {
@@ -68,6 +71,24 @@ export const adminRouter = router({
       if (!user) {
         throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
       }
+
+      // Write audit log BEFORE deletion with userId: null to avoid FK violation.
+      // The user record won't exist after the transaction, so we capture
+      // their identity in userEmail/userName/metadata instead.
+      await writeAuditLog({
+        userId: null,
+        action: "admin.user_deleted",
+        entityType: "User",
+        entityId: input.userId,
+        metadata: {
+          deletedUserEmail: user.email,
+          deletedUserName: user.name,
+          deletedById: ctx.session.user!.id!,
+        },
+        ipAddress: (ctx as Record<string, unknown>).ipAddress as string | null ?? null,
+        userEmail: ctx.session.user!.email ?? null,
+        userName: ctx.session.user!.name ?? null,
+      });
 
       // Clean up references and delete user atomically
       await prisma.$transaction([

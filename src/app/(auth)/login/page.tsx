@@ -60,6 +60,7 @@ function LoginPageContent() {
   const [oidcStatus, setOidcStatus] = useState<{
     enabled: boolean;
     displayName: string;
+    localAuthDisabled: boolean;
   } | null>(null);
   const [checkingSetup, setCheckingSetup] = useState(true);
 
@@ -76,7 +77,7 @@ function LoginPageContent() {
         router.replace("/setup");
         return;
       }
-      setOidcStatus(oidc as { enabled: boolean; displayName: string });
+      setOidcStatus(oidc as { enabled: boolean; displayName: string; localAuthDisabled: boolean });
       setCheckingSetup(false);
     });
   }, [router]);
@@ -136,7 +137,48 @@ function LoginPageContent() {
     );
   }
 
-  return (
+  if (oidcStatus?.localAuthDisabled && !oidcStatus?.enabled) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl">Sign in unavailable</CardTitle>
+          <CardDescription>
+            Local authentication is disabled but SSO is not configured.
+            Contact your administrator.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  return oidcStatus?.localAuthDisabled && oidcStatus?.enabled ? (
+    <Card>
+      <CardHeader className="text-center pb-4">
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+          <Shield className="h-6 w-6 text-primary" />
+        </div>
+        <CardTitle className="text-2xl">Sign in</CardTitle>
+        <CardDescription>
+          Use your organization&apos;s single sign-on to access your account.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4 pt-0">
+        {error && (
+          <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive text-center">
+            {error}
+          </div>
+        )}
+        <Button
+          type="button"
+          className="w-full"
+          onClick={handleSsoLogin}
+        >
+          <Shield className="mr-2 h-4 w-4" />
+          Sign in with {oidcStatus.displayName}
+        </Button>
+      </CardContent>
+    </Card>
+  ) : (
     <Card>
       <CardHeader>
         <CardTitle className="text-2xl">

@@ -14,8 +14,9 @@ model User {
   image              String?
   passwordHash       String?
   authMethod         AuthMethod   @default(LOCAL)
-  memberships        TeamMember[]
-  accounts           Account[]
+  memberships            TeamMember[]
+  scimGroupMemberships   ScimGroupMember[]
+  accounts               Account[]
   lockedAt           DateTime?
   lockedBy           String?
   isSuperAdmin       Boolean      @default(false)
@@ -53,12 +54,32 @@ model Team {
   createdAt        DateTime      @default(now())
 }
 
+model ScimGroup {
+  id          String            @id @default(cuid())
+  displayName String            @unique
+  externalId  String?           @unique
+  members     ScimGroupMember[]
+  createdAt   DateTime          @default(now())
+}
+
+model ScimGroupMember {
+  id          String    @id @default(cuid())
+  scimGroupId String
+  userId      String
+  scimGroup   ScimGroup @relation(fields: [scimGroupId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([scimGroupId, userId])
+}
+
 model TeamMember {
   id     String @id @default(cuid())
   userId String
   teamId String
   role   Role
-  user   User   @relation(fields: [userId], references: [id])
+  source String @default("manual")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   team   Team   @relation(fields: [teamId], references: [id])
 
   @@unique([userId, teamId])
@@ -117,6 +138,7 @@ model VectorNode {
   os               String?
   deploymentMode   DeploymentMode       @default(UNKNOWN)
   pendingAction    Json?
+  lastUpdateError  String?
   maintenanceMode  Boolean              @default(false)
   maintenanceModeAt DateTime?
   labels           Json?                @default("{}")
@@ -228,6 +250,7 @@ model Pipeline {
   sampleRequests  EventSampleRequest[]
   eventSamples    EventSample[]
   slis            PipelineSli[]
+  enrichMetadata    Boolean              @default(false)
   tags              Json?                @default("[]")   // string[] of classification tags like ["PII", "PCI-DSS"]
   deployRequests  DeployRequest[]
   createdAt       DateTime             @default(now())
@@ -497,8 +520,8 @@ model VrlSnippet {
   description String?
   category    String
   code        String
-  createdBy   String
-  creator     User     @relation(fields: [createdBy], references: [id])
+  createdBy   String?
+  creator     User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -512,8 +535,8 @@ model DeployRequest {
   pipeline        Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   environmentId   String
   environment     Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  requestedById   String
-  requestedBy     User        @relation("deployRequester", fields: [requestedById], references: [id])
+  requestedById   String?
+  requestedBy     User?       @relation("deployRequester", fields: [requestedById], references: [id], onDelete: SetNull)
   configYaml      String
   changelog       String
   nodeSelector    Json?
@@ -653,8 +676,8 @@ model ServiceAccount {
   environmentId   String
   environment     Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
   permissions     Json     // string[] of permission names
-  createdById     String
-  createdBy       User     @relation(fields: [createdById], references: [id])
+  createdById     String?
+  createdBy       User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
   lastUsedAt      DateTime?
   expiresAt       DateTime?
   enabled         Boolean  @default(true)

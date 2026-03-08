@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
@@ -43,7 +42,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { PipelineSettings, useHasGlobalConfigContent } from "@/components/flow/pipeline-settings";
+import { PipelineSettings } from "@/components/flow/pipeline-settings";
 import { cn } from "@/lib/utils";
 import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml, generateVectorToml, importVectorConfig } from "@/lib/config-generator";
@@ -118,7 +117,6 @@ export function FlowToolbar({
   const removeEdge = useFlowStore((s) => s.removeEdge);
   const loadGraph = useFlowStore((s) => s.loadGraph);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const hasGlobalContent = useHasGlobalConfigContent();
   const [versionsOpen, setVersionsOpen] = useState(false);
 
   const trpc = useTRPC();
@@ -132,6 +130,8 @@ export function FlowToolbar({
     ),
   );
   const healthStatus = healthQuery.data?.status ?? null;
+  const sliTotal = healthQuery.data?.slis?.length ?? 0;
+  const slisBreached = healthQuery.data?.slis?.filter((s: { status: string }) => s.status === "breached").length ?? 0;
 
   // Query pending deploy requests for this pipeline
   const pendingRequestsQuery = useQuery({
@@ -399,11 +399,8 @@ export function FlowToolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="relative h-7 w-7 p-0" aria-label="Pipeline settings">
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Pipeline settings">
                   <Settings className="h-4 w-4" />
-                  {hasGlobalContent && (
-                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-blue-500" />
-                  )}
                 </Button>
               </PopoverTrigger>
             </TooltipTrigger>
@@ -416,18 +413,22 @@ export function FlowToolbar({
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 
-        {/* Pending approval badge */}
+        {/* Pending approval indicator */}
         {pendingRequest && (
-          <div className="flex items-center gap-1.5 px-1">
-            <Badge variant="outline" className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 gap-1 text-xs">
-              <Clock className="h-3 w-3" />
-              Pending Approval
-              {pendingRequest.requestedBy && (
-                <span className="text-amber-600/70 dark:text-amber-300/70">
-                  by {pendingRequest.requestedBy.name ?? pendingRequest.requestedBy.email}
+          <div className="flex items-center gap-0.5 px-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-md text-amber-600 dark:text-amber-400">
+                  <Clock className="h-4 w-4" />
                 </span>
-              )}
-            </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                Pending Approval
+                {pendingRequest.requestedBy && (
+                  <> by {pendingRequest.requestedBy.name ?? pendingRequest.requestedBy.email}</>
+                )}
+              </TooltipContent>
+            </Tooltip>
             {isMyRequest && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -469,22 +470,18 @@ export function FlowToolbar({
               {processStatus === "CRASHED" && "Crashed"}
               {processStatus === "PENDING" && "Pending..."}
             </span>
-            {/* Health SLI indicator dot */}
+            {/* Health SLI badge */}
             {healthStatus === "healthy" && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="h-2 w-2 rounded-full bg-green-500" />
-                </TooltipTrigger>
-                <TooltipContent>All SLIs met</TooltipContent>
-              </Tooltip>
+              <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                SLIs: OK
+              </span>
             )}
             {healthStatus === "degraded" && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="h-2 w-2 rounded-full bg-yellow-500" />
-                </TooltipTrigger>
-                <TooltipContent>One or more SLIs breached</TooltipContent>
-              </Tooltip>
+              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:text-yellow-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
+                SLIs: {slisBreached}/{sliTotal} breached
+              </span>
             )}
           </div>
         )}

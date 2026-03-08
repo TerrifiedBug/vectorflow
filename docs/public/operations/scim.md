@@ -13,7 +13,7 @@ SCIM provisioning automates the user lifecycle:
 | **Deactivate user** | The user account is locked, preventing login |
 | **Delete user** | The user account is locked (not deleted, to preserve audit history) |
 
-SCIM Groups are mapped to VectorFlow Teams. When your IdP pushes group membership changes, users are added to or removed from teams.
+SCIM group membership is tracked internally — VectorFlow knows exactly which IdP groups each user belongs to. When your IdP pushes group membership changes, VectorFlow reconciles team memberships based on the configured [group mapping table](authentication.md#group-mapping), adding users to mapped teams and removing them when they no longer qualify.
 
 ## Setup
 
@@ -21,7 +21,7 @@ SCIM Groups are mapped to VectorFlow Teams. When your IdP pushes group membershi
 {% step %}
 ### Enable SCIM in VectorFlow
 
-Navigate to **Settings > SCIM** (Super Admin required). Toggle **Enable SCIM** on.
+Navigate to **Settings > Auth** (Super Admin required). Toggle **Enable SCIM** on.
 {% endstep %}
 {% step %}
 ### Generate a bearer token
@@ -52,6 +52,36 @@ Enter the SCIM base URL and bearer token into your IdP's SCIM provisioning setti
 Test the SCIM connection from your IdP, then assign users and groups to the VectorFlow application in your IdP.
 {% endstep %}
 {% endstepper %}
+
+## Group lifecycle and reconciliation
+
+SCIM group membership is tracked internally — VectorFlow maintains a record of exactly which IdP groups each user belongs to via SCIM. When group membership changes, VectorFlow reconciles team memberships using the shared [group mapping table](authentication.md#group-mapping).
+
+### How SCIM Group operations work
+
+| Operation | What happens |
+|-----------|-------------|
+| **POST /Groups** | Creates the group and processes initial members. Each member's team memberships are reconciled against the mapping table. |
+| **PATCH add members** | Adds users to the group and reconciles their team memberships — users gain access to mapped teams with the configured role. |
+| **PATCH remove members** | Removes users from the group and reconciles — if a user no longer belongs to any group that maps to a given team, their membership on that team is removed. |
+| **PUT /Groups** | Full member sync. VectorFlow compares the provided member list against the current membership, adds missing members, removes absent members, and reconciles all affected users. |
+| **DELETE /Groups** | Deletes the group, cascading to all group membership records. All affected users' team memberships are reconciled (memberships that were only justified by the deleted group are removed). |
+| **PATCH displayName** | Updates the group name. If the new name matches a different mapping, team memberships are reconciled accordingly for all group members. |
+
+### Role assignment
+
+When SCIM pushes group membership changes, VectorFlow assigns roles using the same team mappings configured for OIDC:
+
+1. If **Team Mappings** are configured in **Settings > Team & Role Mapping**, the mapping's role is used
+2. If a user is in multiple groups that map to the same team, the **highest role wins** (Admin > Editor > Viewer)
+3. If no mapping matches, the **Default Role** is used
+4. If no default role is set, `VIEWER` is assigned
+
+This ensures consistent role assignment regardless of whether sync happens via SCIM push or OIDC login.
+
+{% hint style="info" %}
+**Manual assignments are preserved.** Team memberships assigned manually in the VectorFlow UI are never modified by SCIM group sync. Only memberships created by group sync are subject to reconciliation.
+{% endhint %}
 
 ## IdP-specific instructions
 
@@ -108,10 +138,12 @@ Any SCIM 2.0 compatible identity provider can integrate with VectorFlow. Configu
 | `PUT` | `/api/scim/v2/Users/:id` | Replace a user |
 | `PATCH` | `/api/scim/v2/Users/:id` | Partial update (commonly used for deactivation) |
 | `DELETE` | `/api/scim/v2/Users/:id` | Deactivate a user (locks the account) |
-| `GET` | `/api/scim/v2/Groups` | List groups (maps to VectorFlow teams) |
+| `GET` | `/api/scim/v2/Groups` | List groups |
+| `POST` | `/api/scim/v2/Groups` | Create a group and process initial members |
 | `GET` | `/api/scim/v2/Groups/:id` | Get a group |
-| `PATCH` | `/api/scim/v2/Groups/:id` | Update group membership |
-| `PUT` | `/api/scim/v2/Groups/:id` | Replace group |
+| `PATCH` | `/api/scim/v2/Groups/:id` | Update group membership (add/remove members, rename) |
+| `PUT` | `/api/scim/v2/Groups/:id` | Replace group (full member sync) |
+| `DELETE` | `/api/scim/v2/Groups/:id` | Delete group and cascade membership removal |
 
 ### Filtering
 
@@ -147,5 +179,19 @@ SCIM provisioning works best alongside OIDC/SSO. Users created via SCIM receive 
 | IdP test connection fails | Verify the SCIM base URL is reachable from your IdP. Check that the bearer token is correct and SCIM is enabled in VectorFlow settings. |
 | Users not being created | Check that "Create Users" is enabled in your IdP's provisioning settings. Review the IdP provisioning logs for error details. |
 | Users not being deactivated | Check that "Deactivate Users" is enabled in your IdP. VectorFlow locks the account (sets `lockedAt`) rather than deleting it. |
-| Group membership not syncing | SCIM Groups map to VectorFlow Teams. Ensure the groups are assigned to the VectorFlow application in your IdP. New members are added with the Viewer role by default. |
-| Token expired/invalid | Generate a new token from **Settings > SCIM** and update it in your IdP. The previous token is invalidated immediately. |
+| Group membership not syncing | SCIM Groups are mapped to VectorFlow Teams via the shared group mapping table in **Settings > Team & Role Mapping**. Ensure groups are assigned to the VectorFlow application in your IdP and that corresponding mappings exist. Without a matching mapping, group membership is tracked but no team assignment is created. |
+| Token expired/invalid | Generate a new token from **Settings > Auth** and update it in your IdP. The previous token is invalidated immediately. |
+
+### SCIM sync returns HTML error
+
+If your IdP reports an error like `invalid character '<' looking for beginning of value`, the SCIM base URL may be incorrect. Ensure it is set to:
+
+```
+https://your-vectorflow-url/api/scim/v2
+```
+
+VectorFlow exposes a `ServiceProviderConfig` endpoint at `/api/scim/v2/ServiceProviderConfig` that your IdP can use to verify connectivity.
+
+### Roles not updating via SCIM
+
+Ensure that **Team Mappings** are configured in **Settings > Team & Role Mapping**. Without team mappings, all SCIM-provisioned members default to the **VIEWER** role. If a user belongs to multiple groups that map to the same team, the highest role wins (Admin > Editor > Viewer).

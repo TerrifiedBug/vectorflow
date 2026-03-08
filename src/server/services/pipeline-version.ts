@@ -9,7 +9,7 @@ import { TRPCError } from "@trpc/server";
  */
 export async function createVersion(
   pipelineId: string,
-  configYaml: string,
+  configYaml: string | ((version: number) => string),
   userId: string,
   changelog?: string,
   logLevel?: string | null,
@@ -25,12 +25,13 @@ export async function createVersion(
   });
 
   const nextVersion = (latest?.version ?? 0) + 1;
+  const finalYaml = typeof configYaml === "function" ? configYaml(nextVersion) : configYaml;
 
   const version = await prisma.pipelineVersion.create({
     data: {
       pipelineId,
       version: nextVersion,
-      configYaml,
+      configYaml: finalYaml,
       logLevel: logLevel ?? null,
       globalConfig: (globalConfig as Prisma.InputJsonValue) ?? undefined,
       nodesSnapshot: nodesSnapshot ? (nodesSnapshot as Prisma.InputJsonValue) : undefined,

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -98,6 +99,18 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
     }),
   );
 
+  const updateEnrichMutation = useMutation(
+    trpc.pipeline.update.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: pipelineQueryKey });
+        toast.success("Metadata enrichment updated");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to update enrichment setting");
+      },
+    }),
+  );
+
   const handleAddTag = (tag: string) => {
     if (!pipelineId || currentTags.includes(tag)) return;
     const newTags = [...currentTags, tag];
@@ -176,6 +189,28 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
         </Select>
       </div>
 
+      {/* Metadata Enrichment */}
+      {pipelineId && (
+        <>
+          <Separator />
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label>Enrich with VectorFlow metadata</Label>
+              <Switch
+                checked={pipeline?.enrichMetadata ?? false}
+                onCheckedChange={(checked) => {
+                  if (!pipelineId) return;
+                  updateEnrichMutation.mutate({ id: pipelineId, enrichMetadata: checked });
+                }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Adds <code className="text-[11px]">.vectorflow.environment</code>, <code className="text-[11px]">.vectorflow.pipeline_version</code>, and <code className="text-[11px]">.vectorflow.host</code> fields to events before sinks.
+            </p>
+          </div>
+        </>
+      )}
+
       {/* Classification Tags */}
       {pipelineId && (availableTags.length > 0 || currentTags.length > 0) && (
         <>
@@ -231,13 +266,13 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
 
       {/* Global Configuration JSON */}
       <Collapsible open={jsonOpen} onOpenChange={setJsonOpen}>
-        <CollapsibleTrigger className="flex w-full items-center gap-2 text-sm font-semibold">
+        <CollapsibleTrigger className="flex w-full items-center gap-2 text-sm font-medium">
           <ChevronRight
-            className={`h-4 w-4 transition-transform ${jsonOpen ? "rotate-90" : ""}`}
+            className={`h-4 w-4 shrink-0 transition-transform ${jsonOpen ? "rotate-90" : ""}`}
           />
-          Global Configuration (JSON)
+          <span className="text-left">Global Configuration (JSON)</span>
           {hasJsonContent && (
-            <Badge variant="secondary" className="ml-auto text-xs">
+            <Badge variant="secondary" className="ml-auto shrink-0 text-xs">
               configured
             </Badge>
           )}
@@ -357,13 +392,13 @@ function SliSettings({ pipelineId }: { pipelineId: string }) {
 
   return (
     <Collapsible open={sliOpen} onOpenChange={setSliOpen}>
-      <CollapsibleTrigger className="flex w-full items-center gap-2 text-sm font-semibold">
+      <CollapsibleTrigger className="flex w-full items-center gap-2 text-sm font-medium">
         <ChevronRight
-          className={`h-4 w-4 transition-transform ${sliOpen ? "rotate-90" : ""}`}
+          className={`h-4 w-4 shrink-0 transition-transform ${sliOpen ? "rotate-90" : ""}`}
         />
-        Health SLIs
+        <span className="text-left">Health SLIs</span>
         {slis.length > 0 && (
-          <Badge variant="secondary" className="ml-auto text-xs">
+          <Badge variant="secondary" className="ml-auto shrink-0 text-xs">
             {slis.length}
           </Badge>
         )}
@@ -469,15 +504,4 @@ function SliSettings({ pipelineId }: { pipelineId: string }) {
       </CollapsibleContent>
     </Collapsible>
   );
-}
-
-/**
- * Returns true when globalConfig has content beyond just log_level.
- * Used by the toolbar to show a dot indicator on the gear icon.
- */
-export function useHasGlobalConfigContent(): boolean {
-  const globalConfig = useFlowStore((s) => s.globalConfig);
-  if (!globalConfig) return false;
-  const keys = Object.keys(globalConfig).filter((k) => k !== "log_level");
-  return keys.length > 0;
 }

@@ -8,6 +8,7 @@ import { encrypt, decrypt } from "@/server/services/crypto";
 import { verifyTotpCode, verifyBackupCode } from "@/server/services/totp";
 import { authConfig } from "@/auth.config";
 import { writeAuditLog } from "@/server/services/audit";
+import { debugLog } from "@/lib/logger";
 import { headers } from "next/headers";
 
 async function getClientIp(): Promise<string | null> {
@@ -70,6 +71,10 @@ const credentialsProvider = Credentials({
     totpCode: { label: "2FA Code", type: "text" },
   },
   async authorize(credentials) {
+    if (process.env.VF_DISABLE_LOCAL_AUTH === "true") {
+      throw new Error("Local authentication is disabled");
+    }
+
     if (!credentials?.email || !credentials?.password) return null;
 
     const ipAddress = await getClientIp();
@@ -245,53 +250,51 @@ async function getAuthInstance() {
                 });
               }
 
-              // Group sync: map OIDC groups to teams/roles when enabled
+              // Group sync: reconcile team memberships from group claims
               if (settings?.oidcGroupSyncEnabled) {
                 const groupsClaim = settings.oidcGroupsClaim ?? "groups";
-                const userGroups = (profileData?.[groupsClaim] as string[] | undefined) ?? [];
-                console.log(`[oidc] User ${user.email} groups (claim "${groupsClaim}"):`, userGroups);
+                const tokenGroups = (profileData?.[groupsClaim] as string[] | undefined) ?? [];
+                debugLog("oidc", `User ${user.email} groups (claim "${groupsClaim}"):`, tokenGroups);
 
-                const teamMappings: Array<{group: string; teamId: string; role: string}> =
-                  settings.oidcTeamMappings ? (() => { try { return JSON.parse(settings.oidcTeamMappings!); } catch { return []; } })() : [];
+                let userGroupNames: string[];
 
-                if (teamMappings.length > 0) {
-                  const matchedMappings = teamMappings.filter((m) => userGroups.includes(m.group));
+                if (settings.scimEnabled) {
+                  // SCIM+OIDC mode: union of ScimGroupMember groups + token groups
+                  // OIDC does NOT write to ScimGroupMember (avoids Azure AD 200-group token limit)
+                  const scimGroups = await prisma.scimGroupMember.findMany({
+                    where: { userId: dbUser.id },
+                    include: { scimGroup: { select: { displayName: true } } },
+                  });
+                  const scimGroupNames = scimGroups.map((g) => g.scimGroup.displayName);
+                  userGroupNames = [...new Set([...scimGroupNames, ...tokenGroups])];
+                } else {
+                  // OIDC-only mode: use token groups directly
+                  userGroupNames = tokenGroups;
+                }
 
-                  if (matchedMappings.length > 0) {
-                    const roleLevel: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
-                    const teamRoleMap = new Map<string, string>();
-                    for (const m of matchedMappings) {
-                      const current = teamRoleMap.get(m.teamId);
-                      if (!current || (roleLevel[m.role] ?? 0) > (roleLevel[current] ?? 0)) {
-                        teamRoleMap.set(m.teamId, m.role);
-                      }
-                    }
+                debugLog("oidc", `User ${user.email} scimEnabled=${settings.scimEnabled}, final groups:`, userGroupNames);
+                const { reconcileUserTeamMemberships } = await import("@/server/services/group-mappings");
+                await prisma.$transaction(async (tx) => {
+                  await reconcileUserTeamMemberships(tx, dbUser.id, userGroupNames);
+                });
 
-                    for (const [teamId, role] of teamRoleMap) {
-                      const membership = await prisma.teamMember.findUnique({
-                        where: { userId_teamId: { userId: dbUser.id, teamId } },
-                      });
-                      if (!membership) {
-                        await prisma.teamMember.create({
-                          data: { userId: dbUser.id, teamId, role: role as "VIEWER" | "EDITOR" | "ADMIN" },
-                        });
-                      } else {
-                        await prisma.teamMember.update({
-                          where: { id: membership.id },
-                          data: { role: role as "VIEWER" | "EDITOR" | "ADMIN" },
-                        });
-                      }
-                    }
-                  } else if (settings.oidcDefaultTeamId) {
+                // Default team fallback: assign if reconciliation left the user with no memberships
+                if (settings.oidcDefaultTeamId) {
+                  const hasMembership = await prisma.teamMember.findFirst({
+                    where: { userId: dbUser.id },
+                  });
+                  if (!hasMembership) {
                     const defaultRole = settings.oidcDefaultRole ?? "VIEWER";
-                    const membership = await prisma.teamMember.findUnique({
+                    await prisma.teamMember.upsert({
                       where: { userId_teamId: { userId: dbUser.id, teamId: settings.oidcDefaultTeamId } },
+                      create: {
+                        userId: dbUser.id,
+                        teamId: settings.oidcDefaultTeamId,
+                        role: defaultRole,
+                        source: "group_mapping",
+                      },
+                      update: {},
                     });
-                    if (!membership) {
-                      await prisma.teamMember.create({
-                        data: { userId: dbUser.id, teamId: settings.oidcDefaultTeamId, role: defaultRole },
-                      });
-                    }
                   }
                 }
               }
@@ -395,10 +398,12 @@ export async function signOut(...args: any[]) {
 export async function getOidcStatus(): Promise<{
   enabled: boolean;
   displayName: string;
+  localAuthDisabled: boolean;
 }> {
   const oidc = await getOidcSettings();
   return {
     enabled: !!oidc,
     displayName: oidc?.displayName ?? "SSO",
+    localAuthDisabled: process.env.VF_DISABLE_LOCAL_AUTH === "true",
   };
 }

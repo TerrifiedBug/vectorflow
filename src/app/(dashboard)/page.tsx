@@ -201,7 +201,7 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => setCreateDialogOpen(true)}
-          className="shrink-0 flex items-center gap-1 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          className="ml-auto shrink-0 flex items-center gap-1 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
           New View

@@ -32,7 +32,7 @@ export async function deployAgent(
   // 1. Get pipeline with graph data
   const pipeline = await prisma.pipeline.findUnique({
     where: { id: pipelineId },
-    include: { nodes: true, edges: true },
+    include: { nodes: true, edges: true, environment: { select: { name: true } } },
   });
 
   if (!pipeline) {
@@ -43,9 +43,10 @@ export async function deployAgent(
   }
 
   let configYaml: string;
+  let configYamlBuilder: ((version: number) => string) | null = null;
 
   if (prebuiltConfigYaml) {
-    // Use the reviewed snapshot as-is
+    // Use the reviewed snapshot as-is (enrichment was baked in at request time)
     configYaml = prebuiltConfigYaml;
   } else {
     // Convert DB nodes/edges to the format generateVectorYaml expects.
@@ -72,11 +73,23 @@ export async function deployAgent(
     }));
 
     // 2. Generate YAML from current pipeline state
-    configYaml = generateVectorYaml(
+    const buildYaml = (version?: number) => generateVectorYaml(
       flowNodes as Parameters<typeof generateVectorYaml>[0],
       flowEdges as Parameters<typeof generateVectorYaml>[1],
       pipeline.globalConfig as Record<string, unknown> | null,
+      pipeline.enrichMetadata && version
+        ? { environmentName: pipeline.environment.name, pipelineVersion: version }
+        : null,
     );
+
+    // Use non-enriched YAML for validation (enrichment doesn't affect validity)
+    configYaml = buildYaml();
+
+    // When enrichment is enabled, pass a builder so createVersion can embed
+    // the correct version number atomically
+    if (pipeline.enrichMetadata) {
+      configYamlBuilder = (v: number) => buildYaml(v);
+    }
   }
 
   const validation = await validateConfig(configYaml);
@@ -110,7 +123,7 @@ export async function deployAgent(
 
   const version = await createVersion(
     pipelineId,
-    configYaml,
+    configYamlBuilder ?? configYaml,
     userId,
     changelog ?? (pipeline.isSystem ? "Deployed via system vector" : "Deployed via agent mode"),
     logLevel,
@@ -136,7 +149,7 @@ export async function deployAgent(
       },
       environment.name,
       pipeline.name,
-      configYaml,
+      version.configYaml,
       { name: user?.name ?? (isServiceAccount ? "VectorFlow Service Account" : "VectorFlow User"), email: user?.email ?? "noreply@vectorflow" },
       changelog ?? `Deploy pipeline: ${pipeline.name}`,
     );
@@ -148,7 +161,7 @@ export async function deployAgent(
   // 4. For system pipelines, start the local Vector process instead of
   //    relying on agents to pick up the config.
   if (pipeline.isSystem) {
-    await startSystemVector(configYaml);
+    await startSystemVector(version.configYaml);
   }
 
   return {

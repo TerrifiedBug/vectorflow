@@ -117,7 +117,7 @@ export function VersionHistoryDialog({
           onOpenChange(next);
         }}
       >
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Version History</DialogTitle>
             <DialogDescription>
@@ -139,12 +139,12 @@ export function VersionHistoryDialog({
               </p>
             </div>
           ) : (
-            <ScrollArea className="max-h-[60vh]">
+            <ScrollArea className="flex-1 min-h-0">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[80px]">Version</TableHead>
-                    <TableHead>Changelog</TableHead>
+                    <TableHead className="max-w-0">Changelog</TableHead>
                     <TableHead className="w-[180px]">Created</TableHead>
                     <TableHead className="w-[120px] text-right">
                       Actions
@@ -171,8 +171,8 @@ export function VersionHistoryDialog({
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <span className="text-sm text-muted-foreground">
+                        <TableCell className="max-w-0">
+                          <span className="text-sm text-muted-foreground truncate block">
                             {version.changelog || "No changelog"}
                           </span>
                         </TableCell>

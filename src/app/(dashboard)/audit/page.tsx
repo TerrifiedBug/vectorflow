@@ -335,16 +335,17 @@ export default function AuditPage() {
         </div>
       ) : (
         <>
-          <Table>
+        <div className="overflow-x-auto">
+          <Table className="table-fixed w-full">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[30px]" />
-                <TableHead>Timestamp</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>IP Address</TableHead>
-                <TableHead>Action</TableHead>
-                <TableHead>Entity Type</TableHead>
-                <TableHead>Entity ID</TableHead>
+                <TableHead className="w-[170px]">Timestamp</TableHead>
+                <TableHead className="w-[100px]">User</TableHead>
+                <TableHead className="w-[120px]">IP Address</TableHead>
+                <TableHead className="w-[180px]">Action</TableHead>
+                <TableHead className="w-[110px]">Entity Type</TableHead>
+                <TableHead className="w-[180px]">Entity ID</TableHead>
                 <TableHead>Details</TableHead>
               </TableRow>
             </TableHeader>
@@ -387,7 +388,8 @@ export default function AuditPage() {
                       <TableCell>
                         <Badge
                           variant="outline"
-                          className={getActionColor(entry.action)}
+                          className={`max-w-full truncate ${getActionColor(entry.action)}`}
+                          title={entry.action}
                         >
                           {entry.action}
                         </Badge>
@@ -411,21 +413,25 @@ export default function AuditPage() {
                     {isExpanded && hasDetails && (
                       <TableRow className="bg-muted/30 hover:bg-muted/30">
                         <TableCell colSpan={8} className="p-4">
-                          <div className="space-y-3">
+                          <div className="space-y-3 min-w-0">
                             {hasMetadata && (
                               <div>
                                 <p className="text-xs font-medium text-muted-foreground mb-2">Details</p>
-                                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+                                <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-xs">
                                   {Object.entries(entry.metadata as Record<string, unknown>).map(([key, value]) => (
                                     <Fragment key={key}>
-                                      <span className="font-medium text-muted-foreground capitalize">
+                                      <span className="font-medium text-muted-foreground capitalize whitespace-nowrap">
                                         {key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").trim()}
                                       </span>
-                                      <span className="font-mono">
-                                        {typeof value === "object" && value !== null
-                                          ? JSON.stringify(value, null, 2)
-                                          : String(value ?? "\u2014")}
-                                      </span>
+                                      {typeof value === "object" && value !== null ? (
+                                        <pre className="font-mono whitespace-pre-wrap break-all overflow-hidden">
+                                          {JSON.stringify(value, null, 2)}
+                                        </pre>
+                                      ) : (
+                                        <span className="font-mono break-all">
+                                          {String(value ?? "\u2014")}
+                                        </span>
+                                      )}
                                     </Fragment>
                                   ))}
                                 </div>
@@ -434,17 +440,21 @@ export default function AuditPage() {
                             {hasDiff && (
                               <div>
                                 <p className="text-xs font-medium text-muted-foreground mb-2">Changes</p>
-                                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+                                <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-xs">
                                   {Object.entries(entry.diff as Record<string, unknown>).map(([key, value]) => (
                                     <Fragment key={key}>
-                                      <span className="font-medium text-muted-foreground capitalize">
+                                      <span className="font-medium text-muted-foreground capitalize whitespace-nowrap">
                                         {key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").trim()}
                                       </span>
-                                      <span className="font-mono">
-                                        {typeof value === "object" && value !== null
-                                          ? JSON.stringify(value, null, 2)
-                                          : String(value ?? "\u2014")}
-                                      </span>
+                                      {typeof value === "object" && value !== null ? (
+                                        <pre className="font-mono whitespace-pre-wrap break-all overflow-hidden">
+                                          {JSON.stringify(value, null, 2)}
+                                        </pre>
+                                      ) : (
+                                        <span className="font-mono break-all">
+                                          {String(value ?? "\u2014")}
+                                        </span>
+                                      )}
                                     </Fragment>
                                   ))}
                                 </div>
@@ -460,20 +470,22 @@ export default function AuditPage() {
             </TableBody>
           </Table>
 
-          {/* Load more */}
-          {logsQuery.hasNextPage && (
-            <div className="flex justify-center pt-4">
-              <Button
-                variant="outline"
-                onClick={() => logsQuery.fetchNextPage()}
-                disabled={logsQuery.isFetchingNextPage}
-              >
-                {logsQuery.isFetchingNextPage
-                  ? "Loading more..."
-                  : "Load more"}
-              </Button>
-            </div>
-          )}
+        </div>
+
+        {/* Load more */}
+        {logsQuery.hasNextPage && (
+          <div className="flex justify-center pt-4">
+            <Button
+              variant="outline"
+              onClick={() => logsQuery.fetchNextPage()}
+              disabled={logsQuery.isFetchingNextPage}
+            >
+              {logsQuery.isFetchingNextPage
+                ? "Loading more..."
+                : "Load more"}
+            </Button>
+          </div>
+        )}
         </>
       )}
     </div>

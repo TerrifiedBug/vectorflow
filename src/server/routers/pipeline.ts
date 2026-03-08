@@ -74,6 +74,8 @@ export const pipelineRouter = router({
           updatedAt: true,
           globalConfig: true,
           tags: true,
+          enrichMetadata: true,
+          environment: { select: { name: true } },
           createdBy: { select: { name: true, email: true, image: true } },
           updatedBy: { select: { name: true, email: true, image: true } },
           nodeStatuses: {
@@ -146,10 +148,17 @@ export const pipelineRouter = router({
                 target: e.targetNodeId,
                 ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
               }));
+              const enrichment = p.enrichMetadata
+                ? {
+                    environmentName: p.environment.name,
+                    pipelineVersion: latestVersion.version,
+                  }
+                : null;
               const currentYaml = generateVectorYaml(
                 flowNodes as Parameters<typeof generateVectorYaml>[0],
                 flowEdges as Parameters<typeof generateVectorYaml>[1],
                 p.globalConfig as Record<string, unknown> | null,
+                enrichment,
               );
               hasUndeployedChanges = currentYaml !== latestVersion.configYaml;
               if (!hasUndeployedChanges) {
@@ -195,7 +204,7 @@ export const pipelineRouter = router({
         include: {
           nodes: true,
           edges: true,
-          environment: { select: { teamId: true, gitOpsMode: true } },
+          environment: { select: { teamId: true, gitOpsMode: true, name: true } },
           nodeStatuses: {
             select: { status: true },
           },
@@ -222,7 +231,7 @@ export const pipelineRouter = router({
         const latestVersion = await prisma.pipelineVersion.findFirst({
           where: { pipelineId: input.id },
           orderBy: { version: "desc" },
-          select: { configYaml: true, logLevel: true },
+          select: { configYaml: true, logLevel: true, version: true },
         });
 
         if (latestVersion) {
@@ -243,10 +252,17 @@ export const pipelineRouter = router({
             target: e.targetNodeId,
             ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
           }));
+          const enrichment = pipeline.enrichMetadata
+            ? {
+                environmentName: pipeline.environment.name,
+                pipelineVersion: latestVersion.version,
+              }
+            : null;
           const currentYaml = generateVectorYaml(
             flowNodes as Parameters<typeof generateVectorYaml>[0],
             flowEdges as Parameters<typeof generateVectorYaml>[1],
             pipeline.globalConfig as Record<string, unknown> | null,
+            enrichment,
           );
           hasConfigChanges = currentYaml !== latestVersion.configYaml;
 
@@ -365,12 +381,13 @@ export const pipelineRouter = router({
           (arr) => new Set(arr).size === arr.length,
           { message: "Duplicate tags are not allowed" },
         ).optional(),
+        enrichMetadata: z.boolean().optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.updated", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
-      const { id, tags, ...data } = input;
+      const { id, tags, enrichMetadata, ...data } = input;
       const existing = await prisma.pipeline.findUnique({
         where: { id },
         select: { id: true, tags: true, environment: { select: { teamId: true } } },
@@ -411,6 +428,7 @@ export const pipelineRouter = router({
         data: {
           ...data,
           ...(tags !== undefined ? { tags } : {}),
+          ...(enrichMetadata !== undefined ? { enrichMetadata } : {}),
           updatedById: ctx.session.user?.id,
         },
       });
@@ -661,6 +679,15 @@ export const pipelineRouter = router({
           message: "Pipeline not found",
         });
       }
+
+      // Set audit metadata summary instead of full input
+      const nodeTypes = input.nodes.map((n) => `${n.kind.toLowerCase()}:${n.componentType}`);
+      (ctx as Record<string, unknown>).auditMetadata = {
+        pipelineId: input.pipelineId,
+        nodeCount: input.nodes.length,
+        edgeCount: input.edges.length,
+        nodeTypes: [...new Set(nodeTypes)],
+      };
 
       return prisma.$transaction(async (tx) => {
         await tx.pipeline.update({
