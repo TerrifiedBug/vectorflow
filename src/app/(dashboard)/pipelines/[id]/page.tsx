@@ -114,6 +114,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const [templateOpen, setTemplateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [undeployOpen, setUndeployOpen] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
 
@@ -235,6 +236,21 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       },
       onError: (error) => {
         toast.error(error.message || "Failed to delete pipeline");
+      },
+    })
+  );
+
+  // Discard changes mutation
+  const discardMutation = useMutation(
+    trpc.pipeline.discardChanges.mutationOptions({
+      onSuccess: () => {
+        markClean();
+        queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey() });
+        toast.success("Changes discarded — restored to last deployed state");
+        setDiscardOpen(false);
+      },
+      onError: (err) => {
+        toast.error("Failed to discard changes", { description: err.message });
       },
     })
   );
@@ -390,6 +406,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
                 : null
             }
             gitOpsMode={pipelineQuery.data?.gitOpsMode}
+            onDiscardChanges={() => setDiscardOpen(true)}
           />
         </div>
         <div className="flex items-center px-3">
@@ -459,6 +476,28 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
           setUndeployOpen(false);
         }}
       />
+      <Dialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard unsaved changes?</DialogTitle>
+            <DialogDescription>
+              This will revert the pipeline to its last deployed state. Any saved changes that haven&apos;t been deployed will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDiscardOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={discardMutation.isPending}
+              onClick={() => discardMutation.mutate({ pipelineId })}
+            >
+              {discardMutation.isPending ? "Discarding..." : "Discard changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

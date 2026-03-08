@@ -6,6 +6,7 @@ import { router, protectedProcedure, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
+import { assertManualAssignmentAllowed } from "@/server/routers/team";
 
 export const adminRouter = router({
   /** List all platform users with their team memberships */
@@ -44,6 +45,8 @@ export const adminRouter = router({
       role: z.enum(["VIEWER", "EDITOR", "ADMIN"]),
     }))
     .mutation(async ({ input }) => {
+      await assertManualAssignmentAllowed(input.userId);
+
       const existing = await prisma.teamMember.findUnique({
         where: { userId_teamId: { userId: input.userId, teamId: input.teamId } },
       });
