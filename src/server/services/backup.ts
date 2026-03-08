@@ -235,13 +235,17 @@ export async function listBackups(): Promise<
 
   for (const metaFile of metaFiles) {
     try {
+      const dumpFilename = metaFile.replace(/\.meta\.json$/, ".dump");
+      const dumpPath = path.join(BACKUP_DIR, dumpFilename);
+
+      // Skip orphaned .meta.json files where the .dump is missing
+      await fs.access(dumpPath);
+
       const raw = await fs.readFile(path.join(BACKUP_DIR, metaFile), "utf-8");
       const meta = JSON.parse(raw) as BackupMetadata;
-      // Derive dump filename from meta filename
-      const dumpFilename = metaFile.replace(/\.meta\.json$/, ".dump");
       results.push({ ...meta, filename: dumpFilename });
     } catch {
-      // skip unparseable metadata files
+      // skip: either .dump missing or unparseable metadata
     }
   }
 
