@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
 import { authenticateScim } from "../auth";
+import {
+  loadGroupMappings,
+  getMappingsForGroup,
+  applyMappedMemberships,
+} from "@/server/services/group-mappings";
 
 interface ScimGroupResponse {
   schemas: string[];
@@ -31,6 +36,30 @@ function scimError(detail: string, status: number) {
     },
     { status },
   );
+}
+
+/**
+ * Process members from a SCIM group request through the mapping table.
+ */
+async function applyGroupMembers(
+  groupName: string,
+  members: unknown,
+): Promise<void> {
+  if (!Array.isArray(members) || members.length === 0) return;
+
+  const allMappings = await loadGroupMappings();
+  const groupMappings = getMappingsForGroup(allMappings, groupName);
+  if (groupMappings.length === 0) return;
+
+  await prisma.$transaction(async (tx) => {
+    for (const member of members) {
+      const userId = (member as { value?: unknown }).value;
+      if (typeof userId !== "string") continue;
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user) continue;
+      await applyMappedMemberships(tx, userId, groupMappings);
+    }
+  });
 }
 
 export async function GET(req: NextRequest) {
@@ -100,6 +129,8 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      await applyGroupMembers(displayName, body.members);
+
       await writeAuditLog({
         userId: null,
         action: "scim.group_adopted",
@@ -117,6 +148,8 @@ export async function POST(req: NextRequest) {
         externalId: body.externalId ?? null,
       },
     });
+
+    await applyGroupMembers(displayName, body.members);
 
     await writeAuditLog({
       userId: null,
