@@ -103,56 +103,57 @@ export async function rollback(
     });
   }
 
-  // Restore globalConfig on the Pipeline model so the editor loads the correct state
-  if (targetVersion.globalConfig !== undefined) {
-    await prisma.pipeline.update({
-      where: { id: pipelineId },
-      data: {
-        globalConfig: targetVersion.globalConfig as Prisma.InputJsonValue ?? undefined,
-      },
-    });
-  }
+  // Restore pipeline state atomically: globalConfig + nodes/edges from snapshots
+  await prisma.$transaction(async (tx) => {
+    if (targetVersion.globalConfig !== undefined) {
+      await tx.pipeline.update({
+        where: { id: pipelineId },
+        data: {
+          globalConfig: targetVersion.globalConfig as Prisma.InputJsonValue ?? undefined,
+        },
+      });
+    }
 
-  // Restore nodes and edges from snapshots if available
-  if (targetVersion.nodesSnapshot && targetVersion.edgesSnapshot) {
-    const snapshotNodes = targetVersion.nodesSnapshot as Array<Record<string, unknown>>;
-    const snapshotEdges = targetVersion.edgesSnapshot as Array<Record<string, unknown>>;
+    if (targetVersion.nodesSnapshot && targetVersion.edgesSnapshot) {
+      const snapshotNodes = targetVersion.nodesSnapshot as Array<Record<string, unknown>>;
+      const snapshotEdges = targetVersion.edgesSnapshot as Array<Record<string, unknown>>;
 
-    await prisma.pipelineEdge.deleteMany({ where: { pipelineId } });
-    await prisma.pipelineNode.deleteMany({ where: { pipelineId } });
+      await tx.pipelineEdge.deleteMany({ where: { pipelineId } });
+      await tx.pipelineNode.deleteMany({ where: { pipelineId } });
 
-    await Promise.all(
-      snapshotNodes.map((node) =>
-        prisma.pipelineNode.create({
-          data: {
-            id: node.id as string,
-            pipelineId,
-            componentKey: node.componentKey as string,
-            componentType: node.componentType as string,
-            kind: node.kind as ComponentKind,
-            config: node.config as Prisma.InputJsonValue,
-            positionX: node.positionX as number,
-            positionY: node.positionY as number,
-            disabled: (node.disabled as boolean) ?? false,
-          },
-        })
-      )
-    );
+      await Promise.all(
+        snapshotNodes.map((node) =>
+          tx.pipelineNode.create({
+            data: {
+              id: node.id as string,
+              pipelineId,
+              componentKey: node.componentKey as string,
+              componentType: node.componentType as string,
+              kind: node.kind as ComponentKind,
+              config: node.config as Prisma.InputJsonValue,
+              positionX: node.positionX as number,
+              positionY: node.positionY as number,
+              disabled: (node.disabled as boolean) ?? false,
+            },
+          })
+        )
+      );
 
-    await Promise.all(
-      snapshotEdges.map((edge) =>
-        prisma.pipelineEdge.create({
-          data: {
-            id: edge.id as string,
-            pipelineId,
-            sourceNodeId: edge.sourceNodeId as string,
-            targetNodeId: edge.targetNodeId as string,
-            sourcePort: (edge.sourcePort as string) ?? null,
-          },
-        })
-      )
-    );
-  }
+      await Promise.all(
+        snapshotEdges.map((edge) =>
+          tx.pipelineEdge.create({
+            data: {
+              id: edge.id as string,
+              pipelineId,
+              sourceNodeId: edge.sourceNodeId as string,
+              targetNodeId: edge.targetNodeId as string,
+              sourcePort: (edge.sourcePort as string) ?? null,
+            },
+          })
+        )
+      );
+    }
+  });
 
   return createVersion(
     pipelineId,
