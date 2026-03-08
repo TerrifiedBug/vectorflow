@@ -332,7 +332,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
 
   if (pipelineQuery.isLoading) {
     return (
-      <div className="-m-6 flex h-[calc(100vh-3.5rem)] items-center justify-center">
+      <div className="-mx-6 -my-2 flex h-[calc(100vh-3.5rem)] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Skeleton className="h-8 w-48" />
           <Skeleton className="h-4 w-32" />
@@ -343,7 +343,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
 
   if (pipelineQuery.error) {
     return (
-      <div className="-m-6 flex h-[calc(100vh-3.5rem)] items-center justify-center">
+      <div className="-mx-6 -my-2 flex h-[calc(100vh-3.5rem)] items-center justify-center">
         <p className="text-destructive">
           Failed to load pipeline: {pipelineQuery.error.message}
         </p>
@@ -352,7 +352,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   }
 
   return (
-    <div className="-m-6 flex h-[calc(100vh-3.5rem)] flex-col">
+    <div className="-mx-6 -my-2 flex h-[calc(100vh-3.5rem)] flex-col">
       <div className="flex h-10 items-center border-b">
         {/* Pipeline name — click to rename */}
         <div className="flex items-center gap-1 border-r px-3">

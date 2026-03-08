@@ -27,6 +27,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PromotePipelineDialog } from "@/components/promote-pipeline-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -231,6 +236,7 @@ export default function PipelinesPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
+              <TableHead>Labels</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-center">Health</TableHead>
               <TableHead className="text-right">Events/sec In</TableHead>
@@ -248,23 +254,46 @@ export default function PipelinesPage() {
               return (
               <TableRow key={pipeline.id} className="cursor-pointer">
                 <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    <Link
-                      href={`/pipelines/${pipeline.id}`}
-                      className="hover:underline"
-                    >
-                      {pipeline.name}
-                    </Link>
-                    {(pipeline.tags as string[])?.length > 0 && (
-                      <div className="flex items-center gap-1">
-                        {(pipeline.tags as string[]).map((tag) => (
-                          <Badge key={tag} variant="outline" size="sm" className={tagBadgeClass(tag)}>
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <Link
+                    href={`/pipelines/${pipeline.id}`}
+                    className="hover:underline"
+                  >
+                    {pipeline.name}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  {(() => {
+                    const tags = (pipeline.tags as string[]) ?? [];
+                    if (tags.length === 0) return null;
+                    if (tags.length === 1) {
+                      return (
+                        <Badge variant="outline" size="sm" className={tagBadgeClass(tags[0])}>
+                          {tags[0]}
+                        </Badge>
+                      );
+                    }
+                    return (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button className="cursor-pointer rounded-md hover:bg-muted/50 px-1 py-0.5 transition-colors">
+                            <Badge variant="secondary" size="sm">
+                              {tags.length} labels
+                            </Badge>
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-3" align="start">
+                          <p className="mb-2 text-sm font-medium">Labels</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {tags.map((tag) => (
+                              <Badge key={tag} variant="outline" size="sm" className={tagBadgeClass(tag)}>
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    );
+                  })()}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1.5">

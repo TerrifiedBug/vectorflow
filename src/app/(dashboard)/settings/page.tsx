@@ -1451,7 +1451,9 @@ function TeamSettings() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {member.user.totpEnabled ? (
+                    {member.user.authMethod === "OIDC" ? (
+                      <span className="text-xs text-muted-foreground">N/A</span>
+                    ) : member.user.totpEnabled ? (
                       <Badge variant="outline" className="text-xs text-green-600 border-green-600">
                         <Shield className="mr-1 h-3 w-3" />
                         Enabled
@@ -2017,12 +2019,11 @@ function UsersSettings() {
                         <Popover>
                           <PopoverTrigger asChild>
                             <button className="flex cursor-pointer items-center gap-1 rounded-md hover:bg-muted/50 px-1 py-0.5 transition-colors">
-                              {user.memberships.slice(0, 1).map((m) => (
-                                <Badge key={m.team.id} variant="outline" className="text-xs">
-                                  {m.team.name}
+                              {user.memberships.length === 1 ? (
+                                <Badge variant="outline" className="text-xs">
+                                  {user.memberships[0].team.name}
                                 </Badge>
-                              ))}
-                              {user.memberships.length > 1 && (
+                              ) : (
                                 <Badge variant="secondary" className="text-xs">
                                   {user.memberships.length} teams
                                 </Badge>
@@ -2070,7 +2071,9 @@ function UsersSettings() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {user.totpEnabled ? (
+                    {user.authMethod === "OIDC" ? (
+                      <span className="text-xs text-muted-foreground">N/A</span>
+                    ) : user.totpEnabled ? (
                       <Badge variant="outline" className="text-xs text-green-600 border-green-600">
                         <Shield className="mr-1 h-3 w-3" />
                         Enabled
