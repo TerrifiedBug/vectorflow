@@ -321,11 +321,10 @@ export async function DELETE(
   // Collect affected user IDs before deletion
   const affectedUserIds = group.members.map((m) => m.userId);
 
-  // Delete the group — ScimGroupMembers cascade via onDelete: Cascade
-  await prisma.scimGroup.delete({ where: { id } });
-
-  // Reconcile all users who were in this group
+  // Delete group and reconcile all affected users in a single transaction
+  // to prevent stale group_mapping TeamMembers if a crash occurs mid-way
   await prisma.$transaction(async (tx) => {
+    await tx.scimGroup.delete({ where: { id } });
     for (const userId of affectedUserIds) {
       const groupNames = await getScimGroupNamesForUser(tx, userId);
       await reconcileUserTeamMemberships(tx, userId, groupNames);
