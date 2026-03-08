@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, PackageOpen } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -92,7 +92,7 @@ function CategoryGroup({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1 px-1 py-1 text-[11px] font-medium text-muted-foreground/70 transition-colors hover:text-muted-foreground"
+        className="flex w-full cursor-pointer items-center gap-1 px-1 py-1 text-[11px] font-medium text-muted-foreground/70 transition-colors hover:text-muted-foreground"
       >
         {open ? (
           <ChevronDown className="h-3 w-3" />
@@ -144,7 +144,7 @@ function CollapsibleSection({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1.5 px-1 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+        className="flex w-full cursor-pointer items-center gap-1.5 px-1 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
       >
         {open ? (
           <ChevronDown className="h-3.5 w-3.5" />
@@ -225,9 +225,12 @@ export function ComponentPalette() {
           <CollapsibleSection kind="sink" items={sinks} />
 
           {filtered.length === 0 && (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No components match your search.
-            </p>
+            <div className="flex flex-col items-center justify-center p-8">
+              <PackageOpen className="h-8 w-8 text-muted-foreground/50" />
+              <p className="mt-2 text-sm text-muted-foreground">
+                No components match your search.
+              </p>
+            </div>
           )}
         </div>
       </div>

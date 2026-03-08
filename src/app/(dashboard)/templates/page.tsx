@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { PageHeader } from "@/components/page-header";
 
 /* ------------------------------------------------------------------ */
 /*  Category icon mapping                                              */
@@ -179,6 +180,7 @@ export default function TemplatesPage() {
 
   return (
     <div className="space-y-8">
+      <PageHeader title="Templates" />
       {/* Environment notice */}
       {!selectedEnvironmentId && (
         <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
@@ -201,11 +203,6 @@ export default function TemplatesPage() {
         </div>
       ) : (
         <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Terminal className="h-5 w-5 text-muted-foreground" />
-            <h3 className="text-lg font-semibold">Templates</h3>
-          </div>
-
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {templates.map((template) => (
               <Card key={template.id} className="cursor-pointer flex flex-col">

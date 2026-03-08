@@ -17,6 +17,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import {
@@ -29,6 +30,7 @@ import { MetricChart } from "@/components/dashboard/metric-chart";
 import { ViewBuilderDialog } from "@/components/dashboard/view-builder-dialog";
 import { CustomView } from "@/components/dashboard/custom-view";
 import { formatSI, formatBytesRate, formatEventsRate } from "@/lib/format";
+import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
 /** Derive an overall status for a pipeline from its node statuses */
@@ -131,13 +133,14 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader title="Dashboard" />
       {/* ── Tab Bar ────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 border-b px-1 overflow-x-auto">
         <button
           type="button"
           onClick={() => setActiveView(null)}
           className={cn(
-            "shrink-0 px-3 py-2 text-sm font-medium transition-colors",
+            "shrink-0 cursor-pointer px-3 py-2 text-sm font-medium transition-colors",
             activeView === null
               ? "border-b-2 border-primary text-foreground"
               : "text-muted-foreground hover:text-foreground"
@@ -151,7 +154,7 @@ export default function DashboardPage() {
             type="button"
             onClick={() => setActiveView(view.id)}
             className={cn(
-              "group relative shrink-0 flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors",
+              "group relative shrink-0 flex cursor-pointer items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors",
               activeView === view.id
                 ? "border-b-2 border-primary text-foreground"
                 : "text-muted-foreground hover:text-foreground"
@@ -177,7 +180,8 @@ export default function DashboardPage() {
                     panels: view.panels as string[],
                   });
                 }}
-                className="rounded p-0.5 hover:bg-muted"
+                className="cursor-pointer rounded p-0.5 transition-colors hover:bg-muted"
+                aria-label="Edit view"
                 title="Edit view"
               >
                 <Pencil className="h-3 w-3" />
@@ -190,7 +194,8 @@ export default function DashboardPage() {
                     deleteMutation.mutate({ environmentId: selectedEnvironmentId!, id: view.id });
                   }
                 }}
-                className="rounded p-0.5 hover:bg-muted text-destructive"
+                className="cursor-pointer rounded p-0.5 transition-colors hover:bg-muted text-destructive"
+                aria-label="Delete view"
                 title="Delete view"
               >
                 <Trash2 className="h-3 w-3" />
@@ -201,7 +206,7 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={() => setCreateDialogOpen(true)}
-          className="ml-auto shrink-0 flex items-center gap-1 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          className="ml-auto shrink-0 flex cursor-pointer items-center gap-1 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
           New View
@@ -214,6 +219,18 @@ export default function DashboardPage() {
       ) : (
         <>
           {/* KPI Summary Cards */}
+          {stats.isPending ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Card key={i}>
+                  <CardContent className="p-4">
+                    <Skeleton className="h-4 w-24 mb-2" />
+                    <Skeleton className="h-8 w-16" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             {/* Total Nodes */}
             <Card>
@@ -314,6 +331,7 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </div>
+          )}
 
           {/* Metrics Filter Bar */}
           <MetricsFilterBar

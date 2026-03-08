@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, Trash2, Lock, Info } from "lucide-react";
+import { Copy, Trash2, Lock, Info, MousePointerClick } from "lucide-react";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
 import { VrlEditor } from "@/components/vrl-editor/vrl-editor";
@@ -177,7 +177,8 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
   if (!selectedNode) {
     return (
       <div className="flex h-full w-80 shrink-0 flex-col border-l bg-muted/30">
-        <div className="flex flex-1 items-center justify-center">
+        <div className="flex flex-col items-center justify-center h-full text-center p-6">
+          <MousePointerClick className="h-8 w-8 text-muted-foreground/50 mb-3" />
           <p className="text-sm text-muted-foreground">
             Select a node to configure it
           </p>
