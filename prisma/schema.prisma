@@ -356,6 +356,8 @@ model PipelineVersion {
   configToml  String?
   logLevel    String?
   globalConfig Json?
+  nodesSnapshot Json?
+  edgesSnapshot Json?
   createdById String
   changelog   String?
   createdAt   DateTime @default(now())
