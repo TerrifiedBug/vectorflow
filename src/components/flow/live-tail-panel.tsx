@@ -162,7 +162,7 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
           <div key={i} className="rounded border bg-muted/50">
             <button
               onClick={() => toggleExpand(i)}
-              className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-xs font-mono hover:bg-muted"
+              className="flex w-full cursor-pointer items-center gap-1.5 px-2 py-1.5 text-left text-xs font-mono transition-colors hover:bg-muted"
             >
               {event.expanded ? (
                 <ChevronDown className="h-3 w-3 shrink-0" />

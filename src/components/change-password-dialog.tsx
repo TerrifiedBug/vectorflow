@@ -57,8 +57,17 @@ export function ChangePasswordDialog({ open, onOpenChange, forced }: ChangePassw
     changeMutation.mutate({ currentPassword, newPassword });
   };
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    }
+    onOpenChange(nextOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={forced ? undefined : onOpenChange}>
+    <Dialog open={open} onOpenChange={forced ? undefined : handleOpenChange}>
       <DialogContent className="sm:max-w-[425px]" onInteractOutside={forced ? (e) => e.preventDefault() : undefined}>
         <DialogHeader>
           <DialogTitle>{forced ? "Password Change Required" : "Change Password"}</DialogTitle>
@@ -103,7 +112,7 @@ export function ChangePasswordDialog({ open, onOpenChange, forced }: ChangePassw
           </div>
           <DialogFooter>
             {!forced && (
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
             )}

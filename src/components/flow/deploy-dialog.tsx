@@ -419,7 +419,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                         {label}
                         <button
                           type="button"
-                          className="ml-0.5 rounded-full outline-none hover:bg-muted"
+                          className="ml-0.5 cursor-pointer rounded-full outline-none transition-colors hover:bg-muted"
                           onClick={() =>
                             setSelectedLabels((prev) =>
                               prev.filter((l) => l !== label),

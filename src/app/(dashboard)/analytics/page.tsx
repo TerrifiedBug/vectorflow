@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowUp, ArrowDown, Minus, BarChart3, Info } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, Info, Inbox } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -24,6 +24,7 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import { formatBytes, formatTimeAxis } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { PageHeader } from "@/components/page-header";
 
 type VolumeRange = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -149,6 +150,7 @@ export default function AnalyticsPage() {
   if (!selectedEnvironmentId) {
     return (
       <div className="space-y-6">
+        <PageHeader title="Analytics" />
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
           <p className="text-muted-foreground">
             Select an environment to view analytics.
@@ -160,30 +162,28 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header with time range selector */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="h-5 w-5 text-muted-foreground" />
-          <h2 className="text-lg font-semibold">Data Volume Analytics</h2>
-        </div>
-        <div className="flex items-center gap-1">
-          {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setRange(v)}
-              className={cn(
-                "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
-                range === v
-                  ? "bg-accent text-accent-foreground border-transparent"
-                  : "bg-transparent text-muted-foreground border-border hover:bg-muted",
-              )}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        title="Analytics"
+        actions={
+          <div className="flex items-center gap-1">
+            {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setRange(v)}
+                className={cn(
+                  "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
+                  range === v
+                    ? "bg-accent text-accent-foreground border-transparent"
+                    : "bg-transparent text-muted-foreground border-border hover:bg-muted",
+                )}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -293,10 +293,11 @@ export default function AnalyticsPage() {
         <CardContent>
           {chartData.length === 0 ? (
             <div
-              className="flex items-center justify-center text-xs text-muted-foreground"
+              className="flex flex-col items-center justify-center text-muted-foreground"
               style={{ height: 300 }}
             >
-              No data for selected time range
+              <Inbox className="h-8 w-8 text-muted-foreground/50" />
+              <p className="mt-2 text-sm">No data for selected time range</p>
             </div>
           ) : (
             <ChartContainer config={chartConfig} className="w-full" style={{ height: 300 }}>
