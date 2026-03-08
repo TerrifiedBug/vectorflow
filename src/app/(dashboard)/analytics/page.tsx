@@ -247,7 +247,6 @@ export default function AnalyticsPage() {
             {eventsReducedDelta != null && (
               <p className="text-xs text-muted-foreground">
                 {eventsReducedDelta >= 0 ? "+" : ""}
-                {eventsReducedDelta >= 0 ? "+" : ""}
                 {eventsReducedDelta.toFixed(1)} pp vs last period
             )}
           </CardContent>
@@ -276,7 +275,7 @@ export default function AnalyticsPage() {
             {bytesSavedDelta != null && (
               <p className="text-xs text-muted-foreground">
                 {bytesSavedDelta >= 0 ? "+" : ""}
-                {bytesSavedDelta.toFixed(1)}% vs last period
+                {bytesSavedDelta.toFixed(1)} pp vs last period
               </p>
             )}
           </CardContent>
