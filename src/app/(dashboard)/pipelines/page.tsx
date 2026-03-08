@@ -258,7 +258,7 @@ export default function PipelinesPage() {
                     {(pipeline.tags as string[])?.length > 0 && (
                       <div className="flex items-center gap-1">
                         {(pipeline.tags as string[]).map((tag) => (
-                          <Badge key={tag} variant="outline" className={`text-[10px] px-1.5 py-0 ${tagBadgeClass(tag)}`}>
+                          <Badge key={tag} variant="outline" size="sm" className={tagBadgeClass(tag)}>
                             {tag}
                           </Badge>
                         ))}
@@ -305,19 +305,19 @@ export default function PipelinesPage() {
                   )}
                 </TableCell>
                 {/* Events/sec In */}
-                <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                <TableCell className="text-right font-mono text-sm tabular-nums text-muted-foreground">
                   {liveRates[pipeline.id]
                     ? formatEventsRate(liveRates[pipeline.id].eventsPerSec)
                     : "—"}
                 </TableCell>
                 {/* Bytes/sec In */}
-                <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                <TableCell className="text-right font-mono text-sm tabular-nums text-muted-foreground">
                   {liveRates[pipeline.id]
                     ? formatBytesRate(liveRates[pipeline.id].bytesPerSec)
                     : "—"}
                 </TableCell>
                 {/* Reduction */}
-                <TableCell className="text-right">
+                <TableCell className="text-right tabular-nums">
                   {(() => {
                     const pct = totals ? getReductionPercent(totals) : null;
                     if (pct == null) return <span className="text-sm text-muted-foreground">—</span>;
