@@ -209,6 +209,29 @@ export const settingsRouter = router({
         },
       });
       invalidateAuthCache();
+
+      // In SCIM mode, reconcile all users who have ScimGroupMember records
+      const scimSettings = await prisma.systemSettings.findUnique({
+        where: { id: SETTINGS_ID },
+        select: { scimEnabled: true },
+      });
+      if (scimSettings?.scimEnabled) {
+        const { reconcileUserTeamMemberships, getScimGroupNamesForUser } =
+          await import("@/server/services/group-mappings");
+
+        const usersWithScimGroups = await prisma.scimGroupMember.findMany({
+          select: { userId: true },
+          distinct: ["userId"],
+        });
+
+        await prisma.$transaction(async (tx) => {
+          for (const { userId } of usersWithScimGroups) {
+            const groupNames = await getScimGroupNamesForUser(tx, userId);
+            await reconcileUserTeamMemberships(tx, userId, groupNames);
+          }
+        });
+      }
+
       return result;
     }),
 
