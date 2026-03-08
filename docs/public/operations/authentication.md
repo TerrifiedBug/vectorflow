@@ -77,12 +77,26 @@ OIDC settings are stored encrypted in the database. The client secret is encrypt
 
 ### Group mapping
 
-VectorFlow can automatically assign users to teams based on their identity provider group memberships. Group mappings are configured from **Settings > Team & Role Mapping** and are **shared between OIDC and SCIM** — the same mapping table drives both protocols:
+VectorFlow can automatically assign users to teams based on their identity provider group memberships. Group mappings are configured from **Settings > Team & Role Mapping** and are **shared between OIDC and SCIM** — the same mapping table drives both protocols.
 
-- **OIDC-only deployments:** Team access is assigned on each login based on the groups claim in the OIDC token.
-- **SCIM + OIDC deployments:** SCIM pre-provisions team access when your IdP pushes group membership changes. OIDC then refreshes team access on each sign-in, keeping mappings current.
+Group sync is **off by default** and must be explicitly enabled. When enabled, VectorFlow operates in one of two modes depending on whether SCIM is active:
 
-Group sync is **off by default** and must be explicitly enabled.
+{% tabs %}
+{% tab title="OIDC-only mode (SCIM disabled)" %}
+Groups are read from the OIDC token on each login. Team memberships are **reconciled** — users are added to mapped teams **and removed** from teams they no longer belong to (based on the groups present in the token). Changes to group mappings in **Settings > Team & Role Mapping** take effect on the user's next login.
+{% endtab %}
+{% tab title="SCIM + OIDC mode (SCIM enabled)" %}
+SCIM is the **primary lifecycle manager** for group memberships. Your IdP pushes group membership changes (create, update, remove) via SCIM, and VectorFlow tracks them internally. OIDC login acts as a **real-time refresh**, using the union of SCIM group data and token groups to reconcile team memberships. Changes to group mappings in **Settings > Team & Role Mapping** take effect immediately for all SCIM-managed users.
+{% endtab %}
+{% endtabs %}
+
+{% hint style="info" %}
+**Manual assignments are preserved.** Team memberships assigned manually in the VectorFlow UI are never modified by automated group sync. If you want group sync to fully manage a user's membership on a team, remove the manual assignment first.
+{% endhint %}
+
+{% hint style="info" %}
+**Highest role wins.** When a user belongs to multiple IdP groups that map to the same VectorFlow team, the highest role is used (Admin > Editor > Viewer).
+{% endhint %}
 
 {% stepper %}
 {% step %}
@@ -110,17 +124,15 @@ Map identity provider groups to VectorFlow teams with specific roles. These mapp
 | Group Name | The group name as it appears in the OIDC token or SCIM Group displayName |
 | Team | The VectorFlow team to assign the user to |
 | Role | The role to assign: Viewer, Editor, or Admin |
-
-If a user matches multiple mappings for the same team, the highest role wins.
 {% endstep %}
 {% step %}
 ### Set defaults
-Configure a **Default Team** and **Default Role** as a fallback for users who do not match any group mapping. Users with no group matches are assigned to the default team with the default role.
+Configure a **Default Team** and **Default Role** as a fallback. If a user logs in and has no group matches (no IdP groups map to any VectorFlow team), they are assigned to the default team with the default role.
 {% endstep %}
 {% endstepper %}
 
 {% hint style="warning" %}
-Changing group sync settings takes effect immediately — the OIDC provider configuration is rebuilt without requiring a server restart.
+Changing group sync settings takes effect immediately — the OIDC provider configuration is rebuilt without requiring a server restart. In SCIM+OIDC mode, mapping changes are applied to all SCIM-managed users at save time. In OIDC-only mode, changes take effect on each user's next login.
 {% endhint %}
 
 ## SCIM provisioning
@@ -240,5 +252,9 @@ When users authenticate via OIDC or are provisioned via SCIM, their team roles a
 
 Role updates happen:
 
-- **On login** -- OIDC group claims are mapped to team roles via the configured team mappings
-- **Via SCIM** -- When SCIM group membership changes are pushed, roles are assigned based on team mappings
+- **On login** -- OIDC group claims are reconciled against team mappings. The user is added to newly matched teams, removed from teams they no longer match, and roles are updated to reflect the highest mapped role.
+- **Via SCIM** -- When SCIM group membership changes are pushed, team memberships are reconciled immediately based on team mappings. Removals cascade correctly — if a user is removed from their only group mapping for a team, they are removed from that team.
+
+{% hint style="info" %}
+Manual team assignments (made in the UI) are not affected by SSO-managed role sync. Only memberships created by group sync are subject to reconciliation.
+{% endhint %}
