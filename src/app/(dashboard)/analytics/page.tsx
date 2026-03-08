@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowUp, ArrowDown, Minus, BarChart3 } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, BarChart3, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -23,6 +23,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { formatBytes, formatTimeAxis } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 type VolumeRange = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -227,10 +228,17 @@ export default function AnalyticsPage() {
               {reductionPercent != null ? `${reductionPercent.toFixed(1)}%` : "--"}
             </p>
             {reductionDelta != null && (
-              <p className="text-xs text-muted-foreground">
-                {reductionDelta >= 0 ? "+" : ""}
-                {reductionDelta.toFixed(1)} pp vs previous period
-              </p>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <p className="text-xs text-muted-foreground cursor-default">
+                    {reductionDelta >= 0 ? "+" : ""}
+                    {reductionDelta.toFixed(1)}% vs last period
+                  </p>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Change in reduction percentage compared to previous period
+                </TooltipContent>
+              </Tooltip>
             )}
           </CardContent>
         </Card>
