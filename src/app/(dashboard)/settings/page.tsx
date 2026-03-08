@@ -3400,12 +3400,12 @@ export default function SettingsPage() {
           )}
           {isSuperAdmin && (
             <>
-              {isTeamAdmin && <Separator orientation="vertical" className="h-5" />}
+              {isTeamAdmin && <Separator orientation="vertical" className="h-5 bg-muted-foreground/25" />}
               <TabsTrigger value="auth">
                 <Shield className="mr-2 h-4 w-4" />
                 Auth
               </TabsTrigger>
-              <Separator orientation="vertical" className="h-5" />
+              <Separator orientation="vertical" className="h-5 bg-muted-foreground/25" />
               <TabsTrigger value="users">
                 <Users className="mr-2 h-4 w-4" />
                 Users
@@ -3414,7 +3414,7 @@ export default function SettingsPage() {
                 <Layers className="mr-2 h-4 w-4" />
                 Teams
               </TabsTrigger>
-              <Separator orientation="vertical" className="h-5" />
+              <Separator orientation="vertical" className="h-5 bg-muted-foreground/25" />
               <TabsTrigger value="fleet">
                 <Server className="mr-2 h-4 w-4" />
                 Fleet
