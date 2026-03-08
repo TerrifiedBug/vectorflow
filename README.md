@@ -5,7 +5,6 @@
   <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg">
   <img src="assets/logo-light.svg" alt="VectorFlow" width="280">
 </picture>
-
 <br><br>
 
 [![CI](https://img.shields.io/github/actions/workflow/status/TerrifiedBug/vectorflow/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/TerrifiedBug/vectorflow/actions/workflows/ci.yml)
