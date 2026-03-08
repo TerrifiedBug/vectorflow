@@ -20,12 +20,13 @@ function scimError(detail: string, status: number) {
 }
 
 function toScimGroupResponse(
-  group: { id: string; displayName: string },
+  group: { id: string; displayName: string; externalId?: string | null },
   members: Array<{ value: string; display?: string }> = [],
 ) {
   return {
     schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"],
     id: group.id,
+    ...(group.externalId ? { externalId: group.externalId } : {}),
     displayName: group.displayName,
     members,
   };
@@ -342,7 +343,6 @@ export async function DELETE(
   const affectedUserIds = group.members.map((m) => m.userId);
 
   // Delete group and reconcile all affected users in a single transaction
-  // to prevent stale group_mapping TeamMembers if a crash occurs mid-way
   await prisma.$transaction(async (tx) => {
     await tx.scimGroup.delete({ where: { id } });
     for (const userId of affectedUserIds) {
