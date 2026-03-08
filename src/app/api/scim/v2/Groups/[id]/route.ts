@@ -120,19 +120,34 @@ export async function PATCH(
           }
         }
 
-        // Remove members
-        if (operation === "remove" && op.path === "members") {
-          const members = Array.isArray(op.value) ? op.value : [op.value];
-          for (const member of members) {
-            const userId = member.value;
-            if (typeof userId !== "string") continue;
+        // Remove members — handle both RFC 7644 forms:
+        // 1. Filter: { op: "remove", path: "members[value eq \"userId\"]" }
+        // 2. Array:  { op: "remove", path: "members", value: [{ value: "userId" }] }
+        if (operation === "remove") {
+          const filterMatch = typeof op.path === "string"
+            ? op.path.match(/^members\[value eq "([^"]+)"\]$/)
+            : null;
 
+          if (filterMatch) {
+            const userId = filterMatch[1];
             await tx.scimGroupMember.deleteMany({
               where: { scimGroupId: id, userId },
             });
-
             const groupNames = await getScimGroupNamesForUser(tx, userId);
             await reconcileUserTeamMemberships(tx, userId, groupNames);
+          } else if (op.path === "members") {
+            const members = Array.isArray(op.value) ? op.value : [op.value];
+            for (const member of members) {
+              const userId = member.value;
+              if (typeof userId !== "string") continue;
+
+              await tx.scimGroupMember.deleteMany({
+                where: { scimGroupId: id, userId },
+              });
+
+              const groupNames = await getScimGroupNamesForUser(tx, userId);
+              await reconcileUserTeamMemberships(tx, userId, groupNames);
+            }
           }
         }
       }

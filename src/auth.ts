@@ -276,8 +276,8 @@ async function getAuthInstance() {
                   await reconcileUserTeamMemberships(tx, dbUser.id, userGroupNames);
                 });
 
-                // Default team fallback: if no group mappings matched and user has no memberships
-                if (userGroupNames.length === 0 && settings.oidcDefaultTeamId) {
+                // Default team fallback: assign if reconciliation left the user with no memberships
+                if (settings.oidcDefaultTeamId) {
                   const hasMembership = await prisma.teamMember.findFirst({
                     where: { userId: dbUser.id },
                   });
