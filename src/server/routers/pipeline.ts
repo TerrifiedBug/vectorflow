@@ -785,15 +785,7 @@ export const pipelineRouter = router({
       if (!latestVersion) {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No deployed version found" });
       }
-      if (!latestVersion.nodesSnapshot || !latestVersion.edgesSnapshot) {
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: "Deployed version has no snapshot — deploy once more to enable discard",
-        });
-      }
-
-      const nodes = latestVersion.nodesSnapshot as Array<Record<string, unknown>>;
-      const edges = latestVersion.edgesSnapshot as Array<Record<string, unknown>>;
+      const hasSnapshots = !!latestVersion.nodesSnapshot && !!latestVersion.edgesSnapshot;
 
       await prisma.$transaction(async (tx) => {
         await tx.pipeline.update({
@@ -803,40 +795,45 @@ export const pipelineRouter = router({
           },
         });
 
-        await tx.pipelineEdge.deleteMany({ where: { pipelineId: input.pipelineId } });
-        await tx.pipelineNode.deleteMany({ where: { pipelineId: input.pipelineId } });
+        if (hasSnapshots) {
+          const nodes = latestVersion.nodesSnapshot as Array<Record<string, unknown>>;
+          const edges = latestVersion.edgesSnapshot as Array<Record<string, unknown>>;
 
-        await Promise.all(
-          nodes.map((node) =>
-            tx.pipelineNode.create({
-              data: {
-                id: node.id as string,
-                pipelineId: input.pipelineId,
-                componentKey: node.componentKey as string,
-                componentType: node.componentType as string,
-                kind: node.kind as ComponentKind,
-                config: node.config as Prisma.InputJsonValue,
-                positionX: node.positionX as number,
-                positionY: node.positionY as number,
-                disabled: (node.disabled as boolean) ?? false,
-              },
-            })
-          )
-        );
+          await tx.pipelineEdge.deleteMany({ where: { pipelineId: input.pipelineId } });
+          await tx.pipelineNode.deleteMany({ where: { pipelineId: input.pipelineId } });
 
-        await Promise.all(
-          edges.map((edge) =>
-            tx.pipelineEdge.create({
-              data: {
-                id: edge.id as string,
-                pipelineId: input.pipelineId,
-                sourceNodeId: edge.sourceNodeId as string,
-                targetNodeId: edge.targetNodeId as string,
-                sourcePort: (edge.sourcePort as string) ?? null,
-              },
-            })
-          )
-        );
+          await Promise.all(
+            nodes.map((node) =>
+              tx.pipelineNode.create({
+                data: {
+                  id: node.id as string,
+                  pipelineId: input.pipelineId,
+                  componentKey: node.componentKey as string,
+                  componentType: node.componentType as string,
+                  kind: node.kind as ComponentKind,
+                  config: node.config as Prisma.InputJsonValue,
+                  positionX: node.positionX as number,
+                  positionY: node.positionY as number,
+                  disabled: (node.disabled as boolean) ?? false,
+                },
+              })
+            )
+          );
+
+          await Promise.all(
+            edges.map((edge) =>
+              tx.pipelineEdge.create({
+                data: {
+                  id: edge.id as string,
+                  pipelineId: input.pipelineId,
+                  sourceNodeId: edge.sourceNodeId as string,
+                  targetNodeId: edge.targetNodeId as string,
+                  sourcePort: (edge.sourcePort as string) ?? null,
+                },
+              })
+            )
+          );
+        }
       });
 
       return { discarded: true };
