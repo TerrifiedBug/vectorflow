@@ -3,9 +3,10 @@ const isDebug = level === "debug" || level === "trace";
 
 export function debugLog(tag: string, message: string, data?: unknown): void {
   if (!isDebug) return;
+  const ts = new Date().toISOString();
   if (data !== undefined) {
-    console.log(`[${tag}] ${message}`, data);
+    console.log(`${ts} [${tag}] ${message}`, data);
   } else {
-    console.log(`[${tag}] ${message}`);
+    console.log(`${ts} [${tag}] ${message}`);
   }
 }
