@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { TeamSelector } from "@/components/team-selector";
+import { EnvironmentSelector } from "@/components/environment-selector";
 import { Separator } from "@/components/ui/separator";
 import { useTeamStore } from "@/stores/team-store";
 import { useEnvironmentStore } from "@/stores/environment-store";
@@ -28,7 +29,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -83,22 +83,22 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="px-4 pt-3 pb-0 group-data-[collapsible=icon]:px-2">
-        <Link href="/" className="flex items-center gap-2">
-          <span className="text-lg tracking-tight group-data-[collapsible=icon]:hidden">
+        <Link href="/" className="flex items-center gap-2 py-1">
+          <span className="text-xl tracking-tight group-data-[collapsible=icon]:hidden">
             <span className="font-bold">Vector</span>
             <span className="font-light">Flow</span>
           </span>
-          <span className="hidden text-lg font-bold group-data-[collapsible=icon]:block">V</span>
+          <span className="hidden text-xl font-bold group-data-[collapsible=icon]:block">V</span>
         </Link>
         <Separator className="my-2 group-data-[collapsible=icon]:hidden" />
-        <div className="px-3 pb-3 group-data-[collapsible=icon]:hidden">
+        <div className="px-3 pb-3 space-y-2 group-data-[collapsible=icon]:hidden">
           <TeamSelector />
+          <EnvironmentSelector />
         </div>
         <Separator className="group-data-[collapsible=icon]:hidden" />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {visibleItems.map((item) => {
