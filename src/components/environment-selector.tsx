@@ -75,7 +75,7 @@ export function EnvironmentSelector() {
   }, [selectedEnvironmentId, systemEnvironment, setIsSystemEnvironment]);
 
   if (envsQuery.isLoading) {
-    return <Skeleton className="h-8 w-full" />;
+    return <Skeleton className="h-8 w-[160px]" />;
   }
 
   if (environments.length === 0 && !systemEnvironment) {
@@ -94,7 +94,7 @@ export function EnvironmentSelector() {
       value={selectedEnvironmentId ?? ""}
       onValueChange={handleEnvironmentChange}
     >
-      <SelectTrigger className="h-8 w-full text-xs">
+      <SelectTrigger className="h-8 w-[160px] text-xs">
         <Layers className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
         <SelectValue placeholder="Select environment" />
       </SelectTrigger>
