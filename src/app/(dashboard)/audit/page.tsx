@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/page-header";
 import { useTeamStore } from "@/stores/team-store";
 
 const ALL_VALUE = "__all__";
@@ -132,6 +133,7 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader title="Audit Log" />
       {/* Filter bar */}
       <Card>
         <CardHeader className="pb-3">

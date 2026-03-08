@@ -29,6 +29,7 @@ import { MetricChart } from "@/components/dashboard/metric-chart";
 import { ViewBuilderDialog } from "@/components/dashboard/view-builder-dialog";
 import { CustomView } from "@/components/dashboard/custom-view";
 import { formatSI, formatBytesRate, formatEventsRate } from "@/lib/format";
+import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
 /** Derive an overall status for a pipeline from its node statuses */
@@ -131,6 +132,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader title="Dashboard" />
       {/* ── Tab Bar ────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 border-b px-1 overflow-x-auto">
         <button

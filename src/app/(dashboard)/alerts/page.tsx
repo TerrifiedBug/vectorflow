@@ -59,6 +59,7 @@ import {
 } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Separator } from "@/components/ui/separator";
+import { PageHeader } from "@/components/page-header";
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 
@@ -274,16 +275,15 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Bell className="h-5 w-5 text-muted-foreground" />
-          <h3 className="text-lg font-semibold">Alert Rules</h3>
-        </div>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Rule
-        </Button>
-      </div>
+      <PageHeader
+        title="Alerts"
+        actions={
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Rule
+          </Button>
+        }
+      />
 
       {rulesQuery.isLoading ? (
         <div className="space-y-3">

@@ -35,6 +35,7 @@ import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
 import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { isVersionOlder } from "@/lib/version";
+import { PageHeader } from "@/components/page-header";
 import { toast } from "sonner";
 
 const AGENT_REPO = "TerrifiedBug/vectorflow";
@@ -116,6 +117,7 @@ export default function FleetPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader title="Fleet" />
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (

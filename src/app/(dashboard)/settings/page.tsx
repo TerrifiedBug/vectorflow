@@ -78,6 +78,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { PageHeader } from "@/components/page-header";
 import { ServiceAccountsSettings } from "@/app/(dashboard)/settings/service-accounts/page";
 
 
@@ -3379,6 +3380,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader title="Settings" />
       <Tabs defaultValue={isTeamAdmin ? "team" : isSuperAdmin ? "auth" : "team"}>
         <TabsList>
           {isTeamAdmin && (
