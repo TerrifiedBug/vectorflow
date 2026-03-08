@@ -16,12 +16,13 @@ interface ScimGroupResponse {
 }
 
 function toScimGroupResponse(
-  group: { id: string; displayName: string },
+  group: { id: string; displayName: string; externalId?: string | null },
   members: Array<{ value: string; display?: string }> = [],
-): ScimGroupResponse {
+): ScimGroupResponse & { externalId?: string } {
   return {
     schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"],
     id: group.id,
+    ...(group.externalId ? { externalId: group.externalId } : {}),
     displayName: group.displayName,
     members,
   };
@@ -100,23 +101,24 @@ export async function POST(req: NextRequest) {
       return scimError("displayName is required", 400);
     }
 
-    const { group, memberResponses, isNew } = await prisma.$transaction(async (tx) => {
+    const { group, memberResponses, auditAction } = await prisma.$transaction(async (tx) => {
       const existing = await tx.scimGroup.findUnique({
         where: { displayName },
       });
 
       let scimGroup;
-      let adopted = false;
+      let action: "scim.group_created" | "scim.group_adopted" | null = null;
 
       if (existing) {
         scimGroup = existing;
-        adopted = true;
         if (body.externalId && body.externalId !== existing.externalId) {
           scimGroup = await tx.scimGroup.update({
             where: { id: existing.id },
             data: { externalId: body.externalId },
           });
+          action = "scim.group_adopted";
         }
+        // If nothing changed, skip audit (avoids flooding on every sync cycle)
       } else {
         scimGroup = await tx.scimGroup.create({
           data: {
@@ -124,24 +126,27 @@ export async function POST(req: NextRequest) {
             externalId: body.externalId ?? null,
           },
         });
+        action = "scim.group_created";
       }
 
       const members = await processGroupMembers(tx, scimGroup.id, body.members);
 
-      return { group: scimGroup, memberResponses: members, isNew: !adopted };
+      return { group: scimGroup, memberResponses: members, auditAction: action };
     });
 
-    await writeAuditLog({
-      userId: null,
-      action: isNew ? "scim.group_created" : "scim.group_adopted",
-      entityType: "ScimGroup",
-      entityId: group.id,
-      metadata: { displayName },
-    });
+    if (auditAction) {
+      await writeAuditLog({
+        userId: null,
+        action: auditAction,
+        entityType: "ScimGroup",
+        entityId: group.id,
+        metadata: { displayName },
+      });
+    }
 
     return NextResponse.json(
       toScimGroupResponse(group, memberResponses),
-      { status: isNew ? 201 : 200 },
+      { status: auditAction === "scim.group_created" ? 201 : 200 },
     );
   } catch (error) {
     const message =
