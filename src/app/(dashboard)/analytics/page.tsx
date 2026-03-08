@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowUp, ArrowDown, Minus, BarChart3, Info, Inbox } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, Info, Inbox } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,

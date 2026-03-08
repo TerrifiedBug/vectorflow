@@ -16,7 +16,6 @@ import {
   Trash2,
   Loader2,
   Send,
-  Bell,
   Webhook,
   History,
   BellRing,
