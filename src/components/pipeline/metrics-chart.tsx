@@ -10,6 +10,8 @@ import {
   CartesianGrid,
 } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Inbox } from "lucide-react";
 import { formatBytesRate } from "@/lib/format";
 
 interface PipelineMetricsChartProps {
@@ -52,17 +54,15 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
   }));
 
   if (metricsQuery.isLoading) {
-    return (
-      <div className="flex items-center justify-center h-48 text-xs text-muted-foreground">
-        Loading metrics...
-      </div>
-    );
+    return <Skeleton className="h-48 w-full rounded-lg" />;
   }
 
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-48 text-xs text-muted-foreground">
-        No metrics data yet. Metrics appear after agents report heartbeats.
+      <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+        <Inbox className="h-8 w-8 text-muted-foreground/50" />
+        <p className="mt-2 text-sm">No metrics data yet</p>
+        <p className="text-xs text-muted-foreground/70">Metrics appear after agents report heartbeats.</p>
       </div>
     );
   }

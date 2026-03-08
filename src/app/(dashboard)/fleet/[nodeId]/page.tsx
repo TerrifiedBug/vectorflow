@@ -3,7 +3,8 @@
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowLeft, ShieldOff, Trash2, Activity, Terminal, Server, Pencil, Check, X, Wrench, Plus, Tag } from "lucide-react";
+import Link from "next/link";
+import { ShieldOff, Trash2, Activity, Terminal, Server, Pencil, Check, X, Wrench, Plus, Tag } from "lucide-react";
 import { NodeLogs } from "@/components/fleet/node-logs";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -220,10 +221,13 @@ export default function NodeDetailPage() {
   if (nodeQuery.isError || !node) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" onClick={() => router.push("/fleet")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Fleet
-        </Button>
+        <div className="flex items-center gap-1.5 text-sm">
+          <Link href="/fleet" className="text-muted-foreground hover:text-foreground transition-colors">
+            Fleet
+          </Link>
+          <span className="text-muted-foreground">/</span>
+          <span className="font-medium">Not found</span>
+        </div>
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
           <p className="text-muted-foreground">Node not found</p>
         </div>
@@ -235,9 +239,12 @@ export default function NodeDetailPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push("/fleet")} aria-label="Back to fleet">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1.5 text-sm">
+            <Link href="/fleet" className="text-muted-foreground hover:text-foreground transition-colors">
+              Fleet
+            </Link>
+            <span className="text-muted-foreground">/</span>
+          </div>
           <div>
             {isRenaming ? (
               <div className="flex items-center gap-1">

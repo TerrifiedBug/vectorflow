@@ -27,11 +27,11 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
 };
 
 const LEVEL_BADGE_COLORS: Record<LogLevel, string> = {
-  ERROR: "bg-red-500/20 text-red-400 hover:bg-red-500/30",
-  WARN: "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30",
-  INFO: "bg-gray-500/20 text-gray-300 hover:bg-gray-500/30",
-  DEBUG: "bg-gray-600/20 text-gray-500 hover:bg-gray-600/30",
-  TRACE: "bg-gray-700/20 text-gray-600 hover:bg-gray-700/30",
+  ERROR: "bg-red-500/20 text-red-400 transition-colors hover:bg-red-500/30",
+  WARN: "bg-yellow-500/20 text-yellow-400 transition-colors hover:bg-yellow-500/30",
+  INFO: "bg-gray-500/20 text-gray-300 transition-colors hover:bg-gray-500/30",
+  DEBUG: "bg-gray-600/20 text-gray-500 transition-colors hover:bg-gray-600/30",
+  TRACE: "bg-gray-700/20 text-gray-600 transition-colors hover:bg-gray-700/30",
 };
 
 function formatTime(date: Date | string): string {
@@ -132,7 +132,8 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
           <button
             key={level}
             onClick={() => toggleLevel(level)}
-            className={`rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${
+            aria-label={`Filter ${level.toLowerCase()} logs`}
+            className={`cursor-pointer rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${
               activeLevels.has(level)
                 ? LEVEL_BADGE_COLORS[level]
                 : "bg-transparent text-gray-700 hover:text-gray-500"

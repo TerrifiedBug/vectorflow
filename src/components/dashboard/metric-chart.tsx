@@ -20,6 +20,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { formatTimeAxis } from "@/lib/format";
+import { Inbox } from "lucide-react";
 import type { ReactNode } from "react";
 
 type TSMap = Record<string, { t: number; v: number }[]>;
@@ -169,10 +170,11 @@ export function MetricChart({
         </CardHeader>
         <CardContent>
           <div
-            className="flex items-center justify-center text-xs text-muted-foreground"
+            className="flex flex-col items-center justify-center text-muted-foreground"
             style={{ height }}
           >
-            No data for selected filters
+            <Inbox className="h-8 w-8 text-muted-foreground/50" />
+            <p className="mt-2 text-sm">No data for selected filters</p>
           </div>
         </CardContent>
       </Card>

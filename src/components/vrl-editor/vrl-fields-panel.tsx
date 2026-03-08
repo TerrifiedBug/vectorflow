@@ -254,7 +254,7 @@ function FieldRow({
   }, [renameValue, field.path, onInsert]);
 
   return (
-    <div className="group/row rounded px-3 py-1 hover:bg-accent">
+    <div className="group/row rounded px-3 py-1 transition-colors hover:bg-accent">
       {/* Row 1: field name + type + sample */}
       <div className="flex items-center gap-1.5">
         <button
@@ -454,7 +454,7 @@ export function VrlFieldsPanel({
               <button
                 onClick={() => toggleGroup(groupKey)}
                 aria-expanded={!collapsed.has(groupKey)}
-                className="flex w-full cursor-pointer items-center gap-1 rounded px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted/50"
+                className="flex w-full cursor-pointer items-center gap-1 rounded px-2 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted/50"
               >
                 {collapsed.has(groupKey) ? (
                   <ChevronRight className="h-3 w-3" />
