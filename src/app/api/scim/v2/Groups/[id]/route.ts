@@ -3,9 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
 import { authenticateScim } from "../../auth";
 import {
-  loadGroupMappings,
-  getMappingsForGroup,
-  applyMappedMemberships,
+  reconcileUserTeamMemberships,
+  getScimGroupNamesForUser,
 } from "@/server/services/group-mappings";
 
 function scimError(detail: string, status: number) {
@@ -40,13 +39,23 @@ export async function GET(
   }
 
   const { id } = await params;
-  const group = await prisma.scimGroup.findUnique({ where: { id } });
+  const group = await prisma.scimGroup.findUnique({
+    where: { id },
+    include: {
+      members: { select: { userId: true, user: { select: { email: true } } } },
+    },
+  });
 
   if (!group) {
     return scimError("Group not found", 404);
   }
 
-  return NextResponse.json(toScimGroupResponse(group));
+  return NextResponse.json(
+    toScimGroupResponse(
+      group,
+      group.members.map((m) => ({ value: m.userId, display: m.user.email })),
+    ),
+  );
 }
 
 export async function PATCH(
@@ -66,22 +75,32 @@ export async function PATCH(
   try {
     const body = await req.json();
     const operations = body.Operations ?? body.operations ?? [];
-    const allMappings = await loadGroupMappings();
-    let groupMappings = getMappingsForGroup(allMappings, group.displayName);
 
     await prisma.$transaction(async (tx) => {
       for (const op of operations) {
         const operation = op.op?.toLowerCase();
 
-        if (operation === "replace" && op.path === "displayName" && typeof op.value === "string") {
+        // displayName rename
+        if (
+          operation === "replace" &&
+          op.path === "displayName" &&
+          typeof op.value === "string"
+        ) {
           await tx.scimGroup.update({
             where: { id },
             data: { displayName: op.value },
           });
-          // Re-resolve mappings so subsequent member ops use the new name
-          groupMappings = getMappingsForGroup(allMappings, op.value);
+          // Reconcile all users in this group — their mappings may resolve differently
+          const groupMembers = await tx.scimGroupMember.findMany({
+            where: { scimGroupId: id },
+          });
+          for (const gm of groupMembers) {
+            const groupNames = await getScimGroupNamesForUser(tx, gm.userId);
+            await reconcileUserTeamMemberships(tx, gm.userId, groupNames);
+          }
         }
 
+        // Add members
         if (operation === "add" && op.path === "members") {
           const members = Array.isArray(op.value) ? op.value : [op.value];
           for (const member of members) {
@@ -89,14 +108,48 @@ export async function PATCH(
             if (typeof userId !== "string") continue;
             const user = await tx.user.findUnique({ where: { id: userId } });
             if (!user) continue;
-            await applyMappedMemberships(tx, userId, groupMappings);
+
+            await tx.scimGroupMember.upsert({
+              where: { scimGroupId_userId: { scimGroupId: id, userId } },
+              create: { scimGroupId: id, userId },
+              update: {},
+            });
+
+            const groupNames = await getScimGroupNamesForUser(tx, userId);
+            await reconcileUserTeamMemberships(tx, userId, groupNames);
           }
         }
 
-        // Member remove is intentionally a no-op. Without tracking which
-        // group granted each TeamMember, removing here would silently
-        // revoke access still legitimately granted by other groups, OIDC,
-        // or manual assignment. Memberships reconcile on next OIDC login.
+        // Remove members — handle both RFC 7644 forms:
+        // 1. Filter: { op: "remove", path: "members[value eq \"userId\"]" }
+        // 2. Array:  { op: "remove", path: "members", value: [{ value: "userId" }] }
+        if (operation === "remove") {
+          const filterMatch = typeof op.path === "string"
+            ? op.path.match(/^members\[value eq "([^"]+)"\]$/i)
+            : null;
+
+          if (filterMatch) {
+            const userId = filterMatch[1];
+            await tx.scimGroupMember.deleteMany({
+              where: { scimGroupId: id, userId },
+            });
+            const groupNames = await getScimGroupNamesForUser(tx, userId);
+            await reconcileUserTeamMemberships(tx, userId, groupNames);
+          } else if (op.path === "members") {
+            const members = Array.isArray(op.value) ? op.value : [op.value];
+            for (const member of members) {
+              const userId = member.value;
+              if (typeof userId !== "string") continue;
+
+              await tx.scimGroupMember.deleteMany({
+                where: { scimGroupId: id, userId },
+              });
+
+              const groupNames = await getScimGroupNamesForUser(tx, userId);
+              await reconcileUserTeamMemberships(tx, userId, groupNames);
+            }
+          }
+        }
       }
     });
 
@@ -107,17 +160,34 @@ export async function PATCH(
       entityId: id,
       metadata: {
         displayName: group.displayName,
-        mappedTeams: groupMappings.map((m) => m.teamId),
-        operations: operations.map((o: { op: string; path?: string }) => ({ op: o.op, path: o.path })),
+        operations: operations.map((o: { op: string; path?: string }) => ({
+          op: o.op,
+          path: o.path,
+        })),
       },
     });
 
-    const updated = await prisma.scimGroup.findUnique({ where: { id } });
+    const updated = await prisma.scimGroup.findUnique({
+      where: { id },
+      include: {
+        members: {
+          select: { userId: true, user: { select: { email: true } } },
+        },
+      },
+    });
     if (!updated) {
       return scimError("Group not found", 404);
     }
 
-    return NextResponse.json(toScimGroupResponse(updated));
+    return NextResponse.json(
+      toScimGroupResponse(
+        updated,
+        updated.members.map((m) => ({
+          value: m.userId,
+          display: m.user.email,
+        })),
+      ),
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to patch group";
@@ -141,33 +211,54 @@ export async function PUT(
 
   try {
     const body = await req.json();
-    const allMappings = await loadGroupMappings();
-    let groupMappings = getMappingsForGroup(allMappings, group.displayName);
 
     await prisma.$transaction(async (tx) => {
+      // Update displayName if provided
       if (body.displayName && typeof body.displayName === "string") {
         await tx.scimGroup.update({
           where: { id },
           data: { displayName: body.displayName },
         });
-        // Re-resolve mappings so member sync uses the new name
-        groupMappings = getMappingsForGroup(allMappings, body.displayName);
       }
 
-      // Additive-only member sync through mappings. We cannot remove members
-      // here because we don't track which group granted each membership —
-      // removing would silently deprovision users from other groups, OIDC, or
-      // manual assignment that share the same mapped team.
-      if (body.members && Array.isArray(body.members) && groupMappings.length > 0) {
-        const memberUserIds = body.members
-          .map((m: { value?: unknown }) => m.value)
-          .filter((v: unknown): v is string => typeof v === "string");
-
-        for (const userId of memberUserIds) {
+      // Full member sync: compute desired set, diff against current
+      const desiredUserIds = new Set<string>();
+      if (body.members && Array.isArray(body.members)) {
+        for (const m of body.members) {
+          const userId = (m as { value?: unknown }).value;
+          if (typeof userId !== "string") continue;
           const user = await tx.user.findUnique({ where: { id: userId } });
           if (!user) continue;
-          await applyMappedMemberships(tx, userId, groupMappings);
+          desiredUserIds.add(userId);
         }
+      }
+
+      const currentMembers = await tx.scimGroupMember.findMany({
+        where: { scimGroupId: id },
+      });
+      const currentUserIds = new Set(currentMembers.map((m) => m.userId));
+
+      // Add missing members
+      for (const userId of desiredUserIds) {
+        if (!currentUserIds.has(userId)) {
+          await tx.scimGroupMember.create({
+            data: { scimGroupId: id, userId },
+          });
+        }
+      }
+
+      // Remove absent members
+      for (const member of currentMembers) {
+        if (!desiredUserIds.has(member.userId)) {
+          await tx.scimGroupMember.delete({ where: { id: member.id } });
+        }
+      }
+
+      // Reconcile all affected users (union of current + desired)
+      const allAffectedUserIds = new Set([...currentUserIds, ...desiredUserIds]);
+      for (const userId of allAffectedUserIds) {
+        const groupNames = await getScimGroupNamesForUser(tx, userId);
+        await reconcileUserTeamMemberships(tx, userId, groupNames);
       }
     });
 
@@ -179,16 +270,30 @@ export async function PUT(
       metadata: {
         displayName: body.displayName ?? group.displayName,
         memberCount: body.members?.length,
-        mappedTeams: groupMappings.map((m) => m.teamId),
       },
     });
 
-    const updated = await prisma.scimGroup.findUnique({ where: { id } });
+    const updated = await prisma.scimGroup.findUnique({
+      where: { id },
+      include: {
+        members: {
+          select: { userId: true, user: { select: { email: true } } },
+        },
+      },
+    });
     if (!updated) {
       return scimError("Group not found", 404);
     }
 
-    return NextResponse.json(toScimGroupResponse(updated));
+    return NextResponse.json(
+      toScimGroupResponse(
+        updated,
+        updated.members.map((m) => ({
+          value: m.userId,
+          display: m.user.email,
+        })),
+      ),
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to update group";
@@ -205,15 +310,26 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  const group = await prisma.scimGroup.findUnique({ where: { id } });
+  const group = await prisma.scimGroup.findUnique({
+    where: { id },
+    include: { members: { select: { userId: true } } },
+  });
   if (!group) {
     return scimError("Group not found", 404);
   }
 
-  // Don't cascade to TeamMembers — we cannot determine which members were
-  // granted by this specific group vs other groups, OIDC login, or manual
-  // assignment. Memberships are corrected on next OIDC login or SCIM sync.
-  await prisma.scimGroup.delete({ where: { id } });
+  // Collect affected user IDs before deletion
+  const affectedUserIds = group.members.map((m) => m.userId);
+
+  // Delete group and reconcile all affected users in a single transaction
+  // to prevent stale group_mapping TeamMembers if a crash occurs mid-way
+  await prisma.$transaction(async (tx) => {
+    await tx.scimGroup.delete({ where: { id } });
+    for (const userId of affectedUserIds) {
+      const groupNames = await getScimGroupNamesForUser(tx, userId);
+      await reconcileUserTeamMemberships(tx, userId, groupNames);
+    }
+  });
 
   await writeAuditLog({
     userId: null,
