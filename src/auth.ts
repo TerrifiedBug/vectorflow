@@ -271,6 +271,7 @@ async function getAuthInstance() {
                   userGroupNames = tokenGroups;
                 }
 
+                console.log(`[oidc] User ${user.email} scimEnabled=${settings.scimEnabled}, final groups:`, userGroupNames);
                 const { reconcileUserTeamMemberships } = await import("@/server/services/group-mappings");
                 await prisma.$transaction(async (tx) => {
                   await reconcileUserTeamMemberships(tx, dbUser.id, userGroupNames);
