@@ -247,8 +247,8 @@ export default function AnalyticsPage() {
             {eventsReducedDelta != null && (
               <p className="text-xs text-muted-foreground">
                 {eventsReducedDelta >= 0 ? "+" : ""}
-                {eventsReducedDelta.toFixed(1)}% vs last period
-              </p>
+                {eventsReducedDelta >= 0 ? "+" : ""}
+                {eventsReducedDelta.toFixed(1)} pp vs last period
             )}
           </CardContent>
         </Card>
