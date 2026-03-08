@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { debugLog } from "@/lib/logger";
 
 export interface GroupMapping {
   group: string;
@@ -56,7 +57,7 @@ export async function reconcileUserTeamMemberships(
   userGroupNames: string[],
 ): Promise<void> {
   const allMappings = await loadGroupMappings();
-  console.log(`[reconcile] userId=${userId}, userGroups=${JSON.stringify(userGroupNames)}, mappings=${JSON.stringify(allMappings)}`);
+  debugLog("reconcile", `userId=${userId}, userGroups=${JSON.stringify(userGroupNames)}, mappings=${JSON.stringify(allMappings)}`);
 
   // Compute desired state: for each team, the highest role from any matching group
   const desiredTeamRoles = new Map<string, "VIEWER" | "EDITOR" | "ADMIN">();
@@ -70,13 +71,13 @@ export async function reconcileUserTeamMemberships(
     }
   }
 
-  console.log(`[reconcile] desiredTeamRoles=${JSON.stringify([...desiredTeamRoles.entries()])}`);
+  debugLog("reconcile", `desiredTeamRoles=${JSON.stringify([...desiredTeamRoles.entries()])}`);
 
   // Fetch current group_mapping TeamMembers for this user
   const existing = await tx.teamMember.findMany({
     where: { userId, source: "group_mapping" },
   });
-  console.log(`[reconcile] existing group_mapping members=${JSON.stringify(existing.map(m => ({ teamId: m.teamId, role: m.role })))}`);
+  debugLog("reconcile", `existing group_mapping members=${JSON.stringify(existing.map(m => ({ teamId: m.teamId, role: m.role })))}`);
 
   const existingByTeam = new Map(existing.map((m) => [m.teamId, m]));
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
+import { debugLog } from "@/lib/logger";
 import { authenticateScim } from "../auth";
 import {
   reconcileUserTeamMemberships,
@@ -93,6 +94,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
+    debugLog("scim", `POST /Groups`, { displayName: body.displayName, memberCount: Array.isArray(body.members) ? body.members.length : 0 });
     const displayName = body.displayName;
     if (!displayName || typeof displayName !== "string") {
       return scimError("displayName is required", 400);
