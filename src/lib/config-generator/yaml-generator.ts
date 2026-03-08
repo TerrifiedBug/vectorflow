@@ -79,7 +79,7 @@ export function generateVectorYaml(
   // Inject a per-sink metadata enrichment transform to preserve topology
   if (enrichment) {
     const sinkKeys = Object.keys(config.sinks ?? {});
-    const vrl = `.vectorflow.environment = ${JSON.stringify(enrichment.environmentName)}\n.vectorflow.pipeline_version = ${enrichment.pipelineVersion}`;
+    const vrl = `.vectorflow.environment = ${JSON.stringify(enrichment.environmentName.toLowerCase())}\n.vectorflow.pipeline_version = ${enrichment.pipelineVersion}\n.vectorflow.host = get_hostname!()`;
 
     for (const sinkKey of sinkKeys) {
       const sink = config.sinks[sinkKey] as Record<string, unknown>;
