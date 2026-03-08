@@ -85,20 +85,23 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="px-4 pt-3 pb-0 group-data-[collapsible=icon]:px-2">
-        <Link href="/" className="flex items-center gap-2 py-1">
-          <span className="text-xl tracking-tight group-data-[collapsible=icon]:hidden">
-            <span className="font-bold">Vector</span>
-            <span className="font-light">Flow</span>
-          </span>
-          <span className="hidden text-xl font-bold group-data-[collapsible=icon]:block">V</span>
-        </Link>
-        <Separator className="my-2 group-data-[collapsible=icon]:hidden" />
-        <div className="px-3 pb-3 space-y-2 group-data-[collapsible=icon]:hidden">
+      <SidebarHeader className="p-0 group-data-[collapsible=icon]:p-0">
+        {/* Logo row — matches the h-14 main content header for border alignment */}
+        <div className="flex h-14 items-center px-4 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
+          <Link href="/" className="flex items-center gap-2">
+            <span className="text-xl tracking-tight group-data-[collapsible=icon]:hidden">
+              <span className="font-bold">Vector</span>
+              <span className="font-light">Flow</span>
+            </span>
+            <span className="hidden text-xl group-data-[collapsible=icon]:block"><span className="font-bold">V</span><span className="font-light">f</span></span>
+          </Link>
+        </div>
+        <Separator />
+        {/* Context selectors */}
+        <div className="space-y-1.5 p-3 group-data-[collapsible=icon]:hidden">
           <TeamSelector />
           <EnvironmentSelector />
         </div>
-        <Separator className="group-data-[collapsible=icon]:hidden" />
         {/* Collapsed mode: icon buttons with popovers */}
         <div className="hidden group-data-[collapsible=icon]:flex flex-col items-center gap-1 py-2">
           <Popover>
