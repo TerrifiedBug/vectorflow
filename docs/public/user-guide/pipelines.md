@@ -182,7 +182,7 @@ Tags are metadata labels only -- they do not enforce any access controls or data
 
 ## Deploy approval workflows
 
-Environments can optionally require **admin approval** before a pipeline is deployed. When enabled, editors who click **Deploy** will submit a deploy request instead of deploying directly. Admins can then review, approve, or reject the request.
+Environments can optionally require **deploy approval** before a pipeline goes live. When enabled, editors who click **Deploy** will submit a deploy request instead of deploying directly. Another team member (editor or admin) can then review, approve, or reject the request.
 
 ### How it works
 

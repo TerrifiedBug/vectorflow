@@ -92,7 +92,7 @@ The agent accepts the following flags:
 |------|-------------|
 | `--version`, `-v` | Print the agent version and exit |
 | `--help`, `-h` | Show usage help including the environment variable reference |
-| `--channel <name>` | Set the update channel: `stable` (default) or `dev`. Dev channel agents receive pre-release binaries and are tracked separately in the fleet UI. |
+| `--channel <name>` | Set the update channel at first enrollment: `stable` (default) or `dev`. Only effective on initial startup — the channel cannot be changed afterward without re-installing the agent. Dev channel agents receive pre-release binaries and are tracked separately in the fleet UI. |
 
 All runtime configuration is via environment variables -- there are no flags for server URL, token, etc.
 
