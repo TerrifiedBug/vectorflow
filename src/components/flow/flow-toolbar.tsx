@@ -123,16 +123,6 @@ export function FlowToolbar({
   const queryClient = useQueryClient();
   const { data: session } = useSession();
 
-  const healthQuery = useQuery(
-    trpc.pipeline.health.queryOptions(
-      { pipelineId: pipelineId! },
-      { enabled: !!pipelineId && !isDraft && !!deployedAt, refetchInterval: 30_000 },
-    ),
-  );
-  const healthStatus = healthQuery.data?.status ?? null;
-  const sliTotal = healthQuery.data?.slis?.length ?? 0;
-  const slisBreached = healthQuery.data?.slis?.filter((s: { status: string }) => s.status === "breached").length ?? 0;
-
   // Query pending deploy requests for this pipeline
   const pendingRequestsQuery = useQuery({
     ...trpc.deploy.listPendingRequests.queryOptions({ pipelineId: pipelineId! }),
@@ -470,19 +460,6 @@ export function FlowToolbar({
               {processStatus === "CRASHED" && "Crashed"}
               {processStatus === "PENDING" && "Pending..."}
             </span>
-            {/* Health SLI badge */}
-            {healthStatus === "healthy" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                SLIs: OK
-              </span>
-            )}
-            {healthStatus === "degraded" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:text-yellow-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
-                SLIs: {slisBreached}/{sliTotal} breached
-              </span>
-            )}
           </div>
         )}
 

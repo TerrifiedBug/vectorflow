@@ -143,8 +143,8 @@ export function VersionHistoryDialog({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[80px]">Version</TableHead>
-                    <TableHead className="max-w-0">Changelog</TableHead>
+                    <TableHead className="w-[120px]">Version</TableHead>
+                    <TableHead>Changelog</TableHead>
                     <TableHead className="w-[180px]">Created</TableHead>
                     <TableHead className="w-[120px] text-right">
                       Actions
@@ -171,8 +171,8 @@ export function VersionHistoryDialog({
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="max-w-0">
-                          <span className="text-sm text-muted-foreground truncate block">
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground truncate block max-w-[200px]">
                             {version.changelog || "No changelog"}
                           </span>
                         </TableCell>

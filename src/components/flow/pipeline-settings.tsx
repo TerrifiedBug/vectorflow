@@ -331,6 +331,16 @@ function SliSettings({ pipelineId }: { pipelineId: string }) {
   );
   const slis = slisQuery.data ?? [];
 
+  const healthQuery = useQuery(
+    trpc.pipeline.health.queryOptions(
+      { pipelineId },
+      { enabled: slis.length > 0, refetchInterval: 30_000 },
+    ),
+  );
+  const sliStatuses = new Map(
+    (healthQuery.data?.slis ?? []).map((s: { metric: string; status: string }) => [s.metric, s.status]),
+  );
+
   const [sliOpen, setSliOpen] = useState(false);
   const [newMetric, setNewMetric] = useState<string>("error_rate");
   const [newCondition, setNewCondition] = useState<string>("lt");
@@ -412,14 +422,23 @@ function SliSettings({ pipelineId }: { pipelineId: string }) {
                 key={sli.id}
                 className="flex items-center justify-between rounded-md border px-3 py-2 text-xs"
               >
-                <div>
-                  <span className="font-medium">{metricLabel(sli.metric)}</span>{" "}
-                  <span className="text-muted-foreground">
-                    {sli.condition === "lt" ? "<" : ">"} {sli.threshold}
-                  </span>{" "}
-                  <span className="text-muted-foreground">
-                    ({sli.windowMinutes}m)
-                  </span>
+                <div className="flex items-center gap-2">
+                  {sliStatuses.has(sli.metric) && (
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${
+                      sliStatuses.get(sli.metric) === "met" ? "bg-green-500" :
+                      sliStatuses.get(sli.metric) === "breached" ? "bg-red-500" :
+                      "bg-gray-400"
+                    }`} />
+                  )}
+                  <div>
+                    <span className="font-medium">{metricLabel(sli.metric)}</span>{" "}
+                    <span className="text-muted-foreground">
+                      {sli.condition === "lt" ? "<" : ">"} {sli.threshold}
+                    </span>{" "}
+                    <span className="text-muted-foreground">
+                      ({sli.windowMinutes}m)
+                    </span>
+                  </div>
                 </div>
                 <Button
                   variant="ghost"

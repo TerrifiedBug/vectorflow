@@ -788,7 +788,7 @@ export const pipelineRouter = router({
       if (!latestVersion.nodesSnapshot || !latestVersion.edgesSnapshot) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
-          message: "Deployed version has no snapshot — deploy once more to enable discard",
+          message: "Deploy once more to enable discard — this version predates snapshot support",
         });
       }
 
