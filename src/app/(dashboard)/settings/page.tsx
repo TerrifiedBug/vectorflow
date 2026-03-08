@@ -467,7 +467,32 @@ function AuthSettings() {
     testOidcMutation.mutate({ issuer });
   };
 
-  const [teamMappings, setTeamMappings] = useState<Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>>([]);
+  const [teamMappings, setTeamMappings] = useState<Array<{group: string; teamIds: string[]; role: "VIEWER" | "EDITOR" | "ADMIN"}>>([]);
+
+  function mergeMappings(
+    flat: Array<{ group: string; teamId: string; role: string }>
+  ): Array<{ group: string; teamIds: string[]; role: "VIEWER" | "EDITOR" | "ADMIN" }> {
+    const map = new Map<string, { group: string; teamIds: string[]; role: "VIEWER" | "EDITOR" | "ADMIN" }>();
+    for (const m of flat) {
+      const key = `${m.group}::${m.role}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.teamIds.push(m.teamId);
+      } else {
+        map.set(key, { group: m.group, teamIds: [m.teamId], role: m.role as "VIEWER" | "EDITOR" | "ADMIN" });
+      }
+    }
+    return [...map.values()];
+  }
+
+  function flattenMappings(
+    grouped: Array<{ group: string; teamIds: string[]; role: "VIEWER" | "EDITOR" | "ADMIN" }>
+  ): Array<{ group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN" }> {
+    return grouped.flatMap((row) =>
+      row.teamIds.map((teamId) => ({ group: row.group, teamId, role: row.role }))
+    );
+  }
+
   const [defaultTeamId, setDefaultTeamId] = useState("");
   const [defaultRole, setDefaultRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
   const [groupSyncEnabled, setGroupSyncEnabled] = useState(false);
@@ -483,7 +508,9 @@ function AuthSettings() {
     setGroupSyncEnabled(settings.oidcGroupSyncEnabled ?? false);
     setGroupsScope(settings.oidcGroupsScope ?? "");
     setGroupsClaim(settings.oidcGroupsClaim ?? "groups");
-    setTeamMappings((settings.oidcTeamMappings ?? []) as Array<{group: string; teamId: string; role: "VIEWER" | "EDITOR" | "ADMIN"}>);
+    setTeamMappings(
+      mergeMappings((settings.oidcTeamMappings ?? []) as Array<{group: string; teamId: string; role: string}>)
+    );
     setDefaultTeamId(settings.oidcDefaultTeamId ?? "");
   }, [settings, isDirty]);
 
@@ -504,7 +531,7 @@ function AuthSettings() {
 
   function addMapping() {
     markDirty();
-    setTeamMappings([...teamMappings, { group: "", teamId: "", role: "VIEWER" }]);
+    setTeamMappings([...teamMappings, { group: "", teamIds: [], role: "VIEWER" }]);
   }
 
   function removeMapping(index: number) {
@@ -512,10 +539,17 @@ function AuthSettings() {
     setTeamMappings(teamMappings.filter((_, i) => i !== index));
   }
 
-  function updateMapping(index: number, field: keyof typeof teamMappings[number], value: string) {
+  function updateMapping(index: number, field: "group" | "role", value: string) {
     markDirty();
     setTeamMappings(teamMappings.map((m, i) =>
-      i === index ? { ...m, [field]: value } as typeof m : m
+      i === index ? { ...m, [field]: value } : m
+    ));
+  }
+
+  function updateMappingTeams(index: number, teamIds: string[]) {
+    markDirty();
+    setTeamMappings(teamMappings.map((m, i) =>
+      i === index ? { ...m, teamIds } : m
     ));
   }
 
@@ -688,7 +722,7 @@ function AuthSettings() {
         <form onSubmit={(e) => {
           e.preventDefault();
           updateTeamMappingMutation.mutate({
-            mappings: teamMappings.filter((m) => m.group && m.teamId),
+            mappings: flattenMappings(teamMappings).filter((m) => m.group && m.teamId),
             defaultTeamId: defaultTeamId || undefined,
             defaultRole,
             groupSyncEnabled,
@@ -762,19 +796,57 @@ function AuthSettings() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Select
-                          value={mapping.teamId}
-                          onValueChange={(val) => updateMapping(index, "teamId", val)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select team" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(teamsQuery.data ?? []).map((t) => (
-                              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" type="button" className="w-full justify-start text-left font-normal">
+                              {mapping.teamIds.length === 0 && (
+                                <span className="text-muted-foreground">Select teams...</span>
+                              )}
+                              {mapping.teamIds.length === 1 && (
+                                <span>{(teamsQuery.data ?? []).find((t) => t.id === mapping.teamIds[0])?.name ?? "Unknown"}</span>
+                              )}
+                              {mapping.teamIds.length > 1 && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {mapping.teamIds.length} teams
+                                </Badge>
+                              )}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-56 p-2" align="start">
+                            <div className="space-y-1">
+                              {(teamsQuery.data ?? []).map((team) => {
+                                const checked = mapping.teamIds.includes(team.id);
+                                return (
+                                  <button
+                                    key={team.id}
+                                    type="button"
+                                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                                    onClick={() => {
+                                      const next = checked
+                                        ? mapping.teamIds.filter((id) => id !== team.id)
+                                        : [...mapping.teamIds, team.id];
+                                      updateMappingTeams(index, next);
+                                    }}
+                                  >
+                                    <div className={`flex h-4 w-4 items-center justify-center rounded-sm border ${checked ? "bg-primary border-primary" : "border-muted-foreground/30"}`}>
+                                      {checked && <CheckCircle2 className="h-3 w-3 text-primary-foreground" />}
+                                    </div>
+                                    <span>{team.name}</span>
+                                    {checked && (
+                                      <X
+                                        className="ml-auto h-3 w-3 text-muted-foreground hover:text-foreground"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          updateMappingTeams(index, mapping.teamIds.filter((id) => id !== team.id));
+                                        }}
+                                      />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
                       </TableCell>
                       <TableCell>
                         <Select
@@ -1944,15 +2016,15 @@ function UsersSettings() {
                         <Popover>
                           <PopoverTrigger asChild>
                             <button className="flex items-center gap-1 rounded-md hover:bg-muted/50 px-1 py-0.5 transition-colors">
-                              {user.memberships.slice(0, 2).map((m) => (
+                              {user.memberships.slice(0, 1).map((m) => (
                                 <Badge key={m.team.id} variant="outline" className="text-xs">
                                   {m.team.name}
                                 </Badge>
                               ))}
-                              {user.memberships.length > 2 && (
-                                <span className="text-xs text-muted-foreground">
-                                  +{user.memberships.length - 2} more
-                                </span>
+                              {user.memberships.length > 1 && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {user.memberships.length} teams
+                                </Badge>
                               )}
                             </button>
                           </PopoverTrigger>
