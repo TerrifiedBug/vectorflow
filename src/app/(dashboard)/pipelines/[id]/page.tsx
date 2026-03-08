@@ -243,10 +243,16 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   // Discard changes mutation
   const discardMutation = useMutation(
     trpc.pipeline.discardChanges.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (result) => {
         markClean();
         queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey() });
-        toast.success("Changes discarded — restored to last deployed state");
+        if (result.partial) {
+          toast.success("Global settings restored", {
+            description: "Node configs were not restored — redeploy to enable full discard.",
+          });
+        } else {
+          toast.success("Changes discarded — restored to last deployed state");
+        }
         setDiscardOpen(false);
       },
       onError: (err) => {

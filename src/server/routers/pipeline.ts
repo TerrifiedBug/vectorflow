@@ -836,7 +836,7 @@ export const pipelineRouter = router({
         }
       });
 
-      return { discarded: true };
+      return { discarded: true, partial: !hasSnapshots };
     }),
 
   versions: protectedProcedure
