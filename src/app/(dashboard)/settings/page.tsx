@@ -1720,7 +1720,7 @@ function TeamSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           {(settingsQuery.data?.scimEnabled || settingsQuery.data?.oidcGroupSyncEnabled) && (
-            <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+            <div className="flex items-start gap-2 rounded-md border border-status-info/30 bg-status-info-bg p-3 text-sm text-status-info-foreground">
               <Info className="h-4 w-4 mt-0.5 shrink-0" />
               <span>SSO users are managed by your identity provider. Only local users can be added manually.</span>
             </div>
@@ -3055,9 +3055,9 @@ function BackupSettings() {
       </Card>
 
       {/* Warning Banner */}
-      <Card className="border-yellow-500/50">
+      <Card className="border-status-degraded/30">
         <CardContent className="flex items-start gap-3 p-4">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-yellow-500" />
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-status-degraded-foreground" />
           <div className="text-sm text-muted-foreground">
             <p className="font-medium text-foreground">Important</p>
             <p>
@@ -3330,9 +3330,9 @@ function ScimSettings() {
                 )}
               </Button>
             </div>
-            <div className="flex items-center gap-2 rounded border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950 p-3 text-sm">
-              <AlertTriangle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
-              <span className="text-yellow-700 dark:text-yellow-400">
+            <div className="flex items-center gap-2 rounded border border-status-degraded/30 bg-status-degraded-bg p-3 text-sm">
+              <AlertTriangle className="h-4 w-4 text-status-degraded-foreground flex-shrink-0" />
+              <span className="text-status-degraded-foreground">
                 This token will not be shown again. Make sure to save it before closing this dialog.
               </span>
             </div>
@@ -3397,14 +3397,12 @@ export default function SettingsPage() {
           )}
           {isSuperAdmin && (
             <>
+              {isTeamAdmin && <Separator orientation="vertical" className="h-5" />}
               <TabsTrigger value="auth">
                 <Shield className="mr-2 h-4 w-4" />
                 Auth
               </TabsTrigger>
-              <TabsTrigger value="fleet">
-                <Server className="mr-2 h-4 w-4" />
-                Fleet
-              </TabsTrigger>
+              <Separator orientation="vertical" className="h-5" />
               <TabsTrigger value="users">
                 <Users className="mr-2 h-4 w-4" />
                 Users
@@ -3412,6 +3410,11 @@ export default function SettingsPage() {
               <TabsTrigger value="teams">
                 <Layers className="mr-2 h-4 w-4" />
                 Teams
+              </TabsTrigger>
+              <Separator orientation="vertical" className="h-5" />
+              <TabsTrigger value="fleet">
+                <Server className="mr-2 h-4 w-4" />
+                Fleet
               </TabsTrigger>
               <TabsTrigger value="version">
                 <RefreshCw className="mr-2 h-4 w-4" />
