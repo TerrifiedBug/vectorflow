@@ -248,6 +248,7 @@ export default function AnalyticsPage() {
               <p className="text-xs text-muted-foreground">
                 {eventsReducedDelta >= 0 ? "+" : ""}
                 {eventsReducedDelta.toFixed(1)} pp vs last period
+              </p>
             )}
           </CardContent>
         </Card>
