@@ -32,6 +32,7 @@ import { PromotePipelineDialog } from "@/components/promote-pipeline-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatEventsRate, formatBytesRate } from "@/lib/format";
+import { tagBadgeClass, reductionBadgeClass } from "@/lib/badge-variants";
 
 function aggregateProcessStatus(
   statuses: Array<{ status: string }>
@@ -74,21 +75,6 @@ function getReductionPercent(totals: { eventsIn: bigint; eventsOut: bigint }): n
   return Math.max(0, (1 - evOut / evIn) * 100);
 }
 
-function reductionColor(pct: number): string {
-  if (pct > 50) return "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30";
-  if (pct > 10) return "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30";
-  return "bg-muted text-muted-foreground";
-}
-
-function tagBadgeClass(tag: string): string {
-  const upper = tag.toUpperCase();
-  if (upper === "PII") return "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30";
-  if (upper === "PHI") return "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30";
-  if (upper === "PCI-DSS") return "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30";
-  if (upper === "INTERNAL") return "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30";
-  if (upper === "PUBLIC") return "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30";
-  return "bg-muted text-muted-foreground";
-}
 
 function PipelineHealthBadge({ pipelineId }: { pipelineId: string }) {
   const trpc = useTRPC();
@@ -332,7 +318,7 @@ export default function PipelinesPage() {
                     const pct = totals ? getReductionPercent(totals) : null;
                     if (pct == null) return <span className="text-sm text-muted-foreground">—</span>;
                     return (
-                      <Badge variant="outline" className={reductionColor(pct)}>
+                      <Badge variant="outline" className={reductionBadgeClass(pct)}>
                         {pct.toFixed(0)}%
                       </Badge>
                     );
