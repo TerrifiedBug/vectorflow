@@ -283,13 +283,15 @@ async function getAuthInstance() {
                   });
                   if (!hasMembership) {
                     const defaultRole = settings.oidcDefaultRole ?? "VIEWER";
-                    await prisma.teamMember.create({
-                      data: {
+                    await prisma.teamMember.upsert({
+                      where: { userId_teamId: { userId: dbUser.id, teamId: settings.oidcDefaultTeamId } },
+                      create: {
                         userId: dbUser.id,
                         teamId: settings.oidcDefaultTeamId,
                         role: defaultRole,
                         source: "group_mapping",
                       },
+                      update: {},
                     });
                   }
                 }

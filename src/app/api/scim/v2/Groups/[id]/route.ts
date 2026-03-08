@@ -125,7 +125,7 @@ export async function PATCH(
         // 2. Array:  { op: "remove", path: "members", value: [{ value: "userId" }] }
         if (operation === "remove") {
           const filterMatch = typeof op.path === "string"
-            ? op.path.match(/^members\[value eq "([^"]+)"\]$/)
+            ? op.path.match(/^members\[value eq "([^"]+)"\]$/i)
             : null;
 
           if (filterMatch) {
