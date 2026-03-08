@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   Clock,
   Link2,
+  Info,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -1652,7 +1653,13 @@ function TeamSettings() {
             Add an existing user to the team by their email address.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {(settingsQuery.data?.scimEnabled || settingsQuery.data?.oidcGroupSyncEnabled) && (
+            <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+              <Info className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>SSO users are managed by your identity provider. Only local users can be added manually.</span>
+            </div>
+          )}
           <form onSubmit={handleInvite} className="grid grid-cols-[1fr_120px_auto] items-end gap-3">
             <div className="flex flex-col gap-2">
               <Label htmlFor="invite-email">Email</Label>
