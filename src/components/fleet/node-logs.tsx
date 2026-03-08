@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { Search } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -11,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { highlightMatch } from "@/components/log-search-utils";
 import type { LogLevel } from "@/generated/prisma";
 
 const ALL_LEVELS: LogLevel[] = ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"];
@@ -59,6 +62,7 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
     new Set(ALL_LEVELS),
   );
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const queryInput = {
     nodeId,
@@ -77,6 +81,11 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
 
   const allItems = logsQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const displayItems = [...allItems].reverse();
+  const filteredItems = searchTerm
+    ? displayItems.filter((log) =>
+        log.message.toLowerCase().includes(searchTerm.toLowerCase()),
+      )
+    : displayItems;
 
   useEffect(() => {
     if (autoScrollRef.current && scrollRef.current) {
@@ -155,9 +164,21 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
             </Select>
           </>
         )}
+        <div className="mx-1 h-4 w-px bg-border/40" />
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search logs..."
+            className="h-6 w-[180px] pl-7 text-xs bg-transparent border-border/40"
+          />
+        </div>
         <div className="flex-1" />
         <span className="text-xs text-muted-foreground">
-          {displayItems.length} lines
+          {searchTerm
+            ? `${filteredItems.length}/${displayItems.length} lines`
+            : `${displayItems.length} lines`}
         </span>
         {logsQuery.hasNextPage && (
           <Button
@@ -188,7 +209,7 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
             No logs yet. Logs are collected from agent heartbeats every 15 seconds.
           </p>
         )}
-        {displayItems.map((log) => (
+        {filteredItems.map((log) => (
           <div key={log.id} className="whitespace-pre-wrap leading-5">
             <span className="text-gray-600">{formatTime(log.timestamp)}</span>
             {"  "}
@@ -198,7 +219,9 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
             {"  "}
             <span className="text-blue-400/70">[{log.pipeline.name}]</span>
             {"  "}
-            <span className="text-gray-300">{log.message}</span>
+            <span className="text-gray-300">
+              {searchTerm ? highlightMatch(log.message, searchTerm) : log.message}
+            </span>
           </div>
         ))}
       </div>
