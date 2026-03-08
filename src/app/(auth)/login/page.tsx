@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Shield, KeyRound, Loader2 } from "lucide-react";
+import { Shield, KeyRound, Loader2, AlertCircle } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -164,7 +164,8 @@ function LoginPageContent() {
       </CardHeader>
       <CardContent className="flex flex-col gap-4 pt-0">
         {error && (
-          <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive text-center">
+          <div className="flex items-center justify-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive text-center">
+            <AlertCircle className="h-4 w-4 shrink-0" />
             {error}
           </div>
         )}
@@ -193,7 +194,8 @@ function LoginPageContent() {
       <form onSubmit={handleSubmit}>
         <CardContent className="flex flex-col gap-4">
           {error && (
-            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 shrink-0" />
               {error}
             </div>
           )}

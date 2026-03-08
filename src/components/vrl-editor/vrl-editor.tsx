@@ -7,6 +7,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { BookOpen, Code, ChevronLeft, ChevronRight, Columns3, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -33,8 +34,10 @@ type EditorInstance = Parameters<OnMount>[0];
 const Editor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[200px] items-center justify-center rounded border bg-muted/30">
-      <p className="text-sm text-muted-foreground">Loading editor...</p>
+    <div className="flex h-[200px] flex-col gap-2 rounded border bg-muted/30 p-4">
+      <Skeleton className="h-4 w-3/4" />
+      <Skeleton className="h-4 w-1/2" />
+      <Skeleton className="h-4 w-2/3" />
     </div>
   ),
 });

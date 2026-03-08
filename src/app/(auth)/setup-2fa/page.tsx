@@ -13,6 +13,7 @@ import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
   CardContent,
@@ -112,8 +113,9 @@ export default function Setup2FAPage() {
   if (status === "loading" || meQuery.isLoading) {
     return (
       <Card className="w-full">
-        <CardContent className="flex items-center justify-center py-12">
-          <div className="text-sm text-muted-foreground">Loading...</div>
+        <CardContent className="flex flex-col items-center gap-3 py-12">
+          <Skeleton className="h-40 w-40 rounded-lg" />
+          <Skeleton className="h-4 w-48" />
         </CardContent>
       </Card>
     );

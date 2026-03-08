@@ -19,6 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { TotpSetupCard } from "@/components/totp-setup-card";
+import { PageHeader } from "@/components/page-header";
 import { useTeamStore } from "@/stores/team-store";
 
 export default function ProfilePage() {
@@ -92,6 +93,7 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
+      <PageHeader title="Profile" />
       {/* Personal Info */}
       <Card>
         <CardHeader>
