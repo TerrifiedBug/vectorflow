@@ -481,7 +481,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
           <DialogHeader>
             <DialogTitle>Discard unsaved changes?</DialogTitle>
             <DialogDescription>
-              This will revert the pipeline to its last deployed state. Any saved changes that haven't been deployed will be lost.
+              This will revert the pipeline to its last deployed state. Any saved changes that haven&apos;t been deployed will be lost.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
