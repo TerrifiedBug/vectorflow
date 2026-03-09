@@ -33,6 +33,7 @@ model User {
   serviceAccounts        ServiceAccount[]
   deployRequestsMade     DeployRequest[]  @relation("deployRequester")
   deployRequestsReviewed DeployRequest[]  @relation("deployReviewer")
+  deployRequestsExecuted DeployRequest[]  @relation("deployExecutor")
   preferences            UserPreference[]
   createdAt              DateTime         @default(now())
 }
@@ -555,12 +556,15 @@ model DeployRequest {
   configYaml      String
   changelog       String
   nodeSelector    Json?
-  status          String      @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  status          String      @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED | DEPLOYED
   reviewedById    String?
   reviewedBy      User?       @relation("deployReviewer", fields: [reviewedById], references: [id])
   reviewNote      String?
   createdAt       DateTime    @default(now())
   reviewedAt      DateTime?
+  deployedById    String?
+  deployedBy      User?       @relation("deployExecutor", fields: [deployedById], references: [id], onDelete: SetNull)
+  deployedAt      DateTime?
 
   @@index([pipelineId, status])
   @@index([environmentId, status])
