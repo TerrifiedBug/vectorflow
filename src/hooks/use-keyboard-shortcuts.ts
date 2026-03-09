@@ -25,7 +25,6 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
     function handleKeyDown(e: KeyboardEvent) {
       const isMeta = e.metaKey || e.ctrlKey;
 
-      // Don't trigger shortcuts when typing in inputs/textareas/editors
       const target = e.target as HTMLElement;
       const isInputFocused =
         target.tagName === "INPUT" ||
@@ -33,14 +32,15 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
         target.isContentEditable ||
         !!target.closest(".monaco-editor");
 
+      // Don't trigger shortcuts when typing in inputs/textareas/editors
       if (isInputFocused) {
         // Allow Cmd+S even in inputs
         if (!(isMeta && e.key === "s")) return;
       }
 
-      // Allow native copy/paste when user has selected text (e.g. copying error messages)
-      const hasTextSelection = (window.getSelection()?.toString().length ?? 0) > 0;
-      if (hasTextSelection && isMeta && (e.key === "c" || e.key === "v")) return;
+      // Only intercept canvas-specific shortcuts (copy/paste/delete/duplicate)
+      // when focus is within the React Flow canvas — not the detail panel, logs, etc.
+      const isCanvasFocused = !!target.closest(".react-flow");
 
       // Cmd+S → Save
       if (isMeta && e.key === "s") {
@@ -49,22 +49,22 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
         return;
       }
 
-      // Cmd+C → Copy selected node(s)
-      if (isMeta && e.key === "c" && (selectedNodeId || selectedNodeIds.size > 0)) {
+      // Cmd+C → Copy selected node(s) — only when canvas has focus
+      if (isMeta && e.key === "c" && isCanvasFocused && (selectedNodeId || selectedNodeIds.size > 0)) {
         e.preventDefault();
         copySelectedNodes();
         return;
       }
 
-      // Cmd+V → Paste from session clipboard
-      if (isMeta && e.key === "v") {
+      // Cmd+V → Paste from session clipboard — only when canvas has focus
+      if (isMeta && e.key === "v" && isCanvasFocused) {
         e.preventDefault();
         pasteFromSession();
         return;
       }
 
-      // Cmd+D → Duplicate selected node
-      if (isMeta && e.key === "d" && selectedNodeId) {
+      // Cmd+D → Duplicate selected node — only when canvas has focus
+      if (isMeta && e.key === "d" && isCanvasFocused && selectedNodeId) {
         e.preventDefault();
         const currentNodes = useFlowStore.getState().nodes;
         const selectedNode = currentNodes.find((n) => n.id === selectedNodeId);
@@ -87,8 +87,8 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
         return;
       }
 
-      // Delete / Backspace → Delete selected node or edge
-      if (e.key === "Delete" || e.key === "Backspace") {
+      // Delete / Backspace → Delete selected node or edge — only when canvas has focus
+      if ((e.key === "Delete" || e.key === "Backspace") && isCanvasFocused) {
         if (selectedNodeId) {
           const currentNodes = useFlowStore.getState().nodes;
           const selectedNode = currentNodes.find((n) => n.id === selectedNodeId);
