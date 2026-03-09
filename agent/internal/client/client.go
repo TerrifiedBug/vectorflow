@@ -217,8 +217,8 @@ type SampleRequestMsg struct {
 type SampleResultMsg struct {
 	RequestID    string         `json:"requestId"`
 	ComponentKey string         `json:"componentKey"`
-	Events       []interface{}  `json:"events"`
-	Schema       []FieldInfoMsg `json:"schema"`
+	Events       []interface{}  `json:"events,omitempty"`
+	Schema       []FieldInfoMsg `json:"schema,omitempty"`
 	Error        string         `json:"error,omitempty"`
 }
 
