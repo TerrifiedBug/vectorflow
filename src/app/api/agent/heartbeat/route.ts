@@ -63,10 +63,10 @@ const heartbeatSchema = z.object({
   sampleResults: z.array(z.object({
     requestId: z.string(),
     componentKey: z.string().optional(),
-    events: z.array(z.unknown()).optional(),
-    schema: z.array(z.object({ path: z.string(), type: z.string(), sample: z.string() })).optional(),
+    events: z.array(z.unknown()).nullable().optional(),
+    schema: z.array(z.object({ path: z.string(), type: z.string(), sample: z.string() })).nullable().optional(),
     error: z.string().optional(),
-  })).optional(),
+  })).nullable().optional(),
   updateError: z.string().max(500).optional(),
   labels: z.record(z.string(), z.string()).optional(),
 });
