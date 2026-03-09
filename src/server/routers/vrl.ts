@@ -54,8 +54,8 @@ export const vrlRouter = router({
 
         const { stdout, stderr } = await execFileAsync(
           "vector",
-          ["vrl", "--input", inputPath, "--program", programPath],
-          { timeout: 10000 },
+          ["vrl", "--input", inputPath, "--program", programPath, "--print-object"],
+          { timeout: 10000, env: { ...process.env, VECTOR_LOG: "error" } },
         );
 
         const durationMs = Math.round(performance.now() - start);
