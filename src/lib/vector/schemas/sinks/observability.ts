@@ -45,7 +45,6 @@ export const observabilitySinks: VectorComponentDef[] = [
           ["gzip", "none", "snappy", "zlib", "zstd"],
           "gzip",
         ),
-        ...tlsSchema(),
         ...batchSchema({ max_bytes: "1MB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
@@ -84,7 +83,6 @@ export const observabilitySinks: VectorComponentDef[] = [
           ["gzip", "none", "snappy", "zlib", "zstd"],
           "zstd",
         ),
-        ...tlsSchema(),
         ...batchSchema({ max_bytes: "100KB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
@@ -221,7 +219,6 @@ export const observabilitySinks: VectorComponentDef[] = [
           items: { type: "string" },
           description: "Tags to attach to events",
         },
-        ...tlsSchema(),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
@@ -257,7 +254,6 @@ export const observabilitySinks: VectorComponentDef[] = [
           description:
             "Custom Sematext endpoint URL (overrides region setting)",
         },
-        ...tlsSchema(),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
@@ -298,7 +294,6 @@ export const observabilitySinks: VectorComponentDef[] = [
           description:
             "Custom Sematext endpoint URL (overrides region setting)",
         },
-        ...tlsSchema(),
         ...batchSchema({ timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
@@ -366,7 +361,7 @@ export const observabilitySinks: VectorComponentDef[] = [
             "Field for the nanosecond timestamp value (default: @timestamp.nanos)",
           default: "@timestamp.nanos",
         },
-        ...encodingSchema(["json", "text"]),
+        ...encodingSchema(["avro", "cef", "csv", "gelf", "json", "logfmt", "native", "native_json", "otlp", "protobuf", "raw_message", "syslog", "text"]),
         ...compressionSchema(
           ["gzip", "none", "snappy", "zlib", "zstd"],
           "none",
@@ -475,7 +470,6 @@ export const observabilitySinks: VectorComponentDef[] = [
           default:
             "http://localhost:8080/alerts/event/vectordev?provider_id=test",
         },
-        ...tlsSchema(),
         ...batchSchema({ max_bytes: "100KB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),

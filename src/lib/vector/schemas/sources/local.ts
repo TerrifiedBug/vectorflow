@@ -143,19 +143,6 @@ export const localSources: VectorComponentDef[] = [
           },
           description: "Multiline aggregation configuration",
         },
-        internal_metrics: {
-          type: "object",
-          properties: {
-            include_file_tag: {
-              type: "boolean",
-              description:
-                "Whether to include the file tag on internal metrics",
-              default: false,
-            },
-          },
-          description: "Configuration of internal metrics for this source",
-        },
-        ...decodingSchema().decoding && { decoding: decodingSchema().decoding },
       },
       required: ["include"],
     },
