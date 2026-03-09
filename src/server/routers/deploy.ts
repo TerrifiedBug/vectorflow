@@ -488,13 +488,26 @@ export const deployRouter = router({
     .input(z.object({ requestId: z.string() }))
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("deploy.cancel_request", "DeployRequest"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // PENDING requests can only be cancelled by the requester.
+      // APPROVED requests can be cancelled by anyone with deploy access.
+      const request = await prisma.deployRequest.findUnique({
+        where: { id: input.requestId },
+        select: { status: true, requestedById: true },
+      });
+      if (!request || !["PENDING", "APPROVED"].includes(request.status)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Request is not pending or approved" });
+      }
+      if (request.status === "PENDING" && request.requestedById !== ctx.session.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only the requester can cancel a pending request" });
+      }
+
       const updated = await prisma.deployRequest.updateMany({
         where: { id: input.requestId, status: { in: ["PENDING", "APPROVED"] } },
         data: { status: "CANCELLED" },
       });
       if (updated.count === 0) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Request is not pending or approved" });
+        throw new TRPCError({ code: "CONFLICT", message: "Request status changed — try again" });
       }
 
       const cancelledRequest = await prisma.deployRequest.findUnique({

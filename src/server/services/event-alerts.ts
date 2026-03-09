@@ -58,44 +58,53 @@ export async function fireEventAlert(
     if (rules.length === 0) return;
 
     for (const rule of rules) {
-      // 2. Create an AlertEvent record
-      const event = await prisma.alertEvent.create({
-        data: {
-          alertRuleId: rule.id,
-          nodeId: (metadata.nodeId as string) ?? null,
-          status: "firing",
+      try {
+        // 2. Create an AlertEvent record
+        const event = await prisma.alertEvent.create({
+          data: {
+            alertRuleId: rule.id,
+            nodeId: (metadata.nodeId as string) ?? null,
+            status: "firing",
+            value: 0,
+            message: metadata.message,
+          },
+        });
+
+        // 3. Build the channel payload
+        const payload = {
+          alertId: event.id,
+          status: "firing" as const,
+          ruleName: rule.name,
+          severity: "warning",
+          environment: rule.environment.name,
+          team: rule.environment.team?.name,
+          node: (metadata.nodeId as string) ?? undefined,
+          pipeline: rule.pipeline?.name ?? undefined,
+          metric: rule.metric,
           value: 0,
+          threshold: rule.threshold ?? 0,
           message: metadata.message,
-        },
-      });
+          timestamp: event.firedAt.toISOString(),
+          dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/alerts`,
+        };
 
-      // 3. Build the channel payload
-      const payload = {
-        alertId: event.id,
-        status: "firing" as const,
-        ruleName: rule.name,
-        severity: "warning",
-        environment: rule.environment.name,
-        team: rule.environment.team?.name,
-        node: (metadata.nodeId as string) ?? undefined,
-        pipeline: rule.pipeline?.name ?? undefined,
-        metric: rule.metric,
-        value: 0,
-        threshold: rule.threshold ?? 0,
-        message: metadata.message,
-        timestamp: event.firedAt.toISOString(),
-        dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/alerts`,
-      };
+        // 4. Deliver to legacy webhooks and notification channels
+        await deliverWebhooks(rule.environmentId, payload);
+        await deliverToChannels(rule.environmentId, rule.id, payload);
 
-      // 4. Deliver to legacy webhooks and notification channels
-      await deliverWebhooks(rule.environmentId, payload);
-      await deliverToChannels(rule.environmentId, rule.id, payload);
-
-      // 5. Update the AlertEvent with notifiedAt timestamp
-      await prisma.alertEvent.update({
-        where: { id: event.id },
-        data: { notifiedAt: new Date() },
-      });
+        // 5. Update the AlertEvent with notifiedAt timestamp
+        await prisma.alertEvent.update({
+          where: { id: event.id },
+          data: { notifiedAt: new Date() },
+        });
+      } catch (ruleErr) {
+        // Per-rule isolation: one rule's delivery failure must not
+        // prevent other rules from being processed.
+        console.error(
+          `fireEventAlert delivery error (rule=${rule.id}, metric=${metric}):`,
+          ruleErr,
+        );
+      }
     }
   } catch (err) {
     console.error(
