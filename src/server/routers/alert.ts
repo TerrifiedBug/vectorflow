@@ -11,6 +11,7 @@ import {
 } from "@/server/services/webhook-delivery";
 import { validatePublicUrl, validateSmtpHost } from "@/server/services/url-validation";
 import { getDriver } from "@/server/services/channels";
+import { isEventMetric } from "@/server/services/event-alerts";
 
 export const alertRouter = router({
   // ─── Alert Rules ───────────────────────────────────────────────────
@@ -82,6 +83,20 @@ export const alertRouter = router({
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: "One or more channel IDs are invalid or belong to a different environment",
+          });
+        }
+      }
+
+      // Event-based metrics fire on occurrence — they don't use thresholds
+      if (isEventMetric(input.metric)) {
+        input.condition = null;
+        input.threshold = null;
+        input.durationSeconds = null;
+      } else {
+        if (!input.condition || input.threshold == null) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Infrastructure metrics require condition and threshold",
           });
         }
       }

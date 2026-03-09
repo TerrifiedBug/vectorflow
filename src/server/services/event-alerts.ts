@@ -3,28 +3,9 @@ import type { AlertMetric } from "@/generated/prisma";
 import { deliverToChannels } from "@/server/services/channels";
 import { deliverWebhooks } from "@/server/services/webhook-delivery";
 
-// ---------------------------------------------------------------------------
-// Event-based alert metrics
-// ---------------------------------------------------------------------------
-
-/** The set of AlertMetric values that fire on occurrence rather than polling. */
-export const EVENT_METRICS = new Set<AlertMetric>([
-  "deploy_requested",
-  "deploy_completed",
-  "deploy_rejected",
-  "deploy_cancelled",
-  "new_version_available",
-  "scim_sync_failed",
-  "backup_failed",
-  "certificate_expiring",
-  "node_joined",
-  "node_left",
-]);
-
-/** Returns true if the given metric is event-based (fires inline). */
-export function isEventMetric(metric: AlertMetric): boolean {
-  return EVENT_METRICS.has(metric);
-}
+// Re-export from the shared (client-safe) module so existing server imports
+// continue to work without changes.
+export { EVENT_METRICS, isEventMetric } from "@/lib/alert-metrics";
 
 // ---------------------------------------------------------------------------
 // Fire an event-based alert

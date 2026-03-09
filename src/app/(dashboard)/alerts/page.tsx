@@ -52,13 +52,16 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/page-header";
+import { isEventMetric } from "@/lib/alert-metrics";
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 
@@ -231,13 +234,14 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
 
   const openEdit = (rule: (typeof rules)[0]) => {
     setEditingRuleId(rule.id);
+    const isEvent = isEventMetric(rule.metric);
     setForm({
       name: rule.name,
       pipelineId: rule.pipelineId ?? "",
       metric: rule.metric,
-      condition: rule.condition ?? "gt",
-      threshold: String(rule.threshold ?? ""),
-      durationSeconds: String(rule.durationSeconds ?? ""),
+      condition: isEvent ? "" : (rule.condition ?? "gt"),
+      threshold: isEvent ? "" : String(rule.threshold ?? ""),
+      durationSeconds: isEvent ? "" : String(rule.durationSeconds ?? ""),
       channelIds: rule.channels?.map((c) => c.channelId) ?? [],
     });
     setDialogOpen(true);
@@ -254,7 +258,8 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
 
   const handleSubmit = () => {
     const isBinary = BINARY_METRICS.has(form.metric);
-    if (!form.name || !form.metric || (!isBinary && !form.threshold)) {
+    const isEvent = isEventMetric(form.metric);
+    if (!form.name || !form.metric || (!isBinary && !isEvent && !form.threshold)) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -263,8 +268,12 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
       updateMutation.mutate({
         id: editingRuleId,
         name: form.name,
-        threshold: parseFloat(form.threshold),
-        durationSeconds: parseInt(form.durationSeconds, 10) || 60,
+        ...(isEvent
+          ? {}
+          : {
+              threshold: parseFloat(form.threshold),
+              durationSeconds: parseInt(form.durationSeconds, 10) || 60,
+            }),
         channelIds: form.channelIds,
       });
     } else {
@@ -273,9 +282,9 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
         environmentId,
         pipelineId: form.pipelineId || undefined,
         metric: form.metric as AlertMetric,
-        condition: form.condition as AlertCondition,
-        threshold: parseFloat(form.threshold),
-        durationSeconds: parseInt(form.durationSeconds, 10) || 60,
+        condition: isEvent ? null : (form.condition as AlertCondition),
+        threshold: isEvent ? null : parseFloat(form.threshold),
+        durationSeconds: isEvent ? null : (parseInt(form.durationSeconds, 10) || 60),
         teamId: selectedTeamId!,
         channelIds: form.channelIds.length > 0 ? form.channelIds : undefined,
       });
@@ -453,10 +462,12 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
                       setForm((f) => ({
                         ...f,
                         metric: v,
-                        condition: BINARY_METRICS.has(v) ? "eq" : "gt",
+                        condition: BINARY_METRICS.has(v) ? "eq" : isEventMetric(v) ? "" : "gt",
                         ...(BINARY_METRICS.has(v)
                           ? { threshold: "1" }
-                          : {}),
+                          : isEventMetric(v)
+                            ? { threshold: "", durationSeconds: "" }
+                            : {}),
                       }))
                     }
                   >
@@ -464,11 +475,29 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
                       <SelectValue placeholder="Select metric" />
                     </SelectTrigger>
                     <SelectContent>
-                      {Object.values(AlertMetric).map((m) => (
-                        <SelectItem key={m} value={m}>
-                          {METRIC_LABELS[m] ?? m}
-                        </SelectItem>
-                      ))}
+                      <SelectGroup>
+                        <SelectLabel>Infrastructure</SelectLabel>
+                        <SelectItem value="cpu_usage">CPU Usage</SelectItem>
+                        <SelectItem value="memory_usage">Memory Usage</SelectItem>
+                        <SelectItem value="disk_usage">Disk Usage</SelectItem>
+                        <SelectItem value="error_rate">Error Rate</SelectItem>
+                        <SelectItem value="discarded_rate">Discarded Rate</SelectItem>
+                        <SelectItem value="node_unreachable">Node Unreachable</SelectItem>
+                        <SelectItem value="pipeline_crashed">Pipeline Crashed</SelectItem>
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Events</SelectLabel>
+                        <SelectItem value="deploy_requested">Deploy Requested</SelectItem>
+                        <SelectItem value="deploy_completed">Deploy Completed</SelectItem>
+                        <SelectItem value="deploy_rejected">Deploy Rejected</SelectItem>
+                        <SelectItem value="deploy_cancelled">Deploy Cancelled</SelectItem>
+                        <SelectItem value="new_version_available">New Version Available</SelectItem>
+                        <SelectItem value="scim_sync_failed">SCIM Sync Failed</SelectItem>
+                        <SelectItem value="backup_failed">Backup Failed</SelectItem>
+                        <SelectItem value="certificate_expiring">Certificate Expiring</SelectItem>
+                        <SelectItem value="node_joined">Node Joined</SelectItem>
+                        <SelectItem value="node_left">Node Left</SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </div>
@@ -476,33 +505,41 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
               </>
             )}
 
-            {!BINARY_METRICS.has(form.metric) && (
-              <div className="space-y-2">
-                <Label htmlFor="rule-threshold">Threshold</Label>
-                <Input
-                  id="rule-threshold"
-                  type="number"
-                  placeholder="80"
-                  value={form.threshold}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, threshold: e.target.value }))
-                  }
-                />
-              </div>
-            )}
+            {isEventMetric(form.metric) ? (
+              <p className="text-sm text-muted-foreground py-2">
+                Notifications will be sent when this event occurs.
+              </p>
+            ) : (
+              <>
+                {!BINARY_METRICS.has(form.metric) && (
+                  <div className="space-y-2">
+                    <Label htmlFor="rule-threshold">Threshold</Label>
+                    <Input
+                      id="rule-threshold"
+                      type="number"
+                      placeholder="80"
+                      value={form.threshold}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, threshold: e.target.value }))
+                      }
+                    />
+                  </div>
+                )}
 
-            <div className="space-y-2">
-              <Label htmlFor="rule-duration">Duration (seconds)</Label>
-              <Input
-                id="rule-duration"
-                type="number"
-                placeholder="60"
-                value={form.durationSeconds}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, durationSeconds: e.target.value }))
-                }
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rule-duration">Duration (seconds)</Label>
+                  <Input
+                    id="rule-duration"
+                    type="number"
+                    placeholder="60"
+                    value={form.durationSeconds}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, durationSeconds: e.target.value }))
+                    }
+                  />
+                </div>
+              </>
+            )}
 
             {channels.length > 0 && (
               <div className="space-y-2">
