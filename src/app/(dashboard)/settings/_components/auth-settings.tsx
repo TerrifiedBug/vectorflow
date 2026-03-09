@@ -47,7 +47,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScimSettings } from "./scim-settings";
 
 // ─── Auth Tab ──────────────────────────────────────────────────────────────────
 
@@ -603,8 +602,6 @@ export function AuthSettings() {
         </form>
       </CardContent>
     </Card>
-    <Separator className="my-8" />
-    <ScimSettings />
     </div>
   );
 }
