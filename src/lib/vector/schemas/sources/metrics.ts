@@ -18,15 +18,16 @@ export const metricSources: VectorComponentDef[] = [
           items: {
             type: "string",
             enum: [
+              "cgroups",
               "cpu",
               "disk",
               "filesystem",
-              "load",
               "host",
+              "load",
               "memory",
               "network",
               "process",
-              "cgroups",
+              "tcp",
             ],
           },
           description: "List of metric collectors to enable",

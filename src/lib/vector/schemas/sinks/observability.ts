@@ -361,7 +361,7 @@ export const observabilitySinks: VectorComponentDef[] = [
             "Field for the nanosecond timestamp value (default: @timestamp.nanos)",
           default: "@timestamp.nanos",
         },
-        ...encodingSchema(["json", "text"]),
+        ...encodingSchema(["avro", "cef", "csv", "gelf", "json", "logfmt", "native", "native_json", "otlp", "protobuf", "raw_message", "syslog", "text"]),
         ...compressionSchema(
           ["gzip", "none", "snappy", "zlib", "zstd"],
           "none",

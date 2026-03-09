@@ -87,7 +87,7 @@ export const networkSources: VectorComponentDef[] = [
         },
         method: {
           type: "string",
-          enum: ["POST", "PUT", "GET"],
+          enum: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
           description: "HTTP method to accept",
           default: "POST",
         },
@@ -155,7 +155,7 @@ export const networkSources: VectorComponentDef[] = [
         },
         method: {
           type: "string",
-          enum: ["GET", "POST", "PUT", "HEAD"],
+          enum: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
           description: "HTTP method to use",
           default: "GET",
         },
@@ -471,7 +471,7 @@ export const networkSources: VectorComponentDef[] = [
         },
         version: {
           type: "string",
-          enum: ["1", "2"],
+          enum: ["2"],
           description: "Vector protocol version",
           default: "2",
         },

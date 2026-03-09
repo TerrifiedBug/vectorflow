@@ -481,8 +481,8 @@ export const messagingSources: VectorComponentDef[] = [
         visibility_timeout_secs: {
           type: "number",
           description:
-            "Visibility timeout for received messages in seconds (default: 30)",
-          default: 30,
+            "Visibility timeout for received messages in seconds (default: 300)",
+          default: 300,
         },
         delete_message: {
           type: "boolean",

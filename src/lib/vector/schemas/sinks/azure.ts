@@ -56,8 +56,10 @@ export const azureSinks: VectorComponentDef[] = [
           "logfmt",
           "native",
           "native_json",
+          "otlp",
           "protobuf",
           "raw_message",
+          "syslog",
           "text",
         ]),
         ...compressionSchema(
