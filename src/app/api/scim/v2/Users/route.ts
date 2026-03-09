@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateScim } from "../auth";
-import { scimListUsers, scimCreateUser } from "@/server/services/scim";
+import { scimListUsers, scimCreateUser, fireScimSyncFailedAlert } from "@/server/services/scim";
 
 export async function GET(req: NextRequest) {
   if (!(await authenticateScim(req))) {
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to create user";
+    void fireScimSyncFailedAlert(message);
     // RFC 7644 §3.3: uniqueness conflicts use 409
     const isConflict = error instanceof Error && (error as Error & { scimConflict?: boolean }).scimConflict === true;
     const status = isConflict ? 409 : 400;

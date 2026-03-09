@@ -104,3 +104,9 @@ export async function fireEventAlert(
     );
   }
 }
+
+// TODO: certificate_expiring — no existing certificate expiry check exists.
+// Certificates are stored as encrypted PEM blobs without parsed expiry metadata.
+// To implement: add a periodic job that parses the PEM notAfter date from each
+// Certificate record and fires fireEventAlert("certificate_expiring", ...) when
+// a certificate is within N days of expiration.

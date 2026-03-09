@@ -9,6 +9,7 @@ import { validateConfig } from "@/server/services/validator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
+import { fireEventAlert } from "@/server/services/event-alerts";
 
 export const deployRouter = router({
   preview: protectedProcedure
@@ -200,6 +201,11 @@ export const deployRouter = router({
           userName: ctx.session?.user?.name ?? null,
         }).catch(() => {});
 
+        void fireEventAlert("deploy_requested", pipeline.environment.id, {
+          message: `Deploy request created for pipeline "${pipeline.name}"`,
+          pipelineId: input.pipelineId,
+        });
+
         return {
           success: true,
           pendingApproval: true,
@@ -237,6 +243,13 @@ export const deployRouter = router({
         userEmail: ctx.session?.user?.email ?? null,
         userName: ctx.session?.user?.name ?? null,
       }).catch(() => {});
+
+      if (result.success) {
+        void fireEventAlert("deploy_completed", pipeline.environment.id, {
+          message: `Pipeline "${pipeline.name}" deployed`,
+          pipelineId: input.pipelineId,
+        });
+      }
 
       return result;
     }),
@@ -410,6 +423,13 @@ export const deployRouter = router({
           });
         }
 
+        if (result.success) {
+          void fireEventAlert("deploy_completed", request.environmentId, {
+            message: `Pipeline deployed via approved request`,
+            pipelineId: request.pipelineId,
+          });
+        }
+
         return result;
       } catch (err) {
         // Revert status back to APPROVED so it can be retried
@@ -449,6 +469,11 @@ export const deployRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Request is no longer pending" });
       }
 
+      void fireEventAlert("deploy_rejected", request.environmentId, {
+        message: `Deploy request rejected`,
+        pipelineId: request.pipelineId,
+      });
+
       return { rejected: true };
     }),
 
@@ -463,6 +488,17 @@ export const deployRouter = router({
       });
       if (updated.count === 0) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Request is not pending or approved" });
+      }
+
+      const cancelledRequest = await prisma.deployRequest.findUnique({
+        where: { id: input.requestId },
+        select: { environmentId: true, pipelineId: true },
+      });
+      if (cancelledRequest) {
+        void fireEventAlert("deploy_cancelled", cancelledRequest.environmentId, {
+          message: `Deploy request cancelled`,
+          pipelineId: cancelledRequest.pipelineId,
+        });
       }
 
       return { cancelled: true };
