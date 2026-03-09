@@ -59,6 +59,18 @@ export function generateVectorYaml(
       ...nodeConfig,
     };
 
+    // Strip empty nested objects (e.g. auth: {} when no auth is configured)
+    for (const [key, val] of Object.entries(entry)) {
+      if (
+        val != null &&
+        typeof val === "object" &&
+        !Array.isArray(val) &&
+        Object.values(val as Record<string, unknown>).every((v) => v == null || v === "")
+      ) {
+        delete entry[key];
+      }
+    }
+
     // For transforms and sinks, build inputs array from incoming edges
     if (componentDef.kind !== "source") {
       const inputs = enabledEdges
