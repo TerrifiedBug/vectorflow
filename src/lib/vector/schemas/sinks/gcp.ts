@@ -121,7 +121,7 @@ export const gcpSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["bucket"],
+      required: ["bucket", "encoding"],
     },
   },
   {
@@ -225,7 +225,7 @@ export const gcpSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["log_id"],
+      required: ["log_id", "resource"],
     },
   },
   {
@@ -269,7 +269,7 @@ export const gcpSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["project_id"],
+      required: ["project_id", "resource"],
     },
   },
   {
@@ -317,7 +317,7 @@ export const gcpSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["project", "topic"],
+      required: ["project", "topic", "encoding"],
     },
   },
   {
@@ -406,7 +406,7 @@ export const gcpSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["customer_id", "log_type"],
+      required: ["customer_id", "log_type", "encoding"],
     },
   },
 ];

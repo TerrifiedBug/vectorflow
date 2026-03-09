@@ -592,7 +592,7 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
           description: "VRL condition — matching events bypass throttle",
         },
       },
-      required: ["threshold"],
+      required: ["threshold", "window_secs"],
     },
   },
 ];

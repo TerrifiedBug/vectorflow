@@ -45,12 +45,6 @@ export const searchDbSinks: VectorComponentDef[] = [
           description: "Document type for Elasticsearch indexing (ES 6.x and below)",
           default: "_doc",
         },
-        suppress_type_name: {
-          type: "boolean",
-          description:
-            "Suppress the _type field in requests. Deprecated; use api_version instead",
-          default: false,
-        },
         opensearch_service_type: {
           type: "string",
           enum: ["managed", "serverless"],
@@ -436,7 +430,6 @@ export const searchDbSinks: VectorComponentDef[] = [
         ...authBasicBearerSchema(),
         ...encodingSchema(["json", "csv"]),
         ...compressionSchema(["gzip", "none"], "none"),
-        ...tlsSchema(),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),

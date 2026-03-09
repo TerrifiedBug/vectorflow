@@ -32,11 +32,6 @@ export const networkSinks: VectorComponentDef[] = [
           description: "HTTP method",
           default: "post",
         },
-        headers: {
-          type: "object",
-          additionalProperties: { type: "string" },
-          description: "Additional HTTP headers (template-enabled)",
-        },
         payload_prefix: {
           type: "string",
           description: "JSON prefix for payload body",
@@ -68,7 +63,7 @@ export const networkSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["uri"],
+      required: ["uri", "encoding"],
     },
   },
   {
@@ -87,6 +82,7 @@ export const networkSinks: VectorComponentDef[] = [
           type: "string",
           description:
             "Socket address to connect to (e.g., 92.12.333.224:5000). Required for tcp and udp modes.",
+          dependsOn: { field: "mode", value: ["tcp", "udp"] },
         },
         mode: {
           type: "string",
@@ -97,22 +93,13 @@ export const networkSinks: VectorComponentDef[] = [
           type: "string",
           description:
             "Unix socket path (absolute path, required for unix_stream and unix_datagram modes)",
-        },
-        keepalive: {
-          type: "object",
-          properties: {
-            time_secs: {
-              type: "number",
-              description:
-                "The time to wait before starting to send TCP keepalive probes on an idle connection",
-            },
-          },
-          description: "TCP keepalive settings (relevant when mode = tcp)",
+          dependsOn: { field: "mode", value: ["unix_datagram", "unix_stream"] },
         },
         send_buffer_bytes: {
           type: "number",
           description:
             "Configures the send buffer size (SO_SNDBUF) for the socket. Relevant for tcp and udp modes.",
+          dependsOn: { field: "mode", value: ["tcp", "udp"] },
         },
         ...encodingSchema([
           "json",
@@ -133,7 +120,7 @@ export const networkSinks: VectorComponentDef[] = [
         ...tlsSchema(),
         ...bufferSchema(),
       },
-      required: ["mode"],
+      required: ["mode", "encoding"],
     },
   },
   {
@@ -163,11 +150,6 @@ export const networkSinks: VectorComponentDef[] = [
           description:
             "Maximum wait time in seconds for Pong responses. Connection re-establishes on timeout. Ignored unless ping_interval is set.",
         },
-        headers: {
-          type: "object",
-          additionalProperties: { type: "string" },
-          description: "Custom headers for the WebSocket handshake",
-        },
         ...authBasicBearerSchema(),
         ...encodingSchema([
           "json",
@@ -188,7 +170,7 @@ export const networkSinks: VectorComponentDef[] = [
         ...tlsSchema(),
         ...bufferSchema(),
       },
-      required: ["uri"],
+      required: ["uri", "encoding"],
     },
   },
   {
@@ -227,7 +209,7 @@ export const networkSinks: VectorComponentDef[] = [
         ...tlsSchema(),
         ...bufferSchema(),
       },
-      required: ["address"],
+      required: ["address", "encoding"],
     },
   },
   {
@@ -301,7 +283,7 @@ export const networkSinks: VectorComponentDef[] = [
         ...compressionSchema(["gzip", "none", "zstd"], "none"),
         ...bufferSchema(),
       },
-      required: ["path"],
+      required: ["path", "encoding"],
     },
   },
   {
@@ -366,7 +348,7 @@ export const networkSinks: VectorComponentDef[] = [
         ]),
         ...bufferSchema(),
       },
-      required: [],
+      required: ["encoding"],
     },
   },
   {
@@ -416,9 +398,8 @@ export const networkSinks: VectorComponentDef[] = [
         ...compressionSchema(["gzip", "none", "snappy", "zlib", "zstd"], "gzip"),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "300" }),
         ...bufferSchema(),
-        ...requestSchema(),
       },
-      required: ["endpoint", "prefix"],
+      required: ["endpoint", "prefix", "encoding"],
     },
   },
 ];

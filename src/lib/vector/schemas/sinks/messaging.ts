@@ -74,7 +74,7 @@ export const messagingSinks: VectorComponentDef[] = [
         ...tlsSchema(),
         ...bufferSchema(),
       },
-      required: ["bootstrap_servers", "topic"],
+      required: ["bootstrap_servers", "topic", "encoding"],
     },
   },
   {
@@ -148,7 +148,7 @@ export const messagingSinks: VectorComponentDef[] = [
         ...tlsSchema(),
         ...bufferSchema(),
       },
-      required: ["connection_string", "exchange"],
+      required: ["connection_string", "exchange", "encoding"],
     },
   },
   {
@@ -247,7 +247,7 @@ export const messagingSinks: VectorComponentDef[] = [
         ...tlsSchema(),
         ...bufferSchema(),
       },
-      required: ["endpoint", "topic"],
+      required: ["endpoint", "topic", "encoding"],
     },
   },
   {
@@ -322,12 +322,11 @@ export const messagingSinks: VectorComponentDef[] = [
           "native_json",
           "protobuf",
         ]),
-        ...tlsSchema(),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["endpoint", "key"],
+      required: ["endpoint", "key", "encoding"],
     },
   },
   {
@@ -436,7 +435,7 @@ export const messagingSinks: VectorComponentDef[] = [
         ...tlsSchema(),
         ...bufferSchema(),
       },
-      required: ["url", "subject"],
+      required: ["url", "subject", "encoding"],
     },
   },
   {
@@ -524,7 +523,7 @@ export const messagingSinks: VectorComponentDef[] = [
         ...tlsSchema(),
         ...bufferSchema(),
       },
-      required: ["host", "topic"],
+      required: ["host", "topic", "encoding"],
     },
   },
 ];

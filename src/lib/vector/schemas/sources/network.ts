@@ -23,6 +23,7 @@ export const networkSources: VectorComponentDef[] = [
           type: "string",
           description:
             "The socket address to listen for connections on, or systemd{#N} for systemd socket activation",
+          dependsOn: { field: "mode", value: ["tcp", "udp"] },
         },
         mode: {
           type: "string",
@@ -32,6 +33,7 @@ export const networkSources: VectorComponentDef[] = [
         path: {
           type: "string",
           description: "Unix socket path. Must be an absolute path (when mode is unix)",
+          dependsOn: { field: "mode", value: "unix" },
         },
         max_length: {
           type: "number",
@@ -56,6 +58,7 @@ export const networkSources: VectorComponentDef[] = [
           type: "number",
           description:
             "Unix file mode bits to be applied to the unix socket file as its designated file permissions",
+          dependsOn: { field: "mode", value: "unix" },
         },
         ...tlsSchema(),
       },
@@ -76,11 +79,6 @@ export const networkSources: VectorComponentDef[] = [
         address: {
           type: "string",
           description: "The socket address to listen for connections on (e.g., 0.0.0.0:80)",
-        },
-        encoding: {
-          type: "string",
-          enum: ["text", "json", "ndjson", "binary"],
-          description: "Expected encoding of incoming data",
         },
         path: {
           type: "string",
@@ -194,6 +192,7 @@ export const networkSources: VectorComponentDef[] = [
         address: {
           type: "string",
           description: "Socket address to listen on (e.g., 0.0.0.0:9000)",
+          dependsOn: { field: "mode", value: ["tcp", "udp"] },
         },
         mode: {
           type: "string",
@@ -203,6 +202,7 @@ export const networkSources: VectorComponentDef[] = [
         path: {
           type: "string",
           description: "Unix socket path. Must be an absolute path (for unix modes)",
+          dependsOn: { field: "mode", value: ["unix_datagram", "unix_stream"] },
         },
         max_length: {
           type: "number",
@@ -237,6 +237,7 @@ export const networkSources: VectorComponentDef[] = [
           type: "number",
           description:
             "Unix file mode bits to be applied to the unix socket file as its designated file permissions",
+          dependsOn: { field: "mode", value: ["unix_datagram", "unix_stream"] },
         },
         ...tlsSchema(),
         ...decodingSchema(),
@@ -260,6 +261,7 @@ export const networkSources: VectorComponentDef[] = [
           type: "string",
           description:
             "The socket address to listen for connections on, or systemd{#N} for systemd socket activation",
+          dependsOn: { field: "mode", value: "tcp" },
         },
         mode: {
           type: "string",
@@ -269,6 +271,7 @@ export const networkSources: VectorComponentDef[] = [
         path: {
           type: "string",
           description: "The Unix socket path. Must be an absolute path (when mode is unix)",
+          dependsOn: { field: "mode", value: "unix" },
         },
         connection_limit: {
           type: "number",
@@ -283,6 +286,7 @@ export const networkSources: VectorComponentDef[] = [
           type: "number",
           description:
             "Unix file mode bits to be applied to the unix socket file as its designated file permissions",
+          dependsOn: { field: "mode", value: "unix" },
         },
         ...tlsSchema(),
       },
@@ -334,6 +338,7 @@ export const networkSources: VectorComponentDef[] = [
           type: "string",
           description:
             "The socket address to listen for connections on, or systemd{#N} for systemd socket activation",
+          dependsOn: { field: "mode", value: ["tcp", "udp"] },
         },
         mode: {
           type: "string",
@@ -343,6 +348,7 @@ export const networkSources: VectorComponentDef[] = [
         path: {
           type: "string",
           description: "The Unix socket path. Must be an absolute path (when mode is unix)",
+          dependsOn: { field: "mode", value: "unix" },
         },
         sanitize: {
           type: "boolean",
@@ -392,11 +398,13 @@ export const networkSources: VectorComponentDef[] = [
         address: {
           type: "string",
           description: "TCP address to listen on (when mode is tcp)",
+          dependsOn: { field: "mode", value: "tcp" },
         },
         socket_path: {
           type: "string",
           description:
             "Absolute path to the socket file to read DNSTAP data from (when mode is unix)",
+          dependsOn: { field: "mode", value: "unix" },
         },
         raw_data_only: {
           type: "boolean",
@@ -438,6 +446,7 @@ export const networkSources: VectorComponentDef[] = [
           type: "number",
           description:
             "Unix file mode bits to be applied to the unix socket file as its designated file permissions",
+          dependsOn: { field: "mode", value: "unix" },
         },
         ...tlsSchema(),
       },
@@ -466,15 +475,9 @@ export const networkSources: VectorComponentDef[] = [
           description: "Vector protocol version",
           default: "2",
         },
-        shutdown_timeout_secs: {
-          type: "number",
-          description:
-            "The timeout before a connection is forcefully closed during shutdown in seconds",
-          default: 30,
-        },
         ...tlsSchema(),
       },
-      required: [],
+      required: ["address"],
     },
   },
   {
@@ -516,9 +519,8 @@ export const networkSources: VectorComponentDef[] = [
           },
           description: "HTTP receiver configuration",
         },
-        ...tlsSchema(),
       },
-      required: [],
+      required: ["grpc", "http"],
     },
   },
   {
@@ -558,11 +560,6 @@ export const networkSources: VectorComponentDef[] = [
           type: "number",
           description:
             "Timeout for the initial message to be sent in seconds",
-        },
-        headers: {
-          type: "object",
-          additionalProperties: { type: "string" },
-          description: "Custom headers to include in the WebSocket handshake",
         },
         ...authBasicBearerSchema(),
         ...tlsSchema(),

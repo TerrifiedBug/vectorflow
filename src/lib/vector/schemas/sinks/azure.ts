@@ -68,7 +68,7 @@ export const azureSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["connection_string", "container_name"],
+      required: ["connection_string", "container_name", "encoding"],
     },
   },
   {

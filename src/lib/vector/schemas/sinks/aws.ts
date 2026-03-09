@@ -205,7 +205,7 @@ export const awsSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["group_name", "stream_name"],
+      required: ["group_name", "stream_name", "encoding"],
     },
   },
   {
@@ -277,7 +277,7 @@ export const awsSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["stream_name"],
+      required: ["stream_name", "encoding"],
     },
   },
   {
@@ -316,7 +316,7 @@ export const awsSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["stream_name"],
+      required: ["stream_name", "encoding"],
     },
   },
   {
@@ -357,7 +357,7 @@ export const awsSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["queue_url"],
+      required: ["queue_url", "encoding"],
     },
   },
   {
@@ -372,9 +372,9 @@ export const awsSinks: VectorComponentDef[] = [
     configSchema: {
       type: "object",
       properties: {
-        queue_url: {
+        topic_arn: {
           type: "string",
-          description: "SQS queue URL for SNS publishing",
+          description: "The ARN of the SNS topic to publish to",
         },
         region: {
           type: "string",
@@ -398,7 +398,7 @@ export const awsSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["queue_url"],
+      required: ["topic_arn", "encoding"],
     },
   },
 ];
