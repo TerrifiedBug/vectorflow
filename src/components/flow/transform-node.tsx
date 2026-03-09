@@ -58,12 +58,16 @@ function TransformNodeComponent({
         <p className="truncate text-xs font-medium text-foreground">{componentKey}</p>
 
         {metrics && (
-          <p className="truncate text-xs font-mono text-blue-400">
-            {metrics.eventsInPerSec != null
-              ? <>{formatRate(metrics.eventsInPerSec)} ev/s in{"  "}{formatRate(metrics.eventsPerSec)} ev/s out</>
-              : <>{formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}</>
-            }
-          </p>
+          metrics.eventsInPerSec != null ? (
+            <div className="flex justify-between text-xs font-mono text-blue-400">
+              <span>{formatRate(metrics.eventsInPerSec)} ev/s in</span>
+              <span>{formatRate(metrics.eventsPerSec)} ev/s out</span>
+            </div>
+          ) : (
+            <p className="truncate text-xs font-mono text-blue-400">
+              {formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}
+            </p>
+          )
         )}
       </div>
 
