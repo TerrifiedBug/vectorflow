@@ -571,6 +571,7 @@ model DeployRequest {
 }
 
 enum AlertMetric {
+  // Infrastructure (threshold-based)
   node_unreachable
   cpu_usage
   memory_usage
@@ -578,6 +579,18 @@ enum AlertMetric {
   error_rate
   discarded_rate
   pipeline_crashed
+
+  // Events (fire on occurrence)
+  deploy_requested
+  deploy_completed
+  deploy_rejected
+  deploy_cancelled
+  new_version_available
+  scim_sync_failed
+  backup_failed
+  certificate_expiring
+  node_joined
+  node_left
 }
 
 enum AlertCondition {
@@ -602,9 +615,9 @@ model AlertRule {
   teamId          String
   team            Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
   metric          AlertMetric
-  condition       AlertCondition
-  threshold       Float
-  durationSeconds Int            @default(60)
+  condition       AlertCondition?
+  threshold       Float?
+  durationSeconds Int?
   events          AlertEvent[]
   channels        AlertRuleChannel[]
   createdAt       DateTime       @default(now())

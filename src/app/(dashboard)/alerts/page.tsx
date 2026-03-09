@@ -63,6 +63,7 @@ import { PageHeader } from "@/components/page-header";
 // ─── Constants ──────────────────────────────────────────────────────────────────
 
 const METRIC_LABELS: Record<string, string> = {
+  // Infrastructure (threshold-based)
   node_unreachable: "Node Unreachable",
   cpu_usage: "CPU Usage",
   memory_usage: "Memory Usage",
@@ -70,6 +71,17 @@ const METRIC_LABELS: Record<string, string> = {
   error_rate: "Error Rate",
   discarded_rate: "Discarded Rate",
   pipeline_crashed: "Pipeline Crashed",
+  // Events (fire on occurrence)
+  deploy_requested: "Deploy Requested",
+  deploy_completed: "Deploy Completed",
+  deploy_rejected: "Deploy Rejected",
+  deploy_cancelled: "Deploy Cancelled",
+  new_version_available: "New Version Available",
+  scim_sync_failed: "SCIM Sync Failed",
+  backup_failed: "Backup Failed",
+  certificate_expiring: "Certificate Expiring",
+  node_joined: "Node Joined",
+  node_left: "Node Left",
 };
 
 const CONDITION_LABELS: Record<string, string> = {
@@ -223,9 +235,9 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
       name: rule.name,
       pipelineId: rule.pipelineId ?? "",
       metric: rule.metric,
-      condition: rule.condition,
-      threshold: String(rule.threshold),
-      durationSeconds: String(rule.durationSeconds),
+      condition: rule.condition ?? "gt",
+      threshold: String(rule.threshold ?? ""),
+      durationSeconds: String(rule.durationSeconds ?? ""),
       channelIds: rule.channels?.map((c) => c.channelId) ?? [],
     });
     setDialogOpen(true);
@@ -321,11 +333,11 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
                   </Badge>
                 </TableCell>
                 <TableCell className="font-mono">
-                  {CONDITION_LABELS[rule.condition] ?? rule.condition}
+                  {rule.condition ? (CONDITION_LABELS[rule.condition] ?? rule.condition) : "—"}
                 </TableCell>
-                <TableCell className="font-mono">{rule.threshold}</TableCell>
+                <TableCell className="font-mono">{rule.threshold ?? "—"}</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {rule.durationSeconds}s
+                  {rule.durationSeconds != null ? `${rule.durationSeconds}s` : "—"}
                 </TableCell>
                 <TableCell>
                   {rule.pipeline ? (
@@ -1675,8 +1687,8 @@ function AlertHistorySection({ environmentId }: { environmentId: string }) {
         id: string;
         name: string;
         metric: string;
-        condition: string;
-        threshold: number;
+        condition: string | null;
+        threshold: number | null;
         pipeline: { id: string; name: string } | null;
       };
     }>
