@@ -344,7 +344,6 @@ export const deployRouter = router({
     .mutation(async ({ input, ctx }) => {
       const request = await prisma.deployRequest.findUnique({
         where: { id: input.requestId },
-        include: { pipeline: true },
       });
       if (!request || request.status !== "PENDING") {
         throw new TRPCError({ code: "NOT_FOUND", message: "Deploy request not found or not pending" });
@@ -362,8 +361,33 @@ export const deployRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Request is no longer pending" });
       }
 
+      return { success: true };
+    }),
+
+  executeApprovedRequest: protectedProcedure
+    .input(z.object({ requestId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("deployRequest.deployed", "DeployRequest"))
+    .mutation(async ({ input, ctx }) => {
+      // Atomically claim the APPROVED request — prevents double-deploy race condition
+      const updated = await prisma.deployRequest.updateMany({
+        where: { id: input.requestId, status: "APPROVED" },
+        data: { status: "DEPLOYED", deployedById: ctx.session.user.id, deployedAt: new Date() },
+      });
+      if (updated.count === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Request is not in APPROVED state" });
+      }
+
+      // Fetch the full request to get configYaml, pipelineId, changelog
+      const request = await prisma.deployRequest.findUnique({
+        where: { id: input.requestId },
+      });
+      if (!request) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Deploy request not found" });
+      }
+
       // Deploy the reviewed YAML snapshot — NOT the current pipeline state
-      // If deploy fails, revert request status to PENDING so it can be retried
+      // If deploy fails, revert request status back to APPROVED
       try {
         const result = await deployAgent(
           request.pipelineId,
@@ -386,13 +410,14 @@ export const deployRouter = router({
 
         return result;
       } catch (err) {
+        // Revert status back to APPROVED so it can be retried
         await prisma.deployRequest.updateMany({
-          where: { id: input.requestId, status: "APPROVED" },
-          data: { status: "PENDING", reviewedById: null, reviewedAt: null },
+          where: { id: input.requestId, status: "DEPLOYED" },
+          data: { status: "APPROVED", deployedById: null, deployedAt: null },
         });
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Deploy failed after approval — request reverted to pending",
+          message: "Deploy failed — request reverted to approved",
           cause: err,
         });
       }
@@ -429,13 +454,13 @@ export const deployRouter = router({
     .input(z.object({ requestId: z.string() }))
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("deploy.cancel_request", "DeployRequest"))
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input }) => {
       const updated = await prisma.deployRequest.updateMany({
-        where: { id: input.requestId, status: "PENDING", requestedById: ctx.session.user.id },
+        where: { id: input.requestId, status: { in: ["PENDING", "APPROVED"] } },
         data: { status: "CANCELLED" },
       });
       if (updated.count === 0) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Request is no longer pending or not owned by you" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Request is not pending or approved" });
       }
 
       return { cancelled: true };
