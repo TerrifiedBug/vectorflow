@@ -72,7 +72,7 @@ export const metricsRouter = router({
       }> = {};
 
       for (const vectorNode of vectorNodes) {
-        const nodeMetrics = metricStore.getAllForNode(vectorNode.id, input.minutes);
+        const nodeMetrics = metricStore.getAllForPipeline(vectorNode.id, input.pipelineId, input.minutes);
         for (const [componentId, samples] of nodeMetrics) {
           const matchingNode = pipeline.nodes.find(
             (pn) => componentId === pn.componentKey,
@@ -174,8 +174,8 @@ export const metricsRouter = router({
           .map((n) => n.componentKey);
 
         for (const vectorNodeId of vectorNodeIds) {
-          const nodeMetrics = metricStore.getAllForNode(vectorNodeId, 5);
-          for (const [componentId, samples] of nodeMetrics) {
+          const pipelineMetrics = metricStore.getAllForPipeline(vectorNodeId, pipeline.id, 5);
+          for (const [componentId, samples] of pipelineMetrics) {
             if (samples.length === 0) continue;
             const matchesSource = sourceKeys.some((key) => componentId === key);
             if (matchesSource) {

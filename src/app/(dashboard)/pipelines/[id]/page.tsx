@@ -182,13 +182,14 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     for (const [, entry] of Object.entries(components)) {
       const latest = entry.samples[entry.samples.length - 1];
       if (!latest) continue;
-      // Sources & sinks: show received rate (events entering the component)
-      // Transforms: show sent rate (events produced after filtering/splitting)
-      const useReceived = entry.kind !== "TRANSFORM";
+      // Events: received rate for sources/sinks, sent rate for transforms (post-filter)
+      // Bytes: received for sources (I/O in), sent for sinks (I/O out), neither for transforms
+      const eventsPerSec = entry.kind === "TRANSFORM" ? latest.sentEventsRate : latest.receivedEventsRate;
+      const bytesPerSec = entry.kind === "SINK" ? latest.sentBytesRate : latest.receivedBytesRate;
       metricsMap.set(entry.componentKey, {
-        eventsPerSec: useReceived ? latest.receivedEventsRate : latest.sentEventsRate,
-        bytesPerSec: useReceived ? latest.receivedBytesRate : latest.sentBytesRate,
-        status: (useReceived ? latest.receivedEventsRate : latest.sentEventsRate) > 0 ? "healthy" : "degraded",
+        eventsPerSec,
+        bytesPerSec,
+        status: eventsPerSec > 0 ? "healthy" : "degraded",
         samples: entry.samples,
       });
     }

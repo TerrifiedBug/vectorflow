@@ -27,6 +27,7 @@ class MetricStore {
 
   recordTotals(
     nodeId: string,
+    pipelineId: string,
     componentId: string,
     totals: {
       receivedEventsTotal: number;
@@ -37,7 +38,7 @@ class MetricStore {
       discardedTotal?: number;
     },
   ): MetricSample | null {
-    const key = `${nodeId}:${componentId}`;
+    const key = `${nodeId}:${pipelineId}:${componentId}`;
     const now = Date.now();
     const prev = this.prevTotals.get(key);
 
@@ -75,16 +76,17 @@ class MetricStore {
     return sample;
   }
 
-  getSamples(nodeId: string, componentId: string, minutes = 60): MetricSample[] {
-    const key = `${nodeId}:${componentId}`;
+  getSamples(nodeId: string, pipelineId: string, componentId: string, minutes = 60): MetricSample[] {
+    const key = `${nodeId}:${pipelineId}:${componentId}`;
     const arr = this.samples.get(key) ?? [];
     const cutoff = Date.now() - minutes * 60 * 1000;
     return arr.filter((s) => s.timestamp >= cutoff);
   }
 
-  getAllForNode(nodeId: string, minutes = 60): Map<string, MetricSample[]> {
+  /** Get all component metrics for a specific pipeline across all nodes. */
+  getAllForPipeline(nodeId: string, pipelineId: string, minutes = 60): Map<string, MetricSample[]> {
     const result = new Map<string, MetricSample[]>();
-    const prefix = `${nodeId}:`;
+    const prefix = `${nodeId}:${pipelineId}:`;
     const cutoff = Date.now() - minutes * 60 * 1000;
     for (const [key, samples] of this.samples) {
       if (key.startsWith(prefix)) {
@@ -95,7 +97,25 @@ class MetricStore {
     return result;
   }
 
-  /** Get the latest sample for every component across all nodes. Keyed by "nodeId:componentId". */
+  /** Get all component metrics for a node (all pipelines). */
+  getAllForNode(nodeId: string, minutes = 60): Map<string, MetricSample[]> {
+    const result = new Map<string, MetricSample[]>();
+    const prefix = `${nodeId}:`;
+    const cutoff = Date.now() - minutes * 60 * 1000;
+    for (const [key, samples] of this.samples) {
+      if (key.startsWith(prefix)) {
+        // Key is nodeId:pipelineId:componentId — extract componentId (after second colon)
+        const rest = key.slice(prefix.length);
+        const colonIdx = rest.indexOf(":");
+        const componentId = colonIdx >= 0 ? rest.slice(colonIdx + 1) : rest;
+        // For node-level aggregation, last-write-wins per componentId is acceptable
+        result.set(componentId, samples.filter((s) => s.timestamp >= cutoff));
+      }
+    }
+    return result;
+  }
+
+  /** Get the latest sample for every component across all nodes. Keyed by "nodeId:pipelineId:componentId". */
   getLatestAll(): Map<string, MetricSample> {
     const result = new Map<string, MetricSample>();
     for (const [key, samples] of this.samples) {
