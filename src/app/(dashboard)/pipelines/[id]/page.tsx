@@ -189,6 +189,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       metricsMap.set(entry.componentKey, {
         eventsPerSec,
         bytesPerSec,
+        ...(entry.kind === "TRANSFORM" ? { eventsInPerSec: latest.receivedEventsRate } : {}),
         status: eventsPerSec > 0 ? "healthy" : "degraded",
         samples: entry.samples,
       });

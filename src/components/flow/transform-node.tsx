@@ -59,7 +59,10 @@ function TransformNodeComponent({
 
         {metrics && (
           <p className="truncate text-xs font-mono text-blue-400">
-            {formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}
+            {metrics.eventsInPerSec != null
+              ? <>{formatRate(metrics.eventsInPerSec)} ev/s in{"  "}{formatRate(metrics.eventsPerSec)} ev/s out</>
+              : <>{formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}</>
+            }
           </p>
         )}
       </div>
