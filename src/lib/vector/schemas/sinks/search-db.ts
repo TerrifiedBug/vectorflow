@@ -45,12 +45,6 @@ export const searchDbSinks: VectorComponentDef[] = [
           description: "Document type for Elasticsearch indexing (ES 6.x and below)",
           default: "_doc",
         },
-        suppress_type_name: {
-          type: "boolean",
-          description:
-            "Suppress the _type field in requests. Deprecated; use api_version instead",
-          default: false,
-        },
         opensearch_service_type: {
           type: "string",
           enum: ["managed", "serverless"],
@@ -206,7 +200,7 @@ export const searchDbSinks: VectorComponentDef[] = [
         },
         format: {
           type: "string",
-          enum: ["json_as_object", "json_as_string", "json_each_row"],
+          enum: ["arrow_stream", "json_as_object", "json_as_string", "json_each_row"],
           description: "Data format for parsing input data",
           default: "json_each_row",
         },
@@ -434,9 +428,8 @@ export const searchDbSinks: VectorComponentDef[] = [
           default: "NULL",
         },
         ...authBasicBearerSchema(),
-        ...encodingSchema(["json", "csv"]),
-        ...compressionSchema(["gzip", "none"], "none"),
-        ...tlsSchema(),
+        ...encodingSchema(["avro", "cef", "csv", "gelf", "json", "logfmt", "native", "native_json", "otlp", "protobuf", "raw_message", "syslog", "text"]),
+        ...compressionSchema(["gzip", "none", "snappy", "zlib", "zstd"], "none"),
         ...batchSchema({ max_bytes: "10MB", timeout_secs: "1" }),
         ...bufferSchema(),
         ...requestSchema(),

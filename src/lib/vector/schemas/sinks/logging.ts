@@ -91,7 +91,7 @@ export const loggingSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["endpoint"],
+      required: ["endpoint", "encoding"],
     },
   },
   {
@@ -146,7 +146,7 @@ export const loggingSinks: VectorComponentDef[] = [
         ...tlsSchema(),
         ...bufferSchema(),
       },
-      required: ["endpoint"],
+      required: ["endpoint", "encoding"],
     },
   },
   {
@@ -236,7 +236,7 @@ export const loggingSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["endpoint", "default_token"],
+      required: ["endpoint", "default_token", "encoding"],
     },
   },
   {

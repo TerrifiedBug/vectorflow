@@ -56,8 +56,10 @@ export const azureSinks: VectorComponentDef[] = [
           "logfmt",
           "native",
           "native_json",
+          "otlp",
           "protobuf",
           "raw_message",
+          "syslog",
           "text",
         ]),
         ...compressionSchema(
@@ -68,7 +70,7 @@ export const azureSinks: VectorComponentDef[] = [
         ...bufferSchema(),
         ...requestSchema(),
       },
-      required: ["connection_string", "container_name"],
+      required: ["connection_string", "container_name", "encoding"],
     },
   },
   {

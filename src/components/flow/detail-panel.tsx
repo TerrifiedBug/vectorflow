@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, Trash2, Lock, Info, MousePointerClick } from "lucide-react";
+import { Copy, Trash2, Lock, Info, MousePointerClick, ExternalLink } from "lucide-react";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
 import { VrlEditor } from "@/components/vrl-editor/vrl-editor";
@@ -255,8 +255,17 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
             <Card className="gap-4 py-4">
               <CardHeader className="pb-0">
                 <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="truncate text-base">
+                  <CardTitle className="flex items-center gap-1.5 truncate text-base">
                     {componentDef.displayName}
+                    <a
+                      href={`https://vector.dev/docs/reference/configuration/${componentDef.kind}s/${componentDef.type}/`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex text-muted-foreground hover:text-foreground"
+                      aria-label="Open Vector docs"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
                   </CardTitle>
                   <div className="flex items-center gap-1.5">
                     <Badge
