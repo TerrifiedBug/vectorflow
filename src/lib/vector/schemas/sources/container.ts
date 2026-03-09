@@ -63,7 +63,7 @@ export const containerSources: VectorComponentDef[] = [
             },
             mode: {
               type: "string",
-              enum: ["halt_before", "halt_after", "continue_through", "continue_past"],
+              enum: ["halt_before", "halt_with", "continue_through", "continue_past"],
               description: "Multi-line mode",
             },
             timeout_ms: {

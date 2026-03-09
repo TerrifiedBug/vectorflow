@@ -104,7 +104,7 @@ export const messagingSources: VectorComponentDef[] = [
         ...tlsSchema(),
         ...decodingSchema(),
       },
-      required: ["bootstrap_servers", "topics"],
+      required: ["bootstrap_servers", "topics", "group_id"],
     },
   },
   {
@@ -197,7 +197,7 @@ export const messagingSources: VectorComponentDef[] = [
         ...tlsSchema(),
         ...decodingSchema(),
       },
-      required: ["url", "subject"],
+      required: ["url", "subject", "connection_name"],
     },
   },
   {
@@ -237,10 +237,6 @@ export const messagingSources: VectorComponentDef[] = [
           type: "number",
           description: "Number of messages per batch (default: 1000)",
           default: 1000,
-        },
-        dead_letter_queue_topic: {
-          type: "string",
-          description: "Topic for dead letter messages",
         },
         auth: {
           type: "object",
@@ -310,10 +306,6 @@ export const messagingSources: VectorComponentDef[] = [
         client_id: {
           type: "string",
           description: "MQTT client identifier",
-        },
-        qos: {
-          type: "number",
-          description: "Quality of Service level (0, 1, or 2)",
         },
         keep_alive: {
           type: "number",
@@ -386,7 +378,6 @@ export const messagingSources: VectorComponentDef[] = [
           type: "string",
           description: "Field name to add the Redis key to each event",
         },
-        ...tlsSchema(),
         ...decodingSchema(),
       },
       required: ["url", "key"],
@@ -490,8 +481,8 @@ export const messagingSources: VectorComponentDef[] = [
         visibility_timeout_secs: {
           type: "number",
           description:
-            "Visibility timeout for received messages in seconds (default: 30)",
-          default: 30,
+            "Visibility timeout for received messages in seconds (default: 300)",
+          default: 300,
         },
         delete_message: {
           type: "boolean",
@@ -526,12 +517,6 @@ export const messagingSources: VectorComponentDef[] = [
           description: "Address to listen on (default: 0.0.0.0:443)",
           default: "0.0.0.0:443",
         },
-        access_key: {
-          type: "string",
-          description:
-            "Deprecated: use access_keys instead. Firehose access key for request validation",
-          sensitive: true,
-        },
         access_keys: {
           type: "array",
           items: { type: "string" },
@@ -551,7 +536,7 @@ export const messagingSources: VectorComponentDef[] = [
         ...tlsSchema(),
         ...decodingSchema(),
       },
-      required: ["address"],
+      required: ["address", "store_access_key"],
     },
   },
   {
@@ -634,12 +619,6 @@ export const messagingSources: VectorComponentDef[] = [
           type: "string",
           description: "Address to listen on (default: 0.0.0.0:8088)",
           default: "0.0.0.0:8088",
-        },
-        token: {
-          type: "string",
-          description:
-            "Deprecated: use valid_tokens instead. HEC token for authentication",
-          sensitive: true,
         },
         valid_tokens: {
           type: "array",
@@ -726,11 +705,6 @@ export const messagingSources: VectorComponentDef[] = [
         parse_ddtags: {
           type: "boolean",
           description: "Parse Datadog tags from incoming events",
-        },
-        log_namespace: {
-          type: "boolean",
-          description: "Use Vector namespaced log schema (default: false)",
-          default: false,
         },
         ...tlsSchema(),
       },
