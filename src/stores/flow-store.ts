@@ -281,6 +281,18 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   addNode: (componentDef, position) => {
     set((state) => {
       const history = pushSnapshot(state);
+      // Populate initial config from schema defaults (e.g. remap source: ".")
+      const schema = componentDef.configSchema as {
+        properties?: Record<string, { default?: unknown }>;
+      };
+      const config: Record<string, unknown> = {};
+      if (schema?.properties) {
+        for (const [key, prop] of Object.entries(schema.properties)) {
+          if (prop.default !== undefined && typeof prop.default === "string") {
+            config[key] = prop.default;
+          }
+        }
+      }
       const newNode: Node = {
         id: generateId(),
         type: componentDef.kind,
@@ -288,7 +300,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         data: {
           componentDef,
           componentKey: `${componentDef.type}_${Date.now()}`,
-          config: {},
+          config,
         },
       };
       return {

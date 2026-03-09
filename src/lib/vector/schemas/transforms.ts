@@ -16,6 +16,7 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
         source: {
           type: "string",
           description: "VRL program to execute on each event",
+          default: ".",
         },
         drop_on_error: {
           type: "boolean",
