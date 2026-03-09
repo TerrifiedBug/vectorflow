@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
+import { fireScimSyncFailedAlert } from "@/server/services/scim";
 import { debugLog } from "@/lib/logger";
 import { authenticateScim } from "../auth";
 import {
@@ -151,6 +152,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to create group";
+    void fireScimSyncFailedAlert(message);
     return scimError(message, 400);
   }
 }

@@ -147,7 +147,13 @@ Every mutation in VectorFlow is logged to an audit trail. Audit entries include:
 
 Sensitive fields (passwords, tokens, secrets) are automatically redacted in audit log entries.
 
-View the audit log from the **Audit** page in the sidebar.
+View the audit log from the **Audit** page in the sidebar. The audit log supports filtering by entity type, including dedicated filters for SCIM operations:
+
+- **ScimUser** -- SCIM user provisioning events (create, update, deactivate)
+- **ScimGroup** -- SCIM group operations (create, update members, delete)
+- **SCIM (All)** -- Combined filter showing all SCIM activity in one view
+
+These filters make it straightforward to review all identity provider-driven changes for compliance audits.
 
 ## Security hardening checklist
 

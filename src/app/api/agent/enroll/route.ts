@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyEnrollmentToken, generateNodeToken } from "@/server/services/agent-token";
+import { fireEventAlert } from "@/server/services/event-alerts";
 import { debugLog } from "@/lib/logger";
 
 const enrollSchema = z.object({
@@ -81,6 +82,11 @@ export async function POST(request: Request) {
       },
     });
     debugLog("enroll", `SUCCESS -- node ${node.id} enrolled in "${matchedEnv.name}"`);
+
+    void fireEventAlert("node_joined", matchedEnv.id, {
+      message: `Node "${hostname}" enrolled in environment "${matchedEnv.name}"`,
+      nodeId: node.id,
+    });
 
     return NextResponse.json({
       nodeId: node.id,

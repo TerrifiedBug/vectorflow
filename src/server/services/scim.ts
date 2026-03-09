@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
+import { fireEventAlert } from "./event-alerts";
 import { debugLog } from "@/lib/logger";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
@@ -129,7 +130,7 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
     await writeAuditLog({
       userId: null,
       action: "scim.user_adopted",
-      entityType: "User",
+      entityType: "ScimUser",
       entityId: updated.id,
       metadata: { email, scimExternalId: scimUser.externalId },
     });
@@ -157,7 +158,7 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
   await writeAuditLog({
     userId: null,
     action: "scim.user_created",
-    entityType: "User",
+    entityType: "ScimUser",
     entityId: user.id,
     metadata: { email, scimExternalId: scimUser.externalId },
   });
@@ -209,7 +210,7 @@ export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
   await writeAuditLog({
     userId: null,
     action: "scim.user_updated",
-    entityType: "User",
+    entityType: "ScimUser",
     entityId: id,
     metadata: { fields: Object.keys(data) },
   });
@@ -292,7 +293,7 @@ export async function scimPatchUser(
     await writeAuditLog({
       userId: null,
       action: "scim.user_patched",
-      entityType: "User",
+      entityType: "ScimUser",
       entityId: id,
       metadata: { fields: Object.keys(data), operations: operations.map((o) => o.op) },
     });
@@ -305,6 +306,23 @@ export async function scimPatchUser(
     select: USER_SELECT,
   });
   return user ? toScimUser(user) : null;
+}
+
+/**
+ * Fire a scim_sync_failed event alert for all non-system environments.
+ * SCIM is system-wide and has no single environmentId, so we broadcast
+ * the failure to every environment that exists.
+ */
+export async function fireScimSyncFailedAlert(errorMessage: string): Promise<void> {
+  const environments = await prisma.environment.findMany({
+    where: { isSystem: false },
+    select: { id: true },
+  });
+  for (const env of environments) {
+    void fireEventAlert("scim_sync_failed", env.id, {
+      message: `SCIM sync failed: ${errorMessage}`,
+    });
+  }
 }
 
 export async function scimDeleteUser(id: string) {
@@ -321,7 +339,7 @@ export async function scimDeleteUser(id: string) {
   await writeAuditLog({
     userId: null,
     action: "scim.user_deactivated",
-    entityType: "User",
+    entityType: "ScimUser",
     entityId: id,
   });
 }

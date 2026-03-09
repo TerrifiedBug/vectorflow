@@ -390,6 +390,32 @@ export const teamRouter = router({
       });
     }),
 
+  updateDefaultEnvironment: protectedProcedure
+    .input(z.object({
+      teamId: z.string(),
+      defaultEnvironmentId: z.string().nullable(),
+    }))
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.updated", "Team"))
+    .mutation(async ({ input }) => {
+      if (input.defaultEnvironmentId) {
+        const env = await prisma.environment.findUnique({
+          where: { id: input.defaultEnvironmentId },
+        });
+        if (!env || env.teamId !== input.teamId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Environment not found or does not belong to this team",
+          });
+        }
+      }
+      return prisma.team.update({
+        where: { id: input.teamId },
+        data: { defaultEnvironmentId: input.defaultEnvironmentId },
+        select: { id: true, defaultEnvironmentId: true },
+      });
+    }),
+
   getAvailableTags: protectedProcedure
     .input(z.object({ teamId: z.string() }))
     .use(withTeamAccess("VIEWER"))
