@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, Trash2, Lock, Info, MousePointerClick, ExternalLink } from "lucide-react";
+import { Copy, Trash2, Lock, Info, MousePointerClick, Book } from "lucide-react";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
 import { VrlEditor } from "@/components/vrl-editor/vrl-editor";
@@ -264,7 +264,7 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
                       className="inline-flex text-muted-foreground hover:text-foreground"
                       aria-label="Open Vector docs"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" />
+                      <Book className="h-3.5 w-3.5" />
                     </a>
                   </CardTitle>
                   <div className="flex items-center gap-1.5">
