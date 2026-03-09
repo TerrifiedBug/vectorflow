@@ -182,18 +182,31 @@ Tags are metadata labels only -- they do not enforce any access controls or data
 
 ## Deploy approval workflows
 
-Environments can optionally require **deploy approval** before a pipeline goes live. When enabled, editors who click **Deploy** will submit a deploy request instead of deploying directly. Another team member (editor or admin) can then review, approve, or reject the request.
+Environments can optionally require **deploy approval** before a pipeline goes live. When enabled, editors who click **Deploy** will submit a deploy request instead of deploying directly. Approval and deployment are **separate actions** -- a reviewer approves the request, and then anyone with deploy access can execute the deployment.
 
 ### How it works
 
 1. An admin enables **Require approval for deploys** on the environment settings page (see [Environments](environments.md#deploy-approval)).
 2. When an editor clicks **Deploy** in the pipeline editor, the deploy dialog shows a **Request Deploy** button instead of **Publish to Agents**.
 3. The editor submits a deploy request with a changelog entry. The pipeline list and pipeline editor toolbar show a **Pending Approval** badge.
-4. Another team member (editor or admin) opens the deploy dialog for the pipeline and sees the request in **review mode** — displaying the requester, changelog, and a config diff.
-5. The reviewer can **Approve & Deploy** (which immediately deploys the pipeline) or **Reject** (with an optional note).
+4. Another team member (editor or admin) opens the deploy dialog for the pipeline and sees the request in **review mode** -- displaying the requester, changelog, and a config diff.
+5. The reviewer clicks **Approve** to mark the request as approved. This does **not** deploy the pipeline.
+6. Once approved, any team member with deploy access can click **Deploy** on the approved request to push the configuration to agents.
+
+### Request lifecycle
+
+A deploy request moves through these statuses:
+
+| Status | Description |
+|--------|-------------|
+| **Pending** | The request is waiting for review. |
+| **Approved** | A reviewer has approved the request. It is ready to be deployed. |
+| **Deployed** | The approved request has been deployed to agents. |
+| **Rejected** | A reviewer has rejected the request (with an optional note). |
+| **Cancelled** | The request was cancelled before deployment. |
 
 {% hint style="warning" %}
-**Self-approval is blocked.** The person who submitted a deploy request cannot approve their own request. This enforces a four-eyes principle — a second team member must always review and approve the deployment.
+**Self-approval is blocked.** The person who submitted a deploy request cannot approve their own request. This enforces a four-eyes principle -- a second team member must always review the deployment.
 {% endhint %}
 
 {% hint style="info" %}
@@ -202,11 +215,11 @@ Admins can always deploy directly, even when approval is required. When an admin
 
 ### Cancelling a request
 
-The editor who submitted a pending deploy request can cancel it from the pipeline editor toolbar by clicking the **X** button next to the **Pending Approval** badge.
+Anyone with deploy access can cancel a pending or approved deploy request. For pending requests, click the **X** button next to the **Pending Approval** badge in the pipeline editor toolbar. For approved requests, click **Cancel** in the deploy dialog.
 
 ### Pipeline list indicators
 
-Pipelines with pending deploy requests show a **Pending Approval** badge in the status column on the Pipelines page, so admins can quickly identify which pipelines need attention.
+Pipelines with pending or approved deploy requests show a status badge (**Pending Approval** or **Approved**) in the status column on the Pipelines page, so team members can quickly identify which pipelines need attention.
 
 ## Filtering by environment
 

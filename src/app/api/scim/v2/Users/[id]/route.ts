@@ -5,6 +5,7 @@ import {
   scimUpdateUser,
   scimPatchUser,
   scimDeleteUser,
+  fireScimSyncFailedAlert,
 } from "@/server/services/scim";
 
 function scimError(detail: string, status: number) {
@@ -58,6 +59,7 @@ export async function PUT(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to update user";
+    void fireScimSyncFailedAlert(message);
     return scimError(message, 400);
   }
 }
@@ -89,6 +91,7 @@ export async function PATCH(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to patch user";
+    void fireScimSyncFailedAlert(message);
     return scimError(message, 400);
   }
 }
@@ -115,6 +118,7 @@ export async function DELETE(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to delete user";
+    void fireScimSyncFailedAlert(message);
     return scimError(message, 400);
   }
 }

@@ -33,7 +33,20 @@ model User {
   serviceAccounts        ServiceAccount[]
   deployRequestsMade     DeployRequest[]  @relation("deployRequester")
   deployRequestsReviewed DeployRequest[]  @relation("deployReviewer")
+  deployRequestsExecuted DeployRequest[]  @relation("deployExecutor")
+  preferences            UserPreference[]
   createdAt              DateTime         @default(now())
+}
+
+model UserPreference {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key    String
+  value  String
+
+  @@unique([userId, key])
+  @@index([userId])
 }
 
 enum AuthMethod {
@@ -42,16 +55,18 @@ enum AuthMethod {
 }
 
 model Team {
-  id               String        @id @default(cuid())
-  name             String
-  requireTwoFactor Boolean       @default(false)
-  members          TeamMember[]
-  environments     Environment[]
-  templates        Template[]
-  vrlSnippets      VrlSnippet[]
-  alertRules       AlertRule[]
-  availableTags    Json?         @default("[]")   // string[] of admin-defined classification tags
-  createdAt        DateTime      @default(now())
+  id                   String        @id @default(cuid())
+  name                 String
+  requireTwoFactor     Boolean       @default(false)
+  defaultEnvironmentId String?
+  defaultEnvironment   Environment?  @relation("teamDefault", fields: [defaultEnvironmentId], references: [id], onDelete: SetNull)
+  members              TeamMember[]
+  environments         Environment[]
+  templates            Template[]
+  vrlSnippets          VrlSnippet[]
+  alertRules           AlertRule[]
+  availableTags        Json?         @default("[]")   // string[] of admin-defined classification tags
+  createdAt            DateTime      @default(now())
 }
 
 model ScimGroup {
@@ -117,6 +132,7 @@ model Environment {
   notificationChannels    NotificationChannel[]
   serviceAccounts         ServiceAccount[]
   deployRequests          DeployRequest[]
+  teamDefaults            Team[]            @relation("teamDefault")
   createdAt               DateTime      @default(now())
 }
 
@@ -540,18 +556,22 @@ model DeployRequest {
   configYaml      String
   changelog       String
   nodeSelector    Json?
-  status          String      @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  status          String      @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED | DEPLOYED
   reviewedById    String?
   reviewedBy      User?       @relation("deployReviewer", fields: [reviewedById], references: [id])
   reviewNote      String?
   createdAt       DateTime    @default(now())
   reviewedAt      DateTime?
+  deployedById    String?
+  deployedBy      User?       @relation("deployExecutor", fields: [deployedById], references: [id], onDelete: SetNull)
+  deployedAt      DateTime?
 
   @@index([pipelineId, status])
   @@index([environmentId, status])
 }
 
 enum AlertMetric {
+  // Infrastructure (threshold-based)
   node_unreachable
   cpu_usage
   memory_usage
@@ -559,6 +579,18 @@ enum AlertMetric {
   error_rate
   discarded_rate
   pipeline_crashed
+
+  // Events (fire on occurrence)
+  deploy_requested
+  deploy_completed
+  deploy_rejected
+  deploy_cancelled
+  new_version_available
+  scim_sync_failed
+  backup_failed
+  certificate_expiring
+  node_joined
+  node_left
 }
 
 enum AlertCondition {
@@ -583,9 +615,9 @@ model AlertRule {
   teamId          String
   team            Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
   metric          AlertMetric
-  condition       AlertCondition
-  threshold       Float
-  durationSeconds Int            @default(60)
+  condition       AlertCondition?
+  threshold       Float?
+  durationSeconds Int?
   events          AlertEvent[]
   channels        AlertRuleChannel[]
   createdAt       DateTime       @default(now())

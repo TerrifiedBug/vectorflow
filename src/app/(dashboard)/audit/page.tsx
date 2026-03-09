@@ -29,6 +29,7 @@ import { PageHeader } from "@/components/page-header";
 import { useTeamStore } from "@/stores/team-store";
 
 const ALL_VALUE = "__all__";
+const SCIM_VALUE = "__SCIM__";
 
 function formatTimestamp(date: Date | string): string {
   const d = new Date(date);
@@ -95,9 +96,16 @@ export default function AuditPage() {
   // Build query input — explicit team filter overrides global team selector
   const effectiveTeamId = teamFilter || selectedTeamId;
   const effectiveEnvironmentId = environmentFilter || undefined;
+  // Map entity type filter to entityTypes array for the query
+  const entityTypesParam = entityTypeFilter
+    ? entityTypeFilter === SCIM_VALUE
+      ? ["ScimUser", "ScimGroup"]
+      : [entityTypeFilter]
+    : undefined;
+
   const queryInput = {
     ...(actionFilter ? { action: actionFilter } : {}),
-    ...(entityTypeFilter ? { entityType: entityTypeFilter } : {}),
+    ...(entityTypesParam ? { entityTypes: entityTypesParam } : {}),
     ...(userFilter ? { userId: userFilter } : {}),
     ...(startDate ? { startDate } : {}),
     ...(endDate ? { endDate } : {}),
@@ -195,6 +203,7 @@ export default function AuditPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL_VALUE}>All types</SelectItem>
+                  <SelectItem value={SCIM_VALUE}>SCIM (All)</SelectItem>
                   {entityTypes.map((t) => (
                     <SelectItem key={t} value={t}>
                       {t}
