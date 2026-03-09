@@ -4,6 +4,7 @@ import {
   decodingSchema,
   framingSchema,
   authBasicBearerSchema,
+  authHttpServerSchema,
 } from "../shared";
 
 export const networkSources: VectorComponentDef[] = [
@@ -121,7 +122,7 @@ export const networkSources: VectorComponentDef[] = [
           description: "The HTTP status code to return on success",
           default: 200,
         },
-        ...authBasicBearerSchema(),
+        ...authHttpServerSchema(),
         ...tlsSchema(),
         ...decodingSchema(),
         ...framingSchema(),

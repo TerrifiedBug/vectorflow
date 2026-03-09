@@ -302,6 +302,51 @@ export function authBasicBearerSchema() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Auth: HTTP Server (basic + custom — server-mode validation)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Auth schema for Vector's http_server source.
+ *
+ * Server-mode auth validates *incoming* requests, so the field names and
+ * strategies differ from the outbound (client-mode) auth used by sinks:
+ *   - `username` / `password` for basic (not `user`)
+ *   - `source` (VRL expression) for custom
+ *   - No bearer support
+ */
+export function authHttpServerSchema() {
+  return {
+    auth: {
+      type: "object",
+      properties: {
+        strategy: {
+          type: "string",
+          enum: ["basic", "custom"],
+          description: "Authentication strategy",
+        },
+        username: {
+          type: "string",
+          description: "Basic auth username",
+          dependsOn: { field: "strategy", value: "basic" },
+        },
+        password: {
+          type: "string",
+          description: "Basic auth password",
+          sensitive: true,
+          dependsOn: { field: "strategy", value: "basic" },
+        },
+        source: {
+          type: "string",
+          description: "VRL boolean expression for custom auth validation",
+          dependsOn: { field: "strategy", value: "custom" },
+        },
+      },
+      description: "Authentication configuration (optional — omit for no auth)",
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Auth: AWS                                                          */
 /* ------------------------------------------------------------------ */
 
