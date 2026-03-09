@@ -18,6 +18,7 @@ import { certificateRouter } from "@/server/routers/certificate";
 import { vrlSnippetRouter } from "@/server/routers/vrl-snippet";
 import { alertRouter } from "@/server/routers/alert";
 import { serviceAccountRouter } from "@/server/routers/service-account";
+import { userPreferenceRouter } from "@/server/routers/user-preference";
 
 export const appRouter = router({
   team: teamRouter,
@@ -39,6 +40,7 @@ export const appRouter = router({
   vrlSnippet: vrlSnippetRouter,
   alert: alertRouter,
   serviceAccount: serviceAccountRouter,
+  userPreference: userPreferenceRouter,
 });
 
 export type AppRouter = typeof appRouter;

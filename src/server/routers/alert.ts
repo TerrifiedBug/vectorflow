@@ -11,6 +11,7 @@ import {
 } from "@/server/services/webhook-delivery";
 import { validatePublicUrl, validateSmtpHost } from "@/server/services/url-validation";
 import { getDriver } from "@/server/services/channels";
+import { isEventMetric } from "@/server/services/event-alerts";
 
 export const alertRouter = router({
   // ─── Alert Rules ───────────────────────────────────────────────────
@@ -38,9 +39,9 @@ export const alertRouter = router({
         environmentId: z.string(),
         pipelineId: z.string().optional(),
         metric: z.nativeEnum(AlertMetric),
-        condition: z.nativeEnum(AlertCondition),
-        threshold: z.number(),
-        durationSeconds: z.number().int().min(1).default(60),
+        condition: z.nativeEnum(AlertCondition).nullable().optional(),
+        threshold: z.number().nullable().optional(),
+        durationSeconds: z.number().int().min(1).nullable().optional(),
         teamId: z.string(),
         channelIds: z.array(z.string()).optional(),
       }),
@@ -82,6 +83,20 @@ export const alertRouter = router({
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: "One or more channel IDs are invalid or belong to a different environment",
+          });
+        }
+      }
+
+      // Event-based metrics fire on occurrence — they don't use thresholds
+      if (isEventMetric(input.metric)) {
+        input.condition = null;
+        input.threshold = null;
+        input.durationSeconds = null;
+      } else {
+        if (!input.condition || input.threshold == null) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Infrastructure metrics require condition and threshold",
           });
         }
       }

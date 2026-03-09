@@ -99,7 +99,24 @@ VF_LOG_LEVEL=info
 
 ## System settings (UI)
 
-The following settings are configured through the **Settings** page in the VectorFlow UI. Only Super Admins can access this page. These values are stored in the database and take effect immediately.
+The following settings are configured through the **Settings** page in the VectorFlow UI. These values are stored in the database and take effect immediately.
+
+### Settings navigation
+
+The Settings page has its own dedicated sidebar navigation, separate from the main application sidebar. When you click **Settings** in the main navigation, the sidebar transitions to show the settings menu organized into four sections:
+
+| Section | Pages | Visibility |
+|---------|-------|------------|
+| **System** | Fleet, Backup | Super Admin only |
+| **Security** | Authentication, SCIM | Super Admin only |
+| **Organization** | Team, Users, Service Accounts | Team: Admin+, Users: Super Admin, Service Accounts: Admin+ |
+| **Operations** | Audit | Admin+ |
+
+Click the back arrow at the top of the settings sidebar to return to the main navigation. The transition between the main sidebar and settings sidebar is animated for a smooth experience.
+
+{% hint style="info" %}
+Team admins see a subset of the settings pages (Team, Service Accounts, Audit). Super admins see all settings pages. Viewers and editors do not have access to the Settings page.
+{% endhint %}
 
 ### Fleet settings
 

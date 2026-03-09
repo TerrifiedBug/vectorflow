@@ -9,6 +9,7 @@ import { validateConfig } from "@/server/services/validator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
+import { fireEventAlert } from "@/server/services/event-alerts";
 
 export const deployRouter = router({
   preview: protectedProcedure
@@ -200,6 +201,11 @@ export const deployRouter = router({
           userName: ctx.session?.user?.name ?? null,
         }).catch(() => {});
 
+        void fireEventAlert("deploy_requested", pipeline.environment.id, {
+          message: `Deploy request created for pipeline "${pipeline.name}"`,
+          pipelineId: input.pipelineId,
+        });
+
         return {
           success: true,
           pendingApproval: true,
@@ -237,6 +243,13 @@ export const deployRouter = router({
         userEmail: ctx.session?.user?.email ?? null,
         userName: ctx.session?.user?.name ?? null,
       }).catch(() => {});
+
+      if (result.success) {
+        void fireEventAlert("deploy_completed", pipeline.environment.id, {
+          message: `Pipeline "${pipeline.name}" deployed`,
+          pipelineId: input.pipelineId,
+        });
+      }
 
       return result;
     }),
@@ -300,12 +313,13 @@ export const deployRouter = router({
     .input(z.object({
       environmentId: z.string().optional(),
       pipelineId: z.string().optional(),
+      statuses: z.array(z.enum(["PENDING", "APPROVED"])).optional().default(["PENDING", "APPROVED"]),
     }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input, ctx }) => {
       const teamId = (ctx as Record<string, unknown>).teamId as string | null ?? null;
       const where: Record<string, unknown> = {
-        status: "PENDING",
+        status: { in: input.statuses },
         ...(input.environmentId && { environmentId: input.environmentId }),
         ...(input.pipelineId && { pipelineId: input.pipelineId }),
         environment: { teamId },
@@ -331,6 +345,7 @@ export const deployRouter = router({
           // configYaml included for editors/admins who can review
           configYaml: canReview,
           requestedBy: { select: { name: true, email: true } },
+          reviewedBy: { select: { name: true, email: true } },
           pipeline: { select: { name: true } },
         },
         orderBy: { createdAt: "desc" },
@@ -344,7 +359,6 @@ export const deployRouter = router({
     .mutation(async ({ input, ctx }) => {
       const request = await prisma.deployRequest.findUnique({
         where: { id: input.requestId },
-        include: { pipeline: true },
       });
       if (!request || request.status !== "PENDING") {
         throw new TRPCError({ code: "NOT_FOUND", message: "Deploy request not found or not pending" });
@@ -362,8 +376,33 @@ export const deployRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Request is no longer pending" });
       }
 
+      return { success: true };
+    }),
+
+  executeApprovedRequest: protectedProcedure
+    .input(z.object({ requestId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("deployRequest.deployed", "DeployRequest"))
+    .mutation(async ({ input, ctx }) => {
+      // Atomically claim the APPROVED request — prevents double-deploy race condition
+      const updated = await prisma.deployRequest.updateMany({
+        where: { id: input.requestId, status: "APPROVED" },
+        data: { status: "DEPLOYED", deployedById: ctx.session.user.id, deployedAt: new Date() },
+      });
+      if (updated.count === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Request is not in APPROVED state" });
+      }
+
+      // Fetch the full request to get configYaml, pipelineId, changelog
+      const request = await prisma.deployRequest.findUnique({
+        where: { id: input.requestId },
+      });
+      if (!request) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Deploy request not found" });
+      }
+
       // Deploy the reviewed YAML snapshot — NOT the current pipeline state
-      // If deploy fails, revert request status to PENDING so it can be retried
+      // If deploy fails, revert request status back to APPROVED
       try {
         const result = await deployAgent(
           request.pipelineId,
@@ -372,8 +411,17 @@ export const deployRouter = router({
           request.configYaml,
         );
 
+        // Non-throwing failure (e.g. validation errors) — revert to APPROVED
+        if (!result.success) {
+          await prisma.deployRequest.updateMany({
+            where: { id: input.requestId, status: "DEPLOYED" },
+            data: { status: "APPROVED", deployedById: null, deployedAt: null },
+          });
+          return result;
+        }
+
         // Persist nodeSelector from the original deploy request
-        if (result.success && request.nodeSelector) {
+        if (request.nodeSelector) {
           const ns = request.nodeSelector as Record<string, string>;
           await prisma.pipeline.update({
             where: { id: request.pipelineId },
@@ -384,15 +432,21 @@ export const deployRouter = router({
           });
         }
 
+        void fireEventAlert("deploy_completed", request.environmentId, {
+          message: `Pipeline deployed via approved request`,
+          pipelineId: request.pipelineId,
+        });
+
         return result;
       } catch (err) {
+        // Revert status back to APPROVED so it can be retried
         await prisma.deployRequest.updateMany({
-          where: { id: input.requestId, status: "APPROVED" },
-          data: { status: "PENDING", reviewedById: null, reviewedAt: null },
+          where: { id: input.requestId, status: "DEPLOYED" },
+          data: { status: "APPROVED", deployedById: null, deployedAt: null },
         });
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Deploy failed after approval — request reverted to pending",
+          message: "Deploy failed — request reverted to approved",
           cause: err,
         });
       }
@@ -422,6 +476,11 @@ export const deployRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Request is no longer pending" });
       }
 
+      void fireEventAlert("deploy_rejected", request.environmentId, {
+        message: `Deploy request rejected`,
+        pipelineId: request.pipelineId,
+      });
+
       return { rejected: true };
     }),
 
@@ -430,12 +489,36 @@ export const deployRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("deploy.cancel_request", "DeployRequest"))
     .mutation(async ({ input, ctx }) => {
+      // PENDING requests can only be cancelled by the requester.
+      // APPROVED requests can be cancelled by anyone with deploy access.
+      const request = await prisma.deployRequest.findUnique({
+        where: { id: input.requestId },
+        select: { status: true, requestedById: true },
+      });
+      if (!request || !["PENDING", "APPROVED"].includes(request.status)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Request is not pending or approved" });
+      }
+      if (request.status === "PENDING" && request.requestedById !== ctx.session.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only the requester can cancel a pending request" });
+      }
+
       const updated = await prisma.deployRequest.updateMany({
-        where: { id: input.requestId, status: "PENDING", requestedById: ctx.session.user.id },
+        where: { id: input.requestId, status: { in: ["PENDING", "APPROVED"] } },
         data: { status: "CANCELLED" },
       });
       if (updated.count === 0) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Request is no longer pending or not owned by you" });
+        throw new TRPCError({ code: "CONFLICT", message: "Request status changed — try again" });
+      }
+
+      const cancelledRequest = await prisma.deployRequest.findUnique({
+        where: { id: input.requestId },
+        select: { environmentId: true, pipelineId: true },
+      });
+      if (cancelledRequest) {
+        void fireEventAlert("deploy_cancelled", cancelledRequest.environmentId, {
+          message: `Deploy request cancelled`,
+          pipelineId: cancelledRequest.pipelineId,
+        });
       }
 
       return { cancelled: true };

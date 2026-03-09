@@ -1,6 +1,7 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { prisma } from "@/lib/prisma";
 import { createBackup, runRetentionCleanup } from "./backup";
+import { fireEventAlert } from "./event-alerts";
 
 let scheduledTask: ScheduledTask | null = null;
 
@@ -47,6 +48,17 @@ function scheduleJob(cronExpression: string): void {
       await runRetentionCleanup();
     } catch (error) {
       console.error("[backup] Scheduled backup failed:", error);
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      // Backup is system-wide — fire alert for all environments
+      prisma.environment.findMany({ where: { isSystem: false }, select: { id: true } })
+        .then((envs) => {
+          for (const env of envs) {
+            void fireEventAlert("backup_failed", env.id, {
+              message: `Scheduled backup failed: ${msg}`,
+            });
+          }
+        })
+        .catch(() => {});
     }
   });
 
