@@ -45,6 +45,10 @@ Click **Create Rule**. The rule is enabled by default and begins evaluating on t
 
 ### Supported metrics
 
+VectorFlow supports three categories of alert metrics: **Infrastructure** metrics that monitor resource utilization with thresholds, **Binary** metrics that fire on detected conditions, and **Event** metrics that fire when specific system events occur.
+
+#### Infrastructure metrics
+
 | Metric | Type | Description |
 |--------|------|-------------|
 | **CPU Usage** | Percentage | CPU utilization derived from cumulative CPU seconds. |
@@ -56,6 +60,27 @@ Click **Create Rule**. The rule is enabled by default and begins evaluating on t
 | **Pipeline Crashed** | Binary | Fires when a pipeline enters the crashed state. |
 
 Percentage-based metrics use the conditions **>** (greater than), **<** (less than), or **=** (equals) against a threshold value. Binary metrics (Node Unreachable, Pipeline Crashed) fire automatically when the condition is detected -- no threshold is needed.
+
+#### Event metrics
+
+Event metrics fire whenever a specific system event occurs. Unlike infrastructure metrics, they have **no threshold** -- the alert triggers on each occurrence. Event rules are created the same way as infrastructure rules, but you select a metric from the **Events** category in the metric dropdown.
+
+| Metric | Description |
+|--------|-------------|
+| **Deploy Requested** | A deploy request was submitted for approval. |
+| **Deploy Completed** | A pipeline was successfully deployed to agents. |
+| **Deploy Rejected** | A deploy request was rejected by a reviewer. |
+| **Deploy Cancelled** | A deploy request was cancelled. |
+| **New Version Available** | A new VectorFlow server version is available. |
+| **SCIM Sync Failed** | A SCIM provisioning operation failed. |
+| **Backup Failed** | A scheduled database backup failed. |
+| **Certificate Expiring** | A TLS certificate is approaching its expiration date. |
+| **Node Joined** | A new agent node enrolled in the environment. |
+| **Node Left** | An agent node was removed or disconnected from the environment. |
+
+{% hint style="info" %}
+Event alerts use the same notification channels as infrastructure alerts (Slack, Email, PagerDuty, Webhook). You can route event alerts to specific channels by linking channels to the rule, just like any other alert rule.
+{% endhint %}
 
 ### Condition evaluation
 
