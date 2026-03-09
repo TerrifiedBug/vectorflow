@@ -331,7 +331,7 @@ export async function POST(request: Request) {
     for (const ps of pipelines) {
       if (Array.isArray(ps.componentMetrics) && ps.componentMetrics.length > 0) {
         for (const cm of ps.componentMetrics) {
-          metricStore.recordTotals(agent.nodeId, cm.componentId, {
+          metricStore.recordTotals(agent.nodeId, ps.pipelineId, cm.componentId, {
             receivedEventsTotal: cm.receivedEvents,
             sentEventsTotal: cm.sentEvents,
             receivedBytesTotal: cm.receivedBytes ?? 0,
