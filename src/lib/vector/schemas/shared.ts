@@ -175,14 +175,19 @@ export function requestSchema() {
 
 export function encodingSchema(
   codecs: string[] = [
-    "json",
-    "ndjson",
-    "text",
-    "logfmt",
-    "csv",
     "avro",
-    "raw_message",
+    "cef",
+    "csv",
+    "gelf",
+    "json",
+    "logfmt",
+    "native",
     "native_json",
+    "otlp",
+    "protobuf",
+    "raw_message",
+    "syslog",
+    "text",
   ],
 ) {
   return {
