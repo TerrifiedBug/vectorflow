@@ -95,6 +95,17 @@ const CONDITION_LABELS: Record<string, string> = {
 
 const BINARY_METRICS = new Set(["node_unreachable", "pipeline_crashed"]);
 
+/** Metrics that cannot be scoped to a specific pipeline. */
+const GLOBAL_METRICS = new Set([
+  "node_unreachable",
+  "new_version_available",
+  "scim_sync_failed",
+  "backup_failed",
+  "certificate_expiring",
+  "node_joined",
+  "node_left",
+]);
+
 const CHANNEL_TYPE_LABELS: Record<string, string> = {
   slack: "Slack",
   email: "Email",
@@ -234,14 +245,14 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
 
   const openEdit = (rule: (typeof rules)[0]) => {
     setEditingRuleId(rule.id);
-    const isEvent = isEventMetric(rule.metric);
+    const skipThreshold = isEventMetric(rule.metric) || BINARY_METRICS.has(rule.metric);
     setForm({
       name: rule.name,
       pipelineId: rule.pipelineId ?? "",
       metric: rule.metric,
-      condition: isEvent ? "" : (rule.condition ?? "gt"),
-      threshold: isEvent ? "" : String(rule.threshold ?? ""),
-      durationSeconds: isEvent ? "" : String(rule.durationSeconds ?? ""),
+      condition: skipThreshold ? "" : (rule.condition ?? "gt"),
+      threshold: skipThreshold ? "" : String(rule.threshold ?? ""),
+      durationSeconds: skipThreshold ? "" : String(rule.durationSeconds ?? ""),
       channelIds: rule.channels?.map((c) => c.channelId) ?? [],
     });
     setDialogOpen(true);
@@ -264,11 +275,13 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
       return;
     }
 
+    const skipThreshold = isEvent || isBinary;
+
     if (editingRuleId) {
       updateMutation.mutate({
         id: editingRuleId,
         name: form.name,
-        ...(isEvent
+        ...(skipThreshold
           ? {}
           : {
               threshold: parseFloat(form.threshold),
@@ -282,9 +295,9 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
         environmentId,
         pipelineId: form.pipelineId || undefined,
         metric: form.metric as AlertMetric,
-        condition: isEvent ? null : (form.condition as AlertCondition),
-        threshold: isEvent ? null : parseFloat(form.threshold),
-        durationSeconds: isEvent ? null : (parseInt(form.durationSeconds, 10) || 60),
+        condition: skipThreshold ? null : (form.condition as AlertCondition),
+        threshold: skipThreshold ? null : parseFloat(form.threshold),
+        durationSeconds: skipThreshold ? null : (parseInt(form.durationSeconds, 10) || 60),
         teamId: selectedTeamId!,
         channelIds: form.channelIds.length > 0 ? form.channelIds : undefined,
       });
@@ -342,14 +355,18 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
                   </Badge>
                 </TableCell>
                 <TableCell className="font-mono">
-                  {rule.condition ? (CONDITION_LABELS[rule.condition] ?? rule.condition) : "—"}
+                  {BINARY_METRICS.has(rule.metric) || !rule.condition ? "—" : (CONDITION_LABELS[rule.condition] ?? rule.condition)}
                 </TableCell>
-                <TableCell className="font-mono">{rule.threshold ?? "—"}</TableCell>
+                <TableCell className="font-mono">
+                  {BINARY_METRICS.has(rule.metric) ? "—" : (rule.threshold ?? "—")}
+                </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {rule.durationSeconds != null ? `${rule.durationSeconds}s` : "—"}
+                  {BINARY_METRICS.has(rule.metric) || rule.durationSeconds == null ? "—" : `${rule.durationSeconds}s`}
                 </TableCell>
                 <TableCell>
-                  {rule.pipeline ? (
+                  {GLOBAL_METRICS.has(rule.metric) ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : rule.pipeline ? (
                     <Badge variant="outline">{rule.pipeline.name}</Badge>
                   ) : (
                     <span className="text-muted-foreground">All</span>
@@ -430,31 +447,6 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
             {!editingRuleId && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="rule-pipeline">Pipeline (optional)</Label>
-                  <Select
-                    value={form.pipelineId}
-                    onValueChange={(v) =>
-                      setForm((f) => ({
-                        ...f,
-                        pipelineId: v === "__none__" ? "" : v,
-                      }))
-                    }
-                  >
-                    <SelectTrigger id="rule-pipeline">
-                      <SelectValue placeholder="All pipelines" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">All pipelines</SelectItem>
-                      {pipelines.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="rule-metric">Metric</Label>
                   <Select
                     value={form.metric}
@@ -468,6 +460,7 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
                           : isEventMetric(v)
                             ? { threshold: "", durationSeconds: "" }
                             : {}),
+                        ...(GLOBAL_METRICS.has(v) ? { pipelineId: "" } : {}),
                       }))
                     }
                   >
@@ -502,29 +495,53 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
                   </Select>
                 </div>
 
+                {!GLOBAL_METRICS.has(form.metric) && (
+                  <div className="space-y-2">
+                    <Label htmlFor="rule-pipeline">Pipeline (optional)</Label>
+                    <Select
+                      value={form.pipelineId}
+                      onValueChange={(v) =>
+                        setForm((f) => ({
+                          ...f,
+                          pipelineId: v === "__none__" ? "" : v,
+                        }))
+                      }
+                    >
+                      <SelectTrigger id="rule-pipeline">
+                        <SelectValue placeholder="All pipelines" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">All pipelines</SelectItem>
+                        {pipelines.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </>
             )}
 
-            {isEventMetric(form.metric) ? (
+            {isEventMetric(form.metric) || BINARY_METRICS.has(form.metric) ? (
               <p className="text-sm text-muted-foreground py-2">
                 Notifications will be sent when this event occurs.
               </p>
             ) : (
               <>
-                {!BINARY_METRICS.has(form.metric) && (
-                  <div className="space-y-2">
-                    <Label htmlFor="rule-threshold">Threshold</Label>
-                    <Input
-                      id="rule-threshold"
-                      type="number"
-                      placeholder="80"
-                      value={form.threshold}
-                      onChange={(e) =>
-                        setForm((f) => ({ ...f, threshold: e.target.value }))
-                      }
-                    />
-                  </div>
-                )}
+                <div className="space-y-2">
+                  <Label htmlFor="rule-threshold">Threshold</Label>
+                  <Input
+                    id="rule-threshold"
+                    type="number"
+                    placeholder="80"
+                    value={form.threshold}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, threshold: e.target.value }))
+                    }
+                  />
+                </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="rule-duration">Duration (seconds)</Label>

@@ -120,7 +120,12 @@ export function TeamSettings() {
     })
   );
 
-  const settingsQuery = useQuery(trpc.settings.get.queryOptions());
+  // settings.get requires super-admin — silently degrade for team admins
+  const settingsQuery = useQuery({
+    ...trpc.settings.get.queryOptions(),
+    retry: false,
+    throwOnError: false,
+  });
   const oidcConfigured = !!(settingsQuery.data?.oidcIssuer && settingsQuery.data?.oidcClientId);
 
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
