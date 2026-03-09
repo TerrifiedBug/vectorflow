@@ -300,12 +300,13 @@ export const deployRouter = router({
     .input(z.object({
       environmentId: z.string().optional(),
       pipelineId: z.string().optional(),
+      statuses: z.array(z.string()).optional().default(["PENDING", "APPROVED"]),
     }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input, ctx }) => {
       const teamId = (ctx as Record<string, unknown>).teamId as string | null ?? null;
       const where: Record<string, unknown> = {
-        status: "PENDING",
+        status: { in: input.statuses },
         ...(input.environmentId && { environmentId: input.environmentId }),
         ...(input.pipelineId && { pipelineId: input.pipelineId }),
         environment: { teamId },
@@ -331,6 +332,7 @@ export const deployRouter = router({
           // configYaml included for editors/admins who can review
           configYaml: canReview,
           requestedBy: { select: { name: true, email: true } },
+          reviewedBy: { select: { name: true, email: true } },
           pipeline: { select: { name: true } },
         },
         orderBy: { createdAt: "desc" },
