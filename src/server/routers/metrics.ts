@@ -75,7 +75,7 @@ export const metricsRouter = router({
         const nodeMetrics = metricStore.getAllForNode(vectorNode.id, input.minutes);
         for (const [componentId, samples] of nodeMetrics) {
           const matchingNode = pipeline.nodes.find(
-            (pn) => componentId.includes(pn.componentKey),
+            (pn) => componentId === pn.componentKey,
           );
           if (matchingNode) {
             components[componentId] = {
@@ -117,7 +117,7 @@ export const metricsRouter = router({
         if (samples.length === 0) continue;
         const latest = samples[samples.length - 1];
         const matchingNode = pipelineNodes.find(
-          (pn) => componentId.includes(pn.componentKey),
+          (pn) => componentId === pn.componentKey,
         );
         if (!matchingNode) continue;
 
@@ -177,7 +177,7 @@ export const metricsRouter = router({
           const nodeMetrics = metricStore.getAllForNode(vectorNodeId, 5);
           for (const [componentId, samples] of nodeMetrics) {
             if (samples.length === 0) continue;
-            const matchesSource = sourceKeys.some((key) => componentId.includes(key));
+            const matchesSource = sourceKeys.some((key) => componentId === key);
             if (matchesSource) {
               const latest = samples[samples.length - 1];
               eventsPerSec += latest.receivedEventsRate;
