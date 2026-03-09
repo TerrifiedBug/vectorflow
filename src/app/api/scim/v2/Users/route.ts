@@ -49,10 +49,14 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to create user";
-    void fireScimSyncFailedAlert(message);
     // RFC 7644 §3.3: uniqueness conflicts use 409
     const isConflict = error instanceof Error && (error as Error & { scimConflict?: boolean }).scimConflict === true;
     const status = isConflict ? 409 : 400;
+    // Don't fire sync-failed alerts for 409 conflicts — these are routine
+    // IdP probes for existing users, not actual sync failures.
+    if (!isConflict) {
+      void fireScimSyncFailedAlert(message);
+    }
     return NextResponse.json(
       {
         schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
