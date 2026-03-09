@@ -19,6 +19,24 @@ The environment selector is the dropdown in the header bar. Switching it changes
 When you switch environments, the pipeline list, fleet view, and alerts page update to show only resources for that environment. Your selection is persisted across sessions.
 {% endhint %}
 
+### Default environment
+
+You can set a **default environment** so VectorFlow automatically selects it when you log in or switch teams.
+
+**User default (per-user):** Click the star icon next to any environment in the environment selector dropdown. The starred environment becomes your personal default for that team. Click the star again to clear it.
+
+**Admin default (per-team):** Team admins can set a team-wide default environment from **Settings > Team**. This applies to all team members who have not set their own personal default.
+
+The fallback chain when loading the app is:
+
+1. **User default** -- your personally starred environment (if set)
+2. **Admin team default** -- the team-level default environment (if configured by an admin)
+3. **First in list** -- the first environment alphabetically
+
+{% hint style="info" %}
+The team selector in the header also supports starring. Click the star next to a team to set it as your default team on login.
+{% endhint %}
+
 ## Creating an environment
 
 {% stepper %}
@@ -91,7 +109,7 @@ Secrets and certificates are stripped during promotion. After promoting a pipeli
 
 ## Deploy approval
 
-Environments can require **admin approval** before pipelines are deployed. This is useful for production environments where you want a second pair of eyes on every configuration change.
+Environments can require **approval** before pipelines are deployed. This is useful for production environments where you want a second pair of eyes on every configuration change. Approval and deployment are **separate actions** -- a reviewer approves the request, and then anyone with deploy access can execute the deployment.
 
 ### Enabling approval
 
@@ -112,12 +130,26 @@ Click **Save** to apply the change.
 
 When enabled:
 - Users with the **Editor** role will see a **Request Deploy** button instead of **Publish to Agents** in the deploy dialog. Their deploy requests are queued for review.
-- Users with the **Admin** role can deploy directly (no approval needed) and can review, approve, or reject pending requests from other users.
-- A **Pending Approval** badge appears on the pipeline list and in the pipeline editor toolbar while a request is outstanding.
+- Any team member with deploy access (editor or admin) can **approve** a pending request. Approval does not automatically deploy -- it marks the request as ready.
+- Once approved, any team member with deploy access can **deploy** the approved request. The deploy dialog shows a **Deploy** button for approved requests.
+- Approved requests can also be **cancelled** by anyone with deploy access if the deployment is no longer needed.
+- Users with the **Admin** role can deploy directly (no approval needed), bypassing the approval flow entirely.
+- A **Pending Approval** or **Approved** badge appears on the pipeline list and in the pipeline editor toolbar to indicate the request status.
 
 {% hint style="info" %}
-An admin cannot approve their own deploy request. This ensures a genuine four-eyes review process.
+The person who submitted a deploy request cannot approve their own request. This enforces a four-eyes principle -- a second team member must always review the deployment.
 {% endhint %}
+
+### Deploy tracking
+
+VectorFlow tracks who actually deployed a pipeline separately from who approved it. The deploy history records:
+
+- **Requested by** -- the user who submitted the deploy request
+- **Approved by** -- the user who approved the request
+- **Deployed by** -- the user who executed the deployment
+- **Status** -- the request lifecycle: `PENDING` → `APPROVED` → `DEPLOYED` (or `REJECTED` / `CANCELLED`)
+
+This separation provides a clear audit trail for compliance, especially in regulated environments where you need to know exactly who authorized and executed each deployment.
 
 For more details on how the approval workflow operates, see [Pipelines -- Deploy approval workflows](pipelines.md#deploy-approval-workflows).
 

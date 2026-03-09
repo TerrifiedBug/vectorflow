@@ -237,6 +237,9 @@ export async function evaluateAlerts(
   const results: FiredAlertEvent[] = [];
 
   for (const rule of rules) {
+    // Skip event-based rules — they fire inline, not via polling
+    if (!rule.condition || rule.threshold == null) continue;
+
     const value = await readMetricValue(
       rule.metric,
       nodeId,
@@ -265,7 +268,7 @@ export async function evaluateAlerts(
       const elapsedSeconds = (now.getTime() - firstSeen.getTime()) / 1000;
 
       // Only fire if the condition has persisted for the required duration
-      if (elapsedSeconds >= rule.durationSeconds) {
+      if (elapsedSeconds >= (rule.durationSeconds ?? 0)) {
         // Check if there is already an open (firing) event for this rule
         const existingEvent = await prisma.alertEvent.findFirst({
           where: {
@@ -333,6 +336,16 @@ const METRIC_LABELS: Record<AlertMetric, string> = {
   error_rate: "Error rate",
   discarded_rate: "Discarded event rate",
   pipeline_crashed: "Pipeline crashed",
+  deploy_requested: "Deploy requested",
+  deploy_completed: "Deploy completed",
+  deploy_rejected: "Deploy rejected",
+  deploy_cancelled: "Deploy cancelled",
+  new_version_available: "New version available",
+  scim_sync_failed: "SCIM sync failed",
+  backup_failed: "Backup failed",
+  certificate_expiring: "Certificate expiring",
+  node_joined: "Node joined",
+  node_left: "Node left",
 };
 
 const CONDITION_LABELS: Record<AlertCondition, string> = {
@@ -343,6 +356,9 @@ const CONDITION_LABELS: Record<AlertCondition, string> = {
 
 function buildMessage(rule: AlertRule, value: number): string {
   const metricLabel = METRIC_LABELS[rule.metric] ?? rule.metric;
+  if (!rule.condition || rule.threshold == null) {
+    return `${metricLabel} event fired`;
+  }
   const condLabel = CONDITION_LABELS[rule.condition] ?? rule.condition;
   return `${metricLabel} is ${value.toFixed(2)} (threshold: ${condLabel} ${rule.threshold})`;
 }

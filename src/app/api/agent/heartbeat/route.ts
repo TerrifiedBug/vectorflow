@@ -425,7 +425,7 @@ export async function POST(request: Request) {
             pipeline: pipeline?.name,
             metric: alert.rule.metric,
             value: alert.event.value,
-            threshold: alert.rule.threshold,
+            threshold: alert.rule.threshold ?? 0,
             message: alert.event.message ?? "",
             timestamp: alert.event.firedAt.toISOString(),
             dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/alerts`,

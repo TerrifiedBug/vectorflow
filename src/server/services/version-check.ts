@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { fireEventAlert } from "./event-alerts";
 
 const GITHUB_API = "https://api.github.com";
 const SERVER_REPO = "TerrifiedBug/vectorflow";
@@ -110,6 +111,7 @@ export async function checkServerVersion(force = false): Promise<{
         create: { id: "singleton", latestServerReleaseCheckedAt: checkedAt },
       });
     } else if (release) {
+      const previousVersion = latestVersion;
       latestVersion = release.tag_name.replace(/^v/, "");
       releaseUrl = release.html_url;
       await prisma.systemSettings.upsert({
@@ -126,6 +128,24 @@ export async function checkServerVersion(force = false): Promise<{
           latestServerReleaseEtag: etag,
         },
       });
+
+      // Fire alert when a genuinely new version is detected
+      if (
+        latestVersion !== currentVersion &&
+        latestVersion !== previousVersion &&
+        currentVersion !== "dev"
+      ) {
+        // Version check is system-wide — fire for all environments
+        prisma.environment.findMany({ where: { isSystem: false }, select: { id: true } })
+          .then((envs) => {
+            for (const env of envs) {
+              void fireEventAlert("new_version_available", env.id, {
+                message: `New VectorFlow version available: ${latestVersion}`,
+              });
+            }
+          })
+          .catch(() => {});
+      }
     }
   }
 

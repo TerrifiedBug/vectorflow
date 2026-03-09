@@ -6,7 +6,7 @@ import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
-import { Rocket, CheckCircle, XCircle, Loader2, Radio, ChevronsUpDown, Check, X, ShieldCheck, ShieldX, Clock, AlertTriangle } from "lucide-react";
+import { Rocket, CheckCircle, CheckCircle2, XCircle, Loader2, Radio, ChevronsUpDown, Check, X, ShieldCheck, ShieldX, Clock, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -174,7 +174,9 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     trpc.deploy.approveDeployRequest.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries();
-        toast.success("Deploy request approved and deployed");
+        toast.success("Deploy request approved", {
+          description: "The request is now ready to be deployed.",
+        });
         onOpenChange(false);
       },
       onError: (err) => {
@@ -197,6 +199,41 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     })
   );
 
+  const executeMutation = useMutation(
+    trpc.deploy.executeApprovedRequest.mutationOptions({
+      onSuccess: (result) => {
+        queryClient.invalidateQueries();
+        if (!result.success) {
+          const errorMsg = ("validationErrors" in result && result.validationErrors)
+            ? result.validationErrors.map((e: { message: string }) => e.message).join("; ")
+            : ("error" in result ? result.error : "Unknown error");
+          toast.error("Deploy failed", { description: errorMsg as string });
+          return;
+        }
+        toast.success("Pipeline published to agents", {
+          description: "versionNumber" in result && result.versionNumber ? `Version v${result.versionNumber}` : undefined,
+        });
+        onOpenChange(false);
+      },
+      onError: (err) => {
+        toast.error("Deploy failed", { description: err.message });
+      },
+    })
+  );
+
+  const cancelMutation = useMutation(
+    trpc.deploy.cancelDeployRequest.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries();
+        toast.success("Deploy request cancelled");
+        onOpenChange(false);
+      },
+      onError: (err) => {
+        toast.error("Cancel failed", { description: err.message });
+      },
+    })
+  );
+
   const env = envQuery.data;
   const preview = previewQuery.data;
   const userRole = roleQuery.data?.role;
@@ -206,15 +243,18 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   const isAdmin = userRole === "ADMIN";
   const requiresApproval = env?.requireDeployApproval && userRole === "EDITOR";
   const adminBypassingApproval = env?.requireDeployApproval && isAdmin;
-  const pendingRequests = pendingRequestsQuery.data ?? [];
+  const allRequests = pendingRequestsQuery.data ?? [];
+  const pendingRequests = allRequests.filter((r) => r.status === "PENDING");
+  const approvedRequests = allRequests.filter((r) => r.status === "APPROVED");
   const pendingRequest = pendingRequests[0];
+  const approvedRequest = approvedRequests[0];
   const isOwnRequest = pendingRequest?.requestedById === session?.user?.id;
   const canReview = !!pendingRequest && !isOwnRequest && (userRole === "EDITOR" || isAdmin);
   const isReviewMode = canReview;
 
-  const pendingRequestTimeAgo = useMemo(() => {
-    if (!pendingRequest) return "";
-    const d = new Date(pendingRequest.createdAt);
+  const formatRelativeTime = (date: Date | string | null | undefined): string => {
+    if (!date) return "";
+    const d = typeof date === "string" ? new Date(date) : date;
     const seconds = Math.floor((new Date().getTime() - d.getTime()) / 1000);
     if (seconds < 60) return "just now";
     const minutes = Math.floor(seconds / 60);
@@ -223,6 +263,11 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     if (hours < 24) return `${hours}h ago`;
     const days = Math.floor(hours / 24);
     return `${days}d ago`;
+  };
+
+  const pendingRequestTimeAgo = useMemo(() => {
+    if (!pendingRequest) return "";
+    return formatRelativeTime(pendingRequest.createdAt);
   }, [pendingRequest]);
 
   function handleDeploy() {
@@ -244,6 +289,11 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 <ShieldCheck className="h-5 w-5" />
                 Review Deploy Request
               </>
+            ) : approvedRequest ? (
+              <>
+                <CheckCircle2 className="h-5 w-5 text-green-500" />
+                Deploy Approved Request
+              </>
             ) : (
               <>
                 <Rocket className="h-5 w-5" />
@@ -254,9 +304,11 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
           <DialogDescription>
             {isReviewMode
               ? "Review and approve or reject this deploy request."
-              : requiresApproval
-                ? "This environment requires admin approval for deployments."
-                : "Review and deploy to your environment."
+              : approvedRequest
+                ? "This request has been approved and is ready to deploy."
+                : requiresApproval
+                  ? "This environment requires admin approval for deployments."
+                  : "Review and deploy to your environment."
             }
           </DialogDescription>
         </DialogHeader>
@@ -320,6 +372,62 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 rows={2}
                 className="resize-none text-sm"
               />
+            </div>
+          </div>
+        ) : approvedRequest ? (
+          /* Approved request — ready to deploy */
+          <div className="space-y-4">
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <span className="text-sm font-medium">
+                  Approved request from {approvedRequest.requestedBy?.name ?? approvedRequest.requestedBy?.email ?? "Unknown"}
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Approved by {approvedRequest.reviewedBy?.name ?? approvedRequest.reviewedBy?.email ?? "Unknown"} · {formatRelativeTime(approvedRequest.reviewedAt)}
+              </p>
+              <p className="text-sm">{approvedRequest.changelog}</p>
+              {approvedRequest.configYaml && preview && (
+                <details className="group">
+                  <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+                    View config
+                  </summary>
+                  <div className="mt-2 max-h-48 overflow-y-auto rounded-md">
+                    <ConfigDiff
+                      oldConfig={preview.currentConfigYaml ?? ""}
+                      newConfig={approvedRequest.configYaml}
+                      oldLabel={preview.currentVersion != null ? `v${preview.currentVersion}` : "empty"}
+                      newLabel="approved"
+                    />
+                  </div>
+                </details>
+              )}
+              <div className="flex justify-between pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => cancelMutation.mutate({ requestId: approvedRequest.id })}
+                  disabled={cancelMutation.isPending || executeMutation.isPending}
+                >
+                  {cancelMutation.isPending ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Cancelling...</>
+                  ) : (
+                    "Cancel Request"
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => executeMutation.mutate({ requestId: approvedRequest.id })}
+                  disabled={cancelMutation.isPending || executeMutation.isPending}
+                >
+                  {executeMutation.isPending ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Deploying...</>
+                  ) : (
+                    <><Rocket className="mr-2 h-4 w-4" />Deploy Now</>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         ) : (
@@ -512,48 +620,57 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          {isReviewMode && pendingRequest ? (
-            /* Review mode buttons */
-            <>
-              <Button
-                variant="destructive"
-                onClick={() => rejectMutation.mutate({ requestId: pendingRequest.id, note: rejectNote || undefined })}
-                disabled={rejectMutation.isPending || approveMutation.isPending}
-              >
-                {rejectMutation.isPending ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Rejecting...</>
-                ) : (
-                  <><ShieldX className="mr-2 h-4 w-4" />Reject</>
-                )}
-              </Button>
-              <Button
-                onClick={() => approveMutation.mutate({ requestId: pendingRequest.id })}
-                disabled={rejectMutation.isPending || approveMutation.isPending}
-              >
-                {approveMutation.isPending ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Approving...</>
-                ) : (
-                  <><ShieldCheck className="mr-2 h-4 w-4" />Approve & Deploy</>
-                )}
-              </Button>
-            </>
-          ) : (
-            /* Normal deploy / request button */
-            <Button
-              onClick={handleDeploy}
-              disabled={isLoading || !isValid || deploying || !changelog.trim()}
-            >
-              {deploying ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{requiresApproval ? "Requesting..." : "Deploying..."}</>
-              ) : requiresApproval ? (
-                <><Clock className="mr-2 h-4 w-4" />Request Deploy</>
-              ) : (
-                <><Radio className="mr-2 h-4 w-4" />Publish to Agents</>
-              )}
+          {approvedRequest && !isReviewMode ? (
+            /* Approved request — action buttons are inline above */
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
             </Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              {isReviewMode && pendingRequest ? (
+                /* Review mode buttons */
+                <>
+                  <Button
+                    variant="destructive"
+                    onClick={() => rejectMutation.mutate({ requestId: pendingRequest.id, note: rejectNote || undefined })}
+                    disabled={rejectMutation.isPending || approveMutation.isPending}
+                  >
+                    {rejectMutation.isPending ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Rejecting...</>
+                    ) : (
+                      <><ShieldX className="mr-2 h-4 w-4" />Reject</>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => approveMutation.mutate({ requestId: pendingRequest.id })}
+                    disabled={rejectMutation.isPending || approveMutation.isPending}
+                  >
+                    {approveMutation.isPending ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Approving...</>
+                    ) : (
+                      <><ShieldCheck className="mr-2 h-4 w-4" />Approve</>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                /* Normal deploy / request button */
+                <Button
+                  onClick={handleDeploy}
+                  disabled={isLoading || !isValid || deploying || !changelog.trim()}
+                >
+                  {deploying ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{requiresApproval ? "Requesting..." : "Deploying..."}</>
+                  ) : requiresApproval ? (
+                    <><Clock className="mr-2 h-4 w-4" />Request Deploy</>
+                  ) : (
+                    <><Radio className="mr-2 h-4 w-4" />Publish to Agents</>
+                  )}
+                </Button>
+              )}
+            </>
           )}
         </DialogFooter>
       </DialogContent>

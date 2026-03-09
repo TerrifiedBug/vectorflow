@@ -174,7 +174,17 @@ GET /api/scim/v2/Groups?filter=displayName eq "Platform Team"
 - The token is shown only once when generated; VectorFlow does not store the plaintext
 - SCIM endpoints require a valid bearer token on every request
 - Disabling SCIM clears the stored token
-- All SCIM operations are recorded in the audit log
+- All SCIM operations are recorded in the audit log under the **ScimUser** entity type
+
+### Audit logging
+
+SCIM user operations (create, update, deactivate, delete) are logged with the `ScimUser` entity type to distinguish them from manual user operations. On the **Audit** page, you can filter by:
+
+- **ScimUser** -- shows only SCIM user provisioning events
+- **ScimGroup** -- shows only SCIM group operations
+- **SCIM (All)** -- a combined filter that shows all SCIM-related activity (both user and group operations) in a single view
+
+This makes it easy to audit all identity provider-driven changes for compliance purposes.
 
 {% hint style="info" %}
 SCIM provisioning works best alongside OIDC/SSO. Users created via SCIM receive a random password and should authenticate through your identity provider, not with local credentials.

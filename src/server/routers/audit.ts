@@ -8,7 +8,7 @@ export const auditRouter = router({
       z.object({
         action: z.string().optional(),
         userId: z.string().optional(),
-        entityType: z.string().optional(),
+        entityTypes: z.array(z.string()).optional(),
         search: z.string().optional(),
         teamId: z.string().optional(),
         environmentId: z.string().optional(),
@@ -21,7 +21,7 @@ export const auditRouter = router({
       const {
         action,
         userId,
-        entityType,
+        entityTypes,
         search,
         startDate,
         endDate,
@@ -39,8 +39,8 @@ export const auditRouter = router({
         conditions.push({ userId });
       }
 
-      if (entityType) {
-        conditions.push({ entityType });
+      if (entityTypes && entityTypes.length > 0) {
+        conditions.push({ entityType: { in: entityTypes } });
       }
 
       if (input.teamId) {
