@@ -44,6 +44,8 @@ export interface ClipboardData {
 export interface NodeMetricsData {
   eventsPerSec: number;
   bytesPerSec: number;
+  /** For transforms: received events rate (shows filtering delta vs eventsPerSec which is sent) */
+  eventsInPerSec?: number;
   status: string;
   samples?: import("@/server/services/metric-store").MetricSample[];
 }
