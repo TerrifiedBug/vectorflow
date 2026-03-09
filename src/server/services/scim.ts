@@ -129,7 +129,7 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
     await writeAuditLog({
       userId: null,
       action: "scim.user_adopted",
-      entityType: "User",
+      entityType: "ScimUser",
       entityId: updated.id,
       metadata: { email, scimExternalId: scimUser.externalId },
     });
@@ -157,7 +157,7 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
   await writeAuditLog({
     userId: null,
     action: "scim.user_created",
-    entityType: "User",
+    entityType: "ScimUser",
     entityId: user.id,
     metadata: { email, scimExternalId: scimUser.externalId },
   });
@@ -209,7 +209,7 @@ export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
   await writeAuditLog({
     userId: null,
     action: "scim.user_updated",
-    entityType: "User",
+    entityType: "ScimUser",
     entityId: id,
     metadata: { fields: Object.keys(data) },
   });
@@ -292,7 +292,7 @@ export async function scimPatchUser(
     await writeAuditLog({
       userId: null,
       action: "scim.user_patched",
-      entityType: "User",
+      entityType: "ScimUser",
       entityId: id,
       metadata: { fields: Object.keys(data), operations: operations.map((o) => o.op) },
     });
@@ -321,7 +321,7 @@ export async function scimDeleteUser(id: string) {
   await writeAuditLog({
     userId: null,
     action: "scim.user_deactivated",
-    entityType: "User",
+    entityType: "ScimUser",
     entityId: id,
   });
 }
