@@ -411,8 +411,17 @@ export const deployRouter = router({
           request.configYaml,
         );
 
+        // Non-throwing failure (e.g. validation errors) — revert to APPROVED
+        if (!result.success) {
+          await prisma.deployRequest.updateMany({
+            where: { id: input.requestId, status: "DEPLOYED" },
+            data: { status: "APPROVED", deployedById: null, deployedAt: null },
+          });
+          return result;
+        }
+
         // Persist nodeSelector from the original deploy request
-        if (result.success && request.nodeSelector) {
+        if (request.nodeSelector) {
           const ns = request.nodeSelector as Record<string, string>;
           await prisma.pipeline.update({
             where: { id: request.pipelineId },
@@ -423,12 +432,10 @@ export const deployRouter = router({
           });
         }
 
-        if (result.success) {
-          void fireEventAlert("deploy_completed", request.environmentId, {
-            message: `Pipeline deployed via approved request`,
-            pipelineId: request.pipelineId,
-          });
-        }
+        void fireEventAlert("deploy_completed", request.environmentId, {
+          message: `Pipeline deployed via approved request`,
+          pipelineId: request.pipelineId,
+        });
 
         return result;
       } catch (err) {
