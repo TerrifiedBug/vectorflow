@@ -33,7 +33,19 @@ model User {
   serviceAccounts        ServiceAccount[]
   deployRequestsMade     DeployRequest[]  @relation("deployRequester")
   deployRequestsReviewed DeployRequest[]  @relation("deployReviewer")
+  preferences            UserPreference[]
   createdAt              DateTime         @default(now())
+}
+
+model UserPreference {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key    String
+  value  String
+
+  @@unique([userId, key])
+  @@index([userId])
 }
 
 enum AuthMethod {
@@ -42,16 +54,18 @@ enum AuthMethod {
 }
 
 model Team {
-  id               String        @id @default(cuid())
-  name             String
-  requireTwoFactor Boolean       @default(false)
-  members          TeamMember[]
-  environments     Environment[]
-  templates        Template[]
-  vrlSnippets      VrlSnippet[]
-  alertRules       AlertRule[]
-  availableTags    Json?         @default("[]")   // string[] of admin-defined classification tags
-  createdAt        DateTime      @default(now())
+  id                   String        @id @default(cuid())
+  name                 String
+  requireTwoFactor     Boolean       @default(false)
+  defaultEnvironmentId String?
+  defaultEnvironment   Environment?  @relation("teamDefault", fields: [defaultEnvironmentId], references: [id], onDelete: SetNull)
+  members              TeamMember[]
+  environments         Environment[]
+  templates            Template[]
+  vrlSnippets          VrlSnippet[]
+  alertRules           AlertRule[]
+  availableTags        Json?         @default("[]")   // string[] of admin-defined classification tags
+  createdAt            DateTime      @default(now())
 }
 
 model ScimGroup {
@@ -117,6 +131,7 @@ model Environment {
   notificationChannels    NotificationChannel[]
   serviceAccounts         ServiceAccount[]
   deployRequests          DeployRequest[]
+  teamDefaults            Team[]            @relation("teamDefault")
   createdAt               DateTime      @default(now())
 }
 
