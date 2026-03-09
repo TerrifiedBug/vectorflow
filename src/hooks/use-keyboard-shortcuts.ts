@@ -27,15 +27,20 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
 
       // Don't trigger shortcuts when typing in inputs/textareas/editors
       const target = e.target as HTMLElement;
-      if (
+      const isInputFocused =
         target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
         target.isContentEditable ||
-        target.closest(".monaco-editor")
-      ) {
+        !!target.closest(".monaco-editor");
+
+      if (isInputFocused) {
         // Allow Cmd+S even in inputs
         if (!(isMeta && e.key === "s")) return;
       }
+
+      // Allow native copy/paste when user has selected text (e.g. copying error messages)
+      const hasTextSelection = (window.getSelection()?.toString().length ?? 0) > 0;
+      if (hasTextSelection && isMeta && (e.key === "c" || e.key === "v")) return;
 
       // Cmd+S → Save
       if (isMeta && e.key === "s") {
