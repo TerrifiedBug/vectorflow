@@ -357,11 +357,11 @@ export function TeamSettings() {
               Fallback environment for team members who haven&apos;t set a personal default.
             </p>
             <Select
-              value={team.defaultEnvironmentId ?? ""}
+              value={team.defaultEnvironmentId ?? "__none__"}
               onValueChange={(value) =>
                 updateDefaultEnvMutation.mutate({
                   teamId: selectedTeamId!,
-                  defaultEnvironmentId: value || null,
+                  defaultEnvironmentId: value === "__none__" ? null : value,
                 })
               }
               disabled={updateDefaultEnvMutation.isPending}
@@ -370,7 +370,7 @@ export function TeamSettings() {
                 <SelectValue placeholder="None (use first in list)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">None</SelectItem>
+                <SelectItem value="__none__">None</SelectItem>
                 {environments.map((env) => (
                   <SelectItem key={env.id} value={env.id}>
                     {env.name}
