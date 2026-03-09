@@ -280,8 +280,8 @@ export function authBasicBearerSchema() {
       properties: {
         strategy: {
           type: "string",
-          enum: ["basic", "bearer"],
-          description: "Authentication strategy",
+          enum: ["none", "basic", "bearer"],
+          description: "Authentication strategy (select none to disable)",
         },
         user: {
           type: "string",
@@ -326,8 +326,8 @@ export function authHttpServerSchema() {
       properties: {
         strategy: {
           type: "string",
-          enum: ["basic", "custom"],
-          description: "Authentication strategy",
+          enum: ["none", "basic", "custom"],
+          description: "Authentication strategy (select none to disable)",
         },
         username: {
           type: "string",
@@ -403,8 +403,8 @@ export function authElasticsearchSchema() {
       properties: {
         strategy: {
           type: "string",
-          enum: ["basic", "aws"],
-          description: "Authentication strategy",
+          enum: ["none", "basic", "aws"],
+          description: "Authentication strategy (select none to disable)",
         },
         user: {
           type: "string",
