@@ -59,15 +59,16 @@ export function generateVectorYaml(
       ...nodeConfig,
     };
 
-    // Strip empty nested objects (e.g. auth: {} when no auth is configured)
+    // Strip nested objects opted-out via strategy="none", or empty (all null/"")
     for (const [key, val] of Object.entries(entry)) {
-      if (
-        val != null &&
-        typeof val === "object" &&
-        !Array.isArray(val) &&
-        Object.values(val as Record<string, unknown>).every((v) => v == null || v === "")
-      ) {
-        delete entry[key];
+      if (val != null && typeof val === "object" && !Array.isArray(val)) {
+        const obj = val as Record<string, unknown>;
+        if (
+          obj.strategy === "none" ||
+          Object.values(obj).every((v) => v == null || v === "")
+        ) {
+          delete entry[key];
+        }
       }
     }
 
