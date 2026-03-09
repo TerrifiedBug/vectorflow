@@ -1216,6 +1216,27 @@ function TeamSettings() {
     })
   );
 
+  // Environments for default environment dropdown
+  const environmentsQuery = useQuery(
+    trpc.environment.list.queryOptions(
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId }
+    )
+  );
+  const environments = environmentsQuery.data ?? [];
+
+  const updateDefaultEnvMutation = useMutation(
+    trpc.team.updateDefaultEnvironment.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.team.get.queryKey() });
+        toast.success("Default environment updated");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to update default environment");
+      },
+    })
+  );
+
   // Data classification tags
   const availableTagsQuery = useQuery(
     trpc.team.getAvailableTags.queryOptions(
@@ -1344,6 +1365,35 @@ function TeamSettings() {
               Save
             </Button>
           </form>
+          <Separator className="my-4" />
+          <div className="space-y-2">
+            <Label>Default Environment</Label>
+            <p className="text-sm text-muted-foreground">
+              Fallback environment for team members who haven&apos;t set a personal default.
+            </p>
+            <Select
+              value={team.defaultEnvironmentId ?? ""}
+              onValueChange={(value) =>
+                updateDefaultEnvMutation.mutate({
+                  teamId: selectedTeamId!,
+                  defaultEnvironmentId: value || null,
+                })
+              }
+              disabled={updateDefaultEnvMutation.isPending}
+            >
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="None (use first in list)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">None</SelectItem>
+                {environments.map((env) => (
+                  <SelectItem key={env.id} value={env.id}>
+                    {env.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 
