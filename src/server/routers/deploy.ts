@@ -313,7 +313,7 @@ export const deployRouter = router({
     .input(z.object({
       environmentId: z.string().optional(),
       pipelineId: z.string().optional(),
-      statuses: z.array(z.string()).optional().default(["PENDING", "APPROVED"]),
+      statuses: z.array(z.enum(["PENDING", "APPROVED"])).optional().default(["PENDING", "APPROVED"]),
     }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input, ctx }) => {

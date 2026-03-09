@@ -23,7 +23,7 @@ export const userPreferenceRouter = router({
     }),
 
   delete: protectedProcedure
-    .input(z.object({ key: z.string() }))
+    .input(z.object({ key: z.string().max(100) }))
     .mutation(async ({ ctx, input }) => {
       await prisma.userPreference.deleteMany({
         where: { userId: ctx.session.user!.id!, key: input.key },
