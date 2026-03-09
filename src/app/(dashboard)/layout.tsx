@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, ShieldAlert, User } from "lucide-react";
+import { BookOpen, LogOut, ShieldAlert, User } from "lucide-react";
 
 import { useTRPC } from "@/trpc/client";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -79,6 +79,11 @@ export default function DashboardLayout({
       <div className="flex min-h-screen flex-col">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <div className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" size="icon" asChild aria-label="Documentation">
+              <a href="https://terrifiedbug.gitbook.io/vectorflow" target="_blank" rel="noopener noreferrer">
+                <BookOpen className="h-5 w-5" />
+              </a>
+            </Button>
             <ThemeToggle />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -141,6 +146,11 @@ export default function DashboardLayout({
           <Separator orientation="vertical" className="!h-5" />
           <EnvironmentSelector />
           <div className="ml-auto flex items-center gap-4">
+            <Button variant="ghost" size="icon" asChild aria-label="Documentation">
+              <a href="https://terrifiedbug.gitbook.io/vectorflow" target="_blank" rel="noopener noreferrer">
+                <BookOpen className="h-5 w-5" />
+              </a>
+            </Button>
             <ThemeToggle />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
