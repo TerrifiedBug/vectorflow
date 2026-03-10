@@ -347,17 +347,17 @@ export default function AuditPage() {
       ) : (
         <>
         <div className="overflow-x-auto">
-          <Table className="table-fixed w-full">
+          <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[30px]" />
-                <TableHead className="w-[170px]">Timestamp</TableHead>
-                <TableHead className="w-[100px]">User</TableHead>
-                <TableHead className="w-[120px]">IP Address</TableHead>
-                <TableHead className="w-[180px]">Action</TableHead>
-                <TableHead className="w-[110px]">Entity Type</TableHead>
-                <TableHead className="w-[180px]">Entity ID</TableHead>
-                <TableHead>Details</TableHead>
+                <TableHead className="whitespace-nowrap">Timestamp</TableHead>
+                <TableHead>User</TableHead>
+                <TableHead className="hidden xl:table-cell">IP Address</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Entity Type</TableHead>
+                <TableHead className="max-w-[180px]">Entity ID</TableHead>
+                <TableHead className="hidden lg:table-cell">Details</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -393,7 +393,7 @@ export default function AuditPage() {
                           {entry.userName || entry.userEmail || entry.user?.name || entry.user?.email}
                         </span>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      <TableCell className="hidden xl:table-cell text-sm text-muted-foreground whitespace-nowrap">
                         {entry.ipAddress || "\u2014"}
                       </TableCell>
                       <TableCell>
@@ -410,10 +410,10 @@ export default function AuditPage() {
                           {entry.entityType}
                         </Badge>
                       </TableCell>
-                      <TableCell className="font-mono text-xs max-w-[200px] truncate">
+                      <TableCell className="font-mono text-xs max-w-[180px] truncate" title={entry.entityId}>
                         {entry.entityId}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground max-w-[300px] truncate">
                         {truncate(
                           entry.diff ??
                           (entry.metadata as Record<string, unknown>)?.input ??
@@ -423,8 +423,14 @@ export default function AuditPage() {
                     </TableRow>
                     {isExpanded && hasDetails && (
                       <TableRow className="bg-muted/30 hover:bg-muted/30">
-                        <TableCell colSpan={8} className="p-4">
+                        <TableCell colSpan={99} className="p-4">
                           <div className="space-y-3 min-w-0">
+                            {entry.ipAddress && (
+                              <div className="xl:hidden">
+                                <p className="text-xs font-medium text-muted-foreground mb-1">IP Address</p>
+                                <span className="text-xs font-mono">{entry.ipAddress}</span>
+                              </div>
+                            )}
                             {hasMetadata && (
                               <div>
                                 <p className="text-xs font-medium text-muted-foreground mb-2">Details</p>
