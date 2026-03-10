@@ -2,6 +2,7 @@ import { z } from "zod";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
+import { Prisma } from "@/generated/prisma";
 
 export const aiRouter = router({
   getConversation: protectedProcedure
@@ -68,7 +69,7 @@ export const aiRouter = router({
 
       await prisma.aiMessage.update({
         where: { id: input.messageId },
-        data: { suggestions: updatedSuggestions },
+        data: { suggestions: updatedSuggestions as unknown as Prisma.InputJsonValue },
       });
 
       // Audit log

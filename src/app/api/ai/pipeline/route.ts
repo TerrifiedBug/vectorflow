@@ -6,6 +6,7 @@ import { streamCompletion } from "@/server/services/ai";
 import { buildPipelineSystemPrompt } from "@/lib/ai/prompts";
 import { writeAuditLog } from "@/server/services/audit";
 import type { AiReviewResponse } from "@/lib/ai/types";
+import { Prisma } from "@/generated/prisma";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -174,7 +175,7 @@ export async function POST(request: Request) {
               conversationId,
               role: "assistant",
               content: fullResponse,
-              suggestions: parsedSuggestions,
+              suggestions: (parsedSuggestions as unknown as Prisma.InputJsonValue) ?? undefined,
               createdById: session.user.id,
             },
           }).catch((err) => console.error("Failed to persist AI response:", err));

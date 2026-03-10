@@ -135,7 +135,7 @@ function applyRemoveComponent(
   const incomingEdges = edges.filter((e) => e.target === target.id);
   const outgoingEdges = edges.filter((e) => e.source === target.id);
 
-  let newEdges = edges.filter((e) => e.source !== target.id && e.target !== target.id);
+  const newEdges = edges.filter((e) => e.source !== target.id && e.target !== target.id);
   const newNodes = nodes.filter((n) => n.id !== target.id);
 
   if (suggestion.reconnect) {
