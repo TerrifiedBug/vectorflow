@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { BookOpen, Code, ChevronLeft, ChevronRight, Columns3, Download, Loader2 } from "lucide-react";
+import { BookOpen, Code, ChevronLeft, ChevronRight, Columns3, Download, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +26,8 @@ import { vrlTheme } from "./vrl-theme";
 import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
 import { VrlSnippetDrawer } from "@/components/flow/vrl-snippet-drawer";
 import { VrlFieldsPanel } from "./vrl-fields-panel";
+import { AiInput } from "./ai-input";
+import { useTeamStore } from "@/stores/team-store";
 import { getMergedOutputSchemas, getSourceOutputSchema } from "@/lib/vector/source-output-schemas";
 import type { Monaco, OnMount } from "@monaco-editor/react";
 
@@ -64,7 +66,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSo
   const [sampleInput, setSampleInput] = useState("");
   const [testOutput, setTestOutput] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
-  const [toolsPanel, setToolsPanel] = useState<"fields" | "snippets" | null>(null);
+  const [toolsPanel, setToolsPanel] = useState<"fields" | "snippets" | "ai" | null>(null);
   const [expanded, setExpanded] = useState(false);
   const editorRef = useRef<EditorInstance | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -76,6 +78,15 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSo
   const [sampleEvents, setSampleEvents] = useState<unknown[]>([]);
   const [sampleIndex, setSampleIndex] = useState(0);
   const [liveSchemaFields, setLiveSchemaFields] = useState<Array<{ path: string; type: string; sample: string }>>([]);
+
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const teamQuery = useQuery(
+    trpc.team.get.queryOptions(
+      { id: selectedTeamId! },
+      { enabled: !!selectedTeamId },
+    ),
+  );
+  const aiEnabled = teamQuery.data?.aiEnabled ?? false;
 
   const isRawTextSource = useMemo(() => {
     if (!sourceTypes || sourceTypes.length === 0) return false;
@@ -91,6 +102,19 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSo
     () => getMergedOutputSchemas(sourceTypes ?? []),
     [sourceTypes],
   );
+
+  const mergedFieldsForAi = useMemo(() => {
+    const staticFields = getMergedOutputSchemas(sourceTypes ?? []);
+    const liveByPath = new Map(liveSchemaFields.map((f) => [f.path, f]));
+    const all = staticFields.map((f) => {
+      liveByPath.delete(f.path);
+      return { name: f.path.replace(/^\./, ""), type: f.type };
+    });
+    for (const [, f] of liveByPath) {
+      all.push({ name: f.path.replace(/^\./, ""), type: f.type });
+    }
+    return all;
+  }, [sourceTypes, liveSchemaFields]);
 
   const testMutation = useMutation(
     trpc.vrl.test.mutationOptions({
@@ -368,6 +392,16 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSo
                   <BookOpen className="mr-1.5 h-3.5 w-3.5" />
                   Snippets
                 </Button>
+                {aiEnabled && (
+                  <Button
+                    variant={toolsPanel === "ai" ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => setToolsPanel((prev) => (prev === "ai" ? null : "ai"))}
+                  >
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                    AI
+                  </Button>
+                )}
                 {pipelineId && upstreamSourceKeys && upstreamSourceKeys.length > 0 && (
                   <>
                     <Select
@@ -428,6 +462,23 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSo
               {/* Snippet drawer */}
               {toolsPanel === "snippets" && (
                 <VrlSnippetDrawer onInsert={handleInsertSnippet} />
+              )}
+
+              {/* AI panel */}
+              {toolsPanel === "ai" && (
+                <AiInput
+                  currentCode={value}
+                  fields={mergedFieldsForAi}
+                  componentType={undefined}
+                  sourceTypes={sourceTypes}
+                  onInsert={(code) => {
+                    const newValue = value ? `${value}\n${code}` : code;
+                    onChange(newValue);
+                  }}
+                  onReplace={(code) => {
+                    onChange(code);
+                  }}
+                />
               )}
 
               {/* Test panel (always visible) */}

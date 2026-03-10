@@ -6,6 +6,7 @@ const SENSITIVE_KEYS = new Set([
   "password", "currentPassword", "newPassword",
   "token", "secret", "key", "keyBase64",
   "passwordHash", "httpsToken", "sshKey",
+  "aiApiKey",
 ]);
 
 function sanitizeInput(input: unknown): unknown {

@@ -21,6 +21,7 @@ import {
   Info,
   Clock,
   X,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,8 @@ interface FlowToolbarProps {
   processStatus?: ProcessStatusValue | null;
   gitOpsMode?: string;
   onDiscardChanges?: () => void;
+  aiEnabled?: boolean;
+  onAiOpen?: () => void;
 }
 
 function downloadFile(content: string, filename: string) {
@@ -103,6 +106,8 @@ export function FlowToolbar({
   processStatus,
   gitOpsMode,
   onDiscardChanges,
+  aiEnabled,
+  onAiOpen,
 }: FlowToolbarProps) {
   const globalConfig = useFlowStore((s) => s.globalConfig);
   const canUndo = useFlowStore((s) => s.canUndo);
@@ -329,6 +334,23 @@ export function FlowToolbar({
           </TooltipTrigger>
           <TooltipContent>Save as template</TooltipContent>
         </Tooltip>
+
+        {aiEnabled && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onAiOpen}
+                className="h-7 w-7 p-0"
+                aria-label="AI pipeline builder"
+              >
+                <Sparkles className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>AI pipeline builder</TooltipContent>
+          </Tooltip>
+        )}
 
         {pipelineId && (
           <>
