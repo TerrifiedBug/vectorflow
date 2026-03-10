@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Copy, ClipboardPaste, Trash2, CopyPlus } from "lucide-react";
+import { Copy, ClipboardPaste, Trash2, CopyPlus, Share2 } from "lucide-react";
 import { useFlowStore } from "@/stores/flow-store";
 
 interface NodeContextMenuProps {
@@ -9,9 +9,10 @@ interface NodeContextMenuProps {
   x: number;
   y: number;
   onClose: () => void;
+  onSaveAsShared?: (nodeId: string) => void;
 }
 
-export function NodeContextMenu({ nodeId, x, y, onClose }: NodeContextMenuProps) {
+export function NodeContextMenu({ nodeId, x, y, onClose, onSaveAsShared }: NodeContextMenuProps) {
   const duplicateNode = useFlowStore((s) => s.duplicateNode);
   const removeNode = useFlowStore((s) => s.removeNode);
   const selectedNodeIds = useFlowStore((s) => s.selectedNodeIds);
@@ -22,6 +23,7 @@ export function NodeContextMenu({ nodeId, x, y, onClose }: NodeContextMenuProps)
 
   const targetNode = nodes.find((n) => n.id === nodeId);
   const isLocked = !!targetNode?.data?.isSystemLocked;
+  const isShared = !!targetNode?.data?.sharedComponentId;
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -62,6 +64,12 @@ export function NodeContextMenu({ nodeId, x, y, onClose }: NodeContextMenuProps)
       shortcut: "Ctrl+D",
       disabled: isLocked,
       onClick: () => { if (isLocked) return; duplicateNode(nodeId); onClose(); },
+    }] : []),
+    ...(!isMulti && !isLocked && !isShared && onSaveAsShared ? [{
+      label: "Save as Shared Component",
+      icon: Share2,
+      shortcut: "",
+      onClick: () => { onSaveAsShared(nodeId); onClose(); },
     }] : []),
     { separator: true as const },
     {

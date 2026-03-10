@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useParams } from "next/navigation";
 import {
   ReactFlow,
   Background,
@@ -17,6 +18,7 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { nodeTypes } from "./node-types";
 import { NodeContextMenu } from "./node-context-menu";
 import { EdgeContextMenu } from "./edge-context-menu";
+import { SaveSharedComponentDialog } from "./save-shared-component-dialog";
 import { findComponentDef } from "@/lib/vector/catalog";
 import type { VectorComponentDef, DataType } from "@/lib/vector/types";
 
@@ -38,6 +40,8 @@ function hasOverlappingTypes(a: DataType[], b: DataType[]): boolean {
 
 export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   useKeyboardShortcuts({ onSave, onExport, onImport });
+  const params = useParams<{ id: string }>();
+  const pipelineId = params.id;
   const nodes = useFlowStore((s) => s.nodes);
   const edges = useFlowStore((s) => s.edges);
   const onNodesChange = useFlowStore((s) => s.onNodesChange);
@@ -47,6 +51,7 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   const hasFitRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const [edgeContextMenu, setEdgeContextMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
+  const [saveSharedNodeId, setSaveSharedNodeId] = useState<string | null>(null);
 
   const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
     event.preventDefault();
@@ -184,6 +189,7 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
+          onSaveAsShared={(nodeId) => setSaveSharedNodeId(nodeId)}
         />
       )}
       {edgeContextMenu && (
@@ -192,6 +198,14 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
           x={edgeContextMenu.x}
           y={edgeContextMenu.y}
           onClose={() => setEdgeContextMenu(null)}
+        />
+      )}
+      {saveSharedNodeId && (
+        <SaveSharedComponentDialog
+          open={!!saveSharedNodeId}
+          onOpenChange={(open) => !open && setSaveSharedNodeId(null)}
+          nodeId={saveSharedNodeId}
+          pipelineId={pipelineId}
         />
       )}
     </div>
