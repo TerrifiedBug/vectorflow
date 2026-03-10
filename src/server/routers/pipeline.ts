@@ -657,6 +657,7 @@ export const pipelineRouter = router({
         await copyPipelineGraph(tx, {
           sourcePipelineId: input.pipelineId,
           targetPipelineId: created.id,
+          stripSharedComponentLinks: true,
           transformConfig: (config, componentKey) => {
             const result = stripEnvRefs(config, componentKey);
             allStrippedSecrets.push(...result.strippedSecrets);
@@ -840,6 +841,8 @@ export const pipelineRouter = router({
                 positionX: node.positionX as number,
                 positionY: node.positionY as number,
                 disabled: (node.disabled as boolean) ?? false,
+                sharedComponentId: (node as Record<string, unknown>).sharedComponentId as string | null ?? null,
+                sharedComponentVersion: (node as Record<string, unknown>).sharedComponentVersion as number | null ?? null,
               },
             })
           )
@@ -902,6 +905,8 @@ export const pipelineRouter = router({
         positionX: n.positionX,
         positionY: n.positionY,
         disabled: n.disabled,
+        sharedComponentId: n.sharedComponentId ?? null,
+        sharedComponentVersion: n.sharedComponentVersion ?? null,
       }));
       const edgesSnapshot = pipeline.edges.map((e) => ({
         id: e.id,

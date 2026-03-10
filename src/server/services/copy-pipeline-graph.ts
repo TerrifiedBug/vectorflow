@@ -9,6 +9,8 @@ interface CopyPipelineGraphOptions {
     config: Record<string, unknown>,
     componentKey: string,
   ) => Record<string, unknown>;
+  /** When true, shared component links are stripped (e.g. cross-environment promote). */
+  stripSharedComponentLinks?: boolean;
 }
 
 /**
@@ -24,7 +26,7 @@ export async function copyPipelineGraph(
   tx: Tx,
   opts: CopyPipelineGraphOptions,
 ) {
-  const { sourcePipelineId, targetPipelineId, transformConfig } = opts;
+  const { sourcePipelineId, targetPipelineId, transformConfig, stripSharedComponentLinks } = opts;
 
   const sourceNodes = await tx.pipelineNode.findMany({
     where: { pipelineId: sourcePipelineId },
@@ -53,6 +55,8 @@ export async function copyPipelineGraph(
         positionX: node.positionX,
         positionY: node.positionY,
         disabled: node.disabled,
+        sharedComponentId: stripSharedComponentLinks ? null : (node.sharedComponentId ?? null),
+        sharedComponentVersion: stripSharedComponentLinks ? null : (node.sharedComponentVersion ?? null),
       },
     });
 
