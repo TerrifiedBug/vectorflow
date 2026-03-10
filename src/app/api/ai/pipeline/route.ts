@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "application/json" },
     });
   }
-  if (membership && membership.role === "VIEWER") {
+  if (membership && membership.role === "VIEWER" && !user?.isSuperAdmin) {
     return new Response(JSON.stringify({ error: "EDITOR role required" }), {
       status: 403,
       headers: { "Content-Type": "application/json" },
