@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { withAudit } from "@/server/middleware/audit";
+import { encrypt } from "@/server/services/crypto";
+import { testAiConnection } from "@/server/services/ai";
 
 /**
  * Block manual team assignment/role changes for OIDC users when their
@@ -104,7 +106,9 @@ export const teamRouter = router({
       if (!team) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Team not found" });
       }
-      return team;
+      // Strip encrypted API key — never send to client
+      const { aiApiKey: _, ...safeTeam } = team;
+      return safeTeam;
     }),
 
   create: protectedProcedure
@@ -465,5 +469,64 @@ export const teamRouter = router({
         },
         select: { id: true, authMethod: true },
       });
+    }),
+
+  getAiConfig: protectedProcedure
+    .use(withTeamAccess("ADMIN"))
+    .input(z.object({ teamId: z.string() }))
+    .query(async ({ input }) => {
+      const team = await prisma.team.findUniqueOrThrow({
+        where: { id: input.teamId },
+        select: {
+          aiEnabled: true,
+          aiProvider: true,
+          aiBaseUrl: true,
+          aiModel: true,
+          aiApiKey: true,
+        },
+      });
+      return {
+        aiEnabled: team.aiEnabled,
+        aiProvider: team.aiProvider,
+        aiBaseUrl: team.aiBaseUrl,
+        aiModel: team.aiModel,
+        hasApiKey: !!team.aiApiKey,
+      };
+    }),
+
+  updateAiConfig: protectedProcedure
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.ai_config_updated", "Team"))
+    .input(
+      z.object({
+        teamId: z.string(),
+        aiEnabled: z.boolean().optional(),
+        aiProvider: z.enum(["openai", "anthropic", "custom"]).nullable().optional(),
+        aiBaseUrl: z.string().nullable().optional(),
+        aiModel: z.string().nullable().optional(),
+        aiApiKey: z.string().nullable().optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const { teamId, aiApiKey, ...rest } = input;
+      const data: Record<string, unknown> = { ...rest };
+
+      // Encrypt API key if provided
+      if (aiApiKey !== undefined) {
+        data.aiApiKey = aiApiKey ? `enc:${encrypt(aiApiKey)}` : null;
+      }
+
+      return prisma.team.update({
+        where: { id: teamId },
+        data,
+        select: { id: true, aiEnabled: true, aiProvider: true, aiBaseUrl: true, aiModel: true },
+      });
+    }),
+
+  testAiConnection: protectedProcedure
+    .use(withTeamAccess("ADMIN"))
+    .input(z.object({ teamId: z.string() }))
+    .mutation(async ({ input }) => {
+      return testAiConnection(input.teamId);
     }),
 });
