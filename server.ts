@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage } from "http";
 import type { Socket } from "net";
 import next from "next";
 import { parse } from "url";
-import { WebSocketServer } from "ws";
+import { type WebSocket, WebSocketServer } from "ws";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "0.0.0.0";
@@ -46,7 +46,7 @@ app.prepare().then(async () => {
     });
   });
 
-  wss.on("connection", (ws, _req, agent: { nodeId: string; environmentId: string }) => {
+  wss.on("connection", (ws: WebSocket, _req: IncomingMessage, agent: { nodeId: string; environmentId: string }) => {
     const { nodeId } = agent;
     console.log(`[ws] agent connected: ${nodeId}`);
     wsRegistry.register(nodeId, ws);
@@ -85,7 +85,7 @@ app.prepare().then(async () => {
       wsRegistry.unregister(nodeId);
     });
 
-    ws.on("error", (err) => {
+    ws.on("error", (err: Error) => {
       console.error(`[ws] error for agent ${nodeId}:`, err.message);
       clearInterval(pingInterval);
       if (pongTimer) clearTimeout(pongTimer);

@@ -50,6 +50,15 @@ export async function POST(request: Request) {
         continue;
       }
 
+      // Check if this component key already has a sample for this request
+      // (multiple agents may submit results for the same pipeline — first one wins)
+      const existing = await prisma.eventSample.findFirst({
+        where: { requestId: result.requestId, componentKey: result.componentKey },
+      });
+      if (existing) {
+        continue;
+      }
+
       if (result.error) {
         await prisma.eventSampleRequest.update({
           where: { id: result.requestId },
