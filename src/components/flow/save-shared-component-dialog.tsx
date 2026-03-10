@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { useFlowStore } from "@/stores/flow-store";
 
 interface SaveSharedComponentDialogProps {
   open: boolean;
@@ -37,9 +38,22 @@ export function SaveSharedComponentDialog({
   const queryClient = useQueryClient();
   const { selectedEnvironmentId } = useEnvironmentStore();
 
+  const patchNodeSharedData = useFlowStore((s) => s.patchNodeSharedData);
+  const nodes = useFlowStore((s) => s.nodes);
+
   const createMutation = useMutation(
     trpc.sharedComponent.createFromNode.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
+        // Sync the Zustand store so the canvas immediately shows the purple shared treatment
+        const node = nodes.find((n) => n.id === nodeId);
+        const config = (node?.data as { config?: Record<string, unknown> })?.config ?? {};
+        patchNodeSharedData(nodeId, {
+          config,
+          sharedComponentId: data.id,
+          sharedComponentVersion: data.version,
+          sharedComponentName: data.name,
+          sharedComponentLatestVersion: data.version,
+        });
         toast.success("Shared component created");
         queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
         queryClient.invalidateQueries({ queryKey: trpc.sharedComponent.list.queryKey() });
