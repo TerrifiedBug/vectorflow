@@ -21,6 +21,10 @@ interface FlowNodeData {
   disabled?: boolean;
   metrics?: NodeMetricsData;
   isSystemLocked?: boolean;
+  sharedComponentId?: string | null;
+  sharedComponentVersion?: number | null;
+  sharedComponentName?: string | null;
+  sharedComponentLatestVersion?: number | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -128,7 +132,7 @@ function computeFlowFingerprint(nodes: Node[], edges: Edge[], globalConfig: Reco
     position: n.position,
     data: Object.fromEntries(
       Object.entries(n.data as Record<string, unknown>).filter(
-        ([k]) => k !== "metrics" && k !== "measured" && k !== "isSystemLocked"
+        ([k]) => k !== "metrics" && k !== "measured" && k !== "isSystemLocked" && k !== "sharedComponentName" && k !== "sharedComponentLatestVersion"
       )
     ),
   }));

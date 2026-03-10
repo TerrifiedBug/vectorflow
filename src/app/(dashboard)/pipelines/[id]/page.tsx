@@ -62,6 +62,12 @@ function dbNodesToFlowNodes(
     positionX: number;
     positionY: number;
     disabled?: boolean;
+    sharedComponentId?: string | null;
+    sharedComponentVersion?: number | null;
+    sharedComponent?: {
+      name: string;
+      version: number;
+    } | null;
   }>
 ): Node[] {
   return dbNodes.map((n) => {
@@ -84,6 +90,10 @@ function dbNodesToFlowNodes(
         componentKey: n.componentKey,
         config: (n.config as Record<string, unknown>) ?? {},
         disabled: n.disabled ?? false,
+        sharedComponentId: n.sharedComponentId ?? null,
+        sharedComponentVersion: n.sharedComponentVersion ?? null,
+        sharedComponentName: n.sharedComponent?.name ?? null,
+        sharedComponentLatestVersion: n.sharedComponent?.version ?? null,
       },
     };
   });
@@ -305,6 +315,8 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         positionX: n.position.x,
         positionY: n.position.y,
         disabled: !!((n.data as Record<string, unknown>).disabled),
+        sharedComponentId: ((n.data as Record<string, unknown>).sharedComponentId as string | null) ?? null,
+        sharedComponentVersion: ((n.data as Record<string, unknown>).sharedComponentVersion as number | null) ?? null,
       })),
       edges: state.edges.map((e) => ({
         id: e.id,
