@@ -129,6 +129,7 @@ export async function rollback(
               id: node.id as string,
               pipelineId,
               componentKey: node.componentKey as string,
+              displayName: (node.displayName as string) ?? null,
               componentType: node.componentType as string,
               kind: node.kind as ComponentKind,
               config: node.config as Prisma.InputJsonValue,
