@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useParams } from "next/navigation";
 import {
   ReactFlow,
   Background,
@@ -17,6 +18,7 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { nodeTypes } from "./node-types";
 import { NodeContextMenu } from "./node-context-menu";
 import { EdgeContextMenu } from "./edge-context-menu";
+import { SaveSharedComponentDialog } from "./save-shared-component-dialog";
 import { findComponentDef } from "@/lib/vector/catalog";
 import type { VectorComponentDef, DataType } from "@/lib/vector/types";
 
@@ -38,6 +40,8 @@ function hasOverlappingTypes(a: DataType[], b: DataType[]): boolean {
 
 export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   useKeyboardShortcuts({ onSave, onExport, onImport });
+  const params = useParams<{ id: string }>();
+  const pipelineId = params.id;
   const nodes = useFlowStore((s) => s.nodes);
   const edges = useFlowStore((s) => s.edges);
   const onNodesChange = useFlowStore((s) => s.onNodesChange);
@@ -47,6 +51,7 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   const hasFitRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const [edgeContextMenu, setEdgeContextMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
+  const [saveSharedNodeId, setSaveSharedNodeId] = useState<string | null>(null);
 
   const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
     event.preventDefault();
@@ -114,6 +119,35 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
       });
 
       addNode(componentDef, position);
+
+      // If this is a shared component drop, patch the newly added node's data
+      const sharedComponentData = event.dataTransfer.getData(
+        "application/vectorflow-shared-component-data"
+      );
+      if (sharedComponentData) {
+        try {
+          const sc = JSON.parse(sharedComponentData) as {
+            id: string;
+            name: string;
+            version: number;
+            config: Record<string, unknown>;
+          };
+          // The newly added node is always last in the nodes array
+          const nodes = useFlowStore.getState().nodes;
+          const newNode = nodes[nodes.length - 1];
+          if (newNode) {
+            useFlowStore.getState().patchNodeSharedData(newNode.id, {
+              config: sc.config,
+              sharedComponentId: sc.id,
+              sharedComponentVersion: sc.version,
+              sharedComponentName: sc.name,
+              sharedComponentLatestVersion: sc.version,
+            });
+          }
+        } catch {
+          // Malformed shared component data — ignore, node was already added without link
+        }
+      }
     },
     [reactFlowInstance, addNode]
   );
@@ -145,6 +179,7 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
+          onSaveAsShared={(nodeId) => setSaveSharedNodeId(nodeId)}
         />
       )}
       {edgeContextMenu && (
@@ -153,6 +188,14 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
           x={edgeContextMenu.x}
           y={edgeContextMenu.y}
           onClose={() => setEdgeContextMenu(null)}
+        />
+      )}
+      {saveSharedNodeId && (
+        <SaveSharedComponentDialog
+          open={!!saveSharedNodeId}
+          onOpenChange={(open) => !open && setSaveSharedNodeId(null)}
+          nodeId={saveSharedNodeId}
+          pipelineId={pipelineId}
         />
       )}
     </div>

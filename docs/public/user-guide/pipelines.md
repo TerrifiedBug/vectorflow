@@ -29,6 +29,7 @@ A pipeline moves through several states during its lifecycle:
 - **Stopped** -- The pipeline is deployed but all agent nodes have stopped processing it.
 - **Crashed** -- One or more agent nodes report that the pipeline has crashed. Check the pipeline logs for details.
 - **Pending deploy** -- Shown as an additional badge when the saved configuration differs from what is currently deployed. Deploy the pipeline to push the latest changes.
+- **Updates available** -- Shown as an amber badge when the pipeline contains nodes linked to [shared components](shared-components.md) that have been updated. Hover over the badge to see which shared components have pending updates. Open the pipeline editor to review and accept the changes.
 - **Pending Approval** -- Shown when an editor has submitted a deploy request that is waiting for admin approval. See [Deploy approval workflows](#deploy-approval-workflows).
 
 ## Creating a pipeline
