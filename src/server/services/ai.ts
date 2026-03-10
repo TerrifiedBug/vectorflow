@@ -18,21 +18,34 @@ function validateBaseUrl(baseUrl: string): void {
     throw new Error("AI base URL must use http or https");
   }
 
+  // URL.hostname strips brackets from IPv6 and normalises numeric encodings
   const hostname = parsed.hostname.toLowerCase();
-  if (
+
+  const isBlocked =
+    // Loopback
     hostname === "localhost" ||
     hostname === "127.0.0.1" ||
     hostname === "::1" ||
-    hostname === "[::1]" ||
     hostname === "0.0.0.0" ||
+    hostname === "::" ||
+    // mDNS / internal TLDs
     hostname.endsWith(".local") ||
     hostname.endsWith(".internal") ||
+    // IPv4 private ranges
     hostname.startsWith("10.") ||
     hostname.startsWith("192.168.") ||
     /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+    // Link-local (full range)
+    hostname.startsWith("169.254.") ||
+    // Cloud metadata endpoints
     hostname === "metadata.google.internal" ||
-    hostname === "169.254.169.254"
-  ) {
+    // IPv6 link-local, unique-local, and IPv4-mapped
+    hostname.startsWith("fe80:") ||
+    hostname.startsWith("fc00:") ||
+    hostname.startsWith("fd00:") ||
+    hostname.startsWith("::ffff:");
+
+  if (isBlocked) {
     throw new Error("AI base URL must not point to internal or private addresses");
   }
 }

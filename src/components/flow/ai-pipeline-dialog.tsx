@@ -141,7 +141,10 @@ export function AiPipelineDialog({
           ...n,
           position: { x: n.position.x, y: n.position.y + maxY + 200 },
         }));
-        loadGraph([...nodes, ...offsetNodes], [...edges, ...newEdges], globalConfig);
+        const mergedConfig = importedGlobalConfig
+          ? { ...importedGlobalConfig, ...globalConfig }
+          : globalConfig;
+        loadGraph([...nodes, ...offsetNodes], [...edges, ...newEdges], mergedConfig);
       }
 
       toast.success(`Applied ${newNodes.length} components to canvas`);
