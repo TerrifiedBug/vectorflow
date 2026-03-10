@@ -1,16 +1,6 @@
 // src/lib/ai/prompts.ts
 
-import fs from "fs";
-import path from "path";
-
-let vrlReferenceCache: string | null = null;
-
-function getVrlReference(): string {
-  if (vrlReferenceCache) return vrlReferenceCache;
-  const refPath = path.join(__dirname, "vrl-reference.txt");
-  vrlReferenceCache = fs.readFileSync(refPath, "utf-8");
-  return vrlReferenceCache;
-}
+import { VRL_REFERENCE } from "./vrl-reference";
 
 export function buildVrlSystemPrompt(context: {
   fields?: { name: string; type: string }[];
@@ -23,7 +13,7 @@ export function buildVrlSystemPrompt(context: {
     "Generate VRL code based on the user's request. Output ONLY the VRL code — no explanations, no markdown fencing, no comments unless the user asks for them.",
     "",
     "=== VRL Function Reference ===",
-    getVrlReference(),
+    VRL_REFERENCE,
   ];
 
   if (context.sourceTypes?.length) {

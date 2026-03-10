@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
@@ -34,36 +34,24 @@ const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; placeholder: string }
   custom: { baseUrl: "", placeholder: "model-name" },
 };
 
-export function AiSettings() {
+interface AiConfig {
+  aiEnabled: boolean;
+  aiProvider: string | null;
+  aiBaseUrl: string | null;
+  aiModel: string | null;
+  hasApiKey: boolean;
+}
+
+function AiSettingsForm({ config, teamId }: { config: AiConfig; teamId: string }) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
-  const configQuery = useQuery(
-    trpc.team.getAiConfig.queryOptions(
-      { teamId: selectedTeamId! },
-      { enabled: !!selectedTeamId },
-    ),
-  );
-
-  const config = configQuery.data;
-
-  const [provider, setProvider] = useState<string>("openai");
-  const [baseUrl, setBaseUrl] = useState("");
+  const [provider, setProvider] = useState(config.aiProvider ?? "openai");
+  const [baseUrl, setBaseUrl] = useState(config.aiBaseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("");
-  const [enabled, setEnabled] = useState(false);
+  const [model, setModel] = useState(config.aiModel ?? "");
+  const [enabled, setEnabled] = useState(config.aiEnabled);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
-
-  // Sync state when data loads
-  useEffect(() => {
-    if (config) {
-      setProvider(config.aiProvider ?? "openai");
-      setBaseUrl(config.aiBaseUrl ?? "");
-      setModel(config.aiModel ?? "");
-      setEnabled(config.aiEnabled);
-    }
-  }, [config]);
 
   const updateMutation = useMutation(
     trpc.team.updateAiConfig.mutationOptions({
@@ -96,15 +84,13 @@ export function AiSettings() {
   );
 
   const handleSave = () => {
-    if (!selectedTeamId) return;
     const data: Record<string, unknown> = {
-      teamId: selectedTeamId,
+      teamId,
       aiEnabled: enabled,
       aiProvider: provider as "openai" | "anthropic" | "custom",
       aiBaseUrl: baseUrl || null,
       aiModel: model || null,
     };
-    // Only send apiKey if user typed a new one
     if (apiKey) {
       data.aiApiKey = apiKey;
     }
@@ -112,9 +98,8 @@ export function AiSettings() {
   };
 
   const handleTest = () => {
-    if (!selectedTeamId) return;
     setTestResult(null);
-    testMutation.mutate({ teamId: selectedTeamId });
+    testMutation.mutate({ teamId });
   };
 
   const handleProviderChange = (value: string) => {
@@ -125,15 +110,6 @@ export function AiSettings() {
     }
     setTestResult(null);
   };
-
-  if (configQuery.isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -201,10 +177,10 @@ export function AiSettings() {
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={config?.hasApiKey ? "••••••••••• (saved)" : "sk-..."}
+              placeholder={config.hasApiKey ? "••••••••••• (saved)" : "sk-..."}
             />
             <p className="text-xs text-muted-foreground">
-              {config?.hasApiKey
+              {config.hasApiKey
                 ? "A key is already saved. Enter a new value to replace it."
                 : "Encrypted at rest using AES-256."}
             </p>
@@ -239,7 +215,7 @@ export function AiSettings() {
             <Button
               variant="outline"
               onClick={handleTest}
-              disabled={testMutation.isPending || (!config?.hasApiKey && !apiKey)}
+              disabled={testMutation.isPending || (!config.hasApiKey && !apiKey)}
             >
               {testMutation.isPending ? (
                 <>
@@ -267,4 +243,27 @@ export function AiSettings() {
       </Card>
     </div>
   );
+}
+
+export function AiSettings() {
+  const trpc = useTRPC();
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+
+  const configQuery = useQuery(
+    trpc.team.getAiConfig.queryOptions(
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId },
+    ),
+  );
+
+  if (configQuery.isLoading || !configQuery.data) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  return <AiSettingsForm config={configQuery.data} teamId={selectedTeamId!} />;
 }

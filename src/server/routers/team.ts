@@ -89,7 +89,8 @@ export const teamRouter = router({
       orderBy: { createdAt: "desc" },
     });
     // Strip encrypted API key — never send to client
-    return teams.map(({ aiApiKey: _, ...safeTeam }) => safeTeam);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    return teams.map(({ aiApiKey: _aiApiKey, ...safeTeam }) => safeTeam);
   }),
 
   get: protectedProcedure
@@ -109,7 +110,8 @@ export const teamRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Team not found" });
       }
       // Strip encrypted API key — never send to client
-      const { aiApiKey: _, ...safeTeam } = team;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { aiApiKey: _aiApiKey, ...safeTeam } = team;
       return safeTeam;
     }),
 
@@ -527,6 +529,7 @@ export const teamRouter = router({
 
   testAiConnection: protectedProcedure
     .use(withTeamAccess("ADMIN"))
+    .use(withAudit("team.ai_connection_tested", "Team"))
     .input(z.object({ teamId: z.string() }))
     .mutation(async ({ input }) => {
       return testAiConnection(input.teamId);

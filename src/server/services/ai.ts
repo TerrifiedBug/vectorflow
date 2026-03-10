@@ -4,6 +4,39 @@ import { checkRateLimit } from "@/lib/ai/rate-limiter";
 
 const ENCRYPTED_PREFIX = "enc:";
 
+const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
+
+function validateBaseUrl(baseUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new Error("Invalid AI base URL");
+  }
+
+  if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+    throw new Error("AI base URL must use http or https");
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]" ||
+    hostname === "0.0.0.0" ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".internal") ||
+    hostname.startsWith("10.") ||
+    hostname.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+    hostname === "metadata.google.internal" ||
+    hostname === "169.254.169.254"
+  ) {
+    throw new Error("AI base URL must not point to internal or private addresses");
+  }
+}
+
 interface StreamCompletionParams {
   teamId: string;
   systemPrompt: string;
@@ -68,6 +101,7 @@ export async function streamCompletion({
   }
 
   const config = await getTeamAiConfig(teamId);
+  validateBaseUrl(config.baseUrl);
 
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
@@ -133,6 +167,7 @@ export async function streamCompletion({
 export async function testAiConnection(teamId: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const config = await getTeamAiConfig(teamId);
+    validateBaseUrl(config.baseUrl);
 
     const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",
