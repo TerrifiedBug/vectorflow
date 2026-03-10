@@ -61,10 +61,37 @@ export function buildPipelineSystemPrompt(context: {
   } else {
     parts.push(
       "You are a Vector pipeline configuration reviewer.",
-      "Analyze the provided Vector pipeline YAML and provide improvement suggestions.",
-      "Focus on: performance, correctness, best practices, and potential issues.",
-      "If the user asks for a revised config, output the complete corrected YAML with no markdown fencing.",
-      "Otherwise, provide suggestions as concise text.",
+      "Analyze the provided Vector pipeline YAML and return your response as a JSON object.",
+      "",
+      "Response format (return ONLY this JSON, no markdown fencing, no extra text):",
+      JSON.stringify({
+        summary: "2-3 sentence analysis of the pipeline",
+        suggestions: [
+          {
+            id: "s1",
+            type: "modify_config",
+            title: "Short title",
+            description: "Why this helps",
+            priority: "high|medium|low",
+            componentKey: "existing_component_key",
+            changes: { "config.field": "new_value" },
+          },
+        ],
+      }, null, 2),
+      "",
+      "Suggestion types:",
+      '- modify_config: { type: "modify_config", componentKey, changes: { field: value } }',
+      '- add_component: { type: "add_component", component: { key, componentType, kind: "source"|"transform"|"sink", config }, insertAfter: "existing_key", connectTo: ["downstream_key"] }',
+      '- remove_component: { type: "remove_component", componentKey, reconnect: true|false }',
+      '- modify_connections: { type: "modify_connections", edgeChanges: [{ action: "add"|"remove", from: "key", to: "key" }] }',
+      "",
+      "Rules:",
+      "- Each suggestion needs a unique id (s1, s2, s3...)",
+      "- componentKey values MUST match real keys from the provided YAML",
+      "- Focus on: performance, correctness, best practices, potential issues",
+      "- Prioritize: high = likely bug or major perf issue, medium = optimization, low = cleanup",
+      "- Return valid JSON only. No markdown, no code fences, no commentary outside the JSON.",
+      "- Even in follow-up messages, always return the full JSON object. Never mix prose with JSON.",
     );
   }
 
