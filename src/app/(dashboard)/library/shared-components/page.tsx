@@ -13,6 +13,12 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
 import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -216,26 +222,30 @@ function KindSection({
         </Badge>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="mt-1 divide-y rounded-lg border">
+        <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((sc) => (
-            <button
+            <Card
               key={sc.id}
+              className="cursor-pointer transition-colors hover:bg-accent/50"
               onClick={() => onItemClick(sc.id)}
-              className="flex w-full cursor-pointer items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
             >
-              <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{sc.name}</p>
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-sm">{sc.name}</CardTitle>
+                  <Badge variant="outline" className={cn("text-xs", badgeClass)}>
+                    v{sc.version}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
                 <p className="text-xs text-muted-foreground">{sc.componentType}</p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0 text-xs text-muted-foreground">
-                <span>{sc.linkedPipelineCount} linked</span>
-                <Badge variant="outline" className={cn("text-xs", badgeClass)}>
-                  v{sc.version}
-                </Badge>
-                <span className="w-16 text-right">{formatRelativeTime(sc.updatedAt)}</span>
-              </div>
-            </button>
+                <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                  <Link2 className="h-3 w-3" />
+                  <span>{sc.linkedPipelineCount} linked</span>
+                  <span className="ml-auto">{formatRelativeTime(sc.updatedAt)}</span>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       </CollapsibleContent>
