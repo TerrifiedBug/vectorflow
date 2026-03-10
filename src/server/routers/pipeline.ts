@@ -38,6 +38,8 @@ const nodeSchema = z.object({
   positionX: z.number(),
   positionY: z.number(),
   disabled: z.boolean().default(false),
+  sharedComponentId: z.string().nullable().optional(),
+  sharedComponentVersion: z.number().nullable().optional(),
 });
 
 const edgeSchema = z.object({
@@ -99,6 +101,11 @@ export const pipelineRouter = router({
               positionX: true,
               positionY: true,
               disabled: true,
+              sharedComponentId: true,
+              sharedComponentVersion: true,
+              sharedComponent: {
+                select: { version: true, name: true },
+              },
             },
           },
           edges: {
@@ -189,6 +196,12 @@ export const pipelineRouter = router({
           updatedBy: p.updatedBy,
           nodeStatuses: p.nodeStatuses,
           hasUndeployedChanges,
+          hasStaleComponents: p.nodes.some(
+            (n) => n.sharedComponentId && n.sharedComponent && (n.sharedComponentVersion ?? 0) < n.sharedComponent.version
+          ),
+          staleComponentNames: p.nodes
+            .filter((n) => n.sharedComponentId && n.sharedComponent && (n.sharedComponentVersion ?? 0) < n.sharedComponent.version)
+            .map((n) => n.sharedComponent!.name),
         };
       }));
 
@@ -202,7 +215,13 @@ export const pipelineRouter = router({
       const pipeline = await prisma.pipeline.findUnique({
         where: { id: input.id },
         include: {
-          nodes: true,
+          nodes: {
+            include: {
+              sharedComponent: {
+                select: { name: true, version: true },
+              },
+            },
+          },
           edges: true,
           environment: { select: { teamId: true, gitOpsMode: true, name: true } },
           nodeStatuses: {
@@ -720,6 +739,8 @@ export const pipelineRouter = router({
                 positionX: node.positionX,
                 positionY: node.positionY,
                 disabled: node.disabled,
+                sharedComponentId: node.sharedComponentId ?? null,
+                sharedComponentVersion: node.sharedComponentVersion ?? null,
               },
             })
           )
