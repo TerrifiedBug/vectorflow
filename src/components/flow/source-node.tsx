@@ -52,7 +52,7 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
 
       {/* Body */}
       <div className="space-y-2 px-3 py-2.5">
-        <p className="truncate text-xs font-medium text-foreground">{displayName ?? componentKey}</p>
+        <p className="truncate text-xs font-medium text-foreground">{displayName || componentKey}</p>
 
         {metrics && (
           <p className="truncate text-xs font-mono text-emerald-400">
