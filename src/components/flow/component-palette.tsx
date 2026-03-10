@@ -179,6 +179,7 @@ function CollapsibleSection({
 export function ComponentPalette() {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"catalog" | "shared">("catalog");
+  const [sharedKindFilter, setSharedKindFilter] = useState<"all" | "source" | "transform" | "sink">("all");
   const trpc = useTRPC();
   const { selectedEnvironmentId } = useEnvironmentStore();
 
@@ -202,7 +203,10 @@ export function ComponentPalette() {
   }, [search]);
 
   const filteredShared = useMemo(() => {
-    const items = sharedComponentsQuery.data ?? [];
+    let items = sharedComponentsQuery.data ?? [];
+    if (sharedKindFilter !== "all") {
+      items = items.filter((sc) => sc.kind.toLowerCase() === sharedKindFilter);
+    }
     if (!search.trim()) return items;
     const term = search.toLowerCase().trim();
     return items.filter(
@@ -210,7 +214,7 @@ export function ComponentPalette() {
         sc.name.toLowerCase().includes(term) ||
         sc.componentType.toLowerCase().includes(term)
     );
-  }, [search, sharedComponentsQuery.data]);
+  }, [search, sharedComponentsQuery.data, sharedKindFilter]);
 
   const sources = useMemo(
     () => filtered.filter((d) => d.kind === "source"),
@@ -290,6 +294,22 @@ export function ComponentPalette() {
 
         {activeTab === "shared" && (
           <div className="space-y-1.5 p-3">
+            <div className="flex gap-1 pb-1">
+              {(["all", "source", "transform", "sink"] as const).map((kind) => (
+                <button
+                  key={kind}
+                  className={cn(
+                    "rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors",
+                    sharedKindFilter === kind
+                      ? "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300"
+                      : "text-muted-foreground hover:bg-muted"
+                  )}
+                  onClick={() => setSharedKindFilter(kind)}
+                >
+                  {kind}
+                </button>
+              ))}
+            </div>
             {filteredShared.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-8">
                 <PackageOpen className="h-8 w-8 text-muted-foreground/50" />

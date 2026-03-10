@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, Trash2, Lock, Info, MousePointerClick, Book, Link2 as LinkIcon, Unlink, AlertTriangle } from "lucide-react";
+import { Copy, Trash2, Lock, Info, MousePointerClick, Book, Link2 as LinkIcon, Unlink, AlertTriangle, ExternalLink } from "lucide-react";
+import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
@@ -305,6 +306,12 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
                   <p className="mt-0.5 text-xs opacity-80">
                     This component is shared. Config is managed in the Library.
                   </p>
+                  <Link
+                    href={`/library/shared-components/${selectedNode.data.sharedComponentId as string}`}
+                    className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-purple-700 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-200"
+                  >
+                    Open in Library <ExternalLink className="h-3 w-3" />
+                  </Link>
                 </div>
               </div>
             )}
