@@ -66,6 +66,7 @@ export const metricsRouter = router({
 
       const components: Record<string, {
         componentKey: string;
+        displayName: string | null;
         componentType: string;
         kind: string;
         samples: ReturnType<typeof metricStore.getSamples>;
@@ -80,6 +81,7 @@ export const metricsRouter = router({
           if (matchingNode) {
             components[componentId] = {
               componentKey: matchingNode.componentKey,
+              displayName: matchingNode.displayName,
               componentType: matchingNode.componentType,
               kind: matchingNode.kind,
               samples,
@@ -102,7 +104,7 @@ export const metricsRouter = router({
 
       // Map componentKey → { pipelineId, kind } using pipeline nodes
       const pipelineNodes = await prisma.pipelineNode.findMany({
-        select: { pipelineId: true, componentKey: true, kind: true },
+        select: { pipelineId: true, componentKey: true, displayName: true, kind: true },
       });
 
       const rates: Record<string, {

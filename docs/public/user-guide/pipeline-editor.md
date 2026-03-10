@@ -109,7 +109,8 @@ The panel has two tabs:
 The **Config** tab shows:
 
 - **Component name and kind** -- The display name, a badge indicating source/transform/sink, and a delete button.
-- **Component Key** -- A unique identifier for this component within the pipeline (e.g. `traefik_logs`). Must contain only letters, numbers, and underscores.
+- **Name** -- A human-readable label for the component (e.g. "Traefik Logs"). Changing the name requires saving, but does not require a redeploy.
+- **Component ID** -- An auto-generated unique identifier used in the backend configuration (read-only). This key is set when the node is created and never changes.
 - **Enabled toggle** -- Disable a component to exclude it from the generated configuration without removing it from the canvas.
 - **Type** -- The Vector component type (read-only).
 - **Configuration form** -- Auto-generated form fields based on the component's configuration schema. Required fields are marked, and each field has contextual help.
