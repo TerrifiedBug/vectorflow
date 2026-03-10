@@ -711,6 +711,25 @@ export const pipelineRouter = router({
       };
 
       return prisma.$transaction(async (tx) => {
+        // Validate all sharedComponentIds belong to the same environment
+        const sharedComponentIds = [
+          ...new Set(input.nodes.map((n) => n.sharedComponentId).filter(Boolean) as string[]),
+        ];
+        if (sharedComponentIds.length > 0) {
+          const sharedComponents = await tx.sharedComponent.findMany({
+            where: { id: { in: sharedComponentIds } },
+            select: { id: true, environmentId: true },
+          });
+          for (const sc of sharedComponents) {
+            if (sc.environmentId !== existing.environmentId) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Shared component does not belong to this pipeline's environment",
+              });
+            }
+          }
+        }
+
         await tx.pipeline.update({
           where: { id: input.pipelineId },
           data: {

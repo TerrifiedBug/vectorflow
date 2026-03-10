@@ -114,31 +114,33 @@ export const sharedComponentRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("shared_component.created", "SharedComponent"))
     .mutation(async ({ input }) => {
-      // Check unique constraint (environmentId + name)
-      const existing = await prisma.sharedComponent.findUnique({
-        where: {
-          environmentId_name: {
+      return prisma.$transaction(async (tx) => {
+        // Check unique constraint inside transaction to prevent TOCTOU race
+        const existing = await tx.sharedComponent.findUnique({
+          where: {
+            environmentId_name: {
+              environmentId: input.environmentId,
+              name: input.name,
+            },
+          },
+        });
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `A shared component named "${input.name}" already exists in this environment`,
+          });
+        }
+
+        return tx.sharedComponent.create({
+          data: {
             environmentId: input.environmentId,
             name: input.name,
+            description: input.description,
+            componentType: input.componentType,
+            kind: input.kind,
+            config: encryptNodeConfig(input.componentType, input.config) as Prisma.InputJsonValue,
           },
-        },
-      });
-      if (existing) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: `A shared component named "${input.name}" already exists in this environment`,
         });
-      }
-
-      return prisma.sharedComponent.create({
-        data: {
-          environmentId: input.environmentId,
-          name: input.name,
-          description: input.description,
-          componentType: input.componentType,
-          kind: input.kind,
-          config: encryptNodeConfig(input.componentType, input.config) as Prisma.InputJsonValue,
-        },
       });
     }),
 
