@@ -2,6 +2,7 @@
 
 import { memo, useMemo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { Link2 as LinkIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import type { NodeMetricsData } from "@/stores/flow-store";
@@ -18,6 +19,10 @@ type TransformNodeData = {
   config: Record<string, unknown>;
   metrics?: NodeMetricsData;
   disabled?: boolean;
+  sharedComponentId?: string | null;
+  sharedComponentVersion?: number | null;
+  sharedComponentLatestVersion?: number | null;
+  sharedComponentName?: string | null;
 };
 
 type TransformNodeType = Node<TransformNodeData, "transform">;
@@ -27,13 +32,18 @@ function TransformNodeComponent({
   selected,
 }: NodeProps<TransformNodeType>) {
   const { componentDef, componentKey, metrics, disabled } = data;
+  const isShared = !!data.sharedComponentId;
+  const isStale = isShared && data.sharedComponentLatestVersion != null &&
+    (data.sharedComponentVersion ?? 0) < data.sharedComponentLatestVersion;
   const Icon = useMemo(() => getIcon(componentDef.icon), [componentDef.icon]);
 
   return (
     <div
       className={cn(
         "w-56 rounded-lg border bg-card shadow-sm transition-shadow",
-        selected && "ring-2 ring-node-transform shadow-md",
+        selected && !isShared && "ring-2 ring-node-transform shadow-md",
+        selected && isShared && "ring-2 ring-purple-400 shadow-md",
+        isShared && !selected && "border-purple-400/50 shadow-[0_0_8px_rgba(167,139,250,0.15)]",
         disabled && "opacity-40"
       )}
     >
@@ -74,6 +84,18 @@ function TransformNodeComponent({
           {metrics.samples && metrics.samples.length > 1 && (
             <NodeSparkline samples={metrics.samples} />
           )}
+        </div>
+      )}
+
+      {isShared && (
+        <div className="flex items-center gap-1.5 border-t px-3 py-1.5 text-[10px] text-purple-400">
+          <LinkIcon className="h-3 w-3" />
+          {isStale ? (
+            <span className="text-amber-400">Update available</span>
+          ) : (
+            <span>Shared</span>
+          )}
+          {isStale && <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />}
         </div>
       )}
 
