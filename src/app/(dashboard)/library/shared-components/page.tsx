@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
-import { Link2, Plus, Search } from "lucide-react";
+import { ChevronDown, Link2, Plus, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,13 +13,11 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -41,16 +39,28 @@ function formatRelativeTime(date: Date | string | null | undefined): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Kind badge styling                                                 */
+/*  Kind styling                                                       */
 /* ------------------------------------------------------------------ */
 
-const kindVariant: Record<string, string> = {
-  SOURCE:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-  TRANSFORM:
-    "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300",
-  SINK: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+const kindConfig: Record<string, { label: string; badge: string; accent: string }> = {
+  SOURCE: {
+    label: "Sources",
+    badge: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+    accent: "text-emerald-600 dark:text-emerald-400",
+  },
+  TRANSFORM: {
+    label: "Transforms",
+    badge: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300",
+    accent: "text-sky-600 dark:text-sky-400",
+  },
+  SINK: {
+    label: "Sinks",
+    badge: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+    accent: "text-orange-600 dark:text-orange-400",
+  },
 };
+
+const KIND_ORDER = ["SOURCE", "TRANSFORM", "SINK"] as const;
 
 /* ------------------------------------------------------------------ */
 /*  Page Component                                                     */
@@ -82,6 +92,13 @@ export default function SharedComponentsPage() {
     );
   });
 
+  // Group by kind
+  const grouped = KIND_ORDER.map((kind) => ({
+    kind,
+    ...kindConfig[kind],
+    items: filtered.filter((sc) => sc.kind === kind),
+  }));
+
   if (!selectedEnvironmentId) {
     return (
       <div className="space-y-8">
@@ -94,7 +111,7 @@ export default function SharedComponentsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         title="Shared Components"
         actions={
@@ -117,9 +134,9 @@ export default function SharedComponentsPage() {
       </div>
 
       {componentsQuery.isLoading ? (
-        <div className="space-y-2">
+        <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
+            <Skeleton key={i} className="h-20 w-full" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
@@ -132,50 +149,96 @@ export default function SharedComponentsPage() {
           </p>
         </div>
       ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Kind</TableHead>
-                <TableHead>Linked Pipelines</TableHead>
-                <TableHead>Version</TableHead>
-                <TableHead>Last Updated</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((sc) => (
-                <TableRow
-                  key={sc.id}
-                  className="cursor-pointer"
-                  onClick={() => router.push(`/library/shared-components/${sc.id}`)}
-                >
-                  <TableCell>
-                    <div className="flex items-center gap-2 font-medium">
-                      <Link2 className="h-4 w-4 text-muted-foreground" />
-                      {sc.name}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {sc.componentType}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={kindVariant[sc.kind] ?? ""}>
-                      {sc.kind}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{sc.linkedPipelineCount}</TableCell>
-                  <TableCell>v{sc.version}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {formatRelativeTime(sc.updatedAt)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="space-y-3">
+          {grouped.map((group) => {
+            if (group.items.length === 0) return null;
+            return (
+              <KindSection
+                key={group.kind}
+                label={group.label}
+                count={group.items.length}
+                accent={group.accent}
+                badgeClass={group.badge}
+                items={group.items}
+                onItemClick={(id) => router.push(`/library/shared-components/${id}`)}
+              />
+            );
+          })}
         </div>
       )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Kind Section (collapsible)                                         */
+/* ------------------------------------------------------------------ */
+
+interface SharedComponentItem {
+  id: string;
+  name: string;
+  componentType: string;
+  kind: string;
+  version: number;
+  linkedPipelineCount: number;
+  updatedAt: Date | string | null;
+}
+
+function KindSection({
+  label,
+  count,
+  accent,
+  badgeClass,
+  items,
+  onItemClick,
+}: {
+  label: string;
+  count: number;
+  accent: string;
+  badgeClass: string;
+  items: SharedComponentItem[];
+  onItemClick: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-lg border bg-muted/40 px-4 py-3 text-left transition-colors hover:bg-muted/70">
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+            !open && "-rotate-90",
+          )}
+        />
+        <span className={cn("text-sm font-semibold", accent)}>{label}</span>
+        <Badge variant="secondary" className="ml-auto text-xs">
+          {count}
+        </Badge>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-1 divide-y rounded-lg border">
+          {items.map((sc) => (
+            <button
+              key={sc.id}
+              onClick={() => onItemClick(sc.id)}
+              className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-muted/50"
+            >
+              <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{sc.name}</p>
+                <p className="text-xs text-muted-foreground">{sc.componentType}</p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0 text-xs text-muted-foreground">
+                <span>{sc.linkedPipelineCount} linked</span>
+                <Badge variant="outline" className={cn("text-xs", badgeClass)}>
+                  v{sc.version}
+                </Badge>
+                <span className="w-16 text-right">{formatRelativeTime(sc.updatedAt)}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
