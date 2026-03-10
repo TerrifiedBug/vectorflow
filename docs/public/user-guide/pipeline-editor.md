@@ -17,19 +17,18 @@ The editor is divided into four main areas:
 
 ## Component palette
 
-The left sidebar lists every available Vector component, grouped into three sections:
+The left sidebar has two tabs:
 
-- **Sources** -- Components that ingest data into the pipeline.
-- **Transforms** -- Components that process, filter, or reshape data in flight.
-- **Sinks** -- Components that send data to downstream destinations.
+- **Catalog** -- Lists every available Vector component, grouped by kind (Sources, Transforms, Sinks). Each section can be collapsed and is further organized by category (e.g. "Cloud Platform", "Aggregating", "Messaging").
+- **Shared** -- Lists [shared components](shared-components.md) available in the current environment. Filter by kind using the All / Source / Transform / Sink buttons.
 
-Each section can be collapsed. When a section contains many components, they are further organized by category (e.g. "Cloud Platform", "Aggregating", "Messaging").
-
-Use the **search bar** at the top of the palette to filter components by name, type, description, or category.
+Use the **search bar** at the top of the palette to filter components by name, type, description, or category. The search applies to whichever tab is active.
 
 ### Adding a component
 
 Drag a component from the palette and drop it onto the canvas. A new node appears at the drop position, pre-configured with sensible defaults. You can also right-click the canvas to paste previously copied nodes.
+
+Dragging a shared component from the **Shared** tab creates a **linked node** -- the node's configuration is pre-filled from the shared component and pinned to its current version. See [Shared Components](shared-components.md) for details on linked node behavior.
 
 ## Canvas
 
@@ -47,7 +46,7 @@ The canvas is where your pipeline takes visual shape. Each component is represen
 
 ### Context menus
 
-- **Right-click a node** -- Opens a menu with Copy, Paste, Duplicate, and Delete actions.
+- **Right-click a node** -- Opens a menu with Copy, Paste, Duplicate, Delete, and **Save as Shared Component** actions. The shared component option extracts the node's configuration into a reusable [shared component](shared-components.md) and links the node to it.
 - **Right-click an edge** -- Opens a menu with a Delete connection action.
 
 ## Node types
@@ -114,6 +113,15 @@ The **Config** tab shows:
 - **Type** -- The Vector component type (read-only).
 - **Configuration form** -- Auto-generated form fields based on the component's configuration schema. Required fields are marked, and each field has contextual help.
 - **Secret picker** -- Sensitive fields (passwords, API keys, tokens) display a secret picker instead of a text input. You must select an existing secret or create a new one inline -- plaintext values cannot be entered directly into sensitive fields. See [Security](../operations/security.md#sensitive-fields) for details.
+
+### Linked shared components
+
+When a node is linked to a [shared component](shared-components.md), the detail panel shows additional elements:
+
+- A **purple banner** with the shared component name and an "Open in Library" link.
+- **Read-only configuration** -- All config fields are disabled. Edits must be made on the shared component's Library page.
+- An **Unlink** button to convert the node back to a regular editable component (the current config snapshot is preserved).
+- When the shared component has been updated since the node was last synced, an **amber update banner** appears with an "Accept update" button to pull in the latest configuration.
 
 ### VRL editor for transforms
 
