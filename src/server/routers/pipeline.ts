@@ -718,11 +718,11 @@ export const pipelineRouter = router({
         if (sharedComponentIds.length > 0) {
           const sharedComponents = await tx.sharedComponent.findMany({
             where: { id: { in: sharedComponentIds } },
-            select: { id: true, environmentId: true },
+            select: { id: true, environmentId: true, componentType: true, kind: true },
           });
-          const foundIds = new Set(sharedComponents.map((sc) => sc.id));
+          const scMap = new Map(sharedComponents.map((sc) => [sc.id, sc]));
           for (const scId of sharedComponentIds) {
-            if (!foundIds.has(scId)) {
+            if (!scMap.has(scId)) {
               throw new TRPCError({
                 code: "BAD_REQUEST",
                 message: `Shared component ${scId} not found`,
@@ -734,6 +734,17 @@ export const pipelineRouter = router({
               throw new TRPCError({
                 code: "BAD_REQUEST",
                 message: "Shared component does not belong to this pipeline's environment",
+              });
+            }
+          }
+          // Validate componentType/kind match between node and shared component
+          for (const node of input.nodes) {
+            if (!node.sharedComponentId) continue;
+            const sc = scMap.get(node.sharedComponentId)!;
+            if (node.componentType !== sc.componentType || node.kind !== sc.kind) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Node "${node.componentType}" (${node.kind}) does not match shared component "${sc.componentType}" (${sc.kind})`,
               });
             }
           }
