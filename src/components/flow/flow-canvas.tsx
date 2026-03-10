@@ -114,6 +114,45 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
       });
 
       addNode(componentDef, position);
+
+      // If this is a shared component drop, patch the newly added node's data
+      const sharedComponentData = event.dataTransfer.getData(
+        "application/vectorflow-shared-component-data"
+      );
+      if (sharedComponentData) {
+        try {
+          const sc = JSON.parse(sharedComponentData) as {
+            id: string;
+            name: string;
+            version: number;
+            config: Record<string, unknown>;
+          };
+          // The newly added node is always last in the nodes array
+          const nodes = useFlowStore.getState().nodes;
+          const newNode = nodes[nodes.length - 1];
+          if (newNode) {
+            useFlowStore.setState((state) => ({
+              nodes: state.nodes.map((n) =>
+                n.id === newNode.id
+                  ? {
+                      ...n,
+                      data: {
+                        ...n.data,
+                        config: sc.config,
+                        sharedComponentId: sc.id,
+                        sharedComponentVersion: sc.version,
+                        sharedComponentName: sc.name,
+                        sharedComponentLatestVersion: sc.version,
+                      },
+                    }
+                  : n
+              ),
+            }));
+          }
+        } catch {
+          // Malformed shared component data — ignore, node was already added without link
+        }
+      }
     },
     [reactFlowInstance, addNode]
   );

@@ -1,13 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Search, PackageOpen } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, PackageOpen, Link2 as LinkIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { VECTOR_CATALOG } from "@/lib/vector/catalog";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import { getIcon } from "./node-icon";
+import { useQuery } from "@tanstack/react-query";
+import { useTRPC } from "@/trpc/client";
+import { useEnvironmentStore } from "@/stores/environment-store";
 
 const kindMeta: Record<
   VectorComponentDef["kind"],
@@ -175,6 +178,17 @@ function CollapsibleSection({
 
 export function ComponentPalette() {
   const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState<"catalog" | "shared">("catalog");
+  const trpc = useTRPC();
+  const { selectedEnvironmentId } = useEnvironmentStore();
+
+  const sharedComponentsQuery = useQuery(
+    trpc.sharedComponent.list.queryOptions(
+      { environmentId: selectedEnvironmentId! },
+      { enabled: !!selectedEnvironmentId }
+    )
+  );
+  const sharedComponents = sharedComponentsQuery.data ?? [];
 
   const filtered = useMemo(() => {
     if (!search.trim()) return VECTOR_CATALOG;
@@ -188,6 +202,16 @@ export function ComponentPalette() {
         def.category.toLowerCase().includes(term)
     );
   }, [search]);
+
+  const filteredShared = useMemo(() => {
+    if (!search.trim()) return sharedComponents;
+    const term = search.toLowerCase().trim();
+    return sharedComponents.filter(
+      (sc) =>
+        sc.name.toLowerCase().includes(term) ||
+        sc.componentType.toLowerCase().includes(term)
+    );
+  }, [search, sharedComponents]);
 
   const sources = useMemo(
     () => filtered.filter((d) => d.kind === "source"),
@@ -217,22 +241,126 @@ export function ComponentPalette() {
         </div>
       </div>
 
+      {/* Tab switcher */}
+      <div className="flex border-b px-3">
+        <button
+          className={cn(
+            "flex-1 border-b-2 px-2 py-2 text-xs font-medium transition-colors",
+            activeTab === "catalog"
+              ? "border-foreground text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+          onClick={() => setActiveTab("catalog")}
+        >
+          Catalog
+        </button>
+        <button
+          className={cn(
+            "flex-1 border-b-2 px-2 py-2 text-xs font-medium transition-colors",
+            activeTab === "shared"
+              ? "border-purple-400 text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+          onClick={() => setActiveTab("shared")}
+        >
+          <span className="flex items-center justify-center gap-1.5">
+            <LinkIcon className="h-3 w-3" />
+            Shared
+          </span>
+        </button>
+      </div>
+
       {/* Component list */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="space-y-1 p-3">
-          <CollapsibleSection kind="source" items={sources} />
-          <CollapsibleSection kind="transform" items={transforms} />
-          <CollapsibleSection kind="sink" items={sinks} />
+        {activeTab === "catalog" && (
+          <div className="space-y-1 p-3">
+            <CollapsibleSection kind="source" items={sources} />
+            <CollapsibleSection kind="transform" items={transforms} />
+            <CollapsibleSection kind="sink" items={sinks} />
 
-          {filtered.length === 0 && (
-            <div className="flex flex-col items-center justify-center p-8">
-              <PackageOpen className="h-8 w-8 text-muted-foreground/50" />
-              <p className="mt-2 text-sm text-muted-foreground">
-                No components match your search.
-              </p>
-            </div>
-          )}
-        </div>
+            {filtered.length === 0 && (
+              <div className="flex flex-col items-center justify-center p-8">
+                <PackageOpen className="h-8 w-8 text-muted-foreground/50" />
+                <p className="mt-2 text-sm text-muted-foreground">
+                  No components match your search.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "shared" && (
+          <div className="space-y-1.5 p-3">
+            {filteredShared.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-8">
+                <PackageOpen className="h-8 w-8 text-muted-foreground/50" />
+                <p className="mt-2 text-center text-sm text-muted-foreground">
+                  {search.trim()
+                    ? "No shared components match your search."
+                    : "No shared components in this environment."}
+                </p>
+              </div>
+            ) : (
+              filteredShared.map((sc) => {
+                const kindKey = sc.kind.toLowerCase() as VectorComponentDef["kind"];
+                const meta = kindMeta[kindKey] ?? kindMeta.transform;
+                const Icon = getIcon(
+                  VECTOR_CATALOG.find((d) => d.type === sc.componentType)?.icon
+                );
+                return (
+                  <div
+                    key={sc.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(
+                        "application/vectorflow-component",
+                        `${sc.kind.toLowerCase()}:${sc.componentType}`
+                      );
+                      e.dataTransfer.setData(
+                        "application/vectorflow-shared-component-id",
+                        sc.id
+                      );
+                      e.dataTransfer.setData(
+                        "application/vectorflow-shared-component-data",
+                        JSON.stringify(sc)
+                      );
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    className={cn(
+                      "flex cursor-grab items-start gap-3 rounded-md border border-l-[3px] bg-card px-3 py-2.5 transition-colors hover:bg-accent active:cursor-grabbing",
+                      meta.borderClass
+                    )}
+                  >
+                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-purple-500/20 text-purple-400">
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-medium text-foreground">
+                          {sc.name}
+                        </span>
+                        <LinkIcon className="h-3 w-3 shrink-0 text-purple-400" />
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <span className="truncate text-xs text-muted-foreground">
+                          {sc.componentType}
+                        </span>
+                        {sc.linkedPipelineCount > 0 && (
+                          <Badge
+                            variant="outline"
+                            className="shrink-0 px-1 py-0 text-[10px]"
+                          >
+                            {sc.linkedPipelineCount} pipeline{sc.linkedPipelineCount !== 1 ? "s" : ""}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
       </div>
     </aside>
   );
