@@ -79,11 +79,11 @@ VectorFlow validates connection compatibility in real time. You cannot connect a
 {% endstep %}
 
 {% step %}
-### Configure component keys
+### Name your components
 
-Each node has a **Component Key** in the detail panel (e.g., `demo_logs_0`). This key becomes the component ID in the generated Vector configuration. You can rename keys to something more descriptive like `demo_source`, `add_timestamp`, and `debug_output`.
+Each node has a **Name** field in the detail panel. By default, new components are named after their type (e.g., "Demo Logs"). You can rename them to something more descriptive like "Demo Source", "Add Timestamp", and "Debug Output".
 
-Keys must contain only letters, numbers, and underscores.
+Renaming a component only requires saving the pipeline -- it does not require a redeploy. The backend component ID is auto-generated and shown as a read-only field below the name.
 {% endstep %}
 
 {% step %}

@@ -61,7 +61,7 @@ VectorFlow creates a new pipeline in the current environment with the template's
 
 Templates save the complete pipeline graph:
 
-- **Nodes** -- Every source, transform, and sink component, including its component type, component key, and configuration.
+- **Nodes** -- Every source, transform, and sink component, including its component type, component key, display name, and configuration.
 - **Edges** -- All connections between components, preserving the data flow topology.
 - **Layout** -- The X/Y positions of nodes on the canvas, so the visual layout is preserved.
 

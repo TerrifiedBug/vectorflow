@@ -187,7 +187,8 @@ Each node in the `saveGraph` input:
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | `string?` | Optional ID (auto-generated if omitted) |
-| `componentKey` | `string` | Unique identifier within the pipeline (e.g., `my_syslog_source`). Must match `^[a-zA-Z_][a-zA-Z0-9_]*$` |
+| `componentKey` | `string` | Auto-generated unique identifier within the pipeline (e.g., `syslog_k7xMp2nQ`). Must match `^[a-zA-Z_][a-zA-Z0-9_]*$` |
+| `displayName` | `string?` | Optional human-readable name for the component (e.g., "Syslog Source") |
 | `componentType` | `string` | Vector component type (e.g., `syslog`, `remap`, `aws_s3`) |
 | `kind` | `"SOURCE" \| "TRANSFORM" \| "SINK"` | Component category |
 | `config` | `object` | Component configuration fields |

@@ -9,6 +9,7 @@ const templateNodeSchema = z.object({
   id: z.string(),
   componentType: z.string(),
   componentKey: z.string().min(1).max(128).regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/),
+  displayName: z.string().max(64).nullable().optional(),
   kind: z.enum(["source", "transform", "sink"]),
   config: z.record(z.string(), z.any()),
   positionX: z.number(),
