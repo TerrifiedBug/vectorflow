@@ -9,6 +9,7 @@ import {
   HardDrive,
   KeyRound,
   Bot,
+  Sparkles,
 } from "lucide-react";
 
 export const settingsNavGroups = [
@@ -33,6 +34,7 @@ export const settingsNavGroups = [
       { title: "Teams", href: "/settings/teams", icon: Building2, requiredSuperAdmin: true },
       { title: "Team Settings", href: "/settings/team", icon: Users, requiredSuperAdmin: false },
       { title: "Service Accounts", href: "/settings/service-accounts", icon: Bot, requiredSuperAdmin: false },
+      { title: "AI", href: "/settings/ai", icon: Sparkles, requiredSuperAdmin: false },
     ],
   },
   {
