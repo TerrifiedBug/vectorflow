@@ -1,0 +1,304 @@
+// Auto-generated from vrl-reference.txt — inlined for Next.js production compatibility.
+// Do NOT edit manually. Update vrl-reference.txt and re-generate if needed.
+
+export const VRL_REFERENCE = `# VRL Function Reference (Vector Remap Language)
+# Compact reference for LLM context. Updated for Vector 0.53.
+
+## Type Functions
+to_string(value) -> string | error
+  Convert any value to a string.
+  Example: to_string(42) => "42"
+
+to_int(value) -> integer | error
+  Convert a value to an integer.
+  Example: to_int("42") => 42
+
+to_float(value) -> float | error
+  Convert a value to a float.
+  Example: to_float("3.14") => 3.14
+
+to_bool(value) -> boolean | error
+  Convert a value to a boolean.
+  Example: to_bool("true") => true
+
+to_timestamp(value, [format]) -> timestamp | error
+  Parse a value into a timestamp.
+  Example: to_timestamp("2024-01-15T10:30:00Z") => <timestamp>
+
+to_unix_timestamp(timestamp, [unit]) -> integer
+  Convert timestamp to Unix epoch. unit: "seconds"|"milliseconds"|"nanoseconds"
+  Example: to_unix_timestamp(now(), unit: "seconds") => 1705312200
+
+## String Functions
+contains(string, substring, [case_sensitive]) -> boolean
+  Check if string contains substring.
+  Example: contains("hello world", "world") => true
+
+starts_with(string, prefix, [case_sensitive]) -> boolean
+  Check if string starts with prefix.
+  Example: starts_with("hello", "hel") => true
+
+ends_with(string, suffix, [case_sensitive]) -> boolean
+  Check if string ends with suffix.
+  Example: ends_with("hello.log", ".log") => true
+
+slice(string, start, [end]) -> string
+  Extract substring by index.
+  Example: slice("hello", 0, 3) => "hel"
+
+replace(string, pattern, replacement, [count]) -> string
+  Replace occurrences of pattern.
+  Example: replace("foo-bar", "-", "_") => "foo_bar"
+
+split(string, separator, [limit]) -> [string]
+  Split string into array.
+  Example: split("a,b,c", ",") => ["a", "b", "c"]
+
+join(array, [separator]) -> string
+  Join array into string.
+  Example: join(["a", "b"], ",") => "a,b"
+
+upcase(string) -> string
+  Convert to uppercase.
+  Example: upcase("hello") => "HELLO"
+
+downcase(string) -> string
+  Convert to lowercase.
+  Example: downcase("HELLO") => "hello"
+
+strip_whitespace(string) -> string
+  Remove leading/trailing whitespace.
+  Example: strip_whitespace("  hello  ") => "hello"
+
+truncate(string, limit, [ellipsis], [suffix]) -> string
+  Truncate string to max length.
+  Example: truncate("hello world", 5, suffix: "...") => "hello..."
+
+strlen(string) -> integer
+  Return string length.
+  Example: strlen("hello") => 5
+
+## Parse Functions
+parse_json(string) -> any | error
+  Parse JSON string into VRL value.
+  Example: parse_json("{\\"key\\":\\"value\\"}") => {"key": "value"}
+
+parse_syslog(string) -> object | error
+  Parse syslog message (RFC 5424/3164).
+  Example: parse_syslog("<34>1 2024-01-15T10:30:00Z host app - - msg") => {facility: "auth", severity: "crit", ...}
+
+parse_csv(string, [delimiter]) -> [string]
+  Parse CSV row.
+  Example: parse_csv("a,b,c") => ["a", "b", "c"]
+
+parse_key_value(string, [separator], [field_delimiter]) -> object | error
+  Parse key=value pairs.
+  Example: parse_key_value("a=1 b=2") => {"a": "1", "b": "2"}
+
+parse_grok(string, pattern) -> object | error
+  Parse with Grok pattern.
+  Example: parse_grok("55.3.244.1 GET /index", "%{IP:client} %{WORD:method} %{URIPATHPARAM:request}") => {"client": "55.3.244.1", ...}
+
+parse_regex(string, pattern) -> object | error
+  Parse with regex named captures.
+  Example: parse_regex("user=bob age=30", r'user=(?P<user>\\w+) age=(?P<age>\\d+)') => {"user": "bob", "age": "30"}
+
+parse_timestamp(string, format) -> timestamp | error
+  Parse timestamp with strftime format.
+  Example: parse_timestamp("2024-01-15", "%Y-%m-%d") => <timestamp>
+
+parse_url(string) -> object | error
+  Parse URL into components.
+  Example: parse_url("https://example.com:8080/path?q=1") => {scheme: "https", host: "example.com", port: 8080, ...}
+
+## Encode Functions
+encode_json(value) -> string
+  Encode value as JSON.
+  Example: encode_json({"key": "value"}) => "{\\"key\\":\\"value\\"}"
+
+encode_base64(string) -> string
+  Base64 encode.
+  Example: encode_base64("hello") => "aGVsbG8="
+
+decode_base64(string) -> string | error
+  Base64 decode.
+  Example: decode_base64("aGVsbG8=") => "hello"
+
+## Coerce Functions
+to_syslog_level(integer) -> string | error
+  Convert syslog level number to name.
+  Example: to_syslog_level(0) => "emerg"
+
+to_syslog_facility(integer) -> string | error
+  Convert syslog facility number to name.
+  Example: to_syslog_facility(0) => "kern"
+
+## Object/Array Functions
+keys(object) -> [string]
+  Get object keys.
+  Example: keys({"a": 1, "b": 2}) => ["a", "b"]
+
+values(object) -> [any]
+  Get object values.
+  Example: values({"a": 1, "b": 2}) => [1, 2]
+
+length(value) -> integer
+  Length of string, array, or object.
+  Example: length([1, 2, 3]) => 3
+
+flatten(array) -> array
+  Flatten nested arrays.
+  Example: flatten([[1, 2], [3]]) => [1, 2, 3]
+
+append(array, value) -> array
+  Append value to array.
+  Example: append([1, 2], 3) => [1, 2, 3]
+
+push(array, value) -> array
+  Same as append.
+
+compact(value) -> value
+  Remove null values from object/array.
+  Example: compact({"a": 1, "b": null}) => {"a": 1}
+
+merge(object1, object2, [deep]) -> object
+  Merge objects. Later values win.
+  Example: merge({"a": 1}, {"b": 2}) => {"a": 1, "b": 2}
+
+set(object, path, value) -> object
+  Set nested value by path array.
+  Example: set({}, ["a", "b"], 1) => {"a": {"b": 1}}
+
+get(object, path) -> any | null
+  Get nested value by path array.
+  Example: get({"a": {"b": 1}}, ["a", "b"]) => 1
+
+del(object, path) -> any
+  Delete and return value at path.
+  Example: del(., .temp_field) removes .temp_field
+
+exists(path) -> boolean
+  Check if field exists.
+  Example: exists(.hostname) => true/false
+
+## IP Functions
+ip_cidr_contains(cidr, ip) -> boolean
+  Check if IP is in CIDR range.
+  Example: ip_cidr_contains("192.168.0.0/16", "192.168.1.1") => true
+
+ip_to_ipv6(ip) -> string
+  Convert IPv4 to IPv6 mapped address.
+  Example: ip_to_ipv6("1.2.3.4") => "::ffff:1.2.3.4"
+
+## Hash/Crypto Functions
+sha2(string, [variant]) -> string
+  SHA-2 hash. variant: 224|256|384|512 (default 256).
+  Example: sha2("hello") => "2cf24dba..."
+
+md5(string) -> string
+  MD5 hash.
+  Example: md5("hello") => "5d41402a..."
+
+hmac(value, key, [algorithm]) -> string
+  HMAC signature. algorithm: "SHA-256" (default).
+  Example: hmac("message", "secret") => "aa747c..."
+
+uuid_v4() -> string
+  Generate UUID v4.
+  Example: uuid_v4() => "550e8400-e29b-41d4-a716-446655440000"
+
+uuid_v7() -> string
+  Generate UUID v7 (time-sorted).
+  Example: uuid_v7() => "01876d34-..."
+
+## Timestamp Functions
+now() -> timestamp
+  Current UTC timestamp.
+  Example: .timestamp = now()
+
+format_timestamp(timestamp, format, [timezone]) -> string
+  Format timestamp as string.
+  Example: format_timestamp(now(), "%Y-%m-%d") => "2024-01-15"
+
+## Numeric Functions
+ceil(float) -> integer
+  Round up.
+  Example: ceil(3.2) => 4
+
+floor(float) -> integer
+  Round down.
+  Example: floor(3.8) => 3
+
+round(float, [precision]) -> float
+  Round to precision.
+  Example: round(3.456, precision: 2) => 3.46
+
+mod(value, modulus) -> integer
+  Modulo.
+  Example: mod(7, 3) => 1
+
+abs(number) -> number
+  Absolute value.
+  Example: abs(-5) => 5
+
+## Event Metadata Functions
+set_semantic_meaning(target, meaning) -> null
+  Annotate field with semantic meaning (e.g., "timestamp", "message", "host").
+  Example: set_semantic_meaning(.ts, "timestamp")
+
+log(message, [level], [rate_limit_secs]) -> null
+  Emit a log message during processing.
+  Example: log("processing event", level: "info")
+
+assert(condition, message) -> null | error
+  Assert condition is true.
+  Example: assert(exists(.message), "message field required")
+
+abort -> never
+  Drop the event.
+  Example: if .level == "debug" { abort }
+
+## Enrichment Functions
+get_enrichment_table_record(table, condition) -> object | error
+  Look up record from enrichment table.
+  Example: get_enrichment_table_record("geoip", {"ip": .client_ip})
+
+find_enrichment_table_records(table, condition) -> [object] | error
+  Find all matching records from enrichment table.
+  Example: find_enrichment_table_records("users", {"status": "active"})
+
+## Common VRL Patterns
+
+# Rename field
+.new_name = del(.old_name)
+
+# Add/set field
+.environment = "production"
+
+# Conditional field
+if exists(.user_agent) {
+  .browser = parse_regex!(.user_agent, r'(?P<browser>Chrome|Firefox|Safari)')
+}
+
+# Drop event
+if .level == "debug" { abort }
+
+# Coalesce (first non-null)
+.host = .hostname ?? .host ?? "unknown"
+
+# Error handling with ! (abort on error)
+.parsed = parse_json!(.message)
+
+# Error handling with ?? (fallback)
+.parsed = parse_json(.message) ?? {}
+
+# Map over nested fields
+.tags = map_values(.tags) -> |_key, value| { downcase!(value) }
+
+# Redact sensitive data
+.email = redact(.email, filters: ["pattern"], redactor: {"type": "text", "replacement": "[REDACTED]"}, patterns: [r'\\S+@\\S+'])
+
+# Type coercion
+.status_code = to_int!(.status_code)
+.timestamp = to_timestamp!(.timestamp)
+`;

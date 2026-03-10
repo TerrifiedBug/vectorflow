@@ -66,6 +66,14 @@ model Team {
   vrlSnippets          VrlSnippet[]
   alertRules           AlertRule[]
   availableTags        Json?         @default("[]")   // string[] of admin-defined classification tags
+
+  // AI-powered suggestions configuration
+  aiProvider           String?       // "openai" | "anthropic" | "custom"
+  aiBaseUrl            String?       // OpenAI-compatible API endpoint
+  aiApiKey             String?       // Encrypted via crypto.ts
+  aiModel              String?       // e.g. "gpt-4o", "claude-sonnet-4-20250514"
+  aiEnabled            Boolean       @default(false)
+
   createdAt            DateTime      @default(now())
 }
 
