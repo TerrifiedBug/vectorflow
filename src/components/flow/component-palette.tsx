@@ -188,8 +188,6 @@ export function ComponentPalette() {
       { enabled: !!selectedEnvironmentId }
     )
   );
-  const sharedComponents = sharedComponentsQuery.data ?? [];
-
   const filtered = useMemo(() => {
     if (!search.trim()) return VECTOR_CATALOG;
 
@@ -204,14 +202,15 @@ export function ComponentPalette() {
   }, [search]);
 
   const filteredShared = useMemo(() => {
-    if (!search.trim()) return sharedComponents;
+    const items = sharedComponentsQuery.data ?? [];
+    if (!search.trim()) return items;
     const term = search.toLowerCase().trim();
-    return sharedComponents.filter(
+    return items.filter(
       (sc) =>
         sc.name.toLowerCase().includes(term) ||
         sc.componentType.toLowerCase().includes(term)
     );
-  }, [search, sharedComponents]);
+  }, [search, sharedComponentsQuery.data]);
 
   const sources = useMemo(
     () => filtered.filter((d) => d.kind === "source"),
