@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
 import { z } from "zod";
@@ -23,6 +24,11 @@ const sampleResultSchema = z.object({
     }),
   ),
 });
+
+/** Returns true if this is a Prisma unique constraint violation (P2002). */
+function isUniqueViolation(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+}
 
 export async function POST(request: Request) {
   const agent = await authenticateAgent(request);
@@ -50,40 +56,41 @@ export async function POST(request: Request) {
         continue;
       }
 
-      // Check if this component key already has a sample for this request
-      // (multiple agents may submit results for the same pipeline — first one wins)
-      const existing = await prisma.eventSample.findFirst({
-        where: { requestId: result.requestId, componentKey: result.componentKey },
-      });
-      if (existing) {
-        continue;
-      }
-
       if (result.error) {
         await prisma.eventSampleRequest.update({
           where: { id: result.requestId },
           data: { status: "ERROR", completedAt: new Date(), nodeId: agent.nodeId },
         });
-        await prisma.eventSample.create({
-          data: {
-            requestId: result.requestId,
-            pipelineId: sampleRequest.pipelineId,
-            componentKey: result.componentKey,
-            events: [],
-            schema: [],
-            error: result.error,
-          },
-        });
+        try {
+          await prisma.eventSample.create({
+            data: {
+              requestId: result.requestId,
+              pipelineId: sampleRequest.pipelineId,
+              componentKey: result.componentKey,
+              events: [],
+              schema: [],
+              error: result.error,
+            },
+          });
+        } catch (err) {
+          if (isUniqueViolation(err)) continue; // another agent already submitted
+          throw err;
+        }
       } else {
-        await prisma.eventSample.create({
-          data: {
-            requestId: result.requestId,
-            pipelineId: sampleRequest.pipelineId,
-            componentKey: result.componentKey,
-            events: result.events as object[],
-            schema: result.schema,
-          },
-        });
+        try {
+          await prisma.eventSample.create({
+            data: {
+              requestId: result.requestId,
+              pipelineId: sampleRequest.pipelineId,
+              componentKey: result.componentKey,
+              events: result.events as object[],
+              schema: result.schema,
+            },
+          });
+        } catch (err) {
+          if (isUniqueViolation(err)) continue; // another agent already submitted
+          throw err;
+        }
 
         const componentKeys = sampleRequest.componentKeys as string[];
         const completedKeys = await prisma.eventSample.findMany({

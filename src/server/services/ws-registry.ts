@@ -12,7 +12,14 @@ class WsRegistry {
     this.connections.set(nodeId, ws);
   }
 
-  unregister(nodeId: string): void {
+  /** Remove a connection. If `ws` is provided, only remove if it matches the
+   *  current registered socket — prevents a stale close handler from removing
+   *  a newer reconnection. */
+  unregister(nodeId: string, ws?: WebSocket): void {
+    if (ws) {
+      const current = this.connections.get(nodeId);
+      if (current !== ws) return; // stale socket — newer connection already registered
+    }
     this.connections.delete(nodeId);
   }
 

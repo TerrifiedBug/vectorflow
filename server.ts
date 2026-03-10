@@ -82,14 +82,14 @@ app.prepare().then(async () => {
       console.log(`[ws] agent disconnected: ${nodeId}`);
       clearInterval(pingInterval);
       if (pongTimer) clearTimeout(pongTimer);
-      wsRegistry.unregister(nodeId);
+      wsRegistry.unregister(nodeId, ws);
     });
 
     ws.on("error", (err: Error) => {
       console.error(`[ws] error for agent ${nodeId}:`, err.message);
       clearInterval(pingInterval);
       if (pongTimer) clearTimeout(pongTimer);
-      wsRegistry.unregister(nodeId);
+      wsRegistry.unregister(nodeId, ws);
     });
   });
 
