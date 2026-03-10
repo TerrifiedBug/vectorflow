@@ -364,6 +364,7 @@ model PipelineNode {
   pipelineId    String
   pipeline      Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   componentKey  String
+  displayName   String?
   componentType String
   kind          ComponentKind
   config        Json

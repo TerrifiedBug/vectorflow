@@ -49,6 +49,7 @@ export async function copyPipelineGraph(
       data: {
         pipelineId: targetPipelineId,
         componentKey: node.componentKey,
+        displayName: node.displayName,
         componentType: node.componentType,
         kind: node.kind,
         config: finalConfig as Prisma.InputJsonValue,

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { generateId } from "@/lib/utils";
+import { generateComponentKey } from "@/lib/component-key";
 import {
   type Node,
   type Edge,
@@ -17,6 +18,7 @@ import { findComponentDef } from "@/lib/vector/catalog";
 interface FlowNodeData {
   componentDef: VectorComponentDef;
   componentKey: string;
+  displayName?: string;
   config: Record<string, unknown>;
   disabled?: boolean;
   metrics?: NodeMetricsData;
@@ -41,6 +43,7 @@ const MAX_HISTORY = 50;
 export interface ClipboardData {
   componentDef: VectorComponentDef;
   componentKey: string;
+  displayName?: string;
   config: Record<string, unknown>;
   position: { x: number; y: number };
 }
@@ -82,7 +85,7 @@ export interface FlowState {
   removeNode: (id: string) => void;
   removeEdge: (id: string) => void;
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void;
-  updateNodeKey: (id: string, key: string) => void;
+  updateDisplayName: (id: string, displayName: string) => void;
   toggleNodeDisabled: (id: string) => void;
   updateNodeMetrics: (metricsMap: Map<string, NodeMetricsData>) => void;
 
@@ -305,7 +308,8 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         position,
         data: {
           componentDef,
-          componentKey: `${componentDef.type}_${Date.now()}`,
+          componentKey: generateComponentKey(componentDef.type),
+          displayName: componentDef.displayName,
           config,
         },
       };
@@ -370,9 +374,8 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     });
   },
 
-  updateNodeKey: (id, key) => {
+  updateDisplayName: (id, displayName) => {
     set((state) => {
-      // Prevent editing system-locked nodes
       const node = state.nodes.find((n) => n.id === id);
       if (node?.data?.isSystemLocked) return {};
 
@@ -381,7 +384,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         ...history,
         nodes: state.nodes.map((n) =>
           n.id === id
-            ? { ...n, data: { ...n.data, componentKey: key } }
+            ? { ...n, data: { ...n.data, displayName } }
             : n,
         ),
         isDirty: true,
@@ -461,6 +464,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       clipboard: {
         componentDef: node.data.componentDef as VectorComponentDef,
         componentKey: node.data.componentKey as string,
+        displayName: (node.data as unknown as FlowNodeData).displayName,
         config: { ...(node.data.config as Record<string, unknown>) },
         position: { x: node.position.x, y: node.position.y },
       },
@@ -481,7 +485,8 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       },
       data: {
         componentDef: state.clipboard.componentDef,
-        componentKey: `${state.clipboard.componentDef.type}_${Date.now()}`,
+        componentKey: generateComponentKey(state.clipboard.componentDef.type),
+        displayName: state.clipboard.displayName,
         config: { ...state.clipboard.config },
       },
       selected: true,
@@ -515,7 +520,8 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       },
       data: {
         componentDef: node.data.componentDef,
-        componentKey: `${(node.data.componentDef as VectorComponentDef).type}_${Date.now()}`,
+        componentKey: generateComponentKey((node.data.componentDef as VectorComponentDef).type),
+        displayName: (node.data as unknown as FlowNodeData).displayName,
         config: { ...(node.data.config as Record<string, unknown>) },
       },
       selected: true,
@@ -551,6 +557,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     const payload = {
       nodes: selectedNodes.map((n) => ({
         componentKey: (n.data as unknown as FlowNodeData).componentKey,
+        displayName: (n.data as unknown as FlowNodeData).displayName,
         componentType: (n.data as unknown as FlowNodeData).componentDef.type,
         kind: (n.data as unknown as FlowNodeData).componentDef.kind,
         config: (n.data as unknown as FlowNodeData).config,
@@ -582,6 +589,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         clipboard: {
           componentDef: (node.data as unknown as FlowNodeData).componentDef,
           componentKey: (node.data as unknown as FlowNodeData).componentKey,
+          displayName: (node.data as unknown as FlowNodeData).displayName,
           config: { ...(node.data as unknown as FlowNodeData).config },
           position: { x: node.position.x, y: node.position.y },
         },
@@ -604,6 +612,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     let payload: {
       nodes: Array<{
         componentKey: string;
+        displayName?: string;
         componentType: string;
         kind: string;
         config: Record<string, unknown>;
@@ -629,15 +638,10 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     const cx = 400;
     const cy = 300;
 
-    const existingKeys = new Set(state.nodes.map((n) => (n.data as unknown as FlowNodeData).componentKey));
     const keyMap = new Map<string, string>();
 
     const newNodes: Node[] = payload.nodes.map((pn) => {
-      let key = pn.componentKey;
-      while (existingKeys.has(key)) {
-        key = `${pn.componentKey}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
-      }
-      existingKeys.add(key);
+      const key = generateComponentKey(pn.componentType);
       keyMap.set(pn.componentKey, key);
 
       const componentDef = findComponentDef(pn.componentType, pn.kind as "source" | "transform" | "sink");
@@ -659,6 +663,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
             configSchema: {},
           },
           componentKey: key,
+          displayName: pn.displayName,
           config: pn.config,
           disabled: pn.disabled,
         },

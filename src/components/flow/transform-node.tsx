@@ -16,6 +16,7 @@ import { nodeStatusVariant } from "@/lib/status";
 type TransformNodeData = {
   componentDef: VectorComponentDef;
   componentKey: string;
+  displayName?: string;
   config: Record<string, unknown>;
   metrics?: NodeMetricsData;
   disabled?: boolean;
@@ -31,7 +32,7 @@ function TransformNodeComponent({
   data,
   selected,
 }: NodeProps<TransformNodeType>) {
-  const { componentDef, componentKey, metrics, disabled } = data;
+  const { componentDef, componentKey, displayName, metrics, disabled } = data;
   const isShared = !!data.sharedComponentId;
   const isStale = isShared && data.sharedComponentLatestVersion != null &&
     (data.sharedComponentVersion ?? 0) < data.sharedComponentLatestVersion;
@@ -65,15 +66,19 @@ function TransformNodeComponent({
 
       {/* Body */}
       <div className="space-y-2 px-3 py-2.5">
-        <p className="truncate text-xs font-medium text-foreground">{componentKey}</p>
+        <p className="truncate text-xs font-medium text-foreground">{displayName || componentKey}</p>
 
         {metrics && (
-          <p className="truncate text-xs font-mono text-blue-400">
-            {metrics.eventsInPerSec != null
-              ? <>{formatRate(metrics.eventsInPerSec)} ev/s in{"  "}{formatRate(metrics.eventsPerSec)} ev/s out</>
-              : <>{formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}</>
-            }
-          </p>
+          metrics.eventsInPerSec != null ? (
+            <div className="flex justify-between text-xs font-mono text-blue-400">
+              <span>{formatRate(metrics.eventsInPerSec)} ev/s in</span>
+              <span>{formatRate(metrics.eventsPerSec)} ev/s out</span>
+            </div>
+          ) : (
+            <p className="truncate text-xs font-mono text-blue-400">
+              {formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}
+            </p>
+          )
         )}
       </div>
 

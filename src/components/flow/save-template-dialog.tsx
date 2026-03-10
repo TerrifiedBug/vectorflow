@@ -68,6 +68,7 @@ export function SaveTemplateDialog({ open, onOpenChange }: SaveTemplateDialogPro
         id: n.id,
         componentType: ((n.data as Record<string, unknown>).componentDef as VectorComponentDef).type,
         componentKey: (n.data as Record<string, unknown>).componentKey as string,
+        displayName: (n.data as Record<string, unknown>).displayName as string | undefined,
         kind: (n.type ?? "source") as "source" | "transform" | "sink",
         config: ((n.data as Record<string, unknown>).config as Record<string, unknown>) ?? {},
         positionX: n.position.x,

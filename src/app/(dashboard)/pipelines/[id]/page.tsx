@@ -56,6 +56,7 @@ function dbNodesToFlowNodes(
   dbNodes: Array<{
     id: string;
     componentKey: string;
+    displayName: string | null;
     componentType: string;
     kind: string;
     config: unknown;
@@ -88,6 +89,7 @@ function dbNodesToFlowNodes(
           configSchema: {},
         },
         componentKey: n.componentKey,
+        displayName: n.displayName ?? undefined,
         config: (n.config as Record<string, unknown>) ?? {},
         disabled: n.disabled ?? false,
         sharedComponentId: n.sharedComponentId ?? null,
@@ -309,6 +311,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       nodes: state.nodes.map((n) => ({
         id: n.id,
         componentKey: (n.data as Record<string, unknown>).componentKey as string,
+        displayName: (n.data as Record<string, unknown>).displayName as string | undefined,
         componentType: ((n.data as Record<string, unknown>).componentDef as { type: string }).type,
         kind: (n.type?.toUpperCase() ?? "SOURCE") as "SOURCE" | "TRANSFORM" | "SINK",
         config: ((n.data as Record<string, unknown>).config as Record<string, unknown>) ?? {},

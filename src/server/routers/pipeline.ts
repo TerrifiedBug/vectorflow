@@ -32,6 +32,7 @@ const pipelineNameSchema = z
 const nodeSchema = z.object({
   id: z.string().optional(),
   componentKey: z.string().min(1).max(128).regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/),
+  displayName: z.string().max(64).nullable().optional(),
   componentType: z.string().min(1),
   kind: z.nativeEnum(ComponentKind),
   config: z.record(z.string(), z.any()),
@@ -734,6 +735,7 @@ export const pipelineRouter = router({
                 ...(node.id ? { id: node.id } : {}),
                 pipelineId: input.pipelineId,
                 componentKey: node.componentKey,
+                displayName: node.displayName ?? null,
                 componentType: node.componentType,
                 kind: node.kind,
                 config: encryptNodeConfig(node.componentType, node.config) as unknown as typeof node.config,
@@ -835,6 +837,7 @@ export const pipelineRouter = router({
                 id: node.id as string,
                 pipelineId: input.pipelineId,
                 componentKey: node.componentKey as string,
+                displayName: (node.displayName as string) ?? null,
                 componentType: node.componentType as string,
                 kind: node.kind as ComponentKind,
                 config: node.config as Prisma.InputJsonValue,
@@ -899,6 +902,7 @@ export const pipelineRouter = router({
       const nodesSnapshot = pipeline.nodes.map((n) => ({
         id: n.id,
         componentKey: n.componentKey,
+        displayName: n.displayName,
         componentType: n.componentType,
         kind: n.kind,
         config: n.config,
