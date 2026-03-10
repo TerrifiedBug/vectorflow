@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
@@ -24,9 +25,11 @@ type pipelineState struct {
 type poller struct {
 	cfg            *config.Config
 	client         configFetcher
+	mu             sync.Mutex
 	known          map[string]pipelineState // pipelineId -> last known state
 	sampleRequests []client.SampleRequestMsg
 	pendingAction  *client.PendingAction
+	websocketUrl   string
 }
 
 func newPoller(cfg *config.Config, c configFetcher) *poller {
@@ -59,6 +62,9 @@ type PipelineAction struct {
 
 // Poll fetches config from VectorFlow and returns actions to take.
 func (p *poller) Poll() ([]PipelineAction, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	resp, err := p.client.GetConfig()
 	if err != nil {
 		return nil, err
@@ -184,6 +190,11 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 	// Store pending action (e.g. self-update) for the agent to handle
 	p.pendingAction = resp.PendingAction
 
+	// Store websocket URL for the agent to use
+	if resp.WebSocketURL != "" {
+		p.websocketUrl = resp.WebSocketURL
+	}
+
 	return actions, nil
 }
 
@@ -195,4 +206,11 @@ func (p *poller) SampleRequests() []client.SampleRequestMsg {
 // PendingAction returns the pending action from the last poll response, if any.
 func (p *poller) PendingAction() *client.PendingAction {
 	return p.pendingAction
+}
+
+// WebSocketURL returns the WebSocket URL from the last config response.
+func (p *poller) WebSocketURL() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.websocketUrl
 }
