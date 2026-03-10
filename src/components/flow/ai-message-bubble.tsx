@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react";
 import { Bot, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { AiSuggestionCard } from "./ai-suggestion-card";
 import { detectConflicts } from "@/lib/ai/conflict-detector";
 import type { AiSuggestion, SuggestionStatus } from "@/lib/ai/types";
@@ -22,7 +21,7 @@ export function AiMessageBubble({
 }: AiMessageBubbleProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const suggestions = message.suggestions ?? [];
+  const suggestions = useMemo(() => message.suggestions ?? [], [message.suggestions]);
   const hasSuggestions = message.role === "assistant" && suggestions.length > 0;
 
   // Parse summary from assistant JSON content

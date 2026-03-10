@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
-import type { AiSuggestion, AiReviewResponse } from "@/lib/ai/types";
+import type { AiSuggestion } from "@/lib/ai/types";
 import { parseAiReviewResponse } from "@/lib/ai/suggestion-validator";
 
 export interface ConversationMessage {
