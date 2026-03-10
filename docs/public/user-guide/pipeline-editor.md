@@ -257,3 +257,19 @@ Click the pipeline name in the top-left corner of the editor to rename it inline
 {% hint style="info" %}
 On Windows and Linux, use `Ctrl` instead of `Cmd` for all keyboard shortcuts.
 {% endhint %}
+
+## AI-Powered Suggestions
+
+When AI is configured for your team (Settings → AI), two AI features become available:
+
+### VRL Assistant
+In the VRL editor, click the **AI** button in the tools panel. Type a natural language description of what you want the VRL code to do, and the AI will generate VRL code. You can **Insert** (append) or **Replace** the current code.
+
+### Pipeline Builder
+In the pipeline editor toolbar, click the **sparkle icon** to open the AI Pipeline Builder. Two modes are available:
+
+- **Generate**: Describe a pipeline in plain language (e.g., "Collect K8s logs, drop debug, send to Datadog"). The AI generates Vector YAML config that is applied directly to your canvas.
+- **Review**: Ask the AI to review your current pipeline configuration for performance, correctness, and best practices.
+
+### Configuration
+Team admins can configure AI in **Settings → AI**. VectorFlow supports any OpenAI-compatible API (OpenAI, Anthropic, Ollama, Groq, Together, etc.).
