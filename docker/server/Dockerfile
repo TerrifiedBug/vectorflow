@@ -31,8 +31,15 @@ COPY prisma.config.ts ./prisma.config.ts
 RUN npx prisma generate
 COPY src ./src
 COPY public ./public
+COPY server.ts ./server.ts
 RUN --mount=type=cache,target=/app/.next/cache \
     pnpm build
+# Bundle custom server.ts → server.js (replaces Next.js default standalone server.js)
+# Uses --alias to resolve @/ imports, --packages=external keeps npm deps external
+RUN npx esbuild server.ts --bundle --platform=node --target=node22 \
+    --outfile=.next/standalone/server.js \
+    --alias:@/=./src/ \
+    --packages=external
 # Save Prisma client version for the runner stage (standalone strips node_modules)
 RUN node -e "console.log(require('./node_modules/@prisma/client/package.json').version)" > /tmp/prisma-version
 
