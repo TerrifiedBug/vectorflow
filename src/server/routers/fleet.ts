@@ -12,13 +12,17 @@ export const fleetRouter = router({
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      return prisma.vectorNode.findMany({
+      const nodes = await prisma.vectorNode.findMany({
         where: { environmentId: input.environmentId },
         include: {
           environment: { select: { id: true, name: true } },
         },
         orderBy: { createdAt: "desc" },
       });
+      return nodes.map((node) => ({
+        ...node,
+        wsConnected: wsRegistry.isConnected(node.id),
+      }));
     }),
 
   get: protectedProcedure
@@ -408,7 +412,10 @@ export const fleetRouter = router({
       });
 
       return {
-        nodes,
+        nodes: nodes.map((node) => ({
+          ...node,
+          wsConnected: wsRegistry.isConnected(node.id),
+        })),
         deployedPipelines: deployedPipelines.map((p) => ({
           id: p.id,
           name: p.name,
