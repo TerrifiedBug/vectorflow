@@ -75,7 +75,7 @@ function getDefaultBaseUrl(provider: string | null): string {
   }
 }
 
-export async function getTeamAiConfig(teamId: string) {
+export async function getTeamAiConfig(teamId: string, { requireEnabled = true } = {}) {
   const team = await prisma.team.findUnique({
     where: { id: teamId },
     select: {
@@ -88,7 +88,7 @@ export async function getTeamAiConfig(teamId: string) {
   });
 
   if (!team) throw new Error("Team not found");
-  if (!team.aiEnabled) throw new Error("AI is not enabled for this team");
+  if (requireEnabled && !team.aiEnabled) throw new Error("AI is not enabled for this team");
   if (!team.aiApiKey) throw new Error("AI API key is not configured");
 
   return {
@@ -179,7 +179,7 @@ export async function streamCompletion({
 
 export async function testAiConnection(teamId: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const config = await getTeamAiConfig(teamId);
+    const config = await getTeamAiConfig(teamId, { requireEnabled: false });
     validateBaseUrl(config.baseUrl);
 
     const response = await fetch(`${config.baseUrl}/chat/completions`, {
