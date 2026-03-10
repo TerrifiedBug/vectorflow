@@ -4,7 +4,7 @@ Templates are reusable pipeline blueprints that capture a complete pipeline grap
 
 ## Template library
 
-The **Templates** page displays all templates available to your team as a card grid. Each card shows:
+Templates are found in the **Library** page (accessible from the sidebar), under the **Templates** tab. The page displays all templates available to your team as a card grid. Each card shows:
 
 - **Name** -- The template name.
 - **Category** -- A label such as Logging, Metrics, Archival, Streaming, or a custom category you define.
@@ -44,8 +44,8 @@ Click **Save Template**. The template now appears in the template library for al
 
 {% stepper %}
 {% step %}
-### Open the Templates page
-Navigate to **Templates** in the sidebar. Make sure you have an environment selected in the header.
+### Open the Library
+Navigate to **Library > Templates** in the sidebar. Make sure you have an environment selected in the header.
 {% endstep %}
 {% step %}
 ### Choose a template
@@ -72,6 +72,7 @@ Templates are designed to be portable across environments, so they intentionally
 - **Secrets** -- Secret values (API keys, passwords, tokens) are never stored in templates. You must configure secrets in the target environment after creating a pipeline from a template.
 - **Certificates** -- TLS certificates are environment-specific and are not included.
 - **Environment bindings** -- Templates are not tied to any specific environment. They can be used in any environment within the team.
+- **Shared component links** -- Nodes that are linked to [shared components](shared-components.md) have their links stripped when saved as a template. The node's configuration snapshot is preserved, but the template node becomes a standalone component.
 - **Deployment state** -- Pipelines created from templates start as drafts. You deploy them when ready.
 
 {% hint style="warning" %}

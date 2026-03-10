@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
-import { Plus, MoreHorizontal, Copy, Trash2, BarChart3, ArrowUpRight, Clock } from "lucide-react";
+import { Plus, MoreHorizontal, Copy, Trash2, BarChart3, ArrowUpRight, Clock, AlertTriangle } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
 
@@ -322,6 +322,16 @@ export default function PipelinesPage() {
                       </TooltipTrigger>
                       <TooltipContent>Pending Approval</TooltipContent>
                     </Tooltip>
+                  )}
+                  {pipeline.hasStaleComponents && (
+                    <Badge
+                      variant="secondary"
+                      className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                      title={`Updates available for: ${pipeline.staleComponentNames?.join(", ")}`}
+                    >
+                      <AlertTriangle className="mr-1 h-3 w-3" />
+                      Updates available
+                    </Badge>
                   )}
                   </div>
                 </TableCell>

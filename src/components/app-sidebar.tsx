@@ -43,7 +43,7 @@ const navItems = [
   { title: "Pipelines", href: "/pipelines", icon: Workflow },
   { title: "Fleet", href: "/fleet", icon: Server },
   { title: "Environments", href: "/environments", icon: Layers },
-  { title: "Templates", href: "/templates", icon: FileText },
+  { title: "Library", href: "/library", icon: FileText },
   { title: "Audit Log", href: "/audit", icon: ScrollText },
   { title: "Alerts", href: "/alerts", icon: Bell },
   { title: "Analytics", href: "/analytics", icon: BarChart3 },

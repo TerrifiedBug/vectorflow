@@ -19,6 +19,7 @@
 * [Fleet Management](user-guide/fleet.md)
 * [Alerts](user-guide/alerts.md)
 * [Templates](user-guide/templates.md)
+* [Shared Components](user-guide/shared-components.md)
 
 ## Operations
 

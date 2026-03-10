@@ -21,9 +21,11 @@
   --color-node-source: var(--node-source);
   --color-node-transform: var(--node-transform);
   --color-node-sink: var(--node-sink);
+  --color-node-shared: var(--node-shared);
   --color-node-source-foreground: var(--node-source-foreground);
   --color-node-transform-foreground: var(--node-transform-foreground);
   --color-node-sink-foreground: var(--node-sink-foreground);
+  --color-node-shared-foreground: var(--node-shared-foreground);
   --color-status-healthy: var(--status-healthy);
   --color-status-healthy-bg: var(--status-healthy-bg);
   --color-status-healthy-foreground: var(--status-healthy-foreground);
@@ -74,9 +76,11 @@
   --node-source: oklch(0.65 0.18 145);
   --node-transform: oklch(0.60 0.15 250);
   --node-sink: oklch(0.55 0.20 295);
+  --node-shared: oklch(0.60 0.18 300);
   --node-source-foreground: oklch(0.98 0 0);
   --node-transform-foreground: oklch(0.98 0 0);
   --node-sink-foreground: oklch(0.98 0 0);
+  --node-shared-foreground: oklch(0.98 0 0);
   --status-healthy: oklch(0.55 0.17 145);
   --status-healthy-bg: oklch(0.55 0.17 145 / 15%);
   --status-healthy-foreground: oklch(0.35 0.12 145);
