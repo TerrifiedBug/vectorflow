@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { Copy, Trash2, Lock, Info, MousePointerClick, Book } from "lucide-react";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
@@ -118,7 +118,7 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
   const nodes = useFlowStore((s) => s.nodes);
   const edges = useFlowStore((s) => s.edges);
   const updateNodeConfig = useFlowStore((s) => s.updateNodeConfig);
-  const updateNodeKey = useFlowStore((s) => s.updateNodeKey);
+  const updateDisplayName = useFlowStore((s) => s.updateDisplayName);
   const toggleNodeDisabled = useFlowStore((s) => s.toggleNodeDisabled);
   const removeNode = useFlowStore((s) => s.removeNode);
 
@@ -126,12 +126,8 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
     ? nodes.find((n) => n.id === selectedNodeId)
     : null;
 
-  const storeKey = (selectedNode?.data as { componentKey?: string })?.componentKey ?? "";
-  const [displayKey, setDisplayKey] = useState(storeKey);
-
-  useEffect(() => {
-    setDisplayKey(storeKey);
-  }, [storeKey]);
+  const componentKey = (selectedNode?.data as { componentKey?: string })?.componentKey ?? "";
+  const currentDisplayName = (selectedNode?.data as { displayName?: string })?.displayName ?? "";
 
   const upstream = useMemo(
     () =>
@@ -150,22 +146,14 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
     [selectedNodeId, updateNodeConfig],
   );
 
-  const handleKeyChange = useCallback(
+  const handleNameChange = useCallback(
     (raw: string) => {
       if (selectedNodeId) {
-        const sanitized = raw
-          .replace(/\s+/g, "_")
-          .replace(/[^a-zA-Z0-9_]/g, "")
-          .replace(/^(\d+)/, "_$1");
-        if (sanitized) {
-          setDisplayKey(raw);
-          updateNodeKey(selectedNodeId, sanitized);
-        } else {
-          setDisplayKey(storeKey);
-        }
+        const trimmed = raw.slice(0, 64);
+        updateDisplayName(selectedNodeId, trimmed);
       }
     },
-    [selectedNodeId, updateNodeKey, storeKey],
+    [selectedNodeId, updateDisplayName],
   );
 
   const handleDelete = useCallback(() => {
@@ -227,7 +215,8 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
 
   const { componentDef, config, disabled, isSystemLocked } = selectedNode.data as {
     componentDef: VectorComponentDef;
-    componentKey: string; // used via displayKey/storeKey above
+    componentKey: string;
+    displayName?: string;
     config: Record<string, unknown>;
     disabled?: boolean;
     isSystemLocked?: boolean;
@@ -293,18 +282,22 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Component Key */}
+                {/* Name */}
                 <div className="space-y-2">
-                  <Label htmlFor="component-key">Component Key</Label>
+                  <Label htmlFor="display-name">Name</Label>
                   <Input
-                    id="component-key"
-                    value={displayKey}
-                    onChange={(e) => handleKeyChange(e.target.value)}
+                    id="display-name"
+                    value={currentDisplayName}
+                    onChange={(e) => handleNameChange(e.target.value)}
                     disabled={isSystemLocked}
+                    placeholder="Component name"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Letters, numbers, and underscores only (e.g. traefik_logs)
-                  </p>
+                </div>
+
+                {/* Component ID (read-only) */}
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Component ID</Label>
+                  <p className="text-xs font-mono text-muted-foreground select-all">{componentKey}</p>
                 </div>
 
                 {/* Enabled toggle */}
@@ -433,7 +426,7 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
         <TabsContent value="live-tail" className="min-h-0 flex-1 overflow-y-auto">
           <LiveTailPanel
             pipelineId={pipelineId}
-            componentKey={storeKey}
+            componentKey={componentKey}
             isDeployed={isDeployed}
           />
         </TabsContent>

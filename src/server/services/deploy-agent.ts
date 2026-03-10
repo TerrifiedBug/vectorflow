@@ -107,6 +107,7 @@ export async function deployAgent(
   const nodesSnapshot = pipeline.nodes.map((n) => ({
     id: n.id,
     componentKey: n.componentKey,
+    displayName: n.displayName,
     componentType: n.componentType,
     kind: n.kind,
     config: n.config,

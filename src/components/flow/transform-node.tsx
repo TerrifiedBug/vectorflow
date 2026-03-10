@@ -15,6 +15,7 @@ import { nodeStatusVariant } from "@/lib/status";
 type TransformNodeData = {
   componentDef: VectorComponentDef;
   componentKey: string;
+  displayName?: string;
   config: Record<string, unknown>;
   metrics?: NodeMetricsData;
   disabled?: boolean;
@@ -26,7 +27,7 @@ function TransformNodeComponent({
   data,
   selected,
 }: NodeProps<TransformNodeType>) {
-  const { componentDef, componentKey, metrics, disabled } = data;
+  const { componentDef, componentKey, displayName, metrics, disabled } = data;
   const Icon = useMemo(() => getIcon(componentDef.icon), [componentDef.icon]);
 
   return (
@@ -55,7 +56,7 @@ function TransformNodeComponent({
 
       {/* Body */}
       <div className="space-y-2 px-3 py-2.5">
-        <p className="truncate text-xs font-medium text-foreground">{componentKey}</p>
+        <p className="truncate text-xs font-medium text-foreground">{displayName ?? componentKey}</p>
 
         {metrics && (
           <p className="truncate text-xs font-mono text-blue-400">
