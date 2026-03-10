@@ -136,23 +136,13 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
           const nodes = useFlowStore.getState().nodes;
           const newNode = nodes[nodes.length - 1];
           if (newNode) {
-            useFlowStore.setState((state) => ({
-              nodes: state.nodes.map((n) =>
-                n.id === newNode.id
-                  ? {
-                      ...n,
-                      data: {
-                        ...n.data,
-                        config: sc.config,
-                        sharedComponentId: sc.id,
-                        sharedComponentVersion: sc.version,
-                        sharedComponentName: sc.name,
-                        sharedComponentLatestVersion: sc.version,
-                      },
-                    }
-                  : n
-              ),
-            }));
+            useFlowStore.getState().patchNodeSharedData(newNode.id, {
+              config: sc.config,
+              sharedComponentId: sc.id,
+              sharedComponentVersion: sc.version,
+              sharedComponentName: sc.name,
+              sharedComponentLatestVersion: sc.version,
+            });
           }
         } catch {
           // Malformed shared component data — ignore, node was already added without link

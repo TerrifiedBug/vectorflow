@@ -87,6 +87,15 @@ export interface FlowState {
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void;
   updateDisplayName: (id: string, displayName: string) => void;
   toggleNodeDisabled: (id: string) => void;
+  patchNodeSharedData: (id: string, data: {
+    config: Record<string, unknown>;
+    sharedComponentId: string;
+    sharedComponentVersion: number;
+    sharedComponentName: string;
+    sharedComponentLatestVersion: number;
+  }) => void;
+  acceptNodeSharedUpdate: (id: string, config: Record<string, unknown>, version: number) => void;
+  unlinkNode: (id: string) => void;
   updateNodeMetrics: (metricsMap: Map<string, NodeMetricsData>) => void;
 
   // Global config
@@ -404,6 +413,77 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         nodes: state.nodes.map((n) =>
           n.id === id
             ? { ...n, data: { ...n.data, disabled: !n.data.disabled } }
+            : n,
+        ),
+        isDirty: true,
+      };
+    });
+  },
+
+  patchNodeSharedData: (id, data) => {
+    set((state) => {
+      // Amend the last history entry — the addNode call already pushed a snapshot
+      return {
+        nodes: state.nodes.map((n) =>
+          n.id === id
+            ? {
+                ...n,
+                data: {
+                  ...n.data,
+                  config: data.config,
+                  sharedComponentId: data.sharedComponentId,
+                  sharedComponentVersion: data.sharedComponentVersion,
+                  sharedComponentName: data.sharedComponentName,
+                  sharedComponentLatestVersion: data.sharedComponentLatestVersion,
+                },
+              }
+            : n,
+        ),
+        isDirty: true,
+      };
+    });
+  },
+
+  acceptNodeSharedUpdate: (id, config, version) => {
+    set((state) => {
+      const history = pushSnapshot(state);
+      return {
+        ...history,
+        nodes: state.nodes.map((n) =>
+          n.id === id
+            ? {
+                ...n,
+                data: {
+                  ...n.data,
+                  config,
+                  sharedComponentVersion: version,
+                  sharedComponentLatestVersion: version,
+                },
+              }
+            : n,
+        ),
+        isDirty: true,
+      };
+    });
+  },
+
+  unlinkNode: (id) => {
+    set((state) => {
+      const history = pushSnapshot(state);
+      return {
+        ...history,
+        nodes: state.nodes.map((n) =>
+          n.id === id
+            ? {
+                ...n,
+                data: {
+                  ...n.data,
+                  sharedComponentId: null,
+                  sharedComponentVersion: null,
+                  sharedComponentName: null,
+                  sharedComponentLatestVersion: null,
+                },
+              }
             : n,
         ),
         isDirty: true,

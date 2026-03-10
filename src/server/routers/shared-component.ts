@@ -324,13 +324,22 @@ export const sharedComponentRouter = router({
       }
 
       // Copy latest config from shared component into the node
-      return prisma.pipelineNode.update({
+      await prisma.pipelineNode.update({
         where: { id: input.nodeId },
         data: {
           config: node.sharedComponent.config ?? undefined,
           sharedComponentVersion: node.sharedComponent.version,
         },
       });
+
+      // Return decrypted config and version for the client to sync its local store
+      return {
+        config: decryptNodeConfig(
+          node.sharedComponent.componentType,
+          (node.sharedComponent.config as Record<string, unknown>) ?? {},
+        ),
+        version: node.sharedComponent.version,
+      };
     }),
 
   /** Accept updates for all stale linked nodes in a pipeline */

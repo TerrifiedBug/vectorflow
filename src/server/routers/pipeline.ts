@@ -720,6 +720,15 @@ export const pipelineRouter = router({
             where: { id: { in: sharedComponentIds } },
             select: { id: true, environmentId: true },
           });
+          const foundIds = new Set(sharedComponents.map((sc) => sc.id));
+          for (const scId of sharedComponentIds) {
+            if (!foundIds.has(scId)) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Shared component ${scId} not found`,
+              });
+            }
+          }
           for (const sc of sharedComponents) {
             if (sc.environmentId !== existing.environmentId) {
               throw new TRPCError({

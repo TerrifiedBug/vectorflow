@@ -125,6 +125,8 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
   const updateDisplayName = useFlowStore((s) => s.updateDisplayName);
   const toggleNodeDisabled = useFlowStore((s) => s.toggleNodeDisabled);
   const removeNode = useFlowStore((s) => s.removeNode);
+  const acceptNodeSharedUpdate = useFlowStore((s) => s.acceptNodeSharedUpdate);
+  const unlinkNodeStore = useFlowStore((s) => s.unlinkNode);
 
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -140,7 +142,13 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
 
   const acceptUpdateMutation = useMutation(
     trpc.sharedComponent.acceptUpdate.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data, variables) => {
+        // Sync the Zustand store so saveGraph doesn't revert the update
+        acceptNodeSharedUpdate(
+          variables.nodeId,
+          data.config as Record<string, unknown>,
+          data.version,
+        );
         queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
         toast.success("Component updated to latest version");
       },
@@ -149,7 +157,9 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
 
   const unlinkMutation = useMutation(
     trpc.sharedComponent.unlink.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (_data, variables) => {
+        // Sync the Zustand store so saveGraph doesn't revert the unlink
+        unlinkNodeStore(variables.nodeId);
         queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
         toast.success("Component unlinked");
       },
