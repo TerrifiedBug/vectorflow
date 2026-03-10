@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { streamCompletion } from "@/server/services/ai";
@@ -31,6 +33,13 @@ export async function POST(request: Request) {
 
   if (!body.teamId || !body.prompt || !body.mode) {
     return new Response(JSON.stringify({ error: "teamId, prompt, and mode are required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (body.mode !== "generate" && body.mode !== "review") {
+    return new Response(JSON.stringify({ error: "mode must be 'generate' or 'review'" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });

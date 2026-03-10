@@ -2,7 +2,7 @@
 
 /**
  * In-memory token bucket rate limiter.
- * Tracks per-team request counts with a sliding window.
+ * Tracks per-team request counts with a fixed window.
  */
 
 interface Bucket {

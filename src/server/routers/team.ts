@@ -78,7 +78,7 @@ export const teamRouter = router({
       select: { isSuperAdmin: true },
     });
 
-    return prisma.team.findMany({
+    const teams = await prisma.team.findMany({
       where: {
         name: { not: "__system__" },
         ...(user?.isSuperAdmin ? {} : { members: { some: { userId } } }),
@@ -88,6 +88,8 @@ export const teamRouter = router({
       },
       orderBy: { createdAt: "desc" },
     });
+    // Strip encrypted API key — never send to client
+    return teams.map(({ aiApiKey: _, ...safeTeam }) => safeTeam);
   }),
 
   get: protectedProcedure

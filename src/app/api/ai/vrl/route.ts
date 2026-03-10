@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { streamCompletion } from "@/server/services/ai";

@@ -536,11 +536,13 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <AiPipelineDialog
-        open={aiDialogOpen}
-        onOpenChange={setAiDialogOpen}
-        environmentName={pipelineQuery.data?.environment?.name}
-      />
+      {aiEnabled && (
+        <AiPipelineDialog
+          open={aiDialogOpen}
+          onOpenChange={setAiDialogOpen}
+          environmentName={pipelineQuery.data?.environment?.name}
+        />
+      )}
     </div>
   );
 }

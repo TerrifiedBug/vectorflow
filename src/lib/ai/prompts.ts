@@ -7,7 +7,7 @@ let vrlReferenceCache: string | null = null;
 
 function getVrlReference(): string {
   if (vrlReferenceCache) return vrlReferenceCache;
-  const refPath = path.join(process.cwd(), "src/lib/ai/vrl-reference.txt");
+  const refPath = path.join(__dirname, "vrl-reference.txt");
   vrlReferenceCache = fs.readFileSync(refPath, "utf-8");
   return vrlReferenceCache;
 }
