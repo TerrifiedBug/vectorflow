@@ -4,6 +4,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { streamCompletion } from "@/server/services/ai";
 import { buildPipelineSystemPrompt } from "@/lib/ai/prompts";
+import { writeAuditLog } from "@/server/services/audit";
+import type { AiReviewResponse } from "@/lib/ai/types";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -20,6 +22,8 @@ export async function POST(request: Request) {
     mode: "generate" | "review";
     currentYaml?: string;
     environmentName?: string;
+    pipelineId?: string;
+    conversationId?: string;
   };
 
   try {
@@ -67,6 +71,60 @@ export async function POST(request: Request) {
     });
   }
 
+  // Validate pipelineId for review mode
+  if (body.mode === "review" && !body.pipelineId) {
+    return new Response(JSON.stringify({ error: "pipelineId is required for review mode" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // --- Conversation persistence (review mode only) ---
+  let conversationId = body.conversationId;
+  let priorMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
+
+  if (body.mode === "review" && body.pipelineId) {
+    if (!conversationId) {
+      const conversation = await prisma.aiConversation.create({
+        data: {
+          pipelineId: body.pipelineId,
+          createdById: session.user.id,
+        },
+      });
+      conversationId = conversation.id;
+    }
+
+    await prisma.aiMessage.create({
+      data: {
+        conversationId,
+        role: "user",
+        content: body.prompt,
+        pipelineYaml: body.currentYaml ?? null,
+        createdById: session.user.id,
+      },
+    });
+
+    // Get most recent 10 messages (desc) then reverse to chronological order
+    const history = await prisma.aiMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: { role: true, content: true },
+    });
+    history.reverse();
+
+    // Exclude the message we just saved (last user msg) — it goes as the current prompt
+    priorMessages = history.slice(0, -1).map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    }));
+  }
+
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = [
+    ...priorMessages,
+    { role: "user", content: body.prompt },
+  ];
+
   const mode = body.mode;
 
   const systemPrompt = buildPipelineSystemPrompt({
@@ -76,21 +134,72 @@ export async function POST(request: Request) {
   });
 
   const encoder = new TextEncoder();
+  let fullResponse = "";
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        if (conversationId) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ conversationId })}\n\n`)
+          );
+        }
+
         await streamCompletion({
           teamId: body.teamId,
           systemPrompt,
-          messages: [{ role: "user", content: body.prompt }],
+          messages,
           onToken: (token) => {
+            fullResponse += token;
             const data = JSON.stringify({ token });
             controller.enqueue(encoder.encode(`data: ${data}\n\n`));
           },
           signal: request.signal,
         });
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
+
+        if (body.mode === "review" && conversationId) {
+          let parsedSuggestions = null;
+          try {
+            const parsed: AiReviewResponse = JSON.parse(fullResponse);
+            if (parsed.summary && Array.isArray(parsed.suggestions)) {
+              parsedSuggestions = parsed.suggestions;
+            }
+          } catch {
+            // Not valid JSON — store as raw text
+          }
+
+          prisma.aiMessage.create({
+            data: {
+              conversationId,
+              role: "assistant",
+              content: fullResponse,
+              suggestions: parsedSuggestions,
+              createdById: session.user.id,
+            },
+          }).catch((err) => console.error("Failed to persist AI response:", err));
+
+          const pipelineForAudit = await prisma.pipeline.findUnique({
+            where: { id: body.pipelineId! },
+            select: { environmentId: true, environment: { select: { teamId: true } } },
+          });
+
+          writeAuditLog({
+            userId: session.user.id,
+            action: "pipeline.ai_review",
+            entityType: "Pipeline",
+            entityId: body.pipelineId!,
+            metadata: {
+              conversationId,
+              mode: body.mode,
+              suggestionCount: parsedSuggestions?.length ?? 0,
+            },
+            teamId: pipelineForAudit?.environment.teamId ?? null,
+            environmentId: pipelineForAudit?.environmentId ?? null,
+            userEmail: session.user.email ?? null,
+            userName: session.user.name ?? null,
+          }).catch(() => {});
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : "AI request failed";
         controller.enqueue(
