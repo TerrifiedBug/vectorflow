@@ -83,7 +83,7 @@ export async function POST(request: Request) {
         await streamCompletion({
           teamId: body.teamId,
           systemPrompt,
-          userPrompt: body.prompt,
+          messages: [{ role: "user", content: body.prompt }],
           onToken: (token) => {
             const data = JSON.stringify({ token });
             controller.enqueue(encoder.encode(`data: ${data}\n\n`));
