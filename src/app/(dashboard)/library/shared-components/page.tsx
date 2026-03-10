@@ -203,7 +203,7 @@ function KindSection({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-lg border bg-muted/40 px-4 py-3 text-left transition-colors hover:bg-muted/70">
+      <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2 rounded-lg border bg-muted/40 px-4 py-3 text-left transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
         <ChevronDown
           className={cn(
             "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
@@ -221,7 +221,7 @@ function KindSection({
             <button
               key={sc.id}
               onClick={() => onItemClick(sc.id)}
-              className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-muted/50"
+              className="flex w-full cursor-pointer items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
             >
               <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">

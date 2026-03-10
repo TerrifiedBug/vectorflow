@@ -117,7 +117,7 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isSubMode ? "-translate-x-full opacity-0" : "translate-x-0 opacity-100",
+            isSubMode ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100",
           )}
         >
           <SidebarGroup>
@@ -153,7 +153,7 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isSettingsMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0",
+            isSettingsMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
           )}
         >
           {settingsNavGroups.map((group) => {
@@ -192,10 +192,11 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isLibraryMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0",
+            isLibraryMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
           )}
         >
           <SidebarGroup>
+            <SidebarGroupLabel>Browse</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {libraryNavItems.map((item) => (
