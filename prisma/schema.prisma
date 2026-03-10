@@ -133,6 +133,7 @@ model Environment {
   serviceAccounts         ServiceAccount[]
   deployRequests          DeployRequest[]
   teamDefaults            Team[]            @relation("teamDefault")
+  sharedComponents        SharedComponent[]
   createdAt               DateTime      @default(now())
 }
 
@@ -369,6 +370,11 @@ model PipelineNode {
   positionX     Float
   positionY     Float
   disabled      Boolean       @default(false)
+  sharedComponentId       String?
+  sharedComponent         SharedComponent? @relation(fields: [sharedComponentId], references: [id], onDelete: SetNull)
+  sharedComponentVersion  Int?
+
+  @@index([sharedComponentId])
 }
 
 enum ComponentKind {
@@ -384,6 +390,25 @@ model PipelineEdge {
   sourceNodeId String
   targetNodeId String
   sourcePort   String?
+}
+
+model SharedComponent {
+  id              String        @id @default(cuid())
+  name            String
+  description     String?
+  componentType   String
+  kind            ComponentKind
+  config          Json
+  version         Int           @default(1)
+  environmentId   String
+  environment     Environment   @relation(fields: [environmentId], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  linkedNodes     PipelineNode[]
+
+  @@unique([environmentId, name])
+  @@index([environmentId])
 }
 
 model PipelineVersion {
