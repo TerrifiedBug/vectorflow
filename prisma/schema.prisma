@@ -35,6 +35,8 @@ model User {
   deployRequestsReviewed DeployRequest[]  @relation("deployReviewer")
   deployRequestsExecuted DeployRequest[]  @relation("deployExecutor")
   preferences            UserPreference[]
+  aiConversationsCreated AiConversation[] @relation("AiConversationCreatedBy")
+  aiMessagesCreated      AiMessage[]      @relation("AiMessageCreatedBy")
   createdAt              DateTime         @default(now())
 }
 
@@ -277,6 +279,7 @@ model Pipeline {
   slis            PipelineSli[]
   enrichMetadata    Boolean              @default(false)
   tags              Json?                @default("[]")   // string[] of classification tags like ["PII", "PCI-DSS"]
+  aiConversations AiConversation[]
   deployRequests  DeployRequest[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
@@ -751,4 +754,32 @@ model ServiceAccount {
 
   @@index([hashedKey])
   @@index([environmentId])
+}
+
+model AiConversation {
+  id          String      @id @default(cuid())
+  pipelineId  String
+  pipeline    Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?       @relation("AiConversationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  messages    AiMessage[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([pipelineId, createdAt])
+}
+
+model AiMessage {
+  id              String          @id @default(cuid())
+  conversationId  String
+  conversation    AiConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role            String          // "user" | "assistant"
+  content         String
+  suggestions     Json?
+  pipelineYaml    String?
+  createdById     String?
+  createdBy       User?           @relation("AiMessageCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime        @default(now())
+
+  @@index([conversationId, createdAt])
 }
