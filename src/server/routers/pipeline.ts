@@ -841,8 +841,8 @@ export const pipelineRouter = router({
                 positionX: node.positionX as number,
                 positionY: node.positionY as number,
                 disabled: (node.disabled as boolean) ?? false,
-                sharedComponentId: (node as Record<string, unknown>).sharedComponentId as string | null ?? null,
-                sharedComponentVersion: (node as Record<string, unknown>).sharedComponentVersion as number | null ?? null,
+                sharedComponentId: ((node as Record<string, unknown>).sharedComponentId as string | null) ?? null,
+                sharedComponentVersion: ((node as Record<string, unknown>).sharedComponentVersion as number | null) ?? null,
               },
             })
           )

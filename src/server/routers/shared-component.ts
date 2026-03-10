@@ -53,7 +53,7 @@ export const sharedComponentRouter = router({
         },
       });
 
-      if (!sc) {
+      if (!sc || sc.environmentId !== input.environmentId) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Shared component not found",
@@ -166,23 +166,23 @@ export const sharedComponentRouter = router({
         });
       }
 
-      // Check unique constraint
-      const existing = await prisma.sharedComponent.findUnique({
-        where: {
-          environmentId_name: {
-            environmentId: input.environmentId,
-            name: input.name,
-          },
-        },
-      });
-      if (existing) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: `A shared component named "${input.name}" already exists in this environment`,
-        });
-      }
-
       return prisma.$transaction(async (tx) => {
+        // Check unique constraint inside transaction to prevent TOCTOU race
+        const existing = await tx.sharedComponent.findUnique({
+          where: {
+            environmentId_name: {
+              environmentId: input.environmentId,
+              name: input.name,
+            },
+          },
+        });
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `A shared component named "${input.name}" already exists in this environment`,
+          });
+        }
+
         const sharedComponent = await tx.sharedComponent.create({
           data: {
             environmentId: input.environmentId,
@@ -224,7 +224,7 @@ export const sharedComponentRouter = router({
       const sc = await prisma.sharedComponent.findUnique({
         where: { id: input.id },
       });
-      if (!sc) {
+      if (!sc || sc.environmentId !== input.environmentId) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Shared component not found",
@@ -249,14 +249,14 @@ export const sharedComponentRouter = router({
         }
       }
 
-      const data: Record<string, unknown> = {};
+      const data: Prisma.SharedComponentUpdateInput = {};
       if (input.name !== undefined) data.name = input.name;
       if (input.description !== undefined) data.description = input.description;
 
-      // If config changes, encrypt and bump version
+      // If config changes, encrypt and bump version atomically
       if (input.config) {
         data.config = encryptNodeConfig(sc.componentType, input.config) as Prisma.InputJsonValue;
-        data.version = sc.version + 1;
+        data.version = { increment: 1 };
       }
 
       return prisma.sharedComponent.update({
@@ -274,7 +274,7 @@ export const sharedComponentRouter = router({
       const sc = await prisma.sharedComponent.findUnique({
         where: { id: input.id },
       });
-      if (!sc) {
+      if (!sc || sc.environmentId !== input.environmentId) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Shared component not found",
@@ -410,6 +410,7 @@ export const sharedComponentRouter = router({
     .mutation(async ({ input }) => {
       const node = await prisma.pipelineNode.findUnique({
         where: { id: input.nodeId },
+        include: { pipeline: { select: { environmentId: true } } },
       });
       if (!node || node.pipelineId !== input.pipelineId) {
         throw new TRPCError({
@@ -425,6 +426,14 @@ export const sharedComponentRouter = router({
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Shared component not found",
+        });
+      }
+
+      // Validate shared component belongs to the same environment as the pipeline
+      if (sc.environmentId !== node.pipeline.environmentId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Shared component belongs to a different environment",
         });
       }
 
