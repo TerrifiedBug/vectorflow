@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { generateId } from "@/lib/utils";
 import { generateComponentKey } from "@/lib/component-key";
+import { applySuggestion } from "@/lib/ai/suggestion-applier";
+import type { AiSuggestion } from "@/lib/ai/types";
 import {
   type Node,
   type Edge,
@@ -111,6 +113,9 @@ export interface FlowState {
 
   // Dirty tracking
   markClean: () => void;
+
+  // AI suggestions
+  applySuggestions: (suggestions: AiSuggestion[]) => { applied: number; errors: string[] };
 
   // Serialization
   loadGraph: (nodes: Node[], edges: Edge[], globalConfig?: Record<string, unknown> | null, options?: { isSystem?: boolean }) => void;
@@ -788,6 +793,39 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     const state = get() as InternalState;
     const snapshot = computeFlowFingerprint(state.nodes, state.edges, state.globalConfig);
     set({ isDirty: false, _savedSnapshot: snapshot } as Partial<InternalState>);
+  },
+
+  /* ---- AI suggestions ---- */
+
+  applySuggestions: (suggestions) => {
+    const errors: string[] = [];
+    let applied = 0;
+
+    set((state) => {
+      // Single undo snapshot for the entire batch
+      const history = pushSnapshot(state);
+      let { nodes, edges } = state;
+
+      for (const suggestion of suggestions) {
+        const result = applySuggestion(suggestion, nodes, edges);
+        if (result.error) {
+          errors.push(result.error);
+        } else {
+          nodes = result.nodes;
+          edges = result.edges;
+          applied++;
+        }
+      }
+
+      return {
+        ...history,
+        nodes,
+        edges,
+        isDirty: applied > 0 ? true : state.isDirty,
+      };
+    });
+
+    return { applied, errors };
   },
 
   /* ---- Serialization ---- */
