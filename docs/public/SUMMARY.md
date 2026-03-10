@@ -20,6 +20,7 @@
 * [Alerts](user-guide/alerts.md)
 * [Templates](user-guide/templates.md)
 * [Shared Components](user-guide/shared-components.md)
+* [AI Suggestions](user-guide/ai-suggestions.md)
 
 ## Operations
 
