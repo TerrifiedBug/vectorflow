@@ -30,12 +30,14 @@ import {
 import { ComponentPalette } from "@/components/flow/component-palette";
 import { FlowCanvas } from "@/components/flow/flow-canvas";
 import { FlowToolbar } from "@/components/flow/flow-toolbar";
+import { AiPipelineDialog } from "@/components/flow/ai-pipeline-dialog";
 import { DetailPanel } from "@/components/flow/detail-panel";
 import { DeployDialog } from "@/components/flow/deploy-dialog";
 import { SaveTemplateDialog } from "@/components/flow/save-template-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PipelineMetricsChart } from "@/components/pipeline/metrics-chart";
 import { PipelineLogs } from "@/components/pipeline/pipeline-logs";
+import { useTeamStore } from "@/stores/team-store";
 
 function aggregateProcessStatus(
   statuses: Array<{ status: string }>
@@ -130,6 +132,16 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const [discardOpen, setDiscardOpen] = useState(false);
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const teamQuery = useQuery(
+    trpc.team.get.queryOptions(
+      { id: selectedTeamId! },
+      { enabled: !!selectedTeamId },
+    ),
+  );
+  const aiEnabled = teamQuery.data?.aiEnabled ?? false;
 
   const loadGraph = useFlowStore((s) => s.loadGraph);
   const isDirty = useFlowStore((s) => s.isDirty);
@@ -431,6 +443,8 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             }
             gitOpsMode={pipelineQuery.data?.gitOpsMode}
             onDiscardChanges={() => setDiscardOpen(true)}
+            aiEnabled={aiEnabled}
+            onAiOpen={() => setAiDialogOpen(true)}
           />
         </div>
         <div className="flex items-center px-3">
@@ -522,6 +536,11 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AiPipelineDialog
+        open={aiDialogOpen}
+        onOpenChange={setAiDialogOpen}
+        environmentName={pipelineQuery.data?.environment?.name}
+      />
     </div>
   );
 }
