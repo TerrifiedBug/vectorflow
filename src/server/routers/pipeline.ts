@@ -39,6 +39,8 @@ const nodeSchema = z.object({
   positionX: z.number(),
   positionY: z.number(),
   disabled: z.boolean().default(false),
+  sharedComponentId: z.string().nullable().optional(),
+  sharedComponentVersion: z.number().nullable().optional(),
 });
 
 const edgeSchema = z.object({
@@ -100,6 +102,11 @@ export const pipelineRouter = router({
               positionX: true,
               positionY: true,
               disabled: true,
+              sharedComponentId: true,
+              sharedComponentVersion: true,
+              sharedComponent: {
+                select: { version: true, name: true },
+              },
             },
           },
           edges: {
@@ -190,6 +197,12 @@ export const pipelineRouter = router({
           updatedBy: p.updatedBy,
           nodeStatuses: p.nodeStatuses,
           hasUndeployedChanges,
+          hasStaleComponents: p.nodes.some(
+            (n) => n.sharedComponentId && n.sharedComponent && (n.sharedComponentVersion ?? 0) < n.sharedComponent.version
+          ),
+          staleComponentNames: p.nodes
+            .filter((n) => n.sharedComponentId && n.sharedComponent && (n.sharedComponentVersion ?? 0) < n.sharedComponent.version)
+            .map((n) => n.sharedComponent!.name),
         };
       }));
 
@@ -203,7 +216,13 @@ export const pipelineRouter = router({
       const pipeline = await prisma.pipeline.findUnique({
         where: { id: input.id },
         include: {
-          nodes: true,
+          nodes: {
+            include: {
+              sharedComponent: {
+                select: { name: true, version: true },
+              },
+            },
+          },
           edges: true,
           environment: { select: { teamId: true, gitOpsMode: true, name: true } },
           nodeStatuses: {
@@ -639,6 +658,7 @@ export const pipelineRouter = router({
         await copyPipelineGraph(tx, {
           sourcePipelineId: input.pipelineId,
           targetPipelineId: created.id,
+          stripSharedComponentLinks: true,
           transformConfig: (config, componentKey) => {
             const result = stripEnvRefs(config, componentKey);
             allStrippedSecrets.push(...result.strippedSecrets);
@@ -691,6 +711,34 @@ export const pipelineRouter = router({
       };
 
       return prisma.$transaction(async (tx) => {
+        // Validate all sharedComponentIds belong to the same environment
+        const sharedComponentIds = [
+          ...new Set(input.nodes.map((n) => n.sharedComponentId).filter(Boolean) as string[]),
+        ];
+        if (sharedComponentIds.length > 0) {
+          const sharedComponents = await tx.sharedComponent.findMany({
+            where: { id: { in: sharedComponentIds } },
+            select: { id: true, environmentId: true },
+          });
+          const foundIds = new Set(sharedComponents.map((sc) => sc.id));
+          for (const scId of sharedComponentIds) {
+            if (!foundIds.has(scId)) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Shared component ${scId} not found`,
+              });
+            }
+          }
+          for (const sc of sharedComponents) {
+            if (sc.environmentId !== existing.environmentId) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Shared component does not belong to this pipeline's environment",
+              });
+            }
+          }
+        }
+
         await tx.pipeline.update({
           where: { id: input.pipelineId },
           data: {
@@ -722,6 +770,8 @@ export const pipelineRouter = router({
                 positionX: node.positionX,
                 positionY: node.positionY,
                 disabled: node.disabled,
+                sharedComponentId: node.sharedComponentId ?? null,
+                sharedComponentVersion: node.sharedComponentVersion ?? null,
               },
             })
           )
@@ -822,6 +872,8 @@ export const pipelineRouter = router({
                 positionX: node.positionX as number,
                 positionY: node.positionY as number,
                 disabled: (node.disabled as boolean) ?? false,
+                sharedComponentId: ((node as Record<string, unknown>).sharedComponentId as string | null) ?? null,
+                sharedComponentVersion: ((node as Record<string, unknown>).sharedComponentVersion as number | null) ?? null,
               },
             })
           )
@@ -885,6 +937,8 @@ export const pipelineRouter = router({
         positionX: n.positionX,
         positionY: n.positionY,
         disabled: n.disabled,
+        sharedComponentId: n.sharedComponentId ?? null,
+        sharedComponentVersion: n.sharedComponentVersion ?? null,
       }));
       const edgesSnapshot = pipeline.edges.map((e) => ({
         id: e.id,

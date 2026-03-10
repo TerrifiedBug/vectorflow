@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { Copy, Trash2, Lock, Info, MousePointerClick, Book } from "lucide-react";
+import { Copy, Trash2, Lock, Info, MousePointerClick, Book, Link2 as LinkIcon, Unlink, AlertTriangle, ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTRPC } from "@/trpc/client";
+import { toast } from "sonner";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
 import { VrlEditor } from "@/components/vrl-editor/vrl-editor";
@@ -121,10 +125,56 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
   const updateDisplayName = useFlowStore((s) => s.updateDisplayName);
   const toggleNodeDisabled = useFlowStore((s) => s.toggleNodeDisabled);
   const removeNode = useFlowStore((s) => s.removeNode);
+  const acceptNodeSharedUpdate = useFlowStore((s) => s.acceptNodeSharedUpdate);
+  const unlinkNodeStore = useFlowStore((s) => s.unlinkNode);
+
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
 
   const selectedNode = selectedNodeId
     ? nodes.find((n) => n.id === selectedNodeId)
     : null;
+
+  const isShared = !!selectedNode?.data.sharedComponentId;
+  const isStale = isShared &&
+    selectedNode?.data.sharedComponentLatestVersion != null &&
+    (selectedNode?.data.sharedComponentVersion ?? 0) < selectedNode?.data.sharedComponentLatestVersion;
+
+  const acceptUpdateMutation = useMutation(
+    trpc.sharedComponent.acceptUpdate.mutationOptions({
+      onSuccess: (data, variables) => {
+        // Sync the Zustand store so saveGraph doesn't revert the update
+        acceptNodeSharedUpdate(
+          variables.nodeId,
+          data.config as Record<string, unknown>,
+          data.version,
+        );
+        queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
+        toast.success("Component updated to latest version");
+      },
+    })
+  );
+
+  const unlinkMutation = useMutation(
+    trpc.sharedComponent.unlink.mutationOptions({
+      onSuccess: (_data, variables) => {
+        // Sync the Zustand store so saveGraph doesn't revert the unlink
+        unlinkNodeStore(variables.nodeId);
+        queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
+        toast.success("Component unlinked");
+      },
+    })
+  );
+
+  const handleAcceptUpdate = () => {
+    if (!selectedNodeId) return;
+    acceptUpdateMutation.mutate({ nodeId: selectedNodeId, pipelineId });
+  };
+
+  const handleUnlink = () => {
+    if (!selectedNodeId) return;
+    unlinkMutation.mutate({ nodeId: selectedNodeId, pipelineId });
+  };
 
   const componentKey = (selectedNode?.data as { componentKey?: string })?.componentKey ?? "";
   const currentDisplayName = (selectedNode?.data as { displayName?: string })?.displayName ?? "";
@@ -220,7 +270,13 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
     config: Record<string, unknown>;
     disabled?: boolean;
     isSystemLocked?: boolean;
+    sharedComponentId?: string;
+    sharedComponentName?: string;
+    sharedComponentVersion?: number;
+    sharedComponentLatestVersion?: number;
   };
+
+  const isReadOnly = isSystemLocked || isShared;
 
   return (
     <div className="flex h-full w-80 shrink-0 flex-col border-l bg-background">
@@ -237,6 +293,47 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
               <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>This source is managed by VectorFlow and cannot be edited.</span>
+              </div>
+            )}
+
+            {/* ---- Shared component info banner ---- */}
+            {isShared && (
+              <div className="flex items-start gap-2 rounded-md border border-purple-200 bg-purple-50 px-3 py-2 text-sm text-purple-800 dark:border-purple-800 dark:bg-purple-950/40 dark:text-purple-300">
+                <LinkIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="flex-1">
+                  <span className="font-medium">{selectedNode.data.sharedComponentName as string}</span>
+                  <p className="mt-0.5 text-xs opacity-80">
+                    This component is shared. Config is managed in the Library.
+                  </p>
+                  <Link
+                    href={`/library/shared-components/${selectedNode.data.sharedComponentId as string}`}
+                    className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-purple-700 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-200"
+                  >
+                    Open in Library <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {/* ---- Stale update banner ---- */}
+            {isStale && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="flex-1">
+                  <span className="font-medium">Update available</span>
+                  <p className="mt-0.5 text-xs opacity-80">
+                    This shared component has been updated since it was last synced.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={handleAcceptUpdate}
+                    >
+                      Accept update
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -263,6 +360,17 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
                     >
                       {componentDef.kind}
                     </Badge>
+                    {isShared && !isSystemLocked && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        onClick={handleUnlink}
+                        title="Unlink from shared component"
+                      >
+                        <Unlink className="h-4 w-4" />
+                      </Button>
+                    )}
                     {isSystemLocked ? (
                       <div className="flex h-7 w-7 items-center justify-center text-blue-500">
                         <Lock className="h-3.5 w-3.5" />
@@ -289,7 +397,7 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
                     id="display-name"
                     value={currentDisplayName}
                     onChange={(e) => handleNameChange(e.target.value)}
-                    disabled={isSystemLocked}
+                    disabled={isReadOnly}
                     placeholder="Component name"
                   />
                 </div>
@@ -309,7 +417,7 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
                     onCheckedChange={() => {
                       if (selectedNodeId) toggleNodeDisabled(selectedNodeId);
                     }}
-                    disabled={isSystemLocked}
+                    disabled={isReadOnly}
                   />
                 </div>
 
@@ -327,8 +435,8 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
             <div className="space-y-4">
               <h3 className="text-sm font-semibold">Configuration</h3>
 
-              {isSystemLocked ? (
-                /* Read-only config display for locked nodes */
+              {isReadOnly ? (
+                /* Read-only config display for locked/shared nodes */
                 <div className="space-y-3">
                   {Object.entries(config).map(([key, value]) => (
                     <div key={key} className="space-y-1">
