@@ -23,6 +23,7 @@ import { Separator } from "@/components/ui/separator";
 import { useTeamStore } from "@/stores/team-store";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { settingsNavGroups } from "@/components/settings-sidebar-nav";
+import { libraryNavItems } from "@/components/library-sidebar-nav";
 
 import {
   Sidebar,
@@ -80,6 +81,8 @@ export function AppSidebar() {
   });
 
   const isSettingsMode = pathname.startsWith("/settings");
+  const isLibraryMode = pathname.startsWith("/library");
+  const isSubMode = isSettingsMode || isLibraryMode;
 
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
@@ -88,10 +91,12 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-0">
         <div className="flex h-14 items-center px-4 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
-          {isSettingsMode ? (
+          {isSubMode ? (
             <Link href="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="h-4 w-4" />
-              <span className="group-data-[collapsible=icon]:hidden">Settings</span>
+              <span className="group-data-[collapsible=icon]:hidden">
+                {isSettingsMode ? "Settings" : "Library"}
+              </span>
             </Link>
           ) : (
             <Link href="/" className="flex items-center gap-2">
@@ -112,7 +117,7 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isSettingsMode ? "-translate-x-full opacity-0" : "translate-x-0 opacity-100",
+            isSubMode ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100",
           )}
         >
           <SidebarGroup>
@@ -148,7 +153,7 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isSettingsMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0",
+            isSettingsMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
           )}
         >
           {settingsNavGroups.map((group) => {
@@ -181,6 +186,36 @@ export function AppSidebar() {
               </SidebarGroup>
             );
           })}
+        </div>
+
+        {/* Library nav panel */}
+        <div
+          className={cn(
+            "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
+            isLibraryMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
+          )}
+        >
+          <SidebarGroup>
+            <SidebarGroupLabel>Browse</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {libraryNavItems.map((item) => (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={pathname === item.href || pathname.startsWith(item.href + "/")}
+                      tooltip={item.title}
+                    >
+                      <Link href={item.href}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         </div>
       </SidebarContent>
       <SidebarFooter>
