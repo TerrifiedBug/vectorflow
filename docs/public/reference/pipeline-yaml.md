@@ -62,12 +62,14 @@ sinks:
 
 ### Component keys
 
-Each node in the visual editor has a **component key** -- a unique identifier within the pipeline. Component keys must:
+Each node in the visual editor has a **component key** -- a unique, auto-generated identifier within the pipeline (e.g., `http_server_k7xMp2nQ`). Component keys are generated when a node is added and never change, even if you rename the component in the editor.
+
+Component keys must:
 - Start with a letter or underscore
 - Contain only letters, numbers, and underscores
 - Be between 1 and 128 characters
 
-These keys become the YAML block names under `sources`, `transforms`, or `sinks`.
+These keys become the YAML block names under `sources`, `transforms`, or `sinks`. The human-readable **Name** field in the editor is separate from the component key and does not affect the generated YAML.
 
 ### Connections via `inputs`
 
