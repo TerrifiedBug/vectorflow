@@ -8,7 +8,7 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import { VECTOR_CATALOG } from "@/lib/vector/catalog";
 import { toast } from "sonner";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Plus, Search } from "lucide-react";
+import { ArrowLeft, ChevronDown, Loader2, Plus, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,12 +22,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { SchemaForm } from "@/components/config-forms/schema-form";
+import { cn } from "@/lib/utils";
 
 import type { VectorComponentDef } from "@/lib/vector/types";
 
 /* ------------------------------------------------------------------ */
-/*  Kind badge styling                                                 */
+/*  Kind styling                                                       */
 /* ------------------------------------------------------------------ */
 
 const kindVariant: Record<string, string> = {
@@ -37,6 +43,23 @@ const kindVariant: Record<string, string> = {
     "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300",
   sink: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
 };
+
+const kindSectionConfig: Record<string, { label: string; accent: string }> = {
+  source: {
+    label: "Sources",
+    accent: "text-emerald-600 dark:text-emerald-400",
+  },
+  transform: {
+    label: "Transforms",
+    accent: "text-sky-600 dark:text-sky-400",
+  },
+  sink: {
+    label: "Sinks",
+    accent: "text-orange-600 dark:text-orange-400",
+  },
+};
+
+const KIND_ORDER = ["source", "transform", "sink"] as const;
 
 /* ------------------------------------------------------------------ */
 /*  Page Component                                                     */
@@ -70,6 +93,16 @@ export default function NewSharedComponentPage() {
         c.description.toLowerCase().includes(q),
     );
   }, [search]);
+
+  const groupedCatalog = useMemo(
+    () =>
+      KIND_ORDER.map((kind) => ({
+        kind,
+        ...kindSectionConfig[kind],
+        items: filteredCatalog.filter((c) => c.kind === kind),
+      })),
+    [filteredCatalog],
+  );
 
   const createMutation = useMutation(
     trpc.sharedComponent.create.mutationOptions({
@@ -162,41 +195,29 @@ export default function NewSharedComponentPage() {
             />
           </div>
 
-          {/* Component grid */}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredCatalog.map((comp) => (
-              <Card
-                key={`${comp.kind}-${comp.type}`}
-                className="cursor-pointer transition-colors hover:bg-accent/50"
-                onClick={() => handleSelectComponent(comp)}
-              >
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-sm">
-                      {comp.displayName}
-                    </CardTitle>
-                    <Badge
-                      variant="outline"
-                      className={kindVariant[comp.kind] ?? ""}
-                    >
-                      {comp.kind}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground line-clamp-2">
-                    {comp.description}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {filteredCatalog.length === 0 && (
+          {/* Component sections by kind */}
+          {filteredCatalog.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
               <p className="text-muted-foreground">
                 No components match your search.
               </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {groupedCatalog.map((group) => {
+                if (group.items.length === 0) return null;
+                return (
+                  <CatalogKindSection
+                    key={group.kind}
+                    label={group.label}
+                    accent={group.accent}
+                    badgeClass={kindVariant[group.kind] ?? ""}
+                    count={group.items.length}
+                    items={group.items}
+                    onSelect={handleSelectComponent}
+                  />
+                );
+              })}
             </div>
           )}
         </>
@@ -287,5 +308,74 @@ export default function NewSharedComponentPage() {
         </>
       )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Catalog Kind Section (collapsible)                                 */
+/* ------------------------------------------------------------------ */
+
+function CatalogKindSection({
+  label,
+  accent,
+  badgeClass,
+  count,
+  items,
+  onSelect,
+}: {
+  label: string;
+  accent: string;
+  badgeClass: string;
+  count: number;
+  items: VectorComponentDef[];
+  onSelect: (comp: VectorComponentDef) => void;
+}) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2 rounded-lg border bg-muted/40 px-4 py-3 text-left transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+            !open && "-rotate-90",
+          )}
+        />
+        <span className={cn("text-sm font-semibold", accent)}>{label}</span>
+        <Badge variant="secondary" className="ml-auto text-xs">
+          {count}
+        </Badge>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((comp) => (
+            <Card
+              key={`${comp.kind}-${comp.type}`}
+              className="cursor-pointer transition-colors hover:bg-accent/50"
+              onClick={() => onSelect(comp)}
+            >
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-sm">
+                    {comp.displayName}
+                  </CardTitle>
+                  <Badge
+                    variant="outline"
+                    className={badgeClass}
+                  >
+                    {comp.kind}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  {comp.description}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
