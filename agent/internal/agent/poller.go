@@ -200,11 +200,15 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 
 // SampleRequests returns the sample requests from the last poll response.
 func (p *poller) SampleRequests() []client.SampleRequestMsg {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return p.sampleRequests
 }
 
 // PendingAction returns the pending action from the last poll response, if any.
 func (p *poller) PendingAction() *client.PendingAction {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return p.pendingAction
 }
 

@@ -34,9 +34,10 @@ type Agent struct {
 	failedUpdateVersion string // skip retries for this version
 	updateError         string // report failure to server
 
-	wsClient           *ws.Client
-	wsCh               chan ws.PushMessage
-	immediateHeartbeat *time.Timer
+	wsClient             *ws.Client
+	wsCh                 chan ws.PushMessage
+	immediateHeartbeat   *time.Timer
+	immediateHeartbeatCh chan struct{}
 }
 
 func New(cfg *config.Config) (*Agent, error) {
@@ -91,6 +92,7 @@ func (a *Agent) Run() error {
 
 	// Start WebSocket if the server provided a URL
 	a.wsCh = make(chan ws.PushMessage, 16)
+	a.immediateHeartbeatCh = make(chan struct{}, 1)
 	if wsURL := a.poller.WebSocketURL(); wsURL != "" {
 		a.wsClient = ws.New(wsURL, a.client.NodeToken(), func(msg ws.PushMessage) {
 			// Forward messages to the main goroutine via channel
@@ -124,6 +126,8 @@ func (a *Agent) Run() error {
 			a.sendHeartbeat()
 		case msg := <-a.wsCh:
 			a.handleWsMessage(msg)
+		case <-a.immediateHeartbeatCh:
+			a.sendHeartbeat()
 		}
 	}
 }
@@ -334,13 +338,18 @@ func (a *Agent) handleWsMessage(msg ws.PushMessage) {
 
 // triggerImmediateHeartbeat sends a heartbeat soon, debounced to 1 second.
 // Multiple calls within 1s collapse into a single heartbeat with the latest state.
-// MUST be called from the main goroutine (same goroutine as Run()'s select loop).
+// The timer fires a signal back to the main goroutine's select loop, ensuring
+// sendHeartbeat() always runs on the main goroutine (no data race on updateError).
+// MUST be called from the main goroutine.
 func (a *Agent) triggerImmediateHeartbeat() {
 	if a.immediateHeartbeat != nil {
 		a.immediateHeartbeat.Stop()
 	}
 	a.immediateHeartbeat = time.AfterFunc(time.Second, func() {
-		a.sendHeartbeat()
+		select {
+		case a.immediateHeartbeatCh <- struct{}{}:
+		default:
+		}
 	})
 }
 
