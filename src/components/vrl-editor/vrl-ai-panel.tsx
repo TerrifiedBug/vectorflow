@@ -88,6 +88,7 @@ export function VrlAiPanel({
             variant="ghost"
             size="sm"
             onClick={conversation.startNewConversation}
+            disabled={conversation.isStreaming}
             className="text-xs"
           >
             <RotateCcw className="h-3 w-3 mr-1" />

@@ -224,10 +224,12 @@ export async function POST(request: Request) {
 
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
       } catch (err) {
-        const message = err instanceof Error ? err.message : "AI request failed";
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`),
-        );
+        if (!request.signal.aborted) {
+          const message = err instanceof Error ? err.message : "AI request failed";
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`),
+          );
+        }
       } finally {
         controller.close();
       }
