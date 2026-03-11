@@ -16,6 +16,7 @@ import (
 	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/sampler"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/supervisor"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/ws"
 )
 
 var Version = "dev"
@@ -32,6 +33,11 @@ type Agent struct {
 	sampleResults       []client.SampleResultMsg
 	failedUpdateVersion string // skip retries for this version
 	updateError         string // report failure to server
+
+	wsClient             *ws.Client
+	wsCh                 chan ws.PushMessage
+	immediateHeartbeat   *time.Timer
+	immediateHeartbeatCh chan struct{}
 }
 
 func New(cfg *config.Config) (*Agent, error) {
@@ -83,17 +89,44 @@ func (a *Agent) Run() error {
 
 	// Do first poll immediately
 	a.pollAndApply()
+
+	// Start WebSocket if the server provided a URL
+	a.wsCh = make(chan ws.PushMessage, 16)
+	a.immediateHeartbeatCh = make(chan struct{}, 1)
+	if wsURL := a.poller.WebSocketURL(); wsURL != "" {
+		a.wsClient = ws.New(wsURL, a.client.NodeToken(), func(msg ws.PushMessage) {
+			// Forward messages to the main goroutine via channel
+			select {
+			case a.wsCh <- msg:
+			default:
+				slog.Warn("ws: message channel full, dropping message", "type", msg.Type)
+			}
+		})
+		go a.wsClient.Connect()
+		slog.Info("websocket client started", "url", wsURL)
+	}
+
 	a.sendHeartbeat()
 
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("shutting down all pipelines")
+			if a.wsClient != nil {
+				a.wsClient.Close()
+			}
+			if a.immediateHeartbeat != nil {
+				a.immediateHeartbeat.Stop()
+			}
 			a.supervisor.ShutdownAll()
 			slog.Info("agent stopped")
 			return nil
 		case <-ticker.C:
 			a.pollAndApply()
+			a.sendHeartbeat()
+		case msg := <-a.wsCh:
+			a.handleWsMessage(msg, ticker)
+		case <-a.immediateHeartbeatCh:
 			a.sendHeartbeat()
 		}
 	}
@@ -255,6 +288,141 @@ func (a *Agent) processSampleRequests(requests []client.SampleRequestMsg) {
 				a.mu.Unlock()
 
 				slog.Debug("sample complete", "requestId", reqID, "component", componentKey, "events", len(result.Events))
+			}(req.RequestID, s.APIPort, key, req.Limit)
+		}
+	}
+}
+
+// handleWsMessage processes a push message from the WebSocket channel.
+// MUST be called from the main goroutine (same goroutine as Run()'s select loop).
+func (a *Agent) handleWsMessage(msg ws.PushMessage, ticker *time.Ticker) {
+	switch msg.Type {
+	case "config_changed":
+		slog.Info("ws: config changed notification", "pipeline", msg.PipelineID, "reason", msg.Reason)
+		// Re-poll immediately to get the full assembled config
+		a.pollAndApply()
+		a.triggerImmediateHeartbeat()
+
+	case "sample_request":
+		slog.Info("ws: sample request received", "requestId", msg.RequestID, "pipeline", msg.PipelineID)
+		a.processSampleRequestsAndSend([]client.SampleRequestMsg{
+			{
+				RequestID:     msg.RequestID,
+				PipelineID:    msg.PipelineID,
+				ComponentKeys: msg.ComponentKeys,
+				Limit:         msg.Limit,
+			},
+		})
+
+	case "action":
+		slog.Info("ws: action received", "action", msg.Action)
+		switch msg.Action {
+		case "self_update":
+			a.handlePendingAction(&client.PendingAction{
+				Type:          "self_update",
+				TargetVersion: msg.TargetVersion,
+				DownloadURL:   msg.DownloadURL,
+				Checksum:      msg.Checksum,
+			})
+			a.triggerImmediateHeartbeat()
+		case "restart":
+			slog.Warn("ws: restart action not yet implemented, triggering re-poll instead")
+			a.pollAndApply()
+			a.triggerImmediateHeartbeat()
+		default:
+			slog.Warn("ws: unknown action", "action", msg.Action)
+		}
+
+	case "poll_interval":
+		if msg.IntervalMs > 0 {
+			newInterval := time.Duration(msg.IntervalMs) * time.Millisecond
+			ticker.Reset(newInterval)
+			slog.Info("ws: poll interval changed", "intervalMs", msg.IntervalMs)
+		}
+
+	default:
+		slog.Warn("ws: unknown message type", "type", msg.Type)
+	}
+}
+
+// triggerImmediateHeartbeat sends a heartbeat soon, debounced to 1 second.
+// Multiple calls within 1s collapse into a single heartbeat with the latest state.
+// The timer fires a signal back to the main goroutine's select loop, ensuring
+// sendHeartbeat() always runs on the main goroutine (no data race on updateError).
+// MUST be called from the main goroutine.
+func (a *Agent) triggerImmediateHeartbeat() {
+	if a.immediateHeartbeat != nil {
+		a.immediateHeartbeat.Stop()
+	}
+	a.immediateHeartbeat = time.AfterFunc(time.Second, func() {
+		select {
+		case a.immediateHeartbeatCh <- struct{}{}:
+		default:
+		}
+	})
+}
+
+// processSampleRequestsAndSend processes sample requests and sends results
+// directly to the /api/agent/samples endpoint (used for WebSocket-triggered requests).
+// Falls back to heartbeat delivery on HTTP failure.
+func (a *Agent) processSampleRequestsAndSend(requests []client.SampleRequestMsg) {
+	statuses := a.supervisor.Statuses()
+	statusMap := make(map[string]supervisor.ProcessInfo, len(statuses))
+	for _, s := range statuses {
+		statusMap[s.PipelineID] = s
+	}
+
+	for _, req := range requests {
+		s, found := statusMap[req.PipelineID]
+		if !found || s.Status != "RUNNING" || s.APIPort == 0 {
+			errMsg := "pipeline not running"
+			if !found {
+				errMsg = "pipeline not found"
+			} else if s.APIPort == 0 {
+				errMsg = "pipeline API port not available"
+			}
+			results := make([]client.SampleResultMsg, 0, len(req.ComponentKeys))
+			for _, key := range req.ComponentKeys {
+				results = append(results, client.SampleResultMsg{
+					RequestID:    req.RequestID,
+					ComponentKey: key,
+					Error:        errMsg,
+				})
+			}
+			if err := a.client.SendSampleResults(results); err != nil {
+				slog.Warn("failed to send sample error results via dedicated endpoint", "error", err)
+				a.mu.Lock()
+				a.sampleResults = append(a.sampleResults, results...)
+				a.mu.Unlock()
+			}
+			continue
+		}
+
+		for _, key := range req.ComponentKeys {
+			go func(reqID string, apiPort int, componentKey string, limit int) {
+				result := sampler.Sample(a.cfg.VectorBin, apiPort, componentKey, limit)
+				result.RequestID = reqID
+
+				msg := client.SampleResultMsg{
+					RequestID:    result.RequestID,
+					ComponentKey: result.ComponentKey,
+					Events:       result.Events,
+					Error:        result.Error,
+				}
+				for _, fi := range result.Schema {
+					msg.Schema = append(msg.Schema, client.FieldInfoMsg{
+						Path: fi.Path, Type: fi.Type, Sample: fi.Sample,
+					})
+				}
+
+				if err := a.client.SendSampleResults([]client.SampleResultMsg{msg}); err != nil {
+					slog.Warn("failed to send sample results via dedicated endpoint, will retry in heartbeat", "error", err)
+					a.mu.Lock()
+					a.sampleResults = append(a.sampleResults, msg)
+					a.mu.Unlock()
+				} else {
+					slog.Debug("sample result sent via dedicated endpoint", "requestId", reqID, "component", componentKey)
+				}
 			}(req.RequestID, s.APIPort, key, req.Limit)
 		}
 	}

@@ -10,6 +10,7 @@ import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
 import { fireEventAlert } from "@/server/services/event-alerts";
+import { wsRegistry } from "@/server/services/ws-registry";
 
 export const deployRouter = router({
   preview: protectedProcedure
@@ -267,7 +268,24 @@ export const deployRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
       }
 
-      return undeployAgent(input.pipelineId);
+      const result = await undeployAgent(input.pipelineId);
+
+      // Notify connected agents that config has changed
+      if (result.success) {
+        const nodes = await prisma.vectorNode.findMany({
+          where: { environmentId: pipeline.environmentId },
+          select: { id: true },
+        });
+        for (const node of nodes) {
+          wsRegistry.send(node.id, {
+            type: "config_changed",
+            pipelineId: input.pipelineId,
+            reason: "undeploy",
+          });
+        }
+      }
+
+      return result;
     }),
 
   environmentInfo: protectedProcedure
