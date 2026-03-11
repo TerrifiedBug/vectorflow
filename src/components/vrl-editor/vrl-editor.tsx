@@ -30,7 +30,7 @@ import { VrlSnippetDrawer } from "@/components/flow/vrl-snippet-drawer";
 import { VrlFieldsPanel } from "./vrl-fields-panel";
 import { VrlAiPanel } from "./vrl-ai-panel";
 import { useVrlAiConversation } from "@/hooks/use-vrl-ai-conversation";
-import { cn } from "@/lib/utils";
+
 import { useTeamStore } from "@/stores/team-store";
 import { getMergedOutputSchemas, getSourceOutputSchema } from "@/lib/vector/source-output-schemas";
 import type { Monaco, OnMount } from "@monaco-editor/react";
@@ -71,7 +71,8 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
   const [sampleInput, setSampleInput] = useState("");
   const [testOutput, setTestOutput] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
-  const [toolsPanel, setToolsPanel] = useState<"fields" | "snippets" | null>(null);
+  type RightPanel = "fields" | "snippets" | "ai" | null;
+  const [rightPanel, setRightPanel] = useState<RightPanel>("fields");
   const [expanded, setExpanded] = useState(false);
   const editorRef = useRef<EditorInstance | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -96,9 +97,11 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
   );
   const aiEnabled = teamQuery.data?.aiEnabled ?? false;
 
-  const [aiPanelOpen, setAiPanelOpen] = useState(false);
-
   const canUseAiChat = aiEnabled && !!pipelineId && !!componentKey;
+
+  const togglePanel = (panel: RightPanel) => {
+    setRightPanel((prev) => (prev === panel ? null : panel));
+  };
 
   const isRawTextSource = useMemo(() => {
     if (!sourceTypes || sourceTypes.length === 0) return false;
@@ -188,7 +191,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
         const schema = (sample.schema as Array<{ path: string; type: string; sample: string }>) ?? [];
         setLiveSchemaFields(schema);
         if (schema.length > 0) {
-          setToolsPanel("fields");
+          setRightPanel("fields");
         }
       }
     } else if (data.status === "ERROR" || data.status === "EXPIRED") {
@@ -572,17 +575,73 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
       {/* Full-screen modal: editor (left) + tools (right) */}
       <Dialog open={expanded} onOpenChange={setExpanded}>
         <DialogContent
-          className={cn(
-            "h-[85vh] flex flex-col transition-[max-width] duration-300",
-            aiPanelOpen
-              ? "max-w-[calc(100vw-4rem)]"
-              : "sm:max-w-[calc(100vw-4rem)] xl:max-w-6xl",
-          )}
+          className="h-[85vh] flex flex-col sm:max-w-[calc(100vw-4rem)] xl:max-w-6xl"
           onKeyDown={(e) => e.stopPropagation()}
         >
           <DialogHeader>
             <DialogTitle>VRL Editor</DialogTitle>
           </DialogHeader>
+
+          {/* Toolbar — always visible */}
+          <div className="flex flex-wrap gap-2 shrink-0">
+            {hasFields && (
+              <Button
+                variant={rightPanel === "fields" ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => togglePanel("fields")}
+              >
+                <Columns3 className="mr-1.5 h-3.5 w-3.5" />
+                Fields
+              </Button>
+            )}
+            <Button
+              variant={rightPanel === "snippets" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => togglePanel("snippets")}
+            >
+              <BookOpen className="mr-1.5 h-3.5 w-3.5" />
+              Snippets
+            </Button>
+            {canUseAiChat && (
+              <Button
+                variant={rightPanel === "ai" ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => togglePanel("ai")}
+              >
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                AI
+              </Button>
+            )}
+            {pipelineId && upstreamSourceKeys && upstreamSourceKeys.length > 0 && (
+              <>
+                <Select value={String(sampleLimit)} onValueChange={(val) => setSampleLimit(Number(val))}>
+                  <SelectTrigger className="h-8 w-[110px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 events</SelectItem>
+                    <SelectItem value="10">10 events</SelectItem>
+                    <SelectItem value="25">25 events</SelectItem>
+                    <SelectItem value="50">50 events</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="sm" onClick={handleFetchSamples} disabled={isSampling}>
+                  {isSampling ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  {isSampling ? "Sampling..." : "Fetch Samples"}
+                </Button>
+                {sampleEvents.length > 0 && (
+                  <Badge variant="secondary" className="text-xs">
+                    {sampleEvents.length} sample{sampleEvents.length !== 1 ? "s" : ""}
+                  </Badge>
+                )}
+              </>
+            )}
+          </div>
+
           <div className="flex flex-1 gap-4 min-h-0">
             {/* Left: Monaco editor at full height */}
             <div className="flex-1 overflow-hidden rounded border">
@@ -606,190 +665,125 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
               />
             </div>
 
-            {/* Right: tools pane */}
-            <div className="w-[320px] shrink-0 flex flex-col gap-3 overflow-y-auto">
-              {/* Action buttons */}
-              <div className="flex flex-wrap gap-2">
-                {hasFields && (
-                  <Button
-                    variant={toolsPanel === "fields" ? "secondary" : "outline"}
-                    size="sm"
-                    onClick={() => setToolsPanel((prev) => (prev === "fields" ? null : "fields"))}
-                  >
-                    <Columns3 className="mr-1.5 h-3.5 w-3.5" />
-                    Fields
-                  </Button>
-                )}
-                <Button
-                  variant={toolsPanel === "snippets" ? "secondary" : "outline"}
-                  size="sm"
-                  onClick={() => setToolsPanel((prev) => (prev === "snippets" ? null : "snippets"))}
-                >
-                  <BookOpen className="mr-1.5 h-3.5 w-3.5" />
-                  Snippets
-                </Button>
-                {canUseAiChat && (
-                  <Button
-                    variant={aiPanelOpen ? "secondary" : "outline"}
-                    size="sm"
-                    onClick={() => setAiPanelOpen((prev) => !prev)}
-                  >
-                    <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                    AI
-                  </Button>
-                )}
-                {pipelineId && upstreamSourceKeys && upstreamSourceKeys.length > 0 && (
-                  <>
-                    <Select
-                      value={String(sampleLimit)}
-                      onValueChange={(val) => setSampleLimit(Number(val))}
-                    >
-                      <SelectTrigger className="h-8 w-[110px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="5">5 events</SelectItem>
-                        <SelectItem value="10">10 events</SelectItem>
-                        <SelectItem value="25">25 events</SelectItem>
-                        <SelectItem value="50">50 events</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleFetchSamples}
-                      disabled={isSampling}
-                    >
-                      {isSampling ? (
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Download className="mr-1.5 h-3.5 w-3.5" />
-                      )}
-                      {isSampling ? "Sampling..." : "Fetch Samples"}
-                    </Button>
-                    {sampleEvents.length > 0 && (
-                      <Badge variant="secondary" className="text-xs">
-                        {sampleEvents.length} sample{sampleEvents.length !== 1 ? "s" : ""}
-                      </Badge>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* Raw text source hint */}
-              {isRawTextSource && toolsPanel !== "snippets" && (
-                <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
-                  <p className="font-medium">This source emits raw text in <code className="rounded bg-sky-100 px-1 dark:bg-sky-900/50">.message</code></p>
-                  <p className="mt-0.5 text-sky-700 dark:text-sky-400">
-                    Use a parsing function to extract fields — click Snippets → Parsing for examples.
-                  </p>
-                </div>
-              )}
-
-              {/* Fields panel */}
-              {toolsPanel === "fields" && (
-                <VrlFieldsPanel
-                  staticFields={staticFieldsForPanel}
-                  liveFields={liveSchemaFields}
-                  onInsert={handleInsertSnippet}
-                />
-              )}
-
-              {/* Snippet drawer */}
-              {toolsPanel === "snippets" && (
-                <VrlSnippetDrawer onInsert={handleInsertSnippet} />
-              )}
-
-              {/* Test panel (always visible) */}
-              <div className="space-y-3 rounded border p-3">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="vrl-sample-input" className="text-xs">
-                      Sample Input (JSON)
-                    </Label>
-                    {sampleEvents.length > 1 && (
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          disabled={sampleIndex <= 0}
-                          aria-label="Previous sample"
-                          onClick={() => {
-                            const newIdx = sampleIndex - 1;
-                            setSampleIndex(newIdx);
-                            setSampleInput(JSON.stringify(sampleEvents[newIdx], null, 2));
-                          }}
-                        >
-                          <ChevronLeft className="h-3.5 w-3.5" />
-                        </Button>
-                        <span className="text-xs tabular-nums text-muted-foreground">
-                          {sampleIndex + 1}/{sampleEvents.length}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          disabled={sampleIndex >= sampleEvents.length - 1}
-                          aria-label="Next sample"
-                          onClick={() => {
-                            const newIdx = sampleIndex + 1;
-                            setSampleIndex(newIdx);
-                            setSampleInput(JSON.stringify(sampleEvents[newIdx], null, 2));
-                          }}
-                        >
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </Button>
+            {/* Right panel: single slot for tools OR AI */}
+            {rightPanel && (
+              <div className="w-[380px] shrink-0 flex flex-col gap-3 min-h-0 overflow-hidden">
+                {/* Tools content (fields, snippets, test panel) */}
+                {(rightPanel === "fields" || rightPanel === "snippets") && (
+                  <div className="flex flex-col gap-3 overflow-y-auto flex-1">
+                    {/* Raw text source hint */}
+                    {isRawTextSource && rightPanel !== "snippets" && (
+                      <div className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
+                        <p className="font-medium">This source emits raw text in <code className="rounded bg-sky-100 px-1 dark:bg-sky-900/50">.message</code></p>
+                        <p className="mt-0.5 text-sky-700 dark:text-sky-400">
+                          Use a parsing function to extract fields — click Snippets → Parsing for examples.
+                        </p>
                       </div>
                     )}
+
+                    {rightPanel === "fields" && (
+                      <VrlFieldsPanel
+                        staticFields={staticFieldsForPanel}
+                        liveFields={liveSchemaFields}
+                        onInsert={handleInsertSnippet}
+                      />
+                    )}
+
+                    {rightPanel === "snippets" && (
+                      <VrlSnippetDrawer onInsert={handleInsertSnippet} />
+                    )}
+
+                    {/* Test panel */}
+                    <div className="space-y-3 rounded border p-3">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="vrl-sample-input" className="text-xs">
+                            Sample Input (JSON)
+                          </Label>
+                          {sampleEvents.length > 1 && (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                disabled={sampleIndex <= 0}
+                                aria-label="Previous sample"
+                                onClick={() => {
+                                  const newIdx = sampleIndex - 1;
+                                  setSampleIndex(newIdx);
+                                  setSampleInput(JSON.stringify(sampleEvents[newIdx], null, 2));
+                                }}
+                              >
+                                <ChevronLeft className="h-3.5 w-3.5" />
+                              </Button>
+                              <span className="text-xs tabular-nums text-muted-foreground">
+                                {sampleIndex + 1}/{sampleEvents.length}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                disabled={sampleIndex >= sampleEvents.length - 1}
+                                aria-label="Next sample"
+                                onClick={() => {
+                                  const newIdx = sampleIndex + 1;
+                                  setSampleIndex(newIdx);
+                                  setSampleInput(JSON.stringify(sampleEvents[newIdx], null, 2));
+                                }}
+                              >
+                                <ChevronRight className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        <textarea
+                          id="vrl-sample-input"
+                          className="w-full rounded border bg-muted/30 p-2 font-mono text-xs"
+                          rows={4}
+                          value={sampleInput}
+                          onChange={(e) => setSampleInput(e.target.value)}
+                          placeholder={'No test input — a default event will be used:\n{"message": "test event", "timestamp": "...", "host": "localhost"}'}
+                        />
+                      </div>
+
+                      <Button
+                        size="sm"
+                        onClick={handleTest}
+                        disabled={testMutation.isPending}
+                      >
+                        {testMutation.isPending ? "Running..." : "Run VRL"}
+                      </Button>
+
+                      {testOutput && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Output</Label>
+                          <pre className="max-h-40 overflow-auto rounded bg-muted/40 p-2 font-mono text-xs">
+                            {testOutput}
+                          </pre>
+                        </div>
+                      )}
+
+                      {testError && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-red-500">Error</Label>
+                          <pre className="max-h-40 overflow-auto rounded border border-red-300 bg-red-50 p-2 font-mono text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
+                            {testError}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <textarea
-                    id="vrl-sample-input"
-                    className="w-full rounded border bg-muted/30 p-2 font-mono text-xs"
-                    rows={4}
-                    value={sampleInput}
-                    onChange={(e) => setSampleInput(e.target.value)}
-                    placeholder={'No test input — a default event will be used:\n{"message": "test event", "timestamp": "...", "host": "localhost"}'}
+                )}
+
+                {/* AI chat panel */}
+                {rightPanel === "ai" && canUseAiChat && (
+                  <VrlAiPanel
+                    conversation={conversation}
+                    currentCode={value}
+                    onCodeChange={onChange}
+                    onClose={() => setRightPanel(null)}
                   />
-                </div>
-
-                <Button
-                  size="sm"
-                  onClick={handleTest}
-                  disabled={testMutation.isPending}
-                >
-                  {testMutation.isPending ? "Running..." : "Run VRL"}
-                </Button>
-
-                {testOutput && (
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Output</Label>
-                    <pre className="max-h-40 overflow-auto rounded bg-muted/40 p-2 font-mono text-xs">
-                      {testOutput}
-                    </pre>
-                  </div>
                 )}
-
-                {testError && (
-                  <div className="space-y-1">
-                    <Label className="text-xs text-red-500">Error</Label>
-                    <pre className="max-h-40 overflow-auto rounded border border-red-300 bg-red-50 p-2 font-mono text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
-                      {testError}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* AI Chat slide-out panel */}
-            {aiPanelOpen && canUseAiChat && (
-              <div className="w-[380px] shrink-0 min-h-0">
-                <VrlAiPanel
-                  conversation={conversation}
-                  currentCode={value}
-                  onCodeChange={onChange}
-                  onClose={() => setAiPanelOpen(false)}
-                />
               </div>
             )}
           </div>

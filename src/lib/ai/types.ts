@@ -40,11 +40,20 @@ export interface ModifyConnectionsSuggestion {
   }>;
 }
 
+export interface ModifyVrlSuggestion {
+  type: "modify_vrl";
+  componentKey: string;
+  configPath: string;
+  targetCode: string;
+  code: string;
+}
+
 export type AiSuggestion =
   | (AiSuggestionBase & ModifyConfigSuggestion)
   | (AiSuggestionBase & AddComponentSuggestion)
   | (AiSuggestionBase & RemoveComponentSuggestion)
-  | (AiSuggestionBase & ModifyConnectionsSuggestion);
+  | (AiSuggestionBase & ModifyConnectionsSuggestion)
+  | (AiSuggestionBase & ModifyVrlSuggestion);
 
 export interface AiReviewResponse {
   summary: string;
