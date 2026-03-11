@@ -50,7 +50,44 @@ Ask the AI to analyze your current pipeline configuration:
 
 > "Are there any performance issues with my pipeline?"
 
-The AI reviews the generated YAML and provides suggestions for improvements, best practices, and potential issues.
+The AI returns structured, actionable suggestion cards that you can selectively apply to your canvas.
+
+#### Suggestion cards
+
+Each suggestion appears as an interactive card showing:
+
+- **Title** and **description** explaining why the change helps
+- **Priority badge** (High, Medium, Low)
+- **Type badge** — Config Change, Add Component, Remove Component, or Rewire
+- **Checkbox** for batch selection
+- **Config preview** for configuration changes showing the exact fields that will be modified
+
+#### Applying suggestions
+
+- **Apply All** — applies every actionable suggestion from that AI response
+- **Apply Selected** — applies only the suggestions you have checked
+
+Applied suggestions are marked with a green "Applied" badge and cannot be re-applied. The entire batch is a single undo operation — press **Ctrl+Z** (or **Cmd+Z**) to revert all changes at once.
+
+#### Conflict detection
+
+When you select multiple suggestions that conflict (e.g., two suggestions modifying the same config field, or one removing a component that another references), an amber warning appears on the affected cards explaining the conflict. You can still apply conflicting suggestions, but review the warnings first.
+
+#### Suggestion statuses
+
+| Status | Meaning |
+|--------|---------|
+| **Actionable** | Ready to apply |
+| **Applied** | Already applied to the canvas |
+| **Outdated** | The pipeline changed since this suggestion was made |
+| **Invalid** | References a component that no longer exists on the canvas |
+
+#### Conversations
+
+Review conversations are persistent — they are saved per pipeline and visible to all team members with access. You can:
+
+- **Ask follow-up questions** using the input at the bottom of the dialog
+- **Start a new conversation** by clicking "New Conversation" below the input
 
 ## Rate Limits
 

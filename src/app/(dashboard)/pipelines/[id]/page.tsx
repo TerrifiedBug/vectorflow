@@ -540,6 +540,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         <AiPipelineDialog
           open={aiDialogOpen}
           onOpenChange={setAiDialogOpen}
+          pipelineId={pipelineId}
           environmentName={pipelineQuery.data?.environment?.name}
         />
       )}
