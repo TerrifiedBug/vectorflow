@@ -85,6 +85,18 @@ export async function POST(request: Request) {
   let priorMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
 
   if (body.mode === "review" && body.pipelineId) {
+    // Verify pipelineId belongs to the team
+    const pipeline = await prisma.pipeline.findUnique({
+      where: { id: body.pipelineId },
+      select: { environment: { select: { teamId: true } } },
+    });
+    if (!pipeline || pipeline.environment.teamId !== body.teamId) {
+      return new Response(JSON.stringify({ error: "Pipeline not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     if (!conversationId) {
       const conversation = await prisma.aiConversation.create({
         data: {
@@ -93,6 +105,18 @@ export async function POST(request: Request) {
         },
       });
       conversationId = conversation.id;
+    } else {
+      // Verify conversationId belongs to this pipeline
+      const existing = await prisma.aiConversation.findUnique({
+        where: { id: conversationId },
+        select: { pipelineId: true },
+      });
+      if (!existing || existing.pipelineId !== body.pipelineId) {
+        return new Response(JSON.stringify({ error: "Conversation not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
     }
 
     await prisma.aiMessage.create({

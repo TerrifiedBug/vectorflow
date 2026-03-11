@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
+import { withAudit } from "@/server/middleware/audit";
 import { Prisma } from "@/generated/prisma";
 
 export const aiRouter = router({
@@ -27,6 +29,7 @@ export const aiRouter = router({
   startNewConversation: protectedProcedure
     .input(z.object({ pipelineId: z.string() }))
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.ai_conversation_started", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const conversation = await prisma.aiConversation.create({
         data: {
@@ -55,8 +58,12 @@ export const aiRouter = router({
         },
       });
 
-      if (!message || message.conversationId !== input.conversationId) {
-        throw new Error("Message not found in conversation");
+      if (
+        !message ||
+        message.conversationId !== input.conversationId ||
+        message.conversation.pipelineId !== input.pipelineId
+      ) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Message not found in conversation" });
       }
 
       // Mark suggestions as applied in the JSON
