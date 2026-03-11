@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import {
@@ -54,20 +55,10 @@ function formatDuration(ms: number): string {
 export function StatusTimeline({ nodeId, range, onRangeChange }: StatusTimelineProps) {
   const trpc = useTRPC();
 
-  const { data: events, isLoading } = useQuery({
+  const { data: events, isLoading, dataUpdatedAt } = useQuery({
     ...trpc.fleet.getStatusTimeline.queryOptions({ nodeId, range }),
     refetchInterval: 15_000,
   });
-
-  const now = Date.now();
-  const rangeMs: Record<Range, number> = {
-    "1h": 60 * 60 * 1000,
-    "6h": 6 * 60 * 60 * 1000,
-    "1d": 24 * 60 * 60 * 1000,
-    "7d": 7 * 24 * 60 * 60 * 1000,
-    "30d": 30 * 24 * 60 * 60 * 1000,
-  };
-  const rangeStart = now - rangeMs[range];
 
   type Segment = {
     status: string;
@@ -75,26 +66,39 @@ export function StatusTimeline({ nodeId, range, onRangeChange }: StatusTimelineP
     end: number;
   };
 
-  let segments: Segment[] = [];
+  const { segments, totalMs } = useMemo(() => {
+    const rangeMs: Record<Range, number> = {
+      "1h": 60 * 60 * 1000,
+      "6h": 6 * 60 * 60 * 1000,
+      "1d": 24 * 60 * 60 * 1000,
+      "7d": 7 * 24 * 60 * 60 * 1000,
+      "30d": 30 * 24 * 60 * 60 * 1000,
+    };
+    // Use dataUpdatedAt as "now" — it's a stable value from React Query
+    // that updates each time data is fetched, keeping segments aligned with data
+    const now = dataUpdatedAt || 0;
+    const rangeStart = now - rangeMs[range];
+    const segs: Segment[] = [];
 
-  if (events !== undefined) {
-    if (events.length === 0) {
-      segments = [{ status: "UNKNOWN", start: rangeStart, end: now }];
-    } else {
-      // First segment: from range start to first event
-      const firstStatus = events[0].fromStatus ?? "UNKNOWN";
-      segments.push({ status: firstStatus, start: rangeStart, end: new Date(events[0].timestamp).getTime() });
+    if (events !== undefined && now > 0) {
+      if (events.length === 0) {
+        segs.push({ status: "UNKNOWN", start: rangeStart, end: now });
+      } else {
+        // First segment: from range start to first event
+        const firstStatus = events[0].fromStatus ?? "UNKNOWN";
+        segs.push({ status: firstStatus, start: rangeStart, end: new Date(events[0].timestamp).getTime() });
 
-      // Middle segments
-      for (let i = 0; i < events.length; i++) {
-        const segStart = new Date(events[i].timestamp).getTime();
-        const segEnd = i + 1 < events.length ? new Date(events[i + 1].timestamp).getTime() : now;
-        segments.push({ status: events[i].toStatus, start: segStart, end: segEnd });
+        // Middle segments
+        for (let i = 0; i < events.length; i++) {
+          const segStart = new Date(events[i].timestamp).getTime();
+          const segEnd = i + 1 < events.length ? new Date(events[i + 1].timestamp).getTime() : now;
+          segs.push({ status: events[i].toStatus, start: segStart, end: segEnd });
+        }
       }
     }
-  }
 
-  const totalMs = now - rangeStart;
+    return { segments: segs, totalMs: now - rangeStart };
+  }, [events, range, dataUpdatedAt]);
 
   return (
     <div className="space-y-2">
