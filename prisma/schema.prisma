@@ -321,6 +321,7 @@ model PipelineMetric {
   bytesIn         BigInt   @default(0)
   bytesOut        BigInt   @default(0)
   utilization     Float    @default(0)
+  latencyMeanMs   Float?                    // pipeline-level weighted mean latency (ms)
 
   @@index([pipelineId, timestamp])
   @@index([timestamp])
