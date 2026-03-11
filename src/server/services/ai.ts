@@ -53,7 +53,7 @@ function validateBaseUrl(baseUrl: string): void {
 interface StreamCompletionParams {
   teamId: string;
   systemPrompt: string;
-  userPrompt: string;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
   onToken: (token: string) => void;
   signal?: AbortSignal;
 }
@@ -102,7 +102,7 @@ export async function getTeamAiConfig(teamId: string, { requireEnabled = true } 
 export async function streamCompletion({
   teamId,
   systemPrompt,
-  userPrompt,
+  messages,
   onToken,
   signal,
 }: StreamCompletionParams): Promise<void> {
@@ -126,8 +126,8 @@ export async function streamCompletion({
       model: config.model,
       stream: true,
       messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
+        { role: "system" as const, content: systemPrompt },
+        ...messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
       ],
     }),
     signal,

@@ -362,25 +362,46 @@ export async function POST(request: Request) {
         });
         if (!request || request.status !== "PENDING") continue;
 
-        await prisma.eventSample.create({
-          data: {
-            requestId: result.requestId,
-            pipelineId: request.pipelineId,
-            componentKey: result.componentKey ?? "",
-            events: (result.events ?? []) as Prisma.InputJsonValue,
-            schema: (result.schema ?? []) as Prisma.InputJsonValue,
-            error: result.error ?? null,
-          },
-        });
+        try {
+          await prisma.eventSample.create({
+            data: {
+              requestId: result.requestId,
+              pipelineId: request.pipelineId,
+              componentKey: result.componentKey ?? "",
+              events: (result.events ?? []) as Prisma.InputJsonValue,
+              schema: (result.schema ?? []) as Prisma.InputJsonValue,
+              error: result.error ?? null,
+            },
+          });
 
-        await prisma.eventSampleRequest.update({
-          where: { id: result.requestId },
-          data: {
-            status: result.error ? "ERROR" : "COMPLETED",
-            completedAt: new Date(),
-            nodeId: agent.nodeId,
-          },
-        });
+          await prisma.eventSampleRequest.update({
+            where: { id: result.requestId },
+            data: {
+              status: result.error ? "ERROR" : "COMPLETED",
+              completedAt: new Date(),
+              nodeId: agent.nodeId,
+            },
+          });
+        } catch (err) {
+          // Only mark as ERROR if the EventSample write itself failed.
+          // If another agent already submitted a successful result, the
+          // request may already be COMPLETED — avoid overwriting that.
+          const current = await prisma.eventSampleRequest.findUnique({
+            where: { id: result.requestId },
+            select: { status: true },
+          });
+          if (current && current.status === "PENDING") {
+            await prisma.eventSampleRequest.update({
+              where: { id: result.requestId },
+              data: {
+                status: "ERROR",
+                completedAt: new Date(),
+                nodeId: agent.nodeId,
+              },
+            });
+          }
+          console.error("EventSample write error:", err);
+        }
       }
     }
 

@@ -20,6 +20,7 @@ import { alertRouter } from "@/server/routers/alert";
 import { serviceAccountRouter } from "@/server/routers/service-account";
 import { userPreferenceRouter } from "@/server/routers/user-preference";
 import { sharedComponentRouter } from "@/server/routers/shared-component";
+import { aiRouter } from "@/server/routers/ai";
 
 export const appRouter = router({
   team: teamRouter,
@@ -43,6 +44,7 @@ export const appRouter = router({
   serviceAccount: serviceAccountRouter,
   userPreference: userPreferenceRouter,
   sharedComponent: sharedComponentRouter,
+  ai: aiRouter,
 });
 
 export type AppRouter = typeof appRouter;

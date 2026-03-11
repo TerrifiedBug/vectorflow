@@ -29,6 +29,7 @@ type poller struct {
 	known          map[string]pipelineState // pipelineId -> last known state
 	sampleRequests []client.SampleRequestMsg
 	pendingAction  *client.PendingAction
+	pollIntervalMs int // server-provided poll interval from last response
 	websocketUrl   string
 }
 
@@ -190,6 +191,9 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 	// Store pending action (e.g. self-update) for the agent to handle
 	p.pendingAction = resp.PendingAction
 
+	// Store server-provided poll interval
+	p.pollIntervalMs = resp.PollIntervalMs
+
 	// Store websocket URL for the agent to use
 	if resp.WebSocketURL != "" {
 		p.websocketUrl = resp.WebSocketURL
@@ -210,6 +214,11 @@ func (p *poller) PendingAction() *client.PendingAction {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.pendingAction
+}
+
+// PollIntervalMs returns the server-provided poll interval from the last response.
+func (p *poller) PollIntervalMs() int {
+	return p.pollIntervalMs
 }
 
 // WebSocketURL returns the WebSocket URL from the last config response.
