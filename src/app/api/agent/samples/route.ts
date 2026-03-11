@@ -51,8 +51,14 @@ export async function POST(request: Request) {
     for (const result of results) {
       const sampleRequest = await prisma.eventSampleRequest.findUnique({
         where: { id: result.requestId },
+        include: { pipeline: { select: { environmentId: true } } },
       });
       if (!sampleRequest || sampleRequest.status !== "PENDING") {
+        continue;
+      }
+
+      // Verify the request's pipeline belongs to this agent's environment
+      if (sampleRequest.pipeline.environmentId !== agent.environmentId) {
         continue;
       }
 
@@ -72,10 +78,10 @@ export async function POST(request: Request) {
           if (isUniqueViolation(err)) continue; // another agent already submitted
           throw err;
         }
-        // Update status AFTER successful EventSample write — if another agent
-        // already submitted a success, the unique constraint above skips this.
-        await prisma.eventSampleRequest.update({
-          where: { id: result.requestId },
+        // Atomically transition PENDING → ERROR; no-op if another agent already
+        // moved the status (e.g. to COMPLETED), preventing status clobbering.
+        await prisma.eventSampleRequest.updateMany({
+          where: { id: result.requestId, status: "PENDING" },
           data: { status: "ERROR", completedAt: new Date(), nodeId: agent.nodeId },
         });
       } else {
@@ -103,8 +109,10 @@ export async function POST(request: Request) {
         const allDone = componentKeys.every((k) => completedKeySet.has(k));
 
         if (allDone) {
-          await prisma.eventSampleRequest.update({
-            where: { id: result.requestId },
+          // Atomically transition PENDING → COMPLETED; no-op if already moved
+          // (e.g. an error submission raced and set ERROR first).
+          await prisma.eventSampleRequest.updateMany({
+            where: { id: result.requestId, status: "PENDING" },
             data: { status: "COMPLETED", completedAt: new Date(), nodeId: agent.nodeId },
           });
         }
