@@ -4,7 +4,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { Loader2, RotateCcw, Sparkles, AlertTriangle, MessageSquarePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -42,6 +41,8 @@ export function AiPipelineDialog({
 
   // --- Generate tab state (unchanged from original) ---
   const [genPrompt, setGenPrompt] = useState("");
+  const genTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const reviewTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [genResult, setGenResult] = useState("");
   const [genIsStreaming, setGenIsStreaming] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
@@ -71,6 +72,24 @@ export function AiPipelineDialog({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversation.messages, conversation.streamingContent]);
 
+  // Auto-grow for generate textarea
+  useEffect(() => {
+    const ta = genTextareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    const maxHeight = 4 * 24; // 4 lines
+    ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
+  }, [genPrompt]);
+
+  // Auto-grow for review textarea
+  useEffect(() => {
+    const ta = reviewTextareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    const maxHeight = 4 * 24;
+    ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
+  }, [reviewPrompt]);
+
   // Compute suggestion statuses across all messages
   const suggestionStatuses = useMemo(() => {
     const statuses = new Map<string, SuggestionStatus>();
@@ -82,6 +101,26 @@ export function AiPipelineDialog({
       const validation = validateSuggestions(msg.suggestions, nodes);
       for (const [id, status] of validation) {
         statuses.set(id, status);
+      }
+
+      // Additional validation for modify_vrl: configPath must point to a string
+      for (const s of msg.suggestions) {
+        if (s.type === "modify_vrl" && statuses.get(s.id) === "actionable") {
+          const node = nodes.find((n) => (n.data as Record<string, unknown>).componentKey === s.componentKey);
+          if (node) {
+            const config = (node.data as Record<string, unknown>).config as Record<string, unknown>;
+            let value: unknown = config;
+            for (const part of s.configPath.split(".")) {
+              if (value == null || typeof value !== "object") { value = undefined; break; }
+              value = (value as Record<string, unknown>)[part];
+            }
+            if (typeof value !== "string") {
+              statuses.set(s.id, "invalid");
+            } else if (!value.includes(s.targetCode)) {
+              statuses.set(s.id, "outdated");
+            }
+          }
+        }
       }
 
       // Check for outdated suggestions
@@ -223,6 +262,13 @@ export function AiPipelineDialog({
     genAbortRef.current?.abort();
   };
 
+  const handleGenKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleGenSubmit();
+    }
+  };
+
   // --- Review tab handlers ---
 
   const handleReviewSubmit = useCallback(
@@ -235,6 +281,13 @@ export function AiPipelineDialog({
     },
     [reviewPrompt, conversation],
   );
+
+  const handleReviewKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleReviewSubmit();
+    }
+  };
 
   const handleApplySelected = useCallback(
     (messageId: string, suggestions: AiSuggestion[]) => {
@@ -258,7 +311,7 @@ export function AiPipelineDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col min-h-0 overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
@@ -269,7 +322,7 @@ export function AiPipelineDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={mode} onValueChange={(v) => setMode(v as "generate" | "review")} className="flex flex-col flex-1 overflow-hidden">
+        <Tabs value={mode} onValueChange={(v) => setMode(v as "generate" | "review")} className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="generate">Generate</TabsTrigger>
             <TabsTrigger value="review" disabled={nodes.length === 0}>
@@ -282,12 +335,16 @@ export function AiPipelineDialog({
             <div className="space-y-2">
               <Label htmlFor="ai-pipeline-prompt">Describe your pipeline</Label>
               <form onSubmit={handleGenSubmit} className="flex gap-2">
-                <Input
+                <textarea
+                  ref={genTextareaRef}
                   id="ai-pipeline-prompt"
                   value={genPrompt}
                   onChange={(e) => setGenPrompt(e.target.value)}
+                  onKeyDown={handleGenKeyDown}
                   placeholder="Collect K8s logs, drop debug, send to Datadog and S3"
                   disabled={genIsStreaming}
+                  rows={1}
+                  className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
                 />
                 {genIsStreaming ? (
                   <Button type="button" variant="outline" size="sm" onClick={handleGenCancel}>
@@ -335,7 +392,7 @@ export function AiPipelineDialog({
           </TabsContent>
 
           {/* ---- Review tab (conversation thread) ---- */}
-          <TabsContent value="review" className="flex flex-col flex-1 mt-4 overflow-hidden">
+          <TabsContent value="review" className="flex flex-col flex-1 mt-4 min-h-0 overflow-hidden">
             {conversation.isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -394,11 +451,15 @@ export function AiPipelineDialog({
                 {/* Input pinned at bottom */}
                 <div className="pt-3 border-t space-y-2">
                   <form onSubmit={handleReviewSubmit} className="flex gap-2">
-                    <Input
+                    <textarea
+                      ref={reviewTextareaRef}
                       value={reviewPrompt}
                       onChange={(e) => setReviewPrompt(e.target.value)}
+                      onKeyDown={handleReviewKeyDown}
                       placeholder="Ask about your pipeline..."
                       disabled={conversation.isStreaming}
+                      rows={1}
+                      className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
                     />
                     {conversation.isStreaming ? (
                       <Button type="button" variant="outline" size="sm" onClick={conversation.cancelStreaming}>

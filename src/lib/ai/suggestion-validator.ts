@@ -83,6 +83,8 @@ function getReferencedKeys(s: AiSuggestion): string[] {
       return [s.componentKey];
     case "modify_connections":
       return s.edgeChanges.flatMap((e) => [e.from, e.to]);
+    case "modify_vrl":
+      return [s.componentKey];
   }
 }
 
