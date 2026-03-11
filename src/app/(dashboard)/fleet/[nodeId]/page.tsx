@@ -30,6 +30,7 @@ import {
   formatCount,
   formatBytes,
   formatBytesRate,
+  formatLatency,
 } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel, pipelineStatusVariant, pipelineStatusLabel } from "@/lib/status";
 
@@ -521,6 +522,7 @@ export default function NodeDetailPage() {
                   <TableHead className="text-right">Errors</TableHead>
                   <TableHead className="text-right">Bytes In</TableHead>
                   <TableHead className="text-right">Bytes Out</TableHead>
+                  <TableHead className="text-right">Avg Latency</TableHead>
                   <TableHead className="text-right">Uptime</TableHead>
                 </TableRow>
               </TableHeader>
@@ -556,6 +558,11 @@ export default function NodeDetailPage() {
                     <TableCell className="text-right font-mono text-sm">
                       <div>{formatBytes(ps.bytesOut)}</div>
                       {rates && <div className="text-xs text-muted-foreground">{formatBytesRate(rates.bytesOutRate)}</div>}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm">
+                      {rates?.latencyMeanMs != null
+                        ? formatLatency(rates.latencyMeanMs)
+                        : "—"}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {formatUptime(ps.uptimeSeconds)}

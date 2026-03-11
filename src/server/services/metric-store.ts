@@ -7,6 +7,7 @@ export interface MetricSample {
   errorCount: number;
   errorsRate: number;
   discardedRate: number;
+  latencyMeanMs: number | null; // mean component latency in ms
 }
 
 interface PrevTotals {
@@ -17,6 +18,7 @@ interface PrevTotals {
   sentBytesTotal: number;
   errorsTotal: number;
   discardedTotal: number;
+  latencyMeanSeconds: number | null;
 }
 
 const MAX_SAMPLES = 240; // 1 hour at 15s intervals
@@ -36,6 +38,7 @@ class MetricStore {
       sentBytesTotal?: number;
       errorsTotal?: number;
       discardedTotal?: number;
+      latencyMeanSeconds?: number;
     },
   ): MetricSample | null {
     const key = `${nodeId}:${pipelineId}:${componentId}`;
@@ -50,6 +53,7 @@ class MetricStore {
       sentBytesTotal: totals.sentBytesTotal ?? 0,
       errorsTotal: totals.errorsTotal ?? 0,
       discardedTotal: totals.discardedTotal ?? 0,
+      latencyMeanSeconds: totals.latencyMeanSeconds ?? null,
     });
 
     if (!prev) return null;
@@ -66,6 +70,7 @@ class MetricStore {
       errorCount: totals.errorsTotal ?? 0,
       errorsRate: Math.max(0, ((totals.errorsTotal ?? 0) - prev.errorsTotal) / elapsedSec),
       discardedRate: Math.max(0, ((totals.discardedTotal ?? 0) - prev.discardedTotal) / elapsedSec),
+      latencyMeanMs: totals.latencyMeanSeconds != null ? totals.latencyMeanSeconds * 1000 : null,
     };
 
     const arr = this.samples.get(key) ?? [];
