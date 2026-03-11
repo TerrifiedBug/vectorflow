@@ -665,9 +665,19 @@ export const alertRouter = router({
     .query(async ({ input }) => {
       const { environmentId, limit, cursor } = input;
 
+      // Exclude informational event metrics (deploys, version checks) from history;
+      // they still fire notifications but aren't surfaced in the alert table.
+      const HIDDEN_METRICS: AlertMetric[] = [
+        "deploy_requested",
+        "deploy_completed",
+        "deploy_rejected",
+        "deploy_cancelled",
+        "new_version_available",
+      ];
+
       const items = await prisma.alertEvent.findMany({
         where: {
-          alertRule: { environmentId },
+          alertRule: { environmentId, metric: { notIn: HIDDEN_METRICS } },
         },
         include: {
           alertRule: {
