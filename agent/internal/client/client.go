@@ -119,7 +119,7 @@ type ConfigResponse struct {
 	SecretBackendConfig map[string]interface{} `json:"secretBackendConfig,omitempty"`
 	SampleRequests      []SampleRequestMsg     `json:"sampleRequests,omitempty"`
 	PendingAction       *PendingAction         `json:"pendingAction,omitempty"`
-	WebSocketURL        string                 `json:"websocketUrl,omitempty"`
+	PushURL             string                 `json:"pushUrl,omitempty"`
 }
 
 func (c *Client) GetConfig() (*ConfigResponse, error) {
