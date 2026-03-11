@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { streamCompletion } from "@/server/services/ai";
 import { buildPipelineSystemPrompt } from "@/lib/ai/prompts";
 import { writeAuditLog } from "@/server/services/audit";
-import type { AiReviewResponse } from "@/lib/ai/types";
+
 import { Prisma } from "@/generated/prisma";
 
 export async function POST(request: Request) {
@@ -184,8 +184,9 @@ export async function POST(request: Request) {
         if (body.mode === "review" && conversationId) {
           let parsedSuggestions = null;
           try {
-            const parsed: AiReviewResponse = JSON.parse(fullResponse);
-            if (parsed.summary && Array.isArray(parsed.suggestions)) {
+            const { parseAiReviewResponse } = await import("@/lib/ai/suggestion-validator");
+            const parsed = parseAiReviewResponse(fullResponse);
+            if (parsed) {
               parsedSuggestions = parsed.suggestions;
             }
           } catch {
