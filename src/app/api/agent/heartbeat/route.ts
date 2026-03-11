@@ -197,16 +197,14 @@ export async function POST(request: Request) {
 
     // Record a status transition event when the node recovers from a non-HEALTHY state
     if (prevNode && prevNode.status !== "HEALTHY") {
-      prisma.nodeStatusEvent
-        .create({
-          data: {
-            nodeId: agent.nodeId,
-            fromStatus: prevNode.status,
-            toStatus: "HEALTHY",
-            reason: "heartbeat received",
-          },
-        })
-        .catch((err) => console.error("NodeStatusEvent insert error:", err));
+      await prisma.nodeStatusEvent.create({
+        data: {
+          nodeId: agent.nodeId,
+          fromStatus: prevNode.status,
+          toStatus: "HEALTHY",
+          reason: "heartbeat received",
+        },
+      });
     }
 
     // Merge agent-reported labels with existing UI-set labels.

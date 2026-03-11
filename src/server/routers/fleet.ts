@@ -47,7 +47,7 @@ export const fleetRouter = router({
         });
       }
       const latestEvent = await prisma.nodeStatusEvent.findFirst({
-        where: { nodeId: input.id },
+        where: { nodeId: input.id, toStatus: node.status },
         orderBy: { timestamp: "desc" },
         select: { timestamp: true },
       });
@@ -132,7 +132,7 @@ export const fleetRouter = router({
       }
 
       const uptimePercent = totalSeconds > 0
-        ? Math.round((healthySeconds / totalSeconds) * 1000) / 10
+        ? Math.round((healthySeconds / totalSeconds) * 10000) / 100
         : 0;
 
       return { uptimePercent, totalSeconds, healthySeconds: Math.round(healthySeconds), incidents };
