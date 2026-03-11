@@ -16,7 +16,7 @@ export async function cleanupOldMetrics(): Promise<number> {
   const metricsCutoff = new Date(Date.now() - metricsRetentionDays * 24 * 60 * 60 * 1000);
   const logsCutoff = new Date(Date.now() - logsRetentionDays * 24 * 60 * 60 * 1000);
 
-  const [pipelineResult, nodeResult, logsResult] = await Promise.all([
+  const [pipelineResult, nodeResult, logsResult, statusEventsResult] = await Promise.all([
     prisma.pipelineMetric.deleteMany({
       where: { timestamp: { lt: metricsCutoff } },
     }),
@@ -26,7 +26,10 @@ export async function cleanupOldMetrics(): Promise<number> {
     prisma.pipelineLog.deleteMany({
       where: { timestamp: { lt: logsCutoff } },
     }),
+    prisma.nodeStatusEvent.deleteMany({
+      where: { timestamp: { lt: metricsCutoff } },
+    }),
   ]);
 
-  return pipelineResult.count + nodeResult.count + logsResult.count;
+  return pipelineResult.count + nodeResult.count + logsResult.count + statusEventsResult.count;
 }

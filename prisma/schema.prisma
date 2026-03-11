@@ -173,6 +173,7 @@ model VectorNode {
   nodeMetrics      NodeMetric[]
   pipelineLogs     PipelineLog[]
   alertEvents      AlertEvent[]
+  statusEvents     NodeStatusEvent[]
   createdAt        DateTime             @default(now())
 }
 
@@ -196,6 +197,19 @@ model NodeMetric {
   diskWrittenBytes BigInt     @default(0)
   netRxBytes       BigInt     @default(0)
   netTxBytes       BigInt     @default(0)
+
+  @@index([nodeId, timestamp])
+  @@index([timestamp])
+}
+
+model NodeStatusEvent {
+  id         String     @id @default(cuid())
+  nodeId     String
+  node       VectorNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  fromStatus String?    // null on first event (node enrolled)
+  toStatus   String     // HEALTHY, DEGRADED, UNREACHABLE
+  reason     String?    // e.g. "heartbeat timeout", "heartbeat received", "enrolled"
+  timestamp  DateTime   @default(now())
 
   @@index([nodeId, timestamp])
   @@index([timestamp])

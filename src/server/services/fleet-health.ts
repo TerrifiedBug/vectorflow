@@ -21,17 +21,38 @@ export async function checkNodeHealth(): Promise<void> {
       lastHeartbeat: { lt: maxAge },
       status: { not: "UNREACHABLE" },
     },
-    select: { id: true, name: true, environmentId: true },
+    select: { id: true, name: true, environmentId: true, status: true },
   });
 
-  await prisma.vectorNode.updateMany({
-    where: {
-      nodeTokenHash: { not: null },
-      lastHeartbeat: { lt: maxAge },
-      status: { not: "UNREACHABLE" },
-    },
-    data: { status: "UNREACHABLE" },
-  });
+  if (goingUnreachable.length > 0) {
+    await prisma.$transaction(async (tx) => {
+      await tx.nodeStatusEvent.createMany({
+        data: goingUnreachable.map((node) => ({
+          nodeId: node.id,
+          fromStatus: node.status,
+          toStatus: "UNREACHABLE",
+          reason: "heartbeat timeout",
+        })),
+      });
+      await tx.vectorNode.updateMany({
+        where: {
+          nodeTokenHash: { not: null },
+          lastHeartbeat: { lt: maxAge },
+          status: { not: "UNREACHABLE" },
+        },
+        data: { status: "UNREACHABLE" },
+      });
+    });
+  } else {
+    await prisma.vectorNode.updateMany({
+      where: {
+        nodeTokenHash: { not: null },
+        lastHeartbeat: { lt: maxAge },
+        status: { not: "UNREACHABLE" },
+      },
+      data: { status: "UNREACHABLE" },
+    });
+  }
 
   for (const node of goingUnreachable) {
     void fireEventAlert("node_left", node.environmentId, {
