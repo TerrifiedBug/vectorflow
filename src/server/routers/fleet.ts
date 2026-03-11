@@ -5,19 +5,24 @@ import { prisma } from "@/lib/prisma";
 import { LogLevel } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { checkDevAgentVersion } from "@/server/services/version-check";
+import { wsRegistry } from "@/server/services/ws-registry";
 
 export const fleetRouter = router({
   list: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      return prisma.vectorNode.findMany({
+      const nodes = await prisma.vectorNode.findMany({
         where: { environmentId: input.environmentId },
         include: {
           environment: { select: { id: true, name: true } },
         },
         orderBy: { createdAt: "desc" },
       });
+      return nodes.map((node) => ({
+        ...node,
+        wsConnected: wsRegistry.isConnected(node.id),
+      }));
     }),
 
   get: protectedProcedure
@@ -279,7 +284,7 @@ export const fleetRouter = router({
         checksum = `sha256:${freshChecksum}`;
       }
 
-      return prisma.vectorNode.update({
+      const updated = await prisma.vectorNode.update({
         where: { id: input.nodeId },
         data: {
           pendingAction: {
@@ -290,6 +295,17 @@ export const fleetRouter = router({
           },
         },
       });
+
+      // Push action to agent via WebSocket (fallback: agent reads pendingAction on next poll)
+      wsRegistry.send(input.nodeId, {
+        type: "action",
+        action: "self_update",
+        targetVersion,
+        downloadUrl,
+        checksum,
+      });
+
+      return updated;
     }),
 
   updateLabels: protectedProcedure
@@ -345,13 +361,21 @@ export const fleetRouter = router({
       if (!node) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Node not found" });
       }
-      return prisma.vectorNode.update({
+      const updated = await prisma.vectorNode.update({
         where: { id: input.nodeId },
         data: {
           maintenanceMode: input.enabled,
           maintenanceModeAt: input.enabled ? new Date() : null,
         },
       });
+
+      // Maintenance mode changes what the config endpoint returns — notify agent to re-poll
+      wsRegistry.send(input.nodeId, {
+        type: "config_changed",
+        reason: input.enabled ? "maintenance_on" : "maintenance_off",
+      });
+
+      return updated;
     }),
 
   listWithPipelineStatus: protectedProcedure
@@ -388,7 +412,10 @@ export const fleetRouter = router({
       });
 
       return {
-        nodes,
+        nodes: nodes.map((node) => ({
+          ...node,
+          wsConnected: wsRegistry.isConnected(node.id),
+        })),
         deployedPipelines: deployedPipelines.map((p) => ({
           id: p.id,
           name: p.name,

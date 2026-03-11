@@ -29,6 +29,11 @@ func (c *Client) SetNodeToken(token string) {
 	c.nodeToken = token
 }
 
+// NodeToken returns the current node token for use by other packages (e.g., WebSocket auth).
+func (c *Client) NodeToken() string {
+	return c.nodeToken
+}
+
 // EnrollRequest is sent to POST /api/agent/enroll
 type EnrollRequest struct {
 	Token         string `json:"token"`
@@ -114,6 +119,7 @@ type ConfigResponse struct {
 	SecretBackendConfig map[string]interface{} `json:"secretBackendConfig,omitempty"`
 	SampleRequests      []SampleRequestMsg     `json:"sampleRequests,omitempty"`
 	PendingAction       *PendingAction         `json:"pendingAction,omitempty"`
+	WebSocketURL        string                 `json:"websocketUrl,omitempty"`
 }
 
 func (c *Client) GetConfig() (*ConfigResponse, error) {
@@ -255,5 +261,40 @@ func (c *Client) SendHeartbeat(req HeartbeatRequest) error {
 		slog.Debug("http response", "method", "POST", "url", "/api/agent/heartbeat", "status", resp.StatusCode, "body", string(respBody))
 		return fmt.Errorf("heartbeat failed (status %d): %s", resp.StatusCode, string(respBody))
 	}
+	return nil
+}
+
+// SampleResultsRequest is sent to POST /api/agent/samples
+type SampleResultsRequest struct {
+	Results []SampleResultMsg `json:"results"`
+}
+
+// SendSampleResults sends sample results directly to the dedicated samples endpoint.
+func (c *Client) SendSampleResults(results []SampleResultMsg) error {
+	req := SampleResultsRequest{Results: results}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("marshal sample results: %w", err)
+	}
+
+	httpReq, err := http.NewRequest("POST", c.baseURL+"/api/agent/samples", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create sample results request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+c.nodeToken)
+
+	slog.Debug("http request", "method", "POST", "url", c.baseURL+"/api/agent/samples")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("sample results request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("sample results failed (status %d): %s", resp.StatusCode, string(respBody))
+	}
+	slog.Debug("http response", "method", "POST", "url", "/api/agent/samples", "status", 200)
 	return nil
 }

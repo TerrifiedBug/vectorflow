@@ -6,6 +6,7 @@ import { createVersion } from "@/server/services/pipeline-version";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { startSystemVector, stopSystemVector } from "@/server/services/system-vector";
 import { gitSyncCommitPipeline } from "@/server/services/git-sync";
+import { wsRegistry } from "@/server/services/ws-registry";
 
 export interface AgentDeployResult {
   success: boolean;
@@ -163,6 +164,28 @@ export async function deployAgent(
   //    relying on agents to pick up the config.
   if (pipeline.isSystem) {
     await startSystemVector(version.configYaml);
+  }
+
+  // Notify connected agents that config has changed — they will re-poll
+  // to get the full assembled config with secrets and certs resolved.
+  if (!pipeline.isSystem) {
+    const nodeSelector = pipeline.nodeSelector as Record<string, string> | null;
+    const targetNodes = await prisma.vectorNode.findMany({
+      where: { environmentId: pipeline.environmentId },
+      select: { id: true, labels: true },
+    });
+    for (const node of targetNodes) {
+      const labels = (node.labels as Record<string, string>) ?? {};
+      const selectorEntries = Object.entries(nodeSelector ?? {});
+      const matches = selectorEntries.every(([k, v]) => labels[k] === v);
+      if (matches) {
+        wsRegistry.send(node.id, {
+          type: "config_changed",
+          pipelineId,
+          reason: "deploy",
+        });
+      }
+    }
   }
 
   return {
