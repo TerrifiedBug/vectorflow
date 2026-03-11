@@ -83,6 +83,15 @@ export async function POST(request: Request) {
     });
     debugLog("enroll", `SUCCESS -- node ${node.id} enrolled in "${matchedEnv.name}"`);
 
+    await prisma.nodeStatusEvent.create({
+      data: {
+        nodeId: node.id,
+        fromStatus: null,
+        toStatus: "HEALTHY",
+        reason: "enrolled",
+      },
+    });
+
     void fireEventAlert("node_joined", matchedEnv.id, {
       message: `Node "${hostname}" enrolled in environment "${matchedEnv.name}"`,
       nodeId: node.id,
