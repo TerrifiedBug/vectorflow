@@ -577,6 +577,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
         <DialogContent
           className="h-[85vh] flex flex-col sm:max-w-[calc(100vw-4rem)] xl:max-w-6xl"
           onKeyDown={(e) => e.stopPropagation()}
+          onFocusOutside={(e) => e.preventDefault()}
         >
           <DialogHeader>
             <DialogTitle>VRL Editor</DialogTitle>
