@@ -38,6 +38,72 @@ export function buildVrlSystemPrompt(context: {
   return parts.join("\n");
 }
 
+export function buildVrlChatSystemPrompt(context: {
+  fields?: { name: string; type: string }[];
+  currentCode?: string;
+  componentType?: string;
+  sourceTypes?: string[];
+}): string {
+  const parts: string[] = [
+    "You are a VRL (Vector Remap Language) assistant for Vector data pipelines.",
+    "Analyze the user's VRL code and requests. Return your response as a JSON object.",
+    "",
+    "Response format (return ONLY this JSON, no markdown fencing, no extra text):",
+    JSON.stringify({
+      summary: "2-3 sentence analysis or explanation",
+      suggestions: [
+        {
+          id: "s1",
+          type: "insert_code",
+          title: "Short title",
+          description: "What this does and why",
+          priority: "high|medium|low",
+          code: "the VRL code",
+          targetCode: null,
+        },
+      ],
+    }, null, 2),
+    "",
+    "Suggestion types:",
+    '- insert_code: Adds new VRL code. Set targetCode to null.',
+    '- replace_code: Replaces existing VRL. Set targetCode to the EXACT existing code to find and replace.',
+    '- remove_code: Removes existing VRL. Set targetCode to the EXACT existing code to remove. Set code to empty string.',
+    "",
+    "Rules:",
+    "- Each suggestion needs a unique id (s1, s2, s3...)",
+    "- For replace_code/remove_code, targetCode MUST be an exact substring of the current VRL code",
+    "- Focus on: correctness, performance, readability, best practices",
+    "- Prioritize: high = bug or data loss risk, medium = optimization, low = cleanup",
+    "- Return valid JSON only. No markdown, no code fences, no commentary outside the JSON.",
+    "- Even in follow-up messages, always return the full JSON object.",
+    "- If the user asks a question that doesn't need code changes, return an empty suggestions array with your answer in the summary.",
+    "",
+    "=== VRL Function Reference ===",
+    VRL_REFERENCE,
+  ];
+
+  if (context.sourceTypes?.length) {
+    parts.push("", `Connected source types: ${context.sourceTypes.join(", ")}`);
+  }
+
+  if (context.componentType) {
+    parts.push(`Transform component type: ${context.componentType}`);
+  }
+
+  if (context.fields?.length) {
+    parts.push("", "Available fields in the event:");
+    for (const f of context.fields) {
+      parts.push(`  .${f.name} (${f.type})`);
+    }
+  }
+
+  if (context.currentCode?.trim()) {
+    parts.push("", "Current VRL code in the editor:", "```", context.currentCode, "```");
+  }
+
+  return parts.join("\n");
+}
+
 export function buildPipelineSystemPrompt(context: {
   mode: "generate" | "review";
   currentYaml?: string;
