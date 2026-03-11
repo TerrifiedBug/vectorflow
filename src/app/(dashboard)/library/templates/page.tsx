@@ -31,7 +31,6 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { PageHeader } from "@/components/page-header";
 
 /* ------------------------------------------------------------------ */
 /*  Category icon mapping                                              */
@@ -180,7 +179,6 @@ export default function TemplatesPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Templates" />
       {/* Environment notice */}
       {!selectedEnvironmentId && (
         <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
