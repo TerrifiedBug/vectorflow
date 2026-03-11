@@ -9,10 +9,30 @@ function tokenCacheKey(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+const TOKEN_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const TOKEN_CACHE_MAX_SIZE = 1000;
+
+interface CacheEntry {
+  nodeId: string;
+  environmentId: string;
+  cachedAt: number;
+}
+
 /** Cache verified tokens to avoid O(n) bcrypt scan on every WS upgrade.
- *  Key: SHA-256 hash of token, Value: { nodeId, environmentId }.
- *  Entries are evicted when the token fails verification (node re-enrolled). */
-const tokenCache = new Map<string, { nodeId: string; environmentId: string }>();
+ *  Key: SHA-256 hash of token, Value: { nodeId, environmentId, cachedAt }.
+ *  Entries expire after 30 minutes and the cache is capped at 1000 entries. */
+const tokenCache = new Map<string, CacheEntry>();
+
+/** Remove expired entries. Called on each lookup to bound memory. */
+function evictStale(): void {
+  if (tokenCache.size <= TOKEN_CACHE_MAX_SIZE) return;
+  const now = Date.now();
+  for (const [key, entry] of tokenCache) {
+    if (now - entry.cachedAt > TOKEN_CACHE_TTL_MS) {
+      tokenCache.delete(key);
+    }
+  }
+}
 
 /**
  * Authenticate a WebSocket upgrade request by verifying its Bearer token.
@@ -35,16 +55,21 @@ export async function authenticateWsUpgrade(
   const cacheKey = tokenCacheKey(token);
   const cached = tokenCache.get(cacheKey);
   if (cached) {
-    // Verify the node still exists and the hash still matches (re-enrollment invalidates)
-    const node = await prisma.vectorNode.findUnique({
-      where: { id: cached.nodeId },
-      select: { nodeTokenHash: true },
-    });
-    if (node?.nodeTokenHash && await verifyNodeToken(token, node.nodeTokenHash)) {
-      return cached;
+    // Evict if TTL expired
+    if (Date.now() - cached.cachedAt > TOKEN_CACHE_TTL_MS) {
+      tokenCache.delete(cacheKey);
+    } else {
+      // Verify the node still exists and the hash still matches (re-enrollment invalidates)
+      const node = await prisma.vectorNode.findUnique({
+        where: { id: cached.nodeId },
+        select: { nodeTokenHash: true },
+      });
+      if (node?.nodeTokenHash && await verifyNodeToken(token, node.nodeTokenHash)) {
+        return { nodeId: cached.nodeId, environmentId: cached.environmentId };
+      }
+      // Cache stale — node deleted or re-enrolled
+      tokenCache.delete(cacheKey);
     }
-    // Cache stale — node deleted or re-enrolled
-    tokenCache.delete(cacheKey);
   }
 
   // Slow path: scan all nodes with bcrypt
@@ -57,9 +82,13 @@ export async function authenticateWsUpgrade(
     if (!node.nodeTokenHash) continue;
     const valid = await verifyNodeToken(token, node.nodeTokenHash);
     if (valid) {
-      const result = { nodeId: node.id, environmentId: node.environmentId };
-      tokenCache.set(cacheKey, result);
-      return result;
+      evictStale();
+      tokenCache.set(cacheKey, {
+        nodeId: node.id,
+        environmentId: node.environmentId,
+        cachedAt: Date.now(),
+      });
+      return { nodeId: node.id, environmentId: node.environmentId };
     }
   }
 

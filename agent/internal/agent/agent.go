@@ -316,7 +316,8 @@ func (a *Agent) handleWsMessage(msg ws.PushMessage, ticker *time.Ticker) {
 
 	case "action":
 		slog.Info("ws: action received", "action", msg.Action)
-		if msg.Action == "self_update" {
+		switch msg.Action {
+		case "self_update":
 			a.handlePendingAction(&client.PendingAction{
 				Type:          "self_update",
 				TargetVersion: msg.TargetVersion,
@@ -324,6 +325,12 @@ func (a *Agent) handleWsMessage(msg ws.PushMessage, ticker *time.Ticker) {
 				Checksum:      msg.Checksum,
 			})
 			a.triggerImmediateHeartbeat()
+		case "restart":
+			slog.Warn("ws: restart action not yet implemented, triggering re-poll instead")
+			a.pollAndApply()
+			a.triggerImmediateHeartbeat()
+		default:
+			slog.Warn("ws: unknown action", "action", msg.Action)
 		}
 
 	case "poll_interval":
