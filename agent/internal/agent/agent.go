@@ -78,12 +78,14 @@ func (a *Agent) Run() error {
 	}()
 
 	// Main loop: poll + heartbeat
-	ticker := time.NewTicker(a.cfg.PollInterval)
+	currentInterval := a.cfg.PollInterval
+	ticker := time.NewTicker(currentInterval)
 	defer ticker.Stop()
 
 	// Do first poll immediately
 	a.pollAndApply()
 	a.sendHeartbeat()
+	currentInterval = a.maybeResetTicker(ticker, currentInterval)
 
 	for {
 		select {
@@ -95,8 +97,25 @@ func (a *Agent) Run() error {
 		case <-ticker.C:
 			a.pollAndApply()
 			a.sendHeartbeat()
+			currentInterval = a.maybeResetTicker(ticker, currentInterval)
 		}
 	}
+}
+
+// maybeResetTicker checks if the server provided a new poll interval and resets
+// the ticker if it changed. Returns the (possibly updated) current interval.
+func (a *Agent) maybeResetTicker(ticker *time.Ticker, current time.Duration) time.Duration {
+	serverMs := a.poller.PollIntervalMs()
+	if serverMs <= 0 {
+		return current
+	}
+	serverInterval := time.Duration(serverMs) * time.Millisecond
+	if serverInterval != current {
+		slog.Info("poll interval updated by server", "old", current, "new", serverInterval)
+		ticker.Reset(serverInterval)
+		return serverInterval
+	}
+	return current
 }
 
 func (a *Agent) pollAndApply() {

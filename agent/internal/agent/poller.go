@@ -27,6 +27,7 @@ type poller struct {
 	known          map[string]pipelineState // pipelineId -> last known state
 	sampleRequests []client.SampleRequestMsg
 	pendingAction  *client.PendingAction
+	pollIntervalMs int // server-provided poll interval from last response
 }
 
 func newPoller(cfg *config.Config, c configFetcher) *poller {
@@ -184,6 +185,9 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 	// Store pending action (e.g. self-update) for the agent to handle
 	p.pendingAction = resp.PendingAction
 
+	// Store server-provided poll interval
+	p.pollIntervalMs = resp.PollIntervalMs
+
 	return actions, nil
 }
 
@@ -195,4 +199,9 @@ func (p *poller) SampleRequests() []client.SampleRequestMsg {
 // PendingAction returns the pending action from the last poll response, if any.
 func (p *poller) PendingAction() *client.PendingAction {
 	return p.pendingAction
+}
+
+// PollIntervalMs returns the server-provided poll interval from the last response.
+func (p *poller) PollIntervalMs() int {
+	return p.pollIntervalMs
 }
