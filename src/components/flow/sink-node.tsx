@@ -8,7 +8,7 @@ import type { VectorComponentDef } from "@/lib/vector/types";
 import type { NodeMetricsData } from "@/stores/flow-store";
 import { getIcon } from "./node-icon";
 import { NodeSparkline } from "./node-sparkline";
-import { formatRate, formatBytesRate } from "./node-metrics-format";
+import { formatRate, formatBytesRate, formatLatency } from "./node-metrics-format";
 import { StatusDot } from "@/components/ui/status-dot";
 import { nodeStatusVariant } from "@/lib/status";
 
@@ -68,6 +68,9 @@ function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
         {metrics && (
           <p className="truncate text-xs font-mono text-purple-400">
             {formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}
+            {metrics.latencyMs != null && metrics.latencyMs > 0 && (
+              <>{"  "}{formatLatency(metrics.latencyMs)}</>
+            )}
           </p>
         )}
       </div>

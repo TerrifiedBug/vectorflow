@@ -8,7 +8,7 @@ import type { VectorComponentDef } from "@/lib/vector/types";
 import type { NodeMetricsData } from "@/stores/flow-store";
 import { getIcon } from "./node-icon";
 import { NodeSparkline } from "./node-sparkline";
-import { formatRate, formatBytesRate } from "./node-metrics-format";
+import { formatRate, formatBytesRate, formatLatency } from "./node-metrics-format";
 import { StatusDot } from "@/components/ui/status-dot";
 import { nodeStatusVariant } from "@/lib/status";
 
@@ -69,16 +69,23 @@ function TransformNodeComponent({
         {displayName && <p className="truncate text-xs font-medium text-foreground">{displayName}</p>}
 
         {metrics && (
-          metrics.eventsInPerSec != null ? (
-            <div className="flex justify-between text-xs font-mono text-blue-400">
-              <span>{formatRate(metrics.eventsInPerSec)} ev/s in</span>
-              <span>{formatRate(metrics.eventsPerSec)} ev/s out</span>
-            </div>
-          ) : (
-            <p className="truncate text-xs font-mono text-blue-400">
-              {formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}
-            </p>
-          )
+          <>
+            {metrics.eventsInPerSec != null ? (
+              <div className="flex justify-between text-xs font-mono text-blue-400">
+                <span>{formatRate(metrics.eventsInPerSec)} ev/s in</span>
+                <span>{formatRate(metrics.eventsPerSec)} ev/s out</span>
+              </div>
+            ) : (
+              <p className="truncate text-xs font-mono text-blue-400">
+                {formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}
+              </p>
+            )}
+            {metrics.latencyMs != null && metrics.latencyMs > 0 && (
+              <p className="truncate text-xs font-mono text-blue-400/70">
+                {formatLatency(metrics.latencyMs)}
+              </p>
+            )}
+          </>
         )}
       </div>
 
