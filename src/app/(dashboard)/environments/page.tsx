@@ -16,7 +16,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PageHeader } from "@/components/page-header";
 
 export default function EnvironmentsPage() {
   const trpc = useTRPC();
@@ -35,17 +34,14 @@ export default function EnvironmentsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Environments"
-        actions={
-          <Button asChild size="sm">
-            <Link href="/environments/new">
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              New Environment
-            </Link>
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-end">
+        <Button asChild size="sm">
+          <Link href="/environments/new">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            New Environment
+          </Link>
+        </Button>
+      </div>
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (

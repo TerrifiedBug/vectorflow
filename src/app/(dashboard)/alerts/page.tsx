@@ -60,7 +60,6 @@ import {
 } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Separator } from "@/components/ui/separator";
-import { PageHeader } from "@/components/page-header";
 import { isEventMetric } from "@/lib/alert-metrics";
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
@@ -308,15 +307,12 @@ function AlertRulesSection({ environmentId }: { environmentId: string }) {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Alerts"
-        actions={
-          <Button size="sm" onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Rule
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-end">
+        <Button size="sm" onClick={openCreate}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Rule
+        </Button>
+      </div>
 
       {rulesQuery.isLoading ? (
         <div className="space-y-3">
