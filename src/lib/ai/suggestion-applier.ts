@@ -38,6 +38,16 @@ function findNodeByComponentKey(nodes: Node[], componentKey: string): Node | und
   return nodes.find((n) => (n.data as Record<string, unknown>).componentKey === componentKey);
 }
 
+/** Deep-set a value at a dot-notation path, returning a shallow-cloned object tree. */
+function setAtPath(obj: Record<string, unknown>, path: string, value: unknown): Record<string, unknown> {
+  if (!path.includes(".")) {
+    return { ...obj, [path]: value };
+  }
+  const [head, ...rest] = path.split(".");
+  const child = (obj[head] ?? {}) as Record<string, unknown>;
+  return { ...obj, [head]: setAtPath(child, rest.join("."), value) };
+}
+
 function applyModifyConfig(
   suggestion: AiSuggestion & { type: "modify_config" },
   nodes: Node[],
@@ -49,7 +59,10 @@ function applyModifyConfig(
   }
 
   const existingConfig = (target.data as Record<string, unknown>).config as Record<string, unknown>;
-  const newConfig = { ...existingConfig, ...suggestion.changes };
+  let newConfig = { ...existingConfig };
+  for (const [key, value] of Object.entries(suggestion.changes)) {
+    newConfig = setAtPath(newConfig, key, value);
+  }
 
   const newNodes = nodes.map((n) =>
     n.id === target.id

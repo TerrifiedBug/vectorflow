@@ -38,6 +38,7 @@ export function useAiConversation({
   const [streamingContent, setStreamingContent] = useState("");
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const isNewConversationRef = useRef(false);
 
   // Load existing conversation
   const conversationQuery = useQuery({
@@ -47,7 +48,7 @@ export function useAiConversation({
 
   // Sync loaded conversation into local state
   const loadedConversation = conversationQuery.data;
-  if (loadedConversation && !conversationId && messages.length === 0 && !isStreaming) {
+  if (loadedConversation && !conversationId && messages.length === 0 && !isStreaming && !isNewConversationRef.current) {
     setConversationId(loadedConversation.id);
     setMessages(
       loadedConversation.messages.map((m) => ({
@@ -74,6 +75,7 @@ export function useAiConversation({
     async (prompt: string) => {
       if (!prompt.trim() || !selectedTeamId || isStreaming) return;
 
+      isNewConversationRef.current = false;
       setIsStreaming(true);
       setStreamingContent("");
       setError(null);
@@ -194,6 +196,7 @@ export function useAiConversation({
   );
 
   const startNewConversation = useCallback(() => {
+    isNewConversationRef.current = true;
     queryClient.removeQueries({ queryKey: trpc.ai.getConversation.queryKey({ pipelineId }) });
     setMessages([]);
     setConversationId(null);
