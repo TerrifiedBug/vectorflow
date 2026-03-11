@@ -10,7 +10,7 @@ import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
 import { fireEventAlert } from "@/server/services/event-alerts";
-import { wsRegistry } from "@/server/services/ws-registry";
+import { pushRegistry } from "@/server/services/push-registry";
 
 export const deployRouter = router({
   preview: protectedProcedure
@@ -277,7 +277,7 @@ export const deployRouter = router({
           select: { id: true },
         });
         for (const node of nodes) {
-          wsRegistry.send(node.id, {
+          pushRegistry.send(node.id, {
             type: "config_changed",
             pipelineId: input.pipelineId,
             reason: "undeploy",

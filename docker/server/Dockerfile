@@ -31,19 +31,8 @@ COPY prisma.config.ts ./prisma.config.ts
 RUN pnpm exec prisma generate
 COPY src ./src
 COPY public ./public
-COPY server.ts ./server.ts
 RUN --mount=type=cache,target=/app/.next/cache \
     pnpm build
-# Preserve the original standalone server.js (with inlined config and static file
-# serving), then bundle our WebSocket wrapper as the new server.js entry point.
-# The wrapper monkey-patches http.createServer to intercept the server instance,
-# then loads next-server.js which runs the standard Next.js standalone startup.
-# Only `next` stays external (in standalone node_modules); all other deps are bundled.
-RUN mv .next/standalone/server.js .next/standalone/next-server.js && \
-    pnpm exec esbuild server.ts --bundle --platform=node --target=node22 \
-    --outfile=.next/standalone/server.js \
-    --alias:@=./src \
-    --external:next --external:'next/*' --external:./next-server.js
 # Save Prisma client version for the runner stage (standalone strips node_modules)
 RUN node -e "console.log(require('./node_modules/@prisma/client/package.json').version)" > /tmp/prisma-version
 
