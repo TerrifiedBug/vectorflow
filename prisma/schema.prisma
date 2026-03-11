@@ -775,16 +775,18 @@ model ServiceAccount {
 }
 
 model AiConversation {
-  id          String      @id @default(cuid())
-  pipelineId  String
-  pipeline    Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  createdById String?
-  createdBy   User?       @relation("AiConversationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  messages    AiMessage[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id            String      @id @default(cuid())
+  pipelineId    String
+  pipeline      Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  componentKey  String?
+  createdById   String?
+  createdBy     User?       @relation("AiConversationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  messages      AiMessage[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@index([pipelineId, createdAt])
+  @@index([pipelineId, componentKey])
 }
 
 model AiMessage {
@@ -795,6 +797,7 @@ model AiMessage {
   content         String
   suggestions     Json?
   pipelineYaml    String?
+  vrlCode         String?
   createdById     String?
   createdBy       User?           @relation("AiMessageCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt       DateTime        @default(now())
