@@ -39,6 +39,36 @@ export function parseVrlChatResponse(raw: string): VrlChatResponse | null {
   }
 }
 
+/** Collapse all whitespace runs to single space and trim. */
+function normalizeWhitespace(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Find a substring match using normalized whitespace comparison.
+ * Returns the original start/end indices in haystack, or null.
+ */
+function findNormalizedMatch(
+  haystack: string,
+  needle: string,
+): { start: number; end: number } | null {
+  const normNeedle = normalizeWhitespace(needle);
+  if (!normNeedle) return null;
+
+  // Slide start through haystack
+  for (let start = 0; start < haystack.length; start++) {
+    // Try windows of varying length around the expected needle length (±10 chars)
+    const minEnd = Math.max(start + 1, start + needle.length - 10);
+    const maxEnd = Math.min(haystack.length, start + needle.length + 10);
+    for (let end = minEnd; end <= maxEnd; end++) {
+      if (normalizeWhitespace(haystack.slice(start, end)) === normNeedle) {
+        return { start, end };
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Compute the status of each VRL suggestion based on the current editor content.
  *
@@ -64,8 +94,16 @@ export function computeVrlSuggestionStatuses(
     }
 
     // replace_code and remove_code: check if targetCode exists in current editor
-    if (s.targetCode && currentCode.includes(s.targetCode)) {
-      statuses.set(s.id, "actionable");
+    if (s.targetCode) {
+      // Fast path: exact match
+      if (currentCode.includes(s.targetCode)) {
+        statuses.set(s.id, "actionable");
+      // Fallback: normalized whitespace match
+      } else if (findNormalizedMatch(currentCode, s.targetCode)) {
+        statuses.set(s.id, "actionable");
+      } else {
+        statuses.set(s.id, "outdated");
+      }
     } else {
       statuses.set(s.id, "outdated");
     }
@@ -88,17 +126,30 @@ export function applyVrlSuggestion(
         ? `${currentCode}\n${suggestion.code}`
         : suggestion.code;
 
-    case "replace_code":
-      if (!suggestion.targetCode || !currentCode.includes(suggestion.targetCode)) {
-        return null;
+    case "replace_code": {
+      if (!suggestion.targetCode) return null;
+      // Fast path: exact match
+      if (currentCode.includes(suggestion.targetCode)) {
+        return currentCode.replaceAll(suggestion.targetCode, suggestion.code);
       }
-      return currentCode.replaceAll(suggestion.targetCode, suggestion.code);
+      // Fallback: normalized whitespace match
+      const match = findNormalizedMatch(currentCode, suggestion.targetCode);
+      if (!match) return null;
+      return currentCode.slice(0, match.start) + suggestion.code + currentCode.slice(match.end);
+    }
 
-    case "remove_code":
-      if (!suggestion.targetCode || !currentCode.includes(suggestion.targetCode)) {
-        return null;
+    case "remove_code": {
+      if (!suggestion.targetCode) return null;
+      // Fast path: exact match
+      if (currentCode.includes(suggestion.targetCode)) {
+        return currentCode.replaceAll(suggestion.targetCode, "").replace(/\n{3,}/g, "\n\n").trim();
       }
-      return currentCode.replaceAll(suggestion.targetCode, "").replace(/\n{3,}/g, "\n\n").trim();
+      // Fallback: normalized whitespace match
+      const match = findNormalizedMatch(currentCode, suggestion.targetCode);
+      if (!match) return null;
+      const removed = currentCode.slice(0, match.start) + currentCode.slice(match.end);
+      return removed.replace(/\n{3,}/g, "\n\n").trim();
+    }
 
     default:
       return null;

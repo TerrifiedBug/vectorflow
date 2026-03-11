@@ -17,6 +17,7 @@ interface AiSuggestionCardProps {
 
 const TYPE_LABELS: Record<AiSuggestion["type"], string> = {
   modify_config: "Config Change",
+  modify_vrl: "VRL Fix",
   add_component: "Add Component",
   remove_component: "Remove Component",
   modify_connections: "Rewire",
@@ -103,6 +104,17 @@ export function AiSuggestionCard({
             </div>
           )}
 
+          {suggestion.type === "modify_vrl" && (
+            <div className="mt-2 text-xs font-mono bg-muted rounded px-2 py-1.5 space-y-1">
+              <div className="text-red-600 dark:text-red-400 line-through whitespace-pre-wrap">
+                {suggestion.targetCode}
+              </div>
+              <div className="text-green-600 dark:text-green-400 whitespace-pre-wrap">
+                {suggestion.code}
+              </div>
+            </div>
+          )}
+
           {hasConflict && conflictReason && (
             <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
               <AlertTriangle className="h-3 w-3 shrink-0" />
@@ -130,6 +142,9 @@ function renderDescription(suggestion: AiSuggestion): React.ReactNode {
     for (const e of suggestion.edgeChanges) {
       componentKeys.push(e.from, e.to);
     }
+  }
+  if (suggestion.type === "modify_vrl") {
+    componentKeys.push(suggestion.componentKey);
   }
 
   if (componentKeys.length === 0) return desc;
