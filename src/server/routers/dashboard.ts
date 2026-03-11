@@ -682,6 +682,7 @@ export const dashboardRouter = router({
             bytesOut: true,
             errorsTotal: true,
             eventsDiscarded: true,
+            latencyMeanMs: true,
           },
         }),
         effectiveNodeIds.length > 0
@@ -741,22 +742,27 @@ export const dashboardRouter = router({
       const bytesOut: TSMap = {};
       const errors: TSMap = {};
       const discarded: TSMap = {};
+      const latency: TSMap = {};
 
       if (input.groupBy === "node") {
         // Sum pipeline values per (node, timestamp) since multiple pipelines on one node produce multiple rows
-        const acc = new Map<string, Map<number, { ei: number; eo: number; bi: number; bo: number; er: number; di: number }>>();
+        const acc = new Map<string, Map<number, { ei: number; eo: number; bi: number; bo: number; er: number; di: number; lat: number; latC: number }>>();
         for (const row of pipelineRows) {
           const label = nodeNameMap.get(row.nodeId ?? "") ?? row.nodeId ?? "unknown";
           const t = new Date(row.timestamp).getTime();
           if (!acc.has(label)) acc.set(label, new Map());
           const timeMap = acc.get(label)!;
-          const s = timeMap.get(t) ?? { ei: 0, eo: 0, bi: 0, bo: 0, er: 0, di: 0 };
+          const s = timeMap.get(t) ?? { ei: 0, eo: 0, bi: 0, bo: 0, er: 0, di: 0, lat: 0, latC: 0 };
           s.ei += Number(row.eventsIn) / 60;
           s.eo += Number(row.eventsOut) / 60;
           s.bi += Number(row.bytesIn) / 60;
           s.bo += Number(row.bytesOut) / 60;
           s.er += Number(row.errorsTotal) / 60;
           s.di += Number(row.eventsDiscarded) / 60;
+          if (row.latencyMeanMs != null) {
+            s.lat += row.latencyMeanMs;
+            s.latC++;
+          }
           timeMap.set(t, s);
         }
         for (const [label, timeMap] of acc) {
@@ -767,20 +773,25 @@ export const dashboardRouter = router({
             addPoint(bytesOut, label, t, s.bo);
             addPoint(errors, label, t, s.er);
             addPoint(discarded, label, t, s.di);
+            if (s.latC > 0) addPoint(latency, label, t, s.lat / s.latC);
           }
         }
       } else if (input.groupBy === "aggregate") {
         // Sum all pipelines into a single "Total" series per timestamp
-        const acc = new Map<number, { ei: number; eo: number; bi: number; bo: number; er: number; di: number }>();
+        const acc = new Map<number, { ei: number; eo: number; bi: number; bo: number; er: number; di: number; lat: number; latC: number }>();
         for (const row of pipelineRows) {
           const t = new Date(row.timestamp).getTime();
-          const s = acc.get(t) ?? { ei: 0, eo: 0, bi: 0, bo: 0, er: 0, di: 0 };
+          const s = acc.get(t) ?? { ei: 0, eo: 0, bi: 0, bo: 0, er: 0, di: 0, lat: 0, latC: 0 };
           s.ei += Number(row.eventsIn) / 60;
           s.eo += Number(row.eventsOut) / 60;
           s.bi += Number(row.bytesIn) / 60;
           s.bo += Number(row.bytesOut) / 60;
           s.er += Number(row.errorsTotal) / 60;
           s.di += Number(row.eventsDiscarded) / 60;
+          if (row.latencyMeanMs != null) {
+            s.lat += row.latencyMeanMs;
+            s.latC++;
+          }
           acc.set(t, s);
         }
         for (const [t, s] of acc) {
@@ -790,6 +801,7 @@ export const dashboardRouter = router({
           addPoint(bytesOut, "Total", t, s.bo);
           addPoint(errors, "Total", t, s.er);
           addPoint(discarded, "Total", t, s.di);
+          if (s.latC > 0) addPoint(latency, "Total", t, s.lat / s.latC);
         }
       } else {
         // groupBy === "pipeline" — direct mapping, one series per pipeline
@@ -802,6 +814,9 @@ export const dashboardRouter = router({
           addPoint(bytesOut, label, t, Number(row.bytesOut) / 60);
           addPoint(errors, label, t, Number(row.errorsTotal) / 60);
           addPoint(discarded, label, t, Number(row.eventsDiscarded) / 60);
+          if (row.latencyMeanMs != null) {
+            addPoint(latency, label, t, row.latencyMeanMs);
+          }
         }
       }
 
@@ -920,6 +935,7 @@ export const dashboardRouter = router({
           bytesOut: downsample(bytesOut),
           errors: downsample(errors),
           discarded: downsample(discarded),
+          latency: downsample(latency),
         },
         system: {
           cpu: downsample(cpu),

@@ -34,6 +34,7 @@ export const metricsRouter = router({
           bytesIn: true,
           bytesOut: true,
           utilization: true,
+          latencyMeanMs: true,
         },
       });
 
@@ -113,6 +114,7 @@ export const metricsRouter = router({
         bytesInRate: number;
         bytesOutRate: number;
         errorsRate: number;
+        latencyMeanMs: number | null;
       }> = {};
 
       for (const [componentId, samples] of nodeMetrics) {
@@ -126,6 +128,7 @@ export const metricsRouter = router({
         const existing = rates[matchingNode.pipelineId] ?? {
           eventsInRate: 0, eventsOutRate: 0,
           bytesInRate: 0, bytesOutRate: 0, errorsRate: 0,
+          latencyMeanMs: null,
         };
         if (matchingNode.kind === "SOURCE") {
           existing.eventsInRate += latest.receivedEventsRate;
@@ -135,6 +138,11 @@ export const metricsRouter = router({
           existing.bytesOutRate += latest.sentBytesRate;
         }
         existing.errorsRate += latest.errorsRate;
+        if (latest.latencyMeanMs != null) {
+          existing.latencyMeanMs = existing.latencyMeanMs != null
+            ? (existing.latencyMeanMs + latest.latencyMeanMs) / 2
+            : latest.latencyMeanMs;
+        }
         rates[matchingNode.pipelineId] = existing;
       }
 
