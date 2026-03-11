@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
@@ -10,6 +10,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SummaryCards } from "@/components/metrics/summary-cards";
 import { MetricsChart } from "@/components/metrics/component-chart";
 import { PipelineLogs } from "@/components/pipeline/pipeline-logs";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
+import { formatLatency } from "@/lib/format";
 
 const TIME_RANGES = [
   { label: "5m", minutes: 5 },
@@ -30,6 +33,13 @@ export default function PipelineMetricsPage() {
 
   const metricsQuery = useQuery(
     trpc.metrics.getPipelineMetrics.queryOptions(
+      { pipelineId: params.id, minutes },
+      { refetchInterval: 15000 },
+    ),
+  );
+
+  const componentLatencyQuery = useQuery(
+    trpc.metrics.getComponentLatencyHistory.queryOptions(
       { pipelineId: params.id, minutes },
       { refetchInterval: 15000 },
     ),
@@ -118,10 +128,13 @@ export default function PipelineMetricsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Pipeline Latency</CardTitle>
+              <CardTitle>Transform Latency</CardTitle>
             </CardHeader>
             <CardContent>
-              <MetricsChart rows={rows} dataKey="latency" height={220} />
+              <TransformLatencyChart
+                components={componentLatencyQuery.data?.components ?? {}}
+                height={220}
+              />
             </CardContent>
           </Card>
         </>
@@ -139,5 +152,105 @@ export default function PipelineMetricsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// Deterministic color palette for per-component latency lines
+const LATENCY_COLORS = [
+  "#ec4899", "#8b5cf6", "#3b82f6", "#06b6d4", "#10b981",
+  "#f59e0b", "#ef4444", "#6366f1", "#14b8a6", "#f97316",
+];
+
+function TransformLatencyChart({
+  components,
+  height = 220,
+}: {
+  components: Record<string, Array<{ timestamp: Date; latencyMeanMs: number }>>;
+  height?: number;
+}) {
+  const { data, config, componentIds } = useMemo(() => {
+    const ids = Object.keys(components).sort();
+    if (ids.length === 0) return { data: [], config: {} as ChartConfig, componentIds: [] };
+
+    // Collect all unique timestamps (keyed by epoch ms for correct sorting)
+    const timeMap = new Map<number, Record<string, number>>();
+    for (const id of ids) {
+      for (const point of components[id]) {
+        const ms = new Date(point.timestamp).getTime();
+        const entry = timeMap.get(ms) ?? {};
+        entry[id] = point.latencyMeanMs;
+        timeMap.set(ms, entry);
+      }
+    }
+
+    // Build chart data sorted by timestamp, display as locale time
+    const chartData = Array.from(timeMap.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([ms, values]) => ({
+        time: new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        ...values,
+      }));
+
+    // Build chart config with deterministic colors
+    const chartConfig: ChartConfig = {};
+    for (let i = 0; i < ids.length; i++) {
+      chartConfig[ids[i]] = {
+        label: ids[i],
+        color: LATENCY_COLORS[i % LATENCY_COLORS.length],
+      };
+    }
+
+    return { data: chartData, config: chartConfig, componentIds: ids };
+  }, [components]);
+
+  if (data.length === 0) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center text-muted-foreground"
+        style={{ height }}
+      >
+        <p className="text-sm">No transform latency data yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <ChartContainer config={config} className="w-full" style={{ height }}>
+      <LineChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+        <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+        <YAxis
+          tick={{ fontSize: 10 }}
+          width={55}
+          tickFormatter={(v) => formatLatency(v)}
+        />
+        <ChartTooltip
+          content={
+            <ChartTooltipContent
+              formatter={(value, name) => (
+                <div className="flex w-full items-center justify-between gap-2">
+                  <span className="text-muted-foreground">{String(name)}</span>
+                  <span className="font-mono font-medium text-foreground">
+                    {formatLatency(Number(value) ?? 0)}
+                  </span>
+                </div>
+              )}
+            />
+          }
+        />
+        {componentIds.map((id) => (
+          <Line
+            key={id}
+            type="monotone"
+            dataKey={id}
+            name={id}
+            stroke={config[id]?.color ?? "#888"}
+            strokeWidth={1.5}
+            dot={false}
+            connectNulls
+          />
+        ))}
+      </LineChart>
+    </ChartContainer>
   );
 }

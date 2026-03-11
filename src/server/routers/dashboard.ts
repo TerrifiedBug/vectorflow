@@ -27,6 +27,7 @@ export const dashboardRouter = router({
         prisma.pipelineMetric.aggregate({
           where: {
             nodeId: null, // aggregate rows only
+            componentId: null,
             timestamp: { gte: oneHourAgo },
             pipeline: { environmentId: input.environmentId },
           },
@@ -279,6 +280,7 @@ export const dashboardRouter = router({
           where: {
             pipelineId: { in: pipelineIds },
             nodeId: null,
+            componentId: null,
             timestamp: { gte: oneHourAgo },
           },
           orderBy: { timestamp: "asc" },
@@ -470,6 +472,7 @@ export const dashboardRouter = router({
       prisma.pipelineMetric.aggregate({
         where: {
           nodeId: null,
+          componentId: null,
           timestamp: { gte: fiveMinAgo },
           ...(user?.isSuperAdmin ? {} : { pipeline: teamFilter }),
         },
@@ -503,6 +506,7 @@ export const dashboardRouter = router({
       const current = await prisma.pipelineMetric.aggregate({
         where: {
           pipeline: { environmentId: input.environmentId },
+          componentId: null,
           timestamp: { gte: since },
         },
         _sum: { eventsIn: true, eventsOut: true, bytesIn: true, bytesOut: true },
@@ -512,6 +516,7 @@ export const dashboardRouter = router({
       const previous = await prisma.pipelineMetric.aggregate({
         where: {
           pipeline: { environmentId: input.environmentId },
+          componentId: null,
           timestamp: { gte: prevSince, lt: since },
         },
         _sum: { eventsIn: true, eventsOut: true, bytesIn: true, bytesOut: true },
@@ -522,6 +527,7 @@ export const dashboardRouter = router({
         by: ["pipelineId"],
         where: {
           pipeline: { environmentId: input.environmentId },
+          componentId: null,
           timestamp: { gte: since },
         },
         _sum: { eventsIn: true, eventsOut: true, bytesIn: true, bytesOut: true },
@@ -554,6 +560,7 @@ export const dashboardRouter = router({
       const rawMetrics = await prisma.pipelineMetric.findMany({
         where: {
           pipeline: { environmentId: input.environmentId },
+          componentId: null,
           timestamp: { gte: since },
         },
         select: {
@@ -666,6 +673,7 @@ export const dashboardRouter = router({
         prisma.pipelineMetric.findMany({
           where: {
             pipelineId: { in: effectivePipelineIds },
+            componentId: null,
             timestamp: { gte: since },
             ...(input.groupBy === "node"
               ? { nodeId: { in: effectiveNodeIds } }
