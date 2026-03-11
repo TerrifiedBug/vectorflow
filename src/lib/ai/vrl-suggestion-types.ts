@@ -18,13 +18,21 @@ export interface VrlChatResponse {
 /** Status of a VRL suggestion in the UI */
 export type VrlSuggestionStatus = "actionable" | "applied" | "outdated";
 
+/** Strip markdown code fences and extract the JSON body. */
+function stripCodeFences(raw: string): string {
+  const trimmed = raw.trim();
+  // Match ```json ... ``` or ``` ... ```
+  const match = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+  return match ? match[1].trim() : trimmed;
+}
+
 /**
  * Parse the streamed AI response as a VrlChatResponse.
  * Returns null if the response is not valid JSON or missing required fields.
  */
 export function parseVrlChatResponse(raw: string): VrlChatResponse | null {
   try {
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(stripCodeFences(raw));
     if (
       typeof parsed === "object" &&
       parsed !== null &&
