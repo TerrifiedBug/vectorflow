@@ -36,7 +36,6 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PromotePipelineDialog } from "@/components/promote-pipeline-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { PageHeader } from "@/components/page-header";
 import { formatEventsRate, formatBytesRate } from "@/lib/format";
 import { tagBadgeClass, reductionBadgeClass } from "@/lib/badge-variants";
 
@@ -206,17 +205,14 @@ export default function PipelinesPage() {
 
   return (
     <div className="space-y-2">
-      <PageHeader
-        title="Pipelines"
-        actions={
-          <Button asChild size="sm">
-            <Link href="/pipelines/new">
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              New Pipeline
-            </Link>
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-end">
+        <Button asChild size="sm">
+          <Link href="/pipelines/new">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            New Pipeline
+          </Link>
+        </Button>
+      </div>
 
       {isLoading ? (
         <div className="space-y-3">
