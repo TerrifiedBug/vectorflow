@@ -25,7 +25,7 @@ import {
 import { vrlTheme } from "./vrl-theme";
 import { vrlLanguageDef } from "@/lib/vrl/vrl-language";
 import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
-import { searchVrlFunctions } from "@/lib/vrl/function-registry";
+import { searchVrlFunctions, getVrlFunction } from "@/lib/vrl/function-registry";
 import { VrlSnippetDrawer } from "@/components/flow/vrl-snippet-drawer";
 import { VrlFieldsPanel } from "./vrl-fields-panel";
 import { VrlAiPanel } from "./vrl-ai-panel";
@@ -78,6 +78,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
   const fieldProviderRef = useRef<{ dispose: () => void } | null>(null);
   const snippetProviderRef = useRef<{ dispose: () => void } | null>(null);
   const functionProviderRef = useRef<{ dispose: () => void } | null>(null);
+  const hoverProviderRef = useRef<{ dispose: () => void } | null>(null);
 
   const [sampleLimit, setSampleLimit] = useState(5);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -314,6 +315,69 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     return () => {
       functionProviderRef.current?.dispose();
       functionProviderRef.current = null;
+    };
+  }, [expanded]);
+
+  // Register hover provider for function documentation
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+
+    hoverProviderRef.current?.dispose();
+    hoverProviderRef.current = monaco.languages.registerHoverProvider("vrl", {
+      provideHover(model, position) {
+        const line = model.getLineContent(position.lineNumber);
+        const column = position.column - 1; // 0-indexed
+
+        // Extract full identifier at cursor (handles underscores in function names)
+        const before = line.substring(0, column);
+        const after = line.substring(column);
+        const beforeMatch = before.match(/[a-zA-Z_][a-zA-Z0-9_]*$/);
+        const afterMatch = after.match(/^[a-zA-Z0-9_]*/);
+        if (!beforeMatch) return null;
+
+        const word = beforeMatch[0] + (afterMatch?.[0] ?? "");
+        const startColumn = column - beforeMatch[0].length + 1;
+        const endColumn = startColumn + word.length;
+
+        const fn = getVrlFunction(word);
+        if (!fn) return null;
+
+        // Build signature string
+        const params = fn.params
+          .map((p) => {
+            const opt = p.required ? "" : "?";
+            const def = p.default ? ` = ${p.default}` : "";
+            return `${p.name}${opt}: ${p.type}${def}`;
+          })
+          .join(", ");
+        const fallibleBadge = fn.fallible ? " `[fallible]`" : "";
+
+        const markdown = [
+          `**${fn.name}**(${params}) → ${fn.returnType}${fallibleBadge}`,
+          "",
+          fn.description,
+          "",
+          "```vrl",
+          fn.example,
+          "```",
+        ].join("\n");
+
+        return {
+          range: {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn,
+            endColumn,
+          },
+          contents: [{ value: markdown }],
+        };
+      },
+    });
+
+    return () => {
+      hoverProviderRef.current?.dispose();
+      hoverProviderRef.current = null;
     };
   }, [expanded]);
 
