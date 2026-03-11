@@ -75,6 +75,7 @@ export function formatTimeAxis(timestamp: number | string, range: string): strin
 
 /** Format latency in milliseconds to a human-readable string. */
 export function formatLatency(ms: number): string {
+  if (ms === 0) return "0ms";
   if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
   if (ms >= 1) return `${ms.toFixed(1)}ms`;
   if (ms >= 0.001) return `${(ms * 1000).toFixed(0)}us`;
