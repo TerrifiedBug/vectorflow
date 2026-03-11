@@ -802,8 +802,6 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     let applied = 0;
 
     set((state) => {
-      // Single undo snapshot for the entire batch
-      const history = pushSnapshot(state);
       let { nodes, edges } = state;
 
       for (const suggestion of suggestions) {
@@ -817,11 +815,15 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
         }
       }
 
+      // Only push an undo snapshot when something actually changed
+      if (applied === 0) return {};
+
+      const history = pushSnapshot(state);
       return {
         ...history,
         nodes,
         edges,
-        isDirty: applied > 0 ? true : state.isDirty,
+        isDirty: true,
       };
     });
 

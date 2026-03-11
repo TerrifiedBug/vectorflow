@@ -2,7 +2,6 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { writeAuditLog } from "@/server/services/audit";
 import { withAudit } from "@/server/middleware/audit";
 import { Prisma } from "@/generated/prisma";
 
@@ -50,6 +49,7 @@ export const aiRouter = router({
       }),
     )
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.ai_suggestion_applied", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const message = await prisma.aiMessage.findUnique({
         where: { id: input.messageId },
@@ -78,29 +78,6 @@ export const aiRouter = router({
         where: { id: input.messageId },
         data: { suggestions: updatedSuggestions as unknown as Prisma.InputJsonValue },
       });
-
-      // Audit log
-      const pipeline = await prisma.pipeline.findUnique({
-        where: { id: message.conversation.pipelineId },
-        select: { environmentId: true, environment: { select: { teamId: true } } },
-      });
-
-      writeAuditLog({
-        userId: ctx.session.user.id,
-        action: "pipeline.ai_suggestion_applied",
-        entityType: "Pipeline",
-        entityId: message.conversation.pipelineId,
-        metadata: {
-          conversationId: input.conversationId,
-          messageId: input.messageId,
-          suggestionIds: input.suggestionIds,
-          suggestionCount: input.suggestionIds.length,
-        },
-        teamId: pipeline?.environment.teamId ?? null,
-        environmentId: pipeline?.environmentId ?? null,
-        userEmail: ctx.session.user.email ?? null,
-        userName: ctx.session.user.name ?? null,
-      }).catch(() => {});
 
       return { applied: input.suggestionIds.length };
     }),
