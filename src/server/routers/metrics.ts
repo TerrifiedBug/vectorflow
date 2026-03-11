@@ -71,13 +71,28 @@ export const metricsRouter = router({
         },
       });
 
-      // Group by componentId
+      // Average across nodes per (componentId, timestamp) to handle multi-node deployments
       const components: Record<string, Array<{ timestamp: Date; latencyMeanMs: number }>> = {};
+      const acc: Record<string, Map<number, { sum: number; count: number }>> = {};
+
       for (const row of rows) {
         if (!row.componentId || row.latencyMeanMs == null) continue;
-        const arr = components[row.componentId] ?? [];
-        arr.push({ timestamp: row.timestamp, latencyMeanMs: row.latencyMeanMs });
-        components[row.componentId] = arr;
+        const tsMs = row.timestamp.getTime();
+        const byTs = acc[row.componentId] ?? new Map();
+        const bucket = byTs.get(tsMs) ?? { sum: 0, count: 0 };
+        bucket.sum += row.latencyMeanMs;
+        bucket.count++;
+        byTs.set(tsMs, bucket);
+        acc[row.componentId] = byTs;
+      }
+
+      for (const [cid, byTs] of Object.entries(acc)) {
+        components[cid] = Array.from(byTs.entries())
+          .map(([tsMs, { sum, count }]) => ({
+            timestamp: new Date(tsMs),
+            latencyMeanMs: sum / count,
+          }))
+          .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
       }
 
       return { components };
