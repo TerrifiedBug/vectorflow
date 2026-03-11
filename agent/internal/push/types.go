@@ -1,11 +1,8 @@
-package ws
+package push
 
-// PushMessage is the envelope for all server→agent push messages.
-// The Type field determines which concrete fields are populated.
-//
-// Fields are shared across message types:
-//   - PipelineID: used by config_changed, sample_request
-//   - Checksum: used by action (self_update)
+// PushMessage is a server→agent push message received over SSE.
+// All fields are on a single struct with omitempty — the Type field
+// discriminates which fields are populated.
 type PushMessage struct {
 	Type string `json:"type"`
 

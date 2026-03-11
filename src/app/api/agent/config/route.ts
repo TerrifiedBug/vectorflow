@@ -196,18 +196,17 @@ export async function GET(request: Request) {
       select: { fleetPollIntervalMs: true },
     });
 
-    // Build WebSocket URL from the incoming request's host
+    // Build push URL from the incoming request's host
     const proto = request.headers.get("x-forwarded-proto") ?? "http";
-    const wsProto = proto === "https" ? "wss" : "ws";
     const host = request.headers.get("x-forwarded-host")
       ?? request.headers.get("host")
       ?? `localhost:${process.env.PORT ?? 3000}`;
-    const websocketUrl = `${wsProto}://${host}/api/agent/ws`;
+    const pushUrl = `${proto}://${host}/api/agent/push`;
 
     return NextResponse.json({
       pipelines: pipelineConfigs,
       pollIntervalMs: settings?.fleetPollIntervalMs ?? 15000,
-      websocketUrl,
+      pushUrl,
       secretBackend: environment.secretBackend,
       ...(environment.secretBackend !== "BUILTIN"
         ? { secretBackendConfig: environment.secretBackendConfig }

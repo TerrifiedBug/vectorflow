@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { LogLevel } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { checkDevAgentVersion } from "@/server/services/version-check";
-import { wsRegistry } from "@/server/services/ws-registry";
+import { pushRegistry } from "@/server/services/push-registry";
 
 export const fleetRouter = router({
   list: protectedProcedure
@@ -21,7 +21,7 @@ export const fleetRouter = router({
       });
       return nodes.map((node) => ({
         ...node,
-        wsConnected: wsRegistry.isConnected(node.id),
+        pushConnected: pushRegistry.isConnected(node.id),
       }));
     }),
 
@@ -385,8 +385,8 @@ export const fleetRouter = router({
         },
       });
 
-      // Push action to agent via WebSocket (fallback: agent reads pendingAction on next poll)
-      wsRegistry.send(input.nodeId, {
+      // Push action to agent via SSE (fallback: agent reads pendingAction on next poll)
+      pushRegistry.send(input.nodeId, {
         type: "action",
         action: "self_update",
         targetVersion,
@@ -459,7 +459,7 @@ export const fleetRouter = router({
       });
 
       // Maintenance mode changes what the config endpoint returns — notify agent to re-poll
-      wsRegistry.send(input.nodeId, {
+      pushRegistry.send(input.nodeId, {
         type: "config_changed",
         reason: input.enabled ? "maintenance_on" : "maintenance_off",
       });
@@ -503,7 +503,7 @@ export const fleetRouter = router({
       return {
         nodes: nodes.map((node) => ({
           ...node,
-          wsConnected: wsRegistry.isConnected(node.id),
+          pushConnected: pushRegistry.isConnected(node.id),
         })),
         deployedPipelines: deployedPipelines.map((p) => ({
           id: p.id,
