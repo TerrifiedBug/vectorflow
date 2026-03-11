@@ -30,7 +30,7 @@ type poller struct {
 	sampleRequests []client.SampleRequestMsg
 	pendingAction  *client.PendingAction
 	pollIntervalMs int // server-provided poll interval from last response
-	websocketUrl   string
+	pushUrl        string
 }
 
 func newPoller(cfg *config.Config, c configFetcher) *poller {
@@ -194,9 +194,9 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 	// Store server-provided poll interval
 	p.pollIntervalMs = resp.PollIntervalMs
 
-	// Store websocket URL for the agent to use
-	if resp.WebSocketURL != "" {
-		p.websocketUrl = resp.WebSocketURL
+	// Store push URL for the agent to use
+	if resp.PushURL != "" {
+		p.pushUrl = resp.PushURL
 	}
 
 	return actions, nil
@@ -221,9 +221,9 @@ func (p *poller) PollIntervalMs() int {
 	return p.pollIntervalMs
 }
 
-// WebSocketURL returns the WebSocket URL from the last config response.
-func (p *poller) WebSocketURL() string {
+// PushURL returns the SSE push URL from the last config response.
+func (p *poller) PushURL() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.websocketUrl
+	return p.pushUrl
 }
