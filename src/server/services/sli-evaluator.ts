@@ -27,7 +27,7 @@ export async function evaluatePipelineHealth(pipelineId: string): Promise<{
 
     // Use aggregate to avoid transferring all metric rows to the application
     const agg = await prisma.pipelineMetric.aggregate({
-      where: { pipelineId, timestamp: { gte: since } },
+      where: { pipelineId, componentId: null, timestamp: { gte: since } },
       _sum: { eventsIn: true, errorsTotal: true, eventsDiscarded: true },
       _count: true,
     });
@@ -76,7 +76,7 @@ export async function evaluatePipelineHealth(pipelineId: string): Promise<{
       }
       case "latency_mean": {
         const latencyAgg = await prisma.pipelineMetric.aggregate({
-          where: { pipelineId, timestamp: { gte: since }, latencyMeanMs: { not: null } },
+          where: { pipelineId, componentId: null, timestamp: { gte: since }, latencyMeanMs: { not: null } },
           _avg: { latencyMeanMs: true },
           _count: true,
         });
