@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { vrlTheme } from "./vrl-theme";
+import { vrlLanguageDef } from "@/lib/vrl/vrl-language";
 import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
 import { VrlSnippetDrawer } from "@/components/flow/vrl-snippet-drawer";
 import { VrlFieldsPanel } from "./vrl-fields-panel";
@@ -204,13 +205,21 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
 
   const isSampling = !!requestId || requestSamplesMutation.isPending;
 
+  const handleEditorWillMount = useCallback((monaco: Monaco) => {
+    // Register VRL language before editor mounts (prevents race condition)
+    if (!monaco.languages.getLanguages().some((lang) => lang.id === "vrl")) {
+      monaco.languages.register({ id: "vrl" });
+      monaco.languages.setMonarchTokensProvider("vrl", vrlLanguageDef);
+    }
+    // Define theme here too (before mount ensures it's available)
+    monaco.editor.defineTheme("vrl-theme", vrlTheme);
+  }, []);
+
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
-    monaco.editor.defineTheme("vrl-theme", vrlTheme);
+    // Theme already defined in beforeMount
     monaco.editor.setTheme("vrl-theme");
-
-    // Auto-focus editor so space bar and other keys work immediately
     editor.focus();
   }, []);
 
@@ -221,7 +230,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     if (!monaco) return;
 
     snippetProviderRef.current?.dispose();
-    snippetProviderRef.current = monaco.languages.registerCompletionItemProvider("plaintext", {
+    snippetProviderRef.current = monaco.languages.registerCompletionItemProvider("vrl", {
       provideCompletionItems(model: { getWordUntilPosition: (pos: unknown) => { startColumn: number; endColumn: number } }, position: { lineNumber: number }) {
         const word = model.getWordUntilPosition(position);
         const range = {
@@ -278,7 +287,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
       allFields.push({ path: f.path, type: f.type, description: `Sample: ${f.sample}`, always: false });
     }
 
-    fieldProviderRef.current = monaco.languages.registerCompletionItemProvider("plaintext", {
+    fieldProviderRef.current = monaco.languages.registerCompletionItemProvider("vrl", {
       triggerCharacters: ["."],
       provideCompletionItems(
         model: { getLineContent: (line: number) => string; getWordUntilPosition: (pos: { lineNumber: number; column: number }) => { startColumn: number; endColumn: number } },
@@ -376,9 +385,10 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
             <div className="flex-1 overflow-hidden rounded border">
               <Editor
                 height="100%"
-                language="plaintext"
+                language="vrl"
                 value={value}
                 onChange={(v) => onChange(v ?? "")}
+                beforeMount={handleEditorWillMount}
                 onMount={handleEditorMount}
                 theme="vrl-theme"
                 options={{
