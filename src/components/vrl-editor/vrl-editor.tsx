@@ -211,7 +211,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
 
   const handleEditorWillMount = useCallback((monaco: Monaco) => {
     // Register VRL language before editor mounts (prevents race condition)
-    if (!monaco.languages.getLanguages().some((lang) => lang.id === "vrl")) {
+    if (!monaco.languages.getLanguages().some((lang: { id: string }) => lang.id === "vrl")) {
       monaco.languages.register({ id: "vrl" });
       monaco.languages.setMonarchTokensProvider("vrl", vrlLanguageDef);
     }
@@ -270,7 +270,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
 
     functionProviderRef.current?.dispose();
     functionProviderRef.current = monaco.languages.registerCompletionItemProvider("vrl", {
-      provideCompletionItems(model, position) {
+      provideCompletionItems(model: import("monaco-editor").editor.ITextModel, position: import("monaco-editor").Position) {
         const word = model.getWordUntilPosition(position);
         const range = {
           startLineNumber: position.lineNumber,
@@ -326,7 +326,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
 
     hoverProviderRef.current?.dispose();
     hoverProviderRef.current = monaco.languages.registerHoverProvider("vrl", {
-      provideHover(model, position) {
+      provideHover(model: import("monaco-editor").editor.ITextModel, position: import("monaco-editor").Position) {
         const line = model.getLineContent(position.lineNumber);
         const column = position.column - 1; // 0-indexed
 
@@ -390,7 +390,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     signatureHelpProviderRef.current?.dispose();
     signatureHelpProviderRef.current = monaco.languages.registerSignatureHelpProvider("vrl", {
       signatureHelpTriggerCharacters: ["(", ","],
-      provideSignatureHelp(model, position) {
+      provideSignatureHelp(model: import("monaco-editor").editor.ITextModel, position: import("monaco-editor").Position) {
         const line = model.getLineContent(position.lineNumber);
         const textBefore = line.substring(0, position.column - 1);
 
