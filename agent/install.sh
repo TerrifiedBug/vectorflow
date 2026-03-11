@@ -11,7 +11,7 @@ VECTOR_DATA_DIR="/var/lib/vector"
 CONFIG_DIR="/etc/vectorflow"
 ENV_FILE="${CONFIG_DIR}/agent.env"
 SERVICE_NAME="vf-agent"
-VECTOR_VERSION="0.53.0"
+VECTOR_VERSION="0.54.0"
 
 # Defaults
 VF_URL=""
