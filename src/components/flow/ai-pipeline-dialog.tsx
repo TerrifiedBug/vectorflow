@@ -400,7 +400,7 @@ export function AiPipelineDialog({
             ) : (
               <>
                 {/* Message thread */}
-                <ScrollArea className="flex-1 pr-4">
+                <ScrollArea className="flex-1 h-0 pr-4">
                   <div className="space-y-4 pb-4">
                     {conversation.messages.length === 0 && !conversation.isStreaming && (
                       <p className="text-sm text-muted-foreground text-center py-8">
