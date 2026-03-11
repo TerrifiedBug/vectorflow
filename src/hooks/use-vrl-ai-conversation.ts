@@ -79,16 +79,7 @@ export function useVrlAiConversation({
   }
 
   const markAppliedMutation = useMutation(
-    trpc.ai.markVrlSuggestionsApplied.mutationOptions({
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: trpc.ai.getVrlConversation.queryKey({
-            pipelineId,
-            componentKey,
-          }),
-        });
-      },
-    }),
+    trpc.ai.markVrlSuggestionsApplied.mutationOptions({}),
   );
 
   const sendMessage = useCallback(
@@ -259,6 +250,24 @@ export function useVrlAiConversation({
   const markSuggestionsApplied = useCallback(
     (messageId: string, suggestionIds: string[]) => {
       if (!conversationId) return;
+
+      // Optimistically update local state so "Applied" badges render immediately
+      const now = new Date().toISOString();
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id !== messageId || !msg.suggestions) return msg;
+          return {
+            ...msg,
+            suggestions: msg.suggestions.map((s) =>
+              suggestionIds.includes(s.id)
+                ? { ...s, appliedAt: now }
+                : s,
+            ),
+          };
+        }),
+      );
+
+      // Skip server mutation for temp messages (not yet persisted)
       if (messageId.startsWith("temp-")) return;
 
       markAppliedMutation.mutate({
