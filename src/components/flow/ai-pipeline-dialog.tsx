@@ -4,7 +4,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { Loader2, RotateCcw, Sparkles, AlertTriangle, MessageSquarePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -42,6 +41,8 @@ export function AiPipelineDialog({
 
   // --- Generate tab state (unchanged from original) ---
   const [genPrompt, setGenPrompt] = useState("");
+  const genTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const reviewTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [genResult, setGenResult] = useState("");
   const [genIsStreaming, setGenIsStreaming] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
@@ -70,6 +71,24 @@ export function AiPipelineDialog({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversation.messages, conversation.streamingContent]);
+
+  // Auto-grow for generate textarea
+  useEffect(() => {
+    const ta = genTextareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    const maxHeight = 4 * 24; // 4 lines
+    ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
+  }, [genPrompt]);
+
+  // Auto-grow for review textarea
+  useEffect(() => {
+    const ta = reviewTextareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    const maxHeight = 4 * 24;
+    ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
+  }, [reviewPrompt]);
 
   // Compute suggestion statuses across all messages
   const suggestionStatuses = useMemo(() => {
@@ -223,6 +242,13 @@ export function AiPipelineDialog({
     genAbortRef.current?.abort();
   };
 
+  const handleGenKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleGenSubmit();
+    }
+  };
+
   // --- Review tab handlers ---
 
   const handleReviewSubmit = useCallback(
@@ -235,6 +261,13 @@ export function AiPipelineDialog({
     },
     [reviewPrompt, conversation],
   );
+
+  const handleReviewKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleReviewSubmit();
+    }
+  };
 
   const handleApplySelected = useCallback(
     (messageId: string, suggestions: AiSuggestion[]) => {
@@ -282,12 +315,16 @@ export function AiPipelineDialog({
             <div className="space-y-2">
               <Label htmlFor="ai-pipeline-prompt">Describe your pipeline</Label>
               <form onSubmit={handleGenSubmit} className="flex gap-2">
-                <Input
+                <textarea
+                  ref={genTextareaRef}
                   id="ai-pipeline-prompt"
                   value={genPrompt}
                   onChange={(e) => setGenPrompt(e.target.value)}
+                  onKeyDown={handleGenKeyDown}
                   placeholder="Collect K8s logs, drop debug, send to Datadog and S3"
                   disabled={genIsStreaming}
+                  rows={1}
+                  className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
                 />
                 {genIsStreaming ? (
                   <Button type="button" variant="outline" size="sm" onClick={handleGenCancel}>
@@ -394,11 +431,15 @@ export function AiPipelineDialog({
                 {/* Input pinned at bottom */}
                 <div className="pt-3 border-t space-y-2">
                   <form onSubmit={handleReviewSubmit} className="flex gap-2">
-                    <Input
+                    <textarea
+                      ref={reviewTextareaRef}
                       value={reviewPrompt}
                       onChange={(e) => setReviewPrompt(e.target.value)}
+                      onKeyDown={handleReviewKeyDown}
                       placeholder="Ask about your pipeline..."
                       disabled={conversation.isStreaming}
+                      rows={1}
+                      className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
                     />
                     {conversation.isStreaming ? (
                       <Button type="button" variant="outline" size="sm" onClick={conversation.cancelStreaming}>
