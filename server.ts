@@ -33,7 +33,7 @@ async function getRequestHandler() {
 
   process.env.__NEXT_PRIVATE_STANDALONE_CONFIG = JSON.stringify(requiredServerFiles.config);
 
-  const NextServer = (await import("next/dist/server/next-server")).default;
+  const NextServer = (await import("next/dist/server/next-server.js")).default;
   const app = new NextServer({
     hostname,
     port,
