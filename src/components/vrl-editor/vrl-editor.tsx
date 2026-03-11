@@ -334,10 +334,11 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
         const before = line.substring(0, column);
         const after = line.substring(column);
         const beforeMatch = before.match(/[a-zA-Z_][a-zA-Z0-9_]*$/);
-        const afterMatch = after.match(/^[a-zA-Z_][a-zA-Z0-9_]*/);
+        const afterMatch = after.match(/^[a-zA-Z0-9_]*/);
         if (!beforeMatch && !afterMatch) return null;
 
         const word = (beforeMatch?.[0] ?? "") + (afterMatch?.[0] ?? "");
+        if (!word || !/^[a-zA-Z_]/.test(word)) return null;
         const startColumn = column - (beforeMatch?.[0].length ?? 0) + 1;
         const endColumn = startColumn + word.length;
 

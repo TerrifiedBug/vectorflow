@@ -1705,7 +1705,7 @@ export function getVrlCategories(): string[] {
 }
 
 // ── AI Reference Builder ─────────────────────────────────────────────
-// Replaces the static VRL_REFERENCE in src/lib/ai/vrl-reference.ts
+// Generates VRL reference for AI prompts
 
 const VRL_COMMON_PATTERNS = `## Common VRL Patterns
 
