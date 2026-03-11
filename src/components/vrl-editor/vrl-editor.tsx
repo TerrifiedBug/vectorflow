@@ -23,7 +23,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { vrlTheme } from "./vrl-theme";
+import { vrlLanguageDef } from "@/lib/vrl/vrl-language";
 import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
+import { searchVrlFunctions, getVrlFunction } from "@/lib/vrl/function-registry";
 import { VrlSnippetDrawer } from "@/components/flow/vrl-snippet-drawer";
 import { VrlFieldsPanel } from "./vrl-fields-panel";
 import { VrlAiPanel } from "./vrl-ai-panel";
@@ -75,6 +77,9 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
   const monacoRef = useRef<Monaco | null>(null);
   const fieldProviderRef = useRef<{ dispose: () => void } | null>(null);
   const snippetProviderRef = useRef<{ dispose: () => void } | null>(null);
+  const functionProviderRef = useRef<{ dispose: () => void } | null>(null);
+  const hoverProviderRef = useRef<{ dispose: () => void } | null>(null);
+  const signatureHelpProviderRef = useRef<{ dispose: () => void } | null>(null);
 
   const [sampleLimit, setSampleLimit] = useState(5);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -204,13 +209,21 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
 
   const isSampling = !!requestId || requestSamplesMutation.isPending;
 
+  const handleEditorWillMount = useCallback((monaco: Monaco) => {
+    // Register VRL language before editor mounts (prevents race condition)
+    if (!monaco.languages.getLanguages().some((lang: { id: string }) => lang.id === "vrl")) {
+      monaco.languages.register({ id: "vrl" });
+      monaco.languages.setMonarchTokensProvider("vrl", vrlLanguageDef);
+    }
+    // Define theme here too (before mount ensures it's available)
+    monaco.editor.defineTheme("vrl-theme", vrlTheme);
+  }, []);
+
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
-    monaco.editor.defineTheme("vrl-theme", vrlTheme);
+    // Theme already defined in beforeMount
     monaco.editor.setTheme("vrl-theme");
-
-    // Auto-focus editor so space bar and other keys work immediately
     editor.focus();
   }, []);
 
@@ -221,7 +234,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     if (!monaco) return;
 
     snippetProviderRef.current?.dispose();
-    snippetProviderRef.current = monaco.languages.registerCompletionItemProvider("plaintext", {
+    snippetProviderRef.current = monaco.languages.registerCompletionItemProvider("vrl", {
       provideCompletionItems(model: { getWordUntilPosition: (pos: unknown) => { startColumn: number; endColumn: number } }, position: { lineNumber: number }) {
         const word = model.getWordUntilPosition(position);
         const range = {
@@ -247,6 +260,205 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     return () => {
       snippetProviderRef.current?.dispose();
       snippetProviderRef.current = null;
+    };
+  }, [expanded]);
+
+  // Register function completion provider
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+
+    functionProviderRef.current?.dispose();
+    functionProviderRef.current = monaco.languages.registerCompletionItemProvider("vrl", {
+      provideCompletionItems(model: import("monaco-editor").editor.ITextModel, position: import("monaco-editor").Position) {
+        const word = model.getWordUntilPosition(position);
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        };
+
+        // Only show when there's at least 1 typed character
+        if (word.word.length === 0) return { suggestions: [] };
+
+        const matches = searchVrlFunctions(word.word);
+        return {
+          suggestions: matches.map((fn) => {
+            // Build snippet insert text with parameter placeholders
+            const paramSnippets = fn.params
+              .filter((p) => p.required)
+              .map((p, i) => `\${${i + 1}:${p.name}}`)
+              .join(", ");
+            const insertText = `${fn.name}(${paramSnippets})`;
+
+            return {
+              label: {
+                label: fn.name,
+                detail: `  (${fn.category})`,
+                description: fn.fallible ? "fallible" : "",
+              },
+              kind: monaco.languages.CompletionItemKind.Function,
+              insertText,
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: `${fn.category} — ${fn.fallible ? "fallible, use ! for error handling" : "infallible"}`,
+              documentation: {
+                value: `${fn.description}\n\n**Example:**\n\`\`\`vrl\n${fn.example}\n\`\`\``,
+              },
+              range,
+              sortText: `0_${fn.name}`,
+            };
+          }),
+        };
+      },
+    });
+
+    return () => {
+      functionProviderRef.current?.dispose();
+      functionProviderRef.current = null;
+    };
+  }, [expanded]);
+
+  // Register hover provider for function documentation
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+
+    hoverProviderRef.current?.dispose();
+    hoverProviderRef.current = monaco.languages.registerHoverProvider("vrl", {
+      provideHover(model: import("monaco-editor").editor.ITextModel, position: import("monaco-editor").Position) {
+        const line = model.getLineContent(position.lineNumber);
+        const column = position.column - 1; // 0-indexed
+
+        // Extract full identifier at cursor (handles underscores in function names)
+        const before = line.substring(0, column);
+        const after = line.substring(column);
+        const beforeMatch = before.match(/[a-zA-Z_][a-zA-Z0-9_]*$/);
+        const afterMatch = after.match(/^[a-zA-Z0-9_]*/);
+        if (!beforeMatch && !afterMatch) return null;
+
+        const word = (beforeMatch?.[0] ?? "") + (afterMatch?.[0] ?? "");
+        if (!word || !/^[a-zA-Z_]/.test(word)) return null;
+        const startColumn = column - (beforeMatch?.[0].length ?? 0) + 1;
+        const endColumn = startColumn + word.length;
+
+        const fn = getVrlFunction(word);
+        if (!fn) return null;
+
+        // Build signature string
+        const params = fn.params
+          .map((p) => {
+            const opt = p.required ? "" : "?";
+            const def = p.default ? ` = ${p.default}` : "";
+            return `${p.name}${opt}: ${p.type}${def}`;
+          })
+          .join(", ");
+        const fallibleBadge = fn.fallible ? " `[fallible]`" : "";
+
+        const markdown = [
+          `**${fn.name}**(${params}) → ${fn.returnType}${fallibleBadge}`,
+          "",
+          fn.description,
+          "",
+          "```vrl",
+          fn.example,
+          "```",
+        ].join("\n");
+
+        return {
+          range: {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn,
+            endColumn,
+          },
+          contents: [{ value: markdown }],
+        };
+      },
+    });
+
+    return () => {
+      hoverProviderRef.current?.dispose();
+      hoverProviderRef.current = null;
+    };
+  }, [expanded]);
+
+  // Register signature help provider for parameter hints
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+
+    signatureHelpProviderRef.current?.dispose();
+    signatureHelpProviderRef.current = monaco.languages.registerSignatureHelpProvider("vrl", {
+      signatureHelpTriggerCharacters: ["(", ","],
+      provideSignatureHelp(model: import("monaco-editor").editor.ITextModel, position: import("monaco-editor").Position) {
+        const line = model.getLineContent(position.lineNumber);
+        const textBefore = line.substring(0, position.column - 1);
+
+        // Find the innermost unclosed '(' by tracking parenthesis depth
+        let depth = 0;
+        let funcEnd = -1;
+        for (let i = textBefore.length - 1; i >= 0; i--) {
+          if (textBefore[i] === ")") depth++;
+          else if (textBefore[i] === "(") {
+            if (depth === 0) {
+              funcEnd = i;
+              break;
+            }
+            depth--;
+          }
+        }
+        if (funcEnd < 0) return null;
+
+        // Extract function name before the '('
+        const beforeParen = textBefore.substring(0, funcEnd);
+        const nameMatch = beforeParen.match(/([a-zA-Z_][a-zA-Z0-9_]*)$/);
+        if (!nameMatch) return null;
+
+        const fn = getVrlFunction(nameMatch[1]);
+        if (!fn || fn.params.length === 0) return null;
+
+        // Count commas to determine active parameter
+        const argsText = textBefore.substring(funcEnd + 1);
+        let commaCount = 0;
+        let parenDepth = 0;
+        for (const ch of argsText) {
+          if (ch === "(") parenDepth++;
+          else if (ch === ")") parenDepth--;
+          else if (ch === "," && parenDepth === 0) commaCount++;
+        }
+
+        // Build signature
+        const paramLabels = fn.params.map((p) => {
+          const opt = p.required ? "" : "?";
+          const def = p.default ? ` = ${p.default}` : "";
+          return `${p.name}${opt}: ${p.type}${def}`;
+        });
+        const label = `${fn.name}(${paramLabels.join(", ")}) → ${fn.returnType}`;
+
+        return {
+          value: {
+            signatures: [
+              {
+                label,
+                documentation: fn.description,
+                parameters: fn.params.map((p) => ({
+                  label: `${p.name}${p.required ? "" : "?"}: ${p.type}${p.default ? ` = ${p.default}` : ""}`,
+                  documentation: `${p.description}${p.required ? " (required)" : " (optional)"}`,
+                })),
+              },
+            ],
+            activeSignature: 0,
+            activeParameter: Math.min(commaCount, fn.params.length - 1),
+          },
+          dispose() {},
+        };
+      },
+    });
+
+    return () => {
+      signatureHelpProviderRef.current?.dispose();
+      signatureHelpProviderRef.current = null;
     };
   }, [expanded]);
 
@@ -278,7 +490,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
       allFields.push({ path: f.path, type: f.type, description: `Sample: ${f.sample}`, always: false });
     }
 
-    fieldProviderRef.current = monaco.languages.registerCompletionItemProvider("plaintext", {
+    fieldProviderRef.current = monaco.languages.registerCompletionItemProvider("vrl", {
       triggerCharacters: ["."],
       provideCompletionItems(
         model: { getLineContent: (line: number) => string; getWordUntilPosition: (pos: { lineNumber: number; column: number }) => { startColumn: number; endColumn: number } },
@@ -376,9 +588,10 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
             <div className="flex-1 overflow-hidden rounded border">
               <Editor
                 height="100%"
-                language="plaintext"
+                language="vrl"
                 value={value}
                 onChange={(v) => onChange(v ?? "")}
+                beforeMount={handleEditorWillMount}
                 onMount={handleEditorMount}
                 theme="vrl-theme"
                 options={{

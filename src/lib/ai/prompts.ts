@@ -1,6 +1,6 @@
 // src/lib/ai/prompts.ts
 
-import { VRL_REFERENCE } from "./vrl-reference";
+import { buildVrlReferenceFromRegistry } from "@/lib/vrl/function-registry";
 
 export function buildVrlSystemPrompt(context: {
   fields?: { name: string; type: string }[];
@@ -13,7 +13,7 @@ export function buildVrlSystemPrompt(context: {
     "Generate VRL code based on the user's request. Output ONLY the VRL code — no explanations, no markdown fencing, no comments unless the user asks for them.",
     "",
     "=== VRL Function Reference ===",
-    VRL_REFERENCE,
+    buildVrlReferenceFromRegistry(),
   ];
 
   if (context.sourceTypes?.length) {
@@ -79,7 +79,7 @@ export function buildVrlChatSystemPrompt(context: {
     "- If the user asks a question that doesn't need code changes, return an empty suggestions array with your answer in the summary.",
     "",
     "=== VRL Function Reference ===",
-    VRL_REFERENCE,
+    buildVrlReferenceFromRegistry(),
   ];
 
   if (context.sourceTypes?.length) {
