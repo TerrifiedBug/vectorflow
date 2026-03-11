@@ -231,15 +231,15 @@ export default function FleetPage() {
                       {nodeStatusLabel(node.status)}
                     </StatusBadge>
                   )}
-                  {node.wsConnected && (
+                  {node.pushConnected && (
                     <Tooltip>
                       <TooltipTrigger>
                         <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 border-green-500 text-green-600 dark:text-green-400">
-                          WS
+                          Live
                         </Badge>
                       </TooltipTrigger>
                       <TooltipContent>
-                        WebSocket connected — real-time push enabled
+                        SSE connected — real-time push enabled
                       </TooltipContent>
                     </Tooltip>
                   )}

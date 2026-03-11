@@ -1,7 +1,7 @@
-// src/server/services/ws-types.ts
+// src/server/services/push-types.ts
 
 /**
- * Server→Agent push message types sent over WebSocket.
+ * Server→Agent push message types sent over SSE.
  * Each message has a `type` discriminator for client-side dispatch.
  *
  * Config changes use lightweight notifications (config_changed) that trigger
