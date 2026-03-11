@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import Link from "next/link";
-import { ShieldOff, Trash2, Activity, Terminal, Server, Pencil, Check, X, Wrench, Plus, Tag } from "lucide-react";
+import { ShieldOff, Trash2, Activity, Pencil, Check, X, Wrench, Plus, Tag } from "lucide-react";
 import { NodeLogs } from "@/components/fleet/node-logs";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -23,8 +23,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { NodeMetricsCharts } from "@/components/fleet/node-metrics-charts";
+import { UptimeCards } from "@/components/fleet/uptime-cards";
+import { StatusTimeline } from "@/components/fleet/status-timeline";
+import { EventLog } from "@/components/fleet/event-log";
 import {
   formatTimestamp as formatLastSeen,
   formatCount,
@@ -62,6 +65,7 @@ export default function NodeDetailPage() {
   const [editName, setEditName] = useState("");
   const [isEditingLabels, setIsEditingLabels] = useState(false);
   const [editLabels, setEditLabels] = useState<Array<{ key: string; value: string }>>([]);
+  const [timelineRange, setTimelineRange] = useState<"1h" | "6h" | "1d" | "7d" | "30d">("1d");
 
   const nodeQuery = useQuery(
     trpc.fleet.get.queryOptions(
@@ -341,266 +345,284 @@ export default function NodeDetailPage() {
         </div>
       )}
 
-      <div>
-        {/* Node Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Node Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Status</p>
-                <StatusBadge variant={nodeStatusVariant(node.status)}>
-                  {nodeStatusLabel(node.status)}
-                </StatusBadge>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Environment</p>
-                <p className="text-sm font-medium">{node.environment.name}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Agent Version</p>
-                <p className="text-sm font-mono">{node.agentVersion ?? "\u2014"}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Vector Version</p>
-                <p className="text-sm font-mono">{node.vectorVersion ?? "Unknown"}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Last Heartbeat</p>
-                <p className="text-sm">{formatLastSeen(node.lastHeartbeat)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Enrolled</p>
-                <p className="text-sm">{node.enrolledAt ? formatLastSeen(node.enrolledAt) : "Not enrolled"}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Host</p>
-                <p className="text-sm font-mono">{node.host}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">API Port</p>
-                <p className="text-sm font-mono">{node.apiPort}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Last Seen</p>
-                <p className="text-sm">{formatLastSeen(node.lastSeen)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Created</p>
-                <p className="text-sm">
-                  {new Date(node.createdAt).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="health">Health</TabsTrigger>
+          <TabsTrigger value="metrics">Metrics</TabsTrigger>
+          <TabsTrigger value="logs">Logs</TabsTrigger>
+        </TabsList>
 
-        {/* Node Labels */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <Tag className="h-5 w-5" />
-                Labels
-              </span>
-              {!isEditingLabels && (
-                <Button variant="outline" size="sm" onClick={handleStartEditLabels}>
-                  <Pencil className="mr-1 h-3.5 w-3.5" />
-                  Edit
-                </Button>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isEditingLabels ? (
-              <div className="space-y-3">
-                {editLabels.map((label, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <Input
-                      placeholder="Key"
-                      value={label.key}
-                      onChange={(e) => {
-                        const next = [...editLabels];
-                        next[idx] = { ...next[idx], key: e.target.value };
-                        setEditLabels(next);
-                      }}
-                      className="flex-1"
-                    />
-                    <span className="text-muted-foreground">=</span>
-                    <Input
-                      placeholder="Value"
-                      value={label.value}
-                      onChange={(e) => {
-                        const next = [...editLabels];
-                        next[idx] = { ...next[idx], value: e.target.value };
-                        setEditLabels(next);
-                      }}
-                      className="flex-1"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={() => {
-                        setEditLabels(editLabels.filter((_, i) => i !== idx));
-                      }}
-                      aria-label="Remove label"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setEditLabels([...editLabels, { key: "", value: "" }])}
-                >
-                  <Plus className="mr-1 h-3.5 w-3.5" />
-                  Add Label
-                </Button>
-                <div className="flex items-center gap-2 pt-2">
-                  <Button size="sm" onClick={handleSaveLabels} disabled={labelsMutation.isPending}>
-                    {labelsMutation.isPending ? "Saving..." : "Save Labels"}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setIsEditingLabels(false)}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {Object.entries((node.labels as Record<string, string>) ?? {}).length > 0 ? (
-                  Object.entries((node.labels as Record<string, string>) ?? {}).map(
-                    ([k, v]) => (
-                      <Badge key={k} variant="outline">
-                        {k}={v}
-                      </Badge>
-                    ),
-                  )
-                ) : (
-                  <p className="text-sm text-muted-foreground">No labels assigned</p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-      </div>
-
-      <Separator />
-
-      {/* System Resources */}
-      <div className="space-y-4">
-        <h3 className="flex items-center gap-2 text-lg font-semibold">
-          <Server className="h-5 w-5" />
-          System Resources
-        </h3>
-        <NodeMetricsCharts nodeId={params.nodeId} />
-      </div>
-
-      <Separator />
-
-      {/* Pipeline Metrics */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5" />
-            Pipeline Metrics
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {node.pipelineStatuses && node.pipelineStatuses.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Pipeline</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Events In</TableHead>
-                  <TableHead className="text-right">Events Out</TableHead>
-                  <TableHead className="text-right">Errors</TableHead>
-                  <TableHead className="text-right">Bytes In</TableHead>
-                  <TableHead className="text-right">Bytes Out</TableHead>
-                  <TableHead className="text-right">Avg Latency</TableHead>
-                  <TableHead className="text-right">Uptime</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {node.pipelineStatuses.map((ps) => {
-                  const rates = pipelineRates[ps.pipelineId];
-                  return (
-                  <TableRow key={ps.pipelineId}>
-                    <TableCell className="font-medium">
-                      {ps.pipeline?.name ?? ps.pipelineId.slice(0, 8)}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge variant={pipelineStatusVariant(ps.status)}>
-                        {pipelineStatusLabel(ps.status)}
+        <TabsContent value="overview">
+          <div className="space-y-4">
+            {/* Node Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Node Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Status</p>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge variant={nodeStatusVariant(node.status)}>
+                        {nodeStatusLabel(node.status)}
                       </StatusBadge>
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      <div>{formatCount(ps.eventsIn)}</div>
-                      {rates && <div className="text-xs text-muted-foreground">{formatRate(rates.eventsInRate)}</div>}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      <div>{formatCount(ps.eventsOut)}</div>
-                      {rates && <div className="text-xs text-muted-foreground">{formatRate(rates.eventsOutRate)}</div>}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      <div>{formatCount(ps.errorsTotal)}</div>
-                      {rates && rates.errorsRate > 0 && <div className="text-xs text-red-500">{formatRate(rates.errorsRate)}</div>}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      <div>{formatBytes(ps.bytesIn)}</div>
-                      {rates && <div className="text-xs text-muted-foreground">{formatBytesRate(rates.bytesInRate)}</div>}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      <div>{formatBytes(ps.bytesOut)}</div>
-                      {rates && <div className="text-xs text-muted-foreground">{formatBytesRate(rates.bytesOutRate)}</div>}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {rates?.latencyMeanMs != null
-                        ? formatLatency(rates.latencyMeanMs)
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {formatUptime(ps.uptimeSeconds)}
-                    </TableCell>
-                  </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-              <p className="text-muted-foreground">
-                No pipeline metrics yet
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Metrics appear after pipelines are deployed and the agent reports heartbeats.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      {node.currentStatusSince && (
+                        <span className="text-xs text-muted-foreground">
+                          for {formatLastSeen(node.currentStatusSince)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Environment</p>
+                    <p className="text-sm font-medium">{node.environment.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Agent Version</p>
+                    <p className="text-sm font-mono">{node.agentVersion ?? "\u2014"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Vector Version</p>
+                    <p className="text-sm font-mono">{node.vectorVersion ?? "Unknown"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Last Heartbeat</p>
+                    <p className="text-sm">{formatLastSeen(node.lastHeartbeat)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Enrolled</p>
+                    <p className="text-sm">{node.enrolledAt ? formatLastSeen(node.enrolledAt) : "Not enrolled"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Host</p>
+                    <p className="text-sm font-mono">{node.host}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">API Port</p>
+                    <p className="text-sm font-mono">{node.apiPort}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Last Seen</p>
+                    <p className="text-sm">{formatLastSeen(node.lastSeen)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Created</p>
+                    <p className="text-sm">
+                      {new Date(node.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-      {/* Logs */}
-      <div className="space-y-4">
-        <h3 className="flex items-center gap-2 text-lg font-semibold">
-          <Terminal className="h-5 w-5" />
-          Logs
-        </h3>
-        <NodeLogs
-          nodeId={params.nodeId}
-          pipelines={
-            node.pipelineStatuses?.map((ps) => ({
-              id: ps.pipelineId,
-              name: ps.pipeline?.name ?? ps.pipelineId.slice(0, 8),
-            })) ?? []
-          }
-        />
-      </div>
+            {/* Node Labels */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Tag className="h-5 w-5" />
+                    Labels
+                  </span>
+                  {!isEditingLabels && (
+                    <Button variant="outline" size="sm" onClick={handleStartEditLabels}>
+                      <Pencil className="mr-1 h-3.5 w-3.5" />
+                      Edit
+                    </Button>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isEditingLabels ? (
+                  <div className="space-y-3">
+                    {editLabels.map((label, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <Input
+                          placeholder="Key"
+                          value={label.key}
+                          onChange={(e) => {
+                            const next = [...editLabels];
+                            next[idx] = { ...next[idx], key: e.target.value };
+                            setEditLabels(next);
+                          }}
+                          className="flex-1"
+                        />
+                        <span className="text-muted-foreground">=</span>
+                        <Input
+                          placeholder="Value"
+                          value={label.value}
+                          onChange={(e) => {
+                            const next = [...editLabels];
+                            next[idx] = { ...next[idx], value: e.target.value };
+                            setEditLabels(next);
+                          }}
+                          className="flex-1"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => {
+                            setEditLabels(editLabels.filter((_, i) => i !== idx));
+                          }}
+                          aria-label="Remove label"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditLabels([...editLabels, { key: "", value: "" }])}
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" />
+                      Add Label
+                    </Button>
+                    <div className="flex items-center gap-2 pt-2">
+                      <Button size="sm" onClick={handleSaveLabels} disabled={labelsMutation.isPending}>
+                        {labelsMutation.isPending ? "Saving..." : "Save Labels"}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setIsEditingLabels(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries((node.labels as Record<string, string>) ?? {}).length > 0 ? (
+                      Object.entries((node.labels as Record<string, string>) ?? {}).map(
+                        ([k, v]) => (
+                          <Badge key={k} variant="outline">
+                            {k}={v}
+                          </Badge>
+                        ),
+                      )
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No labels assigned</p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Pipeline Metrics */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Pipeline Metrics
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {node.pipelineStatuses && node.pipelineStatuses.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Pipeline</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Events In</TableHead>
+                        <TableHead className="text-right">Events Out</TableHead>
+                        <TableHead className="text-right">Errors</TableHead>
+                        <TableHead className="text-right">Bytes In</TableHead>
+                        <TableHead className="text-right">Bytes Out</TableHead>
+                        <TableHead className="text-right">Avg Latency</TableHead>
+                        <TableHead className="text-right">Uptime</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {node.pipelineStatuses.map((ps) => {
+                        const rates = pipelineRates[ps.pipelineId];
+                        return (
+                        <TableRow key={ps.pipelineId}>
+                          <TableCell className="font-medium">
+                            {ps.pipeline?.name ?? ps.pipelineId.slice(0, 8)}
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge variant={pipelineStatusVariant(ps.status)}>
+                              {pipelineStatusLabel(ps.status)}
+                            </StatusBadge>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            <div>{formatCount(ps.eventsIn)}</div>
+                            {rates && <div className="text-xs text-muted-foreground">{formatRate(rates.eventsInRate)}</div>}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            <div>{formatCount(ps.eventsOut)}</div>
+                            {rates && <div className="text-xs text-muted-foreground">{formatRate(rates.eventsOutRate)}</div>}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            <div>{formatCount(ps.errorsTotal)}</div>
+                            {rates && rates.errorsRate > 0 && <div className="text-xs text-red-500">{formatRate(rates.errorsRate)}</div>}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            <div>{formatBytes(ps.bytesIn)}</div>
+                            {rates && <div className="text-xs text-muted-foreground">{formatBytesRate(rates.bytesInRate)}</div>}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            <div>{formatBytes(ps.bytesOut)}</div>
+                            {rates && <div className="text-xs text-muted-foreground">{formatBytesRate(rates.bytesOutRate)}</div>}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {rates?.latencyMeanMs != null
+                              ? formatLatency(rates.latencyMeanMs)
+                              : "—"}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {formatUptime(ps.uptimeSeconds)}
+                          </TableCell>
+                        </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
+                    <p className="text-muted-foreground">
+                      No pipeline metrics yet
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Metrics appear after pipelines are deployed and the agent reports heartbeats.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="health">
+          <div className="space-y-6">
+            <UptimeCards nodeId={params.nodeId} />
+            <StatusTimeline nodeId={params.nodeId} range={timelineRange} onRangeChange={setTimelineRange} />
+            <Card>
+              <CardHeader>
+                <CardTitle>Event Log</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <EventLog nodeId={params.nodeId} range={timelineRange} />
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="metrics">
+          <NodeMetricsCharts nodeId={params.nodeId} />
+        </TabsContent>
+
+        <TabsContent value="logs">
+          <NodeLogs
+            nodeId={params.nodeId}
+            pipelines={
+              node.pipelineStatuses?.map((ps) => ({
+                id: ps.pipelineId,
+                name: ps.pipeline?.name ?? ps.pipelineId.slice(0, 8),
+              })) ?? []
+            }
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
