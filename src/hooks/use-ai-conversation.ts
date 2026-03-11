@@ -164,8 +164,24 @@ export function useAiConversation({
         setMessages((prev) => [...prev, assistantMessage]);
         setStreamingContent("");
 
-        // Invalidate to sync with server-persisted messages
-        queryClient.invalidateQueries({ queryKey: trpc.ai.getConversation.queryKey({ pipelineId }) });
+        // Refetch to sync local state with server-persisted messages (real IDs)
+        const refetched = await queryClient.fetchQuery({
+          ...trpc.ai.getConversation.queryOptions({ pipelineId }),
+          staleTime: 0,
+        });
+        if (refetched?.messages) {
+          setMessages(
+            refetched.messages.map((m) => ({
+              id: m.id,
+              role: m.role as "user" | "assistant",
+              content: m.content,
+              suggestions: m.suggestions as unknown as AiSuggestion[] | undefined,
+              pipelineYaml: m.pipelineYaml,
+              createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
+              createdBy: m.createdBy,
+            })),
+          );
+        }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "AI request failed");
@@ -178,19 +194,17 @@ export function useAiConversation({
   );
 
   const startNewConversation = useCallback(() => {
+    queryClient.removeQueries({ queryKey: trpc.ai.getConversation.queryKey({ pipelineId }) });
     setMessages([]);
     setConversationId(null);
     setStreamingContent("");
     setError(null);
-  }, []);
+  }, [queryClient, trpc, pipelineId]);
 
   const markSuggestionsApplied = useCallback(
     (messageId: string, suggestionIds: string[]) => {
       if (!conversationId) return;
-
-      // The server records which suggestions were applied in the JSON;
-      // we rely on the query invalidation in markAppliedMutation.onSuccess
-      // to refresh the conversation state.
+      if (messageId.startsWith("temp-")) return; // Wait for server-persisted IDs
 
       markAppliedMutation.mutate({
         pipelineId,

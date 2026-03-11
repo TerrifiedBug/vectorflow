@@ -181,8 +181,6 @@ export async function POST(request: Request) {
           },
           signal: request.signal,
         });
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
-
         if (body.mode === "review" && conversationId) {
           let parsedSuggestions = null;
           try {
@@ -194,15 +192,19 @@ export async function POST(request: Request) {
             // Not valid JSON — store as raw text
           }
 
-          prisma.aiMessage.create({
-            data: {
-              conversationId,
-              role: "assistant",
-              content: fullResponse,
-              suggestions: (parsedSuggestions as unknown as Prisma.InputJsonValue) ?? undefined,
-              createdById: session.user.id,
-            },
-          }).catch((err) => console.error("Failed to persist AI response:", err));
+          try {
+            await prisma.aiMessage.create({
+              data: {
+                conversationId,
+                role: "assistant",
+                content: fullResponse,
+                suggestions: (parsedSuggestions as unknown as Prisma.InputJsonValue) ?? undefined,
+                createdById: session.user.id,
+              },
+            });
+          } catch (err) {
+            console.error("Failed to persist AI response:", err);
+          }
 
           const pipelineForAudit = await prisma.pipeline.findUnique({
             where: { id: body.pipelineId! },
@@ -225,6 +227,8 @@ export async function POST(request: Request) {
             userName: session.user.name ?? null,
           }).catch(() => {});
         }
+
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
       } catch (err) {
         const message = err instanceof Error ? err.message : "AI request failed";
         controller.enqueue(
