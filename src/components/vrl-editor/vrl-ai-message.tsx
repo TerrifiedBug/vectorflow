@@ -76,8 +76,11 @@ export function VrlAiMessage({
   };
 
   const handleApplySelected = () => {
-    if (selectedSuggestions.length > 0) {
-      onApplySelected(message.id, selectedSuggestions);
+    const applicableSelected = selectedSuggestions.filter(
+      (s) => suggestionStatuses.get(s.id) === "actionable",
+    );
+    if (applicableSelected.length > 0) {
+      onApplySelected(message.id, applicableSelected);
     }
   };
 

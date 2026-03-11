@@ -92,13 +92,13 @@ export function applyVrlSuggestion(
       if (!suggestion.targetCode || !currentCode.includes(suggestion.targetCode)) {
         return null;
       }
-      return currentCode.replace(suggestion.targetCode, suggestion.code);
+      return currentCode.replaceAll(suggestion.targetCode, suggestion.code);
 
     case "remove_code":
       if (!suggestion.targetCode || !currentCode.includes(suggestion.targetCode)) {
         return null;
       }
-      return currentCode.replace(suggestion.targetCode, "").replace(/\n{3,}/g, "\n\n").trim();
+      return currentCode.replaceAll(suggestion.targetCode, "").replace(/\n{3,}/g, "\n\n").trim();
 
     default:
       return null;
