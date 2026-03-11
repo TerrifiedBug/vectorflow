@@ -125,7 +125,7 @@ func (a *Agent) Run() error {
 			a.pollAndApply()
 			a.sendHeartbeat()
 		case msg := <-a.wsCh:
-			a.handleWsMessage(msg)
+			a.handleWsMessage(msg, ticker)
 		case <-a.immediateHeartbeatCh:
 			a.sendHeartbeat()
 		}
@@ -295,7 +295,7 @@ func (a *Agent) processSampleRequests(requests []client.SampleRequestMsg) {
 
 // handleWsMessage processes a push message from the WebSocket channel.
 // MUST be called from the main goroutine (same goroutine as Run()'s select loop).
-func (a *Agent) handleWsMessage(msg ws.PushMessage) {
+func (a *Agent) handleWsMessage(msg ws.PushMessage, ticker *time.Ticker) {
 	switch msg.Type {
 	case "config_changed":
 		slog.Info("ws: config changed notification", "pipeline", msg.PipelineID, "reason", msg.Reason)
@@ -328,6 +328,8 @@ func (a *Agent) handleWsMessage(msg ws.PushMessage) {
 
 	case "poll_interval":
 		if msg.IntervalMs > 0 {
+			newInterval := time.Duration(msg.IntervalMs) * time.Millisecond
+			ticker.Reset(newInterval)
 			slog.Info("ws: poll interval changed", "intervalMs", msg.IntervalMs)
 		}
 

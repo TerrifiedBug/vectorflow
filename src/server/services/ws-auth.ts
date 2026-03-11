@@ -1,9 +1,16 @@
 import type { IncomingMessage } from "http";
+import { createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { extractBearerToken, verifyNodeToken } from "./agent-token";
 
+/** Fast, non-reversible hash used as cache key instead of the raw plaintext
+ *  token — avoids keeping credentials in process memory. */
+function tokenCacheKey(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
 /** Cache verified tokens to avoid O(n) bcrypt scan on every WS upgrade.
- *  Key: plaintext token, Value: { nodeId, environmentId }.
+ *  Key: SHA-256 hash of token, Value: { nodeId, environmentId }.
  *  Entries are evicted when the token fails verification (node re-enrolled). */
 const tokenCache = new Map<string, { nodeId: string; environmentId: string }>();
 
@@ -25,7 +32,8 @@ export async function authenticateWsUpgrade(
   }
 
   // Fast path: check cache first (O(1) string lookup)
-  const cached = tokenCache.get(token);
+  const cacheKey = tokenCacheKey(token);
+  const cached = tokenCache.get(cacheKey);
   if (cached) {
     // Verify the node still exists and the hash still matches (re-enrollment invalidates)
     const node = await prisma.vectorNode.findUnique({
@@ -36,7 +44,7 @@ export async function authenticateWsUpgrade(
       return cached;
     }
     // Cache stale — node deleted or re-enrolled
-    tokenCache.delete(token);
+    tokenCache.delete(cacheKey);
   }
 
   // Slow path: scan all nodes with bcrypt
@@ -50,7 +58,7 @@ export async function authenticateWsUpgrade(
     const valid = await verifyNodeToken(token, node.nodeTokenHash);
     if (valid) {
       const result = { nodeId: node.id, environmentId: node.environmentId };
-      tokenCache.set(token, result);
+      tokenCache.set(cacheKey, result);
       return result;
     }
   }

@@ -57,10 +57,6 @@ export async function POST(request: Request) {
       }
 
       if (result.error) {
-        await prisma.eventSampleRequest.update({
-          where: { id: result.requestId },
-          data: { status: "ERROR", completedAt: new Date(), nodeId: agent.nodeId },
-        });
         try {
           await prisma.eventSample.create({
             data: {
@@ -76,6 +72,12 @@ export async function POST(request: Request) {
           if (isUniqueViolation(err)) continue; // another agent already submitted
           throw err;
         }
+        // Update status AFTER successful EventSample write — if another agent
+        // already submitted a success, the unique constraint above skips this.
+        await prisma.eventSampleRequest.update({
+          where: { id: result.requestId },
+          data: { status: "ERROR", completedAt: new Date(), nodeId: agent.nodeId },
+        });
       } else {
         try {
           await prisma.eventSample.create({
