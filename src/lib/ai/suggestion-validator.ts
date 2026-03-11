@@ -2,12 +2,19 @@
 import type { Node } from "@xyflow/react";
 import type { AiSuggestion, AiReviewResponse, SuggestionStatus } from "./types";
 
+/** Strip markdown code fences and extract the JSON body. */
+function stripCodeFences(raw: string): string {
+  const trimmed = raw.trim();
+  const match = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+  return match ? match[1].trim() : trimmed;
+}
+
 /**
  * Validate a parsed AI response. Returns the response if valid, null if not.
  */
 export function parseAiReviewResponse(raw: string): AiReviewResponse | null {
   try {
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(stripCodeFences(raw));
     if (
       typeof parsed === "object" &&
       parsed !== null &&
