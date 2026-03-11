@@ -1,6 +1,5 @@
 import { createServer, type IncomingMessage } from "http";
 import type { Socket } from "net";
-import next from "next";
 import { parse } from "url";
 import { type WebSocket, WebSocketServer } from "ws";
 
@@ -12,10 +11,42 @@ const PING_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 10_000;
 const WS_PATH = "/api/agent/ws";
 
-const app = next({ dev, hostname, port });
-const handle = app.getRequestHandler();
+async function getRequestHandler() {
+  if (dev) {
+    // Dev mode: use the full next() factory which handles HMR, config reloading, etc.
+    const next = (await import("next")).default;
+    const app = next({ dev, hostname, port });
+    await app.prepare();
+    return app.getRequestHandler();
+  }
 
-app.prepare().then(async () => {
+  // Production/standalone: use NextServer directly with pre-baked config
+  // to avoid loading next.config.ts (which requires webpack, stripped from standalone)
+  const path = await import("path");
+  const fs = await import("fs");
+  const dir = path.join(__dirname);
+  process.chdir(dir);
+
+  const requiredServerFiles = JSON.parse(
+    fs.readFileSync(path.join(dir, ".next", "required-server-files.json"), "utf8"),
+  );
+
+  process.env.__NEXT_PRIVATE_STANDALONE_CONFIG = JSON.stringify(requiredServerFiles.config);
+
+  const NextServer = (await import("next/dist/server/next-server")).default;
+  const app = new NextServer({
+    hostname,
+    port,
+    dir,
+    dev: false,
+    customServer: true,
+    conf: requiredServerFiles.config,
+  });
+  await app.prepare();
+  return app.getRequestHandler();
+}
+
+getRequestHandler().then(async (handle) => {
   const { authenticateWsUpgrade } = await import("./src/server/services/ws-auth");
   const { wsRegistry } = await import("./src/server/services/ws-registry");
 
@@ -96,4 +127,7 @@ app.prepare().then(async () => {
   server.listen(port, hostname, () => {
     console.log(`> Ready on http://${hostname}:${port}`);
   });
+}).catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
