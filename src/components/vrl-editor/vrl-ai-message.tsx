@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { Bot, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VrlSuggestionCard } from "./vrl-suggestion-card";
-import type { VrlSuggestion, VrlSuggestionStatus } from "@/lib/ai/vrl-suggestion-types";
+import type { VrlSuggestion } from "@/lib/ai/vrl-suggestion-types";
 import {
   parseVrlChatResponse,
   computeVrlSuggestionStatuses,
