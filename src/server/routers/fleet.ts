@@ -46,7 +46,96 @@ export const fleetRouter = router({
           message: "Node not found",
         });
       }
-      return node;
+      const latestEvent = await prisma.nodeStatusEvent.findFirst({
+        where: { nodeId: input.id },
+        orderBy: { timestamp: "desc" },
+        select: { timestamp: true },
+      });
+      return {
+        ...node,
+        currentStatusSince: latestEvent?.timestamp ?? null,
+      };
+    }),
+
+  getStatusTimeline: protectedProcedure
+    .input(z.object({
+      nodeId: z.string(),
+      range: z.enum(["1h", "6h", "1d", "7d", "30d"]),
+    }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const rangeMs: Record<string, number> = {
+        "1h": 60 * 60 * 1000,
+        "6h": 6 * 60 * 60 * 1000,
+        "1d": 24 * 60 * 60 * 1000,
+        "7d": 7 * 24 * 60 * 60 * 1000,
+        "30d": 30 * 24 * 60 * 60 * 1000,
+      };
+      const since = new Date(Date.now() - rangeMs[input.range]);
+      return prisma.nodeStatusEvent.findMany({
+        where: { nodeId: input.nodeId, timestamp: { gte: since } },
+        orderBy: { timestamp: "asc" },
+      });
+    }),
+
+  getUptime: protectedProcedure
+    .input(z.object({
+      nodeId: z.string(),
+      range: z.enum(["1d", "7d", "30d"]),
+    }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const rangeMs: Record<string, number> = {
+        "1d": 24 * 60 * 60 * 1000,
+        "7d": 7 * 24 * 60 * 60 * 1000,
+        "30d": 30 * 24 * 60 * 60 * 1000,
+      };
+      const now = Date.now();
+      const since = new Date(now - rangeMs[input.range]);
+      const totalSeconds = rangeMs[input.range] / 1000;
+
+      // Get events in range
+      const events = await prisma.nodeStatusEvent.findMany({
+        where: { nodeId: input.nodeId, timestamp: { gte: since } },
+        orderBy: { timestamp: "asc" },
+      });
+
+      // Get the last event before the range to know starting status
+      const priorEvent = await prisma.nodeStatusEvent.findFirst({
+        where: { nodeId: input.nodeId, timestamp: { lt: since } },
+        orderBy: { timestamp: "desc" },
+      });
+
+      // Walk events, tracking time in HEALTHY status
+      let healthySeconds = 0;
+      let incidents = 0;
+      let currentStatus = priorEvent?.toStatus ?? "UNKNOWN";
+      let cursor = since.getTime();
+
+      for (const event of events) {
+        const eventTime = event.timestamp.getTime();
+        const elapsed = (eventTime - cursor) / 1000;
+        if (currentStatus === "HEALTHY") {
+          healthySeconds += elapsed;
+        }
+        if (event.toStatus === "UNREACHABLE" || event.toStatus === "DEGRADED") {
+          incidents++;
+        }
+        currentStatus = event.toStatus;
+        cursor = eventTime;
+      }
+
+      // Account for time from last event to now
+      const remaining = (now - cursor) / 1000;
+      if (currentStatus === "HEALTHY") {
+        healthySeconds += remaining;
+      }
+
+      const uptimePercent = totalSeconds > 0
+        ? Math.round((healthySeconds / totalSeconds) * 1000) / 10
+        : 0;
+
+      return { uptimePercent, totalSeconds, healthySeconds: Math.round(healthySeconds), incidents };
     }),
 
   create: protectedProcedure
