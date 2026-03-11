@@ -62,60 +62,43 @@ export async function POST(request: Request) {
         continue;
       }
 
-      if (result.error) {
-        try {
-          await prisma.eventSample.create({
-            data: {
-              requestId: result.requestId,
-              pipelineId: sampleRequest.pipelineId,
-              componentKey: result.componentKey,
-              events: [],
-              schema: [],
-              error: result.error,
-            },
-          });
-        } catch (err) {
-          if (isUniqueViolation(err)) continue; // another agent already submitted
-          throw err;
-        }
-        // Atomically transition PENDING → ERROR; no-op if another agent already
-        // moved the status (e.g. to COMPLETED), preventing status clobbering.
+      // Write the EventSample (success or error)
+      try {
+        await prisma.eventSample.create({
+          data: {
+            requestId: result.requestId,
+            pipelineId: sampleRequest.pipelineId,
+            componentKey: result.componentKey,
+            events: result.error ? [] : (result.events as object[]),
+            schema: result.error ? [] : result.schema,
+            error: result.error ?? null,
+          },
+        });
+      } catch (err) {
+        if (isUniqueViolation(err)) continue; // another agent already submitted
+        throw err;
+      }
+
+      // Check if all components now have samples (success or error)
+      const componentKeys = sampleRequest.componentKeys as string[];
+      const samples = await prisma.eventSample.findMany({
+        where: { requestId: result.requestId },
+        select: { componentKey: true, error: true },
+      });
+      const sampledKeySet = new Set(samples.map((s) => s.componentKey));
+      const allDone = componentKeys.every((k) => sampledKeySet.has(k));
+
+      if (allDone) {
+        const hasErrors = samples.some((s) => s.error != null);
+        // Atomically transition PENDING → final status; no-op if already moved.
         await prisma.eventSampleRequest.updateMany({
           where: { id: result.requestId, status: "PENDING" },
-          data: { status: "ERROR", completedAt: new Date(), nodeId: agent.nodeId },
+          data: {
+            status: hasErrors ? "ERROR" : "COMPLETED",
+            completedAt: new Date(),
+            nodeId: agent.nodeId,
+          },
         });
-      } else {
-        try {
-          await prisma.eventSample.create({
-            data: {
-              requestId: result.requestId,
-              pipelineId: sampleRequest.pipelineId,
-              componentKey: result.componentKey,
-              events: result.events as object[],
-              schema: result.schema,
-            },
-          });
-        } catch (err) {
-          if (isUniqueViolation(err)) continue; // another agent already submitted
-          throw err;
-        }
-
-        const componentKeys = sampleRequest.componentKeys as string[];
-        const completedKeys = await prisma.eventSample.findMany({
-          where: { requestId: result.requestId },
-          select: { componentKey: true },
-        });
-        const completedKeySet = new Set(completedKeys.map((s) => s.componentKey));
-        const allDone = componentKeys.every((k) => completedKeySet.has(k));
-
-        if (allDone) {
-          // Atomically transition PENDING → COMPLETED; no-op if already moved
-          // (e.g. an error submission raced and set ERROR first).
-          await prisma.eventSampleRequest.updateMany({
-            where: { id: result.requestId, status: "PENDING" },
-            data: { status: "COMPLETED", completedAt: new Date(), nodeId: agent.nodeId },
-          });
-        }
       }
     }
 
