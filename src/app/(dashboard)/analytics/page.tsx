@@ -24,7 +24,6 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import { formatBytes, formatTimeAxis } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { PageHeader } from "@/components/page-header";
 
 type VolumeRange = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -150,7 +149,6 @@ export default function AnalyticsPage() {
   if (!selectedEnvironmentId) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Analytics" />
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
           <p className="text-muted-foreground">
             Select an environment to view analytics.
@@ -162,28 +160,25 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Analytics"
-        actions={
-          <div className="flex items-center gap-1">
-            {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setRange(v)}
-                className={cn(
-                  "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
-                  range === v
-                    ? "bg-accent text-accent-foreground border-transparent"
-                    : "bg-transparent text-muted-foreground border-border hover:bg-muted",
-                )}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        }
-      />
+      <div className="flex items-center justify-end">
+        <div className="flex items-center gap-1">
+          {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setRange(v)}
+              className={cn(
+                "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
+                range === v
+                  ? "bg-accent text-accent-foreground border-transparent"
+                  : "bg-transparent text-muted-foreground border-border hover:bg-muted",
+              )}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-4">

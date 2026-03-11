@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PageHeader } from "@/components/page-header";
 import {
   Card,
   CardContent,
@@ -108,7 +107,6 @@ export default function SharedComponentsPage() {
   if (!selectedEnvironmentId) {
     return (
       <div className="space-y-8">
-        <PageHeader title="Shared Components" />
         <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
           Select an environment from the header to view shared components
         </div>
@@ -118,15 +116,12 @@ export default function SharedComponentsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Shared Components"
-        actions={
-          <Button onClick={() => router.push("/library/shared-components/new")}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Shared Component
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-end">
+        <Button onClick={() => router.push("/library/shared-components/new")}>
+          <Plus className="mr-2 h-4 w-4" />
+          New Shared Component
+        </Button>
+      </div>
 
       {/* Search */}
       <div className="relative max-w-sm">
