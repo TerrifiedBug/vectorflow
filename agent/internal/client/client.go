@@ -29,7 +29,7 @@ func (c *Client) SetNodeToken(token string) {
 	c.nodeToken = token
 }
 
-// NodeToken returns the current node token for use by other packages (e.g., WebSocket auth).
+// NodeToken returns the current node token for use by other packages (e.g., push auth).
 func (c *Client) NodeToken() string {
 	return c.nodeToken
 }
