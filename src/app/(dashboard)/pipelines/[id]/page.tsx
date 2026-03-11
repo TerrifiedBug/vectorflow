@@ -216,6 +216,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         ...(entry.kind === "TRANSFORM" ? { eventsInPerSec: latest.receivedEventsRate } : {}),
         status: eventsPerSec > 0 ? "healthy" : "degraded",
         samples: entry.samples,
+        latencyMs: latest.latencyMeanMs,
       });
     }
 

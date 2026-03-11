@@ -321,6 +321,7 @@ model PipelineMetric {
   bytesIn         BigInt   @default(0)
   bytesOut        BigInt   @default(0)
   utilization     Float    @default(0)
+  latencyMeanMs   Float?                    // pipeline-level weighted mean latency (ms)
 
   @@index([pipelineId, timestamp])
   @@index([timestamp])
@@ -330,7 +331,7 @@ model PipelineSli {
   id            String   @id @default(cuid())
   pipelineId    String
   pipeline      Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  metric        String   // "error_rate" | "throughput_floor" | "discard_rate"
+  metric        String   // "error_rate" | "throughput_floor" | "discard_rate" | "latency_mean"
   condition     String   // "lt" | "gt"
   threshold     Float
   windowMinutes Int      @default(5)

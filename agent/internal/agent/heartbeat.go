@@ -42,14 +42,15 @@ func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string, deployment
 			// Map per-component metrics for editor node overlays
 			for _, cm := range sr.Components {
 				ps.ComponentMetrics = append(ps.ComponentMetrics, client.ComponentMetric{
-					ComponentID:     cm.ComponentID,
-					ComponentKind:   cm.ComponentKind,
-					ReceivedEvents:  cm.ReceivedEvents,
-					SentEvents:      cm.SentEvents,
-					ReceivedBytes:   cm.ReceivedBytes,
-					SentBytes:       cm.SentBytes,
-					ErrorsTotal:     cm.ErrorsTotal,
-					DiscardedEvents: cm.DiscardedEvents,
+					ComponentID:        cm.ComponentID,
+					ComponentKind:      cm.ComponentKind,
+					ReceivedEvents:     cm.ReceivedEvents,
+					SentEvents:         cm.SentEvents,
+					ReceivedBytes:      cm.ReceivedBytes,
+					SentBytes:          cm.SentBytes,
+					ErrorsTotal:        cm.ErrorsTotal,
+					DiscardedEvents:    cm.DiscardedEvents,
+					LatencyMeanSeconds: cm.LatencyMeanSeconds,
 				})
 			}
 
