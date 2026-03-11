@@ -394,8 +394,8 @@ export async function POST(request: Request) {
     }
 
     if (componentLatencyRows.length > 0) {
-      Promise.all(
-        componentLatencyRows.map(async (row) => {
+      try {
+        for (const row of componentLatencyRows) {
           const existing = await prisma.pipelineMetric.findFirst({
             where: {
               pipelineId: row.pipelineId,
@@ -412,8 +412,10 @@ export async function POST(request: Request) {
           } else {
             await prisma.pipelineMetric.create({ data: row });
           }
-        }),
-      ).catch((err) => console.error("Per-component latency upsert error:", err));
+        }
+      } catch (err) {
+        console.error("Per-component latency upsert error:", err);
+      }
     }
 
     // Feed per-component metrics into the in-memory MetricStore for editor overlays
