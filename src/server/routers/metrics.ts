@@ -22,6 +22,7 @@ export const metricsRouter = router({
         where: {
           pipelineId: input.pipelineId,
           nodeId: null,
+          componentId: null,
           timestamp: { gte: since },
         },
         orderBy: { timestamp: "asc" },
@@ -39,6 +40,62 @@ export const metricsRouter = router({
       });
 
       return { rows };
+    }),
+
+  /**
+   * Per-component historical latency from the database.
+   * Used by the pipeline metrics page for the multi-line transform latency chart.
+   */
+  getComponentLatencyHistory: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        minutes: z.number().int().min(1).max(1440).default(60),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const since = new Date(Date.now() - input.minutes * 60 * 1000);
+
+      const rows = await prisma.pipelineMetric.findMany({
+        where: {
+          pipelineId: input.pipelineId,
+          componentId: { not: null },
+          timestamp: { gte: since },
+        },
+        orderBy: { timestamp: "asc" },
+        select: {
+          componentId: true,
+          timestamp: true,
+          latencyMeanMs: true,
+        },
+      });
+
+      // Average across nodes per (componentId, timestamp) to handle multi-node deployments
+      const components: Record<string, Array<{ timestamp: Date; latencyMeanMs: number }>> = {};
+      const acc: Record<string, Map<number, { sum: number; count: number }>> = {};
+
+      for (const row of rows) {
+        if (!row.componentId || row.latencyMeanMs == null) continue;
+        const tsMs = row.timestamp.getTime();
+        const byTs = acc[row.componentId] ?? new Map();
+        const bucket = byTs.get(tsMs) ?? { sum: 0, count: 0 };
+        bucket.sum += row.latencyMeanMs;
+        bucket.count++;
+        byTs.set(tsMs, bucket);
+        acc[row.componentId] = byTs;
+      }
+
+      for (const [cid, byTs] of Object.entries(acc)) {
+        components[cid] = Array.from(byTs.entries())
+          .map(([tsMs, { sum, count }]) => ({
+            timestamp: new Date(tsMs),
+            latencyMeanMs: sum / count,
+          }))
+          .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      }
+
+      return { components };
     }),
 
   /**

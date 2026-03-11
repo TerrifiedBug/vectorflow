@@ -168,7 +168,7 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
 
       {/* Latency chart */}
       <div>
-        <p className="text-xs text-muted-foreground mb-1 font-medium">Pipeline Latency</p>
+        <p className="text-xs text-muted-foreground mb-1 font-medium">Transform Latency</p>
         <ChartContainer config={latencyChartConfig} className="w-full" style={{ height: 180 }}>
           <AreaChart data={data}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
