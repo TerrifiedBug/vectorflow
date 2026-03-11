@@ -21,8 +21,19 @@ export async function checkNodeHealth(): Promise<void> {
       lastHeartbeat: { lt: maxAge },
       status: { not: "UNREACHABLE" },
     },
-    select: { id: true, name: true, environmentId: true },
+    select: { id: true, name: true, environmentId: true, status: true },
   });
+
+  if (goingUnreachable.length > 0) {
+    await prisma.nodeStatusEvent.createMany({
+      data: goingUnreachable.map((node) => ({
+        nodeId: node.id,
+        fromStatus: node.status,
+        toStatus: "UNREACHABLE",
+        reason: "heartbeat timeout",
+      })),
+    });
+  }
 
   await prisma.vectorNode.updateMany({
     where: {
