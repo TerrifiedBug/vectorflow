@@ -226,11 +226,14 @@ export async function evaluateAlerts(
 
   if (!node) return [];
 
-  // Load all enabled rules for this environment
+  // Load all enabled rules for this environment (include pipeline name for messages)
   const rules = await prisma.alertRule.findMany({
     where: {
       environmentId,
       enabled: true,
+    },
+    include: {
+      pipeline: { select: { name: true } },
     },
   });
 
@@ -281,7 +284,7 @@ export async function evaluateAlerts(
 
         if (!existingEvent) {
           // Create a new firing event
-          const message = buildMessage(rule, value);
+          const message = buildMessage(rule, value, rule.pipeline?.name);
           const event = await prisma.alertEvent.create({
             data: {
               alertRuleId: rule.id,
@@ -354,11 +357,34 @@ const CONDITION_LABELS: Record<AlertCondition, string> = {
   eq: "=",
 };
 
-function buildMessage(rule: AlertRule, value: number): string {
+/** Metrics where the value is binary (0/1) and the numeric details are noise. */
+const BINARY_METRICS = new Set<AlertMetric>([
+  "pipeline_crashed",
+  "node_unreachable",
+]);
+
+function buildMessage(
+  rule: AlertRule,
+  value: number,
+  pipelineName?: string | null,
+): string {
   const metricLabel = METRIC_LABELS[rule.metric] ?? rule.metric;
+
   if (!rule.condition || rule.threshold == null) {
-    return `${metricLabel} event fired`;
+    return pipelineName
+      ? `${metricLabel}: ${pipelineName}`
+      : `${metricLabel}`;
   }
+
+  // Binary metrics: just state what happened, with the pipeline name if available
+  if (BINARY_METRICS.has(rule.metric)) {
+    return pipelineName
+      ? `${metricLabel}: ${pipelineName}`
+      : `${metricLabel}`;
+  }
+
+  // Numeric metrics: include value and threshold for context
   const condLabel = CONDITION_LABELS[rule.condition] ?? rule.condition;
-  return `${metricLabel} is ${value.toFixed(2)} (threshold: ${condLabel} ${rule.threshold})`;
+  const prefix = pipelineName ? `${pipelineName} — ` : "";
+  return `${prefix}${metricLabel} at ${value.toFixed(2)} (threshold: ${condLabel} ${rule.threshold})`;
 }
