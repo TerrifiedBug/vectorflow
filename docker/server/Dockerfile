@@ -35,15 +35,13 @@ COPY server.ts ./server.ts
 RUN --mount=type=cache,target=/app/.next/cache \
     pnpm build
 # Bundle custom server.ts → server.js (replaces Next.js default standalone server.js)
-# --packages=external keeps npm deps external (resolved from node_modules at runtime)
-# --alias:@=./src resolves @/ path aliases used by transitive imports (e.g. ws-auth → @/lib/prisma)
+# Only `next` stays external (available in standalone node_modules); all other deps
+# (ws, prisma, pg, bcryptjs) are bundled because standalone compiles them into webpack
+# chunks that aren't separately importable.
 RUN pnpm exec esbuild server.ts --bundle --platform=node --target=node22 \
     --outfile=.next/standalone/server.js \
     --alias:@=./src \
-    --packages=external
-# ws is external but not traced by Next.js standalone (it only sees server.ts via esbuild).
-# Copy it into standalone node_modules so server.js can require it at runtime.
-RUN cp -rL node_modules/ws .next/standalone/node_modules/ws
+    --external:next --external:'next/*'
 # Save Prisma client version for the runner stage (standalone strips node_modules)
 RUN node -e "console.log(require('./node_modules/@prisma/client/package.json').version)" > /tmp/prisma-version
 
