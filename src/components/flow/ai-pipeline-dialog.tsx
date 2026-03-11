@@ -258,7 +258,7 @@ export function AiPipelineDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col min-h-0 overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
@@ -269,7 +269,7 @@ export function AiPipelineDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={mode} onValueChange={(v) => setMode(v as "generate" | "review")} className="flex flex-col flex-1 overflow-hidden">
+        <Tabs value={mode} onValueChange={(v) => setMode(v as "generate" | "review")} className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="generate">Generate</TabsTrigger>
             <TabsTrigger value="review" disabled={nodes.length === 0}>
@@ -335,7 +335,7 @@ export function AiPipelineDialog({
           </TabsContent>
 
           {/* ---- Review tab (conversation thread) ---- */}
-          <TabsContent value="review" className="flex flex-col flex-1 mt-4 overflow-hidden">
+          <TabsContent value="review" className="flex flex-col flex-1 mt-4 min-h-0 overflow-hidden">
             {conversation.isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
