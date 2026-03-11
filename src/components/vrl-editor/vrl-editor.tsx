@@ -615,7 +615,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
             {pipelineId && upstreamSourceKeys && upstreamSourceKeys.length > 0 && (
               <>
                 <Select value={String(sampleLimit)} onValueChange={(val) => setSampleLimit(Number(val))}>
-                  <SelectTrigger className="h-8 w-[110px] text-xs">
+                  <SelectTrigger className="h-8 w-[120px] text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
