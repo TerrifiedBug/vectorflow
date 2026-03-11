@@ -57,6 +57,7 @@ export interface NodeMetricsData {
   eventsInPerSec?: number;
   status: string;
   samples?: import("@/server/services/metric-store").MetricSample[];
+  latencyMs?: number | null;
 }
 
 export interface FlowState {

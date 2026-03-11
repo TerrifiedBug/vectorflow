@@ -10,6 +10,7 @@ export interface MetricsDataPoint {
   bytesIn: bigint;
   bytesOut: bigint;
   utilization: number;
+  latencyMeanMs: number | null;
 }
 
 export interface PreviousSnapshot {
@@ -95,6 +96,7 @@ export async function ingestMetrics(
           bytesIn: { increment: deltaBytesIn },
           bytesOut: { increment: deltaBytesOut },
           utilization: dp.utilization,
+          ...(dp.latencyMeanMs != null ? { latencyMeanMs: dp.latencyMeanMs } : {}),
         },
       });
     } else {
@@ -110,6 +112,7 @@ export async function ingestMetrics(
           bytesIn: deltaBytesIn,
           bytesOut: deltaBytesOut,
           utilization: dp.utilization,
+          ...(dp.latencyMeanMs != null ? { latencyMeanMs: dp.latencyMeanMs } : {}),
         },
       });
     }
@@ -134,6 +137,8 @@ export async function ingestMetrics(
     let totalBytesIn = BigInt(0);
     let totalBytesOut = BigInt(0);
     let totalUtil = 0;
+    let latencyWeightedSum = 0;
+    let latencyWeightCount = 0;
 
     for (const row of nodeRows) {
       totalEventsIn += row.eventsIn;
@@ -143,9 +148,15 @@ export async function ingestMetrics(
       totalBytesIn += row.bytesIn;
       totalBytesOut += row.bytesOut;
       totalUtil += row.utilization;
+      if (row.latencyMeanMs != null) {
+        const rowEvents = Number(row.eventsIn) + Number(row.eventsOut);
+        latencyWeightedSum += row.latencyMeanMs * rowEvents;
+        latencyWeightCount += rowEvents;
+      }
     }
 
     const avgUtil = nodeRows.length > 0 ? totalUtil / nodeRows.length : 0;
+    const avgLatencyMs = latencyWeightCount > 0 ? latencyWeightedSum / latencyWeightCount : null;
 
     const existingAgg = await prisma.pipelineMetric.findFirst({
       where: {
@@ -166,6 +177,7 @@ export async function ingestMetrics(
           bytesIn: totalBytesIn,
           bytesOut: totalBytesOut,
           utilization: avgUtil,
+          ...(avgLatencyMs != null ? { latencyMeanMs: avgLatencyMs } : {}),
         },
       });
     } else {
@@ -181,6 +193,7 @@ export async function ingestMetrics(
           bytesIn: totalBytesIn,
           bytesOut: totalBytesOut,
           utilization: avgUtil,
+          ...(avgLatencyMs != null ? { latencyMeanMs: avgLatencyMs } : {}),
         },
       });
     }

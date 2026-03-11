@@ -1,1 +1,1 @@
-export { formatRate, formatBytesRate } from "@/lib/format";
+export { formatRate, formatBytesRate, formatLatency } from "@/lib/format";

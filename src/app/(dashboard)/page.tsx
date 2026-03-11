@@ -15,6 +15,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  Timer,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,7 +30,7 @@ import { MetricsSection } from "@/components/dashboard/metrics-section";
 import { MetricChart } from "@/components/dashboard/metric-chart";
 import { ViewBuilderDialog } from "@/components/dashboard/view-builder-dialog";
 import { CustomView } from "@/components/dashboard/custom-view";
-import { formatSI, formatBytesRate, formatEventsRate } from "@/lib/format";
+import { formatSI, formatBytesRate, formatEventsRate, formatLatency } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
@@ -377,6 +378,15 @@ export default function DashboardPage() {
               primaryLabel=" Errors"
               secondaryLabel=" Discarded"
               yFormatter={formatSI}
+              timeRange={timeRange}
+              height={200}
+            />
+            <MetricChart
+              title="Component Latency"
+              icon={<Timer className="h-4 w-4" />}
+              data={chartData.data?.pipeline.latency ?? {}}
+              variant="area"
+              yFormatter={formatLatency}
               timeRange={timeRange}
               height={200}
             />
