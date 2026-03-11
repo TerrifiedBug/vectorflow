@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Inbox } from "lucide-react";
-import { formatBytesRate } from "@/lib/format";
+import { formatBytesRate, formatLatency } from "@/lib/format";
 
 interface MetricRow {
   timestamp: Date;
@@ -20,11 +20,12 @@ interface MetricRow {
   bytesOut: bigint;
   errorsTotal: bigint;
   eventsDiscarded: bigint;
+  latencyMeanMs?: number | null;
 }
 
 interface MetricsChartProps {
   rows: MetricRow[];
-  dataKey: "events" | "bytes" | "errors";
+  dataKey: "events" | "bytes" | "errors" | "latency";
   height?: number;
 }
 
@@ -38,12 +39,14 @@ const colorMap = {
   events: { in: "#22c55e", out: "#3b82f6" },
   bytes: { in: "#f59e0b", out: "#8b5cf6" },
   errors: { in: "#ef4444", out: "#f97316" },
+  latency: { in: "#ec4899", out: "#ec4899" },
 } as const;
 
 const labelMap = {
   events: { in: "Events In/s", out: "Events Out/s" },
   bytes: { in: "Bytes In/s", out: "Bytes Out/s" },
   errors: { in: "Errors/s", out: "Discarded/s" },
+  latency: { in: "Mean Latency", out: "Mean Latency" },
 } as const;
 
 export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps) {
@@ -51,9 +54,11 @@ export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps)
     time: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     in: dataKey === "events" ? Number(m.eventsIn) / 60
       : dataKey === "bytes" ? Number(m.bytesIn) / 60
+      : dataKey === "latency" ? (m.latencyMeanMs ?? 0)
       : Number(m.errorsTotal) / 60,
     out: dataKey === "events" ? Number(m.eventsOut) / 60
       : dataKey === "bytes" ? Number(m.bytesOut) / 60
+      : dataKey === "latency" ? (m.latencyMeanMs ?? 0)
       : Number(m.eventsDiscarded) / 60,
   }));
 
@@ -71,7 +76,7 @@ export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps)
     );
   }
 
-  const formatter = dataKey === "bytes" ? formatBytesRate : formatEventsRate;
+  const formatter = dataKey === "bytes" ? formatBytesRate : dataKey === "latency" ? formatLatency : formatEventsRate;
 
   return (
     <ChartContainer config={chartConfig} className="w-full" style={{ height }}>
@@ -96,7 +101,9 @@ export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps)
           }
         />
         <Area type="monotone" dataKey="in" name={labelMap[dataKey].in} stroke="var(--color-in)" fill="var(--color-in)" fillOpacity={0.1} strokeWidth={1.5} />
-        <Area type="monotone" dataKey="out" name={labelMap[dataKey].out} stroke="var(--color-out)" fill="var(--color-out)" fillOpacity={0.1} strokeWidth={1.5} />
+        {dataKey !== "latency" && (
+          <Area type="monotone" dataKey="out" name={labelMap[dataKey].out} stroke="var(--color-out)" fill="var(--color-out)" fillOpacity={0.1} strokeWidth={1.5} />
+        )}
       </AreaChart>
     </ChartContainer>
   );

@@ -14,6 +14,23 @@ import { deliverToChannels } from "@/server/services/channels";
 import { DeploymentMode } from "@/generated/prisma";
 import { isVersionOlder } from "@/lib/version";
 
+/** Compute pipeline-level weighted mean latency (ms) from per-component metrics. */
+function computeWeightedLatency(
+  components?: Array<{ receivedEvents: number; sentEvents: number; latencyMeanSeconds?: number }>,
+): number | null {
+  if (!components || components.length === 0) return null;
+  let weightedSum = 0;
+  let totalEvents = 0;
+  for (const cm of components) {
+    if (cm.latencyMeanSeconds == null || cm.latencyMeanSeconds === 0) continue;
+    const events = cm.receivedEvents + cm.sentEvents;
+    weightedSum += cm.latencyMeanSeconds * 1000 * events; // convert seconds → ms
+    totalEvents += events;
+  }
+  if (totalEvents === 0) return null;
+  return weightedSum / totalEvents;
+}
+
 const heartbeatSchema = z.object({
   agentVersion: z.string().max(100).optional(),
   vectorVersion: z.string().max(100).optional(),
@@ -39,6 +56,7 @@ const heartbeatSchema = z.object({
       sentBytes: z.number().optional(),
       errorsTotal: z.number().optional(),
       discardedEvents: z.number().optional(),
+      latencyMeanSeconds: z.number().optional(), // NEW
     })).optional(),
     utilization: z.number().optional(),
     recentLogs: z.array(z.string()).optional(),
@@ -94,6 +112,7 @@ interface PipelineStatus {
     sentBytes?: number;
     errorsTotal?: number;
     discardedEvents?: number;
+    latencyMeanSeconds?: number; // NEW
   }>;
   utilization?: number;
   recentLogs?: string[];
@@ -319,6 +338,7 @@ export async function POST(request: Request) {
         bytesIn: BigInt(p.bytesIn ?? 0),
         bytesOut: BigInt(p.bytesOut ?? 0),
         utilization: p.utilization ?? 0,
+        latencyMeanMs: computeWeightedLatency(p.componentMetrics),
       }));
 
     if (metricsData.length > 0) {
@@ -336,6 +356,9 @@ export async function POST(request: Request) {
             sentEventsTotal: cm.sentEvents,
             receivedBytesTotal: cm.receivedBytes ?? 0,
             sentBytesTotal: cm.sentBytes ?? 0,
+            errorsTotal: cm.errorsTotal ?? 0,
+            discardedTotal: cm.discardedEvents ?? 0,
+            latencyMeanSeconds: cm.latencyMeanSeconds,
           });
         }
       }

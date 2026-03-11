@@ -28,7 +28,8 @@ type ComponentMetrics struct {
 	ReceivedBytes   int64
 	SentBytes       int64
 	ErrorsTotal     int64
-	DiscardedEvents int64
+	DiscardedEvents    int64
+	LatencyMeanSeconds float64 // mean event time in component (seconds)
 }
 
 // HostMetrics holds system-level metrics from Vector's host_metrics source.
@@ -136,6 +137,11 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 				sr.Pipeline.EventsDiscarded += v
 			}
 			getOrCreate(componentMap, componentID, componentKind).DiscardedEvents += v
+
+		case "vector_component_latency_mean_seconds", "component_latency_mean_seconds":
+			if !isInternal {
+				getOrCreate(componentMap, componentID, componentKind).LatencyMeanSeconds = value
+			}
 
 		// Host metrics – use += to aggregate across CPU cores, devices, interfaces, etc.
 		case "host_memory_total_bytes":

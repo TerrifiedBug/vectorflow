@@ -74,6 +74,25 @@ export async function evaluatePipelineHealth(pipelineId: string): Promise<{
         value = totalEventsIn / windowSeconds;
         break;
       }
+      case "latency_mean": {
+        const latencyAgg = await prisma.pipelineMetric.aggregate({
+          where: { pipelineId, timestamp: { gte: since }, latencyMeanMs: { not: null } },
+          _avg: { latencyMeanMs: true },
+          _count: true,
+        });
+        if (latencyAgg._count === 0) {
+          results.push({
+            metric: sli.metric,
+            status: "no_data",
+            value: null,
+            threshold: sli.threshold,
+            condition: sli.condition,
+          });
+          continue;
+        }
+        value = latencyAgg._avg.latencyMeanMs ?? 0;
+        break;
+      }
       default:
         value = 0;
     }

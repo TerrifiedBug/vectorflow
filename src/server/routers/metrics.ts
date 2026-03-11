@@ -34,6 +34,7 @@ export const metricsRouter = router({
           bytesIn: true,
           bytesOut: true,
           utilization: true,
+          latencyMeanMs: true,
         },
       });
 
@@ -113,7 +114,10 @@ export const metricsRouter = router({
         bytesInRate: number;
         bytesOutRate: number;
         errorsRate: number;
+        latencyMeanMs: number | null;
       }> = {};
+      // Accumulate latency sum+count for proper averaging across components
+      const latencyAcc: Record<string, { sum: number; count: number }> = {};
 
       for (const [componentId, samples] of nodeMetrics) {
         if (samples.length === 0) continue;
@@ -126,6 +130,7 @@ export const metricsRouter = router({
         const existing = rates[matchingNode.pipelineId] ?? {
           eventsInRate: 0, eventsOutRate: 0,
           bytesInRate: 0, bytesOutRate: 0, errorsRate: 0,
+          latencyMeanMs: null,
         };
         if (matchingNode.kind === "SOURCE") {
           existing.eventsInRate += latest.receivedEventsRate;
@@ -135,7 +140,20 @@ export const metricsRouter = router({
           existing.bytesOutRate += latest.sentBytesRate;
         }
         existing.errorsRate += latest.errorsRate;
+        if (latest.latencyMeanMs != null) {
+          const acc = latencyAcc[matchingNode.pipelineId] ?? { sum: 0, count: 0 };
+          acc.sum += latest.latencyMeanMs;
+          acc.count++;
+          latencyAcc[matchingNode.pipelineId] = acc;
+        }
         rates[matchingNode.pipelineId] = existing;
+      }
+
+      // Compute proper mean latency per pipeline
+      for (const [pipelineId, acc] of Object.entries(latencyAcc)) {
+        if (rates[pipelineId] && acc.count > 0) {
+          rates[pipelineId].latencyMeanMs = acc.sum / acc.count;
+        }
       }
 
       return { rates };

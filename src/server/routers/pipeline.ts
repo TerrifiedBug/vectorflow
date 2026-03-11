@@ -1075,6 +1075,7 @@ export const pipelineRouter = router({
           bytesIn: true,
           bytesOut: true,
           utilization: true,
+          latencyMeanMs: true,
         },
       });
     }),

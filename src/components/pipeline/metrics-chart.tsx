@@ -12,7 +12,7 @@ import {
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Inbox } from "lucide-react";
-import { formatBytesRate } from "@/lib/format";
+import { formatBytesRate, formatLatency } from "@/lib/format";
 
 interface PipelineMetricsChartProps {
   pipelineId: string;
@@ -35,6 +35,10 @@ const bytesChartConfig = {
   bytesOut: { label: "Bytes Out/s", color: "#8b5cf6" },
 } satisfies ChartConfig;
 
+const latencyChartConfig = {
+  latency: { label: "Mean Latency", color: "#ec4899" },
+} satisfies ChartConfig;
+
 export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetricsChartProps) {
   const trpc = useTRPC();
 
@@ -51,6 +55,7 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
     bytesIn: Number(m.bytesIn) / 60,
     bytesOut: Number(m.bytesOut) / 60,
     errors: Number(m.errorsTotal),
+    latency: m.latencyMeanMs ?? 0,
   }));
 
   if (metricsQuery.isLoading) {
@@ -154,6 +159,43 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
               name="Bytes Out/s"
               stroke="var(--color-bytesOut)"
               fill="var(--color-bytesOut)"
+              fillOpacity={0.1}
+              strokeWidth={1.5}
+            />
+          </AreaChart>
+        </ChartContainer>
+      </div>
+
+      {/* Latency chart */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-1 font-medium">Component Latency</p>
+        <ChartContainer config={latencyChartConfig} className="w-full" style={{ height: 180 }}>
+          <AreaChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+            <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+            <YAxis
+              tick={{ fontSize: 10 }}
+              width={55}
+              tickFormatter={(v) => formatLatency(v)}
+            />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  formatter={(value, name) => (
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="text-muted-foreground">{latencyChartConfig[name as keyof typeof latencyChartConfig]?.label ?? name}</span>
+                      <span className="font-mono font-medium text-foreground">{formatLatency(Number(value) ?? 0)}</span>
+                    </div>
+                  )}
+                />
+              }
+            />
+            <Area
+              type="monotone"
+              dataKey="latency"
+              name="Mean Latency"
+              stroke="var(--color-latency)"
+              fill="var(--color-latency)"
               fillOpacity={0.1}
               strokeWidth={1.5}
             />

@@ -178,7 +178,8 @@ type ComponentMetric struct {
 	ReceivedBytes   int64  `json:"receivedBytes,omitempty"`
 	SentBytes       int64  `json:"sentBytes,omitempty"`
 	ErrorsTotal     int64  `json:"errorsTotal,omitempty"`
-	DiscardedEvents int64  `json:"discardedEvents,omitempty"`
+	DiscardedEvents    int64   `json:"discardedEvents,omitempty"`
+	LatencyMeanSeconds float64 `json:"latencyMeanSeconds,omitempty"`
 }
 
 // HostMetrics holds system-level metrics from the Vector host
