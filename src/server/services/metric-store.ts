@@ -7,7 +7,7 @@ export interface MetricSample {
   errorCount: number;
   errorsRate: number;
   discardedRate: number;
-  latencyMeanMs: number | null; // mean component latency in ms
+  latencyMeanMs: number | null; // mean pipeline latency in ms
 }
 
 interface PrevTotals {
