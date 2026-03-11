@@ -79,6 +79,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
   const snippetProviderRef = useRef<{ dispose: () => void } | null>(null);
   const functionProviderRef = useRef<{ dispose: () => void } | null>(null);
   const hoverProviderRef = useRef<{ dispose: () => void } | null>(null);
+  const signatureHelpProviderRef = useRef<{ dispose: () => void } | null>(null);
 
   const [sampleLimit, setSampleLimit] = useState(5);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -378,6 +379,85 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     return () => {
       hoverProviderRef.current?.dispose();
       hoverProviderRef.current = null;
+    };
+  }, [expanded]);
+
+  // Register signature help provider for parameter hints
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+
+    signatureHelpProviderRef.current?.dispose();
+    signatureHelpProviderRef.current = monaco.languages.registerSignatureHelpProvider("vrl", {
+      signatureHelpTriggerCharacters: ["(", ","],
+      provideSignatureHelp(model, position) {
+        const line = model.getLineContent(position.lineNumber);
+        const textBefore = line.substring(0, position.column - 1);
+
+        // Find the innermost unclosed '(' by tracking parenthesis depth
+        let depth = 0;
+        let funcEnd = -1;
+        for (let i = textBefore.length - 1; i >= 0; i--) {
+          if (textBefore[i] === ")") depth++;
+          else if (textBefore[i] === "(") {
+            if (depth === 0) {
+              funcEnd = i;
+              break;
+            }
+            depth--;
+          }
+        }
+        if (funcEnd < 0) return null;
+
+        // Extract function name before the '('
+        const beforeParen = textBefore.substring(0, funcEnd);
+        const nameMatch = beforeParen.match(/([a-zA-Z_][a-zA-Z0-9_]*)$/);
+        if (!nameMatch) return null;
+
+        const fn = getVrlFunction(nameMatch[1]);
+        if (!fn || fn.params.length === 0) return null;
+
+        // Count commas to determine active parameter
+        const argsText = textBefore.substring(funcEnd + 1);
+        let commaCount = 0;
+        let parenDepth = 0;
+        for (const ch of argsText) {
+          if (ch === "(") parenDepth++;
+          else if (ch === ")") parenDepth--;
+          else if (ch === "," && parenDepth === 0) commaCount++;
+        }
+
+        // Build signature
+        const paramLabels = fn.params.map((p) => {
+          const opt = p.required ? "" : "?";
+          const def = p.default ? ` = ${p.default}` : "";
+          return `${p.name}${opt}: ${p.type}${def}`;
+        });
+        const label = `${fn.name}(${paramLabels.join(", ")}) → ${fn.returnType}`;
+
+        return {
+          value: {
+            signatures: [
+              {
+                label,
+                documentation: fn.description,
+                parameters: fn.params.map((p) => ({
+                  label: `${p.name}${p.required ? "" : "?"}: ${p.type}${p.default ? ` = ${p.default}` : ""}`,
+                  documentation: `${p.description}${p.required ? " (required)" : " (optional)"}`,
+                })),
+              },
+            ],
+            activeSignature: 0,
+            activeParameter: Math.min(commaCount, fn.params.length - 1),
+          },
+          dispose() {},
+        };
+      },
+    });
+
+    return () => {
+      signatureHelpProviderRef.current?.dispose();
+      signatureHelpProviderRef.current = null;
     };
   }, [expanded]);
 
