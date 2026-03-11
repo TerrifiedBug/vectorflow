@@ -53,6 +53,7 @@ export const metricsRouter = router({
         minutes: z.number().int().min(1).max(1440).default(60),
       }),
     )
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const since = new Date(Date.now() - input.minutes * 60 * 1000);
 

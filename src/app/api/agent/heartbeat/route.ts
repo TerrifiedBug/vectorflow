@@ -394,9 +394,26 @@ export async function POST(request: Request) {
     }
 
     if (componentLatencyRows.length > 0) {
-      prisma.pipelineMetric
-        .createMany({ data: componentLatencyRows })
-        .catch((err) => console.error("Per-component latency insert error:", err));
+      Promise.all(
+        componentLatencyRows.map(async (row) => {
+          const existing = await prisma.pipelineMetric.findFirst({
+            where: {
+              pipelineId: row.pipelineId,
+              nodeId: row.nodeId,
+              componentId: row.componentId,
+              timestamp: row.timestamp,
+            },
+          });
+          if (existing) {
+            await prisma.pipelineMetric.update({
+              where: { id: existing.id },
+              data: { latencyMeanMs: row.latencyMeanMs },
+            });
+          } else {
+            await prisma.pipelineMetric.create({ data: row });
+          }
+        }),
+      ).catch((err) => console.error("Per-component latency upsert error:", err));
     }
 
     // Feed per-component metrics into the in-memory MetricStore for editor overlays
