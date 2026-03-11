@@ -29,6 +29,8 @@ export function applySuggestion(
       return applyRemoveComponent(suggestion, nodes, edges);
     case "modify_connections":
       return applyModifyConnections(suggestion, nodes, edges);
+    case "modify_vrl":
+      return applyModifyVrl(suggestion, nodes, edges);
     default:
       return { nodes, edges, error: "Unknown suggestion type" };
   }
@@ -46,6 +48,17 @@ function setAtPath(obj: Record<string, unknown>, path: string, value: unknown): 
   const [head, ...rest] = path.split(".");
   const child = (obj[head] ?? {}) as Record<string, unknown>;
   return { ...obj, [head]: setAtPath(child, rest.join("."), value) };
+}
+
+/** Read a value at a dot-notation path. */
+function getAtPath(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split(".");
+  let current: unknown = obj;
+  for (const part of parts) {
+    if (current == null || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
 }
 
 function applyModifyConfig(
@@ -200,4 +213,37 @@ function applyModifyConnections(
   }
 
   return { nodes, edges: newEdges };
+}
+
+function applyModifyVrl(
+  suggestion: AiSuggestion & { type: "modify_vrl" },
+  nodes: Node[],
+  edges: Edge[],
+): ApplyResult {
+  const target = findNodeByComponentKey(nodes, suggestion.componentKey);
+  if (!target) {
+    return { nodes, edges, error: `Component "${suggestion.componentKey}" not found` };
+  }
+
+  const existingConfig = (target.data as Record<string, unknown>).config as Record<string, unknown>;
+  const currentValue = getAtPath(existingConfig, suggestion.configPath);
+
+  if (typeof currentValue !== "string") {
+    return { nodes, edges, error: `Config path "${suggestion.configPath}" is not a string value` };
+  }
+
+  if (!currentValue.includes(suggestion.targetCode)) {
+    return { nodes, edges, error: `Target code not found in "${suggestion.configPath}" — code may have changed` };
+  }
+
+  const newValue = currentValue.replaceAll(suggestion.targetCode, suggestion.code);
+  const newConfig = setAtPath(existingConfig, suggestion.configPath, newValue);
+
+  const newNodes = nodes.map((n) =>
+    n.id === target.id
+      ? { ...n, data: { ...n.data, config: newConfig } }
+      : n,
+  );
+
+  return { nodes: newNodes, edges };
 }
