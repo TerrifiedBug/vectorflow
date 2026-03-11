@@ -13,7 +13,6 @@ import (
 
 const (
 	maxBackoff    = 30 * time.Second
-	readTimeout   = 45 * time.Second
 	maxBufferSize = 256 * 1024 // 256KB for large payloads
 )
 
@@ -49,11 +48,16 @@ func (c *Client) Connect() {
 	backoff := time.Second
 
 	for {
+		start := time.Now()
 		err := c.stream(ctx)
 		if ctx.Err() != nil {
 			// Graceful shutdown
 			close(c.done)
 			return
+		}
+		// Reset backoff if connection was alive for a meaningful duration
+		if time.Since(start) > 5*time.Second {
+			backoff = time.Second
 		}
 		slog.Warn("push: connection lost, reconnecting",
 			"error", err, "backoff", backoff)
