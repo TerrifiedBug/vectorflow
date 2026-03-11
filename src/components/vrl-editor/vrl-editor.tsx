@@ -25,6 +25,7 @@ import {
 import { vrlTheme } from "./vrl-theme";
 import { vrlLanguageDef } from "@/lib/vrl/vrl-language";
 import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
+import { searchVrlFunctions } from "@/lib/vrl/function-registry";
 import { VrlSnippetDrawer } from "@/components/flow/vrl-snippet-drawer";
 import { VrlFieldsPanel } from "./vrl-fields-panel";
 import { VrlAiPanel } from "./vrl-ai-panel";
@@ -76,6 +77,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
   const monacoRef = useRef<Monaco | null>(null);
   const fieldProviderRef = useRef<{ dispose: () => void } | null>(null);
   const snippetProviderRef = useRef<{ dispose: () => void } | null>(null);
+  const functionProviderRef = useRef<{ dispose: () => void } | null>(null);
 
   const [sampleLimit, setSampleLimit] = useState(5);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -256,6 +258,62 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     return () => {
       snippetProviderRef.current?.dispose();
       snippetProviderRef.current = null;
+    };
+  }, [expanded]);
+
+  // Register function completion provider
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+
+    functionProviderRef.current?.dispose();
+    functionProviderRef.current = monaco.languages.registerCompletionItemProvider("vrl", {
+      provideCompletionItems(model, position) {
+        const word = model.getWordUntilPosition(position);
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        };
+
+        // Only show when there's at least 1 typed character
+        if (word.word.length === 0) return { suggestions: [] };
+
+        const matches = searchVrlFunctions(word.word);
+        return {
+          suggestions: matches.map((fn) => {
+            // Build snippet insert text with parameter placeholders
+            const paramSnippets = fn.params
+              .filter((p) => p.required)
+              .map((p, i) => `\${${i + 1}:${p.name}}`)
+              .join(", ");
+            const insertText = `${fn.name}(${paramSnippets})`;
+
+            return {
+              label: {
+                label: fn.name,
+                detail: `  (${fn.category})`,
+                description: fn.fallible ? "fallible" : "",
+              },
+              kind: monaco.languages.CompletionItemKind.Function,
+              insertText,
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: `${fn.category} — ${fn.fallible ? "fallible, use ! for error handling" : "infallible"}`,
+              documentation: {
+                value: `${fn.description}\n\n**Example:**\n\`\`\`vrl\n${fn.example}\n\`\`\``,
+              },
+              range,
+              sortText: `0_${fn.name}`,
+            };
+          }),
+        };
+      },
+    });
+
+    return () => {
+      functionProviderRef.current?.dispose();
+      functionProviderRef.current = null;
     };
   }, [expanded]);
 
