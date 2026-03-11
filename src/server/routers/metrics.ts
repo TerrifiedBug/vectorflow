@@ -43,6 +43,46 @@ export const metricsRouter = router({
     }),
 
   /**
+   * Per-component historical latency from the database.
+   * Used by the pipeline metrics page for the multi-line transform latency chart.
+   */
+  getComponentLatencyHistory: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        minutes: z.number().int().min(1).max(1440).default(60),
+      }),
+    )
+    .query(async ({ input }) => {
+      const since = new Date(Date.now() - input.minutes * 60 * 1000);
+
+      const rows = await prisma.pipelineMetric.findMany({
+        where: {
+          pipelineId: input.pipelineId,
+          componentId: { not: null },
+          timestamp: { gte: since },
+        },
+        orderBy: { timestamp: "asc" },
+        select: {
+          componentId: true,
+          timestamp: true,
+          latencyMeanMs: true,
+        },
+      });
+
+      // Group by componentId
+      const components: Record<string, Array<{ timestamp: Date; latencyMeanMs: number }>> = {};
+      for (const row of rows) {
+        if (!row.componentId || row.latencyMeanMs == null) continue;
+        const arr = components[row.componentId] ?? [];
+        arr.push({ timestamp: row.timestamp, latencyMeanMs: row.latencyMeanMs });
+        components[row.componentId] = arr;
+      }
+
+      return { components };
+    }),
+
+  /**
    * Per-component live metrics from the in-memory store.
    * Used by the flow editor to overlay throughput on nodes.
    */
