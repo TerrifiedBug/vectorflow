@@ -29,7 +29,7 @@ func (c *Client) SetNodeToken(token string) {
 	c.nodeToken = token
 }
 
-// NodeToken returns the current node token for use by other packages (e.g., WebSocket auth).
+// NodeToken returns the current node token for use by other packages (e.g., push auth).
 func (c *Client) NodeToken() string {
 	return c.nodeToken
 }
@@ -119,7 +119,7 @@ type ConfigResponse struct {
 	SecretBackendConfig map[string]interface{} `json:"secretBackendConfig,omitempty"`
 	SampleRequests      []SampleRequestMsg     `json:"sampleRequests,omitempty"`
 	PendingAction       *PendingAction         `json:"pendingAction,omitempty"`
-	WebSocketURL        string                 `json:"websocketUrl,omitempty"`
+	PushURL             string                 `json:"pushUrl,omitempty"`
 }
 
 func (c *Client) GetConfig() (*ConfigResponse, error) {

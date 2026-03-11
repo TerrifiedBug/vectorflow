@@ -16,7 +16,7 @@ import (
 	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/sampler"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/supervisor"
-	"github.com/TerrifiedBug/vectorflow/agent/internal/ws"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/push"
 )
 
 var Version = "dev"
@@ -34,8 +34,8 @@ type Agent struct {
 	failedUpdateVersion string // skip retries for this version
 	updateError         string // report failure to server
 
-	wsClient             *ws.Client
-	wsCh                 chan ws.PushMessage
+	pushClient           *push.Client
+	pushCh               chan push.PushMessage
 	immediateHeartbeat   *time.Timer
 	immediateHeartbeatCh chan struct{}
 }
@@ -91,20 +91,19 @@ func (a *Agent) Run() error {
 	// Do first poll immediately
 	a.pollAndApply()
 
-	// Start WebSocket if the server provided a URL
-	a.wsCh = make(chan ws.PushMessage, 16)
+	// Start SSE push client if the server provided a URL
+	a.pushCh = make(chan push.PushMessage, 16)
 	a.immediateHeartbeatCh = make(chan struct{}, 1)
-	if wsURL := a.poller.WebSocketURL(); wsURL != "" {
-		a.wsClient = ws.New(wsURL, a.client.NodeToken(), func(msg ws.PushMessage) {
-			// Forward messages to the main goroutine via channel
+	if pushURL := a.poller.PushURL(); pushURL != "" {
+		a.pushClient = push.New(pushURL, a.client.NodeToken(), func(msg push.PushMessage) {
 			select {
-			case a.wsCh <- msg:
+			case a.pushCh <- msg:
 			default:
-				slog.Warn("ws: message channel full, dropping message", "type", msg.Type)
+				slog.Warn("push: message channel full, dropping message", "type", msg.Type)
 			}
 		})
-		go a.wsClient.Connect()
-		slog.Info("websocket client started", "url", wsURL)
+		go a.pushClient.Connect()
+		slog.Info("push client started", "url", pushURL)
 	}
 
 	a.sendHeartbeat()
@@ -114,8 +113,8 @@ func (a *Agent) Run() error {
 		select {
 		case <-ctx.Done():
 			slog.Info("shutting down all pipelines")
-			if a.wsClient != nil {
-				a.wsClient.Close()
+			if a.pushClient != nil {
+				a.pushClient.Close()
 			}
 			if a.immediateHeartbeat != nil {
 				a.immediateHeartbeat.Stop()
@@ -127,8 +126,8 @@ func (a *Agent) Run() error {
 			a.pollAndApply()
 			a.sendHeartbeat()
 			currentInterval = a.maybeResetTicker(ticker, currentInterval)
-		case msg := <-a.wsCh:
-			a.handleWsMessage(msg, ticker)
+		case msg := <-a.pushCh:
+			a.handlePushMessage(msg, ticker)
 		case <-a.immediateHeartbeatCh:
 			a.sendHeartbeat()
 		}
@@ -312,18 +311,18 @@ func (a *Agent) processSampleRequests(requests []client.SampleRequestMsg) {
 	}
 }
 
-// handleWsMessage processes a push message from the WebSocket channel.
+// handlePushMessage processes a push message from the SSE push channel.
 // MUST be called from the main goroutine (same goroutine as Run()'s select loop).
-func (a *Agent) handleWsMessage(msg ws.PushMessage, ticker *time.Ticker) {
+func (a *Agent) handlePushMessage(msg push.PushMessage, ticker *time.Ticker) {
 	switch msg.Type {
 	case "config_changed":
-		slog.Info("ws: config changed notification", "pipeline", msg.PipelineID, "reason", msg.Reason)
+		slog.Info("push: config changed notification", "pipeline", msg.PipelineID, "reason", msg.Reason)
 		// Re-poll immediately to get the full assembled config
 		a.pollAndApply()
 		a.triggerImmediateHeartbeat()
 
 	case "sample_request":
-		slog.Info("ws: sample request received", "requestId", msg.RequestID, "pipeline", msg.PipelineID)
+		slog.Info("push: sample request received", "requestId", msg.RequestID, "pipeline", msg.PipelineID)
 		a.processSampleRequestsAndSend([]client.SampleRequestMsg{
 			{
 				RequestID:     msg.RequestID,
@@ -334,7 +333,7 @@ func (a *Agent) handleWsMessage(msg ws.PushMessage, ticker *time.Ticker) {
 		})
 
 	case "action":
-		slog.Info("ws: action received", "action", msg.Action)
+		slog.Info("push: action received", "action", msg.Action)
 		switch msg.Action {
 		case "self_update":
 			a.handlePendingAction(&client.PendingAction{
@@ -345,22 +344,22 @@ func (a *Agent) handleWsMessage(msg ws.PushMessage, ticker *time.Ticker) {
 			})
 			a.triggerImmediateHeartbeat()
 		case "restart":
-			slog.Warn("ws: restart action not yet implemented, triggering re-poll instead")
+			slog.Warn("push: restart action not yet implemented, triggering re-poll instead")
 			a.pollAndApply()
 			a.triggerImmediateHeartbeat()
 		default:
-			slog.Warn("ws: unknown action", "action", msg.Action)
+			slog.Warn("push: unknown action", "action", msg.Action)
 		}
 
 	case "poll_interval":
 		if msg.IntervalMs > 0 {
 			newInterval := time.Duration(msg.IntervalMs) * time.Millisecond
 			ticker.Reset(newInterval)
-			slog.Info("ws: poll interval changed", "intervalMs", msg.IntervalMs)
+			slog.Info("push: poll interval changed", "intervalMs", msg.IntervalMs)
 		}
 
 	default:
-		slog.Warn("ws: unknown message type", "type", msg.Type)
+		slog.Warn("push: unknown message type", "type", msg.Type)
 	}
 }
 
@@ -382,7 +381,7 @@ func (a *Agent) triggerImmediateHeartbeat() {
 }
 
 // processSampleRequestsAndSend processes sample requests and sends results
-// directly to the /api/agent/samples endpoint (used for WebSocket-triggered requests).
+// directly to the /api/agent/samples endpoint (used for push-triggered requests).
 // Falls back to heartbeat delivery on HTTP failure.
 func (a *Agent) processSampleRequestsAndSend(requests []client.SampleRequestMsg) {
 	statuses := a.supervisor.Statuses()

@@ -18,7 +18,7 @@ import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
 import { stripEnvRefs, type StrippedRef } from "@/server/services/strip-env-refs";
 import { gitSyncDeletePipeline } from "@/server/services/git-sync";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
-import { wsRegistry } from "@/server/services/ws-registry";
+import { pushRegistry } from "@/server/services/push-registry";
 
 /** Pipeline names must be safe identifiers */
 const pipelineNameSchema = z
@@ -1169,7 +1169,7 @@ export const pipelineRouter = router({
         select: { nodeId: true },
       });
       for (const { nodeId } of statuses) {
-        wsRegistry.send(nodeId, {
+        pushRegistry.send(nodeId, {
           type: "sample_request",
           requestId: request.id,
           pipelineId: input.pipelineId,
