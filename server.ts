@@ -47,7 +47,7 @@ function setupWebSocket(server: ReturnType<typeof createServer>) {
     // from also trying to handle the already-consumed socket.
     socket.removeAllListeners("close");
 
-    const { authenticateWsUpgrade, wsRegistry } = await getWsDeps();
+    const { authenticateWsUpgrade } = await getWsDeps();
     const agent = await authenticateWsUpgrade(req);
     if (!agent) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
@@ -131,6 +131,7 @@ if (dev) {
   // ── Production: wrap the standalone Next.js server ──
   // Monkey-patch http.createServer to intercept the server instance that
   // Next.js's standalone server.js (renamed to next-server.js) creates.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const http = require("http") as typeof import("http");
   const origCreateServer = http.createServer.bind(http);
 
@@ -144,5 +145,6 @@ if (dev) {
   // Load the original standalone server (with inlined config, static file
   // serving, and all Next.js initialization). It calls http.createServer
   // internally, which our patch intercepts.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   require("./next-server.js");
 }
