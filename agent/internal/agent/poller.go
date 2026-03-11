@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
@@ -24,10 +25,12 @@ type pipelineState struct {
 type poller struct {
 	cfg            *config.Config
 	client         configFetcher
+	mu             sync.Mutex
 	known          map[string]pipelineState // pipelineId -> last known state
 	sampleRequests []client.SampleRequestMsg
 	pendingAction  *client.PendingAction
 	pollIntervalMs int // server-provided poll interval from last response
+	websocketUrl   string
 }
 
 func newPoller(cfg *config.Config, c configFetcher) *poller {
@@ -60,6 +63,9 @@ type PipelineAction struct {
 
 // Poll fetches config from VectorFlow and returns actions to take.
 func (p *poller) Poll() ([]PipelineAction, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	resp, err := p.client.GetConfig()
 	if err != nil {
 		return nil, err
@@ -188,20 +194,36 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 	// Store server-provided poll interval
 	p.pollIntervalMs = resp.PollIntervalMs
 
+	// Store websocket URL for the agent to use
+	if resp.WebSocketURL != "" {
+		p.websocketUrl = resp.WebSocketURL
+	}
+
 	return actions, nil
 }
 
 // SampleRequests returns the sample requests from the last poll response.
 func (p *poller) SampleRequests() []client.SampleRequestMsg {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return p.sampleRequests
 }
 
 // PendingAction returns the pending action from the last poll response, if any.
 func (p *poller) PendingAction() *client.PendingAction {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return p.pendingAction
 }
 
 // PollIntervalMs returns the server-provided poll interval from the last response.
 func (p *poller) PollIntervalMs() int {
 	return p.pollIntervalMs
+}
+
+// WebSocketURL returns the WebSocket URL from the last config response.
+func (p *poller) WebSocketURL() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.websocketUrl
 }
