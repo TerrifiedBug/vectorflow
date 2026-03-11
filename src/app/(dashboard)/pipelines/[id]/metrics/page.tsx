@@ -115,6 +115,15 @@ export default function PipelineMetricsPage() {
               <MetricsChart rows={rows} dataKey="errors" height={220} />
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Component Latency</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MetricsChart rows={rows} dataKey="latency" height={220} />
+            </CardContent>
+          </Card>
         </>
       )}
 
