@@ -103,6 +103,24 @@ export function AiPipelineDialog({
         statuses.set(id, status);
       }
 
+      // Additional validation for modify_vrl: configPath must point to a string
+      for (const s of msg.suggestions) {
+        if (s.type === "modify_vrl" && statuses.get(s.id) === "actionable") {
+          const node = nodes.find((n) => (n.data as Record<string, unknown>).componentKey === s.componentKey);
+          if (node) {
+            const config = (node.data as Record<string, unknown>).config as Record<string, unknown>;
+            let value: unknown = config;
+            for (const part of s.configPath.split(".")) {
+              if (value == null || typeof value !== "object") { value = undefined; break; }
+              value = (value as Record<string, unknown>)[part];
+            }
+            if (typeof value !== "string") {
+              statuses.set(s.id, "invalid");
+            }
+          }
+        }
+      }
+
       // Check for outdated suggestions
       const outdated = detectOutdatedSuggestions(
         msg.suggestions,
