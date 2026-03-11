@@ -57,6 +57,10 @@ export function VrlAiMessage({
     selectedIds.has(s.id),
   );
 
+  const actionableSelectedSuggestions = selectedSuggestions.filter(
+    (s) => suggestionStatuses.get(s.id) === "actionable",
+  );
+
   const handleToggle = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -146,11 +150,11 @@ export function VrlAiMessage({
               size="sm"
               variant="outline"
               onClick={handleApplySelected}
-              disabled={selectedSuggestions.length === 0}
+              disabled={actionableSelectedSuggestions.length === 0}
             >
               Apply Selected
-              {selectedSuggestions.length > 0
-                ? ` (${selectedSuggestions.length})`
+              {actionableSelectedSuggestions.length > 0
+                ? ` (${actionableSelectedSuggestions.length})`
                 : ""}
             </Button>
           </div>

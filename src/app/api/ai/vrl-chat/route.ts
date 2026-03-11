@@ -84,14 +84,24 @@ export async function POST(request: Request) {
   let priorMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
 
   if (!conversationId) {
-    const conversation = await prisma.aiConversation.create({
-      data: {
-        pipelineId: body.pipelineId,
-        componentKey: body.componentKey,
-        createdById: session.user.id,
-      },
+    // Reuse existing conversation for this pipeline + component if one exists
+    const existing = await prisma.aiConversation.findFirst({
+      where: { pipelineId: body.pipelineId, componentKey: body.componentKey },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
     });
-    conversationId = conversation.id;
+    if (existing) {
+      conversationId = existing.id;
+    } else {
+      const conversation = await prisma.aiConversation.create({
+        data: {
+          pipelineId: body.pipelineId,
+          componentKey: body.componentKey,
+          createdById: session.user.id,
+        },
+      });
+      conversationId = conversation.id;
+    }
   } else {
     // Verify conversationId belongs to this pipeline + component
     const existing = await prisma.aiConversation.findUnique({
