@@ -327,6 +327,7 @@ model PipelineMetric {
   pipelineId      String
   pipeline        Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   nodeId          String?
+  componentId     String?                     // null = aggregate row, non-null = per-component
   timestamp       DateTime
   eventsIn        BigInt   @default(0)
   eventsOut       BigInt   @default(0)
@@ -335,9 +336,10 @@ model PipelineMetric {
   bytesIn         BigInt   @default(0)
   bytesOut        BigInt   @default(0)
   utilization     Float    @default(0)
-  latencyMeanMs   Float?                    // pipeline-level weighted mean latency (ms)
+  latencyMeanMs   Float?                      // pipeline-level weighted mean latency (ms)
 
   @@index([pipelineId, timestamp])
+  @@index([pipelineId, componentId, timestamp])
   @@index([timestamp])
 }
 
