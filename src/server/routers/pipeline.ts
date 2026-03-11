@@ -1063,6 +1063,7 @@ export const pipelineRouter = router({
         where: {
           pipelineId: input.pipelineId,
           nodeId: null,
+          componentId: null,
           timestamp: { gte: since },
         },
         orderBy: { timestamp: "asc" },

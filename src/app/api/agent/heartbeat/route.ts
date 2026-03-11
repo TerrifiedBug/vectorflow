@@ -343,6 +343,10 @@ export async function POST(request: Request) {
         .catch((err) => console.error("Node metrics insert error:", err));
     }
 
+    // Shared minute-truncated timestamp for all metric rows this heartbeat
+    const minuteTimestamp = new Date();
+    minuteTimestamp.setSeconds(0, 0);
+
     // Ingest metrics from pipelines that report counter data
     const metricsData = pipelines
       .filter((p) => p.eventsIn !== undefined)
@@ -363,6 +367,55 @@ export async function POST(request: Request) {
       ingestMetrics(metricsData, prevSnapshots).catch((err) =>
         console.error("Metrics ingestion error:", err),
       );
+    }
+
+    // Write per-component latency rows (direct create, bypasses delta-tracking)
+    const componentLatencyRows: Array<{
+      pipelineId: string;
+      nodeId: string;
+      componentId: string;
+      timestamp: Date;
+      latencyMeanMs: number;
+    }> = [];
+
+    for (const ps of pipelines) {
+      if (!Array.isArray(ps.componentMetrics)) continue;
+      for (const cm of ps.componentMetrics) {
+        if (cm.latencyMeanSeconds != null && cm.latencyMeanSeconds > 0) {
+          componentLatencyRows.push({
+            pipelineId: ps.pipelineId,
+            nodeId: agent.nodeId,
+            componentId: cm.componentId,
+            timestamp: minuteTimestamp,
+            latencyMeanMs: cm.latencyMeanSeconds * 1000,
+          });
+        }
+      }
+    }
+
+    if (componentLatencyRows.length > 0) {
+      try {
+        for (const row of componentLatencyRows) {
+          const existing = await prisma.pipelineMetric.findFirst({
+            where: {
+              pipelineId: row.pipelineId,
+              nodeId: row.nodeId,
+              componentId: row.componentId,
+              timestamp: row.timestamp,
+            },
+          });
+          if (existing) {
+            await prisma.pipelineMetric.update({
+              where: { id: existing.id },
+              data: { latencyMeanMs: row.latencyMeanMs },
+            });
+          } else {
+            await prisma.pipelineMetric.create({ data: row });
+          }
+        }
+      } catch (err) {
+        console.error("Per-component latency upsert error:", err);
+      }
     }
 
     // Feed per-component metrics into the in-memory MetricStore for editor overlays
