@@ -364,6 +364,7 @@ model EventSample {
   error         String?
   sampledAt     DateTime            @default(now())
 
+  @@unique([requestId, componentKey])
   @@index([pipelineId, componentKey])
 }
 

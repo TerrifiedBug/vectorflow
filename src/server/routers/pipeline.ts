@@ -18,6 +18,7 @@ import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
 import { stripEnvRefs, type StrippedRef } from "@/server/services/strip-env-refs";
 import { gitSyncDeletePipeline } from "@/server/services/git-sync";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
+import { wsRegistry } from "@/server/services/ws-registry";
 
 /** Pipeline names must be safe identifiers */
 const pipelineNameSchema = z
@@ -1160,6 +1161,21 @@ export const pipelineRouter = router({
           expiresAt: new Date(Date.now() + 2 * 60 * 1000),
         },
       });
+
+      // Push sample request to connected agents running this pipeline
+      const statuses = await prisma.nodePipelineStatus.findMany({
+        where: { pipelineId: input.pipelineId, status: "RUNNING" },
+        select: { nodeId: true },
+      });
+      for (const { nodeId } of statuses) {
+        wsRegistry.send(nodeId, {
+          type: "sample_request",
+          requestId: request.id,
+          pipelineId: input.pipelineId,
+          componentKeys: input.componentKeys,
+          limit: input.limit,
+        });
+      }
 
       return { requestId: request.id, status: "PENDING" };
     }),
