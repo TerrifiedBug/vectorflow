@@ -16,6 +16,14 @@ const (
 	maxBufferSize = 256 * 1024 // 256KB for large payloads
 )
 
+// sseHTTPClient sets a response-header timeout so a stalled proxy doesn't block
+// the connect goroutine indefinitely. Body reads remain context-driven.
+var sseHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		ResponseHeaderTimeout: 15 * time.Second,
+	},
+}
+
 // Client maintains a persistent SSE connection to the server push endpoint.
 type Client struct {
 	url       string
@@ -79,7 +87,7 @@ func (c *Client) stream(ctx context.Context) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := sseHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
