@@ -11,7 +11,7 @@ export const aiRouter = router({
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const conversation = await prisma.aiConversation.findFirst({
-        where: { pipelineId: input.pipelineId },
+        where: { pipelineId: input.pipelineId, componentKey: null },
         orderBy: { createdAt: "desc" },
         include: {
           messages: {
@@ -68,6 +68,72 @@ export const aiRouter = router({
         }
 
         // Mark suggestions as applied in the JSON
+        const suggestions = (message.suggestions as Array<Record<string, unknown>>) ?? [];
+        const updatedSuggestions = suggestions.map((s) =>
+          input.suggestionIds.includes(s.id as string)
+            ? { ...s, appliedAt: new Date().toISOString(), appliedById: ctx.session.user.id }
+            : s,
+        );
+
+        await tx.aiMessage.update({
+          where: { id: input.messageId },
+          data: { suggestions: updatedSuggestions as unknown as Prisma.InputJsonValue },
+        });
+
+        return { applied: input.suggestionIds.length };
+      });
+    }),
+
+  getVrlConversation: protectedProcedure
+    .input(z.object({ pipelineId: z.string(), componentKey: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const conversation = await prisma.aiConversation.findFirst({
+        where: {
+          pipelineId: input.pipelineId,
+          componentKey: input.componentKey,
+        },
+        orderBy: { createdAt: "desc" },
+        include: {
+          messages: {
+            orderBy: { createdAt: "asc" },
+            include: {
+              createdBy: { select: { id: true, name: true, image: true } },
+            },
+          },
+        },
+      });
+      return conversation;
+    }),
+
+  markVrlSuggestionsApplied: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        conversationId: z.string(),
+        messageId: z.string(),
+        suggestionIds: z.array(z.string()),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.vrl_ai_suggestion_applied", "Pipeline"))
+    .mutation(async ({ input, ctx }) => {
+      return prisma.$transaction(async (tx) => {
+        const message = await tx.aiMessage.findUnique({
+          where: { id: input.messageId },
+          include: {
+            conversation: { select: { pipelineId: true, componentKey: true } },
+          },
+        });
+
+        if (
+          !message ||
+          message.conversationId !== input.conversationId ||
+          message.conversation.pipelineId !== input.pipelineId
+        ) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Message not found in conversation" });
+        }
+
         const suggestions = (message.suggestions as Array<Record<string, unknown>>) ?? [];
         const updatedSuggestions = suggestions.map((s) =>
           input.suggestionIds.includes(s.id as string)
