@@ -116,6 +116,8 @@ export function AiPipelineDialog({
             }
             if (typeof value !== "string") {
               statuses.set(s.id, "invalid");
+            } else if (!value.includes(s.targetCode)) {
+              statuses.set(s.id, "outdated");
             }
           }
         }
