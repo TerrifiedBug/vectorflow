@@ -30,7 +30,7 @@ type SourceNodeData = {
 type SourceNodeType = Node<SourceNodeData, "source">;
 
 function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
-  const { componentDef, componentKey, displayName, metrics, disabled, isSystemLocked } = data;
+  const { componentDef, displayName, metrics, disabled, isSystemLocked } = data;
   const isShared = !!data.sharedComponentId;
   const isStale = isShared && data.sharedComponentLatestVersion != null &&
     (data.sharedComponentVersion ?? 0) < data.sharedComponentLatestVersion;
@@ -61,7 +61,7 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
 
       {/* Body */}
       <div className="space-y-2 px-3 py-2.5">
-        <p className="truncate text-xs font-medium text-foreground">{displayName || componentKey}</p>
+        {displayName && <p className="truncate text-xs font-medium text-foreground">{displayName}</p>}
 
         {metrics && (
           <p className="truncate text-xs font-mono text-emerald-400">
