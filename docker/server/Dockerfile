@@ -28,7 +28,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json pnpm-lock.yaml tsconfig.json next.config.ts postcss.config.mjs components.json ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./prisma.config.ts
-RUN npx prisma generate
+RUN pnpm exec prisma generate
 COPY src ./src
 COPY public ./public
 COPY server.ts ./server.ts
@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/app/.next/cache \
     pnpm build
 # Bundle custom server.ts → server.js (replaces Next.js default standalone server.js)
 # Uses --alias to resolve @/ imports, --packages=external keeps npm deps external
-RUN npx esbuild server.ts --bundle --platform=node --target=node22 \
+RUN pnpm exec esbuild server.ts --bundle --platform=node --target=node22 \
     --outfile=.next/standalone/server.js \
     --alias:@/=./src/ \
     --packages=external
