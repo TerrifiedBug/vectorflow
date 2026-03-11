@@ -81,6 +81,7 @@ export async function ingestMetrics(
       where: {
         pipelineId: dp.pipelineId,
         nodeId: dp.nodeId,
+        componentId: null,
         timestamp: now,
       },
     });
@@ -126,6 +127,7 @@ export async function ingestMetrics(
       where: {
         pipelineId,
         nodeId: { not: null },
+        componentId: null,
         timestamp: now,
       },
     });
@@ -162,6 +164,7 @@ export async function ingestMetrics(
       where: {
         pipelineId,
         nodeId: null,
+        componentId: null,
         timestamp: now,
       },
     });
