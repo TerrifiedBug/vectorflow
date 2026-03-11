@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { useTeamStore } from "@/stores/team-store";
 import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml, importVectorConfig } from "@/lib/config-generator";
@@ -400,7 +400,7 @@ export function AiPipelineDialog({
             ) : (
               <>
                 {/* Message thread */}
-                <ScrollArea className="flex-1 h-0 pr-4">
+                <div className="flex-1 min-h-0 overflow-y-auto pr-4">
                   <div className="space-y-4 pb-4">
                     {conversation.messages.length === 0 && !conversation.isStreaming && (
                       <p className="text-sm text-muted-foreground text-center py-8">
@@ -439,7 +439,7 @@ export function AiPipelineDialog({
 
                     <div ref={messagesEndRef} />
                   </div>
-                </ScrollArea>
+                </div>
 
                 {conversation.error && (
                   <div className="flex items-start gap-2 rounded border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive mb-3">

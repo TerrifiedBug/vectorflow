@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { streamCompletion } from "@/server/services/ai";
 import { buildVrlChatSystemPrompt } from "@/lib/ai/prompts";
 import { writeAuditLog } from "@/server/services/audit";
-import type { VrlChatResponse } from "@/lib/ai/vrl-suggestion-types";
+
 import { Prisma } from "@/generated/prisma";
 
 export async function POST(request: Request) {
@@ -174,8 +174,9 @@ export async function POST(request: Request) {
         // Persist assistant response
         let parsedSuggestions = null;
         try {
-          const parsed: VrlChatResponse = JSON.parse(fullResponse);
-          if (parsed.summary && Array.isArray(parsed.suggestions)) {
+          const { parseVrlChatResponse } = await import("@/lib/ai/vrl-suggestion-types");
+          const parsed = parseVrlChatResponse(fullResponse);
+          if (parsed) {
             parsedSuggestions = parsed.suggestions;
           }
         } catch {
