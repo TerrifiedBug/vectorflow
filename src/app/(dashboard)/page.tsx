@@ -382,7 +382,7 @@ export default function DashboardPage() {
               height={200}
             />
             <MetricChart
-              title="Component Latency"
+              title="Pipeline Latency"
               icon={<Timer className="h-4 w-4" />}
               data={chartData.data?.pipeline.latency ?? {}}
               variant="area"

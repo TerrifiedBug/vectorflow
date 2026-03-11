@@ -118,7 +118,7 @@ export default function PipelineMetricsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Component Latency</CardTitle>
+              <CardTitle>Pipeline Latency</CardTitle>
             </CardHeader>
             <CardContent>
               <MetricsChart rows={rows} dataKey="latency" height={220} />
