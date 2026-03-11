@@ -461,6 +461,7 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
                         onChange={(v) => handleConfigChange({ ...config, source: v })}
                         sourceTypes={upstream.sourceTypes}
                         pipelineId={pipelineId}
+                        componentKey={componentKey}
                         upstreamSourceKeys={upstream.sourceKeys}
                       />
                     </div>
@@ -475,6 +476,7 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
                         onChange={(v) => handleConfigChange({ ...config, condition: v })}
                         sourceTypes={upstream.sourceTypes}
                         pipelineId={pipelineId}
+                        componentKey={componentKey}
                         upstreamSourceKeys={upstream.sourceKeys}
                       />
                     </div>
@@ -505,6 +507,7 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
                             height="120px"
                             sourceTypes={upstream.sourceTypes}
                             pipelineId={pipelineId}
+                            componentKey={componentKey}
                             upstreamSourceKeys={upstream.sourceKeys}
                           />
                         </div>

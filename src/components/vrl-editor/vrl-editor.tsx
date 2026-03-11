@@ -26,7 +26,9 @@ import { vrlTheme } from "./vrl-theme";
 import { VRL_SNIPPETS } from "@/lib/vrl/snippets";
 import { VrlSnippetDrawer } from "@/components/flow/vrl-snippet-drawer";
 import { VrlFieldsPanel } from "./vrl-fields-panel";
-import { AiInput } from "./ai-input";
+import { VrlAiPanel } from "./vrl-ai-panel";
+import { useVrlAiConversation } from "@/hooks/use-vrl-ai-conversation";
+import { cn } from "@/lib/utils";
 import { useTeamStore } from "@/stores/team-store";
 import { getMergedOutputSchemas, getSourceOutputSchema } from "@/lib/vector/source-output-schemas";
 import type { Monaco, OnMount } from "@monaco-editor/react";
@@ -54,6 +56,7 @@ interface VrlEditorProps {
   height?: string;
   sourceTypes?: string[];
   pipelineId?: string;
+  componentKey?: string;
   upstreamSourceKeys?: string[];
 }
 
@@ -61,12 +64,12 @@ interface VrlEditorProps {
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSourceKeys }: VrlEditorProps) {
+export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentKey, upstreamSourceKeys }: VrlEditorProps) {
   const trpc = useTRPC();
   const [sampleInput, setSampleInput] = useState("");
   const [testOutput, setTestOutput] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
-  const [toolsPanel, setToolsPanel] = useState<"fields" | "snippets" | "ai" | null>(null);
+  const [toolsPanel, setToolsPanel] = useState<"fields" | "snippets" | null>(null);
   const [expanded, setExpanded] = useState(false);
   const editorRef = useRef<EditorInstance | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -87,6 +90,10 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSo
     ),
   );
   const aiEnabled = teamQuery.data?.aiEnabled ?? false;
+
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+
+  const canUseAiChat = aiEnabled && !!pipelineId && !!componentKey;
 
   const isRawTextSource = useMemo(() => {
     if (!sourceTypes || sourceTypes.length === 0) return false;
@@ -115,6 +122,14 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSo
     }
     return all;
   }, [sourceTypes, liveSchemaFields]);
+
+  const conversation = useVrlAiConversation({
+    pipelineId: pipelineId ?? "",
+    componentKey: componentKey ?? "",
+    currentCode: value,
+    fields: mergedFieldsForAi,
+    sourceTypes,
+  });
 
   const testMutation = useMutation(
     trpc.vrl.test.mutationOptions({
@@ -344,7 +359,15 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSo
 
       {/* Full-screen modal: editor (left) + tools (right) */}
       <Dialog open={expanded} onOpenChange={setExpanded}>
-        <DialogContent className="sm:max-w-[calc(100vw-4rem)] xl:max-w-6xl h-[85vh] flex flex-col" onKeyDown={(e) => e.stopPropagation()}>
+        <DialogContent
+          className={cn(
+            "h-[85vh] flex flex-col transition-[max-width] duration-300",
+            aiPanelOpen
+              ? "max-w-[calc(100vw-4rem)]"
+              : "sm:max-w-[calc(100vw-4rem)] xl:max-w-6xl",
+          )}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <DialogHeader>
             <DialogTitle>VRL Editor</DialogTitle>
           </DialogHeader>
@@ -392,11 +415,11 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSo
                   <BookOpen className="mr-1.5 h-3.5 w-3.5" />
                   Snippets
                 </Button>
-                {aiEnabled && (
+                {canUseAiChat && (
                   <Button
-                    variant={toolsPanel === "ai" ? "secondary" : "outline"}
+                    variant={aiPanelOpen ? "secondary" : "outline"}
                     size="sm"
-                    onClick={() => setToolsPanel((prev) => (prev === "ai" ? null : "ai"))}
+                    onClick={() => setAiPanelOpen((prev) => !prev)}
                   >
                     <Sparkles className="mr-1.5 h-3.5 w-3.5" />
                     AI
@@ -462,23 +485,6 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSo
               {/* Snippet drawer */}
               {toolsPanel === "snippets" && (
                 <VrlSnippetDrawer onInsert={handleInsertSnippet} />
-              )}
-
-              {/* AI panel */}
-              {toolsPanel === "ai" && (
-                <AiInput
-                  currentCode={value}
-                  fields={mergedFieldsForAi}
-                  componentType={undefined}
-                  sourceTypes={sourceTypes}
-                  onInsert={(code) => {
-                    const newValue = value ? `${value}\n${code}` : code;
-                    onChange(newValue);
-                  }}
-                  onReplace={(code) => {
-                    onChange(code);
-                  }}
-                />
               )}
 
               {/* Test panel (always visible) */}
@@ -561,6 +567,18 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, upstreamSo
                 )}
               </div>
             </div>
+
+            {/* AI Chat slide-out panel */}
+            {aiPanelOpen && canUseAiChat && (
+              <div className="w-[380px] shrink-0 min-h-0">
+                <VrlAiPanel
+                  conversation={conversation}
+                  currentCode={value}
+                  onCodeChange={onChange}
+                  onClose={() => setAiPanelOpen(false)}
+                />
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
