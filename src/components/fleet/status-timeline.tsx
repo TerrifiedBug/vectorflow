@@ -55,10 +55,12 @@ function formatDuration(ms: number): string {
 export function StatusTimeline({ nodeId, range, onRangeChange }: StatusTimelineProps) {
   const trpc = useTRPC();
 
-  const { data: events, isLoading, dataUpdatedAt } = useQuery({
+  const { data, isLoading, dataUpdatedAt } = useQuery({
     ...trpc.fleet.getStatusTimeline.queryOptions({ nodeId, range }),
     refetchInterval: 15_000,
   });
+  const events = data?.events;
+  const nodeStatus = data?.nodeStatus ?? "UNKNOWN";
 
   type Segment = {
     status: string;
@@ -82,7 +84,7 @@ export function StatusTimeline({ nodeId, range, onRangeChange }: StatusTimelineP
 
     if (events !== undefined && now > 0) {
       if (events.length === 0) {
-        segs.push({ status: "UNKNOWN", start: rangeStart, end: now });
+        segs.push({ status: nodeStatus, start: rangeStart, end: now });
       } else {
         // First segment: from range start to first event
         const firstStatus = events[0].fromStatus ?? "UNKNOWN";
@@ -98,7 +100,7 @@ export function StatusTimeline({ nodeId, range, onRangeChange }: StatusTimelineP
     }
 
     return { segments: segs, totalMs: now - rangeStart };
-  }, [events, range, dataUpdatedAt]);
+  }, [events, nodeStatus, range, dataUpdatedAt]);
 
   return (
     <div className="space-y-2">
