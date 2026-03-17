@@ -101,15 +101,13 @@ export const fleetRouter = router({
       const since = new Date(now - rangeMs[input.range]);
       const totalSeconds = rangeMs[input.range] / 1000;
 
-      // Get events in range
-      const events = await prisma.nodeStatusEvent.findMany({
-        where: { nodeId: input.nodeId, timestamp: { gte: since } },
-        orderBy: { timestamp: "asc" },
-      });
-
-      // Get the last event before the range to know starting status,
+      // Get events in range, the last event before the range (to know starting status),
       // and the node's current status as a fallback for nodes with no event history
-      const [priorEvent, nodeForStatus] = await Promise.all([
+      const [events, priorEvent, nodeForStatus] = await Promise.all([
+        prisma.nodeStatusEvent.findMany({
+          where: { nodeId: input.nodeId, timestamp: { gte: since } },
+          orderBy: { timestamp: "asc" },
+        }),
         prisma.nodeStatusEvent.findFirst({
           where: { nodeId: input.nodeId, timestamp: { lt: since } },
           orderBy: { timestamp: "desc" },
