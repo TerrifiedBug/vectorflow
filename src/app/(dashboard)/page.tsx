@@ -31,19 +31,8 @@ import { MetricChart } from "@/components/dashboard/metric-chart";
 import { ViewBuilderDialog } from "@/components/dashboard/view-builder-dialog";
 import { CustomView } from "@/components/dashboard/custom-view";
 import { formatSI, formatBytesRate, formatEventsRate, formatLatency } from "@/lib/format";
+import { derivePipelineStatus } from "@/lib/pipeline-status";
 import { cn } from "@/lib/utils";
-
-/** Derive an overall status for a pipeline from its node statuses */
-function derivePipelineStatus(
-  nodes: Array<{ pipelineStatus: string }>
-): string {
-  if (nodes.length === 0) return "PENDING";
-  if (nodes.some((n) => n.pipelineStatus === "CRASHED")) return "CRASHED";
-  if (nodes.some((n) => n.pipelineStatus === "RUNNING")) return "RUNNING";
-  if (nodes.some((n) => n.pipelineStatus === "STARTING")) return "STARTING";
-  if (nodes.every((n) => n.pipelineStatus === "STOPPED")) return "STOPPED";
-  return nodes[0].pipelineStatus;
-}
 
 export default function DashboardPage() {
   const trpc = useTRPC();

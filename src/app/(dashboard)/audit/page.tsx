@@ -26,21 +26,10 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTeamStore } from "@/stores/team-store";
+import { formatTimestamp } from "@/lib/format";
 
 const ALL_VALUE = "__all__";
 const SCIM_VALUE = "__SCIM__";
-
-function formatTimestamp(date: Date | string): string {
-  const d = new Date(date);
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
 
 function truncate(value: unknown, maxLength = 80): string {
   if (value === null || value === undefined) return "-";

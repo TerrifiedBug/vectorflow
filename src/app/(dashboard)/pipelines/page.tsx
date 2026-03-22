@@ -37,18 +37,8 @@ import { PromotePipelineDialog } from "@/components/promote-pipeline-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatEventsRate, formatBytesRate } from "@/lib/format";
+import { aggregateProcessStatus } from "@/lib/pipeline-status";
 import { tagBadgeClass, reductionBadgeClass } from "@/lib/badge-variants";
-
-function aggregateProcessStatus(
-  statuses: Array<{ status: string }>
-): "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING" | null {
-  if (statuses.length === 0) return null;
-  if (statuses.some((s) => s.status === "CRASHED")) return "CRASHED";
-  if (statuses.some((s) => s.status === "STOPPED")) return "STOPPED";
-  if (statuses.some((s) => s.status === "STARTING")) return "STARTING";
-  if (statuses.some((s) => s.status === "PENDING")) return "PENDING";
-  return "RUNNING";
-}
 
 function sumNodeStatuses(statuses: Array<{ eventsIn: bigint; eventsOut: bigint; errorsTotal: bigint; eventsDiscarded: bigint; bytesIn: bigint; bytesOut: bigint }>) {
   let eventsIn = BigInt(0), eventsOut = BigInt(0), errorsTotal = BigInt(0), eventsDiscarded = BigInt(0), bytesIn = BigInt(0), bytesOut = BigInt(0);

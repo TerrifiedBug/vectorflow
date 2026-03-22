@@ -37,7 +37,7 @@
   - Verify: `pnpm exec tsc --noEmit` exits 0 (new exports compile cleanly)
   - Done when: All three shared modules export the new functions and `tsc --noEmit` passes
 
-- [ ] **T02: Replace inline duplicate definitions with imports from shared modules** `est:25m`
+- [x] **T02: Replace inline duplicate definitions with imports from shared modules** `est:25m`
   - Why: Completes R004 by removing all inline duplicates and wiring consumers to the shared modules. This is the task that actually eliminates duplication.
   - Files: `src/app/(dashboard)/pipelines/page.tsx`, `src/app/(dashboard)/pipelines/[id]/page.tsx`, `src/app/(dashboard)/page.tsx`, `src/components/dashboard/custom-view.tsx`, `src/components/fleet/event-log.tsx`, `src/components/fleet/status-timeline.tsx`, `src/components/fleet/node-metrics-charts.tsx`, `src/components/fleet/node-logs.tsx`, `src/components/pipeline/pipeline-logs.tsx`
   - Do: In each consumer file: (1) Add import for the shared function(s) from `@/lib/pipeline-status`, `@/lib/format`, or `@/lib/status`. (2) Delete the inline function definition. (3) Verify the imported name matches usage — for the HH:MM:SS variant in `node-logs.tsx` and `pipeline-logs.tsx`, import `formatTimeWithSeconds` and alias or rename at call sites. Also update `src/app/(dashboard)/audit/page.tsx` to import `formatTimestamp` from `@/lib/format` and delete the local definition.

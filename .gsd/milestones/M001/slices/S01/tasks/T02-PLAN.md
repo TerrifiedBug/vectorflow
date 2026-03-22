@@ -83,3 +83,9 @@ Remove all inline duplicate utility functions from consumer files and replace th
 - `src/components/fleet/node-logs.tsx` — imports `formatTimeWithSeconds` from shared module, inline definition removed, call sites renamed
 - `src/components/pipeline/pipeline-logs.tsx` — imports `formatTimeWithSeconds` from shared module, inline definition removed, call sites renamed
 - `src/app/(dashboard)/audit/page.tsx` — imports `formatTimestamp` from shared module, inline definition removed
+
+## Observability Impact
+
+- **Signals changed:** No new runtime signals. This is a pure refactoring task — import paths change but runtime behavior is identical.
+- **Inspection:** `rg 'function aggregateProcessStatus|function derivePipelineStatus' src/app src/components` should return no matches (exit 1). `pnpm exec tsc --noEmit` validates all import paths resolve correctly.
+- **Failure visibility:** If a shared module export is removed or renamed, `tsc --noEmit` will fail with a clear missing-export error in the consumer file. If an import is unused, `eslint` will flag it as an `@typescript-eslint/no-unused-vars` warning.
