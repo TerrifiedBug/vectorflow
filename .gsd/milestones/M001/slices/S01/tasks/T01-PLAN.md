@@ -63,3 +63,9 @@ Create `src/lib/pipeline-status.ts` as a new shared module and extend `src/lib/f
 - `src/lib/pipeline-status.ts` — new shared module with `aggregateProcessStatus` and `derivePipelineStatus`
 - `src/lib/format.ts` — extended with `formatTime`, `formatTimeWithSeconds`, and updated `formatTimestamp`
 - `src/lib/status.ts` — extended with `STATUS_COLORS` and `statusColor`
+
+## Observability Impact
+
+- **Signals added:** No runtime signals — these are pure compile-time utility exports. The observable signal is `tsc --noEmit` exit code, which validates that all exported type signatures are correct.
+- **Inspection:** Future agents can verify the shared API surface with `rg 'export function|export const' src/lib/pipeline-status.ts src/lib/format.ts src/lib/status.ts`.
+- **Failure state:** If any exported function signature is wrong, downstream consumer imports (wired in T02) will produce TypeScript errors visible via `tsc --noEmit`.

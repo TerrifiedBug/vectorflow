@@ -22,9 +22,15 @@
 - `rg '^const STATUS_COLORS' src/components/fleet` returns no matches
 - `test -f src/lib/pipeline-status.ts` exits 0
 
+## Observability / Diagnostics
+
+- **Inspection surface:** Shared modules are importable at `@/lib/pipeline-status`, `@/lib/format`, `@/lib/status`. TypeScript compilation (`tsc --noEmit`) validates API surface integrity.
+- **Failure visibility:** If a consumer imports a function that doesn't exist or has wrong types, `tsc --noEmit` fails with clear missing-export or type-mismatch errors.
+- **Redaction constraints:** None — these are pure formatting/status utilities with no sensitive data.
+
 ## Tasks
 
-- [ ] **T01: Create shared utility modules for pipeline status, time formatting, and status colors** `est:20m`
+- [x] **T01: Create shared utility modules for pipeline status, time formatting, and status colors** `est:20m`
   - Why: Establishes the shared modules that all consumer files will import from. Creates `src/lib/pipeline-status.ts` (boundary contract for downstream slices) and extends `src/lib/format.ts` and `src/lib/status.ts` with extracted functions.
   - Files: `src/lib/pipeline-status.ts`, `src/lib/format.ts`, `src/lib/status.ts`
   - Do: (1) Create `src/lib/pipeline-status.ts` with `aggregateProcessStatus()` and `derivePipelineStatus()` copied from existing inline definitions. (2) Add `formatTime()` (HH:MM variant) and `formatTimeWithSeconds()` (HH:MM:SS variant) to `src/lib/format.ts`. (3) Add `STATUS_COLORS` constant and `statusColor()` function to `src/lib/status.ts`. (4) Update the shared `formatTimestamp` in `src/lib/format.ts` to use explicit locale options (year, month, day, hour, minute, second) matching the audit page's more detailed version.
