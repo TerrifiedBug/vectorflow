@@ -12,8 +12,8 @@ This file is the explicit capability and coverage contract for the project.
 - Source: execution
 - Primary owning slice: M001/S01
 - Supporting slices: none
-- Validation: `pnpm exec tsc --noEmit` exits 0 — already passing, S01 verifies no regression
-- Notes: Prisma generate fixes most errors; remaining are event-log destructuring bug and monaco-editor module resolution.
+- Validation: `pnpm exec tsc --noEmit` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files
+- Notes: Prisma generate fixes most errors; remaining are event-log destructuring bug and monaco-editor module resolution. S01 verified no regression — tsc --noEmit exits 0 after shared utility extraction and consumer rewiring.
 
 ### R002 — Test suite exists with coverage for auth flows (login, 2FA, OIDC), pipeline CRUD, deploy operations, and alert evaluation. Test runner configured and passing in CI.
 - Class: quality-attribute
@@ -45,8 +45,8 @@ This file is the explicit capability and coverage contract for the project.
 - Source: execution
 - Primary owning slice: M001/S01
 - Supporting slices: M001/S02
-- Validation: S01/T01 creates shared modules, S01/T02 removes all inline duplicates; verified by grep checks returning no matches
-- Notes: Scout found `aggregateProcessStatus` in pipelines/page.tsx, pipelines/[id]/page.tsx, and dashboard page.tsx.
+- Validation: S01/T01 creates shared modules, S01/T02 removes all inline duplicates; verified by grep checks returning no matches in src/app and src/components
+- Notes: S01/T01 created shared modules, S01/T02 replaced all inline duplicates in 10 consumer files. grep confirms zero inline copies remain. S02 may discover additional duplicates during file splitting.
 
 ### R005 — All 35+ dashboard pages have consistent loading skeletons, empty state messaging with CTAs, and error handling. No page should show a blank white screen during loading or when data is empty.
 - Class: primary-user-loop
@@ -89,8 +89,8 @@ This file is the explicit capability and coverage contract for the project.
 - Source: inferred
 - Primary owning slice: M001/S01
 - Supporting slices: none
-- Validation: `pnpm exec eslint src/` exits 0 — already passing, S01 verifies no regression
-- Notes: ESLint config uses next/core-web-vitals and next/typescript presets.
+- Validation: `pnpm exec eslint src/` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files
+- Notes: ESLint config uses next/core-web-vitals and next/typescript presets. S01 verified no regression — eslint src/ exits 0 after shared utility extraction and consumer rewiring.
 
 ### R010 — Analyze Next.js bundle size, identify large dependencies or unnecessary client-side imports, review Prisma query patterns for N+1 or missing indexes, and address measurable bottlenecks found.
 - Class: quality-attribute
@@ -144,14 +144,14 @@ This file is the explicit capability and coverage contract for the project.
 
 | ID | Class | Status | Primary owner | Supporting | Proof |
 |---|---|---|---|---|---|
-| R001 | quality-attribute | active | M001/S01 | none | `pnpm exec tsc --noEmit` exits 0 — already passing, S01 verifies no regression |
+| R001 | quality-attribute | active | M001/S01 | none | `pnpm exec tsc --noEmit` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files |
 | R002 | quality-attribute | active | M001/S04 | none | unmapped |
 | R003 | quality-attribute | active | M001/S02 | none | unmapped |
-| R004 | quality-attribute | active | M001/S01 | M001/S02 | S01/T01 creates shared modules, S01/T02 removes all inline duplicates; verified by grep checks returning no matches |
+| R004 | quality-attribute | active | M001/S01 | M001/S02 | S01/T01 creates shared modules, S01/T02 removes all inline duplicates; verified by grep checks returning no matches in src/app and src/components |
 | R005 | primary-user-loop | active | M001/S03 | none | unmapped |
 | R006 | primary-user-loop | active | M001/S03 | none | unmapped |
 | R007 | quality-attribute | active | M001/S02 | M001/S04 | unmapped |
-| R008 | quality-attribute | active | M001/S01 | none | `pnpm exec eslint src/` exits 0 — already passing, S01 verifies no regression |
+| R008 | quality-attribute | active | M001/S01 | none | `pnpm exec eslint src/` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files |
 | R009 | quality-attribute | deferred | none | none | unmapped |
 | R010 | quality-attribute | active | M001/S05 | none | unmapped |
 | R011 | quality-attribute | out-of-scope | none | none | n/a |

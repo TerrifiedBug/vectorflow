@@ -53,7 +53,7 @@ This milestone is complete only when all are true:
 
 ## Slices
 
-- [ ] **S01: TypeScript fixes & shared utilities** `risk:low` `depends:[]`
+- [x] **S01: TypeScript fixes & shared utilities** `risk:low` `depends:[]`
   > After this: `tsc --noEmit` passes with zero errors, `eslint` is clean, duplicated helpers are consolidated into `src/lib/` shared modules.
 
 - [ ] **S02: Router & component refactoring** `risk:medium` `depends:[S01]`

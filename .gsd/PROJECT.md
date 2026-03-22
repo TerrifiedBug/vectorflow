@@ -28,3 +28,8 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 ## Milestone Sequence
 
 - [ ] M001: Baseline Quality — Fix TS errors, refactor large files, consistent UI, foundational tests, performance audit
+  - [x] S01: TypeScript fixes & shared utilities — completed 2026-03-22
+  - [ ] S02: Router & component refactoring
+  - [ ] S03: UI consistency sweep
+  - [ ] S04: Foundational test suite
+  - [ ] S05: Performance audit & optimization
