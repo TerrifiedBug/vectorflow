@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { QueryError } from "@/components/query-error";
 import {
   Table,
   TableBody,
@@ -220,6 +221,21 @@ export function WebhooksSection({ environmentId }: { environmentId: string }) {
   };
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
+
+  // If the query errored, show the error state
+  if (webhooksQuery.isError) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Webhook className="h-5 w-5 text-muted-foreground" />
+            <h3 className="text-lg font-semibold">Legacy Webhooks</h3>
+          </div>
+        </div>
+        <QueryError message="Failed to load webhooks" onRetry={() => webhooksQuery.refetch()} />
+      </div>
+    );
+  }
 
   // If no legacy webhooks exist, don't show this section
   if (!webhooksQuery.isLoading && webhooks.length === 0) {

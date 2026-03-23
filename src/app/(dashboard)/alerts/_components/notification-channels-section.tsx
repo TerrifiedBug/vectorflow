@@ -25,6 +25,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 import {
   Table,
   TableBody,
@@ -365,20 +367,16 @@ export function NotificationChannelsSection({
         </Button>
       </div>
 
-      {channelsQuery.isLoading ? (
+      {channelsQuery.isError ? (
+        <QueryError message="Failed to load notification channels" onRetry={() => channelsQuery.refetch()} />
+      ) : channelsQuery.isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 2 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
       ) : channels.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">No notification channels configured</p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Add a notification channel to receive alerts via Slack, Email,
-            PagerDuty, or Webhook.
-          </p>
-        </div>
+        <EmptyState title="No notification channels configured" description="Add a notification channel to receive alerts via Slack, Email, PagerDuty, or Webhook." />
       ) : (
         <Table>
           <TableHeader>

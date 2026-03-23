@@ -11,6 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 import {
   Table,
   TableBody,
@@ -86,19 +88,16 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
         <h3 className="text-lg font-semibold">Alert History</h3>
       </div>
 
-      {isLoading && !cursor ? (
+      {eventsQuery.isError ? (
+        <QueryError message="Failed to load alert events" onRetry={() => eventsQuery.refetch()} />
+      ) : isLoading && !cursor ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
       ) : displayItems.length === 0 && items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">No alert events yet</p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Alert events will appear here when rules are triggered.
-          </p>
-        </div>
+        <EmptyState title="No alert events yet" description="Alert events will appear here when rules are triggered." />
       ) : (
         <>
           <Table>

@@ -49,6 +49,12 @@ Apply the same error/empty state treatment to library pages and alerts sub-compo
 - `rg 'border-dashed' src/app/\(dashboard\)/alerts/ src/app/\(dashboard\)/library/` returns 0 matches
 - `rg 'QueryError' src/app/\(dashboard\)/alerts/_components/ src/app/\(dashboard\)/library/templates/page.tsx src/app/\(dashboard\)/library/shared-components/page.tsx src/app/\(dashboard\)/library/shared-components/\[id\]/page.tsx` — all data-fetching files contain QueryError
 
+## Observability Impact
+
+- **Signals changed**: No runtime telemetry. `QueryError` and `EmptyState` are purely presentational — they render error/empty UI inline. When a tRPC query fails in alerts or library pages, users see a "Failed to load…" message with a retry button instead of a blank screen.
+- **Inspection surfaces**: `rg -l 'QueryError' src/app/\(dashboard\)/alerts/ src/app/\(dashboard\)/library/` shows which files have error handling. `rg -l 'EmptyState' src/app/\(dashboard\)/alerts/ src/app/\(dashboard\)/library/` shows empty-state adoption. `rg 'border-dashed' src/app/\(dashboard\)/alerts/ src/app/\(dashboard\)/library/` should return 0 after this task.
+- **Failure visibility**: Query failures in these pages now surface as visible `QueryError` components with retry — no more blank screens.
+
 ## Inputs
 
 - `src/components/empty-state.tsx` — shared EmptyState component (created in T01)

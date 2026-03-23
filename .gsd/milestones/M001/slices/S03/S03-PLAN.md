@@ -57,7 +57,7 @@
   - Verify: `pnpm exec tsc --noEmit` exits 0; `rg 'QueryError' src/app/\(dashboard\)/page.tsx src/app/\(dashboard\)/analytics/page.tsx src/app/\(dashboard\)/pipelines/page.tsx` shows imports in all three
   - Done when: All 9 core pages have error handling, inline empty states are replaced with shared component, analytics has loading skeleton, dashboard has environment guard
 
-- [ ] **T03: Add error and empty states to library and alerts components** `est:45m`
+- [x] **T03: Add error and empty states to library and alerts components** `est:45m`
   - Why: Library pages and alerts sub-components are data-heavy sections that need the same error/empty treatment. Alerts sub-components already have loading but lack error handling. Library pages need both.
   - Files: `src/app/(dashboard)/library/templates/page.tsx`, `src/app/(dashboard)/library/shared-components/page.tsx`, `src/app/(dashboard)/library/shared-components/[id]/page.tsx`, `src/app/(dashboard)/library/shared-components/new/page.tsx`, `src/app/(dashboard)/alerts/_components/alert-history-section.tsx`, `src/app/(dashboard)/alerts/_components/alert-rules-section.tsx`, `src/app/(dashboard)/alerts/_components/notification-channels-section.tsx`, `src/app/(dashboard)/alerts/_components/webhooks-section.tsx`, `src/app/(dashboard)/alerts/page.tsx`
   - Do: For each file: (1) import `QueryError` and `EmptyState`, (2) add `isError` check rendering `QueryError`, (3) replace inline `border-dashed` empty state divs with shared `EmptyState` component (preserve each page's specific text and CTAs). For alerts sub-components, add error check before the existing loading check.

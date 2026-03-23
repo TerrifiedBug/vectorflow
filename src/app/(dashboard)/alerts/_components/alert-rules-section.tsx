@@ -23,6 +23,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 import {
   Table,
   TableBody,
@@ -254,19 +256,16 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
         </Button>
       </div>
 
-      {rulesQuery.isLoading ? (
+      {rulesQuery.isError ? (
+        <QueryError message="Failed to load alert rules" onRetry={() => rulesQuery.refetch()} />
+      ) : rulesQuery.isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
       ) : rules.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">No alert rules configured</p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Create an alert rule to monitor metrics and receive notifications.
-          </p>
-        </div>
+        <EmptyState title="No alert rules configured" description="Create an alert rule to monitor metrics and receive notifications." />
       ) : (
         <Table>
           <TableHeader>
