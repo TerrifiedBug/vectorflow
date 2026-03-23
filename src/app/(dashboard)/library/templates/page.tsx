@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 
 /* ------------------------------------------------------------------ */
 /*  Category icon mapping                                              */
@@ -181,24 +183,19 @@ export default function TemplatesPage() {
     <div className="space-y-8">
       {/* Environment notice */}
       {!selectedEnvironmentId && (
-        <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-          Select an environment from the header to use templates
-        </div>
+        <EmptyState title="Select an environment from the header to use templates" className="p-4 text-sm" />
       )}
 
-      {isLoading ? (
+      {templatesQuery.isError ? (
+        <QueryError message="Failed to load templates" onRetry={() => templatesQuery.refetch()} />
+      ) : isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-48 w-full" />
           ))}
         </div>
       ) : templates.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <Terminal className="h-10 w-10 text-muted-foreground mb-3" />
-          <p className="text-muted-foreground">
-            No templates yet. Save a pipeline as a template to get started.
-          </p>
-        </div>
+        <EmptyState icon={Terminal} title="No templates yet. Save a pipeline as a template to get started." />
       ) : (
         <section className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

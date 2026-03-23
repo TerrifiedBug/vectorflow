@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { highlightMatch } from "@/components/log-search-utils";
+import { formatTimeWithSeconds } from "@/lib/format";
 import type { LogLevel } from "@/generated/prisma";
 
 const ALL_LEVELS: LogLevel[] = ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"];
@@ -33,16 +34,6 @@ const LEVEL_BADGE_COLORS: Record<LogLevel, string> = {
   DEBUG: "bg-gray-600/20 text-gray-500 transition-colors hover:bg-gray-600/30",
   TRACE: "bg-gray-700/20 text-gray-600 transition-colors hover:bg-gray-700/30",
 };
-
-function formatTime(date: Date | string): string {
-  const d = new Date(date);
-  return d.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-}
 
 interface PipelineOption {
   id: string;
@@ -212,7 +203,7 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
         )}
         {filteredItems.map((log) => (
           <div key={log.id} className="whitespace-pre-wrap leading-5">
-            <span className="text-gray-600">{formatTime(log.timestamp)}</span>
+            <span className="text-gray-600">{formatTimeWithSeconds(log.timestamp)}</span>
             {"  "}
             <span className={`${LEVEL_COLORS[log.level as LogLevel]} inline-block w-12`}>
               {log.level}

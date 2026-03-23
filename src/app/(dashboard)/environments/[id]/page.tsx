@@ -53,6 +53,8 @@ import { CertificatesSection } from "@/components/environment/certificates-secti
 import { GitSyncSection } from "@/components/environment/git-sync-section";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { useTeamStore } from "@/stores/team-store";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 
 export default function EnvironmentDetailPage({
   params,
@@ -160,6 +162,14 @@ export default function EnvironmentDetailPage({
       <div className="space-y-6">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (envQuery.isError) {
+    return (
+      <div className="space-y-6">
+        <QueryError message="Failed to load environment" onRetry={() => envQuery.refetch()} />
       </div>
     );
   }
@@ -327,14 +337,11 @@ export default function EnvironmentDetailPage({
         </CardHeader>
         <CardContent>
           {env.nodes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
-              <p className="text-sm text-muted-foreground">
-                No nodes in this environment yet
-              </p>
-              <Button asChild variant="outline" size="sm" className="mt-3">
-                <Link href="/fleet">Go to Fleet</Link>
-              </Button>
-            </div>
+            <EmptyState
+              title="No nodes in this environment yet"
+              action={{ label: "Go to Fleet", href: "/fleet" }}
+              className="p-8"
+            />
           ) : (
             <Table>
               <TableHeader>

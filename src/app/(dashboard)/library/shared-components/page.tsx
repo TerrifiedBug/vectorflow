@@ -23,6 +23,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -107,9 +109,7 @@ export default function SharedComponentsPage() {
   if (!selectedEnvironmentId) {
     return (
       <div className="space-y-8">
-        <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-          Select an environment from the header to view shared components
-        </div>
+        <EmptyState title="Select an environment from the header to view shared components" className="p-4 text-sm" />
       </div>
     );
   }
@@ -134,21 +134,16 @@ export default function SharedComponentsPage() {
         />
       </div>
 
-      {componentsQuery.isLoading ? (
+      {componentsQuery.isError ? (
+        <QueryError message="Failed to load shared components" onRetry={() => componentsQuery.refetch()} />
+      ) : componentsQuery.isLoading ? (
         <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-20 w-full" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <Link2 className="h-10 w-10 text-muted-foreground mb-3" />
-          <p className="text-muted-foreground">
-            {components.length === 0
-              ? "No shared components yet. Create one to get started."
-              : "No components match your search."}
-          </p>
-        </div>
+        <EmptyState icon={Link2} title={components.length === 0 ? "No shared components yet. Create one to get started." : "No components match your search."} />
       ) : (
         <div className="space-y-3">
           {grouped.map((group) => {

@@ -17,6 +17,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryError } from "@/components/query-error";
 
 // ─── Relative Time Helper ───────────────────────────────────────────────────────
 
@@ -100,7 +101,9 @@ export function VersionCheckSection() {
         </div>
       </CardHeader>
       <CardContent>
-        {versionQuery.isLoading ? (
+        {versionQuery.isError ? (
+          <QueryError message="Failed to check version" onRetry={() => versionQuery.refetch()} />
+        ) : versionQuery.isLoading ? (
           <div className="space-y-3">
             <Skeleton className="h-5 w-48" />
             <Skeleton className="h-5 w-48" />
