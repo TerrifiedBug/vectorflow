@@ -13,7 +13,7 @@ export function QueryError({
   return (
     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
       <AlertTriangle className="h-10 w-10 text-destructive mb-3" />
-      <p className="text-muted-foreground">{message}</p>
+      <p className="text-muted-foreground text-balance">{message}</p>
       {onRetry && (
         <Button variant="outline" className="mt-4" onClick={onRetry}>
           Try again

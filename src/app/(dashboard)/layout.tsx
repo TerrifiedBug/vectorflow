@@ -117,8 +117,8 @@ export default function DashboardLayout({
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
               <ShieldAlert className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h1 className="text-2xl font-semibold">No Team Assigned</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-2xl font-semibold text-balance">No Team Assigned</h1>
+            <p className="text-muted-foreground text-pretty">
               Your account is active but you haven&apos;t been assigned to a team yet. Contact your administrator to get access.
             </p>
             {(userName || userEmail) && (

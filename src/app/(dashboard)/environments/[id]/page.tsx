@@ -363,7 +363,7 @@ export default function EnvironmentDetailPage({
                         {node.name}
                       </Link>
                     </TableCell>
-                    <TableCell className="font-mono text-sm">
+                    <TableCell className="font-mono text-sm tabular-nums">
                       {node.host}:{node.apiPort}
                     </TableCell>
                     <TableCell>
@@ -419,7 +419,7 @@ export default function EnvironmentDetailPage({
               )}
               {env.hasEnrollmentToken && !enrollmentToken && (
                 <div className="flex items-center gap-2 rounded-md border p-3">
-                  <span className="font-mono text-sm">{env.enrollmentTokenHint}</span>
+                  <span className="font-mono text-sm tabular-nums">{env.enrollmentTokenHint}</span>
                   <Badge variant="secondary" className="ml-auto">Active</Badge>
                 </div>
               )}

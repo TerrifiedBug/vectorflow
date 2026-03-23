@@ -15,7 +15,7 @@ export function MetricEdge({ data, ...props }: EdgeProps) {
           x={labelX - 40}
           y={labelY - 12}
         >
-          <div className="flex items-center justify-center rounded bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground">
+          <div className="flex items-center justify-center rounded bg-muted px-2 py-0.5 text-xs font-mono tabular-nums text-muted-foreground">
             {throughput > 1000
               ? `${(throughput / 1000).toFixed(1)}k/s`
               : `${throughput}/s`}

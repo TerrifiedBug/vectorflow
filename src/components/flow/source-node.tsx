@@ -39,7 +39,7 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
   return (
     <div
       className={cn(
-        "w-56 rounded-lg border bg-card shadow-sm transition-shadow",
+        "w-56 rounded-lg border bg-card shadow-sm transition-shadow overflow-hidden",
         selected && !isSystemLocked && !isShared && "ring-2 ring-node-source shadow-md",
         selected && isShared && "ring-2 ring-purple-400 shadow-md",
         isShared && !selected && "border-purple-400/50 shadow-[0_0_8px_rgba(167,139,250,0.15)]",
@@ -48,7 +48,7 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
       )}
     >
       {/* Header bar */}
-      <div className="flex items-center gap-2 rounded-t-lg bg-node-source px-3 py-2 text-node-source-foreground">
+      <div className="flex items-center gap-2 bg-node-source px-3 py-2 text-node-source-foreground">
         {/* eslint-disable-next-line react-hooks/static-components */}
         <Icon className="h-4 w-4 shrink-0" />
         <span className="truncate text-sm font-medium">
@@ -64,7 +64,7 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
         {displayName && <p className="truncate text-xs font-medium text-foreground">{displayName}</p>}
 
         {metrics && (
-          <p className="truncate text-xs font-mono text-emerald-400">
+          <p className="truncate text-xs font-mono tabular-nums text-emerald-400">
             {formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}
             {metrics.latencyMs != null && metrics.latencyMs > 0 && (
               <>{"  "}{formatLatency(metrics.latencyMs)}</>

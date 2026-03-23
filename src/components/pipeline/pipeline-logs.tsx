@@ -173,7 +173,7 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
         )}
         {filteredItems.map((log) => (
           <div key={log.id} className="whitespace-pre-wrap leading-5">
-            <span className="text-gray-600">{formatTimeWithSeconds(log.timestamp)}</span>
+            <span className="text-gray-600 tabular-nums">{formatTimeWithSeconds(log.timestamp)}</span>
             {"  "}
             <span className={`${LEVEL_COLORS[log.level as LogLevel]} inline-block w-12`}>
               {log.level}

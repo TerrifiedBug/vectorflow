@@ -26,9 +26,9 @@ export function EmptyState({
       )}
     >
       {Icon && <Icon className="h-10 w-10 text-muted-foreground mb-3" />}
-      <p className="text-muted-foreground">{title}</p>
+      <p className="text-muted-foreground text-balance">{title}</p>
       {description && (
-        <p className="mt-2 text-xs text-muted-foreground">{description}</p>
+        <p className="mt-2 text-xs text-muted-foreground text-pretty">{description}</p>
       )}
       {action && (
         <Button asChild className="mt-4" variant="outline">

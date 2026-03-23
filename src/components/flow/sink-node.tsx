@@ -38,7 +38,7 @@ function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
   return (
     <div
       className={cn(
-        "w-56 rounded-lg border bg-card shadow-sm transition-shadow",
+        "w-56 rounded-lg border bg-card shadow-sm transition-shadow overflow-hidden",
         selected && !isShared && "ring-2 ring-node-sink shadow-md",
         selected && isShared && "ring-2 ring-purple-400 shadow-md",
         isShared && !selected && "border-purple-400/50 shadow-[0_0_8px_rgba(167,139,250,0.15)]",
@@ -53,7 +53,7 @@ function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
       />
 
       {/* Header bar */}
-      <div className="flex items-center gap-2 rounded-t-lg bg-node-sink px-3 py-2 text-node-sink-foreground">
+      <div className="flex items-center gap-2 bg-node-sink px-3 py-2 text-node-sink-foreground">
         {/* eslint-disable-next-line react-hooks/static-components */}
         <Icon className="h-4 w-4 shrink-0" />
         <span className="truncate text-sm font-medium">
@@ -66,7 +66,7 @@ function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
         {displayName && <p className="truncate text-xs font-medium text-foreground">{displayName}</p>}
 
         {metrics && (
-          <p className="truncate text-xs font-mono text-purple-400">
+          <p className="truncate text-xs font-mono tabular-nums text-purple-400">
             {formatRate(metrics.eventsPerSec)} ev/s{"  "}{formatBytesRate(metrics.bytesPerSec)}
             {metrics.latencyMs != null && metrics.latencyMs > 0 && (
               <>{"  "}{formatLatency(metrics.latencyMs)}</>

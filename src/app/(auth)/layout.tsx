@@ -7,11 +7,11 @@ export default function AuthLayout({
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <div className="w-full max-w-md space-y-8">
         <div className="flex flex-col items-center gap-1 text-center">
-          <h1 className="text-2xl tracking-tight">
+          <h1 className="text-2xl tracking-tight text-balance">
             <span className="font-bold">Vector</span>
             <span className="font-light">Flow</span>
           </h1>
-          <p className="text-sm text-muted-foreground">Visual pipeline builder for Vector</p>
+          <p className="text-sm text-muted-foreground text-pretty">Visual pipeline builder for Vector</p>
         </div>
         {children}
       </div>
