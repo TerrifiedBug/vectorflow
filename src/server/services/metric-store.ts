@@ -21,7 +21,7 @@ interface PrevTotals {
   latencyMeanSeconds: number | null;
 }
 
-const MAX_SAMPLES = 240; // 1 hour at 15s intervals
+const MAX_SAMPLES = 720; // 1 hour at 5s intervals
 
 class MetricStore {
   private samples = new Map<string, MetricSample[]>();
