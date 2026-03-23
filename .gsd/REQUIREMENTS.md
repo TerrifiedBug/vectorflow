@@ -4,17 +4,6 @@ This file is the explicit capability and coverage contract for the project.
 
 ## Active
 
-### R001 — `tsc --noEmit` must pass with zero errors. Currently 8 errors: stale Prisma client fields in `event-log.tsx` destructuring, missing `monaco-editor` type resolution in `vrl-editor.tsx` and `vrl-language.ts`.
-- Class: quality-attribute
-- Status: active
-- Description: `tsc --noEmit` must pass with zero errors. Currently 8 errors: stale Prisma client fields in `event-log.tsx` destructuring, missing `monaco-editor` type resolution in `vrl-editor.tsx` and `vrl-language.ts`.
-- Why it matters: Type errors indicate schema drift and broken contracts — they mask real bugs and make refactoring unsafe.
-- Source: execution
-- Primary owning slice: M001/S01
-- Supporting slices: none
-- Validation: `pnpm exec tsc --noEmit` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files
-- Notes: Prisma generate fixes most errors; remaining are event-log destructuring bug and monaco-editor module resolution. S01 verified no regression — tsc --noEmit exits 0 after shared utility extraction and consumer rewiring.
-
 ### R004 — Utility functions duplicated across files (e.g., `aggregateProcessStatus` in 3 files, `derivePipelineStatus` in dashboard page) are extracted to shared modules in `src/lib/`.
 - Class: quality-attribute
 - Status: active
@@ -37,18 +26,18 @@ This file is the explicit capability and coverage contract for the project.
 - Validation: `pnpm exec eslint src/` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files
 - Notes: ESLint config uses next/core-web-vitals and next/typescript presets. S01 verified no regression — eslint src/ exits 0 after shared utility extraction and consumer rewiring.
 
-### R010 — Analyze Next.js bundle size, identify large dependencies or unnecessary client-side imports, review Prisma query patterns for N+1 or missing indexes, and address measurable bottlenecks found.
-- Class: quality-attribute
-- Status: active
-- Description: Analyze Next.js bundle size, identify large dependencies or unnecessary client-side imports, review Prisma query patterns for N+1 or missing indexes, and address measurable bottlenecks found.
-- Why it matters: Performance issues compound as the product grows — catching them now prevents worse problems later.
-- Source: user
-- Primary owning slice: M001/S05
-- Supporting slices: none
-- Validation: unmapped
-- Notes: Includes bundle analysis, Prisma query review, and runtime profiling of heavy pages (dashboard, pipeline editor, fleet).
-
 ## Validated
+
+### R001 — `tsc --noEmit` must pass with zero errors. Currently 8 errors: stale Prisma client fields in `event-log.tsx` destructuring, missing `monaco-editor` type resolution in `vrl-editor.tsx` and `vrl-language.ts`.
+- Class: quality-attribute
+- Status: validated
+- Description: `tsc --noEmit` must pass with zero errors. Currently 8 errors: stale Prisma client fields in `event-log.tsx` destructuring, missing `monaco-editor` type resolution in `vrl-editor.tsx` and `vrl-language.ts`.
+- Why it matters: Type errors indicate schema drift and broken contracts — they mask real bugs and make refactoring unsafe.
+- Source: execution
+- Primary owning slice: M001/S01
+- Supporting slices: none
+- Validation: S01 fixed all 8 original TS errors. S02, S03, S04, S05 each verified tsc --noEmit exits 0 after their changes. All 5 slices pass — zero type errors sustained throughout M001.
+- Notes: Prisma generate fixes most errors; remaining are event-log destructuring bug and monaco-editor module resolution. S01 verified no regression — tsc --noEmit exits 0 after shared utility extraction and consumer rewiring.
 
 ### R002 — Test suite exists with coverage for auth flows (login, 2FA, OIDC), pipeline CRUD, deploy operations, and alert evaluation. Test runner configured and passing in CI.
 - Class: quality-attribute
@@ -105,6 +94,17 @@ This file is the explicit capability and coverage contract for the project.
 - Validation: S02 created pipeline-graph.ts (5 exports, 621 lines) and dashboard-data.ts (3 exports, 449 lines) as stateless service modules. S04 proved testability: all service functions are directly callable with plain parameters — no tRPC context mocking needed. 36 tests across pipeline-graph, dashboard-data, deploy-agent, and alert-evaluator pass against service functions with Prisma mocking. Pattern validated per D004.
 - Notes: S02 extracted the services. S04 proved the extraction pattern enables testability — the primary motivator for R007. All service modules are pure functions with typed inputs/outputs, confirming the D004 convention works.
 
+### R010 — Analyze Next.js bundle size, identify large dependencies or unnecessary client-side imports, review Prisma query patterns for N+1 or missing indexes, and address measurable bottlenecks found.
+- Class: quality-attribute
+- Status: validated
+- Description: Analyze Next.js bundle size, identify large dependencies or unnecessary client-side imports, review Prisma query patterns for N+1 or missing indexes, and address measurable bottlenecks found.
+- Why it matters: Performance issues compound as the product grows — catching them now prevents worse problems later.
+- Source: user
+- Primary owning slice: M001/S05
+- Supporting slices: none
+- Validation: S05 verified: @next/bundle-analyzer@16.2.1 installed and wired into next.config.ts. Bundle analysis completed (Turbopack caveat documented — use --webpack flag). Prisma client leak fixed via import type for AlertMetric/AlertCondition. nodeCards allComponentNodes query scoped to user's pipeline IDs (eliminates full-table scan). No N+1 patterns found. Missing @@index on PipelineNode/PipelineEdge documented as deferred P1 recommendation. Performance audit report at S05-REPORT.md covers 6 sections. tsc --noEmit exits 0, eslint src/ exits 0.
+- Notes: Three fixes applied: (1) bundle analyzer setup, (2) import type for Prisma enums in client components, (3) query scoping for allComponentNodes. Three items deferred: P1 database indexes (requires migration), P2 dynamic import js-yaml, P3 lazy load diff library.
+
 ## Deferred
 
 ### R009 — Remove `ignoreBuildErrors: true` from `next.config.ts` so `next build` type-checks without bypassing errors.
@@ -146,7 +146,7 @@ This file is the explicit capability and coverage contract for the project.
 
 | ID | Class | Status | Primary owner | Supporting | Proof |
 |---|---|---|---|---|---|
-| R001 | quality-attribute | active | M001/S01 | none | `pnpm exec tsc --noEmit` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files |
+| R001 | quality-attribute | validated | M001/S01 | none | S01 fixed all 8 original TS errors. S02, S03, S04, S05 each verified tsc --noEmit exits 0 after their changes. All 5 slices pass — zero type errors sustained throughout M001. |
 | R002 | quality-attribute | validated | M001/S04 | none | S04 verified: 105 tests pass across 7 test files. Auth domain: 25 TOTP tests (generation, verification, backup codes) + 13 crypto tests (encrypt/decrypt round-trip, error handling). Pipeline CRUD domain: 15 computeChartMetrics tests + 13 pipeline-graph tests (detectConfigChanges, saveGraphComponents, listPipelinesForEnvironment). Deploy domain: 8 deploy-agent tests (deployAgent error/success, undeployAgent). Alert domain: 12 evaluateAlerts tests (firing, resolving, deduplication, binary metrics, duration tracking). Pipeline utilities: 19 tests for aggregateProcessStatus/derivePipelineStatus. `pnpm exec vitest run` exits 0, `pnpm test` configured. |
 | R003 | quality-attribute | validated | M001/S02 | none | S02 verified: alerts page 1910→45 lines, pipeline router 1318→847, dashboard router 1074→652, team-settings 865→747, users-settings 813→522. `find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | sort -rn` shows no non-exempt file over ~800 lines (exempt: flow-store.ts per D002, function-registry.ts per D003). |
 | R004 | quality-attribute | active | M001/S01 | M001/S02 | S01/T01 creates shared modules, S01/T02 removes all inline duplicates; verified by grep checks returning no matches in src/app and src/components |
@@ -155,13 +155,13 @@ This file is the explicit capability and coverage contract for the project.
 | R007 | quality-attribute | validated | M001/S02 | M001/S04 | S02 created pipeline-graph.ts (5 exports, 621 lines) and dashboard-data.ts (3 exports, 449 lines) as stateless service modules. S04 proved testability: all service functions are directly callable with plain parameters — no tRPC context mocking needed. 36 tests across pipeline-graph, dashboard-data, deploy-agent, and alert-evaluator pass against service functions with Prisma mocking. Pattern validated per D004. |
 | R008 | quality-attribute | active | M001/S01 | none | `pnpm exec eslint src/` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files |
 | R009 | quality-attribute | deferred | none | none | unmapped |
-| R010 | quality-attribute | active | M001/S05 | none | unmapped |
+| R010 | quality-attribute | validated | M001/S05 | none | S05 verified: @next/bundle-analyzer@16.2.1 installed and wired into next.config.ts. Bundle analysis completed (Turbopack caveat documented — use --webpack flag). Prisma client leak fixed via import type for AlertMetric/AlertCondition. nodeCards allComponentNodes query scoped to user's pipeline IDs (eliminates full-table scan). No N+1 patterns found. Missing @@index on PipelineNode/PipelineEdge documented as deferred P1 recommendation. Performance audit report at S05-REPORT.md covers 6 sections. tsc --noEmit exits 0, eslint src/ exits 0. |
 | R011 | quality-attribute | out-of-scope | none | none | n/a |
 | R012 | constraint | out-of-scope | none | none | n/a |
 
 ## Coverage Summary
 
-- Active requirements: 4
-- Mapped to slices: 4
-- Validated: 5 (R002, R003, R005, R006, R007)
+- Active requirements: 2
+- Mapped to slices: 2
+- Validated: 7 (R001, R002, R003, R005, R006, R007, R010)
 - Unmapped active requirements: 0

@@ -65,7 +65,7 @@ This milestone is complete only when all are true:
 - [x] **S04: Foundational test suite** `risk:medium` `depends:[S01,S02]`
   > After this: Test infrastructure is set up, foundational tests pass for auth flows, pipeline CRUD, deploy operations, and alert evaluation.
 
-- [ ] **S05: Performance audit & optimization** `risk:medium` `depends:[S01,S02]`
+- [x] **S05: Performance audit & optimization** `risk:medium` `depends:[S01,S02]`
   > After this: Bundle analysis report generated, Prisma query patterns reviewed, measurable bottlenecks addressed.
 
 ## Boundary Map
