@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SchemaForm } from "@/components/config-forms/schema-form";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 
 /* ------------------------------------------------------------------ */
 /*  Kind badge styling                                                 */
@@ -152,9 +154,7 @@ export default function SharedComponentDetailPage() {
   if (!selectedEnvironmentId) {
     return (
       <div className="p-6">
-        <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-          Select an environment from the header to view this component
-        </div>
+        <EmptyState title="Select an environment from the header to view this component" className="p-4 text-sm" />
       </div>
     );
   }
@@ -177,12 +177,18 @@ export default function SharedComponentDetailPage() {
     );
   }
 
+  if (componentQuery.isError) {
+    return (
+      <div className="p-6">
+        <QueryError message="Failed to load shared component" onRetry={() => componentQuery.refetch()} />
+      </div>
+    );
+  }
+
   if (!sc) {
     return (
       <div className="p-6">
-        <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-          Shared component not found
-        </div>
+        <EmptyState title="Shared component not found" className="p-4 text-sm" />
       </div>
     );
   }

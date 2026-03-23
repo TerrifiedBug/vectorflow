@@ -17,6 +17,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { formatTime } from "@/lib/format";
+import { statusColor } from "@/lib/status";
 
 type Range = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -24,24 +26,6 @@ interface StatusTimelineProps {
   nodeId: string;
   range: Range;
   onRangeChange: (range: Range) => void;
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  HEALTHY: "#22c55e",
-  UNREACHABLE: "#ef4444",
-  DEGRADED: "#f59e0b",
-  UNKNOWN: "#6b7280",
-};
-
-function statusColor(status: string | null | undefined): string {
-  return STATUS_COLORS[status ?? "UNKNOWN"] ?? "#6b7280";
-}
-
-function formatTime(date: Date | string): string {
-  return new Date(date).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function formatDuration(ms: number): string {

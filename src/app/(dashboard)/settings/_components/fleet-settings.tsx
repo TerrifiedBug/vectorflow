@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryError } from "@/components/query-error";
 
 // ─── Fleet Tab ─────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,8 @@ export function FleetSettings() {
       metricsRetentionDays,
     });
   };
+
+  if (settingsQuery.isError) return <QueryError message="Failed to load fleet settings" onRetry={() => settingsQuery.refetch()} />;
 
   if (settingsQuery.isLoading) {
     return (

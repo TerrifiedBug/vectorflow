@@ -13,6 +13,8 @@ import { PipelineLogs } from "@/components/pipeline/pipeline-logs";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { formatLatency } from "@/lib/format";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 
 const TIME_RANGES = [
   { label: "5m", minutes: 5 },
@@ -56,6 +58,14 @@ export default function PipelineMetricsPage() {
     );
   }
 
+  if (pipelineQuery.isError) {
+    return (
+      <div className="space-y-6">
+        <QueryError message="Failed to load pipeline metrics" onRetry={() => pipelineQuery.refetch()} />
+      </div>
+    );
+  }
+
   const pipeline = pipelineQuery.data;
   const rows = metricsQuery.data?.rows ?? [];
 
@@ -89,12 +99,10 @@ export default function PipelineMetricsPage() {
       {rows.length === 0 ? (
         <Card>
           <CardContent className="py-12">
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-              <p className="text-muted-foreground">
-                No metrics data available yet. Metrics appear after the pipeline
-                is deployed and agents begin reporting heartbeats.
-              </p>
-            </div>
+            <EmptyState
+              title="No metrics data available yet"
+              description="Metrics appear after the pipeline is deployed and agents begin reporting heartbeats."
+            />
           </CardContent>
         </Card>
       ) : (

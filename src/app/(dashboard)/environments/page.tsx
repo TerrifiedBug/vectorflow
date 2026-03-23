@@ -16,6 +16,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 
 export default function EnvironmentsPage() {
   const trpc = useTRPC();
@@ -31,6 +33,14 @@ export default function EnvironmentsPage() {
 
   const isLoading = environmentsQuery.isLoading;
   const environments = environmentsQuery.data ?? [];
+
+  if (environmentsQuery.isError) {
+    return (
+      <div className="space-y-4">
+        <QueryError message="Failed to load environments" onRetry={() => environmentsQuery.refetch()} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -49,12 +59,10 @@ export default function EnvironmentsPage() {
           ))}
         </div>
       ) : environments.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">No environments yet</p>
-          <Button asChild className="mt-4" variant="outline">
-            <Link href="/environments/new">Create your first environment</Link>
-          </Button>
-        </div>
+        <EmptyState
+          title="No environments yet"
+          action={{ label: "Create your first environment", href: "/environments/new" }}
+        />
       ) : (
         <Table>
           <TableHeader>

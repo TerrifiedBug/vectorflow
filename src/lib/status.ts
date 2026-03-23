@@ -53,3 +53,16 @@ export function nodeStatusLabel(status: string): string {
     default: return status;
   }
 }
+
+/** Hex color map for node health statuses (used in charts, badges, timelines). */
+export const STATUS_COLORS: Record<string, string> = {
+  HEALTHY: "#22c55e",
+  UNREACHABLE: "#ef4444",
+  DEGRADED: "#f59e0b",
+  UNKNOWN: "#6b7280",
+};
+
+/** Returns the hex color for a given node status, defaulting to UNKNOWN gray. */
+export function statusColor(status: string | null | undefined): string {
+  return STATUS_COLORS[status ?? "UNKNOWN"] ?? "#6b7280";
+}
