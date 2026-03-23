@@ -46,7 +46,7 @@
   - Verify: `pnpm exec tsc --noEmit` exits 0, `pnpm exec eslint src/` exits 0, `rg 'import { AlertMetric' src/` returns no matches, `rg 'where.*pipelineId' src/server/routers/dashboard.ts` shows scoped query
   - Done when: All four code changes applied, type/lint checks pass, bundle analysis attempted
 
-- [ ] **T02: Write performance audit report** `est:30m`
+- [x] **T02: Write performance audit report** `est:30m`
   - Why: R010 requires a performance audit report documenting findings and recommendations — this is the formal deliverable artifact for the slice
   - Files: `.gsd/milestones/M001/slices/S05/S05-REPORT.md`
   - Do: Write a structured markdown report covering: (1) Bundle Analysis — report on `@next/bundle-analyzer` output or document build issues, note the `import type` fix and its impact, note `recharts` wildcard import (shadcn pattern, acceptable), note `js-yaml` in flow toolbar (functionally required), note `diff` in config-diff (acceptable), (2) Prisma Query Patterns — document the `allComponentNodes` scoping fix, document missing `@@index([pipelineId])` on PipelineNode and PipelineEdge (recommend adding in future migration), document that `saveGraphComponents` uses `Promise.all(create)` because of conditional ID spreads (not convertible to `createMany`), note that no N+1 loops were found, (3) Recommendations — prioritized list of deferred items, (4) Verification that `tsc --noEmit` and `eslint` still pass. **Constraint:** Do NOT create Prisma migrations — index recommendations are documentation only.

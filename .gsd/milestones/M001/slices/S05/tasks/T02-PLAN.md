@@ -75,6 +75,13 @@ Write the formal performance audit report that satisfies R010. This report docum
 - `src/components/ui/chart.tsx` — recharts import pattern (to note in report)
 - `src/lib/config-generator/` — js-yaml usage (to note in report)
 
+## Observability Impact
+
+- **New artifact:** `S05-REPORT.md` is the primary diagnostic surface for this task. Its existence and section count are the verifiable signals.
+- **Inspection:** `test -f .gsd/milestones/M001/slices/S05/S05-REPORT.md` confirms the report was produced. `grep -c "^## " S05-REPORT.md` confirms it has substantive sections (expect >= 6).
+- **Failure state:** If the report is missing or has fewer than 4 sections, the audit deliverable is incomplete. The report itself documents how to inspect each finding (e.g., `rg` commands for Prisma leak guard, query scoping).
+- **No runtime signals changed:** This task produces a documentation artifact only — no runtime observability surfaces are added or modified.
+
 ## Expected Output
 
 - `.gsd/milestones/M001/slices/S05/S05-REPORT.md` — the formal performance audit report artifact
