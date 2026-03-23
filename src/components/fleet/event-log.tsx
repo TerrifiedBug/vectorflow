@@ -16,10 +16,11 @@ interface EventLogProps {
 export function EventLog({ nodeId, range }: EventLogProps) {
   const trpc = useTRPC();
 
-  const { data: events, isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     ...trpc.fleet.getStatusTimeline.queryOptions({ nodeId, range }),
     refetchInterval: 15_000,
   });
+  const events = data?.events;
 
   if (isLoading) {
     return (
