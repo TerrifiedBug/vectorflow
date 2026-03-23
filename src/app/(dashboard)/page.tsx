@@ -178,7 +178,7 @@ export default function DashboardPage() {
                     panels: view.panels as string[],
                   });
                 }}
-                className="cursor-pointer rounded p-0.5 transition-colors hover:bg-muted"
+                className="relative cursor-pointer rounded p-1 transition-colors hover:bg-muted before:absolute before:-inset-1 before:content-['']"
                 aria-label="Edit view"
                 title="Edit view"
               >
@@ -192,7 +192,7 @@ export default function DashboardPage() {
                     deleteMutation.mutate({ environmentId: selectedEnvironmentId!, id: view.id });
                   }
                 }}
-                className="cursor-pointer rounded p-0.5 transition-colors hover:bg-muted text-destructive"
+                className="relative cursor-pointer rounded p-1 transition-colors hover:bg-muted text-destructive before:absolute before:-inset-1 before:content-['']"
                 aria-label="Delete view"
                 title="Delete view"
               >
@@ -237,7 +237,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-muted-foreground">Total Nodes</p>
                   <Server className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className="mt-1 text-2xl font-bold">{stats.data?.nodes ?? 0}</p>
+                <p className="mt-1 text-2xl font-bold tabular-nums">{stats.data?.nodes ?? 0}</p>
               </CardContent>
             </Card>
 
@@ -272,7 +272,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-muted-foreground">Pipelines</p>
                   <GitBranch className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className="mt-1 text-2xl font-bold">{stats.data?.pipelines ?? 0}</p>
+                <p className="mt-1 text-2xl font-bold tabular-nums">{stats.data?.pipelines ?? 0}</p>
               </CardContent>
             </Card>
 
@@ -309,14 +309,14 @@ export default function DashboardPage() {
                 {stats.data?.reduction?.percent != null ? (
                   <>
                     <p className={cn(
-                      "mt-1 text-2xl font-bold",
+                      "mt-1 text-2xl font-bold tabular-nums",
                       stats.data.reduction.percent > 50 ? "text-green-600 dark:text-green-400" :
                       stats.data.reduction.percent > 10 ? "text-amber-600 dark:text-amber-400" :
                       "text-muted-foreground"
                     )}>
                       {stats.data.reduction.percent.toFixed(0)}%
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground tabular-nums">
                       {formatEventsRate(stats.data.reduction.eventsIn / 3600)} → {formatEventsRate(stats.data.reduction.eventsOut / 3600)}
                     </p>
                   </>

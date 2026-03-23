@@ -171,17 +171,17 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <span>
-            CPU: <span className="font-mono text-foreground">{formatPercent(latest.cpuPercent)}</span>
+            CPU: <span className="font-mono tabular-nums text-foreground">{formatPercent(latest.cpuPercent)}</span>
           </span>
           <span>
-            Memory: <span className="font-mono text-foreground">{formatBytes(latest.memUsed)}</span>
+            Memory: <span className="font-mono tabular-nums text-foreground">{formatBytes(latest.memUsed)}</span>
             <span className="text-xs"> / {formatBytes(latest.memTotal)}</span>
           </span>
           <span>
-            Disk: <span className="font-mono text-foreground">{formatPercent(latest.fsPercent)}</span>
+            Disk: <span className="font-mono tabular-nums text-foreground">{formatPercent(latest.fsPercent)}</span>
           </span>
           <span>
-            Load: <span className="font-mono text-foreground">{latest.loadAvg1.toFixed(2)}</span>
+            Load: <span className="font-mono tabular-nums text-foreground">{latest.loadAvg1.toFixed(2)}</span>
           </span>
         </div>
         <Select
@@ -227,7 +227,7 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
                       formatter={(value, name) => (
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="text-muted-foreground">{cpuChartConfig[name as keyof typeof cpuChartConfig]?.label ?? name}</span>
-                          <span className="font-mono font-medium text-foreground">{formatPercent(Number(value) ?? 0)}</span>
+                          <span className="font-mono font-medium tabular-nums text-foreground">{formatPercent(Number(value) ?? 0)}</span>
                         </div>
                       )}
                     />
@@ -271,7 +271,7 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
                       formatter={(value, name) => (
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="text-muted-foreground">{memoryChartConfig[name as keyof typeof memoryChartConfig]?.label ?? name}</span>
-                          <span className="font-mono font-medium text-foreground">{formatPercent(Number(value) ?? 0)}</span>
+                          <span className="font-mono font-medium tabular-nums text-foreground">{formatPercent(Number(value) ?? 0)}</span>
                         </div>
                       )}
                     />
@@ -314,7 +314,7 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
                       formatter={(value, name) => (
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="text-muted-foreground">{diskChartConfig[name as keyof typeof diskChartConfig]?.label ?? name}</span>
-                          <span className="font-mono font-medium text-foreground">{formatBytesRate(Number(value) ?? 0)}</span>
+                          <span className="font-mono font-medium tabular-nums text-foreground">{formatBytesRate(Number(value) ?? 0)}</span>
                         </div>
                       )}
                     />
@@ -365,7 +365,7 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
                       formatter={(value, name) => (
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="text-muted-foreground">{networkChartConfig[name as keyof typeof networkChartConfig]?.label ?? name}</span>
-                          <span className="font-mono font-medium text-foreground">{formatBytesRate(Number(value) ?? 0)}</span>
+                          <span className="font-mono font-medium tabular-nums text-foreground">{formatBytesRate(Number(value) ?? 0)}</span>
                         </div>
                       )}
                     />
