@@ -27,6 +27,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { QueryError } from "@/components/query-error";
 
 const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; placeholder: string }> = {
   openai: { baseUrl: "https://api.openai.com/v1", placeholder: "gpt-4o" },
@@ -255,6 +256,8 @@ export function AiSettings() {
       { enabled: !!selectedTeamId },
     ),
   );
+
+  if (configQuery.isError) return <QueryError message="Failed to load AI settings" onRetry={() => configQuery.refetch()} />;
 
   if (configQuery.isLoading || !configQuery.data) {
     return (

@@ -13,6 +13,7 @@ import { Trash2, Pencil, Check, X } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { useFlowStore } from "@/stores/flow-store";
 import { findComponentDef } from "@/lib/vector/catalog";
+import { aggregateProcessStatus } from "@/lib/pipeline-status";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -38,17 +39,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PipelineMetricsChart } from "@/components/pipeline/metrics-chart";
 import { PipelineLogs } from "@/components/pipeline/pipeline-logs";
 import { useTeamStore } from "@/stores/team-store";
-
-function aggregateProcessStatus(
-  statuses: Array<{ status: string }>
-): "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING" | null {
-  if (statuses.length === 0) return null;
-  if (statuses.some((s) => s.status === "CRASHED")) return "CRASHED";
-  if (statuses.some((s) => s.status === "STOPPED")) return "STOPPED";
-  if (statuses.some((s) => s.status === "STARTING")) return "STARTING";
-  if (statuses.some((s) => s.status === "PENDING")) return "PENDING";
-  return "RUNNING";
-}
+import { QueryError } from "@/components/query-error";
 
 /**
  * Convert database PipelineNode rows into React Flow nodes.
@@ -377,9 +368,10 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   if (pipelineQuery.error) {
     return (
       <div className="-mx-6 -my-2 flex h-[calc(100vh-3.5rem)] items-center justify-center">
-        <p className="text-destructive">
-          Failed to load pipeline: {pipelineQuery.error.message}
-        </p>
+        <QueryError
+          message={`Failed to load pipeline: ${pipelineQuery.error.message}`}
+          onRetry={() => pipelineQuery.refetch()}
+        />
       </div>
     );
   }

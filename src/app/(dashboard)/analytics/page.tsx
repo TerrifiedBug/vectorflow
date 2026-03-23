@@ -24,6 +24,9 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import { formatBytes, formatTimeAxis } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type VolumeRange = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -149,11 +152,29 @@ export default function AnalyticsPage() {
   if (!selectedEnvironmentId) {
     return (
       <div className="space-y-6">
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">
-            Select an environment to view analytics.
-          </p>
+        <EmptyState title="Select an environment to view analytics" />
+      </div>
+    );
+  }
+
+  if (analytics.isError) {
+    return (
+      <div className="space-y-6">
+        <QueryError message="Failed to load analytics data" onRetry={() => analytics.refetch()} />
+      </div>
+    );
+  }
+
+  if (analytics.isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-32 w-full" />
+          ))}
         </div>
+        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-48 w-full" />
       </div>
     );
   }

@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { QueryError } from "@/components/query-error";
 import {
   Dialog,
   DialogContent,
@@ -253,6 +254,8 @@ export function ServiceAccountsSettings() {
 
   const serviceAccounts = serviceAccountsQuery.data ?? [];
   const isLoading = serviceAccountsQuery.isLoading || environmentsQuery.isLoading;
+
+  if (serviceAccountsQuery.isError) return <QueryError message="Failed to load service accounts" onRetry={() => serviceAccountsQuery.refetch()} />;
 
   return (
     <div className="space-y-6">

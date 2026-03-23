@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { QueryError } from "@/components/query-error";
 import {
   Popover,
   PopoverContent,
@@ -221,6 +222,8 @@ export function AuthSettings() {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [isDirty]);
+
+  if (settingsQuery.isError) return <QueryError message="Failed to load auth settings" onRetry={() => settingsQuery.refetch()} />;
 
   if (settingsQuery.isLoading) {
     return (
