@@ -30,6 +30,7 @@ import {
 } from "@/components/dashboard/metrics-filter-bar";
 import { MetricChart } from "@/components/dashboard/metric-chart";
 import { formatSI, formatBytesRate, formatEventsRate } from "@/lib/format";
+import { derivePipelineStatus } from "@/lib/pipeline-status";
 import { cn } from "@/lib/utils";
 import type { PanelId } from "@/components/dashboard/view-builder-dialog";
 
@@ -39,18 +40,6 @@ import {
   verticalCompactor,
 } from "react-grid-layout";
 import type { LayoutItem, Layout } from "react-grid-layout";
-
-/** Derive an overall status for a pipeline from its node statuses */
-function derivePipelineStatus(
-  nodes: Array<{ pipelineStatus: string }>
-): string {
-  if (nodes.length === 0) return "PENDING";
-  if (nodes.some((n) => n.pipelineStatus === "CRASHED")) return "CRASHED";
-  if (nodes.some((n) => n.pipelineStatus === "RUNNING")) return "RUNNING";
-  if (nodes.some((n) => n.pipelineStatus === "STARTING")) return "STARTING";
-  if (nodes.every((n) => n.pipelineStatus === "STOPPED")) return "STOPPED";
-  return nodes[0].pipelineStatus;
-}
 
 const SUMMARY_PANELS: PanelId[] = [
   "node-health-summary",

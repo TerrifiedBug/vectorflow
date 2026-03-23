@@ -26,6 +26,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryError } from "@/components/query-error";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -84,6 +85,8 @@ export function ScimSettings() {
   const scimBaseUrl = typeof window !== "undefined"
     ? `${window.location.origin}/api/scim/v2`
     : "/api/scim/v2";
+
+  if (settingsQuery.isError) return <QueryError message="Failed to load SCIM settings" onRetry={() => settingsQuery.refetch()} />;
 
   if (settingsQuery.isLoading) {
     return (

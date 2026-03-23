@@ -37,18 +37,10 @@ import { PromotePipelineDialog } from "@/components/promote-pipeline-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatEventsRate, formatBytesRate } from "@/lib/format";
+import { aggregateProcessStatus } from "@/lib/pipeline-status";
 import { tagBadgeClass, reductionBadgeClass } from "@/lib/badge-variants";
-
-function aggregateProcessStatus(
-  statuses: Array<{ status: string }>
-): "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING" | null {
-  if (statuses.length === 0) return null;
-  if (statuses.some((s) => s.status === "CRASHED")) return "CRASHED";
-  if (statuses.some((s) => s.status === "STOPPED")) return "STOPPED";
-  if (statuses.some((s) => s.status === "STARTING")) return "STARTING";
-  if (statuses.some((s) => s.status === "PENDING")) return "PENDING";
-  return "RUNNING";
-}
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 
 function sumNodeStatuses(statuses: Array<{ eventsIn: bigint; eventsOut: bigint; errorsTotal: bigint; eventsDiscarded: bigint; bytesIn: bigint; bytesOut: bigint }>) {
   let eventsIn = BigInt(0), eventsOut = BigInt(0), errorsTotal = BigInt(0), eventsDiscarded = BigInt(0), bytesIn = BigInt(0), bytesOut = BigInt(0);
@@ -203,6 +195,14 @@ export default function PipelinesPage() {
     environmentsQuery.isLoading ||
     pipelinesQuery.isLoading;
 
+  if (pipelinesQuery.isError) {
+    return (
+      <div className="space-y-2">
+        <QueryError message="Failed to load pipelines" onRetry={() => pipelinesQuery.refetch()} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-end">
@@ -221,12 +221,10 @@ export default function PipelinesPage() {
           ))}
         </div>
       ) : pipelines.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">No pipelines yet</p>
-          <Button asChild className="mt-4" variant="outline">
-            <Link href="/pipelines/new">Create your first pipeline</Link>
-          </Button>
-        </div>
+        <EmptyState
+          title="No pipelines yet"
+          action={{ label: "Create your first pipeline", href: "/pipelines/new" }}
+        />
       ) : (
         <Table>
           <TableHeader>

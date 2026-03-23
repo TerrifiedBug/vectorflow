@@ -26,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryError } from "@/components/query-error";
 import {
   Dialog,
   DialogContent,
@@ -77,6 +78,8 @@ export function TeamsManagement() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [deleteTeam, setDeleteTeam] = useState<{ id: string; name: string } | null>(null);
+
+  if (teamsQuery.isError) return <QueryError message="Failed to load teams" onRetry={() => teamsQuery.refetch()} />;
 
   if (teamsQuery.isLoading) {
     return (

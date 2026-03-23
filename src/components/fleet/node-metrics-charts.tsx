@@ -21,17 +21,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Cpu, MemoryStick, HardDrive, Network } from "lucide-react";
 import { useState } from "react";
-import { formatBytes, formatBytesRate, formatPercent } from "@/lib/format";
+import { formatBytes, formatBytesRate, formatPercent, formatTime } from "@/lib/format";
 
 interface NodeMetricsChartsProps {
   nodeId: string;
-}
-
-function formatTime(date: Date | string): string {
-  return new Date(date).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 const CHART_HEIGHT = 180;

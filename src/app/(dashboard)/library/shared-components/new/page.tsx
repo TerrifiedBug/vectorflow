@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/collapsible";
 import { SchemaForm } from "@/components/config-forms/schema-form";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/empty-state";
 
 import type { VectorComponentDef } from "@/lib/vector/types";
 
@@ -145,9 +146,7 @@ export default function NewSharedComponentPage() {
           <ArrowLeft className="h-4 w-4" />
           Back to Shared Components
         </Link>
-        <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-          Select an environment from the header to create a shared component
-        </div>
+        <EmptyState title="Select an environment from the header to create a shared component" className="p-4 text-sm" />
       </div>
     );
   }
@@ -197,11 +196,7 @@ export default function NewSharedComponentPage() {
 
           {/* Component sections by kind */}
           {filteredCatalog.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-              <p className="text-muted-foreground">
-                No components match your search.
-              </p>
-            </div>
+            <EmptyState title="No components match your search." />
           ) : (
             <div className="space-y-3">
               {groupedCatalog.map((group) => {

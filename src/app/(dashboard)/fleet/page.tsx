@@ -36,6 +36,8 @@ import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { isVersionOlder } from "@/lib/version";
 import { toast } from "sonner";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 
 const AGENT_REPO = "TerrifiedBug/vectorflow";
 
@@ -114,6 +116,14 @@ export default function FleetPage() {
     name: string;
   } | null>(null);
 
+  if (nodesQuery.isError) {
+    return (
+      <div className="space-y-6">
+        <QueryError message="Failed to load fleet data" onRetry={() => nodesQuery.refetch()} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {isLoading ? (
@@ -123,12 +133,10 @@ export default function FleetPage() {
           ))}
         </div>
       ) : nodes.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">No agents enrolled yet</p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Generate an enrollment token in the environment settings to connect agents.
-          </p>
-        </div>
+        <EmptyState
+          title="No agents enrolled yet"
+          description="Generate an enrollment token in the environment settings to connect agents."
+        />
       ) : (
         <Table>
           <TableHeader>

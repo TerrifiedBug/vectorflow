@@ -40,6 +40,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { QueryError } from "@/components/query-error";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,8 @@ export function BackupSettings() {
       },
     }),
   );
+
+  if (settingsQuery.isError) return <QueryError message="Failed to load backup settings" onRetry={() => settingsQuery.refetch()} />;
 
   return (
     <div className="space-y-6">

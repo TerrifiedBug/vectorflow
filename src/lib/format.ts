@@ -53,7 +53,15 @@ export function formatLastSeen(date: Date | string | null): string {
 
 export function formatTimestamp(date: Date | string | null): string {
   if (!date) return "Never";
-  return new Date(date).toLocaleString();
+  const d = new Date(date);
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 /** SI-suffix formatter for chart Y-axes: 1000 → "1K", 1500000 → "1.5M" */
@@ -80,4 +88,23 @@ export function formatLatency(ms: number): string {
   if (ms >= 1) return `${ms.toFixed(1)}ms`;
   if (ms >= 0.001) return `${(ms * 1000).toFixed(0)}us`;
   return `${ms.toFixed(3)}ms`;
+}
+
+/** Format a date/string to HH:MM (locale-aware, 2-digit hour and minute). */
+export function formatTime(date: Date | string): string {
+  return new Date(date).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** Format a date/string to HH:MM:SS (24-hour, no AM/PM). */
+export function formatTimeWithSeconds(date: Date | string): string {
+  const d = new Date(date);
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 }
