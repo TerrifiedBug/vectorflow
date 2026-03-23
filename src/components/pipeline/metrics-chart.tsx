@@ -92,7 +92,7 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
                   formatter={(value, name) => (
                     <div className="flex w-full items-center justify-between gap-2">
                       <span className="text-muted-foreground">{eventsChartConfig[name as keyof typeof eventsChartConfig]?.label ?? name}</span>
-                      <span className="font-mono font-medium text-foreground">{formatEventsRate(Number(value) ?? 0)}</span>
+                      <span className="font-mono font-medium tabular-nums text-foreground">{formatEventsRate(Number(value) ?? 0)}</span>
                     </div>
                   )}
                 />
@@ -138,7 +138,7 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
                   formatter={(value, name) => (
                     <div className="flex w-full items-center justify-between gap-2">
                       <span className="text-muted-foreground">{bytesChartConfig[name as keyof typeof bytesChartConfig]?.label ?? name}</span>
-                      <span className="font-mono font-medium text-foreground">{formatBytesRate(Number(value) ?? 0)}</span>
+                      <span className="font-mono font-medium tabular-nums text-foreground">{formatBytesRate(Number(value) ?? 0)}</span>
                     </div>
                   )}
                 />
@@ -184,7 +184,7 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
                   formatter={(value, name) => (
                     <div className="flex w-full items-center justify-between gap-2">
                       <span className="text-muted-foreground">{latencyChartConfig[name as keyof typeof latencyChartConfig]?.label ?? name}</span>
-                      <span className="font-mono font-medium text-foreground">{formatLatency(Number(value) ?? 0)}</span>
+                      <span className="font-mono font-medium tabular-nums text-foreground">{formatLatency(Number(value) ?? 0)}</span>
                     </div>
                   )}
                 />
