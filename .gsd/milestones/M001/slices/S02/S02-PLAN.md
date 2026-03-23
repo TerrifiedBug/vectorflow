@@ -43,7 +43,7 @@
   - Verify: `pnpm exec tsc --noEmit` exits 0 && `wc -l src/server/routers/pipeline.ts` under 850
   - Done when: `pipeline-graph.ts` service exists with 3 exported functions, pipeline router under ~800 lines, `tsc` and `eslint` pass clean
 
-- [ ] **T03: Extract dashboard router computation to service module** `est:45m`
+- [x] **T03: Extract dashboard router computation to service module** `est:45m`
   - Why: Dashboard router is 1074 lines. The `chartMetrics` endpoint alone is 360 lines of pure data transformation (time-series bucketing, downsampling, aggregation). Extracting this plus `nodeCards` and `pipelineCards` assembly brings the router well under 800 lines and produces a testable service module for S04.
   - Files: `src/server/routers/dashboard.ts`, `src/server/services/dashboard-data.ts`
   - Do: Create `dashboard-data.ts` service. Extract: (1) `chartMetrics` computation including `addPoint`, `downsample`, `avgSeries`, `sumSeries` utility functions — accept the DB query results and metric samples as parameters (do NOT import `metricStore` in the service — the router passes `metricStore.getLatestAll()` results in); (2) `nodeCards` data assembly — accept raw DB query results, return assembled card data; (3) `pipelineCards` data assembly — same pattern. The service must remain stateless — all singleton/side-effect access stays in the router.
