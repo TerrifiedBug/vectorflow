@@ -10,7 +10,7 @@ Visual pipeline management with fleet deployment — build Vector configs on a c
 
 ## Current State
 
-Feature-rich and functional. ~316 source files, ~63K lines of TypeScript, plus a Go agent. The product has grown fast with many enterprise features (OIDC, SCIM, audit logging, RBAC, 2FA, alerting, git sync, backups, shared components, AI suggestions). However, the codebase has zero tests, several large monolithic files (1000+ lines), some TypeScript errors from schema drift, duplicated utility functions, and UI inconsistencies across the 35+ dashboard pages.
+Feature-rich and functional with a clean quality baseline. ~316 source files, ~63K lines of TypeScript, plus a Go agent. M001 established: zero TS/lint errors, 105 foundational tests, all large files refactored under ~800 lines, consistent UI patterns across 30+ dashboard pages, shared utility modules, extracted service layers, and a performance audit. The codebase is ready for feature development with quality guardrails in place.
 
 ## Architecture / Key Patterns
 
@@ -20,6 +20,9 @@ Feature-rich and functional. ~316 source files, ~63K lines of TypeScript, plus a
 - **Agent:** Go binary, pull-based config delivery, heartbeat/metrics push
 - **Deployment:** Docker (standalone Next.js output), PostgreSQL
 - **Patterns:** Fire-and-forget audit logging, AES-256-GCM encryption for secrets, structured logger with log-injection prevention
+- **Testing:** Vitest 4.1.0 + vitest-mock-extended, Prisma deep mocking (D006 inline pattern), 105 tests across 7 files
+- **Services:** Pure function service modules in `src/server/services/` (D004 pattern), shared utilities in `src/lib/` (pipeline-status, format, status)
+- **UI:** Shared `EmptyState` and `QueryError` components for consistent dashboard states
 
 ## Capability Contract
 
@@ -27,9 +30,8 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 
 ## Milestone Sequence
 
-- [x] M001: Baseline Quality — Fix TS errors, refactor large files, consistent UI, foundational tests, performance audit
-  - [x] S01: TypeScript fixes & shared utilities — completed 2026-03-22
-  - [x] S02: Router & component refactoring — completed 2026-03-23
-  - [x] S03: UI consistency sweep — completed 2026-03-23
-  - [x] S04: Foundational test suite — completed 2026-03-23
-  - [x] S05: Performance audit & optimization — completed 2026-03-23
+- [x] **M001: Baseline Quality** — completed 2026-03-23
+  - Zero TS/lint errors, 105 tests, all files under ~800 lines, consistent UI, performance audit
+  - 9 requirements validated (R001–R008, R010), 1 deferred (R009)
+  - 62 files changed, 7662 insertions, 3578 deletions
+  - See `.gsd/milestones/M001/M001-SUMMARY.md` for full details

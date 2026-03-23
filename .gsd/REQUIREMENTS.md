@@ -4,29 +4,20 @@ This file is the explicit capability and coverage contract for the project.
 
 ## Active
 
-### R004 — Utility functions duplicated across files (e.g., `aggregateProcessStatus` in 3 files, `derivePipelineStatus` in dashboard page) are extracted to shared modules in `src/lib/`.
-- Class: quality-attribute
-- Status: active
-- Description: Utility functions duplicated across files (e.g., `aggregateProcessStatus` in 3 files, `derivePipelineStatus` in dashboard page) are extracted to shared modules in `src/lib/`.
-- Why it matters: Duplicated logic drifts over time and creates maintenance burden.
-- Source: execution
-- Primary owning slice: M001/S01
-- Supporting slices: M001/S02
-- Validation: S01/T01 creates shared modules, S01/T02 removes all inline duplicates; verified by grep checks returning no matches in src/app and src/components
-- Notes: S01/T01 created shared modules, S01/T02 replaced all inline duplicates in 10 consumer files. grep confirms zero inline copies remain. S02 may discover additional duplicates during file splitting.
+(No active requirements — all M001 requirements validated or deferred.)
+
+## Validated
 
 ### R008 — `eslint` runs clean with no errors across the codebase.
 - Class: quality-attribute
-- Status: active
+- Status: validated
 - Description: `eslint` runs clean with no errors across the codebase.
 - Why it matters: Lint errors signal code quality issues and should be addressed alongside TS errors.
 - Source: inferred
 - Primary owning slice: M001/S01
 - Supporting slices: none
-- Validation: `pnpm exec eslint src/` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files
-- Notes: ESLint config uses next/core-web-vitals and next/typescript presets. S01 verified no regression — eslint src/ exits 0 after shared utility extraction and consumer rewiring.
-
-## Validated
+- Validation: S01 established eslint-clean baseline after shared utility extraction. S02, S03, S04, S05 each verified `pnpm exec eslint src/` exits 0 after their changes. Milestone closeout verification: `pnpm exec eslint src/` exits 0 — no regressions across all 5 slices.
+- Notes: Validated at milestone closeout. ESLint config uses next/core-web-vitals and next/typescript presets. Clean exit maintained across all 62 files changed in M001.
 
 ### R001 — `tsc --noEmit` must pass with zero errors. Currently 8 errors: stale Prisma client fields in `event-log.tsx` destructuring, missing `monaco-editor` type resolution in `vrl-editor.tsx` and `vrl-language.ts`.
 - Class: quality-attribute
@@ -60,6 +51,17 @@ This file is the explicit capability and coverage contract for the project.
 - Supporting slices: none
 - Validation: S02 verified: alerts page 1910→45 lines, pipeline router 1318→847, dashboard router 1074→652, team-settings 865→747, users-settings 813→522. `find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | sort -rn` shows no non-exempt file over ~800 lines (exempt: flow-store.ts per D002, function-registry.ts per D003).
 - Notes: S02 split 5 over-target files across 4 tasks. Biggest win: alerts page from 1910 to 45 lines via 4 section components. Two new service modules created (pipeline-graph.ts, dashboard-data.ts). Two dialog extraction files created. All exempt files documented in D002/D003.
+
+### R004 — Utility functions duplicated across files (e.g., `aggregateProcessStatus` in 3 files, `derivePipelineStatus` in dashboard page) are extracted to shared modules in `src/lib/`.
+- Class: quality-attribute
+- Status: validated
+- Description: Utility functions duplicated across files (e.g., `aggregateProcessStatus` in 3 files, `derivePipelineStatus` in dashboard page) are extracted to shared modules in `src/lib/`.
+- Why it matters: Duplicated logic drifts over time and creates maintenance burden.
+- Source: execution
+- Primary owning slice: M001/S01
+- Supporting slices: M001/S02
+- Validation: S01 extracted 7 duplicated utility functions to 3 shared modules (pipeline-status.ts, format.ts, status.ts). S01/T02 replaced all inline duplicates in 10 consumer files. Milestone closeout verification: `rg 'function aggregateProcessStatus' src/app src/components` returns 0 matches. `rg 'function derivePipelineStatus' src/app src/components` returns 0 matches. `rg '^function formatTime' src/app src/components` returns 0 matches. `rg '^const STATUS_COLORS' src/components/fleet` returns 0 matches. `rg '^function formatTimestamp' src/app` returns 0 matches. Zero inline copies remain.
+- Notes: Validated at milestone closeout. S01 created shared modules, S01/T02 removed all inline duplicates, S02 did not discover additional duplicates during file splitting. All grep checks confirm zero inline copies across the entire codebase.
 
 ### R005 — All 35+ dashboard pages have consistent loading skeletons, empty state messaging with CTAs, and error handling. No page should show a blank white screen during loading or when data is empty.
 - Class: primary-user-loop
@@ -149,11 +151,11 @@ This file is the explicit capability and coverage contract for the project.
 | R001 | quality-attribute | validated | M001/S01 | none | S01 fixed all 8 original TS errors. S02, S03, S04, S05 each verified tsc --noEmit exits 0 after their changes. All 5 slices pass — zero type errors sustained throughout M001. |
 | R002 | quality-attribute | validated | M001/S04 | none | S04 verified: 105 tests pass across 7 test files. Auth domain: 25 TOTP tests (generation, verification, backup codes) + 13 crypto tests (encrypt/decrypt round-trip, error handling). Pipeline CRUD domain: 15 computeChartMetrics tests + 13 pipeline-graph tests (detectConfigChanges, saveGraphComponents, listPipelinesForEnvironment). Deploy domain: 8 deploy-agent tests (deployAgent error/success, undeployAgent). Alert domain: 12 evaluateAlerts tests (firing, resolving, deduplication, binary metrics, duration tracking). Pipeline utilities: 19 tests for aggregateProcessStatus/derivePipelineStatus. `pnpm exec vitest run` exits 0, `pnpm test` configured. |
 | R003 | quality-attribute | validated | M001/S02 | none | S02 verified: alerts page 1910→45 lines, pipeline router 1318→847, dashboard router 1074→652, team-settings 865→747, users-settings 813→522. `find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | sort -rn` shows no non-exempt file over ~800 lines (exempt: flow-store.ts per D002, function-registry.ts per D003). |
-| R004 | quality-attribute | active | M001/S01 | M001/S02 | S01/T01 creates shared modules, S01/T02 removes all inline duplicates; verified by grep checks returning no matches in src/app and src/components |
+| R004 | quality-attribute | validated | M001/S01 | M001/S02 | S01 extracted 7 duplicated utility functions to 3 shared modules (pipeline-status.ts, format.ts, status.ts). S01/T02 replaced all inline duplicates in 10 consumer files. Milestone closeout verification: `rg 'function aggregateProcessStatus' src/app src/components` returns 0 matches. `rg 'function derivePipelineStatus' src/app src/components` returns 0 matches. `rg '^function formatTime' src/app src/components` returns 0 matches. `rg '^const STATUS_COLORS' src/components/fleet` returns 0 matches. `rg '^function formatTimestamp' src/app` returns 0 matches. Zero inline copies remain. |
 | R005 | primary-user-loop | validated | M001/S03 | none | S03 verified: shared EmptyState component adopted in 17 dashboard files, shared QueryError component adopted in 27 dashboard files. `rg 'border border-dashed' src/app/(dashboard)/` returns 0 matches — all inline empty states replaced. Analytics page has loading skeleton. Dashboard and environment-dependent pages have "select environment" guards. `tsc --noEmit` exits 0, `eslint src/` exits 0. |
 | R006 | primary-user-loop | validated | M001/S03 | none | S03 verified: consistent EmptyState pattern (icon + title + description + CTA) across all 17+ pages. Consistent QueryError pattern (AlertTriangle + message + retry) across all 27 data-fetching pages. Error guard placement follows established conventions (early return, inline ternary for Card wrappers, before hide-when-empty). Visual consistency of empty/error/loading states confirmed via shared component adoption. |
 | R007 | quality-attribute | validated | M001/S02 | M001/S04 | S02 created pipeline-graph.ts (5 exports, 621 lines) and dashboard-data.ts (3 exports, 449 lines) as stateless service modules. S04 proved testability: all service functions are directly callable with plain parameters — no tRPC context mocking needed. 36 tests across pipeline-graph, dashboard-data, deploy-agent, and alert-evaluator pass against service functions with Prisma mocking. Pattern validated per D004. |
-| R008 | quality-attribute | active | M001/S01 | none | `pnpm exec eslint src/` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files |
+| R008 | quality-attribute | validated | M001/S01 | none | S01 established eslint-clean baseline. All 5 slices verified eslint src/ exits 0. Milestone closeout: eslint src/ exits 0. |
 | R009 | quality-attribute | deferred | none | none | unmapped |
 | R010 | quality-attribute | validated | M001/S05 | none | S05 verified: @next/bundle-analyzer@16.2.1 installed and wired into next.config.ts. Bundle analysis completed (Turbopack caveat documented — use --webpack flag). Prisma client leak fixed via import type for AlertMetric/AlertCondition. nodeCards allComponentNodes query scoped to user's pipeline IDs (eliminates full-table scan). No N+1 patterns found. Missing @@index on PipelineNode/PipelineEdge documented as deferred P1 recommendation. Performance audit report at S05-REPORT.md covers 6 sections. tsc --noEmit exits 0, eslint src/ exits 0. |
 | R011 | quality-attribute | out-of-scope | none | none | n/a |
@@ -161,7 +163,7 @@ This file is the explicit capability and coverage contract for the project.
 
 ## Coverage Summary
 
-- Active requirements: 2
-- Mapped to slices: 2
-- Validated: 7 (R001, R002, R003, R005, R006, R007, R010)
+- Active requirements: 0
+- Mapped to slices: 0
+- Validated: 9 (R001, R002, R003, R004, R005, R006, R007, R008, R010)
 - Unmapped active requirements: 0

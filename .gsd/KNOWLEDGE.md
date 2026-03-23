@@ -77,3 +77,24 @@ The `vi.mock` factory is hoisted and runs before the mocked module's first impor
 **Gotcha:** Next.js 16 defaults to Turbopack for builds. `@next/bundle-analyzer` uses the webpack `BundleAnalyzerPlugin` under the hood, so `ANALYZE=true pnpm build` silently produces no report files when Turbopack is active. The plugin prints a warning to stderr but the build succeeds with exit 0.
 
 **Workaround:** Run `ANALYZE=true pnpm build --webpack` to force webpack mode and generate `.next/analyze/*.html` reports. Alternatively, use `next experimental-analyze` for Turbopack-native analysis (different output format).
+
+## Files Near the ~800-line Threshold (from M001 closeout)
+
+**Watch list:** After M001, the largest non-exempt files are `pipeline.ts` (847), `vrl-editor.tsx` (795), `notification-channels-section.tsx` (750), `team-settings.tsx` (747), `sidebar.tsx` (727). Any feature additions to these files should consider further extraction to stay under ~800 lines.
+
+**Exempt files:** `flow-store.ts` (951 lines) — complex Zustand store, pre-existing, not refactored in M001 per D002's moderate scope. `function-registry.ts` (1775 lines) — purely declarative VRL function definitions, exempt per D003.
+
+## Service Extraction Enables Testability (from M001 cross-slice observation)
+
+**Key insight:** The S02 service extraction (pipeline-graph.ts, dashboard-data.ts) was the critical enabler for S04 testing. Service functions accept plain parameters (userId, pipelineId, raw data) — not tRPC `ctx`. This means tests call them directly with Prisma mocks and don't need to set up tRPC middleware chains, auth context, or session objects. If you need to make new router logic testable, extract it to a service module first (D004 pattern).
+
+**Corollary:** Don't try to test tRPC procedures directly — the middleware chain (withAudit, withTeamAccess, etc.) and context setup make it disproportionately expensive. Test the service function, not the router.
+
+## Quality Guardrails After M001
+
+**Three-command verification:** Run these after any change to confirm no regressions:
+1. `pnpm exec tsc --noEmit` — type safety (catches import/export mismatches, schema drift)
+2. `pnpm exec eslint src/` — code quality (catches unused imports, React hook violations)
+3. `pnpm test` — behavioral correctness (105 tests across auth, pipeline, deploy, alerts)
+
+All three should exit 0. If any fails, fix before merging.
