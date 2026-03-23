@@ -59,3 +59,15 @@ const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 The `vi.mock` factory is hoisted and runs before the mocked module's first import. The `prisma` import then gives you the mock object. Cast to `DeepMockProxy` for type-safe mock API access. Call `mockReset(prismaMock)` in `beforeEach` to prevent state leaks between tests.
 
 **Path aliases in tests:** `vitest.config.ts` mirrors `tsconfig.json` paths: `@/` resolves to `./src/`. Tests import from `@/server/services/...` just like production code.
+
+## Multi-Module Mocking Convention (from M001/S04)
+
+**Pattern:** Services with many dependencies (e.g., `deploy-agent.ts` depends on 8 modules) need one `vi.mock()` call per module. Each gets its own factory. Order doesn't matter since `vi.mock` is hoisted.
+
+**Tx parameter mocking:** Pass `prismaMock as unknown as Tx` — the `DeepMockProxy` satisfies the `Prisma.TransactionClient` interface for transaction-scoped functions like `saveGraphComponents`.
+
+**Singleton mocking:** For singletons that expose methods (like `pushRegistry.send()`), mock the entire module: `vi.mock("@/server/services/push-registry", () => ({ pushRegistry: { send: vi.fn() } }))`. Then import and cast to access the mock.
+
+**Environment variable isolation:** For tests that depend on env vars (like `crypto.test.ts` needing `NEXTAUTH_SECRET`), save/restore `process.env` in `beforeAll`/`afterAll` and use `try/finally` blocks for per-test mutations. Never leave env mutations dangling.
+
+**Fake timers for time-dependent logic:** Use `vi.useFakeTimers()` + `vi.setSystemTime()` to simulate time progression (e.g., alert duration tracking). Always restore with `vi.useRealTimers()` in `afterEach`.

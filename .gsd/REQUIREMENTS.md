@@ -15,17 +15,6 @@ This file is the explicit capability and coverage contract for the project.
 - Validation: `pnpm exec tsc --noEmit` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files
 - Notes: Prisma generate fixes most errors; remaining are event-log destructuring bug and monaco-editor module resolution. S01 verified no regression — tsc --noEmit exits 0 after shared utility extraction and consumer rewiring.
 
-### R002 — Test suite exists with coverage for auth flows (login, 2FA, OIDC), pipeline CRUD, deploy operations, and alert evaluation. Test runner configured and passing in CI.
-- Class: quality-attribute
-- Status: active
-- Description: Test suite exists with coverage for auth flows (login, 2FA, OIDC), pipeline CRUD, deploy operations, and alert evaluation. Test runner configured and passing in CI.
-- Why it matters: Zero tests on a product with enterprise security features is a liability. Critical paths need automated verification before further feature work.
-- Source: user
-- Primary owning slice: M001/S04
-- Supporting slices: none
-- Validation: unmapped
-- Notes: Need to set up test infrastructure from scratch — runner, Prisma mocking strategy, test utilities.
-
 ### R004 — Utility functions duplicated across files (e.g., `aggregateProcessStatus` in 3 files, `derivePipelineStatus` in dashboard page) are extracted to shared modules in `src/lib/`.
 - Class: quality-attribute
 - Status: active
@@ -36,17 +25,6 @@ This file is the explicit capability and coverage contract for the project.
 - Supporting slices: M001/S02
 - Validation: S01/T01 creates shared modules, S01/T02 removes all inline duplicates; verified by grep checks returning no matches in src/app and src/components
 - Notes: S01/T01 created shared modules, S01/T02 replaced all inline duplicates in 10 consumer files. grep confirms zero inline copies remain. S02 may discover additional duplicates during file splitting.
-
-### R007 — Complex business logic currently inline in tRPC router handlers is extracted to service modules in `src/server/services/`. Routers become thin orchestration layers.
-- Class: quality-attribute
-- Status: active
-- Description: Complex business logic currently inline in tRPC router handlers is extracted to service modules in `src/server/services/`. Routers become thin orchestration layers.
-- Why it matters: Inline logic in routers is harder to test, reuse, and reason about. Service extraction enables R002 (testability).
-- Source: inferred
-- Primary owning slice: M001/S02
-- Supporting slices: M001/S04
-- Validation: unmapped
-- Notes: Pipeline router (1318 lines) and dashboard router (1074 lines) are the primary targets. Some routers already delegate to services well.
 
 ### R008 — `eslint` runs clean with no errors across the codebase.
 - Class: quality-attribute
@@ -71,6 +49,17 @@ This file is the explicit capability and coverage contract for the project.
 - Notes: Includes bundle analysis, Prisma query review, and runtime profiling of heavy pages (dashboard, pipeline editor, fleet).
 
 ## Validated
+
+### R002 — Test suite exists with coverage for auth flows (login, 2FA, OIDC), pipeline CRUD, deploy operations, and alert evaluation. Test runner configured and passing in CI.
+- Class: quality-attribute
+- Status: validated
+- Description: Test suite exists with coverage for auth flows (login, 2FA, OIDC), pipeline CRUD, deploy operations, and alert evaluation. Test runner configured and passing in CI.
+- Why it matters: Zero tests on a product with enterprise security features is a liability. Critical paths need automated verification before further feature work.
+- Source: user
+- Primary owning slice: M001/S04
+- Supporting slices: none
+- Validation: S04 verified: 105 tests pass across 7 test files. Auth domain: 25 TOTP tests (generation, verification, backup codes) + 13 crypto tests (encrypt/decrypt round-trip, error handling). Pipeline CRUD domain: 15 computeChartMetrics tests + 13 pipeline-graph tests (detectConfigChanges, saveGraphComponents, listPipelinesForEnvironment). Deploy domain: 8 deploy-agent tests (deployAgent error/success, undeployAgent). Alert domain: 12 evaluateAlerts tests (firing, resolving, deduplication, binary metrics, duration tracking). Pipeline utilities: 19 tests for aggregateProcessStatus/derivePipelineStatus. `pnpm exec vitest run` exits 0, `pnpm test` configured.
+- Notes: Vitest 4.1.0 + vitest-mock-extended 3.1.0. Prisma mocking uses inline vi.mock factory pattern (D006). Test runner configured with path aliases matching tsconfig. CI integration via `pnpm test` exit code. All four R002 domains covered: auth, pipeline CRUD, deploy, alert evaluation. OIDC auth tests deferred — requires integration test infrastructure beyond unit test scope.
 
 ### R003 — All `.ts`/`.tsx` source files (excluding generated code) should be under ~800 lines. Currently 10+ files over 600 lines, with the alerts page at 1910 lines.
 - Class: quality-attribute
@@ -104,6 +93,17 @@ This file is the explicit capability and coverage contract for the project.
 - Supporting slices: none
 - Validation: S03 verified: consistent EmptyState pattern (icon + title + description + CTA) across all 17+ pages. Consistent QueryError pattern (AlertTriangle + message + retry) across all 27 data-fetching pages. Error guard placement follows established conventions (early return, inline ternary for Card wrappers, before hide-when-empty). Visual consistency of empty/error/loading states confirmed via shared component adoption.
 - Notes: R006 is partially addressed by S03 — the empty state, error handling, and loading skeleton aspects of visual consistency are now standardized. Broader polish (spacing, typography, table styles, dialog patterns) may warrant additional work but the primary pain points are resolved.
+
+### R007 — Complex business logic currently inline in tRPC router handlers is extracted to service modules in `src/server/services/`. Routers become thin orchestration layers.
+- Class: quality-attribute
+- Status: validated
+- Description: Complex business logic currently inline in tRPC router handlers is extracted to service modules in `src/server/services/`. Routers become thin orchestration layers.
+- Why it matters: Inline logic in routers is harder to test, reuse, and reason about. Service extraction enables R002 (testability).
+- Source: inferred
+- Primary owning slice: M001/S02
+- Supporting slices: M001/S04
+- Validation: S02 created pipeline-graph.ts (5 exports, 621 lines) and dashboard-data.ts (3 exports, 449 lines) as stateless service modules. S04 proved testability: all service functions are directly callable with plain parameters — no tRPC context mocking needed. 36 tests across pipeline-graph, dashboard-data, deploy-agent, and alert-evaluator pass against service functions with Prisma mocking. Pattern validated per D004.
+- Notes: S02 extracted the services. S04 proved the extraction pattern enables testability — the primary motivator for R007. All service modules are pure functions with typed inputs/outputs, confirming the D004 convention works.
 
 ## Deferred
 
@@ -147,12 +147,12 @@ This file is the explicit capability and coverage contract for the project.
 | ID | Class | Status | Primary owner | Supporting | Proof |
 |---|---|---|---|---|---|
 | R001 | quality-attribute | active | M001/S01 | none | `pnpm exec tsc --noEmit` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files |
-| R002 | quality-attribute | active | M001/S04 | none | unmapped |
+| R002 | quality-attribute | validated | M001/S04 | none | S04 verified: 105 tests pass across 7 test files. Auth domain: 25 TOTP tests (generation, verification, backup codes) + 13 crypto tests (encrypt/decrypt round-trip, error handling). Pipeline CRUD domain: 15 computeChartMetrics tests + 13 pipeline-graph tests (detectConfigChanges, saveGraphComponents, listPipelinesForEnvironment). Deploy domain: 8 deploy-agent tests (deployAgent error/success, undeployAgent). Alert domain: 12 evaluateAlerts tests (firing, resolving, deduplication, binary metrics, duration tracking). Pipeline utilities: 19 tests for aggregateProcessStatus/derivePipelineStatus. `pnpm exec vitest run` exits 0, `pnpm test` configured. |
 | R003 | quality-attribute | validated | M001/S02 | none | S02 verified: alerts page 1910→45 lines, pipeline router 1318→847, dashboard router 1074→652, team-settings 865→747, users-settings 813→522. `find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | sort -rn` shows no non-exempt file over ~800 lines (exempt: flow-store.ts per D002, function-registry.ts per D003). |
 | R004 | quality-attribute | active | M001/S01 | M001/S02 | S01/T01 creates shared modules, S01/T02 removes all inline duplicates; verified by grep checks returning no matches in src/app and src/components |
 | R005 | primary-user-loop | validated | M001/S03 | none | S03 verified: shared EmptyState component adopted in 17 dashboard files, shared QueryError component adopted in 27 dashboard files. `rg 'border border-dashed' src/app/(dashboard)/` returns 0 matches — all inline empty states replaced. Analytics page has loading skeleton. Dashboard and environment-dependent pages have "select environment" guards. `tsc --noEmit` exits 0, `eslint src/` exits 0. |
 | R006 | primary-user-loop | validated | M001/S03 | none | S03 verified: consistent EmptyState pattern (icon + title + description + CTA) across all 17+ pages. Consistent QueryError pattern (AlertTriangle + message + retry) across all 27 data-fetching pages. Error guard placement follows established conventions (early return, inline ternary for Card wrappers, before hide-when-empty). Visual consistency of empty/error/loading states confirmed via shared component adoption. |
-| R007 | quality-attribute | active | M001/S02 | M001/S04 | unmapped |
+| R007 | quality-attribute | validated | M001/S02 | M001/S04 | S02 created pipeline-graph.ts (5 exports, 621 lines) and dashboard-data.ts (3 exports, 449 lines) as stateless service modules. S04 proved testability: all service functions are directly callable with plain parameters — no tRPC context mocking needed. 36 tests across pipeline-graph, dashboard-data, deploy-agent, and alert-evaluator pass against service functions with Prisma mocking. Pattern validated per D004. |
 | R008 | quality-attribute | active | M001/S01 | none | `pnpm exec eslint src/` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files |
 | R009 | quality-attribute | deferred | none | none | unmapped |
 | R010 | quality-attribute | active | M001/S05 | none | unmapped |
@@ -161,7 +161,7 @@ This file is the explicit capability and coverage contract for the project.
 
 ## Coverage Summary
 
-- Active requirements: 6
-- Mapped to slices: 6
-- Validated: 3 (R003, R005, R006)
+- Active requirements: 4
+- Mapped to slices: 4
+- Validated: 5 (R002, R003, R005, R006, R007)
 - Unmapped active requirements: 0

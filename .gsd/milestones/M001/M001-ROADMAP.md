@@ -62,7 +62,7 @@ This milestone is complete only when all are true:
 - [x] **S03: UI consistency sweep** `risk:low` `depends:[S01]`
   > After this: Every dashboard page has consistent loading skeletons, empty states with CTAs, and error handling. Visual rough edges are cleaned up.
 
-- [ ] **S04: Foundational test suite** `risk:medium` `depends:[S01,S02]`
+- [x] **S04: Foundational test suite** `risk:medium` `depends:[S01,S02]`
   > After this: Test infrastructure is set up, foundational tests pass for auth flows, pipeline CRUD, deploy operations, and alert evaluation.
 
 - [ ] **S05: Performance audit & optimization** `risk:medium` `depends:[S01,S02]`

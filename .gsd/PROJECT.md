@@ -31,5 +31,5 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
   - [x] S01: TypeScript fixes & shared utilities — completed 2026-03-22
   - [x] S02: Router & component refactoring — completed 2026-03-23
   - [x] S03: UI consistency sweep — completed 2026-03-23
-  - [ ] S04: Foundational test suite
+  - [x] S04: Foundational test suite — completed 2026-03-23
   - [ ] S05: Performance audit & optimization
