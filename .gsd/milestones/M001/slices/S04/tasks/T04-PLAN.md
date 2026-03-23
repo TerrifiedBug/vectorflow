@@ -88,6 +88,13 @@ After this task, all 7 test files exist and pass, covering all four R002 domains
 - `eslint.config.mjs` — current eslint config; may need test file overrides
 - `src/server/services/__tests__/alert-evaluator.test.ts` — created in T03; reference for Prisma mocking pattern
 
+## Observability Impact
+
+- **Test output**: `pnpm exec vitest run --reporter=verbose -- pipeline-graph` and `-- deploy-agent` show per-test pass/fail with durations
+- **Failure visibility**: Vitest outputs assertion diffs with expected/received values on any test failure — these tests cover TRPCError codes/messages which surface exact error details
+- **CI integration**: `pnpm test` exits non-zero on any test failure, suitable for CI gating; all 7 test files run together
+- **Mock state**: `prismaMock` resets via `mockReset(prismaMock)` in `beforeEach` — stale mock state cannot leak across tests
+
 ## Expected Output
 
 - `src/server/services/__tests__/pipeline-graph.test.ts` — new test file for pipeline CRUD domain

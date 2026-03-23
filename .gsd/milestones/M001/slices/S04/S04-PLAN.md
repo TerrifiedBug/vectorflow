@@ -68,7 +68,7 @@
   - Verify: `pnpm exec vitest run --reporter=verbose` passes with alert-evaluator tests green
   - Done when: `src/server/services/__tests__/alert-evaluator.test.ts` exists and passes
 
-- [ ] **T04: Write pipeline-graph and deploy-agent tests with Prisma mocking** `est:45m`
+- [x] **T04: Write pipeline-graph and deploy-agent tests with Prisma mocking** `est:45m`
   - Why: Covers pipeline CRUD and deploy domains (R002). These are the most complex mocking targets with nested service dependencies, `Tx` parameter, and TRPCError throw sites. Benefits from mocking patterns proven in T03.
   - Files: `src/server/services/__tests__/pipeline-graph.test.ts`, `src/server/services/__tests__/deploy-agent.test.ts`
   - Do: For pipeline-graph: mock `@/lib/prisma` and `@/lib/config-generator` (`generateVectorYaml`). Test `detectConfigChanges` (pure after mocking YAML generation), `saveGraphComponents` error paths (pipeline not found, duplicate component keys), `listPipelinesForEnvironment`. For deploy-agent: mock prisma and service dependencies (`validateConfig`, `createVersion`, `gitSyncCommitPipeline`, `pushRegistry`). Test `deployAgent` error paths (pipeline not found, validation failure). Ensure `tsc --noEmit` and `eslint src/` still pass after all test files are written.
