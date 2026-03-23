@@ -54,7 +54,7 @@
   - Verify: `pnpm exec vitest run --reporter=verbose` passes with dashboard-data tests green
   - Done when: `pnpm test` exits 0 and `src/server/services/__tests__/dashboard-data.test.ts` exists with passing tests
 
-- [ ] **T02: Write auth and utility pure-function tests (totp, crypto, pipeline-status)** `est:30m`
+- [x] **T02: Write auth and utility pure-function tests (totp, crypto, pipeline-status)** `est:30m`
   - Why: Covers the auth domain (R002) with TOTP and crypto tests, plus shared utility coverage. All pure functions — builds test confidence before Prisma mocking.
   - Files: `src/server/services/__tests__/totp.test.ts`, `src/server/services/__tests__/crypto.test.ts`, `src/lib/__tests__/pipeline-status.test.ts`
   - Do: Test TOTP generation/verification (valid, expired, wrong code), backup codes (generate, hash, verify, consume-on-use). Test encrypt/decrypt round-trip (set `NEXTAUTH_SECRET` env var in test). Test `aggregateProcessStatus` and `derivePipelineStatus` with various inputs including edge cases (empty array, all same status).
