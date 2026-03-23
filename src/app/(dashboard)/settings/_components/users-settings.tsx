@@ -3,25 +3,28 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { copyToClipboard } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Shield,
-  Loader2,
   Trash2,
   Lock,
   Unlock,
   KeyRound,
-  Copy,
   UserPlus,
   Crown,
   Plus,
   X,
 } from "lucide-react";
+import {
+  AssignToTeamDialog,
+  UserLockUnlockDialog,
+  DeleteUserDialog,
+  CreateUserDialog,
+  UserResetPasswordDialog,
+  PasswordDisplayDialog,
+} from "./user-management-dialogs";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -29,13 +32,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -46,14 +42,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   Popover,
@@ -77,10 +65,6 @@ export function UsersSettings() {
   const [removeFromTeamConfirm, setRemoveFromTeamConfirm] = useState<{ userId: string; userName: string; teamId: string; teamName: string } | null>(null);
   const [toggleSuperAdminConfirm, setToggleSuperAdminConfirm] = useState<{ userId: string; userName: string; isSuperAdmin: boolean } | null>(null);
   const [createUserOpen, setCreateUserOpen] = useState(false);
-  const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserTeamId, setNewUserTeamId] = useState("");
-  const [newUserRole, setNewUserRole] = useState<"VIEWER" | "EDITOR" | "ADMIN">("VIEWER");
   const [showCreatedPassword, setShowCreatedPassword] = useState(false);
   const [createdPassword, setCreatedPassword] = useState("");
 
@@ -135,10 +119,6 @@ export function UsersSettings() {
         setCreatedPassword(data.generatedPassword);
         setShowCreatedPassword(true);
         setCreateUserOpen(false);
-        setNewUserEmail("");
-        setNewUserName("");
-        setNewUserTeamId("");
-        setNewUserRole("VIEWER");
       },
       onError: (error) => toast.error(error.message),
     })
@@ -424,357 +404,86 @@ export function UsersSettings() {
         </CardContent>
       </Card>
 
-      {/* Assign to Team Dialog */}
-      <Dialog open={!!assignDialog} onOpenChange={(open) => {
-        if (!open) {
+      {/* Extracted dialog components */}
+      <AssignToTeamDialog
+        user={assignDialog}
+        onClose={() => {
           setAssignDialog(null);
           setAssignTeamId("");
           setAssignRole("VIEWER");
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Assign to Team</DialogTitle>
-            <DialogDescription>
-              Assign <span className="font-medium">{assignDialog?.userName}</span> to a team with a specific role.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="assign-team">Team</Label>
-              <Select value={assignTeamId} onValueChange={setAssignTeamId}>
-                <SelectTrigger id="assign-team" className="w-full">
-                  <SelectValue placeholder="Select a team" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(teamsQuery.data ?? []).map((team) => (
-                    <SelectItem key={team.id} value={team.id}>
-                      {team.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="assign-role">Role</Label>
-              <Select
-                value={assignRole}
-                onValueChange={(val: "VIEWER" | "EDITOR" | "ADMIN") => setAssignRole(val)}
-              >
-                <SelectTrigger id="assign-role" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="VIEWER">Viewer</SelectItem>
-                  <SelectItem value="EDITOR">Editor</SelectItem>
-                  <SelectItem value="ADMIN">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setAssignDialog(null);
-                setAssignTeamId("");
-                setAssignRole("VIEWER");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={assignMutation.isPending || !assignTeamId}
-              onClick={() => {
-                if (!assignDialog) return;
-                assignMutation.mutate({
-                  userId: assignDialog.userId,
-                  teamId: assignTeamId,
-                  role: assignRole,
-                });
-              }}
-            >
-              {assignMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Assigning...
-                </>
-              ) : (
-                "Assign"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        }}
+        teams={teamsQuery.data ?? []}
+        teamId={assignTeamId}
+        onTeamIdChange={setAssignTeamId}
+        role={assignRole}
+        onRoleChange={setAssignRole}
+        isPending={assignMutation.isPending}
+        onConfirm={() => {
+          if (!assignDialog) return;
+          assignMutation.mutate({
+            userId: assignDialog.userId,
+            teamId: assignTeamId,
+            role: assignRole,
+          });
+        }}
+      />
 
-      {/* Lock/Unlock Confirmation Dialog */}
-      <Dialog open={!!lockDialog} onOpenChange={(open) => !open && setLockDialog(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{lockDialog?.action === "lock" ? "Lock user?" : "Unlock user?"}</DialogTitle>
-            <DialogDescription>
-              {lockDialog?.action === "lock"
-                ? <><span className="font-medium">{lockDialog?.userName}</span> will be unable to log in until unlocked.</>
-                : <><span className="font-medium">{lockDialog?.userName}</span> will be able to log in again.</>}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLockDialog(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant={lockDialog?.action === "lock" ? "destructive" : "default"}
-              disabled={lockUserMutation.isPending || unlockUserMutation.isPending}
-              onClick={() => {
-                if (!lockDialog) return;
-                if (lockDialog.action === "lock") {
-                  lockUserMutation.mutate({ userId: lockDialog.userId }, { onSuccess: () => setLockDialog(null) });
-                } else {
-                  unlockUserMutation.mutate({ userId: lockDialog.userId }, { onSuccess: () => setLockDialog(null) });
-                }
-              }}
-            >
-              {lockDialog?.action === "lock" ? "Lock" : "Unlock"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <UserLockUnlockDialog
+        user={lockDialog}
+        onClose={() => setLockDialog(null)}
+        isPending={lockUserMutation.isPending || unlockUserMutation.isPending}
+        onConfirm={(userId, action) => {
+          if (action === "lock") {
+            lockUserMutation.mutate(
+              { userId },
+              { onSuccess: () => setLockDialog(null) }
+            );
+          } else {
+            unlockUserMutation.mutate(
+              { userId },
+              { onSuccess: () => setLockDialog(null) }
+            );
+          }
+        }}
+      />
 
-      {/* Delete User Dialog */}
-      <Dialog open={!!deleteDialog} onOpenChange={(open) => !open && setDeleteDialog(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete user?</DialogTitle>
-            <DialogDescription>
-              This will permanently delete <span className="font-medium">{deleteDialog?.userName}</span> and all their data. This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialog(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={deleteUserMutation.isPending}
-              onClick={() => {
-                if (!deleteDialog) return;
-                deleteUserMutation.mutate({ userId: deleteDialog.userId });
-              }}
-            >
-              {deleteUserMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                "Delete User"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteUserDialog
+        user={deleteDialog}
+        onClose={() => setDeleteDialog(null)}
+        isPending={deleteUserMutation.isPending}
+        onConfirm={(userId) => deleteUserMutation.mutate({ userId })}
+      />
 
-      {/* Create User Dialog */}
-      <Dialog open={createUserOpen} onOpenChange={(open) => {
-        setCreateUserOpen(open);
-        if (!open) {
-          setNewUserEmail("");
-          setNewUserName("");
-          setNewUserTeamId("");
-          setNewUserRole("VIEWER");
-        }
-      }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Create User</DialogTitle>
-            <DialogDescription>
-              Create a new local user account.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            createUserMutation.mutate({
-              email: newUserEmail,
-              name: newUserName,
-              ...(newUserTeamId ? { teamId: newUserTeamId, role: newUserRole } : {}),
-            });
-          }} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="new-user-email">Email</Label>
-              <Input
-                id="new-user-email"
-                type="email"
-                value={newUserEmail}
-                onChange={(e) => setNewUserEmail(e.target.value)}
-                placeholder="user@example.com"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-user-name">Name</Label>
-              <Input
-                id="new-user-name"
-                value={newUserName}
-                onChange={(e) => setNewUserName(e.target.value)}
-                placeholder="Full name"
-                required
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="new-user-team">Team (optional)</Label>
-                <Select value={newUserTeamId} onValueChange={setNewUserTeamId}>
-                  <SelectTrigger id="new-user-team">
-                    <SelectValue placeholder="No team" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(teamsQuery?.data ?? []).map((t) => (
-                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-user-role">Role</Label>
-                <Select value={newUserRole} onValueChange={(val: "VIEWER" | "EDITOR" | "ADMIN") => setNewUserRole(val)}>
-                  <SelectTrigger id="new-user-role">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="VIEWER">Viewer</SelectItem>
-                    <SelectItem value="EDITOR">Editor</SelectItem>
-                    <SelectItem value="ADMIN">Admin</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCreateUserOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createUserMutation.isPending}>
-                {createUserMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  "Create User"
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <CreateUserDialog
+        open={createUserOpen}
+        onOpenChange={setCreateUserOpen}
+        teams={teamsQuery.data ?? []}
+        isPending={createUserMutation.isPending}
+        onSubmit={(data) => createUserMutation.mutate(data)}
+      />
 
-      {/* Reset Password Confirmation Dialog */}
-      <Dialog open={!!resetPasswordDialog} onOpenChange={(open) => {
-        if (!open) {
+      <UserResetPasswordDialog
+        user={resetPasswordDialog}
+        onClose={() => {
           if (resetPasswordResult) {
             queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
           }
           setResetPasswordDialog(null);
           setResetPasswordResult("");
-        }
-      }}>
-        <DialogContent className="sm:max-w-md">
-          {resetPasswordResult ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>Temporary Password</DialogTitle>
-                <DialogDescription>
-                  Share this temporary password with the user. They will be required to change it on first login.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex items-center gap-2">
-                <Input value={resetPasswordResult} readOnly className="font-mono" aria-label="Temporary password" />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  aria-label="Copy temporary password"
-                  onClick={async () => {
-                    await copyToClipboard(resetPasswordResult);
-                    toast.success("Copied to clipboard");
-                  }}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-              <DialogFooter>
-                <Button onClick={() => {
-                  queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
-                  setResetPasswordDialog(null);
-                  setResetPasswordResult("");
-                }}>Done</Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>Reset password?</DialogTitle>
-                <DialogDescription>
-                  This will generate a new temporary password for <span className="font-medium">{resetPasswordDialog?.userName}</span>. They will be required to change it on next login.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setResetPasswordDialog(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  disabled={resetPasswordMutation.isPending}
-                  onClick={() => {
-                    if (!resetPasswordDialog) return;
-                    resetPasswordMutation.mutate({ userId: resetPasswordDialog.userId });
-                  }}
-                >
-                  {resetPasswordMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Resetting...
-                    </>
-                  ) : (
-                    "Reset Password"
-                  )}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+        }}
+        tempPassword={resetPasswordResult}
+        isPending={resetPasswordMutation.isPending}
+        onConfirm={(userId) => resetPasswordMutation.mutate({ userId })}
+      />
 
-      {/* Password Display Dialog */}
-      <Dialog open={showCreatedPassword} onOpenChange={setShowCreatedPassword}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>User Created</DialogTitle>
-            <DialogDescription>
-              Share this password with the user. It will only be shown once.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center gap-2">
-            <Input value={createdPassword} readOnly className="font-mono" aria-label="Generated password" />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label="Copy password"
-              onClick={async () => {
-                await copyToClipboard(createdPassword);
-                toast.success("Copied to clipboard");
-              }}
-            >
-              <Copy className="h-4 w-4" />
-            </Button>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => {
-              setShowCreatedPassword(false);
-              setCreatedPassword("");
-            }}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PasswordDisplayDialog
+        open={showCreatedPassword}
+        onClose={() => {
+          setShowCreatedPassword(false);
+          setCreatedPassword("");
+        }}
+        password={createdPassword}
+      />
 
       {/* Remove from team confirmation */}
       <ConfirmDialog

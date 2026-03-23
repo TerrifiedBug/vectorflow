@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
-import { copyToClipboard } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Shield,
@@ -13,12 +12,17 @@ import {
   Lock,
   Unlock,
   KeyRound,
-  Copy,
   Plus,
   X,
   Link2,
   Info,
 } from "lucide-react";
+import {
+  ResetPasswordDialog,
+  LockUnlockDialog,
+  LinkToOidcDialog,
+  RemoveMemberDialog,
+} from "./team-member-dialogs";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,14 +53,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+
 
 // ─── Team Tab ──────────────────────────────────────────────────────────────────
 
@@ -576,177 +573,62 @@ export function TeamSettings() {
         </CardContent>
       </Card>
 
-      {/* Reset Password Confirmation Dialog */}
-      <Dialog open={!!resetPasswordConfirm} onOpenChange={(open) => {
-        if (!open) {
-          setResetPasswordConfirm(null);
+      {/* Extracted dialog components */}
+      <ResetPasswordDialog
+        member={resetPasswordConfirm}
+        onClose={() => setResetPasswordConfirm(null)}
+        showTempPassword={resetPasswordOpen}
+        tempPassword={tempPassword}
+        isPending={resetPasswordMutation.isPending}
+        onConfirm={(userId) =>
+          resetPasswordMutation.mutate({ teamId: team.id, userId })
         }
-      }}>
-        <DialogContent className="sm:max-w-md">
-          {resetPasswordOpen && tempPassword ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>Temporary Password</DialogTitle>
-                <DialogDescription>
-                  Share this temporary password with the user. They will be required to change it on next login.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex items-center gap-2">
-                <Input value={tempPassword} readOnly className="font-mono" aria-label="Temporary password" />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  aria-label="Copy temporary password"
-                  onClick={async () => {
-                    await copyToClipboard(tempPassword);
-                    toast.success("Copied to clipboard");
-                  }}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-              <DialogFooter>
-                <Button onClick={() => {
-                  setResetPasswordConfirm(null);
-                  setResetPasswordOpen(false);
-                  setTempPassword("");
-                }}>Done</Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>Reset password?</DialogTitle>
-                <DialogDescription>
-                  This will generate a new temporary password for <span className="font-medium">{resetPasswordConfirm?.name}</span>. They will be required to change it on next login.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setResetPasswordConfirm(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  disabled={resetPasswordMutation.isPending}
-                  onClick={() => {
-                    if (!resetPasswordConfirm) return;
-                    resetPasswordMutation.mutate({ teamId: team.id, userId: resetPasswordConfirm.userId });
-                  }}
-                >
-                  {resetPasswordMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Resetting...
-                    </>
-                  ) : (
-                    "Reset Password"
-                  )}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+        onDone={() => {
+          setResetPasswordConfirm(null);
+          setResetPasswordOpen(false);
+          setTempPassword("");
+        }}
+      />
 
-      {/* Lock/Unlock Confirmation Dialog */}
-      <Dialog open={!!lockConfirm} onOpenChange={(open) => !open && setLockConfirm(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{lockConfirm?.action === "lock" ? "Lock user?" : "Unlock user?"}</DialogTitle>
-            <DialogDescription>
-              {lockConfirm?.action === "lock"
-                ? <><span className="font-medium">{lockConfirm?.name}</span> will be unable to log in until unlocked.</>
-                : <><span className="font-medium">{lockConfirm?.name}</span> will be able to log in again.</>}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLockConfirm(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant={lockConfirm?.action === "lock" ? "destructive" : "default"}
-              disabled={lockMutation.isPending || unlockMutation.isPending}
-              onClick={() => {
-                if (!lockConfirm) return;
-                if (lockConfirm.action === "lock") {
-                  lockMutation.mutate({ teamId: team.id, userId: lockConfirm.userId }, { onSuccess: () => setLockConfirm(null) });
-                } else {
-                  unlockMutation.mutate({ teamId: team.id, userId: lockConfirm.userId }, { onSuccess: () => setLockConfirm(null) });
-                }
-              }}
-            >
-              {lockConfirm?.action === "lock" ? "Lock" : "Unlock"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <LockUnlockDialog
+        member={lockConfirm}
+        onClose={() => setLockConfirm(null)}
+        isPending={lockMutation.isPending || unlockMutation.isPending}
+        onConfirm={(userId, action) => {
+          if (action === "lock") {
+            lockMutation.mutate(
+              { teamId: team.id, userId },
+              { onSuccess: () => setLockConfirm(null) }
+            );
+          } else {
+            unlockMutation.mutate(
+              { teamId: team.id, userId },
+              { onSuccess: () => setLockConfirm(null) }
+            );
+          }
+        }}
+      />
 
-      {/* Link to SSO Confirmation Dialog */}
-      <Dialog open={!!linkToOidcConfirm} onOpenChange={(open) => !open && setLinkToOidcConfirm(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Link to SSO?</DialogTitle>
-            <DialogDescription>
-              This will convert <span className="font-medium">{linkToOidcConfirm?.name}</span> from local authentication to SSO. This action:
-            </DialogDescription>
-          </DialogHeader>
-          <ul className="list-disc pl-6 text-sm text-muted-foreground space-y-1">
-            <li>Removes their password — they can no longer log in with email/password</li>
-            <li>Disables their TOTP 2FA — the SSO provider handles MFA</li>
-            <li>Requires them to log in via SSO going forward</li>
-          </ul>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLinkToOidcConfirm(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={linkToOidcMutation.isPending}
-              onClick={() => {
-                if (!linkToOidcConfirm) return;
-                linkToOidcMutation.mutate({ teamId: team.id, userId: linkToOidcConfirm.userId });
-              }}
-            >
-              {linkToOidcMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Linking...
-                </>
-              ) : (
-                "Link to SSO"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <LinkToOidcDialog
+        member={linkToOidcConfirm}
+        onClose={() => setLinkToOidcConfirm(null)}
+        isPending={linkToOidcMutation.isPending}
+        onConfirm={(userId) =>
+          linkToOidcMutation.mutate({ teamId: team.id, userId })
+        }
+      />
 
-      <Dialog open={!!removeMember} onOpenChange={(open) => !open && setRemoveMember(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remove team member?</DialogTitle>
-            <DialogDescription>
-              This will remove <span className="font-medium">{removeMember?.name}</span> from the team. They will lose access to all environments and pipelines.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRemoveMember(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={removeMemberMutation.isPending}
-              onClick={() => {
-                if (!removeMember) return;
-                removeMemberMutation.mutate(
-                  { teamId: team.id, userId: removeMember.userId },
-                  { onSuccess: () => setRemoveMember(null) },
-                );
-              }}
-            >
-              {removeMemberMutation.isPending ? "Removing..." : "Remove"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RemoveMemberDialog
+        member={removeMember}
+        onClose={() => setRemoveMember(null)}
+        isPending={removeMemberMutation.isPending}
+        onConfirm={(userId) =>
+          removeMemberMutation.mutate(
+            { teamId: team.id, userId },
+            { onSuccess: () => setRemoveMember(null) }
+          )
+        }
+      />
 
       <Card>
         <CardHeader>

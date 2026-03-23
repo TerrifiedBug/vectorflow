@@ -50,7 +50,7 @@
   - Verify: `pnpm exec tsc --noEmit` exits 0 && `wc -l src/server/routers/dashboard.ts` under 850
   - Done when: `dashboard-data.ts` service exists, dashboard router under ~800 lines, `tsc` and `eslint` pass clean
 
-- [ ] **T04: Extract settings dialog sub-components** `est:30m`
+- [x] **T04: Extract settings dialog sub-components** `est:30m`
   - Why: `team-settings.tsx` (865 lines) and `users-settings.tsx` (813 lines) are just over the ~800-line target. Each contains multiple inline dialogs that can be extracted to sibling files. This task brings both under target and completes R003 coverage.
   - Files: `src/app/(dashboard)/settings/_components/team-settings.tsx`, `src/app/(dashboard)/settings/_components/users-settings.tsx`, `src/app/(dashboard)/settings/_components/team-member-dialogs.tsx`, `src/app/(dashboard)/settings/_components/user-management-dialogs.tsx`
   - Do: For `team-settings.tsx`: extract dialog components (reset password, lock/unlock, remove member, link to OIDC) into `team-member-dialogs.tsx`. The parent passes mutation callbacks and state as props. For `users-settings.tsx`: extract dialog components (assign to team, lock/unlock, reset password, delete user, create user, toggle super admin) into `user-management-dialogs.tsx`. Same pattern. If prop drilling makes a component harder to read than the monolith, keep that dialog inline — the ~800 target is a guideline (per research risk note). Aim for each parent file under 800 lines but accept ~650-700 as a realistic target.
