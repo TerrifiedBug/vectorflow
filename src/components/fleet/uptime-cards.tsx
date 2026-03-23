@@ -48,10 +48,10 @@ function UptimeCard({
           </div>
         ) : (
           <div>
-            <p className={`text-2xl font-bold ${uptimeColor(data.uptimePercent)}`}>
+            <p className={`text-2xl font-bold tabular-nums ${uptimeColor(data.uptimePercent)}`}>
               {data.uptimePercent.toFixed(2)}%
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground tabular-nums">
               {data.incidents} incident{data.incidents !== 1 ? "s" : ""}
             </p>
           </div>

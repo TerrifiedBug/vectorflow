@@ -442,7 +442,7 @@ export default function AnalyticsPage() {
                         <div className="h-2 w-16 rounded-full bg-muted overflow-hidden">
                           <div
                             className={cn(
-                              "h-full rounded-full transition-all",
+                              "h-full rounded-full transition-[width] duration-300",
                               p.eventsReduced > 50
                                 ? "bg-green-500"
                                 : p.eventsReduced > 10
@@ -452,7 +452,7 @@ export default function AnalyticsPage() {
                             style={{ width: `${Math.max(0, Math.min(100, p.eventsReduced))}%` }}
                           />
                         </div>
-                        <span className="font-mono text-sm w-14 text-right">
+                        <span className="font-mono text-sm tabular-nums w-14 text-right">
                           {p.eventsReduced.toFixed(1)}%
                         </span>
                       </div>
@@ -462,7 +462,7 @@ export default function AnalyticsPage() {
                         <div className="h-2 w-16 rounded-full bg-muted overflow-hidden">
                           <div
                             className={cn(
-                              "h-full rounded-full transition-all",
+                              "h-full rounded-full transition-[width] duration-300",
                               p.reduction >= 50
                                 ? "bg-green-500"
                                 : p.reduction >= 20
@@ -472,7 +472,7 @@ export default function AnalyticsPage() {
                             style={{ width: `${Math.max(0, Math.min(100, p.reduction))}%` }}
                           />
                         </div>
-                        <span className="font-mono text-sm w-14 text-right">
+                        <span className="font-mono text-sm tabular-nums w-14 text-right">
                           {p.reduction.toFixed(1)}%
                         </span>
                       </div>

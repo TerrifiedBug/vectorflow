@@ -94,7 +94,7 @@ export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps)
               formatter={(value, name) => (
                 <div className="flex w-full items-center justify-between gap-2">
                   <span className="text-muted-foreground">{chartConfig[name as keyof typeof chartConfig]?.label ?? name}</span>
-                  <span className="font-mono font-medium text-foreground">{formatter(Number(value) ?? 0)}</span>
+                  <span className="font-mono font-medium tabular-nums text-foreground">{formatter(Number(value) ?? 0)}</span>
                 </div>
               )}
             />

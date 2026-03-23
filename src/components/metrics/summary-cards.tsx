@@ -51,31 +51,31 @@ export function SummaryCards({ rows }: SummaryCardsProps) {
       <Card>
         <CardContent className="pt-4">
           <p className="text-xs text-muted-foreground">Events In</p>
-          <p className="text-2xl font-bold">{formatRate(eventsInRate)}</p>
+          <p className="text-2xl font-bold tabular-nums">{formatRate(eventsInRate)}</p>
         </CardContent>
       </Card>
       <Card>
         <CardContent className="pt-4">
           <p className="text-xs text-muted-foreground">Events Out</p>
-          <p className="text-2xl font-bold">{formatRate(eventsOutRate)}</p>
+          <p className="text-2xl font-bold tabular-nums">{formatRate(eventsOutRate)}</p>
         </CardContent>
       </Card>
       <Card>
         <CardContent className="pt-4">
           <p className="text-xs text-muted-foreground">Data In</p>
-          <p className="text-2xl font-bold">{formatBytes(bytesInRate)}</p>
+          <p className="text-2xl font-bold tabular-nums">{formatBytes(bytesInRate)}</p>
         </CardContent>
       </Card>
       <Card>
         <CardContent className="pt-4">
           <p className="text-xs text-muted-foreground">Errors</p>
-          <p className="text-2xl font-bold">{formatCount(errorsTotal)}</p>
+          <p className="text-2xl font-bold tabular-nums">{formatCount(errorsTotal)}</p>
         </CardContent>
       </Card>
       <Card>
         <CardContent className="pt-4">
           <p className="text-xs text-muted-foreground">Discarded</p>
-          <p className="text-2xl font-bold">{formatCount(discardedTotal)}</p>
+          <p className="text-2xl font-bold tabular-nums">{formatCount(discardedTotal)}</p>
         </CardContent>
       </Card>
     </div>
