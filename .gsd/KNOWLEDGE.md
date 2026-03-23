@@ -30,3 +30,16 @@
 **Threshold:** If a dialog is already a concise `ConfirmDialog` one-liner, keep it inline. Only extract dialogs that have their own form fields, state management, or complex UI.
 
 **Gotcha:** When a dialog manages its own form state (like `CreateUserDialog`), have it reset state in its `onOpenChange` handler rather than requiring the parent to manage reset. This can eliminate multiple parent `useState` hooks.
+
+## Empty State & Error Handling Convention (from M001/S03)
+
+**Pattern:** Use `<EmptyState>` from `@/components/empty-state` for all empty data / no-selection states. Use `<QueryError>` from `@/components/query-error` for all tRPC query error states. Never create inline `border-dashed` empty state divs.
+
+**Error guard placement:** Standard pattern is early return before `isLoading` check. Three variations:
+- **Inline ternary** inside `CardContent` when the component renders within a Card wrapper (e.g., `version-check-section.tsx`)
+- **Before hide-when-empty** when a section conditionally hides on empty data — error guard must come first so errors are always visible (e.g., `webhooks-section.tsx`)
+- **Before main return** when no top-level `isLoading` early return exists (e.g., `audit-shipping-section.tsx`, `backup-settings.tsx`)
+
+**EmptyState compact variant:** Use `className="p-4 text-sm"` when the EmptyState is nested inside an already-padded container (e.g., environment guards in library pages).
+
+**Diagnostic shortcut:** `rg 'border border-dashed' src/app/\(dashboard\)/` should always return 0 matches. If it finds any, a new page was added without using the shared component.

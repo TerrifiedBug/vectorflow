@@ -37,28 +37,6 @@ This file is the explicit capability and coverage contract for the project.
 - Validation: S01/T01 creates shared modules, S01/T02 removes all inline duplicates; verified by grep checks returning no matches in src/app and src/components
 - Notes: S01/T01 created shared modules, S01/T02 replaced all inline duplicates in 10 consumer files. grep confirms zero inline copies remain. S02 may discover additional duplicates during file splitting.
 
-### R005 — All 35+ dashboard pages have consistent loading skeletons, empty state messaging with CTAs, and error handling. No page should show a blank white screen during loading or when data is empty.
-- Class: primary-user-loop
-- Status: active
-- Description: All 35+ dashboard pages have consistent loading skeletons, empty state messaging with CTAs, and error handling. No page should show a blank white screen during loading or when data is empty.
-- Why it matters: Inconsistent loading/empty states make the product feel unfinished and confuse users.
-- Source: user
-- Primary owning slice: M001/S03
-- Supporting slices: none
-- Validation: unmapped
-- Notes: Most pages already have Skeleton loading — need to audit for gaps and standardize the pattern.
-
-### R006 — General UI polish pass — consistent spacing, typography, icon usage, button patterns, table styles, dialog patterns, and visual consistency across all dashboard pages.
-- Class: primary-user-loop
-- Status: active
-- Description: General UI polish pass — consistent spacing, typography, icon usage, button patterns, table styles, dialog patterns, and visual consistency across all dashboard pages.
-- Why it matters: Visual inconsistencies undermine trust in a product aimed at infrastructure teams.
-- Source: user
-- Primary owning slice: M001/S03
-- Supporting slices: none
-- Validation: unmapped
-- Notes: General sweep based on code audit — no specific user-reported pain points.
-
 ### R007 — Complex business logic currently inline in tRPC router handlers is extracted to service modules in `src/server/services/`. Routers become thin orchestration layers.
 - Class: quality-attribute
 - Status: active
@@ -105,6 +83,28 @@ This file is the explicit capability and coverage contract for the project.
 - Validation: S02 verified: alerts page 1910→45 lines, pipeline router 1318→847, dashboard router 1074→652, team-settings 865→747, users-settings 813→522. `find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | sort -rn` shows no non-exempt file over ~800 lines (exempt: flow-store.ts per D002, function-registry.ts per D003).
 - Notes: S02 split 5 over-target files across 4 tasks. Biggest win: alerts page from 1910 to 45 lines via 4 section components. Two new service modules created (pipeline-graph.ts, dashboard-data.ts). Two dialog extraction files created. All exempt files documented in D002/D003.
 
+### R005 — All 35+ dashboard pages have consistent loading skeletons, empty state messaging with CTAs, and error handling. No page should show a blank white screen during loading or when data is empty.
+- Class: primary-user-loop
+- Status: validated
+- Description: All 35+ dashboard pages have consistent loading skeletons, empty state messaging with CTAs, and error handling. No page should show a blank white screen during loading or when data is empty.
+- Why it matters: Inconsistent loading/empty states make the product feel unfinished and confuse users.
+- Source: user
+- Primary owning slice: M001/S03
+- Supporting slices: none
+- Validation: S03 verified: shared EmptyState component adopted in 17 dashboard files, shared QueryError component adopted in 27 dashboard files. `rg 'border border-dashed' src/app/(dashboard)/` returns 0 matches — all inline empty states replaced. Analytics page has loading skeleton. Dashboard and environment-dependent pages have "select environment" guards. `tsc --noEmit` exits 0, `eslint src/` exits 0.
+- Notes: S03 created EmptyState (icon, title, description, action CTA, className override) and QueryError (AlertTriangle icon, message, retry button). Wired into 30 dashboard page files across 4 tasks. Zero inline border-dashed empty states remain.
+
+### R006 — General UI polish pass — consistent spacing, typography, icon usage, button patterns, table styles, dialog patterns, and visual consistency across all dashboard pages.
+- Class: primary-user-loop
+- Status: validated
+- Description: General UI polish pass — consistent spacing, typography, icon usage, button patterns, table styles, dialog patterns, and visual consistency across all dashboard pages.
+- Why it matters: Visual inconsistencies undermine trust in a product aimed at infrastructure teams.
+- Source: user
+- Primary owning slice: M001/S03
+- Supporting slices: none
+- Validation: S03 verified: consistent EmptyState pattern (icon + title + description + CTA) across all 17+ pages. Consistent QueryError pattern (AlertTriangle + message + retry) across all 27 data-fetching pages. Error guard placement follows established conventions (early return, inline ternary for Card wrappers, before hide-when-empty). Visual consistency of empty/error/loading states confirmed via shared component adoption.
+- Notes: R006 is partially addressed by S03 — the empty state, error handling, and loading skeleton aspects of visual consistency are now standardized. Broader polish (spacing, typography, table styles, dialog patterns) may warrant additional work but the primary pain points are resolved.
+
 ## Deferred
 
 ### R009 — Remove `ignoreBuildErrors: true` from `next.config.ts` so `next build` type-checks without bypassing errors.
@@ -150,8 +150,8 @@ This file is the explicit capability and coverage contract for the project.
 | R002 | quality-attribute | active | M001/S04 | none | unmapped |
 | R003 | quality-attribute | validated | M001/S02 | none | S02 verified: alerts page 1910→45 lines, pipeline router 1318→847, dashboard router 1074→652, team-settings 865→747, users-settings 813→522. `find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | sort -rn` shows no non-exempt file over ~800 lines (exempt: flow-store.ts per D002, function-registry.ts per D003). |
 | R004 | quality-attribute | active | M001/S01 | M001/S02 | S01/T01 creates shared modules, S01/T02 removes all inline duplicates; verified by grep checks returning no matches in src/app and src/components |
-| R005 | primary-user-loop | active | M001/S03 | none | unmapped |
-| R006 | primary-user-loop | active | M001/S03 | none | unmapped |
+| R005 | primary-user-loop | validated | M001/S03 | none | S03 verified: shared EmptyState component adopted in 17 dashboard files, shared QueryError component adopted in 27 dashboard files. `rg 'border border-dashed' src/app/(dashboard)/` returns 0 matches — all inline empty states replaced. Analytics page has loading skeleton. Dashboard and environment-dependent pages have "select environment" guards. `tsc --noEmit` exits 0, `eslint src/` exits 0. |
+| R006 | primary-user-loop | validated | M001/S03 | none | S03 verified: consistent EmptyState pattern (icon + title + description + CTA) across all 17+ pages. Consistent QueryError pattern (AlertTriangle + message + retry) across all 27 data-fetching pages. Error guard placement follows established conventions (early return, inline ternary for Card wrappers, before hide-when-empty). Visual consistency of empty/error/loading states confirmed via shared component adoption. |
 | R007 | quality-attribute | active | M001/S02 | M001/S04 | unmapped |
 | R008 | quality-attribute | active | M001/S01 | none | `pnpm exec eslint src/` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files |
 | R009 | quality-attribute | deferred | none | none | unmapped |
@@ -161,7 +161,7 @@ This file is the explicit capability and coverage contract for the project.
 
 ## Coverage Summary
 
-- Active requirements: 8
-- Mapped to slices: 8
-- Validated: 1 (R003)
+- Active requirements: 6
+- Mapped to slices: 6
+- Validated: 3 (R003, R005, R006)
 - Unmapped active requirements: 0

@@ -59,7 +59,7 @@ This milestone is complete only when all are true:
 - [x] **S02: Router & component refactoring** `risk:medium` `depends:[S01]`
   > After this: All source files are under ~800 lines, router business logic is extracted to service modules, `tsc --noEmit` still passes.
 
-- [ ] **S03: UI consistency sweep** `risk:low` `depends:[S01]`
+- [x] **S03: UI consistency sweep** `risk:low` `depends:[S01]`
   > After this: Every dashboard page has consistent loading skeletons, empty states with CTAs, and error handling. Visual rough edges are cleaned up.
 
 - [ ] **S04: Foundational test suite** `risk:medium` `depends:[S01,S02]`
