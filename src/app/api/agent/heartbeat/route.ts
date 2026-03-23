@@ -355,24 +355,16 @@ export async function POST(request: Request) {
 
     if (componentLatencyRows.length > 0) {
       try {
-        for (const row of componentLatencyRows) {
-          const existing = await prisma.pipelineMetric.findFirst({
+        await prisma.$transaction([
+          prisma.pipelineMetric.deleteMany({
             where: {
-              pipelineId: row.pipelineId,
-              nodeId: row.nodeId,
-              componentId: row.componentId,
-              timestamp: row.timestamp,
+              nodeId: agent.nodeId,
+              componentId: { not: null },
+              timestamp: minuteTimestamp,
             },
-          });
-          if (existing) {
-            await prisma.pipelineMetric.update({
-              where: { id: existing.id },
-              data: { latencyMeanMs: row.latencyMeanMs },
-            });
-          } else {
-            await prisma.pipelineMetric.create({ data: row });
-          }
-        }
+          }),
+          prisma.pipelineMetric.createMany({ data: componentLatencyRows }),
+        ]);
       } catch (err) {
         console.error("Per-component latency upsert error:", err);
       }
