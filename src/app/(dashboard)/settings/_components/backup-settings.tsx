@@ -297,10 +297,10 @@ export function BackupSettings() {
               <TableBody>
                 {backupsQuery.data.map((backup) => (
                   <TableRow key={backup.filename}>
-                    <TableCell>
+                    <TableCell className="tabular-nums">
                       {new Date(backup.timestamp).toLocaleString()}
                     </TableCell>
-                    <TableCell>{formatBytes(backup.sizeBytes)}</TableCell>
+                    <TableCell className="tabular-nums">{formatBytes(backup.sizeBytes)}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">{backup.version}</Badge>
                     </TableCell>

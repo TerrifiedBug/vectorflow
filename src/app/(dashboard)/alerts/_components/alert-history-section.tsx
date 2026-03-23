@@ -136,7 +136,7 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
                       {event.status === "firing" ? "Firing" : "Resolved"}
                     </StatusBadge>
                   </TableCell>
-                  <TableCell className="font-mono">
+                  <TableCell className="font-mono tabular-nums">
                     {typeof event.value === "number"
                       ? event.value.toFixed(2)
                       : event.value}

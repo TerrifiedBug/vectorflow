@@ -361,7 +361,7 @@ export function CustomView({ view }: CustomViewProps) {
                 <>
                   <p
                     className={cn(
-                      "mt-1 text-2xl font-bold",
+                      "mt-1 text-2xl font-bold tabular-nums",
                       stats.data.reduction.percent > 50
                         ? "text-green-600 dark:text-green-400"
                         : stats.data.reduction.percent > 10

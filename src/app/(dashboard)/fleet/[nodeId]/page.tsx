@@ -543,32 +543,32 @@ export default function NodeDetailPage() {
                               {pipelineStatusLabel(ps.status)}
                             </StatusBadge>
                           </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
+                          <TableCell className="text-right font-mono text-sm tabular-nums">
                             <div>{formatCount(ps.eventsIn)}</div>
                             {rates && <div className="text-xs text-muted-foreground">{formatRate(rates.eventsInRate)}</div>}
                           </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
+                          <TableCell className="text-right font-mono text-sm tabular-nums">
                             <div>{formatCount(ps.eventsOut)}</div>
                             {rates && <div className="text-xs text-muted-foreground">{formatRate(rates.eventsOutRate)}</div>}
                           </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
+                          <TableCell className="text-right font-mono text-sm tabular-nums">
                             <div>{formatCount(ps.errorsTotal)}</div>
                             {rates && rates.errorsRate > 0 && <div className="text-xs text-red-500">{formatRate(rates.errorsRate)}</div>}
                           </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
+                          <TableCell className="text-right font-mono text-sm tabular-nums">
                             <div>{formatBytes(ps.bytesIn)}</div>
                             {rates && <div className="text-xs text-muted-foreground">{formatBytesRate(rates.bytesInRate)}</div>}
                           </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
+                          <TableCell className="text-right font-mono text-sm tabular-nums">
                             <div>{formatBytes(ps.bytesOut)}</div>
                             {rates && <div className="text-xs text-muted-foreground">{formatBytesRate(rates.bytesOutRate)}</div>}
                           </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
+                          <TableCell className="text-right font-mono text-sm tabular-nums">
                             {rates?.latencyMeanMs != null
                               ? formatLatency(rates.latencyMeanMs)
                               : "—"}
                           </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
+                          <TableCell className="text-right font-mono text-sm tabular-nums">
                             {formatUptime(ps.uptimeSeconds)}
                           </TableCell>
                         </TableRow>

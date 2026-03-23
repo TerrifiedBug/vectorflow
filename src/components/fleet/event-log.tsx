@@ -52,7 +52,7 @@ export function EventLog({ nodeId, range }: EventLogProps) {
             style={{ backgroundColor: statusColor(event.toStatus) }}
           />
           {/* Timestamp */}
-          <span className="w-12 shrink-0 font-mono text-xs text-muted-foreground">
+          <span className="w-12 shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
             {formatTime(event.timestamp)}
           </span>
           {/* Transition */}
