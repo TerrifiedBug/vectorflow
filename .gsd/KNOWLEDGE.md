@@ -43,3 +43,11 @@
 **EmptyState compact variant:** Use `className="p-4 text-sm"` when the EmptyState is nested inside an already-padded container (e.g., environment guards in library pages).
 
 **Diagnostic shortcut:** `rg 'border border-dashed' src/app/\(dashboard\)/` should always return 0 matches. If it finds any, a new page was added without using the shared component.
+
+## Test Infrastructure Conventions (from M001/S04)
+
+**BigInt in tests:** The project's `tsconfig.json` targets `ES2017`, which does not support bigint literal syntax (`0n`, `100n`). Use `BigInt(0)`, `BigInt(100)` constructor calls instead. Vitest's own transpiler handles this at runtime, but `tsc --noEmit` will reject bigint literals.
+
+**Prisma mock pattern:** Import `src/__mocks__/lib/prisma.ts` in tests that need database mocking. This helper uses `vi.mock('@/lib/prisma')` + `mockDeep<PrismaClient>()` from `vitest-mock-extended`, exports `prismaMock`, and resets it in `beforeEach`. Pure function tests (like `computeChartMetrics`) don't need this — import the function directly.
+
+**Path aliases in tests:** `vitest.config.ts` mirrors `tsconfig.json` paths: `@/` resolves to `./src/`. Tests import from `@/server/services/...` just like production code.

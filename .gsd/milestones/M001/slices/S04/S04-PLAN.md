@@ -37,9 +37,17 @@
 - New wiring introduced in this slice: `vitest.config.ts`, `package.json` test script, Prisma mock helper — test infrastructure only, no runtime changes
 - What remains before the milestone is truly usable end-to-end: S05 (performance audit)
 
+## Observability / Diagnostics
+
+- **Test output**: `pnpm exec vitest run --reporter=verbose` shows per-test pass/fail with durations — primary inspection surface for test health
+- **Failure visibility**: Vitest outputs assertion diffs with expected/received values and source locations on any test failure
+- **CI integration**: `pnpm test` exits non-zero on any test failure, suitable for CI gating
+- **Mock state**: `prismaMock` resets via `beforeEach` in the mock helper — stale mock state from one test cannot leak to another
+- **Redaction**: No secrets or PII in test fixtures; all data is synthetic
+
 ## Tasks
 
-- [ ] **T01: Set up Vitest infrastructure and write dashboard-data pure-function tests** `est:45m`
+- [x] **T01: Set up Vitest infrastructure and write dashboard-data pure-function tests** `est:45m`
   - Why: Establishes test infrastructure from zero — vitest config, path aliases, Prisma mock helper, `test` script — and proves it works with the first real test file targeting `computeChartMetrics` (pure computation, no mocking needed).
   - Files: `vitest.config.ts`, `package.json`, `src/__mocks__/lib/prisma.ts`, `src/server/services/__tests__/dashboard-data.test.ts`
   - Do: Install `vitest` and `vitest-mock-extended` as devDependencies. Create `vitest.config.ts` with `@/` → `./src/` alias. Create Prisma deep-mock helper. Add `"test": "vitest run"` script. Write tests for `computeChartMetrics` covering all 3 `groupBy` modes, downsampling (7d range), empty rows, and bigint handling. Use `BigInt()` or `100n` syntax in fixtures.
