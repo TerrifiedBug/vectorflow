@@ -71,3 +71,9 @@ The `vi.mock` factory is hoisted and runs before the mocked module's first impor
 **Environment variable isolation:** For tests that depend on env vars (like `crypto.test.ts` needing `NEXTAUTH_SECRET`), save/restore `process.env` in `beforeAll`/`afterAll` and use `try/finally` blocks for per-test mutations. Never leave env mutations dangling.
 
 **Fake timers for time-dependent logic:** Use `vi.useFakeTimers()` + `vi.setSystemTime()` to simulate time progression (e.g., alert duration tracking). Always restore with `vi.useRealTimers()` in `afterEach`.
+
+## @next/bundle-analyzer + Turbopack Incompatibility (from M001/S05)
+
+**Gotcha:** Next.js 16 defaults to Turbopack for builds. `@next/bundle-analyzer` uses the webpack `BundleAnalyzerPlugin` under the hood, so `ANALYZE=true pnpm build` silently produces no report files when Turbopack is active. The plugin prints a warning to stderr but the build succeeds with exit 0.
+
+**Workaround:** Run `ANALYZE=true pnpm build --webpack` to force webpack mode and generate `.next/analyze/*.html` reports. Alternatively, use `next experimental-analyze` for Turbopack-native analysis (different output format).

@@ -83,6 +83,13 @@ Address three concrete code-level performance issues found during the S05 resear
 - `rg 'where.*pipelineId' src/server/routers/dashboard.ts` shows scoped query near the `allComponentNodes` variable
 - `cat package.json | grep '@next/bundle-analyzer'` confirms installation
 
+## Observability Impact
+
+- **New signal:** `ANALYZE=true pnpm build` now produces bundle analysis reports in `.next/analyze/`. Future agents can inspect bundle composition without adding new tooling.
+- **Import type fix:** Eliminates Prisma client runtime from browser bundle — visible as reduced bundle size in analysis reports. Verify with `rg 'import { AlertMetric' src/` (should return 0 matches).
+- **Query scoping:** The `allComponentNodes` query now includes a `where: { pipelineId: { in: ... } }` clause. This is inspectable via `rg 'where.*pipelineId' src/server/routers/dashboard.ts`. If the query regresses to a full-table scan, this grep returns no matches.
+- **Failure state:** Type/lint regressions from these changes surface immediately via `tsc --noEmit` and `eslint src/` exit codes.
+
 ## Inputs
 
 - `next.config.ts` — existing Next.js config to wrap with bundle analyzer

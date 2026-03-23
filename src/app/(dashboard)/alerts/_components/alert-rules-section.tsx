@@ -15,7 +15,7 @@ import {
   Trash2,
   Loader2,
 } from "lucide-react";
-import { AlertMetric, AlertCondition } from "@/generated/prisma";
+import type { AlertMetric, AlertCondition } from "@/generated/prisma";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

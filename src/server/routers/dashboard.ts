@@ -161,9 +161,16 @@ export const dashboardRouter = router({
     const latestSamples = metricStore.getLatestAll();
 
     // Look up component kinds so we only count source for "in" and sink for "out"
-    const allComponentNodes = await prisma.pipelineNode.findMany({
-      select: { componentKey: true, kind: true },
-    });
+    // Scoped to user's pipelines to avoid full-table scan on PipelineNode.
+    const pipelineIds = [...new Set(
+      nodes.flatMap((n) => n.pipelineStatuses.map((ps) => ps.pipeline.id))
+    )];
+    const allComponentNodes = pipelineIds.length > 0
+      ? await prisma.pipelineNode.findMany({
+          where: { pipelineId: { in: pipelineIds } },
+          select: { componentKey: true, kind: true },
+        })
+      : [];
     const componentKindMap = new Map<string, string>();
     for (const cn of allComponentNodes) {
       componentKindMap.set(cn.componentKey, cn.kind);

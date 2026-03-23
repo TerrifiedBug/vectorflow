@@ -21,6 +21,15 @@
 - `test -f .gsd/milestones/M001/slices/S05/S05-REPORT.md` — performance audit report exists
 - `grep -c "^## " .gsd/milestones/M001/slices/S05/S05-REPORT.md` returns >= 4 (has substantive sections)
 - `cat package.json | grep '@next/bundle-analyzer'` — bundle analyzer is installed
+- `pnpm exec tsc --noEmit 2>&1 | head -5` — if non-zero, first 5 lines show the regression source (failure-path diagnostic)
+
+## Observability / Diagnostics
+
+- **Bundle analysis:** `ANALYZE=true pnpm build` produces `.next/analyze/*.html` report files when the build succeeds. Presence/absence of these files is the primary diagnostic surface.
+- **Import type verification:** `rg 'import { AlertMetric' src/` returns no matches if the Prisma client leak is fixed. If matches are found, the Prisma runtime may still be bundled into the browser.
+- **Query scoping:** `rg 'where.*pipelineId' src/server/routers/dashboard.ts` confirms the `allComponentNodes` query is scoped. If absent, the query is a full-table scan.
+- **Failure visibility:** If `tsc --noEmit` or `eslint src/` fail after changes, the specific errors point to regressions introduced by the performance fixes. These are the primary failure-path signals.
+- **Redaction:** No secrets or user data are involved in this slice — all changes are structural/performance.
 
 ## Integration Closure
 
@@ -30,7 +39,7 @@
 
 ## Tasks
 
-- [ ] **T01: Install bundle analyzer, fix client import, and scope nodeCards query** `est:45m`
+- [x] **T01: Install bundle analyzer, fix client import, and scope nodeCards query** `est:45m`
   - Why: Addresses the three concrete code-level performance issues found during research — Prisma enum leaking to client bundle, full-table scan in nodeCards, and missing bundle analysis tooling
   - Files: `next.config.ts`, `package.json`, `src/app/(dashboard)/alerts/_components/alert-rules-section.tsx`, `src/server/routers/dashboard.ts`
   - Do: (1) `pnpm add -D @next/bundle-analyzer`, (2) wrap `next.config.ts` export with bundle analyzer conditional on `ANALYZE=true`, (3) change `import { AlertMetric, AlertCondition }` to `import type { AlertMetric, AlertCondition }` in `alert-rules-section.tsx`, (4) scope `allComponentNodes` in `dashboard.ts:nodeCards` to only the pipeline IDs from the already-fetched nodes (extract pipeline IDs from `nodes[].pipelineStatuses[].pipeline.id`), (5) run `ANALYZE=true pnpm build` and capture output — if build fails, document the failure, (6) verify `tsc --noEmit` and `eslint src/` still pass
