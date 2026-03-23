@@ -36,7 +36,7 @@
   - Verify: `pnpm exec tsc --noEmit` exits 0 && `wc -l src/app/(dashboard)/alerts/page.tsx` under 200
   - Done when: Alerts page under 200 lines, 4 section component files exist, `tsc` and `eslint` pass clean
 
-- [ ] **T02: Extract pipeline router business logic to service module** `est:45m`
+- [x] **T02: Extract pipeline router business logic to service module** `est:45m`
   - Why: Pipeline router is 1318 lines with 3 heavy inline handlers. The codebase already delegates to services like `pipeline-version.ts` — extending this pattern to `saveGraph`, `promote`, and `discardChanges` brings the router under ~800 lines and advances R007 (thin routers).
   - Files: `src/server/routers/pipeline.ts`, `src/server/services/pipeline-graph.ts`
   - Do: Create `pipeline-graph.ts` following the existing service pattern (direct function exports, import `prisma` from `@/lib/prisma`, throw `TRPCError`). Extract: (1) `saveGraph` validation + transaction logic — accept `tx: Prisma.TransactionClient` parameter, return the saved data, leave `ctx.auditMetadata` assignment in the router; (2) `promote` cross-environment copy logic — accept `userId` as parameter instead of full `ctx`; (3) `discardChanges` version restore logic — accept `tx` parameter. Keep all `.use(withAudit())` and `.use(withTeamAccess())` middleware in the router. Keep Zod schemas in the router file (they're local to the router).
@@ -56,6 +56,23 @@
   - Do: For `team-settings.tsx`: extract dialog components (reset password, lock/unlock, remove member, link to OIDC) into `team-member-dialogs.tsx`. The parent passes mutation callbacks and state as props. For `users-settings.tsx`: extract dialog components (assign to team, lock/unlock, reset password, delete user, create user, toggle super admin) into `user-management-dialogs.tsx`. Same pattern. If prop drilling makes a component harder to read than the monolith, keep that dialog inline — the ~800 target is a guideline (per research risk note). Aim for each parent file under 800 lines but accept ~650-700 as a realistic target.
   - Verify: `pnpm exec tsc --noEmit` exits 0 && `wc -l src/app/(dashboard)/settings/_components/team-settings.tsx src/app/(dashboard)/settings/_components/users-settings.tsx` both under 800
   - Done when: Both settings files under 800 lines, dialog components extracted to sibling files, `tsc` and `eslint` pass clean
+
+## Observability / Diagnostics
+
+This slice is a pure structural refactor — no new runtime signals are introduced and no existing signals are removed. The key observability invariant is **behavioral equivalence**: every tRPC endpoint and UI page must produce the same inputs/outputs, audit log entries, and error responses before and after refactoring.
+
+- **Runtime signals preserved:** All `withAudit()` middleware, `ctx.auditMetadata` assignments, `TRPCError` throws, and `console.error` calls remain in their original call paths. Extracted service functions throw `TRPCError` directly (matching the existing pattern in `pipeline-version.ts`).
+- **Inspection surface:** `tsc --noEmit` and `eslint src/` are the primary verification surfaces. Any signature mismatch or missing import is caught at compile time. Line-count checks enforce the file-size constraint.
+- **Failure visibility:** If a service extraction breaks an endpoint, the tRPC error boundary will surface it as a 500 with the original error message. The audit middleware logs the procedure name + error, making broken endpoints traceable in the audit log.
+- **Redaction:** No new secrets or PII handling is introduced. The `encryptNodeConfig`/`decryptNodeConfig` and `stripEnvRefs` call paths are preserved unchanged.
+
+## Verification
+
+(continued below with failure-path check)
+
+- `pnpm exec tsc --noEmit` exits 0 — verifies no type errors after refactoring
+- `pnpm exec eslint src/` exits 0 — verifies no lint violations
+- `grep -r 'TRPCError' src/server/services/pipeline-graph.ts` — service module uses TRPCError for error paths (failure visibility)
 
 ## Files Likely Touched
 

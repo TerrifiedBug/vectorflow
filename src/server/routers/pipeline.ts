@@ -3,7 +3,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { ComponentKind, LogLevel, Prisma } from "@/generated/prisma";
+import { ComponentKind, LogLevel } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import {
   createVersion,
@@ -11,11 +11,10 @@ import {
   getVersion,
   rollback,
 } from "@/server/services/pipeline-version";
-import { encryptNodeConfig, decryptNodeConfig } from "@/server/services/config-crypto";
-import { generateVectorYaml } from "@/lib/config-generator";
+import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { getOrCreateSystemEnvironment } from "@/server/services/system-environment";
+import { saveGraphComponents, promotePipeline, discardPipelineChanges, detectConfigChanges, listPipelinesForEnvironment } from "@/server/services/pipeline-graph";
 import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
-import { stripEnvRefs, type StrippedRef } from "@/server/services/strip-env-refs";
 import { gitSyncDeletePipeline } from "@/server/services/git-sync";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { pushRegistry } from "@/server/services/push-registry";
@@ -66,148 +65,7 @@ export const pipelineRouter = router({
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      const pipelines = await prisma.pipeline.findMany({
-        where: { environmentId: input.environmentId },
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          isDraft: true,
-          deployedAt: true,
-          createdAt: true,
-          updatedAt: true,
-          globalConfig: true,
-          tags: true,
-          enrichMetadata: true,
-          environment: { select: { name: true } },
-          createdBy: { select: { name: true, email: true, image: true } },
-          updatedBy: { select: { name: true, email: true, image: true } },
-          nodeStatuses: {
-            select: {
-              status: true,
-              eventsIn: true,
-              eventsOut: true,
-              errorsTotal: true,
-              eventsDiscarded: true,
-              bytesIn: true,
-              bytesOut: true,
-            },
-          },
-          nodes: {
-            select: {
-              id: true,
-              componentType: true,
-              componentKey: true,
-              kind: true,
-              config: true,
-              positionX: true,
-              positionY: true,
-              disabled: true,
-              sharedComponentId: true,
-              sharedComponentVersion: true,
-              sharedComponent: {
-                select: { version: true, name: true },
-              },
-            },
-          },
-          edges: {
-            select: {
-              id: true,
-              sourceNodeId: true,
-              targetNodeId: true,
-              sourcePort: true,
-            },
-          },
-          versions: {
-            orderBy: { version: "desc" as const },
-            take: 1,
-            select: { version: true, configYaml: true, logLevel: true },
-          },
-        },
-        orderBy: { updatedAt: "desc" },
-      });
-
-      const mapped = await Promise.all(pipelines.map(async (p) => {
-        let hasUndeployedChanges = false;
-        if (!p.isDraft && p.deployedAt) {
-          const latestVersion = p.versions[0];
-          if (latestVersion?.configYaml) {
-            try {
-              const decryptedNodes = p.nodes.map((n) => ({
-                ...n,
-                config: decryptNodeConfig(
-                  n.componentType,
-                  (n.config as Record<string, unknown>) ?? {},
-                ),
-              }));
-              const flowNodes = decryptedNodes.map((n) => ({
-                id: n.id,
-                type: n.kind.toLowerCase(),
-                position: { x: n.positionX, y: n.positionY },
-                data: {
-                  componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
-                  componentKey: n.componentKey,
-                  config: n.config as Record<string, unknown>,
-                  disabled: n.disabled,
-                },
-              }));
-              const flowEdges = p.edges.map((e) => ({
-                id: e.id,
-                source: e.sourceNodeId,
-                target: e.targetNodeId,
-                ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
-              }));
-              const enrichment = p.enrichMetadata
-                ? {
-                    environmentName: p.environment.name,
-                    pipelineVersion: latestVersion.version,
-                  }
-                : null;
-              const currentYaml = generateVectorYaml(
-                flowNodes as Parameters<typeof generateVectorYaml>[0],
-                flowEdges as Parameters<typeof generateVectorYaml>[1],
-                p.globalConfig as Record<string, unknown> | null,
-                enrichment,
-              );
-              hasUndeployedChanges = currentYaml !== latestVersion.configYaml;
-              if (!hasUndeployedChanges) {
-                const currentLogLevel = (p.globalConfig as Record<string, unknown>)?.log_level ?? null;
-                const deployedLogLevel = (latestVersion as { logLevel?: string | null }).logLevel ?? null;
-                if (currentLogLevel !== deployedLogLevel) {
-                  hasUndeployedChanges = true;
-                }
-              }
-            } catch {
-              hasUndeployedChanges = false;
-            }
-          } else if (latestVersion && !latestVersion.configYaml) {
-            hasUndeployedChanges = true;
-          }
-        }
-
-        return {
-          id: p.id,
-          name: p.name,
-          description: p.description,
-          isDraft: p.isDraft,
-          deployedAt: p.deployedAt,
-          createdAt: p.createdAt,
-          updatedAt: p.updatedAt,
-          tags: (p.tags as string[]) ?? [],
-          createdBy: p.createdBy,
-          updatedBy: p.updatedBy,
-          nodeStatuses: p.nodeStatuses,
-          hasUndeployedChanges,
-          hasStaleComponents: p.nodes.some(
-            (n) => n.sharedComponentId && n.sharedComponent && (n.sharedComponentVersion ?? 0) < n.sharedComponent.version
-          ),
-          staleComponentNames: p.nodes
-            .filter((n) => n.sharedComponentId && n.sharedComponent && (n.sharedComponentVersion ?? 0) < n.sharedComponent.version)
-            .map((n) => n.sharedComponent!.name),
-        };
-      }));
-
-      return mapped;
+      return listPipelinesForEnvironment(input.environmentId);
     }),
 
   get: protectedProcedure
@@ -255,49 +113,14 @@ export const pipelineRouter = router({
           select: { configYaml: true, logLevel: true, version: true },
         });
 
-        if (latestVersion) {
-          const flowNodes = decryptedNodes.map((n) => ({
-            id: n.id,
-            type: n.kind.toLowerCase(),
-            position: { x: n.positionX, y: n.positionY },
-            data: {
-              componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
-              componentKey: n.componentKey,
-              config: n.config as Record<string, unknown>,
-              disabled: n.disabled,
-            },
-          }));
-          const flowEdges = pipeline.edges.map((e) => ({
-            id: e.id,
-            source: e.sourceNodeId,
-            target: e.targetNodeId,
-            ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
-          }));
-          const enrichment = pipeline.enrichMetadata
-            ? {
-                environmentName: pipeline.environment.name,
-                pipelineVersion: latestVersion.version,
-              }
-            : null;
-          const currentYaml = generateVectorYaml(
-            flowNodes as Parameters<typeof generateVectorYaml>[0],
-            flowEdges as Parameters<typeof generateVectorYaml>[1],
-            pipeline.globalConfig as Record<string, unknown> | null,
-            enrichment,
-          );
-          hasConfigChanges = currentYaml !== latestVersion.configYaml;
-
-          // Also check if log level changed (stripped from YAML, passed as VECTOR_LOG env var)
-          if (!hasConfigChanges) {
-            const currentLogLevel = (pipeline.globalConfig as Record<string, unknown>)?.log_level ?? null;
-            const deployedLogLevel = latestVersion.logLevel ?? null;
-            if (currentLogLevel !== deployedLogLevel) {
-              hasConfigChanges = true;
-            }
-          }
-        } else {
-          hasConfigChanges = true;
-        }
+        hasConfigChanges = detectConfigChanges({
+          nodes: decryptedNodes,
+          edges: pipeline.edges,
+          globalConfig: pipeline.globalConfig as Record<string, unknown> | null,
+          enrichMetadata: pipeline.enrichMetadata,
+          environmentName: pipeline.environment.name,
+          latestVersion,
+        });
       }
 
       return {
@@ -567,117 +390,12 @@ export const pipelineRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.promoted", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
-      const source = await prisma.pipeline.findUnique({
-        where: { id: input.pipelineId },
-        select: {
-          name: true,
-          description: true,
-          environmentId: true,
-          globalConfig: true,
-          isSystem: true,
-          environment: { select: { teamId: true } },
-        },
+      return promotePipeline({
+        sourcePipelineId: input.pipelineId,
+        targetEnvironmentId: input.targetEnvironmentId,
+        name: input.name,
+        userId: ctx.session.user?.id ?? null,
       });
-      if (!source) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Pipeline not found",
-        });
-      }
-      if (source.isSystem) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "System pipelines cannot be promoted",
-        });
-      }
-
-      if (source.environmentId === input.targetEnvironmentId) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Target environment must be different from source environment",
-        });
-      }
-
-      const targetEnv = await prisma.environment.findUnique({
-        where: { id: input.targetEnvironmentId },
-        select: { teamId: true, name: true },
-      });
-      if (!targetEnv) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Target environment not found",
-        });
-      }
-      if (targetEnv.teamId !== source.environment.teamId) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Target environment must belong to the same team",
-        });
-      }
-
-      const pipelineName = input.name ?? source.name;
-
-      const allStrippedSecrets: StrippedRef[] = [];
-      const allStrippedCertificates: StrippedRef[] = [];
-
-      // Strip secrets/certs from globalConfig if present
-      let strippedGlobalConfig = source.globalConfig ?? undefined;
-      if (strippedGlobalConfig && typeof strippedGlobalConfig === "object" && !Array.isArray(strippedGlobalConfig)) {
-        const globalResult = stripEnvRefs(strippedGlobalConfig as Record<string, unknown>, "__global__");
-        strippedGlobalConfig = globalResult.config as typeof strippedGlobalConfig;
-        allStrippedSecrets.push(...globalResult.strippedSecrets);
-        allStrippedCertificates.push(...globalResult.strippedCertificates);
-      }
-
-      const promoted = await prisma.$transaction(async (tx) => {
-        // Check name collision inside transaction to avoid TOCTOU race
-        const existing = await tx.pipeline.findFirst({
-          where: {
-            name: pipelineName,
-            environmentId: input.targetEnvironmentId,
-          },
-        });
-        if (existing) {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: `A pipeline named "${pipelineName}" already exists in the target environment`,
-          });
-        }
-
-        const created = await tx.pipeline.create({
-          data: {
-            name: pipelineName,
-            description: source.description,
-            environmentId: input.targetEnvironmentId,
-            globalConfig: strippedGlobalConfig,
-            isDraft: true,
-            createdById: ctx.session.user?.id ?? null,
-            updatedById: ctx.session.user?.id,
-          },
-        });
-
-        await copyPipelineGraph(tx, {
-          sourcePipelineId: input.pipelineId,
-          targetPipelineId: created.id,
-          stripSharedComponentLinks: true,
-          transformConfig: (config, componentKey) => {
-            const result = stripEnvRefs(config, componentKey);
-            allStrippedSecrets.push(...result.strippedSecrets);
-            allStrippedCertificates.push(...result.strippedCertificates);
-            return result.config;
-          },
-        });
-
-        return created;
-      });
-
-      return {
-        id: promoted.id,
-        name: promoted.name,
-        targetEnvironmentName: targetEnv.name,
-        strippedSecrets: allStrippedSecrets,
-        strippedCertificates: allStrippedCertificates,
-      };
     }),
 
   saveGraph: protectedProcedure
@@ -692,17 +410,7 @@ export const pipelineRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.graph_saved", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
-      const existing = await prisma.pipeline.findUnique({
-        where: { id: input.pipelineId },
-      });
-      if (!existing) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Pipeline not found",
-        });
-      }
-
-      // Set audit metadata summary instead of full input
+      // Set audit metadata summary — this side-effect MUST stay in the router
       const nodeTypes = input.nodes.map((n) => `${n.kind.toLowerCase()}:${n.componentType}`);
       (ctx as Record<string, unknown>).auditMetadata = {
         pipelineId: input.pipelineId,
@@ -712,114 +420,13 @@ export const pipelineRouter = router({
       };
 
       return prisma.$transaction(async (tx) => {
-        // Validate all sharedComponentIds belong to the same environment
-        const sharedComponentIds = [
-          ...new Set(input.nodes.map((n) => n.sharedComponentId).filter(Boolean) as string[]),
-        ];
-        if (sharedComponentIds.length > 0) {
-          const sharedComponents = await tx.sharedComponent.findMany({
-            where: { id: { in: sharedComponentIds } },
-            select: { id: true, environmentId: true, componentType: true, kind: true },
-          });
-          const scMap = new Map(sharedComponents.map((sc) => [sc.id, sc]));
-          for (const scId of sharedComponentIds) {
-            if (!scMap.has(scId)) {
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: `Shared component ${scId} not found`,
-              });
-            }
-          }
-          for (const sc of sharedComponents) {
-            if (sc.environmentId !== existing.environmentId) {
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: "Shared component does not belong to this pipeline's environment",
-              });
-            }
-          }
-          // Validate componentType/kind match between node and shared component
-          for (const node of input.nodes) {
-            if (!node.sharedComponentId) continue;
-            const sc = scMap.get(node.sharedComponentId)!;
-            if (node.componentType !== sc.componentType || node.kind !== sc.kind) {
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: `Node "${node.componentType}" (${node.kind}) does not match shared component "${sc.componentType}" (${sc.kind})`,
-              });
-            }
-          }
-        }
-
-        await tx.pipeline.update({
-          where: { id: input.pipelineId },
-          data: {
-            updatedById: ctx.session.user?.id,
-            ...(input.globalConfig !== undefined
-              ? { globalConfig: input.globalConfig ?? undefined }
-              : {}),
-          },
+        return saveGraphComponents(tx, {
+          pipelineId: input.pipelineId,
+          nodes: input.nodes,
+          edges: input.edges,
+          globalConfig: input.globalConfig,
+          userId: ctx.session.user?.id ?? null,
         });
-
-        await tx.pipelineEdge.deleteMany({
-          where: { pipelineId: input.pipelineId },
-        });
-        await tx.pipelineNode.deleteMany({
-          where: { pipelineId: input.pipelineId },
-        });
-
-        await Promise.all(
-          input.nodes.map((node) =>
-            tx.pipelineNode.create({
-              data: {
-                ...(node.id ? { id: node.id } : {}),
-                pipelineId: input.pipelineId,
-                componentKey: node.componentKey,
-                displayName: node.displayName ?? null,
-                componentType: node.componentType,
-                kind: node.kind,
-                config: encryptNodeConfig(node.componentType, node.config) as unknown as typeof node.config,
-                positionX: node.positionX,
-                positionY: node.positionY,
-                disabled: node.disabled,
-                sharedComponentId: node.sharedComponentId ?? null,
-                sharedComponentVersion: node.sharedComponentVersion ?? null,
-              },
-            })
-          )
-        );
-
-        await Promise.all(
-          input.edges.map((edge) =>
-            tx.pipelineEdge.create({
-              data: {
-                ...(edge.id ? { id: edge.id } : {}),
-                pipelineId: input.pipelineId,
-                sourceNodeId: edge.sourceNodeId,
-                targetNodeId: edge.targetNodeId,
-                sourcePort: edge.sourcePort,
-              },
-            })
-          )
-        );
-
-        const saved = await tx.pipeline.findUniqueOrThrow({
-          where: { id: input.pipelineId },
-          include: {
-            nodes: true,
-            edges: true,
-          },
-        });
-        return {
-          ...saved,
-          nodes: saved.nodes.map((n) => ({
-            ...n,
-            config: decryptNodeConfig(
-              n.componentType,
-              (n.config as Record<string, unknown>) ?? {},
-            ),
-          })),
-        };
       });
     }),
 
@@ -828,85 +435,7 @@ export const pipelineRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.changes_discarded", "Pipeline"))
     .mutation(async ({ input }) => {
-      const pipeline = await prisma.pipeline.findUnique({
-        where: { id: input.pipelineId },
-        select: { isDraft: true, deployedAt: true },
-      });
-      if (!pipeline) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
-      }
-      if (pipeline.isDraft || !pipeline.deployedAt) {
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: "Cannot discard changes on a pipeline that has never been deployed",
-        });
-      }
-
-      const latestVersion = await prisma.pipelineVersion.findFirst({
-        where: { pipelineId: input.pipelineId },
-        orderBy: { version: "desc" },
-      });
-      if (!latestVersion) {
-        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No deployed version found" });
-      }
-      if (!latestVersion.nodesSnapshot || !latestVersion.edgesSnapshot) {
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: "Deploy once more to enable discard — this version predates snapshot support",
-        });
-      }
-
-      const nodes = latestVersion.nodesSnapshot as Array<Record<string, unknown>>;
-      const edges = latestVersion.edgesSnapshot as Array<Record<string, unknown>>;
-
-      await prisma.$transaction(async (tx) => {
-        await tx.pipeline.update({
-          where: { id: input.pipelineId },
-          data: {
-            globalConfig: latestVersion.globalConfig as Prisma.InputJsonValue ?? undefined,
-          },
-        });
-
-        await tx.pipelineEdge.deleteMany({ where: { pipelineId: input.pipelineId } });
-        await tx.pipelineNode.deleteMany({ where: { pipelineId: input.pipelineId } });
-
-        await Promise.all(
-          nodes.map((node) =>
-            tx.pipelineNode.create({
-              data: {
-                id: node.id as string,
-                pipelineId: input.pipelineId,
-                componentKey: node.componentKey as string,
-                displayName: (node.displayName as string) ?? null,
-                componentType: node.componentType as string,
-                kind: node.kind as ComponentKind,
-                config: node.config as Prisma.InputJsonValue,
-                positionX: node.positionX as number,
-                positionY: node.positionY as number,
-                disabled: (node.disabled as boolean) ?? false,
-                sharedComponentId: ((node as Record<string, unknown>).sharedComponentId as string | null) ?? null,
-                sharedComponentVersion: ((node as Record<string, unknown>).sharedComponentVersion as number | null) ?? null,
-              },
-            })
-          )
-        );
-
-        await Promise.all(
-          edges.map((edge) =>
-            tx.pipelineEdge.create({
-              data: {
-                id: edge.id as string,
-                pipelineId: input.pipelineId,
-                sourceNodeId: edge.sourceNodeId as string,
-                targetNodeId: edge.targetNodeId as string,
-                sourcePort: (edge.sourcePort as string) ?? null,
-              },
-            })
-          )
-        );
-      });
-
-      return { discarded: true };
+      return discardPipelineChanges(input.pipelineId);
     }),
 
   versions: protectedProcedure
