@@ -72,10 +72,17 @@ export const fleetRouter = router({
         "30d": 30 * 24 * 60 * 60 * 1000,
       };
       const since = new Date(Date.now() - rangeMs[input.range]);
-      return prisma.nodeStatusEvent.findMany({
-        where: { nodeId: input.nodeId, timestamp: { gte: since } },
-        orderBy: { timestamp: "asc" },
-      });
+      const [events, node] = await Promise.all([
+        prisma.nodeStatusEvent.findMany({
+          where: { nodeId: input.nodeId, timestamp: { gte: since } },
+          orderBy: { timestamp: "asc" },
+        }),
+        prisma.vectorNode.findUnique({
+          where: { id: input.nodeId },
+          select: { status: true },
+        }),
+      ]);
+      return { events, nodeStatus: node?.status ?? "UNKNOWN" };
     }),
 
   getUptime: protectedProcedure
@@ -100,16 +107,23 @@ export const fleetRouter = router({
         orderBy: { timestamp: "asc" },
       });
 
-      // Get the last event before the range to know starting status
-      const priorEvent = await prisma.nodeStatusEvent.findFirst({
-        where: { nodeId: input.nodeId, timestamp: { lt: since } },
-        orderBy: { timestamp: "desc" },
-      });
+      // Get the last event before the range to know starting status,
+      // and the node's current status as a fallback for nodes with no event history
+      const [priorEvent, nodeForStatus] = await Promise.all([
+        prisma.nodeStatusEvent.findFirst({
+          where: { nodeId: input.nodeId, timestamp: { lt: since } },
+          orderBy: { timestamp: "desc" },
+        }),
+        prisma.vectorNode.findUnique({
+          where: { id: input.nodeId },
+          select: { status: true },
+        }),
+      ]);
 
       // Walk events, tracking time in HEALTHY status
       let healthySeconds = 0;
       let incidents = 0;
-      let currentStatus = priorEvent?.toStatus ?? "UNKNOWN";
+      let currentStatus = priorEvent?.toStatus ?? nodeForStatus?.status ?? "UNKNOWN";
       let cursor = since.getTime();
 
       for (const event of events) {
