@@ -48,6 +48,14 @@
 
 **BigInt in tests:** The project's `tsconfig.json` targets `ES2017`, which does not support bigint literal syntax (`0n`, `100n`). Use `BigInt(0)`, `BigInt(100)` constructor calls instead. Vitest's own transpiler handles this at runtime, but `tsc --noEmit` will reject bigint literals.
 
-**Prisma mock pattern:** Import `src/__mocks__/lib/prisma.ts` in tests that need database mocking. This helper uses `vi.mock('@/lib/prisma')` + `mockDeep<PrismaClient>()` from `vitest-mock-extended`, exports `prismaMock`, and resets it in `beforeEach`. Pure function tests (like `computeChartMetrics`) don't need this — import the function directly.
+**Prisma mock pattern:** The T01 mock helper (`src/__mocks__/lib/prisma.ts`) used a `require()` approach that breaks when actually exercised. The proven pattern (validated in T03) is inline per-test-file:
+```ts
+vi.mock("@/lib/prisma", () => ({
+  prisma: mockDeep<PrismaClient>(),
+}));
+import { prisma } from "@/lib/prisma";
+const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
+```
+The `vi.mock` factory is hoisted and runs before the mocked module's first import. The `prisma` import then gives you the mock object. Cast to `DeepMockProxy` for type-safe mock API access. Call `mockReset(prismaMock)` in `beforeEach` to prevent state leaks between tests.
 
 **Path aliases in tests:** `vitest.config.ts` mirrors `tsconfig.json` paths: `@/` resolves to `./src/`. Tests import from `@/server/services/...` just like production code.

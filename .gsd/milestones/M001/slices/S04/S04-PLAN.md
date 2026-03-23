@@ -61,7 +61,7 @@
   - Verify: `pnpm exec vitest run --reporter=verbose` passes with all 4 test files green (3 new + 1 from T01)
   - Done when: All 3 new test files exist and pass
 
-- [ ] **T03: Write alert-evaluator tests with Prisma mocking** `est:45m`
+- [x] **T03: Write alert-evaluator tests with Prisma mocking** `est:45m`
   - Why: First Prisma-mocked test — proves the `vi.mock('@/lib/prisma')` pattern works with `vitest-mock-extended`. Covers the alert evaluation domain (R002). Alert evaluator has rich business logic: condition checking, duration tracking via in-memory map, firing/resolving events, deduplication.
   - Files: `src/server/services/__tests__/alert-evaluator.test.ts`
   - Do: Mock `@/lib/prisma` using the deep-mock helper. Test: condition fires when threshold exceeded beyond duration, condition resolves when value drops, binary metrics (node_unreachable, pipeline_crashed), percentage metrics (cpu_usage), skip event-based rules (no condition/threshold), deduplication (existing firing event prevents duplicate), duration tracking across sequential calls. Use `vi.hoisted()` for mock variable if needed. Account for module-level `conditionFirstSeen` Map state.
