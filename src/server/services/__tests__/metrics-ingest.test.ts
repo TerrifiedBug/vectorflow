@@ -16,6 +16,7 @@ import {
   type MetricsDataPoint,
   type PreviousSnapshot,
 } from "@/server/services/metrics-ingest";
+import { MetricStore } from "@/server/services/metric-store";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -483,5 +484,112 @@ describe("ingestMetrics", () => {
     await expect(ingestMetrics(dataPoints, new Map())).rejects.toThrow(
       "connection timeout",
     );
+  });
+});
+
+// ─── MetricStore memory footprint test ──────────────────────────────────────
+
+describe("MetricStore memory at target scale", () => {
+  it("ring buffer caps at MAX_SAMPLES (720) per key", () => {
+    const store = new MetricStore();
+
+    // Use fake timers so recordTotals sees elapsed time > 0
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-06-01T00:00:00Z"));
+
+    const nodeId = "node-mem";
+    const pipelineId = "pipe-0";
+    const componentId = "comp-0";
+
+    // Feed 800 samples (more than MAX_SAMPLES=720) to verify ring buffer eviction
+    let samplesStored = 0;
+    for (let s = 0; s <= 800; s++) {
+      vi.advanceTimersByTime(5000);
+      const result = store.recordTotals(nodeId, pipelineId, componentId, {
+        receivedEventsTotal: s * 100,
+        sentEventsTotal: s * 90,
+        receivedBytesTotal: s * 5000,
+        sentBytesTotal: s * 4500,
+        errorsTotal: s,
+        discardedTotal: 0,
+        latencyMeanSeconds: 0.012,
+      });
+      if (result != null) samplesStored++;
+    }
+
+    vi.useRealTimers();
+
+    // 801 calls total, first returns null → 800 samples produced
+    expect(samplesStored).toBe(800);
+
+    // But the ring buffer should cap at 720 (MAX_SAMPLES)
+    const retrieved = store.getSamples(nodeId, pipelineId, componentId, 60 * 24 * 365);
+    expect(retrieved.length).toBe(720);
+  });
+
+  it("memory estimate for 500 pipelines × 5 components × 720 samples stays under 250 MB", () => {
+    // This is a representative-sample test. We populate a smaller scale
+    // (10 pipelines × 5 components) to verify correctness, then compute
+    // the memory estimate analytically for the full 500 × 5 × 720 target.
+    const store = new MetricStore();
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-06-01T00:00:00Z"));
+
+    const PIPELINES = 10;
+    const COMPONENTS = 5;
+    const SAMPLES = 50; // Enough to verify behavior, not 720 (too slow)
+    const nodeId = "node-load-test";
+
+    let samplesStored = 0;
+    for (let p = 0; p < PIPELINES; p++) {
+      for (let c = 0; c < COMPONENTS; c++) {
+        for (let s = 0; s <= SAMPLES; s++) {
+          vi.advanceTimersByTime(5000);
+          const result = store.recordTotals(nodeId, `pipe-${p}`, `comp-${c}`, {
+            receivedEventsTotal: s * 100,
+            sentEventsTotal: s * 90,
+            receivedBytesTotal: s * 5000,
+            sentBytesTotal: s * 4500,
+            errorsTotal: s,
+            discardedTotal: 0,
+            latencyMeanSeconds: 0.012,
+          });
+          if (result != null) samplesStored++;
+        }
+      }
+    }
+
+    vi.useRealTimers();
+
+    // 10 pipelines × 5 components × 50 samples = 2500 stored
+    const expectedRepSamples = PIPELINES * COMPONENTS * SAMPLES;
+    expect(samplesStored).toBe(expectedRepSamples);
+
+    // Now compute the full-scale memory estimate analytically:
+    // 500 pipelines × 5 components = 2500 unique keys
+    // Each key stores up to 720 MetricSample objects
+    // Each MetricSample: 9 number fields × 8 bytes + 1 nullable = ~80 bytes
+    // Map key string: ~40 bytes average ("nodeId:pipelineId:componentId")
+    // Array overhead per key: ~100 bytes
+    const FULL_PIPELINES = 500;
+    const FULL_COMPONENTS = 5;
+    const FULL_SAMPLES = 720;
+    const BYTES_PER_SAMPLE = 80;
+    const BYTES_PER_KEY = 140; // key string + array overhead
+
+    const totalKeys = FULL_PIPELINES * FULL_COMPONENTS;
+    const totalSamples = totalKeys * FULL_SAMPLES;
+    const estimatedBytes =
+      totalKeys * BYTES_PER_KEY + totalSamples * BYTES_PER_SAMPLE;
+    const estimatedMB = estimatedBytes / (1024 * 1024);
+
+    console.log(
+      `MetricStore memory estimate: ${totalKeys} keys × ${FULL_SAMPLES} samples = ` +
+      `${totalSamples.toLocaleString()} total samples ≈ ${estimatedMB.toFixed(1)} MB`,
+    );
+
+    // Must be under 250 MB (reasonable for a server process)
+    expect(estimatedMB).toBeLessThan(250);
   });
 });

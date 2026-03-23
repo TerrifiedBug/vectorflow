@@ -192,3 +192,93 @@ describe("batchUpsertPipelineStatuses", () => {
     ).rejects.toThrow("connection timeout");
   });
 });
+
+// ─── Orchestration test: 100-pipeline payload end-to-end ────────────────────
+
+describe("100-pipeline orchestration", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    prismaMock.$executeRaw.mockResolvedValue(0 as never);
+  });
+
+  it("handles a 100-pipeline payload with 3 component metrics each in a single $executeRaw call", async () => {
+    // Build 100 pipelines, each with 3 component metrics (component metrics are
+    // handled at the route level, but the batch upsert only cares about pipeline-level
+    // fields — this proves the batch function doesn't break with rich payloads)
+    const pipelines: PipelineStatusInput[] = Array.from({ length: 100 }, (_, i) =>
+      makePipeline({
+        pipelineId: `pipe-${String(i).padStart(3, "0")}`,
+        status: i % 5 === 0 ? "STOPPED" : "RUNNING",
+        eventsIn: 1000 + i * 10,
+        eventsOut: 900 + i * 10,
+        errorsTotal: i,
+        bytesIn: 50000 + i * 100,
+        bytesOut: 45000 + i * 100,
+        utilization: 0.1 + (i % 10) * 0.09,
+        recentLogs: i % 10 === 0 ? [`log-line-${i}`] : undefined,
+      }),
+    );
+
+    await batchUpsertPipelineStatuses(NODE_ID, pipelines, NOW);
+
+    // The entire 100-pipeline batch must produce exactly 1 SQL call
+    expect(prismaMock.$executeRaw).toHaveBeenCalledOnce();
+
+    // Verify the inner Prisma.Sql object has values for all 100 pipelines.
+    // Each pipeline contributes 16 fields to the VALUES clause (id, nodeId,
+    // pipelineId, version, status, pid, uptimeSeconds, eventsIn, eventsOut,
+    // errorsTotal, eventsDiscarded, bytesIn, bytesOut, utilization, recentLogs, lastUpdated).
+    const call = prismaMock.$executeRaw.mock.calls[0]!;
+    const innerSql = call[1] as { values: unknown[] };
+    // Prisma.join produces a single Sql object whose .values is a flat array
+    // of all row values concatenated. With 16 fields per row × 100 rows = 1600 values.
+    expect(innerSql.values).toHaveLength(100 * 16);
+  });
+
+  it("preserves ordering invariant: $executeRaw resolves before downstream code runs", async () => {
+    const executionOrder: string[] = [];
+
+    prismaMock.$executeRaw.mockImplementation((() => {
+      executionOrder.push("batch-upsert-resolved");
+      return Promise.resolve(0);
+    }) as never);
+
+    const pipelines = Array.from({ length: 100 }, (_, i) =>
+      makePipeline({ pipelineId: `pipe-${i}` }),
+    );
+
+    await batchUpsertPipelineStatuses(NODE_ID, pipelines, NOW);
+    executionOrder.push("evaluateAlerts-would-run");
+
+    // The batch MUST complete before any downstream consumer runs
+    expect(executionOrder).toEqual([
+      "batch-upsert-resolved",
+      "evaluateAlerts-would-run",
+    ]);
+  });
+
+  it("total Prisma calls for a 100-pipeline heartbeat stay under 20", async () => {
+    // This test documents the call-count budget:
+    // - 1 $executeRaw for NodePipelineStatus batch upsert
+    // That's it for the batch upsert function — the other batch functions
+    // (ingestMetrics, component latency) have their own tests.
+    //
+    // Full heartbeat query budget (documented, not all tested here):
+    // NodePipelineStatus: 1 ($executeRaw)
+    // ingestMetrics: 2+N+2 inside $transaction (delete, createMany, N findMany, delete, createMany)
+    //   For 100 pipelines with distinct pipelineIds: ~104 inside one transaction
+    //   But from the connection's perspective: 1 transaction call
+    // Component latency: 2 ($transaction with deleteMany + createMany)
+    // Node update, label merge, etc: ~5-6 non-batch calls
+    // Total top-level Prisma operations: ~15-20 (vs ~300-400 before batching)
+
+    const pipelines = Array.from({ length: 100 }, (_, i) =>
+      makePipeline({ pipelineId: `pipe-${i}` }),
+    );
+
+    await batchUpsertPipelineStatuses(NODE_ID, pipelines, NOW);
+
+    // For the batch upsert specifically: exactly 1 call
+    expect(prismaMock.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+});

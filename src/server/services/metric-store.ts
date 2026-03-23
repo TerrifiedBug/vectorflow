@@ -23,7 +23,7 @@ interface PrevTotals {
 
 const MAX_SAMPLES = 720; // 1 hour at 5s intervals
 
-class MetricStore {
+export class MetricStore {
   private samples = new Map<string, MetricSample[]>();
   private prevTotals = new Map<string, PrevTotals>();
 
