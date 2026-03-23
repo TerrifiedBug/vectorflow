@@ -9,6 +9,7 @@ import { ingestLogs } from "@/server/services/log-ingest";
 import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
 import { metricStore } from "@/server/services/metric-store";
 import { evaluateAlerts } from "@/server/services/alert-evaluator";
+import { batchUpsertPipelineStatuses } from "@/server/services/heartbeat-batch";
 import { deliverWebhooks } from "@/server/services/webhook-delivery";
 import { deliverToChannels } from "@/server/services/channels";
 import { DeploymentMode } from "@/generated/prisma";
@@ -257,49 +258,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // Upsert pipeline statuses
-    for (const ps of pipelines) {
-      await prisma.nodePipelineStatus.upsert({
-        where: {
-          nodeId_pipelineId: {
-            nodeId: agent.nodeId,
-            pipelineId: ps.pipelineId,
-          },
-        },
-        create: {
-          nodeId: agent.nodeId,
-          pipelineId: ps.pipelineId,
-          version: ps.version,
-          status: ps.status,
-          pid: ps.pid ?? null,
-          uptimeSeconds: ps.uptimeSeconds ?? null,
-          eventsIn: ps.eventsIn ?? 0,
-          eventsOut: ps.eventsOut ?? 0,
-          errorsTotal: ps.errorsTotal ?? 0,
-          eventsDiscarded: ps.eventsDiscarded ?? 0,
-          bytesIn: ps.bytesIn ?? 0,
-          bytesOut: ps.bytesOut ?? 0,
-          utilization: ps.utilization ?? 0,
-          recentLogs: ps.recentLogs ?? undefined,
-          lastUpdated: now,
-        },
-        update: {
-          version: ps.version,
-          status: ps.status,
-          pid: ps.pid ?? null,
-          uptimeSeconds: ps.uptimeSeconds ?? null,
-          eventsIn: ps.eventsIn ?? 0,
-          eventsOut: ps.eventsOut ?? 0,
-          errorsTotal: ps.errorsTotal ?? 0,
-          eventsDiscarded: ps.eventsDiscarded ?? 0,
-          bytesIn: ps.bytesIn ?? 0,
-          bytesOut: ps.bytesOut ?? 0,
-          utilization: ps.utilization ?? 0,
-          recentLogs: ps.recentLogs ?? undefined,
-          lastUpdated: now,
-        },
-      });
-    }
+    // Batch upsert pipeline statuses with a single INSERT...ON CONFLICT
+    await batchUpsertPipelineStatuses(agent.nodeId, pipelines, now);
 
     // Remove statuses for pipelines no longer reported by this node
     const reportedPipelineIds = pipelines.map((p) => p.pipelineId);
