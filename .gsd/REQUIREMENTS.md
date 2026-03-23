@@ -26,17 +26,6 @@ This file is the explicit capability and coverage contract for the project.
 - Validation: unmapped
 - Notes: Need to set up test infrastructure from scratch — runner, Prisma mocking strategy, test utilities.
 
-### R003 — All `.ts`/`.tsx` source files (excluding generated code) should be under ~800 lines. Currently 10+ files over 600 lines, with the alerts page at 1910 lines.
-- Class: quality-attribute
-- Status: active
-- Description: All `.ts`/`.tsx` source files (excluding generated code) should be under ~800 lines. Currently 10+ files over 600 lines, with the alerts page at 1910 lines.
-- Why it matters: Large monolithic files are hard to navigate, review, and maintain. They signal mixed concerns that should be separated.
-- Source: user
-- Primary owning slice: M001/S02
-- Supporting slices: none
-- Validation: unmapped
-- Notes: Biggest offenders: alerts page (1910), vrl function-registry (1775), pipeline router (1318), dashboard router (1074), flow-store (951), team-settings (865), users-settings (813), vrl-editor (795).
-
 ### R004 — Utility functions duplicated across files (e.g., `aggregateProcessStatus` in 3 files, `derivePipelineStatus` in dashboard page) are extracted to shared modules in `src/lib/`.
 - Class: quality-attribute
 - Status: active
@@ -103,6 +92,19 @@ This file is the explicit capability and coverage contract for the project.
 - Validation: unmapped
 - Notes: Includes bundle analysis, Prisma query review, and runtime profiling of heavy pages (dashboard, pipeline editor, fleet).
 
+## Validated
+
+### R003 — All `.ts`/`.tsx` source files (excluding generated code) should be under ~800 lines. Currently 10+ files over 600 lines, with the alerts page at 1910 lines.
+- Class: quality-attribute
+- Status: validated
+- Description: All `.ts`/`.tsx` source files (excluding generated code) should be under ~800 lines. Currently 10+ files over 600 lines, with the alerts page at 1910 lines.
+- Why it matters: Large monolithic files are hard to navigate, review, and maintain. They signal mixed concerns that should be separated.
+- Source: user
+- Primary owning slice: M001/S02
+- Supporting slices: none
+- Validation: S02 verified: alerts page 1910→45 lines, pipeline router 1318→847, dashboard router 1074→652, team-settings 865→747, users-settings 813→522. `find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | sort -rn` shows no non-exempt file over ~800 lines (exempt: flow-store.ts per D002, function-registry.ts per D003).
+- Notes: S02 split 5 over-target files across 4 tasks. Biggest win: alerts page from 1910 to 45 lines via 4 section components. Two new service modules created (pipeline-graph.ts, dashboard-data.ts). Two dialog extraction files created. All exempt files documented in D002/D003.
+
 ## Deferred
 
 ### R009 — Remove `ignoreBuildErrors: true` from `next.config.ts` so `next build` type-checks without bypassing errors.
@@ -146,7 +148,7 @@ This file is the explicit capability and coverage contract for the project.
 |---|---|---|---|---|---|
 | R001 | quality-attribute | active | M001/S01 | none | `pnpm exec tsc --noEmit` exits 0 — S01 verified no regression after extracting shared utilities and rewiring 10 consumer files |
 | R002 | quality-attribute | active | M001/S04 | none | unmapped |
-| R003 | quality-attribute | active | M001/S02 | none | unmapped |
+| R003 | quality-attribute | validated | M001/S02 | none | S02 verified: alerts page 1910→45 lines, pipeline router 1318→847, dashboard router 1074→652, team-settings 865→747, users-settings 813→522. `find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | sort -rn` shows no non-exempt file over ~800 lines (exempt: flow-store.ts per D002, function-registry.ts per D003). |
 | R004 | quality-attribute | active | M001/S01 | M001/S02 | S01/T01 creates shared modules, S01/T02 removes all inline duplicates; verified by grep checks returning no matches in src/app and src/components |
 | R005 | primary-user-loop | active | M001/S03 | none | unmapped |
 | R006 | primary-user-loop | active | M001/S03 | none | unmapped |
@@ -159,7 +161,7 @@ This file is the explicit capability and coverage contract for the project.
 
 ## Coverage Summary
 
-- Active requirements: 9
-- Mapped to slices: 9
-- Validated: 0
+- Active requirements: 8
+- Mapped to slices: 8
+- Validated: 1 (R003)
 - Unmapped active requirements: 0
