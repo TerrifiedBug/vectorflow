@@ -64,3 +64,9 @@ Both must be thin wrappers matching existing visual patterns. No new dependencie
 
 - `src/components/empty-state.tsx` — new shared EmptyState component
 - `src/components/query-error.tsx` — new shared QueryError component
+
+## Observability Impact
+
+- **Signals changed**: None — these are purely presentational components with no telemetry or logging.
+- **Inspection surface**: After downstream tasks wire these components into dashboard pages, `rg -l 'QueryError' src/app/\(dashboard\)/` and `rg -l 'EmptyState' src/app/\(dashboard\)/` will show adoption coverage. For this task, verification is that both files exist and compile.
+- **Failure visibility**: `QueryError` makes tRPC query failures user-visible with an inline error message and retry button, replacing blank screens. `EmptyState` makes zero-data states explicit instead of showing empty space.

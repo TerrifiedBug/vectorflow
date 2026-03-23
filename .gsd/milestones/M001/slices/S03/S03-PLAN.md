@@ -28,6 +28,13 @@
 - `rg -l 'QueryError' src/app/\(dashboard\)/` returns 15+ files (error handling wired into all data pages)
 - `rg -l 'EmptyState' src/app/\(dashboard\)/` returns 12+ files (shared component used across pages)
 
+## Observability / Diagnostics
+
+- **Runtime signals**: `EmptyState` and `QueryError` are purely presentational — no runtime telemetry. Visibility is verified via grep for component imports across dashboard pages.
+- **Inspection surfaces**: `rg -l 'QueryError' src/app/\(dashboard\)/` and `rg -l 'EmptyState' src/app/\(dashboard\)/` show adoption coverage. `rg 'border border-dashed' src/app/\(dashboard\)/` should return 0 matches when the sweep is complete (all inline patterns replaced).
+- **Failure visibility**: When a tRPC query fails, the `QueryError` component renders an inline error with a retry button — the user sees "Failed to load data" instead of a blank screen. No server-side logging is added by these components.
+- **Redaction constraints**: None — these components render only UI labels and icons, no user data or secrets.
+
 ## Integration Closure
 
 - Upstream surfaces consumed: `src/components/ui/skeleton.tsx` (existing shadcn primitive), `src/components/error-boundary.tsx` (visual language reference for error display)
@@ -36,7 +43,7 @@
 
 ## Tasks
 
-- [ ] **T01: Create shared EmptyState and QueryError components** `est:30m`
+- [x] **T01: Create shared EmptyState and QueryError components** `est:30m`
   - Why: All subsequent tasks need these components to replace inline patterns and add error handling. Creating them first unblocks everything.
   - Files: `src/components/empty-state.tsx`, `src/components/query-error.tsx`
   - Do: Create `EmptyState` (icon, title, description, optional action button — matches existing `border-dashed p-12` pattern exactly) and `QueryError` (AlertTriangle icon, error message, retry button — consistent with ErrorBoundary visual language). Use existing shadcn/ui components (Button, Card). No new dependencies.
