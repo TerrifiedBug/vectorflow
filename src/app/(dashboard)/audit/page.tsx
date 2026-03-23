@@ -27,6 +27,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTeamStore } from "@/stores/team-store";
 import { formatTimestamp } from "@/lib/format";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 
 const ALL_VALUE = "__all__";
 const SCIM_VALUE = "__SCIM__";
@@ -125,6 +127,14 @@ export default function AuditPage() {
       }
       return next;
     });
+  }
+
+  if (logsQuery.isError) {
+    return (
+      <div className="space-y-6">
+        <QueryError message="Failed to load audit log" onRetry={() => logsQuery.refetch()} />
+      </div>
+    );
   }
 
   return (
@@ -325,12 +335,10 @@ export default function AuditPage() {
           ))}
         </div>
       ) : allItems.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">No audit log entries found</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Actions will appear here as they are performed
-          </p>
-        </div>
+        <EmptyState
+          title="No audit log entries found"
+          description="Actions will appear here as they are performed"
+        />
       ) : (
         <>
         <div className="overflow-x-auto">

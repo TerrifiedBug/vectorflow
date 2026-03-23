@@ -65,6 +65,13 @@ Add query error handling, replace inline empty states with the shared `EmptyStat
 - `rg 'border-dashed' src/app/\(dashboard\)/page.tsx src/app/\(dashboard\)/analytics/page.tsx src/app/\(dashboard\)/audit/page.tsx src/app/\(dashboard\)/environments/page.tsx src/app/\(dashboard\)/fleet/page.tsx src/app/\(dashboard\)/pipelines/page.tsx` — returns 0 matches (all inline empty states replaced)
 - `rg 'Skeleton' src/app/\(dashboard\)/analytics/page.tsx` — confirms Skeleton is now imported/used
 
+## Observability Impact
+
+- **Signals changed**: No runtime telemetry is added. `QueryError` renders an inline "Failed to load data" message with a retry button when a tRPC query errors — this replaces blank screens with visible feedback, making failures user-observable without server-side logging.
+- **Inspection surfaces**: `rg -l 'QueryError' src/app/\(dashboard\)/` shows which pages have error handling wired in (9 after this task). `rg -l 'EmptyState' src/app/\(dashboard\)/` shows which pages use the shared empty state (8 after this task — `pipelines/[id]/page.tsx` uses QueryError only). `rg 'border-dashed' <file>` returning 0 confirms no inline patterns remain in the given file.
+- **Failure visibility**: Each query error now renders a visible `QueryError` component with a retry button instead of a blank screen. The user sees the error and can retry without refreshing.
+- **Redaction constraints**: None — components render only UI labels and icons.
+
 ## Inputs
 
 - `src/components/empty-state.tsx` — shared EmptyState component (created in T01)

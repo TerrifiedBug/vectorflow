@@ -33,6 +33,8 @@ import { CustomView } from "@/components/dashboard/custom-view";
 import { formatSI, formatBytesRate, formatEventsRate, formatLatency } from "@/lib/format";
 import { derivePipelineStatus } from "@/lib/pipeline-status";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 
 export default function DashboardPage() {
   const trpc = useTRPC();
@@ -119,6 +121,14 @@ export default function DashboardPage() {
     refetchInterval: refreshInterval[timeRange],
     enabled: !!selectedEnvironmentId && activeView === null,
   });
+
+  if (!selectedEnvironmentId) {
+    return <EmptyState title="Select an environment to view the dashboard" />;
+  }
+
+  if (stats.isError) {
+    return <QueryError message="Failed to load dashboard data" onRetry={() => stats.refetch()} />;
+  }
 
   return (
     <div className="space-y-6">

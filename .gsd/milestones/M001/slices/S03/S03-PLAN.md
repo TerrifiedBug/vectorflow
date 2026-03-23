@@ -50,7 +50,7 @@
   - Verify: `pnpm exec tsc --noEmit` exits 0 and both files exist
   - Done when: Both components compile, export default-style React components with typed props, and match the existing visual patterns
 
-- [ ] **T02: Add error, loading, and empty states to core dashboard pages** `est:1h`
+- [x] **T02: Add error, loading, and empty states to core dashboard pages** `est:1h`
   - Why: The highest-traffic pages (dashboard, analytics, audit, environments, fleet, pipelines) currently have no query error handling. Analytics has no loading skeleton. Dashboard has no "select environment" guard. This task delivers the most visible R005 improvements.
   - Files: `src/app/(dashboard)/page.tsx`, `src/app/(dashboard)/analytics/page.tsx`, `src/app/(dashboard)/audit/page.tsx`, `src/app/(dashboard)/environments/page.tsx`, `src/app/(dashboard)/environments/[id]/page.tsx`, `src/app/(dashboard)/fleet/page.tsx`, `src/app/(dashboard)/pipelines/page.tsx`, `src/app/(dashboard)/pipelines/[id]/page.tsx`, `src/app/(dashboard)/pipelines/[id]/metrics/page.tsx`
   - Do: For each page: (1) import `QueryError` and `EmptyState`, (2) add `isError` check rendering `QueryError` with `query.refetch`, (3) replace inline `border-dashed` empty states with `EmptyState` component (preserve exact text and CTAs), (4) add loading skeleton to analytics page, (5) add "select an environment" guard to dashboard page. Match existing patterns in the codebase.

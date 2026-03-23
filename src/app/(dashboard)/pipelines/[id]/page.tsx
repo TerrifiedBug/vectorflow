@@ -39,6 +39,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PipelineMetricsChart } from "@/components/pipeline/metrics-chart";
 import { PipelineLogs } from "@/components/pipeline/pipeline-logs";
 import { useTeamStore } from "@/stores/team-store";
+import { QueryError } from "@/components/query-error";
 
 /**
  * Convert database PipelineNode rows into React Flow nodes.
@@ -367,9 +368,10 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   if (pipelineQuery.error) {
     return (
       <div className="-mx-6 -my-2 flex h-[calc(100vh-3.5rem)] items-center justify-center">
-        <p className="text-destructive">
-          Failed to load pipeline: {pipelineQuery.error.message}
-        </p>
+        <QueryError
+          message={`Failed to load pipeline: ${pipelineQuery.error.message}`}
+          onRetry={() => pipelineQuery.refetch()}
+        />
       </div>
     );
   }
