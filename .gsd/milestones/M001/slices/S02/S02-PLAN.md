@@ -29,7 +29,7 @@
 
 ## Tasks
 
-- [ ] **T01: Split alerts page into section components** `est:45m`
+- [x] **T01: Split alerts page into section components** `est:45m`
   - Why: Alerts page is 1910 lines — the largest non-exempt file. It has 4 clearly separated sections (`AlertRulesSection`, `NotificationChannelsSection`, `WebhooksSection`, `AlertHistorySection`) that are already self-contained with their own hooks, mutations, and state. Extracting them is the highest-ROI split in S02.
   - Files: `src/app/(dashboard)/alerts/page.tsx`, `src/app/(dashboard)/alerts/_components/alert-rules-section.tsx`, `src/app/(dashboard)/alerts/_components/notification-channels-section.tsx`, `src/app/(dashboard)/alerts/_components/webhooks-section.tsx`, `src/app/(dashboard)/alerts/_components/alert-history-section.tsx`, `src/app/(dashboard)/alerts/_components/constants.ts`
   - Do: Create `_components/` directory. Extract shared constants/types (L65-142) to `constants.ts` — but keep form-state types (like `RuleFormState`, `ChannelFormState`) co-located with their section components to avoid pulling in section-specific dependencies. Move each section function into its own file with all its local helpers. Thin `page.tsx` to a composition wrapper (~50-100 lines) that imports and renders the 4 sections. Preserve all existing imports in each section file.
