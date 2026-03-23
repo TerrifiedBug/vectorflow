@@ -87,3 +87,9 @@ The changes are highly mechanical: each file gets an import of `QueryError` and 
 - `src/app/(dashboard)/settings/_components/ai-settings.tsx` — error handling added
 - `src/app/(dashboard)/settings/_components/auth-settings.tsx` — error handling added
 - `src/app/(dashboard)/settings/service-accounts/page.tsx` — error handling added
+
+## Observability Impact
+
+- **Signals changed**: No new runtime telemetry. QueryError is a purely presentational component — when a tRPC query fails, the user sees "Failed to load [X]" with a retry button instead of a blank screen. No server-side logs are added.
+- **How to inspect**: `rg -l 'QueryError' src/app/\(dashboard\)/settings/` confirms all settings files have error handling. `rg 'border border-dashed' src/app/\(dashboard\)/` should return 0 matches after this task.
+- **Failure visibility**: When any settings tRPC query fails (network error, server error), the QueryError component renders inline with the specific failure message and a retry button. The user is never shown a blank white screen.

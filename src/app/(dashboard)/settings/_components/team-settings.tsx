@@ -53,7 +53,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-
+import { QueryError } from "@/components/query-error";
 
 // ─── Team Tab ──────────────────────────────────────────────────────────────────
 
@@ -300,6 +300,8 @@ export function TeamSettings() {
       role: inviteRole,
     });
   };
+
+  if (teamQuery.isError) return <QueryError message="Failed to load team settings" onRetry={() => teamQuery.refetch()} />;
 
   if (teamQuery.isLoading) {
     return (

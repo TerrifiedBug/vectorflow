@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { QueryError } from "@/components/query-error";
 
 // ─── Audit Log Shipping Section ─────────────────────────────────────────────
 
@@ -80,6 +81,8 @@ export function AuditLogShippingSection() {
   const isLoading = systemPipelineQuery.isLoading;
   const isDeployed = systemPipeline && !systemPipeline.isDraft && systemPipeline.deployedAt;
   const isToggling = undeployMutation.isPending || deployMutation.isPending;
+
+  if (systemPipelineQuery.isError) return <QueryError message="Failed to load audit shipping settings" onRetry={() => systemPipelineQuery.refetch()} />;
 
   return (
     <Card>

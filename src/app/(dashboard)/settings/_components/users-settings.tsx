@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { QueryError } from "@/components/query-error";
 import {
   Popover,
   PopoverContent,
@@ -167,6 +168,8 @@ export function UsersSettings() {
       onError: (error) => toast.error(error.message),
     })
   );
+
+  if (usersQuery.isError) return <QueryError message="Failed to load users" onRetry={() => usersQuery.refetch()} />;
 
   if (usersQuery.isLoading) {
     return (

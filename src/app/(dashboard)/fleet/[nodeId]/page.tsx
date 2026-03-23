@@ -23,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { NodeMetricsCharts } from "@/components/fleet/node-metrics-charts";
 import { UptimeCards } from "@/components/fleet/uptime-cards";
@@ -233,9 +234,7 @@ export default function NodeDetailPage() {
           <span className="text-muted-foreground">/</span>
           <span className="font-medium">Not found</span>
         </div>
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">Node not found</p>
-        </div>
+        <EmptyState title="Node not found" />
       </div>
     );
   }
@@ -578,14 +577,10 @@ export default function NodeDetailPage() {
                     </TableBody>
                   </Table>
                 ) : (
-                  <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-                    <p className="text-muted-foreground">
-                      No pipeline metrics yet
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Metrics appear after pipelines are deployed and the agent reports heartbeats.
-                    </p>
-                  </div>
+                  <EmptyState
+                    title="No pipeline metrics yet"
+                    description="Metrics appear after pipelines are deployed and the agent reports heartbeats."
+                  />
                 )}
               </CardContent>
             </Card>
