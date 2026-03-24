@@ -31,7 +31,6 @@ import { QueryError } from "@/components/query-error";
 
 const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; placeholder: string }> = {
   openai: { baseUrl: "https://api.openai.com/v1", placeholder: "gpt-4o" },
-  anthropic: { baseUrl: "https://api.anthropic.com/v1", placeholder: "claude-sonnet-4-20250514" },
   custom: { baseUrl: "", placeholder: "model-name" },
 };
 
@@ -88,7 +87,7 @@ function AiSettingsForm({ config, teamId }: { config: AiConfig; teamId: string }
     const data: Record<string, unknown> = {
       teamId,
       aiEnabled: enabled,
-      aiProvider: provider as "openai" | "anthropic" | "custom",
+      aiProvider: provider as "openai" | "custom",
       aiBaseUrl: baseUrl || null,
       aiModel: model || null,
     };
@@ -150,10 +149,14 @@ function AiSettingsForm({ config, teamId }: { config: AiConfig; teamId: string }
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="openai">OpenAI</SelectItem>
-                <SelectItem value="anthropic">Anthropic</SelectItem>
                 <SelectItem value="custom">Custom (OpenAI-compatible)</SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              VectorFlow uses the OpenAI chat completions API format. Providers like
+              Anthropic, Groq, and others that offer OpenAI-compatible endpoints can
+              be configured via &quot;Custom&quot;.
+            </p>
           </div>
 
           {/* Base URL */}

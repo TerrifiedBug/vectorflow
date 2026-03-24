@@ -5,24 +5,35 @@ import { Bot, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AiSuggestionCard } from "./ai-suggestion-card";
 import { detectConflicts } from "@/lib/ai/conflict-detector";
+import { computeSuggestionDiff } from "@/lib/ai/suggestion-diff";
 import type { AiSuggestion, SuggestionStatus } from "@/lib/ai/types";
 import type { ConversationMessage } from "@/hooks/use-ai-conversation";
+import type { Node } from "@xyflow/react";
 
 interface AiMessageBubbleProps {
   message: ConversationMessage;
   suggestionStatuses: Map<string, SuggestionStatus>;
-  onApplySelected: (messageId: string, suggestions: AiSuggestion[]) => void;
+  onApplySelected: (messageId: string, suggestions: AiSuggestion[]) => Array<{ suggestionId: string; success: boolean; error?: string }>;
+  nodes: Node[];
 }
 
 export function AiMessageBubble({
   message,
   suggestionStatuses,
   onApplySelected,
+  nodes,
 }: AiMessageBubbleProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [applyResults, setApplyResults] = useState<Map<string, { success: boolean; error?: string }> | null>(null);
 
   const suggestions = useMemo(() => message.suggestions ?? [], [message.suggestions]);
   const hasSuggestions = message.role === "assistant" && suggestions.length > 0;
+
+  // Compute diffs for each suggestion against current flow nodes
+  const diffs = useMemo(
+    () => new Map(suggestions.map((s) => [s.id, computeSuggestionDiff(s, nodes)])),
+    [suggestions, nodes],
+  );
 
   // Parse summary from assistant JSON content
   const summary = useMemo(() => {
@@ -71,13 +82,19 @@ export function AiMessageBubble({
 
   const handleApplyAll = () => {
     if (actionableSuggestions.length > 0) {
-      onApplySelected(message.id, actionableSuggestions);
+      const results = onApplySelected(message.id, actionableSuggestions);
+      if (results) {
+        setApplyResults(new Map(results.map((r) => [r.suggestionId, { success: r.success, error: r.error }])));
+      }
     }
   };
 
   const handleApplySelected = () => {
     if (selectedSuggestions.length > 0) {
-      onApplySelected(message.id, selectedSuggestions);
+      const results = onApplySelected(message.id, selectedSuggestions);
+      if (results) {
+        setApplyResults(new Map(results.map((r) => [r.suggestionId, { success: r.success, error: r.error }])));
+      }
     }
   };
 
@@ -129,6 +146,8 @@ export function AiMessageBubble({
               hasConflict={conflictMap.has(s.id)}
               conflictReason={conflictMap.get(s.id)}
               onToggle={handleToggle}
+              diff={diffs.get(s.id) ?? null}
+              applyResult={applyResults?.get(s.id) ?? null}
             />
           ))}
         </div>
