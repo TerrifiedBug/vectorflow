@@ -8,6 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import { BookOpen, LogOut, ShieldAlert, User } from "lucide-react";
 
 import { useTRPC } from "@/trpc/client";
+import { useSSE } from "@/hooks/use-sse";
+import { useRealtimeInvalidation } from "@/hooks/use-realtime-invalidation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TeamSelector } from "@/components/team-selector";
 import { EnvironmentSelector } from "@/components/environment-selector";
@@ -34,6 +36,10 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+
+  // SSE connection + cache invalidation (fire-and-forget)
+  useSSE();
+  useRealtimeInvalidation();
 
   const { data: session } = useSession();
   const trpc = useTRPC();
