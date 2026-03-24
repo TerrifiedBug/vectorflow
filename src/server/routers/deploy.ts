@@ -255,9 +255,9 @@ export const deployRouter = router({
         sseRegistry.broadcast({
           type: "status_change",
           nodeId: "",
-          fromStatus: "PENDING",
+          fromStatus: "",
           toStatus: "DEPLOYED",
-          reason: "deploy completed",
+          reason: "deploy completed via UI",
           pipelineId: input.pipelineId,
           pipelineName: pipeline.name,
         }, pipeline.environment.id);
@@ -475,9 +475,9 @@ export const deployRouter = router({
         sseRegistry.broadcast({
           type: "status_change",
           nodeId: "",
-          fromStatus: "PENDING",
+          fromStatus: "",
           toStatus: "DEPLOYED",
-          reason: "deploy completed",
+          reason: "deploy request approved and completed",
           pipelineId: request.pipelineId,
           pipelineName: deployedPipeline?.name ?? request.pipelineId,
         }, request.environmentId);

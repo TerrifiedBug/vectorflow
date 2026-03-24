@@ -157,17 +157,47 @@ export function computeAggregation(
 }
 
 /**
+ * Add delta values to an existing row's counters. Returns a new row with
+ * accumulated totals. Utilization and latency take the latest value (not summed).
+ */
+export function accumulateRow(
+  existing: {
+    eventsIn: bigint;
+    eventsOut: bigint;
+    errorsTotal: bigint;
+    eventsDiscarded: bigint;
+    bytesIn: bigint;
+    bytesOut: bigint;
+  },
+  delta: PerNodeRow,
+): PerNodeRow {
+  return {
+    ...delta,
+    eventsIn: existing.eventsIn + delta.eventsIn,
+    eventsOut: existing.eventsOut + delta.eventsOut,
+    errorsTotal: existing.errorsTotal + delta.errorsTotal,
+    eventsDiscarded: existing.eventsDiscarded + delta.eventsDiscarded,
+    bytesIn: existing.bytesIn + delta.bytesIn,
+    bytesOut: existing.bytesOut + delta.bytesOut,
+  };
+}
+
+/**
  * Ingest metrics from agent heartbeats by computing rate diffs from cumulative counters.
  *
- * Strategy (batch — no per-pipeline query loop):
+ * Strategy (batch — minimal per-pipeline queries):
  * 1. Compute all deltas in-memory from previousSnapshots.
  * 2. Inside a $transaction:
- *    a. Delete existing per-node minute rows for this node+timestamp.
- *    b. Insert all new per-node rows with createMany.
- *    c. For each touched pipeline, read all per-node rows (including other nodes),
+ *    a. Read existing per-node minute rows for this node+timestamp.
+ *    b. Accumulate deltas onto existing rows (or use delta as-is for new rows).
+ *    c. Delete existing per-node minute rows, then insert accumulated rows.
+ *    d. For each touched pipeline, read all per-node rows (including other nodes),
  *       compute aggregation in-memory.
- *    d. Delete existing aggregation rows for touched pipelines.
- *    e. Insert new aggregation rows with createMany.
+ *    e. Delete existing aggregation rows for touched pipelines.
+ *    f. Insert new aggregation rows with createMany.
+ *
+ * Per-minute rows accumulate across heartbeats within the same minute.
+ * At 5s heartbeats, ~12 heartbeats per minute contribute to the total.
  */
 export async function ingestMetrics(
   dataPoints: MetricsDataPoint[],
@@ -180,7 +210,7 @@ export async function ingestMetrics(
   now.setSeconds(0, 0);
 
   // 1. Compute all deltas in-memory
-  const perNodeRows = computeDeltas(dataPoints, previousSnapshots, now);
+  const perNodeDeltas = computeDeltas(dataPoints, previousSnapshots, now);
 
   // Track which pipelines we touched for aggregation
   const touchedPipelineIds = [...new Set(dataPoints.map((dp) => dp.pipelineId))];
@@ -189,8 +219,8 @@ export async function ingestMetrics(
 
   // 2. Execute batch writes inside a transaction
   await prisma.$transaction(async (tx) => {
-    // 2a. Delete existing per-node minute rows for this node
-    await tx.pipelineMetric.deleteMany({
+    // 2a. Read existing per-node minute rows for this node+timestamp
+    const existingRows = await tx.pipelineMetric.findMany({
       where: {
         nodeId,
         componentId: null,
@@ -198,10 +228,31 @@ export async function ingestMetrics(
       },
     });
 
-    // 2b. Insert all new per-node rows
-    await tx.pipelineMetric.createMany({ data: perNodeRows });
+    // Index existing rows by pipelineId for O(1) lookup
+    const existingByPipeline = new Map(
+      existingRows.map((row) => [row.pipelineId, row]),
+    );
 
-    // 2c. For each touched pipeline, gather all per-node rows and compute aggregation
+    // 2b. Accumulate deltas onto existing rows
+    const accumulatedRows = perNodeDeltas.map((delta) => {
+      const existing = existingByPipeline.get(delta.pipelineId);
+      return existing ? accumulateRow(existing, delta) : delta;
+    });
+
+    // 2c. Delete existing per-node minute rows, then insert accumulated rows
+    if (existingRows.length > 0) {
+      await tx.pipelineMetric.deleteMany({
+        where: {
+          nodeId,
+          componentId: null,
+          timestamp: now,
+        },
+      });
+    }
+
+    await tx.pipelineMetric.createMany({ data: accumulatedRows });
+
+    // 2d. For each touched pipeline, gather all per-node rows and compute aggregation
     const aggregationRows: AggregationRow[] = [];
 
     for (const pipelineId of touchedPipelineIds) {
@@ -217,7 +268,7 @@ export async function ingestMetrics(
       aggregationRows.push(computeAggregation(pipelineId, allNodeRows, now));
     }
 
-    // 2d. Delete existing aggregation rows for touched pipelines
+    // 2e. Delete existing aggregation rows for touched pipelines
     if (touchedPipelineIds.length > 0) {
       await tx.pipelineMetric.deleteMany({
         where: {
@@ -229,7 +280,7 @@ export async function ingestMetrics(
       });
     }
 
-    // 2e. Insert new aggregation rows
+    // 2f. Insert new aggregation rows
     if (aggregationRows.length > 0) {
       await tx.pipelineMetric.createMany({ data: aggregationRows });
     }

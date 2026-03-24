@@ -62,7 +62,10 @@ describe("getToastConfig", () => {
     });
   });
 
-  it("returns warning toast for node offline via status_change", () => {
+  it("returns null for node offline via status_change (no server-side emitter yet)", () => {
+    // Node offline detection requires a server-side watchdog that emits
+    // fleet_status OFFLINE events. status_change events are only emitted
+    // from the heartbeat handler (which requires an active heartbeat).
     const event: SSEEvent = {
       type: "status_change",
       nodeId: "n1",
@@ -70,12 +73,7 @@ describe("getToastConfig", () => {
       toStatus: "OFFLINE",
       reason: "heartbeat timeout",
     };
-    const result = getToastConfig(event);
-    expect(result).toEqual({
-      type: "warning",
-      message: "Node went offline",
-      dedupeKey: "offline:n1",
-    });
+    expect(getToastConfig(event)).toBeNull();
   });
 
   it("returns warning toast for node offline via fleet_status", () => {

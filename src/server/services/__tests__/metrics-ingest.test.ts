@@ -13,6 +13,7 @@ import {
   clamp,
   computeDeltas,
   computeAggregation,
+  accumulateRow,
   type MetricsDataPoint,
   type PreviousSnapshot,
 } from "@/server/services/metrics-ingest";
@@ -199,6 +200,67 @@ describe("computeDeltas", () => {
   });
 });
 
+// ─── Unit tests: accumulateRow ──────────────────────────────────────────────
+
+describe("accumulateRow", () => {
+  const baseDelta = {
+    pipelineId: "pipe-1",
+    nodeId: "node-1",
+    timestamp: new Date("2026-01-01"),
+    eventsIn: BigInt(10),
+    eventsOut: BigInt(8),
+    errorsTotal: BigInt(1),
+    eventsDiscarded: BigInt(0),
+    bytesIn: BigInt(500),
+    bytesOut: BigInt(400),
+    utilization: 0.6,
+  };
+
+  it("adds delta counters to existing row counters", () => {
+    const existing = {
+      eventsIn: BigInt(50),
+      eventsOut: BigInt(40),
+      errorsTotal: BigInt(3),
+      eventsDiscarded: BigInt(1),
+      bytesIn: BigInt(2000),
+      bytesOut: BigInt(1800),
+    };
+    const result = accumulateRow(existing, baseDelta);
+    expect(result.eventsIn).toBe(BigInt(60));
+    expect(result.eventsOut).toBe(BigInt(48));
+    expect(result.errorsTotal).toBe(BigInt(4));
+    expect(result.eventsDiscarded).toBe(BigInt(1));
+    expect(result.bytesIn).toBe(BigInt(2500));
+    expect(result.bytesOut).toBe(BigInt(2200));
+  });
+
+  it("takes latest utilization from delta, not existing", () => {
+    const existing = {
+      eventsIn: BigInt(0),
+      eventsOut: BigInt(0),
+      errorsTotal: BigInt(0),
+      eventsDiscarded: BigInt(0),
+      bytesIn: BigInt(0),
+      bytesOut: BigInt(0),
+    };
+    const result = accumulateRow(existing, { ...baseDelta, utilization: 0.9 });
+    expect(result.utilization).toBe(0.9);
+  });
+
+  it("preserves latencyMeanMs from delta", () => {
+    const existing = {
+      eventsIn: BigInt(0),
+      eventsOut: BigInt(0),
+      errorsTotal: BigInt(0),
+      eventsDiscarded: BigInt(0),
+      bytesIn: BigInt(0),
+      bytesOut: BigInt(0),
+    };
+    const result = accumulateRow(existing, { ...baseDelta, latencyMeanMs: 12.5 });
+    expect(result.latencyMeanMs).toBe(12.5);
+  });
+});
+
 // ─── Unit tests: computeAggregation ─────────────────────────────────────────
 
 describe("computeAggregation", () => {
@@ -379,13 +441,15 @@ describe("ingestMetrics", () => {
     expect(prismaMock.$transaction).toHaveBeenCalledOnce();
   });
 
-  it("deletes existing per-node rows before inserting new ones", async () => {
+  it("reads existing per-node rows before delete+insert", async () => {
     const dataPoints = [makeDataPoint({ pipelineId: "pipe-1" })];
 
     await ingestMetrics(dataPoints, new Map());
 
-    // First call to deleteMany: per-node rows
-    expect(mockTx.pipelineMetric.deleteMany).toHaveBeenCalledWith(
+    // First findMany: read existing per-node rows for accumulation
+    const findManyCalls = mockTx.pipelineMetric.findMany.mock.calls;
+    expect(findManyCalls.length).toBeGreaterThanOrEqual(1);
+    expect(findManyCalls[0][0]).toEqual(
       expect.objectContaining({
         where: expect.objectContaining({
           nodeId: NODE_ID,
@@ -393,6 +457,56 @@ describe("ingestMetrics", () => {
         }),
       }),
     );
+  });
+
+  it("accumulates deltas onto existing rows within the same minute", async () => {
+    const dataPoints = [makeDataPoint({ pipelineId: "pipe-1" })];
+
+    // Simulate an existing row from a previous heartbeat in the same minute
+    mockTx.pipelineMetric.findMany
+      .mockResolvedValueOnce([
+        {
+          id: "existing-row",
+          pipelineId: "pipe-1",
+          nodeId: NODE_ID,
+          componentId: null,
+          timestamp: new Date(),
+          eventsIn: BigInt(50),
+          eventsOut: BigInt(40),
+          errorsTotal: BigInt(3),
+          eventsDiscarded: BigInt(1),
+          bytesIn: BigInt(2000),
+          bytesOut: BigInt(1800),
+          utilization: 0.5,
+          latencyMeanMs: 8,
+        },
+      ] as never)
+      // Second findMany: for aggregation
+      .mockResolvedValue([] as never);
+
+    await ingestMetrics(dataPoints, new Map());
+
+    // createMany should include accumulated values (existing + delta)
+    const createManyCalls = mockTx.pipelineMetric.createMany.mock.calls;
+    const firstCreateCall = createManyCalls[0][0] as { data: Array<{ eventsIn: bigint }> };
+    // Delta is BigInt(0) (no previous snapshot) + existing BigInt(50) = BigInt(50)
+    expect(firstCreateCall.data[0].eventsIn).toBe(BigInt(50));
+  });
+
+  it("skips deleteMany when no existing rows (first heartbeat of the minute)", async () => {
+    const dataPoints = [makeDataPoint({ pipelineId: "pipe-1" })];
+    // findMany returns empty — no existing rows
+    mockTx.pipelineMetric.findMany.mockResolvedValue([] as never);
+
+    await ingestMetrics(dataPoints, new Map());
+
+    // deleteMany should only be called once (for aggregation rows), not for per-node
+    const deleteManyCalls = mockTx.pipelineMetric.deleteMany.mock.calls;
+    // All deleteMany calls should have nodeId: null (aggregation) since no existing per-node rows
+    const perNodeDeletes = deleteManyCalls.filter(
+      (call) => (call[0] as { where: { nodeId: unknown } }).where.nodeId !== null,
+    );
+    expect(perNodeDeletes).toHaveLength(0);
   });
 
   it("inserts per-node rows with createMany", async () => {
@@ -415,28 +529,47 @@ describe("ingestMetrics", () => {
   it("deletes existing aggregation rows and inserts new ones", async () => {
     const dataPoints = [makeDataPoint({ pipelineId: "pipe-1" })];
 
-    // Mock findMany to return per-node rows for aggregation
-    mockTx.pipelineMetric.findMany.mockResolvedValue([
-      {
-        id: "row-1",
-        pipelineId: "pipe-1",
-        nodeId: NODE_ID,
-        componentId: null,
-        timestamp: new Date(),
-        eventsIn: BigInt(100),
-        eventsOut: BigInt(90),
-        errorsTotal: BigInt(5),
-        eventsDiscarded: BigInt(2),
-        bytesIn: BigInt(5000),
-        bytesOut: BigInt(4500),
-        utilization: 0.7,
-        latencyMeanMs: 10,
-      },
-    ] as never);
+    // Mock first findMany (existing per-node rows) to return a row
+    mockTx.pipelineMetric.findMany
+      .mockResolvedValueOnce([
+        {
+          id: "row-1",
+          pipelineId: "pipe-1",
+          nodeId: NODE_ID,
+          componentId: null,
+          timestamp: new Date(),
+          eventsIn: BigInt(100),
+          eventsOut: BigInt(90),
+          errorsTotal: BigInt(5),
+          eventsDiscarded: BigInt(2),
+          bytesIn: BigInt(5000),
+          bytesOut: BigInt(4500),
+          utilization: 0.7,
+          latencyMeanMs: 10,
+        },
+      ] as never)
+      // Mock second findMany (aggregation per-node lookup) to return same row
+      .mockResolvedValueOnce([
+        {
+          id: "row-1",
+          pipelineId: "pipe-1",
+          nodeId: NODE_ID,
+          componentId: null,
+          timestamp: new Date(),
+          eventsIn: BigInt(100),
+          eventsOut: BigInt(90),
+          errorsTotal: BigInt(5),
+          eventsDiscarded: BigInt(2),
+          bytesIn: BigInt(5000),
+          bytesOut: BigInt(4500),
+          utilization: 0.7,
+          latencyMeanMs: 10,
+        },
+      ] as never);
 
     await ingestMetrics(dataPoints, new Map());
 
-    // deleteMany should be called twice: once for per-node, once for aggregation
+    // deleteMany called twice: once for per-node (existing rows found), once for aggregation
     expect(mockTx.pipelineMetric.deleteMany).toHaveBeenCalledTimes(2);
 
     // Second deleteMany: aggregation rows (nodeId: null)
@@ -459,8 +592,8 @@ describe("ingestMetrics", () => {
 
     await ingestMetrics(dataPoints, new Map());
 
-    // findMany called once per pipeline for aggregation
-    expect(mockTx.pipelineMetric.findMany).toHaveBeenCalledTimes(2);
+    // findMany called: 1 (existing per-node lookup) + 2 (one per pipeline for aggregation) = 3
+    expect(mockTx.pipelineMetric.findMany).toHaveBeenCalledTimes(3);
   });
 
   it("preserves fire-and-forget call pattern in heartbeat handler", async () => {

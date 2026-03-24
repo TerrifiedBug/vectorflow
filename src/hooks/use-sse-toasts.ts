@@ -46,24 +46,15 @@ export function getToastConfig(event: SSEEvent): ToastConfig {
       };
     }
 
-    // Node went offline (status_change without pipelineId = node-level event)
-    if (
-      !event.pipelineId &&
-      event.toStatus === "OFFLINE" &&
-      event.fromStatus !== "OFFLINE"
-    ) {
-      return {
-        type: "warning",
-        message: "Node went offline",
-        dedupeKey: `offline:${event.nodeId}`,
-      };
-    }
-
     // Everything else (STARTING→RUNNING, recovery, etc.) — no toast
     return null;
   }
 
   if (event.type === "fleet_status") {
+    // Node went offline — fires when a server-side watchdog detects
+    // heartbeat timeout and broadcasts a fleet_status with OFFLINE.
+    // Currently the heartbeat handler only emits HEALTHY; a future
+    // node-health timeout service will emit OFFLINE fleet_status events.
     if (event.status === "OFFLINE") {
       return {
         type: "warning",
