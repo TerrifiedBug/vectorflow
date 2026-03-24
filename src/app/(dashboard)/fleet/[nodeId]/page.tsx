@@ -8,6 +8,7 @@ import { ShieldOff, Trash2, Activity, Pencil, Check, X, Wrench, Plus, Tag } from
 import { NodeLogs } from "@/components/fleet/node-logs";
 import { toast } from "sonner";
 import { useState } from "react";
+import { usePollingInterval } from "@/hooks/use-polling-interval";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,10 +69,12 @@ export default function NodeDetailPage() {
   const [editLabels, setEditLabels] = useState<Array<{ key: string; value: string }>>([]);
   const [timelineRange, setTimelineRange] = useState<"1h" | "6h" | "1d" | "7d" | "30d">("1d");
 
+  const nodePolling = usePollingInterval(15_000);
+
   const nodeQuery = useQuery(
     trpc.fleet.get.queryOptions(
       { id: params.nodeId },
-      { refetchInterval: 15_000 },
+      { refetchInterval: nodePolling },
     )
   );
 
@@ -81,7 +84,7 @@ export default function NodeDetailPage() {
   const ratesQuery = useQuery(
     trpc.metrics.getNodePipelineRates.queryOptions(
       { nodeId: params.nodeId },
-      { enabled: !!node, refetchInterval: 15_000 },
+      { enabled: !!node, refetchInterval: nodePolling },
     )
   );
   const pipelineRates = ratesQuery.data?.rates ?? {};
