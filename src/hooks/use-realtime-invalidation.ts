@@ -51,8 +51,10 @@ export function getInvalidationKeys(
       ];
 
     case "log_entry":
-      // S05 scope — log streaming handled separately
-      return [];
+      return [
+        ["pipeline", "logs"],
+        ["fleet", "nodeLogs"],
+      ];
 
     default:
       return [];
@@ -64,6 +66,7 @@ const SUBSCRIBED_EVENTS: SSEEvent["type"][] = [
   "metric_update",
   "fleet_status",
   "status_change",
+  "log_entry",
 ];
 
 // ── React hook ──────────────────────────────────────────────────────

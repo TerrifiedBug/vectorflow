@@ -36,6 +36,8 @@ export interface StatusChangeEvent {
   fromStatus: string;
   toStatus: string;
   reason: string;
+  pipelineId?: string;
+  pipelineName?: string;
 }
 
 /** All SSE event types the browser can receive. */

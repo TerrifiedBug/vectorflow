@@ -141,12 +141,12 @@ export async function POST(request: Request) {
     const { pipelines: rawPipelines, hostMetrics, agentVersion, vectorVersion, deploymentMode, updateError } = parsed.data;
 
     // Validate pipeline ownership: only accept pipelines belonging to this agent's environment
-    const validPipelineIds = new Set(
-      (await prisma.pipeline.findMany({
-        where: { environmentId: agent.environmentId },
-        select: { id: true },
-      })).map((p) => p.id),
-    );
+    const validPipelines = await prisma.pipeline.findMany({
+      where: { environmentId: agent.environmentId },
+      select: { id: true, name: true },
+    });
+    const validPipelineIds = new Set(validPipelines.map((p) => p.id));
+    const pipelineNameMap = new Map(validPipelines.map((p) => [p.id, p.name]));
     const pipelines = rawPipelines.filter((p) => validPipelineIds.has(p.pipelineId)) as PipelineStatus[];
 
     const now = new Date();
@@ -240,6 +240,7 @@ export async function POST(request: Request) {
       eventsDiscarded: bigint;
       bytesIn: bigint;
       bytesOut: bigint;
+      status: string;
     }>();
     const pipelineIds = pipelines.map((p) => p.pipelineId);
     if (pipelineIds.length > 0) {
@@ -256,6 +257,7 @@ export async function POST(request: Request) {
           eventsDiscarded: true,
           bytesIn: true,
           bytesOut: true,
+          status: true,
         },
       });
       for (const s of existingStatuses) {
@@ -266,12 +268,30 @@ export async function POST(request: Request) {
           eventsDiscarded: s.eventsDiscarded,
           bytesIn: s.bytesIn,
           bytesOut: s.bytesOut,
+          status: s.status,
         });
       }
     }
 
     // Batch upsert pipeline statuses with a single INSERT...ON CONFLICT
     await batchUpsertPipelineStatuses(agent.nodeId, pipelines, now);
+
+    // Emit SSE status_change for any pipeline status transitions
+    for (const p of pipelines) {
+      const prev = prevSnapshots.get(`${agent.nodeId}:${p.pipelineId}`);
+      if (prev && prev.status !== p.status) {
+        const pipelineStatusEvent: StatusChangeEvent = {
+          type: "status_change",
+          nodeId: agent.nodeId,
+          fromStatus: prev.status,
+          toStatus: p.status,
+          reason: "heartbeat status transition",
+          pipelineId: p.pipelineId,
+          pipelineName: pipelineNameMap.get(p.pipelineId) ?? p.pipelineId,
+        };
+        sseRegistry.broadcast(pipelineStatusEvent, agent.environmentId);
+      }
+    }
 
     // Remove statuses for pipelines no longer reported by this node
     const reportedPipelineIds = pipelines.map((p) => p.pipelineId);

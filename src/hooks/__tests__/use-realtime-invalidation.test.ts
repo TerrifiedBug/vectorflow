@@ -34,9 +34,11 @@ describe("getInvalidationKeys", () => {
     expect(keys).toContainEqual(["fleet", "listWithPipelineStatus"]);
   });
 
-  it("maps log_entry to empty array (S05 scope)", () => {
+  it("maps log_entry to 2 query key prefixes for log streaming", () => {
     const keys = getInvalidationKeys("log_entry");
-    expect(keys).toHaveLength(0);
+    expect(keys).toHaveLength(2);
+    expect(keys).toContainEqual(["pipeline", "logs"]);
+    expect(keys).toContainEqual(["fleet", "nodeLogs"]);
   });
 
   it("returns empty array for unknown event type", () => {

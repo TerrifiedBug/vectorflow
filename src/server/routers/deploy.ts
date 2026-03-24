@@ -11,6 +11,7 @@ import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { pushRegistry } from "@/server/services/push-registry";
+import { sseRegistry } from "@/server/services/sse-registry";
 
 export const deployRouter = router({
   preview: protectedProcedure
@@ -250,6 +251,16 @@ export const deployRouter = router({
           message: `Pipeline "${pipeline.name}" deployed`,
           pipelineId: input.pipelineId,
         });
+
+        sseRegistry.broadcast({
+          type: "status_change",
+          nodeId: "",
+          fromStatus: "PENDING",
+          toStatus: "DEPLOYED",
+          reason: "deploy completed",
+          pipelineId: input.pipelineId,
+          pipelineName: pipeline.name,
+        }, pipeline.environment.id);
       }
 
       return result;
@@ -454,6 +465,22 @@ export const deployRouter = router({
           message: `Pipeline deployed via approved request`,
           pipelineId: request.pipelineId,
         });
+
+        // Fetch pipeline name for SSE event
+        const deployedPipeline = await prisma.pipeline.findUnique({
+          where: { id: request.pipelineId },
+          select: { name: true },
+        });
+
+        sseRegistry.broadcast({
+          type: "status_change",
+          nodeId: "",
+          fromStatus: "PENDING",
+          toStatus: "DEPLOYED",
+          reason: "deploy completed",
+          pipelineId: request.pipelineId,
+          pipelineName: deployedPipeline?.name ?? request.pipelineId,
+        }, request.environmentId);
 
         return result;
       } catch (err) {
