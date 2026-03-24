@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { Loader2, RotateCcw, Sparkles, AlertTriangle, MessageSquarePlus } from "lucide-react";
+import { Loader2, RotateCcw, Sparkles, AlertTriangle, MessageSquarePlus, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -53,6 +53,21 @@ export function AiPipelineDialog({
   const globalConfig = useFlowStore((s) => s.globalConfig);
   const loadGraph = useFlowStore((s) => s.loadGraph);
   const applySuggestions = useFlowStore((s) => s.applySuggestions);
+  const canUndo = useFlowStore((s) => s.canUndo);
+  const undo = useFlowStore((s) => s.undo);
+
+  const [showUndo, setShowUndo] = useState(false);
+  // Track _past.length at apply time to detect manual edits
+  const [lastApplyPastLength, setLastApplyPastLength] = useState<number | null>(null);
+  const pastLength = useFlowStore((s) => (s as unknown as { _past: unknown[] })._past?.length ?? 0);
+
+  // Clear undo button when manual edits push new history entries
+  useEffect(() => {
+    if (showUndo && lastApplyPastLength !== null && pastLength !== lastApplyPastLength) {
+      setShowUndo(false);
+      setLastApplyPastLength(null);
+    }
+  }, [showUndo, lastApplyPastLength, pastLength]);
 
   const currentYaml = nodes.length > 0
     ? generateVectorYaml(nodes, edges, globalConfig)
@@ -291,7 +306,9 @@ export function AiPipelineDialog({
 
   const handleApplySelected = useCallback(
     (messageId: string, suggestions: AiSuggestion[]) => {
-      const { applied, errors } = applySuggestions(suggestions);
+      const { results } = applySuggestions(suggestions);
+      const applied = results.filter((r) => r.success).length;
+      const errors = results.filter((r) => !r.success);
 
       if (applied > 0) {
         toast.success(`Applied ${applied} suggestion${applied > 1 ? "s" : ""} to canvas`);
@@ -299,12 +316,18 @@ export function AiPipelineDialog({
           messageId,
           suggestions.map((s) => s.id),
         );
+        // Track _past length so undo button auto-hides on manual edits
+        const currentPastLength = (useFlowStore.getState() as unknown as { _past: unknown[] })._past?.length ?? 0;
+        setLastApplyPastLength(currentPastLength);
+        setShowUndo(true);
       }
       if (errors.length > 0) {
         toast.error(`${errors.length} suggestion${errors.length > 1 ? "s" : ""} failed`, {
-          description: errors[0],
+          description: errors[0].error,
         });
       }
+
+      return results;
     },
     [applySuggestions, conversation],
   );
@@ -414,6 +437,7 @@ export function AiPipelineDialog({
                         message={msg}
                         suggestionStatuses={suggestionStatuses}
                         onApplySelected={handleApplySelected}
+                        nodes={nodes}
                       />
                     ))}
 
@@ -471,16 +495,33 @@ export function AiPipelineDialog({
                       </Button>
                     )}
                   </form>
-                  {conversation.messages.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={conversation.startNewConversation}
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <MessageSquarePlus className="h-3 w-3" />
-                      New Conversation
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {showUndo && canUndo ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          undo();
+                          setShowUndo(false);
+                          setLastApplyPastLength(null);
+                        }}
+                        className="gap-1.5"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" />
+                        Undo AI Changes
+                      </Button>
+                    ) : null}
+                    {conversation.messages.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={conversation.startNewConversation}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <MessageSquarePlus className="h-3 w-3" />
+                        New Conversation
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </>
             )}

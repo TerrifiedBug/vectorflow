@@ -4,7 +4,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { AiSuggestion, SuggestionStatus } from "@/lib/ai/types";
-import { AlertTriangle } from "lucide-react";
+import type { DiffResult } from "@/lib/ai/suggestion-diff";
+import { AlertTriangle, Check, X } from "lucide-react";
+import { SuggestionDiffPreview } from "./suggestion-diff-preview";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface AiSuggestionCardProps {
   suggestion: AiSuggestion;
@@ -13,6 +20,8 @@ interface AiSuggestionCardProps {
   hasConflict: boolean;
   conflictReason?: string;
   onToggle: (id: string) => void;
+  diff?: DiffResult | null;
+  applyResult?: { success: boolean; error?: string } | null;
 }
 
 const TYPE_LABELS: Record<AiSuggestion["type"], string> = {
@@ -42,6 +51,8 @@ export function AiSuggestionCard({
   hasConflict,
   conflictReason,
   onToggle,
+  diff,
+  applyResult,
 }: AiSuggestionCardProps) {
   const isDisabled = status === "applied" || status === "invalid";
   const statusBadge = STATUS_BADGES[status];
@@ -87,6 +98,27 @@ export function AiSuggestionCard({
             <Badge variant="secondary" size="sm">
               {TYPE_LABELS[suggestion.type]}
             </Badge>
+
+            {applyResult != null ? (
+              applyResult.success ? (
+                <Badge variant="outline" size="sm" className="bg-green-500/15 text-green-700 dark:text-green-400 gap-0.5">
+                  <Check className="h-2.5 w-2.5" />
+                  Applied
+                </Badge>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" size="sm" className="bg-red-500/15 text-red-700 dark:text-red-400 gap-0.5">
+                      <X className="h-2.5 w-2.5" />
+                      Failed
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs text-xs">
+                    {applyResult.error ?? "Unknown error"}
+                  </TooltipContent>
+                </Tooltip>
+              )
+            ) : null}
           </div>
 
           <p className="text-xs text-muted-foreground mt-1">
@@ -94,25 +126,33 @@ export function AiSuggestionCard({
           </p>
 
           {suggestion.type === "modify_config" && (
-            <div className="mt-2 text-xs font-mono bg-muted rounded px-2 py-1">
-              {Object.entries(suggestion.changes).map(([key, value]) => (
-                <div key={key}>
-                  <span className="text-muted-foreground">{key}:</span>{" "}
-                  <span className="text-foreground">{JSON.stringify(value)}</span>
-                </div>
-              ))}
-            </div>
+            diff ? (
+              <SuggestionDiffPreview diff={diff} />
+            ) : (
+              <div className="mt-2 text-xs font-mono bg-muted rounded px-2 py-1">
+                {Object.entries(suggestion.changes).map(([key, value]) => (
+                  <div key={key}>
+                    <span className="text-muted-foreground">{key}:</span>{" "}
+                    <span className="text-foreground">{JSON.stringify(value)}</span>
+                  </div>
+                ))}
+              </div>
+            )
           )}
 
           {suggestion.type === "modify_vrl" && (
-            <div className="mt-2 text-xs font-mono bg-muted rounded px-2 py-1.5 space-y-1">
-              <div className="text-red-600 dark:text-red-400 line-through whitespace-pre-wrap">
-                {suggestion.targetCode}
+            diff ? (
+              <SuggestionDiffPreview diff={diff} />
+            ) : (
+              <div className="mt-2 text-xs font-mono bg-muted rounded px-2 py-1.5 space-y-1">
+                <div className="text-red-600 dark:text-red-400 line-through whitespace-pre-wrap">
+                  {suggestion.targetCode}
+                </div>
+                <div className="text-green-600 dark:text-green-400 whitespace-pre-wrap">
+                  {suggestion.code}
+                </div>
               </div>
-              <div className="text-green-600 dark:text-green-400 whitespace-pre-wrap">
-                {suggestion.code}
-              </div>
-            </div>
+            )
           )}
 
           {hasConflict && conflictReason && (

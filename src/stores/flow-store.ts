@@ -116,7 +116,9 @@ export interface FlowState {
   markClean: () => void;
 
   // AI suggestions
-  applySuggestions: (suggestions: AiSuggestion[]) => { applied: number; errors: string[] };
+  applySuggestions: (suggestions: AiSuggestion[]) => {
+    results: Array<{ suggestionId: string; success: boolean; error?: string }>;
+  };
 
   // Serialization
   loadGraph: (nodes: Node[], edges: Edge[], globalConfig?: Record<string, unknown> | null, options?: { isSystem?: boolean }) => void;
@@ -799,25 +801,26 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   /* ---- AI suggestions ---- */
 
   applySuggestions: (suggestions) => {
-    const errors: string[] = [];
-    let applied = 0;
+    const results: Array<{ suggestionId: string; success: boolean; error?: string }> = [];
 
     set((state) => {
       let { nodes, edges } = state;
+      let anyApplied = false;
 
       for (const suggestion of suggestions) {
         const result = applySuggestion(suggestion, nodes, edges);
         if (result.error) {
-          errors.push(result.error);
+          results.push({ suggestionId: suggestion.id, success: false, error: result.error });
         } else {
           nodes = result.nodes;
           edges = result.edges;
-          applied++;
+          anyApplied = true;
+          results.push({ suggestionId: suggestion.id, success: true });
         }
       }
 
       // Only push an undo snapshot when something actually changed
-      if (applied === 0) return {};
+      if (!anyApplied) return {};
 
       const history = pushSnapshot(state);
       return {
@@ -828,7 +831,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       };
     });
 
-    return { applied, errors };
+    return { results };
   },
 
   /* ---- Serialization ---- */

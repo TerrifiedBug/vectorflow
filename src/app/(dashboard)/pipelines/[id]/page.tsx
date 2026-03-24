@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { NodeMetricsData } from "@/stores/flow-store";
@@ -12,6 +12,7 @@ import {
 import { Trash2, Pencil, Check, X } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { useFlowStore } from "@/stores/flow-store";
+import { generateVectorYaml } from "@/lib/config-generator";
 import { findComponentDef } from "@/lib/vector/catalog";
 import { aggregateProcessStatus } from "@/lib/pipeline-status";
 import { toast } from "sonner";
@@ -32,6 +33,7 @@ import { ComponentPalette } from "@/components/flow/component-palette";
 import { FlowCanvas } from "@/components/flow/flow-canvas";
 import { FlowToolbar } from "@/components/flow/flow-toolbar";
 import { AiPipelineDialog } from "@/components/flow/ai-pipeline-dialog";
+import { AiDebugPanel } from "@/components/flow/ai-debug-panel";
 import { DetailPanel } from "@/components/flow/detail-panel";
 import { DeployDialog } from "@/components/flow/deploy-dialog";
 import { SaveTemplateDialog } from "@/components/flow/save-template-dialog";
@@ -126,6 +128,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   const teamQuery = useQuery(
@@ -140,6 +143,15 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const isDirty = useFlowStore((s) => s.isDirty);
   const markClean = useFlowStore((s) => s.markClean);
   const updateNodeMetrics = useFlowStore((s) => s.updateNodeMetrics);
+  const nodes = useFlowStore((s) => s.nodes);
+  const edges = useFlowStore((s) => s.edges);
+  const globalConfig = useFlowStore((s) => s.globalConfig);
+
+  // Generate current YAML for AI debug panel
+  const currentYaml = useMemo(
+    () => (nodes.length > 0 ? generateVectorYaml(nodes, edges, globalConfig) : undefined),
+    [nodes, edges, globalConfig],
+  );
 
   // Fetch pipeline data
   const pipelineQuery = useQuery(
@@ -445,6 +457,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             onDiscardChanges={() => setDiscardOpen(true)}
             aiEnabled={aiEnabled}
             onAiOpen={() => setAiDialogOpen(true)}
+            onDebugOpen={() => setDebugPanelOpen(true)}
           />
         </div>
         <div className="flex items-center px-3">
@@ -542,6 +555,14 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
           onOpenChange={setAiDialogOpen}
           pipelineId={pipelineId}
           environmentName={pipelineQuery.data?.environment?.name}
+        />
+      )}
+      {aiEnabled && (
+        <AiDebugPanel
+          open={debugPanelOpen}
+          onOpenChange={setDebugPanelOpen}
+          pipelineId={pipelineId}
+          currentYaml={currentYaml}
         />
       )}
     </div>

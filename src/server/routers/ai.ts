@@ -84,6 +84,24 @@ export const aiRouter = router({
       });
     }),
 
+  getDebugConversation: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return prisma.aiConversation.findFirst({
+        where: { pipelineId: input.pipelineId, componentKey: "__debug__" },
+        orderBy: { createdAt: "desc" },
+        include: {
+          messages: {
+            orderBy: { createdAt: "asc" },
+            include: {
+              createdBy: { select: { id: true, name: true, image: true } },
+            },
+          },
+        },
+      });
+    }),
+
   getVrlConversation: protectedProcedure
     .input(z.object({ pipelineId: z.string(), componentKey: z.string() }))
     .use(withTeamAccess("VIEWER"))
