@@ -9,7 +9,7 @@ interface SSEConnection {
 
 const KEEPALIVE_INTERVAL_MS = 30_000;
 
-class SSERegistry {
+export class SSERegistry {
   private connections = new Map<string, SSEConnection>();
   private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
 
