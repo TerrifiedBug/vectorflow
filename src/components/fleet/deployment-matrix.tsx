@@ -8,6 +8,7 @@ import { Minus, Wrench } from "lucide-react";
 import Link from "next/link";
 import { StatusDot } from "@/components/ui/status-dot";
 import { pipelineStatusVariant, pipelineStatusLabel } from "@/lib/status";
+import { usePollingInterval } from "@/hooks/use-polling-interval";
 
 interface DeploymentMatrixProps {
   environmentId: string;
@@ -15,10 +16,11 @@ interface DeploymentMatrixProps {
 
 export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
   const trpc = useTRPC();
+  const polling = usePollingInterval(15_000);
 
   const matrixQuery = useQuery({
     ...trpc.fleet.listWithPipelineStatus.queryOptions({ environmentId }),
-    refetchInterval: 15_000,
+    refetchInterval: polling,
   });
 
   if (matrixQuery.isLoading) {

@@ -40,6 +40,8 @@ import { PipelineMetricsChart } from "@/components/pipeline/metrics-chart";
 import { PipelineLogs } from "@/components/pipeline/pipeline-logs";
 import { useTeamStore } from "@/stores/team-store";
 import { QueryError } from "@/components/query-error";
+import { useFlowMetrics } from "@/hooks/use-flow-metrics";
+import { usePollingInterval } from "@/hooks/use-polling-interval";
 
 /**
  * Convert database PipelineNode rows into React Flow nodes.
@@ -169,10 +171,15 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
 
   // Poll per-component metrics from the in-memory MetricStore
   const isDeployed = pipelineQuery.data && !pipelineQuery.data.isDraft;
+
+  // Live SSE metric updates — only when deployed
+  useFlowMetrics(isDeployed ? pipelineId : "");
+
+  const pollingInterval = usePollingInterval(5000);
   const componentMetricsQuery = useQuery(
     trpc.metrics.getComponentMetrics.queryOptions(
       { pipelineId, minutes: 5 },
-      { enabled: !!isDeployed, refetchInterval: 5000 },
+      { enabled: !!isDeployed, refetchInterval: pollingInterval },
     ),
   );
 
