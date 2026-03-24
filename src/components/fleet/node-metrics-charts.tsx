@@ -22,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Cpu, MemoryStick, HardDrive, Network } from "lucide-react";
 import { useState } from "react";
 import { formatBytes, formatBytesRate, formatPercent, formatTime } from "@/lib/format";
+import { usePollingInterval } from "@/hooks/use-polling-interval";
 
 interface NodeMetricsChartsProps {
   nodeId: string;
@@ -50,10 +51,11 @@ const networkChartConfig = {
 export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
   const trpc = useTRPC();
   const [hours, setHours] = useState(1);
+  const polling = usePollingInterval(15_000);
 
   const metricsQuery = useQuery({
     ...trpc.fleet.nodeMetrics.queryOptions({ nodeId, hours }),
-    refetchInterval: 15_000,
+    refetchInterval: polling,
   });
 
   const raw = metricsQuery.data ?? [];
