@@ -10,6 +10,7 @@ import { BookOpen, LogOut, ShieldAlert, User } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { useSSE } from "@/hooks/use-sse";
 import { useRealtimeInvalidation } from "@/hooks/use-realtime-invalidation";
+import { useSSEToasts } from "@/hooks/use-sse-toasts";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TeamSelector } from "@/components/team-selector";
 import { EnvironmentSelector } from "@/components/environment-selector";
@@ -37,9 +38,10 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
 
-  // SSE connection + cache invalidation (fire-and-forget)
+  // SSE connection + cache invalidation + toast notifications (fire-and-forget)
   useSSE();
   useRealtimeInvalidation();
+  useSSEToasts();
 
   const { data: session } = useSession();
   const trpc = useTRPC();
