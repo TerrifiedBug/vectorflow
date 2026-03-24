@@ -1,3 +1,6 @@
+import { randomUUID } from "crypto";
+import type { MetricUpdateEvent } from "@/lib/sse/types";
+
 export interface MetricSample {
   timestamp: number;
   receivedEventsRate: number;
@@ -21,11 +24,66 @@ interface PrevTotals {
   latencyMeanSeconds: number | null;
 }
 
-const MAX_SAMPLES = 240; // 1 hour at 15s intervals
+/** Callback invoked on flush with the batch of metric events. */
+export type MetricStoreSubscriber = (events: MetricUpdateEvent[]) => void;
 
-class MetricStore {
+const MAX_SAMPLES = 720; // 1 hour at 5s intervals
+
+export class MetricStore {
   private samples = new Map<string, MetricSample[]>();
   private prevTotals = new Map<string, PrevTotals>();
+  private subscribers = new Map<string, MetricStoreSubscriber>();
+
+  /** Number of active pub/sub subscribers. */
+  get subscriberCount(): number {
+    return this.subscribers.size;
+  }
+
+  /** Register a subscriber. Returns a unique ID for unsubscribe. */
+  subscribe(callback: MetricStoreSubscriber): string {
+    const id = randomUUID();
+    this.subscribers.set(id, callback);
+    return id;
+  }
+
+  /** Remove a subscriber by ID. */
+  unsubscribe(id: string): void {
+    this.subscribers.delete(id);
+  }
+
+  /**
+   * Collect the latest sample for every component of a node+pipeline pair,
+   * notify all subscribers with the batch, and return the events.
+   *
+   * Designed to be called once per pipeline per heartbeat — NOT per component.
+   * This batches notifications so 100 pipelines × 5 components = 100 subscriber
+   * calls (one per pipeline), not 500.
+   */
+  flush(nodeId: string, pipelineId: string): MetricUpdateEvent[] {
+    const prefix = `${nodeId}:${pipelineId}:`;
+    const events: MetricUpdateEvent[] = [];
+
+    for (const [key, samples] of this.samples) {
+      if (key.startsWith(prefix) && samples.length > 0) {
+        const componentId = key.slice(prefix.length);
+        events.push({
+          type: "metric_update",
+          nodeId,
+          pipelineId,
+          componentId,
+          sample: samples[samples.length - 1],
+        });
+      }
+    }
+
+    if (events.length > 0) {
+      for (const callback of this.subscribers.values()) {
+        callback(events);
+      }
+    }
+
+    return events;
+  }
 
   recordTotals(
     nodeId: string,

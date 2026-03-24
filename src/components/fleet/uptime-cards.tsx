@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePollingInterval } from "@/hooks/use-polling-interval";
 
 interface UptimeCardsProps {
   nodeId: string;
@@ -25,10 +26,11 @@ function UptimeCard({
   range: "1d" | "7d" | "30d";
 }) {
   const trpc = useTRPC();
+  const polling = usePollingInterval(15_000);
 
   const { data, isLoading } = useQuery({
     ...trpc.fleet.getUptime.queryOptions({ nodeId, range }),
-    refetchInterval: 15_000,
+    refetchInterval: polling,
   });
 
   return (

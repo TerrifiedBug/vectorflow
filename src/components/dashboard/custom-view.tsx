@@ -33,6 +33,7 @@ import { formatSI, formatBytesRate, formatEventsRate } from "@/lib/format";
 import { derivePipelineStatus } from "@/lib/pipeline-status";
 import { cn } from "@/lib/utils";
 import type { PanelId } from "@/components/dashboard/view-builder-dialog";
+import { usePollingInterval } from "@/hooks/use-polling-interval";
 
 import {
   ResponsiveGridLayout,
@@ -197,6 +198,9 @@ export function CustomView({ view }: CustomViewProps) {
     "7d": 300_000,
   };
 
+  const chartPolling = usePollingInterval(refreshInterval[timeRange]);
+  const cardPolling = usePollingInterval(15_000);
+
   // Determine which data to fetch based on selected panels
   const needsChartData = panels.some((p) =>
     [
@@ -222,7 +226,7 @@ export function CustomView({ view }: CustomViewProps) {
       range: timeRange,
       groupBy,
     }),
-    refetchInterval: refreshInterval[timeRange],
+    refetchInterval: chartPolling,
     enabled: !!selectedEnvironmentId && needsChartData,
   });
 
@@ -237,7 +241,7 @@ export function CustomView({ view }: CustomViewProps) {
     ...trpc.dashboard.pipelineCards.queryOptions({
       environmentId: selectedEnvironmentId ?? "",
     }),
-    refetchInterval: 15_000,
+    refetchInterval: cardPolling,
     enabled: !!selectedEnvironmentId && needsPipelineCards,
   });
 

@@ -5,6 +5,7 @@ import { useTRPC } from "@/trpc/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTime } from "@/lib/format";
 import { statusColor } from "@/lib/status";
+import { usePollingInterval } from "@/hooks/use-polling-interval";
 
 type Range = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -15,10 +16,11 @@ interface EventLogProps {
 
 export function EventLog({ nodeId, range }: EventLogProps) {
   const trpc = useTRPC();
+  const polling = usePollingInterval(15_000);
 
   const { data, isLoading } = useQuery({
     ...trpc.fleet.getStatusTimeline.queryOptions({ nodeId, range }),
-    refetchInterval: 15_000,
+    refetchInterval: polling,
   });
   const events = data?.events;
 

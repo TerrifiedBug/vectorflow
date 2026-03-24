@@ -27,6 +27,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePollingInterval } from "@/hooks/use-polling-interval";
 
 type VolumeRange = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -58,13 +59,16 @@ export default function AnalyticsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("bytesIn");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
+  const analyticsBaseInterval = range === "1h" ? 15_000 : range === "6h" ? 60_000 : 120_000;
+  const analyticsPolling = usePollingInterval(analyticsBaseInterval);
+
   const analytics = useQuery({
     ...trpc.dashboard.volumeAnalytics.queryOptions({
       environmentId: selectedEnvironmentId ?? "",
       range,
     }),
     enabled: !!selectedEnvironmentId,
-    refetchInterval: range === "1h" ? 15_000 : range === "6h" ? 60_000 : 120_000,
+    refetchInterval: analyticsPolling,
   });
 
   const data = analytics.data;
