@@ -29,6 +29,11 @@ type SSESubscriber = {
 // Module-level guard: only one EventSource connection per browser tab.
 let activeConnectionCount = 0;
 
+// Module-level subscriber registry shared across all hook instances.
+// The owner instance's dispatch reads from this map; any instance's
+// subscribe/unsubscribe writes to it.
+const subscribers = new Map<string, SSESubscriber>();
+
 // ── Hook ─────────────────────────────────────────────────────────────
 
 /**
@@ -47,7 +52,6 @@ export function useSSE() {
   const setLastConnectedAt = useSSEStore((s) => s.setLastConnectedAt);
 
   const eventSourceRef = useRef<EventSource | null>(null);
-  const subscribersRef = useRef<Map<string, SSESubscriber>>(new Map());
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backoffRef = useRef(INITIAL_BACKOFF_MS);
   const isOwnerRef = useRef(false);
@@ -55,7 +59,7 @@ export function useSSE() {
   // ── Dispatch to subscribers ──────────────────────────────────────
 
   const dispatch = useCallback((event: SSEEvent) => {
-    for (const sub of subscribersRef.current.values()) {
+    for (const sub of subscribers.values()) {
       if (sub.eventType === event.type) {
         try {
           sub.callback(event);
@@ -156,15 +160,35 @@ export function useSSE() {
       callback: (event: SSEEvent) => void,
     ): string => {
       const id = generateId();
-      subscribersRef.current.set(id, { eventType, callback });
+      subscribers.set(id, { eventType, callback });
       return id;
     },
     [],
   );
 
   const unsubscribe = useCallback((id: string): void => {
-    subscribersRef.current.delete(id);
+    subscribers.delete(id);
   }, []);
 
   return { status, subscribe, unsubscribe };
 }
+
+// ── Test-only exports ────────────────────────────────────────────────
+// Exposed so contract tests can verify the module-level subscriber
+// registry without mocking internals. Not part of the public API.
+
+/** Dispatch an event to all matching subscribers. Mirrors the hook's dispatch logic. */
+function dispatchEvent(event: SSEEvent): void {
+  for (const sub of subscribers.values()) {
+    if (sub.eventType === event.type) {
+      try {
+        sub.callback(event);
+      } catch {
+        // subscriber errors must not break the event loop
+      }
+    }
+  }
+}
+
+/** @internal */
+export const __testing = { subscribers, dispatchEvent } as const;
