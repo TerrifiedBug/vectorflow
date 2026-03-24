@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/tooltip";
 import { formatTime } from "@/lib/format";
 import { statusColor } from "@/lib/status";
+import { usePollingInterval } from "@/hooks/use-polling-interval";
 
 type Range = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -38,10 +39,11 @@ function formatDuration(ms: number): string {
 
 export function StatusTimeline({ nodeId, range, onRangeChange }: StatusTimelineProps) {
   const trpc = useTRPC();
+  const polling = usePollingInterval(15_000);
 
   const { data, isLoading, dataUpdatedAt } = useQuery({
     ...trpc.fleet.getStatusTimeline.queryOptions({ nodeId, range }),
-    refetchInterval: 15_000,
+    refetchInterval: polling,
   });
   const events = data?.events;
   const nodeStatus = data?.nodeStatus ?? "UNKNOWN";

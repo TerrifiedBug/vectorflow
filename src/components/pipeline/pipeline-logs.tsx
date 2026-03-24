@@ -8,6 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { highlightMatch } from "@/components/log-search-utils";
 import { formatTimeWithSeconds } from "@/lib/format";
+import { usePollingInterval } from "@/hooks/use-polling-interval";
+import {
+  useStreamingLogs,
+  fingerprint,
+} from "@/hooks/use-streaming-logs";
 import type { LogLevel } from "@/generated/prisma";
 
 const ALL_LEVELS: LogLevel[] = ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"];
@@ -42,6 +47,11 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
   );
   const [searchTerm, setSearchTerm] = useState("");
 
+  const pollingInterval = usePollingInterval(5000);
+  const { streamedEntries } = useStreamingLogs({
+    pipelineId,
+  });
+
   const queryInput = {
     pipelineId,
     ...(activeLevels.size < ALL_LEVELS.length
@@ -53,25 +63,54 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
   const logsQuery = useInfiniteQuery(
     trpc.pipeline.logs.infiniteQueryOptions(queryInput, {
       getNextPageParam: (lastPage) => lastPage.nextCursor,
-      refetchInterval: 5000,
+      refetchInterval: pollingInterval,
     }),
   );
 
   // All items come back newest-first from the API; reverse for chronological display
   const allItems = logsQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const displayItems = [...allItems].reverse();
-  const filteredItems = searchTerm
-    ? displayItems.filter((log) =>
+
+  // Merge SSE-streamed entries, deduplicating against query data
+  const mergedItems = (() => {
+    if (streamedEntries.length === 0) return displayItems;
+
+    // Build fingerprint set from query data to avoid showing duplicates
+    const queryFingerprints = new Set(
+      displayItems.map((log) => fingerprint(log.level, log.message)),
+    );
+
+    const uniqueStreamed = streamedEntries.filter(
+      (entry) => !queryFingerprints.has(fingerprint(entry.level, entry.message)),
+    );
+
+    return [...displayItems, ...uniqueStreamed];
+  })();
+
+  const filteredItems = (() => {
+    let items = mergedItems;
+
+    // Filter by active level
+    if (activeLevels.size < ALL_LEVELS.length) {
+      items = items.filter((log) => activeLevels.has(log.level as LogLevel));
+    }
+
+    // Filter by search term
+    if (searchTerm) {
+      items = items.filter((log) =>
         log.message.toLowerCase().includes(searchTerm.toLowerCase()),
-      )
-    : displayItems;
+      );
+    }
+
+    return items;
+  })();
 
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
     if (autoScrollRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [displayItems.length]);
+  }, [mergedItems.length]);
 
   const handleScroll = useCallback(() => {
     if (!scrollRef.current) return;
@@ -139,8 +178,8 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
         <div className="flex-1" />
         <span className="text-xs text-muted-foreground">
           {searchTerm
-            ? `${filteredItems.length}/${displayItems.length} lines`
-            : `${displayItems.length} lines`}
+            ? `${filteredItems.length}/${mergedItems.length} lines`
+            : `${mergedItems.length} lines`}
         </span>
         {logsQuery.hasNextPage && (
           <Button
@@ -166,30 +205,36 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
             Loading older logs...
           </div>
         )}
-        {displayItems.length === 0 && !logsQuery.isLoading && (
+        {mergedItems.length === 0 && !logsQuery.isLoading && (
           <p className="text-muted-foreground">
-            No logs yet. Logs are collected from agent heartbeats every 15 seconds.
+            No logs yet. Logs are collected from agent heartbeats every 5 seconds.
           </p>
         )}
-        {filteredItems.map((log) => (
-          <div key={log.id} className="whitespace-pre-wrap leading-5">
-            <span className="text-gray-600 tabular-nums">{formatTimeWithSeconds(log.timestamp)}</span>
-            {"  "}
-            <span className={`${LEVEL_COLORS[log.level as LogLevel]} inline-block w-12`}>
-              {log.level}
-            </span>
-            {"  "}
-            {log.node?.name && (
-              <>
-                <span className="text-blue-400/70">[{log.node.name}]</span>
-                {"  "}
-              </>
-            )}
-            <span className="text-gray-300">
-              {searchTerm ? highlightMatch(log.message, searchTerm) : log.message}
-            </span>
-          </div>
-        ))}
+        {filteredItems.map((log) => {
+          const ts = log.timestamp instanceof Date
+            ? log.timestamp
+            : new Date(log.timestamp);
+          const nodeName = "node" in log ? (log.node as { name: string } | undefined)?.name : undefined;
+          return (
+            <div key={log.id} className="whitespace-pre-wrap leading-5">
+              <span className="text-gray-600 tabular-nums">{formatTimeWithSeconds(ts)}</span>
+              {"  "}
+              <span className={`${LEVEL_COLORS[log.level as LogLevel]} inline-block w-12`}>
+                {log.level}
+              </span>
+              {"  "}
+              {nodeName && (
+                <>
+                  <span className="text-blue-400/70">[{nodeName}]</span>
+                  {"  "}
+                </>
+              )}
+              <span className="text-gray-300">
+                {searchTerm ? highlightMatch(log.message, searchTerm) : log.message}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
