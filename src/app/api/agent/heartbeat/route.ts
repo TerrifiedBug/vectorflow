@@ -8,6 +8,8 @@ import { ingestMetrics } from "@/server/services/metrics-ingest";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
 import { metricStore } from "@/server/services/metric-store";
+import { sseRegistry } from "@/server/services/sse-registry";
+import type { FleetStatusEvent, LogEntryEvent, StatusChangeEvent } from "@/lib/sse/types";
 import { evaluateAlerts } from "@/server/services/alert-evaluator";
 import { batchUpsertPipelineStatuses } from "@/server/services/heartbeat-batch";
 import { deliverWebhooks } from "@/server/services/webhook-delivery";
@@ -206,6 +208,16 @@ export async function POST(request: Request) {
           reason: "heartbeat received",
         },
       });
+
+      // Broadcast status change to browser SSE connections
+      const statusEvent: StatusChangeEvent = {
+        type: "status_change",
+        nodeId: agent.nodeId,
+        fromStatus: prevNode.status,
+        toStatus: "HEALTHY",
+        reason: "heartbeat received",
+      };
+      sseRegistry.broadcast(statusEvent, agent.environmentId);
     }
 
     // Merge agent-reported labels with existing UI-set labels.
@@ -275,6 +287,15 @@ export async function POST(request: Request) {
         where: { nodeId: agent.nodeId },
       });
     }
+
+    // Broadcast fleet status event for this node (one per heartbeat)
+    const fleetEvent: FleetStatusEvent = {
+      type: "fleet_status",
+      nodeId: agent.nodeId,
+      status: "HEALTHY",
+      timestamp: now.getTime(),
+    };
+    sseRegistry.broadcast(fleetEvent, agent.environmentId);
 
     // Store host metrics time-series data
     if (hostMetrics) {
@@ -384,15 +405,28 @@ export async function POST(request: Request) {
             latencyMeanSeconds: cm.latencyMeanSeconds,
           });
         }
+        // Flush MetricStore and broadcast metric_update events to browser SSE connections
+        const flushEvents = metricStore.flush(agent.nodeId, ps.pipelineId);
+        for (const event of flushEvents) {
+          sseRegistry.broadcast(event, agent.environmentId);
+        }
       }
     }
 
-    // Persist pipeline logs
+    // Persist pipeline logs and broadcast to browser SSE connections
     for (const ps of pipelines) {
       if (Array.isArray(ps.recentLogs) && ps.recentLogs.length > 0) {
         ingestLogs(agent.nodeId, ps.pipelineId, ps.recentLogs).catch((err) =>
           console.error("Log ingestion error:", err),
         );
+
+        const logEvent: LogEntryEvent = {
+          type: "log_entry",
+          nodeId: agent.nodeId,
+          pipelineId: ps.pipelineId,
+          lines: ps.recentLogs,
+        };
+        sseRegistry.broadcast(logEvent, agent.environmentId);
       }
     }
 
