@@ -8,7 +8,10 @@ import { ingestMetrics } from "@/server/services/metrics-ingest";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
 import { metricStore } from "@/server/services/metric-store";
+import { sseRegistry } from "@/server/services/sse-registry";
+import type { FleetStatusEvent, LogEntryEvent, StatusChangeEvent } from "@/lib/sse/types";
 import { evaluateAlerts } from "@/server/services/alert-evaluator";
+import { batchUpsertPipelineStatuses } from "@/server/services/heartbeat-batch";
 import { deliverWebhooks } from "@/server/services/webhook-delivery";
 import { deliverToChannels } from "@/server/services/channels";
 import { DeploymentMode } from "@/generated/prisma";
@@ -138,12 +141,12 @@ export async function POST(request: Request) {
     const { pipelines: rawPipelines, hostMetrics, agentVersion, vectorVersion, deploymentMode, updateError } = parsed.data;
 
     // Validate pipeline ownership: only accept pipelines belonging to this agent's environment
-    const validPipelineIds = new Set(
-      (await prisma.pipeline.findMany({
-        where: { environmentId: agent.environmentId },
-        select: { id: true },
-      })).map((p) => p.id),
-    );
+    const validPipelines = await prisma.pipeline.findMany({
+      where: { environmentId: agent.environmentId },
+      select: { id: true, name: true },
+    });
+    const validPipelineIds = new Set(validPipelines.map((p) => p.id));
+    const pipelineNameMap = new Map(validPipelines.map((p) => [p.id, p.name]));
     const pipelines = rawPipelines.filter((p) => validPipelineIds.has(p.pipelineId)) as PipelineStatus[];
 
     const now = new Date();
@@ -205,6 +208,16 @@ export async function POST(request: Request) {
           reason: "heartbeat received",
         },
       });
+
+      // Broadcast status change to browser SSE connections
+      const statusEvent: StatusChangeEvent = {
+        type: "status_change",
+        nodeId: agent.nodeId,
+        fromStatus: prevNode.status,
+        toStatus: "HEALTHY",
+        reason: "heartbeat received",
+      };
+      sseRegistry.broadcast(statusEvent, agent.environmentId);
     }
 
     // Merge agent-reported labels with existing UI-set labels.
@@ -227,6 +240,7 @@ export async function POST(request: Request) {
       eventsDiscarded: bigint;
       bytesIn: bigint;
       bytesOut: bigint;
+      status: string;
     }>();
     const pipelineIds = pipelines.map((p) => p.pipelineId);
     if (pipelineIds.length > 0) {
@@ -243,6 +257,7 @@ export async function POST(request: Request) {
           eventsDiscarded: true,
           bytesIn: true,
           bytesOut: true,
+          status: true,
         },
       });
       for (const s of existingStatuses) {
@@ -253,52 +268,29 @@ export async function POST(request: Request) {
           eventsDiscarded: s.eventsDiscarded,
           bytesIn: s.bytesIn,
           bytesOut: s.bytesOut,
+          status: s.status,
         });
       }
     }
 
-    // Upsert pipeline statuses
-    for (const ps of pipelines) {
-      await prisma.nodePipelineStatus.upsert({
-        where: {
-          nodeId_pipelineId: {
-            nodeId: agent.nodeId,
-            pipelineId: ps.pipelineId,
-          },
-        },
-        create: {
+    // Batch upsert pipeline statuses with a single INSERT...ON CONFLICT
+    await batchUpsertPipelineStatuses(agent.nodeId, pipelines, now);
+
+    // Emit SSE status_change for any pipeline status transitions
+    for (const p of pipelines) {
+      const prev = prevSnapshots.get(`${agent.nodeId}:${p.pipelineId}`);
+      if (prev && prev.status !== p.status) {
+        const pipelineStatusEvent: StatusChangeEvent = {
+          type: "status_change",
           nodeId: agent.nodeId,
-          pipelineId: ps.pipelineId,
-          version: ps.version,
-          status: ps.status,
-          pid: ps.pid ?? null,
-          uptimeSeconds: ps.uptimeSeconds ?? null,
-          eventsIn: ps.eventsIn ?? 0,
-          eventsOut: ps.eventsOut ?? 0,
-          errorsTotal: ps.errorsTotal ?? 0,
-          eventsDiscarded: ps.eventsDiscarded ?? 0,
-          bytesIn: ps.bytesIn ?? 0,
-          bytesOut: ps.bytesOut ?? 0,
-          utilization: ps.utilization ?? 0,
-          recentLogs: ps.recentLogs ?? undefined,
-          lastUpdated: now,
-        },
-        update: {
-          version: ps.version,
-          status: ps.status,
-          pid: ps.pid ?? null,
-          uptimeSeconds: ps.uptimeSeconds ?? null,
-          eventsIn: ps.eventsIn ?? 0,
-          eventsOut: ps.eventsOut ?? 0,
-          errorsTotal: ps.errorsTotal ?? 0,
-          eventsDiscarded: ps.eventsDiscarded ?? 0,
-          bytesIn: ps.bytesIn ?? 0,
-          bytesOut: ps.bytesOut ?? 0,
-          utilization: ps.utilization ?? 0,
-          recentLogs: ps.recentLogs ?? undefined,
-          lastUpdated: now,
-        },
-      });
+          fromStatus: prev.status,
+          toStatus: p.status,
+          reason: "heartbeat status transition",
+          pipelineId: p.pipelineId,
+          pipelineName: pipelineNameMap.get(p.pipelineId) ?? p.pipelineId,
+        };
+        sseRegistry.broadcast(pipelineStatusEvent, agent.environmentId);
+      }
     }
 
     // Remove statuses for pipelines no longer reported by this node
@@ -315,6 +307,15 @@ export async function POST(request: Request) {
         where: { nodeId: agent.nodeId },
       });
     }
+
+    // Broadcast fleet status event for this node (one per heartbeat)
+    const fleetEvent: FleetStatusEvent = {
+      type: "fleet_status",
+      nodeId: agent.nodeId,
+      status: "HEALTHY",
+      timestamp: now.getTime(),
+    };
+    sseRegistry.broadcast(fleetEvent, agent.environmentId);
 
     // Store host metrics time-series data
     if (hostMetrics) {
@@ -395,24 +396,16 @@ export async function POST(request: Request) {
 
     if (componentLatencyRows.length > 0) {
       try {
-        for (const row of componentLatencyRows) {
-          const existing = await prisma.pipelineMetric.findFirst({
+        await prisma.$transaction([
+          prisma.pipelineMetric.deleteMany({
             where: {
-              pipelineId: row.pipelineId,
-              nodeId: row.nodeId,
-              componentId: row.componentId,
-              timestamp: row.timestamp,
+              nodeId: agent.nodeId,
+              componentId: { not: null },
+              timestamp: minuteTimestamp,
             },
-          });
-          if (existing) {
-            await prisma.pipelineMetric.update({
-              where: { id: existing.id },
-              data: { latencyMeanMs: row.latencyMeanMs },
-            });
-          } else {
-            await prisma.pipelineMetric.create({ data: row });
-          }
-        }
+          }),
+          prisma.pipelineMetric.createMany({ data: componentLatencyRows }),
+        ]);
       } catch (err) {
         console.error("Per-component latency upsert error:", err);
       }
@@ -432,15 +425,28 @@ export async function POST(request: Request) {
             latencyMeanSeconds: cm.latencyMeanSeconds,
           });
         }
+        // Flush MetricStore and broadcast metric_update events to browser SSE connections
+        const flushEvents = metricStore.flush(agent.nodeId, ps.pipelineId);
+        for (const event of flushEvents) {
+          sseRegistry.broadcast(event, agent.environmentId);
+        }
       }
     }
 
-    // Persist pipeline logs
+    // Persist pipeline logs and broadcast to browser SSE connections
     for (const ps of pipelines) {
       if (Array.isArray(ps.recentLogs) && ps.recentLogs.length > 0) {
         ingestLogs(agent.nodeId, ps.pipelineId, ps.recentLogs).catch((err) =>
           console.error("Log ingestion error:", err),
         );
+
+        const logEvent: LogEntryEvent = {
+          type: "log_entry",
+          nodeId: agent.nodeId,
+          pipelineId: ps.pipelineId,
+          lines: ps.recentLogs,
+        };
+        sseRegistry.broadcast(logEvent, agent.environmentId);
       }
     }
 

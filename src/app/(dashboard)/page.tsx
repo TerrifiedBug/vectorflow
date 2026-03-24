@@ -35,6 +35,7 @@ import { derivePipelineStatus } from "@/lib/pipeline-status";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { usePollingInterval } from "@/hooks/use-polling-interval";
 
 export default function DashboardPage() {
   const trpc = useTRPC();
@@ -77,9 +78,10 @@ export default function DashboardPage() {
     ...trpc.dashboard.stats.queryOptions({ environmentId: selectedEnvironmentId ?? "" }),
     enabled: !!selectedEnvironmentId && activeView === null,
   });
+  const pipelineCardsPolling = usePollingInterval(15_000);
   const pipelineCards = useQuery({
     ...trpc.dashboard.pipelineCards.queryOptions({ environmentId: selectedEnvironmentId ?? "" }),
-    refetchInterval: 15_000,
+    refetchInterval: pipelineCardsPolling,
     enabled: !!selectedEnvironmentId && activeView === null,
   });
 
@@ -110,6 +112,8 @@ export default function DashboardPage() {
     "7d": 300_000,
   };
 
+  const chartPolling = usePollingInterval(refreshInterval[timeRange]);
+
   const chartData = useQuery({
     ...trpc.dashboard.chartMetrics.queryOptions({
       environmentId: selectedEnvironmentId ?? "",
@@ -118,7 +122,7 @@ export default function DashboardPage() {
       range: timeRange,
       groupBy,
     }),
-    refetchInterval: refreshInterval[timeRange],
+    refetchInterval: chartPolling,
     enabled: !!selectedEnvironmentId && activeView === null,
   });
 

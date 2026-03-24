@@ -37,7 +37,7 @@ func Load() (*Config, error) {
 	}
 
 	pollStr := os.Getenv("VF_POLL_INTERVAL")
-	poll := 15 * time.Second
+	poll := 5 * time.Second
 	if pollStr != "" {
 		var err error
 		poll, err = time.ParseDuration(pollStr)
