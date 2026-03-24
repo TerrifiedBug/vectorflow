@@ -109,6 +109,7 @@ export function buildPipelineSystemPrompt(context: {
   currentYaml?: string;
   componentTypes?: string[];
   environmentName?: string;
+  metricContext?: string;
 }): string {
   const parts: string[] = [];
 
@@ -162,6 +163,17 @@ export function buildPipelineSystemPrompt(context: {
       "- Prioritize: high = likely bug or major perf issue, medium = optimization, low = cleanup",
       "- Return valid JSON only. No markdown, no code fences, no commentary outside the JSON.",
       "- Even in follow-up messages, always return the full JSON object. Never mix prose with JSON.",
+    );
+  }
+
+  // Inject live metric context for review mode only
+  if (context.mode === "review" && context.metricContext) {
+    parts.push(
+      "",
+      "=== Live Pipeline Metrics ===",
+      context.metricContext,
+      "",
+      "Use these metrics to inform your review — flag components with high error rates, low throughput, or unusual latency.",
     );
   }
 
