@@ -505,7 +505,7 @@ export const teamRouter = router({
       z.object({
         teamId: z.string(),
         aiEnabled: z.boolean().optional(),
-        aiProvider: z.enum(["openai", "anthropic", "custom"]).nullable().optional(),
+        aiProvider: z.enum(["openai", "custom"]).nullable().optional(),
         aiBaseUrl: z.string().nullable().optional(),
         aiModel: z.string().nullable().optional(),
         aiApiKey: z.string().nullable().optional(),

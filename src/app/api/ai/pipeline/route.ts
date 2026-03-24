@@ -4,6 +4,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { streamCompletion } from "@/server/services/ai";
 import { buildPipelineSystemPrompt } from "@/lib/ai/prompts";
+import { buildMetricContext } from "@/lib/ai/metric-context";
+import { metricStore } from "@/server/services/metric-store";
 import { writeAuditLog } from "@/server/services/audit";
 
 import { Prisma } from "@/generated/prisma";
@@ -152,10 +154,33 @@ export async function POST(request: Request) {
 
   const mode = body.mode;
 
+  // Fetch live metrics for review mode
+  let metricContext: string | undefined;
+  if (mode === "review" && body.pipelineId) {
+    try {
+      const nodeStatus = await prisma.nodePipelineStatus.findFirst({
+        where: { pipelineId: body.pipelineId },
+        select: { nodeId: true },
+        orderBy: { lastUpdated: "desc" },
+      });
+      if (nodeStatus) {
+        const metrics = metricStore.getAllForPipeline(
+          nodeStatus.nodeId,
+          body.pipelineId,
+        );
+        metricContext = buildMetricContext(metrics);
+      }
+    } catch (err) {
+      // Non-fatal: proceed without metric context
+      console.error("Failed to fetch pipeline metrics for AI review:", err);
+    }
+  }
+
   const systemPrompt = buildPipelineSystemPrompt({
     mode,
     currentYaml: body.currentYaml,
     environmentName: body.environmentName,
+    metricContext,
   });
 
   const encoder = new TextEncoder();
