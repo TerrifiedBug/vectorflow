@@ -27,12 +27,12 @@ import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import {
   Table,
-  TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { StaggerList, StaggerItem } from "@/components/motion/stagger-list";
 import {
   Dialog,
   DialogContent,
@@ -280,9 +280,9 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
               <TableHead className="w-[100px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <StaggerList as="tbody" className="[&_tr:last-child]:border-0">
             {rules.map((rule) => (
-              <TableRow key={rule.id}>
+              <StaggerItem as="tr" key={rule.id} className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors">
                 <TableCell className="font-medium">{rule.name}</TableCell>
                 <TableCell>
                   <Badge variant="secondary">
@@ -340,9 +340,9 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                     </Button>
                   </div>
                 </TableCell>
-              </TableRow>
+              </StaggerItem>
             ))}
-          </TableBody>
+          </StaggerList>
         </Table>
       )}
 
