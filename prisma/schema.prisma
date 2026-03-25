@@ -37,6 +37,7 @@ model User {
   preferences            UserPreference[]
   aiConversationsCreated AiConversation[] @relation("AiConversationCreatedBy")
   aiMessagesCreated      AiMessage[]      @relation("AiMessageCreatedBy")
+  pipelineVersionsCreated PipelineVersion[] @relation("PipelineVersionCreatedBy")
   createdAt              DateTime         @default(now())
 }
 
@@ -455,7 +456,8 @@ model PipelineVersion {
   globalConfig Json?
   nodesSnapshot Json?
   edgesSnapshot Json?
-  createdById String
+  createdById String?
+  createdBy   User?    @relation("PipelineVersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   changelog   String?
   createdAt   DateTime @default(now())
 
