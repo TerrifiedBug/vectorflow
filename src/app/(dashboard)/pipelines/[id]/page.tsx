@@ -458,6 +458,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             aiEnabled={aiEnabled}
             onAiOpen={() => setAiDialogOpen(true)}
             onDebugOpen={() => setDebugPanelOpen(true)}
+            deployedVersionNumber={pipelineQuery.data?.deployedVersionNumber}
           />
         </div>
         <div className="flex items-center px-3">
