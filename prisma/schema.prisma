@@ -657,6 +657,7 @@ enum AlertCondition {
 enum AlertStatus {
   firing
   resolved
+  acknowledged
 }
 
 model AlertRule {
@@ -673,6 +674,7 @@ model AlertRule {
   condition       AlertCondition?
   threshold       Float?
   durationSeconds Int?
+  snoozedUntil    DateTime?
   events          AlertEvent[]
   channels        AlertRuleChannel[]
   createdAt       DateTime       @default(now())
@@ -697,21 +699,39 @@ model AlertWebhook {
 }
 
 model AlertEvent {
-  id          String      @id @default(cuid())
-  alertRuleId String
-  alertRule   AlertRule   @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
-  nodeId      String?
-  node        VectorNode? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
-  status      AlertStatus
-  value       Float
-  message     String?
-  firedAt     DateTime    @default(now())
-  resolvedAt  DateTime?
-  notifiedAt  DateTime?
+  id              String      @id @default(cuid())
+  alertRuleId     String
+  alertRule       AlertRule   @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+  nodeId          String?
+  node            VectorNode? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+  status          AlertStatus
+  value           Float
+  message         String?
+  firedAt         DateTime    @default(now())
+  resolvedAt      DateTime?
+  notifiedAt      DateTime?
+  acknowledgedAt  DateTime?
+  acknowledgedBy  String?
+  deliveries      DeliveryAttempt[]
 
   @@index([alertRuleId])
   @@index([nodeId])
   @@index([firedAt])
+}
+
+model DeliveryAttempt {
+  id            String      @id @default(cuid())
+  alertEventId  String
+  alertEvent    AlertEvent  @relation(fields: [alertEventId], references: [id], onDelete: Cascade)
+  channelType   String      // 'webhook' | 'slack' | 'email' | 'pagerduty' | 'legacy_webhook'
+  channelName   String
+  status        String      // 'pending' | 'success' | 'failed'
+  statusCode    Int?
+  errorMessage  String?
+  requestedAt   DateTime    @default(now())
+  completedAt   DateTime?
+
+  @@index([alertEventId])
 }
 
 model DashboardView {
