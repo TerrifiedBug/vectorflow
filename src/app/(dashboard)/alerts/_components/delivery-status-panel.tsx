@@ -1,0 +1,170 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { useTRPC } from "@/trpc/client";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+
+// ─── Channel Type Icons ─────────────────────────────────────────────────────
+
+const CHANNEL_ICONS: Record<string, string> = {
+  slack: "🔔",
+  email: "📧",
+  webhook: "🌐",
+  pagerduty: "🚨",
+  legacy_webhook: "🌐",
+};
+
+function channelIcon(type: string): string {
+  return CHANNEL_ICONS[type] ?? "📡";
+}
+
+// ─── Status → StatusBadge variant mapping ────────────────────────────────────
+
+function statusVariant(status: string) {
+  switch (status) {
+    case "success":
+      return "healthy" as const;
+    case "failed":
+      return "error" as const;
+    case "pending":
+      return "degraded" as const;
+    default:
+      return "neutral" as const;
+  }
+}
+
+function statusLabel(status: string) {
+  switch (status) {
+    case "success":
+      return "Success";
+    case "failed":
+      return "Failed";
+    case "pending":
+      return "Pending";
+    default:
+      return status;
+  }
+}
+
+// ─── Delivery Status Panel ───────────────────────────────────────────────────
+
+interface DeliveryStatusPanelProps {
+  alertEventId: string;
+  isOpen: boolean;
+}
+
+export function DeliveryStatusPanel({ alertEventId, isOpen }: DeliveryStatusPanelProps) {
+  const trpc = useTRPC();
+
+  const deliveriesQuery = useQuery(
+    trpc.alert.listDeliveries.queryOptions(
+      { alertEventId },
+      { enabled: isOpen },
+    ),
+  );
+
+  if (!isOpen) return null;
+
+  if (deliveriesQuery.isLoading) {
+    return (
+      <div className="space-y-2 p-3">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Skeleton key={i} className="h-8 w-full" />
+        ))}
+      </div>
+    );
+  }
+
+  if (deliveriesQuery.isError) {
+    return (
+      <div className="p-3 text-sm text-destructive">
+        Failed to load delivery attempts.
+      </div>
+    );
+  }
+
+  const deliveries = deliveriesQuery.data ?? [];
+
+  if (deliveries.length === 0) {
+    return (
+      <div className="p-3 text-sm text-muted-foreground">
+        No delivery attempts recorded
+      </div>
+    );
+  }
+
+  const formatTimestamp = (date: Date | string | null) => {
+    if (!date) return null;
+    const d = typeof date === "string" ? new Date(date) : date;
+    return d.toLocaleString();
+  };
+
+  return (
+    <div className="space-y-1 p-3">
+      <p className="text-xs font-medium text-muted-foreground mb-2">
+        Delivery Attempts
+      </p>
+      <div className="divide-y divide-border rounded-md border">
+        {deliveries.map((delivery) => (
+          <div
+            key={delivery.id}
+            className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm"
+          >
+            {/* Channel type + name */}
+            <span className="flex items-center gap-1.5 min-w-[140px]">
+              <span aria-hidden="true">{channelIcon(delivery.channelType)}</span>
+              <span className="font-medium truncate max-w-[200px]">
+                {delivery.channelName}
+              </span>
+            </span>
+
+            {/* Status badge */}
+            <StatusBadge variant={statusVariant(delivery.status)}>
+              {statusLabel(delivery.status)}
+            </StatusBadge>
+
+            {/* HTTP status code */}
+            {delivery.statusCode != null && (
+              <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                HTTP {delivery.statusCode}
+              </span>
+            )}
+
+            {/* Error message (truncated with tooltip) */}
+            {delivery.errorMessage && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-xs text-destructive truncate max-w-[200px] cursor-default">
+                    {delivery.errorMessage.length > 200
+                      ? `${delivery.errorMessage.slice(0, 200)}…`
+                      : delivery.errorMessage}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  className="max-w-sm break-words"
+                >
+                  {delivery.errorMessage}
+                </TooltipContent>
+              </Tooltip>
+            )}
+
+            {/* Timestamps */}
+            <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+              {formatTimestamp(delivery.requestedAt)}
+              {delivery.completedAt
+                ? ` → ${formatTimestamp(delivery.completedAt)}`
+                : " → Pending…"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
