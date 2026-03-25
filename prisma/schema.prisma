@@ -728,10 +728,15 @@ model DeliveryAttempt {
   status        String      // 'pending' | 'success' | 'failed'
   statusCode    Int?
   errorMessage  String?
+  attemptNumber Int         @default(1)
+  nextRetryAt   DateTime?
+  webhookId     String?
+  channelId     String?
   requestedAt   DateTime    @default(now())
   completedAt   DateTime?
 
   @@index([alertEventId])
+  @@index([status, nextRetryAt])
 }
 
 model DashboardView {
