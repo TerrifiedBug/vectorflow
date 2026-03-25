@@ -1,12 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import {
+  ChevronDown,
+  ChevronRight,
   Loader2,
   History,
 } from "lucide-react";
+
+import { DeliveryStatusPanel } from "./delivery-status-panel";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +30,7 @@ import {
 
 export function AlertHistorySection({ environmentId }: { environmentId: string }) {
   const trpc = useTRPC();
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [allItems, setAllItems] = useState<
     Array<{
@@ -103,6 +108,7 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[30px]" />
                 <TableHead>Timestamp</TableHead>
                 <TableHead>Rule Name</TableHead>
                 <TableHead>Node</TableHead>
@@ -113,39 +119,66 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(cursor ? displayItems : items).map((event) => (
-                <TableRow key={event.id}>
-                  <TableCell className="text-muted-foreground whitespace-nowrap">
-                    {formatTimestamp(event.firedAt)}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {event.alertRule.name}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {event.node?.host ?? "-"}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {event.alertRule.pipeline?.name ?? "-"}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge
-                      variant={
-                        event.status === "firing" ? "error" : "healthy"
+              {(cursor ? displayItems : items).map((event) => {
+                const isExpanded = expandedEventId === event.id;
+                return (
+                  <Fragment key={event.id}>
+                    <TableRow
+                      className="cursor-pointer"
+                      onClick={() =>
+                        setExpandedEventId(isExpanded ? null : event.id)
                       }
                     >
-                      {event.status === "firing" ? "Firing" : "Resolved"}
-                    </StatusBadge>
-                  </TableCell>
-                  <TableCell className="font-mono tabular-nums">
-                    {typeof event.value === "number"
-                      ? event.value.toFixed(2)
-                      : event.value}
-                  </TableCell>
-                  <TableCell className="max-w-[300px] truncate text-muted-foreground">
-                    {event.message || "-"}
-                  </TableCell>
-                </TableRow>
-              ))}
+                      <TableCell className="w-[30px] px-2">
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground whitespace-nowrap">
+                        {formatTimestamp(event.firedAt)}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {event.alertRule.name}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {event.node?.host ?? "-"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {event.alertRule.pipeline?.name ?? "-"}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge
+                          variant={
+                            event.status === "firing" ? "error" : "healthy"
+                          }
+                        >
+                          {event.status === "firing" ? "Firing" : "Resolved"}
+                        </StatusBadge>
+                      </TableCell>
+                      <TableCell className="font-mono tabular-nums">
+                        {typeof event.value === "number"
+                          ? event.value.toFixed(2)
+                          : event.value}
+                      </TableCell>
+                      <TableCell className="max-w-[300px] truncate text-muted-foreground">
+                        {event.message || "-"}
+                      </TableCell>
+                    </TableRow>
+                    {isExpanded && (
+                      <TableRow className="bg-muted/30 hover:bg-muted/30">
+                        <TableCell colSpan={99} className="p-0">
+                          <DeliveryStatusPanel
+                            alertEventId={event.id}
+                            isOpen={true}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
 
