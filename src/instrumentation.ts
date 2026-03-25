@@ -48,4 +48,14 @@ export async function register() {
   } catch (error) {
     console.error("Failed to initialize backup scheduler:", error);
   }
+
+  // Start delivery retry service.
+  try {
+    const { initRetryService } = await import(
+      "@/server/services/retry-service"
+    );
+    initRetryService();
+  } catch (error) {
+    console.error("Failed to initialize retry service:", error);
+  }
 }

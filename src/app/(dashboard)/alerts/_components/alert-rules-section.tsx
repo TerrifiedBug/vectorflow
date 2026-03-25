@@ -14,6 +14,8 @@ import {
   Pencil,
   Trash2,
   Loader2,
+  Clock,
+  AlarmClockOff,
 } from "lucide-react";
 import type { AlertMetric, AlertCondition } from "@/generated/prisma";
 
@@ -50,6 +52,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { isEventMetric } from "@/lib/alert-metrics";
 
@@ -60,6 +67,7 @@ import {
   GLOBAL_METRICS,
   CHANNEL_TYPE_LABELS,
 } from "./constants";
+import { AlertTemplatePicker } from "./alert-template-picker";
 
 // ─── Alert Rules Section ────────────────────────────────────────────────────────
 
@@ -82,6 +90,29 @@ const EMPTY_RULE_FORM: RuleFormState = {
   durationSeconds: "60",
   channelIds: [],
 };
+
+const SNOOZE_PRESETS = [
+  { label: "15 minutes", minutes: 15 },
+  { label: "1 hour", minutes: 60 },
+  { label: "4 hours", minutes: 240 },
+  { label: "24 hours", minutes: 1440 },
+] as const;
+
+function snoozedMinutesLeft(snoozedUntil: Date | string | null | undefined): number | null {
+  if (!snoozedUntil) return null;
+  const diff = new Date(snoozedUntil).getTime() - Date.now();
+  if (diff <= 0) return null;
+  return Math.round(diff / 60000);
+}
+
+function formatSnoozeRemaining(minutes: number): string {
+  if (minutes >= 60) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m > 0 ? `${h}h ${m}m left` : `${h}h left`;
+  }
+  return `${minutes}m left`;
+}
 
 export function AlertRulesSection({ environmentId }: { environmentId: string }) {
   const trpc = useTRPC();
@@ -170,6 +201,31 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
       },
       onError: (error) => {
         toast.error(error.message || "Failed to delete alert rule");
+      },
+    }),
+  );
+
+  const snoozeMutation = useMutation(
+    trpc.alert.snoozeRule.mutationOptions({
+      onSuccess: (_data, variables) => {
+        const label = SNOOZE_PRESETS.find((p) => p.minutes === variables.duration)?.label ?? `${variables.duration}m`;
+        toast.success(`Rule snoozed for ${label}`);
+        invalidateRules();
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to snooze alert rule");
+      },
+    }),
+  );
+
+  const unsnoozeMutation = useMutation(
+    trpc.alert.unsnoozeRule.mutationOptions({
+      onSuccess: () => {
+        toast.success("Rule unsnoozed");
+        invalidateRules();
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to unsnooze alert rule");
       },
     }),
   );
@@ -283,7 +339,20 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
           <StaggerList as="tbody" className="[&_tr:last-child]:border-0">
             {rules.map((rule) => (
               <StaggerItem as="tr" key={rule.id} className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors">
-                <TableCell className="font-medium">{rule.name}</TableCell>
+                <TableCell className="font-medium">
+                  <div className="flex items-center gap-2">
+                    {rule.name}
+                    {(() => {
+                      const mins = snoozedMinutesLeft(rule.snoozedUntil);
+                      if (mins == null) return null;
+                      return (
+                        <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                          Snoozed · {formatSnoozeRemaining(mins)}
+                        </Badge>
+                      );
+                    })()}
+                  </div>
+                </TableCell>
                 <TableCell>
                   <Badge variant="secondary">
                     {METRIC_LABELS[rule.metric] ?? rule.metric}
@@ -318,6 +387,55 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
+                    {snoozedMinutesLeft(rule.snoozedUntil) != null ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label="Unsnooze alert rule"
+                        disabled={unsnoozeMutation.isPending}
+                        onClick={() => unsnoozeMutation.mutate({ id: rule.id })}
+                      >
+                        <AlarmClockOff className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="Snooze alert rule"
+                          >
+                            <Clock className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-40 p-2" align="end">
+                          <div className="flex flex-col gap-1">
+                            <p className="text-xs font-medium text-muted-foreground px-2 pb-1">
+                              Snooze for
+                            </p>
+                            {SNOOZE_PRESETS.map((preset) => (
+                              <Button
+                                key={preset.minutes}
+                                variant="ghost"
+                                size="sm"
+                                className="justify-start"
+                                disabled={snoozeMutation.isPending}
+                                onClick={() =>
+                                  snoozeMutation.mutate({
+                                    id: rule.id,
+                                    duration: preset.minutes,
+                                  })
+                                }
+                              >
+                                {preset.label}
+                              </Button>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -365,6 +483,21 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                 : "Define a new alert rule for this environment."}
             </DialogDescription>
           </DialogHeader>
+
+          {!editingRuleId && (
+            <AlertTemplatePicker
+              onSelect={(values) =>
+                setForm((f) => ({
+                  ...f,
+                  name: values.name,
+                  metric: values.metric,
+                  condition: values.condition,
+                  threshold: values.threshold,
+                  durationSeconds: values.durationSeconds,
+                }))
+              }
+            />
+          )}
 
           <div className="space-y-4 py-2">
             <div className="space-y-2">
