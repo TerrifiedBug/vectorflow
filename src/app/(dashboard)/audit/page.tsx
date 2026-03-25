@@ -405,7 +405,7 @@ export default function AuditPage() {
                           {entry.entityType}
                         </Badge>
                       </TableCell>
-                      <TableCell className="font-mono text-xs max-w-[180px] truncate" title={entry.entityId}>
+                      <TableCell className="font-mono text-xs tabular-nums max-w-[180px] truncate" title={entry.entityId}>
                         {entry.entityId}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell text-xs text-muted-foreground max-w-[300px] truncate">
@@ -423,7 +423,7 @@ export default function AuditPage() {
                             {entry.ipAddress && (
                               <div className="xl:hidden">
                                 <p className="text-xs font-medium text-muted-foreground mb-1">IP Address</p>
-                                <span className="text-xs font-mono">{entry.ipAddress}</span>
+                                <span className="text-xs font-mono tabular-nums">{entry.ipAddress}</span>
                               </div>
                             )}
                             {hasMetadata && (
