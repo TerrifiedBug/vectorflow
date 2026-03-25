@@ -28,7 +28,7 @@ export function StatusDot({ variant, pulse = false, className }: StatusDotProps)
   return (
     <span
       className={cn(
-        "inline-block h-2 w-2 shrink-0 rounded-full",
+        "inline-block h-2 w-2 shrink-0 rounded-full transition-colors duration-300",
         dotStyles[variant],
         pulse && pulseStyles[variant],
         className,

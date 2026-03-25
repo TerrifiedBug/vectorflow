@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { LazyMotionProvider } from "@/components/motion/lazy-motion-provider";
 import { UpdateBanner } from "@/components/update-banner";
 
 export default function DashboardLayout({
@@ -197,11 +198,13 @@ export default function DashboardLayout({
         </header>
         <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
         <UpdateBanner />
-        <div className="flex-1 py-2 px-6">
-          <ErrorBoundary>
-            {children}
-          </ErrorBoundary>
-        </div>
+        <LazyMotionProvider>
+          <div className="flex-1 py-2 px-6">
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
+          </div>
+        </LazyMotionProvider>
       </SidebarInset>
     </SidebarProvider>
   );
