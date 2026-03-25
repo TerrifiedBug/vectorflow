@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { type Prisma, type ComponentKind } from "@/generated/prisma";
 import { TRPCError } from "@trpc/server";
+import { pushRegistry } from "@/server/services/push-registry";
 
 /**
  * Creates an immutable pipeline version snapshot with auto-incrementing
@@ -57,6 +58,28 @@ export async function listVersions(pipelineId: string) {
   return prisma.pipelineVersion.findMany({
     where: { pipelineId },
     orderBy: { version: "desc" },
+  });
+}
+
+/**
+ * Lightweight version summary — returns metadata and author info
+ * but excludes heavy blob fields (configYaml, nodesSnapshot, edgesSnapshot, etc.).
+ */
+export async function listVersionsSummary(pipelineId: string) {
+  return prisma.pipelineVersion.findMany({
+    where: { pipelineId },
+    orderBy: { version: "desc" },
+    select: {
+      id: true,
+      pipelineId: true,
+      version: true,
+      changelog: true,
+      createdById: true,
+      createdAt: true,
+      createdBy: {
+        select: { name: true, email: true },
+      },
+    },
   });
 }
 
@@ -167,4 +190,136 @@ export async function rollback(
     targetVersion.nodesSnapshot,
     targetVersion.edgesSnapshot,
   );
+}
+
+/**
+ * Deploy from a historical version: restore pipeline graph state from
+ * the source version's snapshots, create a new version, and send push
+ * notifications to matching agents.
+ *
+ * Returns the new version and the list of node IDs that received a push
+ * so the caller can fire SSE + audit events.
+ */
+export async function deployFromVersion(
+  pipelineId: string,
+  sourceVersionId: string,
+  userId: string,
+  changelog?: string,
+): Promise<{ version: Awaited<ReturnType<typeof createVersion>>; pushedNodeIds: string[] }> {
+  // 1. Fetch and validate the source version
+  const sourceVersion = await prisma.pipelineVersion.findUnique({
+    where: { id: sourceVersionId },
+  });
+
+  if (!sourceVersion) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "Source version not found",
+    });
+  }
+
+  if (sourceVersion.pipelineId !== pipelineId) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Source version does not belong to this pipeline",
+    });
+  }
+
+  // 2. Restore pipeline graph state from source version's snapshots
+  await prisma.$transaction(async (tx) => {
+    if (sourceVersion.globalConfig !== undefined) {
+      await tx.pipeline.update({
+        where: { id: pipelineId },
+        data: {
+          globalConfig: sourceVersion.globalConfig as Prisma.InputJsonValue ?? undefined,
+        },
+      });
+    }
+
+    if (sourceVersion.nodesSnapshot && sourceVersion.edgesSnapshot) {
+      const snapshotNodes = sourceVersion.nodesSnapshot as Array<Record<string, unknown>>;
+      const snapshotEdges = sourceVersion.edgesSnapshot as Array<Record<string, unknown>>;
+
+      await tx.pipelineEdge.deleteMany({ where: { pipelineId } });
+      await tx.pipelineNode.deleteMany({ where: { pipelineId } });
+
+      await Promise.all(
+        snapshotNodes.map((node) =>
+          tx.pipelineNode.create({
+            data: {
+              id: node.id as string,
+              pipelineId,
+              componentKey: node.componentKey as string,
+              displayName: (node.displayName as string) ?? null,
+              componentType: node.componentType as string,
+              kind: node.kind as ComponentKind,
+              config: node.config as Prisma.InputJsonValue,
+              positionX: node.positionX as number,
+              positionY: node.positionY as number,
+              disabled: (node.disabled as boolean) ?? false,
+            },
+          })
+        )
+      );
+
+      await Promise.all(
+        snapshotEdges.map((edge) =>
+          tx.pipelineEdge.create({
+            data: {
+              id: edge.id as string,
+              pipelineId,
+              sourceNodeId: edge.sourceNodeId as string,
+              targetNodeId: edge.targetNodeId as string,
+              sourcePort: (edge.sourcePort as string) ?? null,
+            },
+          })
+        )
+      );
+    }
+  });
+
+  // 3. Create a new version with the source version's config/snapshots
+  const version = await createVersion(
+    pipelineId,
+    sourceVersion.configYaml,
+    userId,
+    changelog ?? `Deploy from version ${sourceVersion.version}`,
+    sourceVersion.logLevel,
+    sourceVersion.globalConfig as Record<string, unknown> | null,
+    sourceVersion.nodesSnapshot,
+    sourceVersion.edgesSnapshot,
+  );
+
+  // 4. Send push notifications to matching agents
+  const pushedNodeIds: string[] = [];
+  try {
+    const pipeline = await prisma.pipeline.findUnique({
+      where: { id: pipelineId },
+      select: { environmentId: true, nodeSelector: true },
+    });
+    if (pipeline) {
+      const nodeSelector = pipeline.nodeSelector as Record<string, string> | null;
+      const targetNodes = await prisma.vectorNode.findMany({
+        where: { environmentId: pipeline.environmentId },
+        select: { id: true, labels: true },
+      });
+      for (const node of targetNodes) {
+        const labels = (node.labels as Record<string, string>) ?? {};
+        const selectorEntries = Object.entries(nodeSelector ?? {});
+        const matches = selectorEntries.every(([k, v]) => labels[k] === v);
+        if (matches) {
+          const sent = pushRegistry.send(node.id, {
+            type: "config_changed",
+            pipelineId,
+            reason: "deploy_from_version",
+          });
+          if (sent) pushedNodeIds.push(node.id);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[deployFromVersion] Push notification failed:", err);
+  }
+
+  return { version, pushedNodeIds };
 }
