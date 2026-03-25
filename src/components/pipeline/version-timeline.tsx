@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, RotateCcw } from "lucide-react";
+import { Eye, Rocket, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -33,6 +33,10 @@ interface VersionTimelineProps {
   onView: (versionId: string) => void;
   onRollback: (versionId: string) => void;
   isRollbackPending?: boolean;
+  /** Called when user clicks "Deploy this version" on a non-current version. */
+  onDeploy?: (versionId: string) => void;
+  /** When true, the deploy button is disabled (mutation in flight). */
+  isDeployPending?: boolean;
   /** When true, show A/B selection indicators on each timeline item. */
   selectable?: boolean;
   /** Currently selected A (old) and B (new) version IDs. */
@@ -82,6 +86,8 @@ export function VersionTimeline({
   onView,
   onRollback,
   isRollbackPending = false,
+  onDeploy,
+  isDeployPending = false,
   selectable = false,
   selectedVersions,
   onSelectionChange,
@@ -260,6 +266,19 @@ export function VersionTimeline({
                           onClick={() => onRollback(version.id)}
                         >
                           <RotateCcw className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {!isCurrent && onDeploy && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                          title="Deploy this version"
+                          aria-label={`Deploy version ${version.version}`}
+                          disabled={isDeployPending}
+                          onClick={() => onDeploy(version.id)}
+                        >
+                          <Rocket className="h-4 w-4" />
                         </Button>
                       )}
                     </div>
