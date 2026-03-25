@@ -124,6 +124,13 @@ export function DeliveryStatusPanel({ alertEventId, isOpen }: DeliveryStatusPane
               </span>
             </span>
 
+            {/* Retry label — shown only for retry attempts (attemptNumber > 1) */}
+            {delivery.attemptNumber != null && delivery.attemptNumber > 1 && (
+              <span className="rounded bg-orange-100 px-1.5 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                Retry #{delivery.attemptNumber - 1}
+              </span>
+            )}
+
             {/* Status badge */}
             <StatusBadge variant={statusVariant(delivery.status)}>
               {statusLabel(delivery.status)}
