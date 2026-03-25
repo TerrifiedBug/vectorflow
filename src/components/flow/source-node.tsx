@@ -39,11 +39,13 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
   return (
     <div
       className={cn(
-        "w-56 rounded-lg border bg-card shadow-sm transition-shadow overflow-hidden",
-        selected && !isSystemLocked && !isShared && "ring-2 ring-node-source shadow-md",
-        selected && isShared && "ring-2 ring-purple-400 shadow-md",
+        "w-56 rounded-lg border bg-card shadow-sm transition-[transform,box-shadow] duration-200 overflow-hidden",
+        "ring-2 ring-transparent",
+        "hover:-translate-y-0.5 hover:shadow-[0_0_12px_var(--node-source-glow)]",
+        selected && !isSystemLocked && !isShared && "ring-node-source shadow-md",
+        selected && isShared && "ring-purple-400 shadow-md",
         isShared && !selected && "border-purple-400/50 shadow-[0_0_8px_rgba(167,139,250,0.15)]",
-        isSystemLocked && "ring-2 ring-blue-400 shadow-md",
+        isSystemLocked && "ring-blue-400 shadow-md",
         disabled && "opacity-40"
       )}
     >

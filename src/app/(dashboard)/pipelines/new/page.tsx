@@ -147,7 +147,7 @@ export default function NewPipelinePage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">New Pipeline</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">New Pipeline</h2>
         <p className="text-muted-foreground">
           Create a new data processing pipeline
         </p>

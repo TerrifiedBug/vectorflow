@@ -91,7 +91,7 @@ export default function SetupPage() {
   }
 
   return (
-    <Card>
+    <Card className="hover:translate-y-0 hover:shadow-none">
       <CardHeader>
         <CardTitle className="text-2xl">Welcome to VectorFlow</CardTitle>
         <CardDescription>
