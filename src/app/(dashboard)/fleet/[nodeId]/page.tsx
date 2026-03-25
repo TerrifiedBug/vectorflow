@@ -276,7 +276,7 @@ export default function NodeDetailPage() {
             ) : (
               <button
                 onClick={handleStartRename}
-                className="group flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-2xl font-bold tracking-tight hover:bg-accent transition-colors"
+                className="group flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-2xl font-semibold tracking-tight hover:bg-accent transition-colors"
                 title="Click to rename"
               >
                 {node.name}

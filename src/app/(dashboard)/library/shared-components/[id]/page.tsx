@@ -208,7 +208,7 @@ export default function SharedComponentDetailPage() {
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold tracking-tight">{sc.name}</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">{sc.name}</h1>
               <Badge variant="outline" className={kindVariant[sc.kind] ?? ""}>
                 {sc.kind}
               </Badge>
