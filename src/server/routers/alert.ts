@@ -666,6 +666,7 @@ export const alertRouter = router({
           errorMessage: true,
           requestedAt: true,
           completedAt: true,
+          attemptNumber: true,
         },
         orderBy: { requestedAt: "desc" },
       });
