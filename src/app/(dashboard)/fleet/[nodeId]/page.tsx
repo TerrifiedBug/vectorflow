@@ -383,11 +383,11 @@ export default function NodeDetailPage() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Agent Version</p>
-                    <p className="text-sm font-mono">{node.agentVersion ?? "\u2014"}</p>
+                    <p className="text-sm font-mono tabular-nums">{node.agentVersion ?? "\u2014"}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Vector Version</p>
-                    <p className="text-sm font-mono">{node.vectorVersion ?? "Unknown"}</p>
+                    <p className="text-sm font-mono tabular-nums">{node.vectorVersion ?? "Unknown"}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Last Heartbeat</p>
@@ -399,11 +399,11 @@ export default function NodeDetailPage() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Host</p>
-                    <p className="text-sm font-mono">{node.host}</p>
+                    <p className="text-sm font-mono tabular-nums">{node.host}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">API Port</p>
-                    <p className="text-sm font-mono">{node.apiPort}</p>
+                    <p className="text-sm font-mono tabular-nums">{node.apiPort}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Last Seen</p>
