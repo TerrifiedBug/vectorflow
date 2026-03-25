@@ -1,9 +1,11 @@
 "use client";
 
-import { Fragment, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { Fragment, useState, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
+import { toast } from "sonner";
 import {
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Loader2,
@@ -32,6 +34,7 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
   const trpc = useTRPC();
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const queryClient = useQueryClient();
   const [allItems, setAllItems] = useState<
     Array<{
       id: string;
@@ -40,6 +43,8 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
       message: string | null;
       firedAt: Date;
       resolvedAt: Date | null;
+      acknowledgedAt: Date | null;
+      acknowledgedBy: string | null;
       node: { id: string; host: string } | null;
       alertRule: {
         id: string;
@@ -57,6 +62,24 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
       { environmentId, limit: 50, cursor },
       { enabled: !!environmentId },
     ),
+  );
+
+  const invalidateEvents = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: trpc.alert.listEvents.queryKey({ environmentId }),
+    });
+  }, [queryClient, trpc, environmentId]);
+
+  const acknowledgeMutation = useMutation(
+    trpc.alert.acknowledgeEvent.mutationOptions({
+      onSuccess: () => {
+        toast.success("Alert acknowledged");
+        invalidateEvents();
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to acknowledge alert");
+      },
+    }),
   );
 
   // Merge newly fetched items when data changes
@@ -149,13 +172,48 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
                         {event.alertRule.pipeline?.name ?? "-"}
                       </TableCell>
                       <TableCell>
-                        <StatusBadge
-                          variant={
-                            event.status === "firing" ? "error" : "healthy"
-                          }
-                        >
-                          {event.status === "firing" ? "Firing" : "Resolved"}
-                        </StatusBadge>
+                        <div className="flex items-center gap-2">
+                          <StatusBadge
+                            variant={
+                              event.status === "firing"
+                                ? "error"
+                                : event.status === "acknowledged"
+                                  ? "degraded"
+                                  : "healthy"
+                            }
+                          >
+                            {event.status === "firing"
+                              ? "Firing"
+                              : event.status === "acknowledged"
+                                ? "Acknowledged"
+                                : "Resolved"}
+                          </StatusBadge>
+                          {event.status === "firing" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 gap-1 px-2 text-xs"
+                              disabled={acknowledgeMutation.isPending}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                acknowledgeMutation.mutate({
+                                  alertEventId: event.id,
+                                });
+                              }}
+                            >
+                              <CheckCircle2 className="h-3 w-3" />
+                              Ack
+                            </Button>
+                          )}
+                        </div>
+                        {event.status === "acknowledged" &&
+                          event.acknowledgedAt && (
+                            <p className="mt-0.5 text-[10px] text-muted-foreground">
+                              {formatTimestamp(event.acknowledgedAt)}
+                              {event.acknowledgedBy &&
+                                ` by ${event.acknowledgedBy}`}
+                            </p>
+                          )}
                       </TableCell>
                       <TableCell className="font-mono tabular-nums">
                         {typeof event.value === "number"
