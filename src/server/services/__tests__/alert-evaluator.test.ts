@@ -468,6 +468,169 @@ describe("evaluateAlerts", () => {
     expect(result).toEqual([]);
   });
 
+  // ── Snoozed rules are skipped ──────────────────────────────────────────
+
+  it("skips snoozed rules", async () => {
+    mockRunningNode();
+    // Rule snoozed until 1 hour from now — should be filtered out by the query
+    mockRules([]); // The snooze filter means no rules are returned
+
+    const result = await evaluateAlerts(NODE_ID, ENV_ID);
+    expect(result).toEqual([]);
+    expect(prismaMock.alertEvent.create).not.toHaveBeenCalled();
+
+    // Verify the query included the snooze filter
+    expect(prismaMock.alertRule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              OR: expect.arrayContaining([
+                { snoozedUntil: null },
+                { snoozedUntil: { lt: expect.any(Date) } },
+              ]),
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  // ── Expired snooze rules are evaluated ─────────────────────────────────
+
+  it("evaluates rules with expired snooze", async () => {
+    mockRunningNode();
+    // A rule whose snooze has expired — the DB query will return it since
+    // snoozedUntil < now() matches the filter. The test just needs to verify
+    // the evaluator processes it normally when it appears in the result set.
+    const rule = makeAlertRule({
+      id: "expired-snooze-rule",
+      metric: "cpu_usage",
+      condition: "gt",
+      threshold: 80,
+      durationSeconds: 0,
+      snoozedUntil: new Date(NOW.getTime() - 3600_000), // Expired 1h ago
+    });
+    mockRules([rule]);
+
+    // 90% CPU
+    prismaMock.nodeMetric.findMany.mockResolvedValue([
+      { cpuSecondsTotal: 200, cpuSecondsIdle: 110 },
+      { cpuSecondsTotal: 100, cpuSecondsIdle: 100 },
+    ] as never);
+
+    prismaMock.alertEvent.findFirst.mockResolvedValue(null);
+
+    const createdEvent = makeAlertEvent({
+      id: "expired-snooze-event",
+      value: 90,
+      status: "firing",
+    });
+    prismaMock.alertEvent.create.mockResolvedValue(createdEvent as never);
+
+    const result = await evaluateAlerts(NODE_ID, ENV_ID);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.event.status).toBe("firing");
+    expect(prismaMock.alertEvent.create).toHaveBeenCalledOnce();
+  });
+
+  // ── Acknowledged event prevents duplicate firing ───────────────────────
+
+  it("does not fire duplicate when acknowledged event exists", async () => {
+    mockRunningNode();
+    mockRules([
+      makeAlertRule({
+        metric: "cpu_usage",
+        condition: "gt",
+        threshold: 80,
+        durationSeconds: 0,
+      }),
+    ]);
+
+    // 90% CPU
+    prismaMock.nodeMetric.findMany.mockResolvedValue([
+      { cpuSecondsTotal: 200, cpuSecondsIdle: 110 },
+      { cpuSecondsTotal: 100, cpuSecondsIdle: 100 },
+    ] as never);
+
+    // Existing acknowledged event → should deduplicate (no new event created)
+    prismaMock.alertEvent.findFirst.mockResolvedValue(
+      makeAlertEvent({
+        id: "acked-event",
+        status: "acknowledged",
+        acknowledgedAt: NOW,
+        acknowledgedBy: "user@example.com",
+      }) as never,
+    );
+
+    const result = await evaluateAlerts(NODE_ID, ENV_ID);
+    expect(result).toEqual([]);
+    expect(prismaMock.alertEvent.create).not.toHaveBeenCalled();
+
+    // Verify the query used { in: ["firing", "acknowledged"] }
+    expect(prismaMock.alertEvent.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: ["firing", "acknowledged"] },
+        }),
+      }),
+    );
+  });
+
+  // ── Acknowledged event gets resolved when condition clears ─────────────
+
+  it("resolves acknowledged event when condition clears", async () => {
+    mockRunningNode();
+    mockRules([
+      makeAlertRule({
+        metric: "cpu_usage",
+        condition: "gt",
+        threshold: 80,
+        durationSeconds: 0,
+      }),
+    ]);
+
+    // 30% CPU — below threshold
+    prismaMock.nodeMetric.findMany.mockResolvedValue([
+      { cpuSecondsTotal: 200, cpuSecondsIdle: 170 },
+      { cpuSecondsTotal: 100, cpuSecondsIdle: 100 },
+    ] as never);
+
+    // An open acknowledged event exists → should be resolved
+    const ackedEvent = makeAlertEvent({
+      id: "acked-open-event",
+      status: "acknowledged",
+      acknowledgedAt: NOW,
+      acknowledgedBy: "user@example.com",
+    });
+    prismaMock.alertEvent.findFirst.mockResolvedValue(ackedEvent as never);
+
+    const resolvedEvent = makeAlertEvent({
+      id: "acked-open-event",
+      status: "resolved",
+      resolvedAt: NOW,
+      acknowledgedAt: NOW,
+      acknowledgedBy: "user@example.com",
+    });
+    prismaMock.alertEvent.update.mockResolvedValue(resolvedEvent as never);
+
+    const result = await evaluateAlerts(NODE_ID, ENV_ID);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.event.status).toBe("resolved");
+    expect(prismaMock.alertEvent.update).toHaveBeenCalledOnce();
+    expect(prismaMock.alertEvent.create).not.toHaveBeenCalled();
+
+    // Verify the resolve query included acknowledged status
+    expect(prismaMock.alertEvent.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: ["firing", "acknowledged"] },
+        }),
+      }),
+    );
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
