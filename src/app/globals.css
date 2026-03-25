@@ -19,8 +19,11 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
   --color-node-source: var(--node-source);
+  --color-node-source-glow: var(--node-source-glow);
   --color-node-transform: var(--node-transform);
+  --color-node-transform-glow: var(--node-transform-glow);
   --color-node-sink: var(--node-sink);
+  --color-node-sink-glow: var(--node-sink-glow);
   --color-node-shared: var(--node-shared);
   --color-node-source-foreground: var(--node-source-foreground);
   --color-node-transform-foreground: var(--node-transform-foreground);
@@ -80,8 +83,11 @@
 :root {
   --radius: 0.625rem;
   --node-source: oklch(0.65 0.18 145);
+  --node-source-glow: oklch(0.65 0.18 145 / 20%);
   --node-transform: oklch(0.60 0.15 250);
+  --node-transform-glow: oklch(0.60 0.15 250 / 20%);
   --node-sink: oklch(0.55 0.20 295);
+  --node-sink-glow: oklch(0.55 0.20 295 / 20%);
   --node-shared: oklch(0.60 0.18 300);
   --node-source-foreground: oklch(0.98 0 0);
   --node-transform-foreground: oklch(0.98 0 0);
@@ -137,8 +143,11 @@
 
 .dark {
   --node-source: oklch(0.50 0.15 145);
+  --node-source-glow: oklch(0.50 0.15 145 / 30%);
   --node-transform: oklch(0.45 0.12 250);
+  --node-transform-glow: oklch(0.45 0.12 250 / 30%);
   --node-sink: oklch(0.40 0.17 295);
+  --node-sink-glow: oklch(0.40 0.17 295 / 30%);
   --status-healthy: oklch(0.65 0.17 145);
   --status-healthy-bg: oklch(0.65 0.17 145 / 15%);
   --status-healthy-foreground: oklch(0.75 0.15 145);

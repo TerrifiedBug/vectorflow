@@ -38,9 +38,11 @@ function SinkNodeComponent({ data, selected }: NodeProps<SinkNodeType>) {
   return (
     <div
       className={cn(
-        "w-56 rounded-lg border bg-card shadow-sm transition-shadow overflow-hidden",
-        selected && !isShared && "ring-2 ring-node-sink shadow-md",
-        selected && isShared && "ring-2 ring-purple-400 shadow-md",
+        "w-56 rounded-lg border bg-card shadow-sm transition-[transform,box-shadow] duration-200 overflow-hidden",
+        "ring-2 ring-transparent",
+        "hover:-translate-y-0.5 hover:shadow-[0_0_12px_var(--node-sink-glow)]",
+        selected && !isShared && "ring-node-sink shadow-md",
+        selected && isShared && "ring-purple-400 shadow-md",
         isShared && !selected && "border-purple-400/50 shadow-[0_0_8px_rgba(167,139,250,0.15)]",
         disabled && "opacity-40"
       )}
