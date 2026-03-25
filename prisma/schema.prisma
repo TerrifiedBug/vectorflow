@@ -404,6 +404,7 @@ model PipelineNode {
   sharedComponent         SharedComponent? @relation(fields: [sharedComponentId], references: [id], onDelete: SetNull)
   sharedComponentVersion  Int?
 
+  @@index([pipelineId])
   @@index([sharedComponentId])
 }
 
@@ -420,6 +421,8 @@ model PipelineEdge {
   sourceNodeId String
   targetNodeId String
   sourcePort   String?
+
+  @@index([pipelineId])
 }
 
 model SharedComponent {
@@ -455,6 +458,8 @@ model PipelineVersion {
   createdById String
   changelog   String?
   createdAt   DateTime @default(now())
+
+  @@index([pipelineId, version])
 }
 
 model Secret {
