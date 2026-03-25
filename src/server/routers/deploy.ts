@@ -4,6 +4,7 @@ import { Prisma } from "@/generated/prisma";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { deployAgent, undeployAgent } from "@/server/services/deploy-agent";
+import { deployFromVersion } from "@/server/services/pipeline-version";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { validateConfig } from "@/server/services/validator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
@@ -297,6 +298,94 @@ export const deployRouter = router({
       }
 
       return result;
+    }),
+
+  deployFromVersion: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        sourceVersionId: z.string(),
+        changelog: z.string().optional(),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user?.id;
+      if (!userId) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        include: {
+          environment: { select: { id: true, name: true, requireDeployApproval: true } },
+        },
+      });
+
+      if (!pipeline) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+
+      const userRole = (ctx as Record<string, unknown>).userRole as string;
+
+      // When approval is required AND user is EDITOR (not ADMIN/SUPER_ADMIN),
+      // block the deploy — deploy-from-version doesn't support approval flow yet
+      if (pipeline.environment.requireDeployApproval && userRole === "EDITOR") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Deploy approval is required for this environment. Only admins can deploy directly from a historical version.",
+        });
+      }
+
+      const result = await deployFromVersion(
+        input.pipelineId,
+        input.sourceVersionId,
+        userId,
+        input.changelog,
+      );
+
+      // Non-fatal side effects: audit, SSE, event alert
+      writeAuditLog({
+        userId,
+        action: "deploy.from_version",
+        entityType: "Pipeline",
+        entityId: input.pipelineId,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          input: {
+            pipelineId: input.pipelineId,
+            sourceVersionId: input.sourceVersionId,
+            newVersion: result.version.version,
+          },
+          pushedNodeIds: result.pushedNodeIds,
+        },
+        teamId: (ctx as Record<string, unknown>).teamId as string | null ?? null,
+        environmentId: pipeline.environment.id,
+        ipAddress: (ctx as Record<string, unknown>).ipAddress as string | null ?? null,
+        userEmail: ctx.session?.user?.email ?? null,
+        userName: ctx.session?.user?.name ?? null,
+      }).catch(() => {});
+
+      void fireEventAlert("deploy_completed", pipeline.environment.id, {
+        message: `Pipeline "${pipeline.name}" deployed from historical version`,
+        pipelineId: input.pipelineId,
+      });
+
+      sseRegistry.broadcast({
+        type: "status_change",
+        nodeId: "",
+        fromStatus: "",
+        toStatus: "DEPLOYED",
+        reason: "deploy from version",
+        pipelineId: input.pipelineId,
+        pipelineName: pipeline.name,
+      }, pipeline.environment.id);
+
+      return {
+        success: true,
+        version: result.version,
+        pushedNodeIds: result.pushedNodeIds,
+      };
     }),
 
   environmentInfo: protectedProcedure
