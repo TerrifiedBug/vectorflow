@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute } from "../../../_lib/api-handler";
 import { rollback } from "@/server/services/pipeline-version";
+import { pushRegistry } from "@/server/services/push-registry";
+import { sseRegistry } from "@/server/services/sse-registry";
+import { fireEventAlert } from "@/server/services/event-alerts";
 
 export const POST = apiRoute(
   "pipelines.deploy",
@@ -49,6 +52,50 @@ export const POST = apiRoute(
       body.targetVersionId,
       `sa:${ctx.serviceAccountId}`,
     );
+
+    // Notify connected agents and browsers about the rollback (non-fatal side effect)
+    try {
+      const pipelineDetails = await prisma.pipeline.findUnique({
+        where: { id: pipeline.id },
+        select: { name: true, environmentId: true, nodeSelector: true },
+      });
+      if (pipelineDetails) {
+        const nodeSelector = pipelineDetails.nodeSelector as Record<string, string> | null;
+        const targetNodes = await prisma.vectorNode.findMany({
+          where: { environmentId: pipelineDetails.environmentId },
+          select: { id: true, labels: true },
+        });
+        for (const node of targetNodes) {
+          const labels = (node.labels as Record<string, string>) ?? {};
+          const selectorEntries = Object.entries(nodeSelector ?? {});
+          const matches = selectorEntries.every(([k, v]) => labels[k] === v);
+          if (matches) {
+            pushRegistry.send(node.id, {
+              type: "config_changed",
+              pipelineId: pipeline.id,
+              reason: "rollback",
+            });
+          }
+        }
+
+        sseRegistry.broadcast({
+          type: "status_change",
+          nodeId: "",
+          fromStatus: "",
+          toStatus: "DEPLOYED",
+          reason: "rollback",
+          pipelineId: pipeline.id,
+          pipelineName: pipelineDetails.name,
+        }, pipelineDetails.environmentId);
+
+        void fireEventAlert("deploy_completed", pipelineDetails.environmentId, {
+          message: `Pipeline "${pipelineDetails.name}" rolled back via API`,
+          pipelineId: pipeline.id,
+        });
+      }
+    } catch (err) {
+      console.error("[v1-rollback] Push/SSE notification failed:", err);
+    }
 
     writeAuditLog({
       action: "api.pipeline_rolled_back",
