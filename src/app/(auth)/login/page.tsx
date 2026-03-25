@@ -4,6 +4,8 @@ import { useState, useEffect, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shield, KeyRound, Loader2, AlertCircle } from "lucide-react";
+import * as m from "motion/react-m";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import {
   Card,
   CardContent,
@@ -28,7 +30,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <Card>
+        <Card className="hover:translate-y-0 hover:shadow-none">
           <CardContent className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </CardContent>
@@ -43,6 +45,7 @@ export default function LoginPage() {
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const prefersReducedMotion = useReducedMotion();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
@@ -129,7 +132,7 @@ function LoginPageContent() {
 
   if (checkingSetup) {
     return (
-      <Card>
+      <Card className="hover:translate-y-0 hover:shadow-none">
         <CardContent className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </CardContent>
@@ -139,7 +142,7 @@ function LoginPageContent() {
 
   if (oidcStatus?.localAuthDisabled && !oidcStatus?.enabled) {
     return (
-      <Card>
+      <Card className="hover:translate-y-0 hover:shadow-none">
         <CardHeader>
           <CardTitle className="text-2xl">Sign in unavailable</CardTitle>
           <CardDescription>
@@ -151,8 +154,8 @@ function LoginPageContent() {
     );
   }
 
-  return oidcStatus?.localAuthDisabled && oidcStatus?.enabled ? (
-    <Card>
+  const cardContent = oidcStatus?.localAuthDisabled && oidcStatus?.enabled ? (
+    <Card className="hover:translate-y-0 hover:shadow-none">
       <CardHeader className="text-center pb-4">
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
           <Shield className="h-6 w-6 text-primary" />
@@ -180,7 +183,7 @@ function LoginPageContent() {
       </CardContent>
     </Card>
   ) : (
-    <Card>
+    <Card className="hover:translate-y-0 hover:shadow-none">
       <CardHeader>
         <CardTitle className="text-2xl">
           {totpRequired ? "Two-Factor Authentication" : "Sign in"}
@@ -292,5 +295,19 @@ function LoginPageContent() {
         </CardFooter>
       </form>
     </Card>
+  );
+
+  if (prefersReducedMotion) {
+    return cardContent;
+  }
+
+  return (
+    <m.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+    >
+      {cardContent}
+    </m.div>
   );
 }

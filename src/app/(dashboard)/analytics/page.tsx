@@ -435,10 +435,10 @@ export default function AnalyticsPage() {
                 {sortedPipelines.map((p: PipelineRow) => (
                   <TableRow key={p.pipelineId}>
                     <TableCell className="font-medium">{p.pipelineName}</TableCell>
-                    <TableCell className="text-right font-mono">
+                    <TableCell className="text-right font-mono tabular-nums">
                       {formatBytes(p.bytesIn)}
                     </TableCell>
-                    <TableCell className="text-right font-mono">
+                    <TableCell className="text-right font-mono tabular-nums">
                       {formatBytes(p.bytesOut)}
                     </TableCell>
                     <TableCell className="text-right">

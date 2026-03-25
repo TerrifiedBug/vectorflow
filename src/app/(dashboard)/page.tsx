@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StaggerList, StaggerItem } from "@/components/motion/stagger-list";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import {
@@ -233,8 +234,9 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+          <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             {/* Total Nodes */}
+            <StaggerItem>
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -244,8 +246,10 @@ export default function DashboardPage() {
                 <p className="mt-1 text-2xl font-bold tabular-nums">{stats.data?.nodes ?? 0}</p>
               </CardContent>
             </Card>
+            </StaggerItem>
 
             {/* Node Health */}
+            <StaggerItem>
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -268,8 +272,10 @@ export default function DashboardPage() {
                 </div>
               </CardContent>
             </Card>
+            </StaggerItem>
 
             {/* Total Pipelines */}
+            <StaggerItem>
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -279,8 +285,10 @@ export default function DashboardPage() {
                 <p className="mt-1 text-2xl font-bold tabular-nums">{stats.data?.pipelines ?? 0}</p>
               </CardContent>
             </Card>
+            </StaggerItem>
 
             {/* Pipeline Status */}
+            <StaggerItem>
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -303,8 +311,10 @@ export default function DashboardPage() {
                 </div>
               </CardContent>
             </Card>
+            </StaggerItem>
 
             {/* Log Reduction */}
+            <StaggerItem>
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -332,7 +342,8 @@ export default function DashboardPage() {
                 )}
               </CardContent>
             </Card>
-          </div>
+            </StaggerItem>
+          </StaggerList>
           )}
 
           {/* Metrics Filter Bar */}

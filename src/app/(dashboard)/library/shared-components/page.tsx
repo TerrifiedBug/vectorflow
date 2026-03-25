@@ -108,7 +108,7 @@ export default function SharedComponentsPage() {
 
   if (!selectedEnvironmentId) {
     return (
-      <div className="space-y-8">
+      <div className="space-y-6">
         <EmptyState title="Select an environment from the header to view shared components" className="p-4 text-sm" />
       </div>
     );
