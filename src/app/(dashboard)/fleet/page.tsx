@@ -12,12 +12,12 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Table,
-  TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { StaggerList, StaggerItem } from "@/components/motion/stagger-list";
 import {
   Tooltip,
   TooltipContent,
@@ -152,9 +152,9 @@ export default function FleetPage() {
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <StaggerList as="tbody" className="[&_tr:last-child]:border-0">
             {nodes.map((node) => (
-              <TableRow key={node.id} className="cursor-pointer">
+              <StaggerItem as="tr" key={node.id} className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors cursor-pointer">
                 <TableCell className="font-medium">
                   <Link
                     href={`/fleet/${node.id}`}
@@ -326,9 +326,9 @@ export default function FleetPage() {
                     )}
                   </div>
                 </TableCell>
-              </TableRow>
+              </StaggerItem>
             ))}
-          </TableBody>
+          </StaggerList>
         </Table>
       )}
 
