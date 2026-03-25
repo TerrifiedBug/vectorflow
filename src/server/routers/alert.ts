@@ -651,6 +651,94 @@ export const alertRouter = router({
       }
     }),
 
+  // ─── Acknowledge & Snooze ────────────────────────────────────────
+
+  acknowledgeEvent: protectedProcedure
+    .input(z.object({ alertEventId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("alertEvent.acknowledged", "AlertEvent"))
+    .mutation(async ({ input, ctx }) => {
+      const event = await prisma.alertEvent.findUnique({
+        where: { id: input.alertEventId },
+      });
+      if (!event) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Alert event not found",
+        });
+      }
+      if (event.status !== "firing") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only firing alerts can be acknowledged",
+        });
+      }
+
+      const user = ctx.session.user;
+      const acknowledgedBy =
+        user?.email || user?.name || user?.id || "unknown";
+
+      return prisma.alertEvent.update({
+        where: { id: input.alertEventId },
+        data: {
+          status: "acknowledged",
+          acknowledgedAt: new Date(),
+          acknowledgedBy,
+        },
+      });
+    }),
+
+  snoozeRule: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        duration: z.number().int().min(1).max(43200),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("alertRule.snoozed", "AlertRule"))
+    .mutation(async ({ input }) => {
+      const existing = await prisma.alertRule.findUnique({
+        where: { id: input.id },
+      });
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Alert rule not found",
+        });
+      }
+
+      const snoozedUntil = new Date(
+        Date.now() + input.duration * 60 * 1000,
+      );
+
+      return prisma.alertRule.update({
+        where: { id: input.id },
+        data: { snoozedUntil },
+      });
+    }),
+
+  unsnoozeRule: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("alertRule.unsnoozed", "AlertRule"))
+    .mutation(async ({ input }) => {
+      const existing = await prisma.alertRule.findUnique({
+        where: { id: input.id },
+      });
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Alert rule not found",
+        });
+      }
+
+      return prisma.alertRule.update({
+        where: { id: input.id },
+        data: { snoozedUntil: null },
+      });
+    }),
+
   listDeliveries: protectedProcedure
     .input(z.object({ alertEventId: z.string() }))
     .use(withTeamAccess("VIEWER"))
