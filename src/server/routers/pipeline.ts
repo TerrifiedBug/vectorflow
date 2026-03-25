@@ -8,6 +8,7 @@ import { withAudit } from "@/server/middleware/audit";
 import {
   createVersion,
   listVersions,
+  listVersionsSummary,
   getVersion,
   rollback,
 } from "@/server/services/pipeline-version";
@@ -18,6 +19,8 @@ import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
 import { gitSyncDeletePipeline } from "@/server/services/git-sync";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { pushRegistry } from "@/server/services/push-registry";
+import { sseRegistry } from "@/server/services/sse-registry";
+import { fireEventAlert } from "@/server/services/event-alerts";
 
 /** Pipeline names must be safe identifiers */
 const pipelineNameSchema = z
@@ -106,12 +109,15 @@ export const pipelineRouter = router({
 
       // Compare current config against the deployed version
       let hasConfigChanges = false;
+      let deployedVersionNumber: number | null = null;
       if (!pipeline.isDraft && pipeline.deployedAt) {
         const latestVersion = await prisma.pipelineVersion.findFirst({
           where: { pipelineId: input.id },
           orderBy: { version: "desc" },
           select: { configYaml: true, logLevel: true, version: true },
         });
+
+        deployedVersionNumber = latestVersion?.version ?? null;
 
         hasConfigChanges = detectConfigChanges({
           nodes: decryptedNodes,
@@ -127,6 +133,7 @@ export const pipelineRouter = router({
         ...pipeline,
         nodes: decryptedNodes,
         hasConfigChanges,
+        deployedVersionNumber,
         gitOpsMode: pipeline.environment.gitOpsMode,
       };
     }),
@@ -445,6 +452,13 @@ export const pipelineRouter = router({
       return listVersions(input.pipelineId);
     }),
 
+  versionsSummary: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return listVersionsSummary(input.pipelineId);
+    }),
+
   createVersion: protectedProcedure
     .input(
       z.object({
@@ -521,7 +535,53 @@ export const pipelineRouter = router({
       if (!userId) {
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
-      return rollback(input.pipelineId, input.targetVersionId, userId);
+      const version = await rollback(input.pipelineId, input.targetVersionId, userId);
+
+      // Notify connected agents and browsers about the rollback (non-fatal side effect)
+      try {
+        const pipeline = await prisma.pipeline.findUnique({
+          where: { id: input.pipelineId },
+          select: { name: true, environmentId: true, nodeSelector: true },
+        });
+        if (pipeline) {
+          const nodeSelector = pipeline.nodeSelector as Record<string, string> | null;
+          const targetNodes = await prisma.vectorNode.findMany({
+            where: { environmentId: pipeline.environmentId },
+            select: { id: true, labels: true },
+          });
+          for (const node of targetNodes) {
+            const labels = (node.labels as Record<string, string>) ?? {};
+            const selectorEntries = Object.entries(nodeSelector ?? {});
+            const matches = selectorEntries.every(([k, v]) => labels[k] === v);
+            if (matches) {
+              pushRegistry.send(node.id, {
+                type: "config_changed",
+                pipelineId: input.pipelineId,
+                reason: "rollback",
+              });
+            }
+          }
+
+          sseRegistry.broadcast({
+            type: "status_change",
+            nodeId: "",
+            fromStatus: "",
+            toStatus: "DEPLOYED",
+            reason: "rollback",
+            pipelineId: input.pipelineId,
+            pipelineName: pipeline.name,
+          }, pipeline.environmentId);
+
+          void fireEventAlert("deploy_completed", pipeline.environmentId, {
+            message: `Pipeline "${pipeline.name}" rolled back`,
+            pipelineId: input.pipelineId,
+          });
+        }
+      } catch (err) {
+        console.error("[rollback] Push/SSE notification failed:", err);
+      }
+
+      return version;
     }),
 
   deploymentStatus: protectedProcedure
