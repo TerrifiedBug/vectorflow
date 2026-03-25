@@ -163,7 +163,7 @@ export default function FleetPage() {
                     {node.name}
                   </Link>
                 </TableCell>
-                <TableCell className="font-mono text-sm">
+                <TableCell className="font-mono text-sm tabular-nums">
                   {node.host}:{node.apiPort}
                 </TableCell>
                 <TableCell>
@@ -199,12 +199,12 @@ export default function FleetPage() {
                     );
                   })()}
                 </TableCell>
-                <TableCell className="font-mono text-sm text-muted-foreground">
+                <TableCell className="font-mono text-sm tabular-nums text-muted-foreground">
                   {node.vectorVersion?.split(" ")[1] ?? "—"}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm text-muted-foreground">
+                    <span className="font-mono text-sm tabular-nums text-muted-foreground">
                       {node.agentVersion ?? "—"}
                     </span>
                     {getNodeLatest(node).version &&
