@@ -67,6 +67,7 @@ import {
   GLOBAL_METRICS,
   CHANNEL_TYPE_LABELS,
 } from "./constants";
+import { AlertTemplatePicker } from "./alert-template-picker";
 
 // ─── Alert Rules Section ────────────────────────────────────────────────────────
 
@@ -482,6 +483,21 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                 : "Define a new alert rule for this environment."}
             </DialogDescription>
           </DialogHeader>
+
+          {!editingRuleId && (
+            <AlertTemplatePicker
+              onSelect={(values) =>
+                setForm((f) => ({
+                  ...f,
+                  name: values.name,
+                  metric: values.metric,
+                  condition: values.condition,
+                  threshold: values.threshold,
+                  durationSeconds: values.durationSeconds,
+                }))
+              }
+            />
+          )}
 
           <div className="space-y-4 py-2">
             <div className="space-y-2">
