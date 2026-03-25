@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   ArrowLeftRight,
   Loader2,
+  Rocket,
   RotateCcw,
   Tag,
 } from "lucide-react";
@@ -51,6 +52,19 @@ export function VersionHistoryDialog({
     id: string;
     version: number;
     yaml: string;
+  } | null>(null);
+
+  // Deploy-from-version state — includes snapshots for diff preview
+  const [deployTarget, setDeployTarget] = useState<{
+    id: string;
+    version: number;
+    configYaml: string;
+    nodesSnapshot: unknown;
+    edgesSnapshot: unknown;
+    currentConfigYaml: string;
+    currentVersion: number;
+    currentNodesSnapshot: unknown;
+    currentEdgesSnapshot: unknown;
   } | null>(null);
 
   // Track which version ID is currently being fetched for loading state
@@ -104,11 +118,68 @@ export function VersionHistoryDialog({
     }),
   );
 
+  const deployFromVersionMutation = useMutation(
+    trpc.deploy.deployFromVersion.mutationOptions({
+      onSuccess: (result) => {
+        toast.success(`Deployed version ${result.version.version}`);
+        setDeployTarget(null);
+        queryClient.invalidateQueries({
+          queryKey: trpc.pipeline.versionsSummary.queryKey({ pipelineId }),
+        });
+        queryClient.invalidateQueries({
+          queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }),
+        });
+      },
+      onError: (err) => {
+        toast.error(err.message || "Deploy failed");
+      },
+    }),
+  );
+
   const handleRollback = () => {
     if (!rollbackTarget) return;
     rollbackMutation.mutate({
       pipelineId,
       targetVersionId: rollbackTarget.id,
+    });
+  };
+
+  /** Handle Deploy click: fetch both target and current version configs, then show confirmation with diff */
+  const handleDeployClick = async (versionId: string) => {
+    setFetchingVersionId(versionId);
+    try {
+      const [targetVersion, currentVersion] = await Promise.all([
+        fetchVersionConfig(versionId),
+        latestVersion ? fetchVersionConfig(latestVersion.id) : null,
+      ]);
+      if (!currentVersion || !latestVersion) {
+        toast.error("Cannot determine current version for comparison");
+        return;
+      }
+      setDeployTarget({
+        id: targetVersion.id,
+        version: targetVersion.version,
+        configYaml: targetVersion.configYaml,
+        nodesSnapshot: targetVersion.nodesSnapshot,
+        edgesSnapshot: targetVersion.edgesSnapshot,
+        currentConfigYaml: currentVersion.configYaml,
+        currentVersion: latestVersion.version,
+        currentNodesSnapshot: currentVersion.nodesSnapshot,
+        currentEdgesSnapshot: currentVersion.edgesSnapshot,
+      });
+    } catch {
+      toast.error("Failed to load version config");
+    } finally {
+      setFetchingVersionId(null);
+    }
+  };
+
+  const handleDeployConfirm = () => {
+    if (!deployTarget) return;
+    deployFromVersionMutation.mutate({
+      pipelineId,
+      sourceVersionId: deployTarget.id,
+      changelog: `Deployed from v${deployTarget.version}`,
     });
   };
 
@@ -230,7 +301,7 @@ export function VersionHistoryDialog({
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (!next && rollbackMutation.isPending) return;
+          if (!next && (rollbackMutation.isPending || deployFromVersionMutation.isPending)) return;
           onOpenChange(next);
         }}
       >
@@ -281,6 +352,10 @@ export function VersionHistoryDialog({
                   onRollback={handleRollbackClick}
                   isRollbackPending={
                     rollbackMutation.isPending || fetchingVersionId !== null
+                  }
+                  onDeploy={handleDeployClick}
+                  isDeployPending={
+                    deployFromVersionMutation.isPending || fetchingVersionId !== null
                   }
                   selectable={compareMode}
                   selectedVersions={selectedVersions}
@@ -411,6 +486,87 @@ export function VersionHistoryDialog({
                 <>
                   <RotateCcw className="mr-2 h-4 w-4" />
                   Confirm Rollback
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deploy from Version Confirmation Dialog with Diff Preview */}
+      <Dialog
+        open={deployTarget !== null}
+        onOpenChange={(next) => {
+          if (!next && !deployFromVersionMutation.isPending) setDeployTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Rocket className="h-5 w-5" />
+              Deploy from v{deployTarget?.version}
+            </DialogTitle>
+            <DialogDescription>
+              Review the changes that will be deployed. This creates a new
+              version from the selected historical version and pushes it to
+              all connected agents.
+            </DialogDescription>
+          </DialogHeader>
+
+          {deployTarget && (
+            <ScrollArea className="flex-1 min-h-0">
+              <div className="p-1">
+                <VersionDiffViewer
+                  oldYaml={deployTarget.currentConfigYaml}
+                  newYaml={deployTarget.configYaml}
+                  oldLabel={`v${deployTarget.currentVersion} (current)`}
+                  newLabel={`v${deployTarget.version} (deploy target)`}
+                  oldNodes={
+                    deployTarget.currentNodesSnapshot as
+                      | NodeSnapshot[]
+                      | null
+                  }
+                  newNodes={
+                    deployTarget.nodesSnapshot as
+                      | NodeSnapshot[]
+                      | null
+                  }
+                  oldEdges={
+                    deployTarget.currentEdgesSnapshot as
+                      | EdgeSnapshot[]
+                      | null
+                  }
+                  newEdges={
+                    deployTarget.edgesSnapshot as
+                      | EdgeSnapshot[]
+                      | null
+                  }
+                />
+              </div>
+            </ScrollArea>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeployTarget(null)}
+              disabled={deployFromVersionMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeployConfirm}
+              disabled={deployFromVersionMutation.isPending}
+            >
+              {deployFromVersionMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deploying...
+                </>
+              ) : (
+                <>
+                  <Rocket className="mr-2 h-4 w-4" />
+                  Confirm Deploy
                 </>
               )}
             </Button>
