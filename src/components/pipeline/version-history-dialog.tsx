@@ -5,23 +5,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
 import {
-  Clock,
   RotateCcw,
-  Eye,
   Loader2,
   Tag,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConfigDiff } from "@/components/ui/config-diff";
+import { VersionTimeline } from "@/components/pipeline/version-timeline";
 
 interface VersionHistoryDialogProps {
   pipelineId: string;
@@ -60,13 +50,17 @@ export function VersionHistoryDialog({
     yaml: string;
   } | null>(null);
 
+  // Track which version ID is currently being fetched for loading state
+  const [fetchingVersionId, setFetchingVersionId] = useState<string | null>(null);
+
   const pipelineQuery = useQuery({
     ...trpc.pipeline.get.queryOptions({ id: pipelineId }),
     enabled: open,
   });
 
+  // Use the lightweight summary query instead of full versions
   const versionsQuery = useQuery({
-    ...trpc.pipeline.versions.queryOptions({ pipelineId }),
+    ...trpc.pipeline.versionsSummary.queryOptions({ pipelineId }),
     enabled: open,
   });
 
@@ -76,7 +70,7 @@ export function VersionHistoryDialog({
         toast.success(`Rolled back to version ${newVersion.version}`);
         setRollbackTarget(null);
         queryClient.invalidateQueries({
-          queryKey: trpc.pipeline.versions.queryKey({ pipelineId }),
+          queryKey: trpc.pipeline.versionsSummary.queryKey({ pipelineId }),
         });
       },
       onError: (err) => {
@@ -93,20 +87,84 @@ export function VersionHistoryDialog({
     });
   };
 
-  const formatDate = (date: Date | string) => {
-    const d = new Date(date);
-    return d.toLocaleString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
   const isLoading = pipelineQuery.isLoading || versionsQuery.isLoading;
   const versions = versionsQuery.data ?? [];
   const latestVersion = versions.length > 0 ? versions[0] : null;
+
+  /**
+   * Lazily fetch full version config for View or Rollback actions.
+   * Uses React Query's queryClient.fetchQuery to leverage caching — if
+   * the version was already fetched, it returns instantly from cache.
+   */
+  const fetchVersionConfig = async (versionId: string) => {
+    return queryClient.fetchQuery(
+      trpc.pipeline.getVersion.queryOptions({ versionId }),
+    );
+  };
+
+  /** Handle View click: fetch the clicked version + compare target, then show diff */
+  const handleView = async (versionId: string) => {
+    setFetchingVersionId(versionId);
+    try {
+      const clickedVersion = await fetchVersionConfig(versionId);
+      const isCurrent = latestVersion?.id === versionId;
+
+      if (isCurrent) {
+        // Current version: compare against the previous version
+        const idx = versions.findIndex((v) => v.id === versionId);
+        const prevSummary = idx < versions.length - 1 ? versions[idx + 1] : null;
+        let compareYaml: string | null = null;
+        let compareLabel = "";
+        if (prevSummary) {
+          const prevVersion = await fetchVersionConfig(prevSummary.id);
+          compareYaml = prevVersion.configYaml;
+          compareLabel = `v${prevSummary.version}`;
+        }
+        setViewingConfig({
+          version: clickedVersion.version,
+          yaml: clickedVersion.configYaml,
+          compareYaml,
+          compareLabel,
+        });
+      } else {
+        // Non-current version: compare against the current (latest) version
+        let compareYaml: string | null = null;
+        let compareLabel = "";
+        if (latestVersion) {
+          const latestFull = await fetchVersionConfig(latestVersion.id);
+          compareYaml = latestFull.configYaml;
+          compareLabel = `v${latestVersion.version} (current)`;
+        }
+        setViewingConfig({
+          version: clickedVersion.version,
+          yaml: clickedVersion.configYaml,
+          compareYaml,
+          compareLabel,
+        });
+      }
+    } catch {
+      toast.error("Failed to load version config");
+    } finally {
+      setFetchingVersionId(null);
+    }
+  };
+
+  /** Handle Rollback click: fetch the target version config, then show confirmation */
+  const handleRollbackClick = async (versionId: string) => {
+    setFetchingVersionId(versionId);
+    try {
+      const targetVersion = await fetchVersionConfig(versionId);
+      setRollbackTarget({
+        id: targetVersion.id,
+        version: targetVersion.version,
+        yaml: targetVersion.configYaml,
+      });
+    } catch {
+      toast.error("Failed to load version config");
+    } finally {
+      setFetchingVersionId(null);
+    }
+  };
 
   return (
     <>
@@ -140,114 +198,15 @@ export function VersionHistoryDialog({
             </div>
           ) : (
             <ScrollArea className="flex-1 min-h-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[120px]">Version</TableHead>
-                    <TableHead>Changelog</TableHead>
-                    <TableHead className="w-[180px]">Created</TableHead>
-                    <TableHead className="w-[120px] text-right">
-                      Actions
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {versions.map((version) => {
-                    const isCurrent = latestVersion?.id === version.id;
-                    return (
-                      <TableRow key={version.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-sm font-medium">
-                              v{version.version}
-                            </span>
-                            {isCurrent && (
-                              <Badge
-                                variant="secondary"
-                                className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20 text-xs"
-                              >
-                                Current
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm text-muted-foreground truncate block max-w-[200px]">
-                            {version.changelog || "No changelog"}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground tabular-nums">
-                            <Clock className="h-3 w-3" />
-                            {formatDate(version.createdAt)}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              title="View changes"
-                              aria-label="View changes"
-                              onClick={() => {
-                                if (isCurrent) {
-                                  const idx = versions.findIndex(
-                                    (v) => v.id === version.id,
-                                  );
-                                  const prev =
-                                    idx < versions.length - 1
-                                      ? versions[idx + 1]
-                                      : null;
-                                  setViewingConfig({
-                                    version: version.version,
-                                    yaml: version.configYaml,
-                                    compareYaml: prev?.configYaml ?? null,
-                                    compareLabel: prev
-                                      ? `v${prev.version}`
-                                      : "",
-                                  });
-                                } else {
-                                  setViewingConfig({
-                                    version: version.version,
-                                    yaml: version.configYaml,
-                                    compareYaml:
-                                      latestVersion?.configYaml ?? null,
-                                    compareLabel: latestVersion
-                                      ? `v${latestVersion.version} (current)`
-                                      : "",
-                                  });
-                                }
-                              }}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            {!isCurrent && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                title="Rollback to this version"
-                                aria-label="Rollback to this version"
-                                disabled={rollbackMutation.isPending}
-                                onClick={() =>
-                                  setRollbackTarget({
-                                    id: version.id,
-                                    version: version.version,
-                                    yaml: version.configYaml,
-                                  })
-                                }
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+              <VersionTimeline
+                versions={versions}
+                currentVersionId={latestVersion?.id ?? null}
+                onView={handleView}
+                onRollback={handleRollbackClick}
+                isRollbackPending={
+                  rollbackMutation.isPending || fetchingVersionId !== null
+                }
+              />
             </ScrollArea>
           )}
         </DialogContent>
@@ -318,21 +277,13 @@ export function VersionHistoryDialog({
           </DialogHeader>
 
           {rollbackTarget && latestVersion && (
-            <ScrollArea className="h-[400px] rounded-md border bg-muted/30">
-              {rollbackTarget.yaml === latestVersion.configYaml ? (
-                <div className="flex items-center justify-center h-full p-8 text-sm text-muted-foreground">
-                  No differences — configs are identical.
-                </div>
-              ) : (
-                <ConfigDiff
-                  oldConfig={latestVersion.configYaml}
-                  newConfig={rollbackTarget.yaml}
-                  oldLabel={`v${latestVersion.version} (current)`}
-                  newLabel={`v${rollbackTarget.version} (rollback target)`}
-                  className="p-4 text-xs font-mono leading-5"
-                />
-              )}
-            </ScrollArea>
+            <RollbackDiffContent
+              rollbackYaml={rollbackTarget.yaml}
+              latestVersionId={latestVersion.id}
+              latestVersionNumber={latestVersion.version}
+              rollbackVersionNumber={rollbackTarget.version}
+              fetchVersionConfig={fetchVersionConfig}
+            />
           )}
 
           <DialogFooter>
@@ -364,5 +315,56 @@ export function VersionHistoryDialog({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * Sub-component for the rollback diff content. It needs the current version's
+ * configYaml, which must be lazily fetched since we're now using versionsSummary.
+ */
+function RollbackDiffContent({
+  rollbackYaml,
+  latestVersionId,
+  latestVersionNumber,
+  rollbackVersionNumber,
+  fetchVersionConfig,
+}: {
+  rollbackYaml: string;
+  latestVersionId: string;
+  latestVersionNumber: number;
+  rollbackVersionNumber: number;
+  fetchVersionConfig: (versionId: string) => Promise<{ configYaml: string }>;
+}) {
+  const latestQuery = useQuery({
+    queryKey: ["version-config", latestVersionId],
+    queryFn: () => fetchVersionConfig(latestVersionId),
+  });
+
+  if (latestQuery.isLoading) {
+    return (
+      <div className="flex h-[400px] items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const currentYaml = latestQuery.data?.configYaml ?? "";
+
+  return (
+    <ScrollArea className="h-[400px] rounded-md border bg-muted/30">
+      {rollbackYaml === currentYaml ? (
+        <div className="flex items-center justify-center h-full p-8 text-sm text-muted-foreground">
+          No differences — configs are identical.
+        </div>
+      ) : (
+        <ConfigDiff
+          oldConfig={currentYaml}
+          newConfig={rollbackYaml}
+          oldLabel={`v${latestVersionNumber} (current)`}
+          newLabel={`v${rollbackVersionNumber} (rollback target)`}
+          className="p-4 text-xs font-mono leading-5"
+        />
+      )}
+    </ScrollArea>
   );
 }
