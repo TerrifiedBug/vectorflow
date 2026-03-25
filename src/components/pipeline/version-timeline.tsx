@@ -22,12 +22,23 @@ export interface VersionSummary {
   createdBy: { name: string | null; email: string | null } | null;
 }
 
+export interface SelectedVersions {
+  a: string | null;
+  b: string | null;
+}
+
 interface VersionTimelineProps {
   versions: VersionSummary[];
   currentVersionId: string | null;
   onView: (versionId: string) => void;
   onRollback: (versionId: string) => void;
   isRollbackPending?: boolean;
+  /** When true, show A/B selection indicators on each timeline item. */
+  selectable?: boolean;
+  /** Currently selected A (old) and B (new) version IDs. */
+  selectedVersions?: SelectedVersions;
+  /** Called when the user toggles an A or B selection. */
+  onSelectionChange?: (selected: SelectedVersions) => void;
 }
 
 /** Derive display name from author: name → email prefix → 'System' */
@@ -71,7 +82,29 @@ export function VersionTimeline({
   onView,
   onRollback,
   isRollbackPending = false,
+  selectable = false,
+  selectedVersions,
+  onSelectionChange,
 }: VersionTimelineProps) {
+  /** Toggle an A or B selection for a version ID. Clicking the same again deselects. */
+  const handleSelect = (slot: "a" | "b", versionId: string) => {
+    if (!onSelectionChange || !selectedVersions) return;
+    const current = selectedVersions[slot];
+    const otherSlot = slot === "a" ? "b" : "a";
+    // If the other slot has this version, swap them
+    if (selectedVersions[otherSlot] === versionId) {
+      onSelectionChange({
+        ...selectedVersions,
+        [otherSlot]: current,
+        [slot]: versionId,
+      });
+      return;
+    }
+    onSelectionChange({
+      ...selectedVersions,
+      [slot]: current === versionId ? null : versionId,
+    });
+  };
   return (
     <TooltipProvider>
       <div className="relative pl-8">
@@ -103,14 +136,53 @@ export function VersionTimeline({
                 {/* Content card */}
                 <div
                   className={
-                    "py-3 pl-4 pr-2 rounded-lg transition-colors " +
+                    "py-3 pr-2 rounded-lg transition-colors " +
+                    (selectable ? "pl-[72px]" : "pl-4") +
                     (isCurrent
-                      ? "bg-green-500/5"
-                      : "hover:bg-muted/50") +
+                      ? " bg-green-500/5"
+                      : " hover:bg-muted/50") +
                     (isFirst ? "" : "") +
                     (isLast ? "" : " border-b border-border/40")
                   }
                 >
+                  {/* A/B selection buttons — shown when selectable is true */}
+                  {selectable && (
+                    <div
+                      className={
+                        "absolute left-6 top-3 flex flex-col gap-1 transition-opacity duration-200 " +
+                        (selectable ? "opacity-100" : "opacity-0 pointer-events-none")
+                      }
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleSelect("a", version.id)}
+                        className={
+                          "flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold border-2 transition-colors " +
+                          (selectedVersions?.a === version.id
+                            ? "border-blue-500 bg-blue-500 text-white"
+                            : "border-border bg-background text-muted-foreground hover:border-blue-400 hover:text-blue-500")
+                        }
+                        title={`Select as version A (old)`}
+                        aria-label={`Select v${version.version} as version A`}
+                      >
+                        A
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelect("b", version.id)}
+                        className={
+                          "flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold border-2 transition-colors " +
+                          (selectedVersions?.b === version.id
+                            ? "border-orange-500 bg-orange-500 text-white"
+                            : "border-border bg-background text-muted-foreground hover:border-orange-400 hover:text-orange-500")
+                        }
+                        title={`Select as version B (new)`}
+                        aria-label={`Select v${version.version} as version B`}
+                      >
+                        B
+                      </button>
+                    </div>
+                  )}
                   <div className="flex items-start justify-between gap-3">
                     {/* Left: version info */}
                     <div className="flex-1 min-w-0">
