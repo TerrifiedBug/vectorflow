@@ -222,7 +222,7 @@ export default function NewSharedComponentPage() {
         <>
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold tracking-tight">
+              <h1 className="text-2xl font-semibold tracking-tight">
                 New Shared Component
               </h1>
               <Badge
