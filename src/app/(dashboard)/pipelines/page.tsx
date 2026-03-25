@@ -20,12 +20,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Table,
-  TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { StaggerList, StaggerItem } from "@/components/motion/stagger-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Popover,
@@ -197,14 +197,14 @@ export default function PipelinesPage() {
 
   if (pipelinesQuery.isError) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-6">
         <QueryError message="Failed to load pipelines" onRetry={() => pipelinesQuery.refetch()} />
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-6">
       <div className="flex items-center justify-end">
         <Button asChild size="sm">
           <Link href="/pipelines/new">
@@ -241,12 +241,12 @@ export default function PipelinesPage() {
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <StaggerList as="tbody" className="[&_tr:last-child]:border-0">
             {pipelines.map((pipeline) => {
               const hasStats = pipeline.nodeStatuses.length > 0;
               const totals = hasStats ? sumNodeStatuses(pipeline.nodeStatuses) : null;
               return (
-              <TableRow key={pipeline.id} className="cursor-pointer">
+              <StaggerItem as="tr" key={pipeline.id} className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors cursor-pointer">
                 <TableCell className="font-medium">
                   <Link
                     href={`/pipelines/${pipeline.id}`}
@@ -440,10 +440,10 @@ export default function PipelinesPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
-              </TableRow>
+              </StaggerItem>
               );
             })}
-          </TableBody>
+          </StaggerList>
         </Table>
       )}
 

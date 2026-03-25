@@ -112,7 +112,7 @@ export default function Setup2FAPage() {
 
   if (status === "loading" || meQuery.isLoading) {
     return (
-      <Card className="w-full">
+      <Card className="w-full hover:translate-y-0 hover:shadow-none">
         <CardContent className="flex flex-col items-center gap-3 py-12">
           <Skeleton className="h-40 w-40 rounded-lg" />
           <Skeleton className="h-4 w-48" />
