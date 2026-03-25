@@ -36,14 +36,14 @@ export default function EnvironmentsPage() {
 
   if (environmentsQuery.isError) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <QueryError message="Failed to load environments" onRetry={() => environmentsQuery.refetch()} />
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-end">
         <Button asChild size="sm">
           <Link href="/environments/new">
