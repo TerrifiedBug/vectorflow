@@ -5,8 +5,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
 import {
-  RotateCcw,
+  ArrowLeftRight,
   Loader2,
+  RotateCcw,
   Tag,
 } from "lucide-react";
 
@@ -21,7 +22,9 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConfigDiff } from "@/components/ui/config-diff";
-import { VersionTimeline } from "@/components/pipeline/version-timeline";
+import { VersionTimeline, type SelectedVersions } from "@/components/pipeline/version-timeline";
+import { VersionDiffViewer } from "@/components/pipeline/version-diff-viewer";
+import type { NodeSnapshot, EdgeSnapshot } from "@/lib/version-diff";
 
 interface VersionHistoryDialogProps {
   pipelineId: string;
@@ -52,6 +55,28 @@ export function VersionHistoryDialog({
 
   // Track which version ID is currently being fetched for loading state
   const [fetchingVersionId, setFetchingVersionId] = useState<string | null>(null);
+
+  // ── Compare mode state ───────────────────────────────────────────
+  const [compareMode, setCompareMode] = useState(false);
+  const [selectedVersions, setSelectedVersions] = useState<SelectedVersions>({
+    a: null,
+    b: null,
+  });
+  const [comparingVersions, setComparingVersions] = useState<{
+    versionA: {
+      version: number;
+      configYaml: string;
+      nodesSnapshot: unknown;
+      edgesSnapshot: unknown;
+    };
+    versionB: {
+      version: number;
+      configYaml: string;
+      nodesSnapshot: unknown;
+      edgesSnapshot: unknown;
+    };
+  } | null>(null);
+  const [isFetchingCompare, setIsFetchingCompare] = useState(false);
 
   const pipelineQuery = useQuery({
     ...trpc.pipeline.get.queryOptions({ id: pipelineId }),
@@ -166,6 +191,40 @@ export function VersionHistoryDialog({
     }
   };
 
+  /** Toggle compare mode. Auto-selects sensible defaults when entering. */
+  const handleToggleCompareMode = () => {
+    if (!compareMode && versions.length >= 2) {
+      // Auto-default: A = second-latest (older), B = latest (newer)
+      setSelectedVersions({ a: versions[1].id, b: versions[0].id });
+    } else {
+      setSelectedVersions({ a: null, b: null });
+    }
+    setCompareMode(!compareMode);
+    setComparingVersions(null);
+  };
+
+  /** Lazy-fetch both selected versions and open the diff viewer. */
+  const handleCompareSelected = async () => {
+    if (!selectedVersions.a || !selectedVersions.b) return;
+    setIsFetchingCompare(true);
+    try {
+      const [versionA, versionB] = await Promise.all([
+        fetchVersionConfig(selectedVersions.a),
+        fetchVersionConfig(selectedVersions.b),
+      ]);
+      setComparingVersions({ versionA, versionB });
+    } catch {
+      toast.error("Failed to load versions for comparison");
+    } finally {
+      setIsFetchingCompare(false);
+    }
+  };
+
+  const canCompare =
+    selectedVersions.a !== null &&
+    selectedVersions.b !== null &&
+    selectedVersions.a !== selectedVersions.b;
+
   return (
     <>
       <Dialog
@@ -177,11 +236,27 @@ export function VersionHistoryDialog({
       >
         <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Version History</DialogTitle>
-            <DialogDescription>
-              {pipelineQuery.data?.name} — {versions.length} version
-              {versions.length !== 1 ? "s" : ""}
-            </DialogDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>Version History</DialogTitle>
+                <DialogDescription>
+                  {pipelineQuery.data?.name} — {versions.length} version
+                  {versions.length !== 1 ? "s" : ""}
+                </DialogDescription>
+              </div>
+              {versions.length >= 2 && (
+                <Button
+                  variant={compareMode ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={handleToggleCompareMode}
+                  className="gap-1.5"
+                  title={compareMode ? "Exit compare mode" : "Compare two versions"}
+                >
+                  <ArrowLeftRight className="h-4 w-4" />
+                  {compareMode ? "Exit Compare" : "Compare"}
+                </Button>
+              )}
+            </div>
           </DialogHeader>
 
           {isLoading ? (
@@ -197,17 +272,45 @@ export function VersionHistoryDialog({
               </p>
             </div>
           ) : (
-            <ScrollArea className="flex-1 min-h-0">
-              <VersionTimeline
-                versions={versions}
-                currentVersionId={latestVersion?.id ?? null}
-                onView={handleView}
-                onRollback={handleRollbackClick}
-                isRollbackPending={
-                  rollbackMutation.isPending || fetchingVersionId !== null
-                }
-              />
-            </ScrollArea>
+            <>
+              <ScrollArea className="flex-1 min-h-0">
+                <VersionTimeline
+                  versions={versions}
+                  currentVersionId={latestVersion?.id ?? null}
+                  onView={handleView}
+                  onRollback={handleRollbackClick}
+                  isRollbackPending={
+                    rollbackMutation.isPending || fetchingVersionId !== null
+                  }
+                  selectable={compareMode}
+                  selectedVersions={selectedVersions}
+                  onSelectionChange={setSelectedVersions}
+                />
+              </ScrollArea>
+              {compareMode && (
+                <div className="flex items-center justify-between border-t pt-3 px-1">
+                  <p className="text-xs text-muted-foreground">
+                    {selectedVersions.a && selectedVersions.b
+                      ? `Comparing v${versions.find((v) => v.id === selectedVersions.a)?.version ?? "?"} → v${versions.find((v) => v.id === selectedVersions.b)?.version ?? "?"}`
+                      : "Select version A (old) and B (new) to compare"}
+                  </p>
+                  <Button
+                    size="sm"
+                    disabled={!canCompare || isFetchingCompare}
+                    onClick={handleCompareSelected}
+                  >
+                    {isFetchingCompare ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading…
+                      </>
+                    ) : (
+                      "Compare Selected"
+                    )}
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </DialogContent>
       </Dialog>
@@ -312,6 +415,60 @@ export function VersionHistoryDialog({
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Compare Diff Viewer Dialog */}
+      <Dialog
+        open={comparingVersions !== null}
+        onOpenChange={(next) => {
+          if (!next) setComparingVersions(null);
+        }}
+      >
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowLeftRight className="h-5 w-5" />
+              Version Comparison
+            </DialogTitle>
+            <DialogDescription>
+              {comparingVersions
+                ? `Comparing v${comparingVersions.versionA.version} → v${comparingVersions.versionB.version}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {comparingVersions && (
+            <ScrollArea className="flex-1 min-h-0">
+              <div className="p-1">
+                <VersionDiffViewer
+                  oldYaml={comparingVersions.versionA.configYaml}
+                  newYaml={comparingVersions.versionB.configYaml}
+                  oldLabel={`v${comparingVersions.versionA.version}`}
+                  newLabel={`v${comparingVersions.versionB.version}`}
+                  oldNodes={
+                    comparingVersions.versionA.nodesSnapshot as
+                      | NodeSnapshot[]
+                      | null
+                  }
+                  newNodes={
+                    comparingVersions.versionB.nodesSnapshot as
+                      | NodeSnapshot[]
+                      | null
+                  }
+                  oldEdges={
+                    comparingVersions.versionA.edgesSnapshot as
+                      | EdgeSnapshot[]
+                      | null
+                  }
+                  newEdges={
+                    comparingVersions.versionB.edgesSnapshot as
+                      | EdgeSnapshot[]
+                      | null
+                  }
+                />
+              </div>
+            </ScrollArea>
+          )}
         </DialogContent>
       </Dialog>
     </>
