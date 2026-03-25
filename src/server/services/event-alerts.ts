@@ -38,14 +38,24 @@ export async function fireEventAlert(
         environmentId,
         metric,
         enabled: true,
-        ...(metadata.pipelineId
-          ? {
-              OR: [
-                { pipelineId: metadata.pipelineId as string },
-                { pipelineId: null },
-              ],
-            }
-          : {}),
+        AND: [
+          {
+            OR: [
+              { snoozedUntil: null },
+              { snoozedUntil: { lt: new Date() } },
+            ],
+          },
+          ...(metadata.pipelineId
+            ? [
+                {
+                  OR: [
+                    { pipelineId: metadata.pipelineId as string },
+                    { pipelineId: null },
+                  ],
+                },
+              ]
+            : []),
+        ],
       },
       include: {
         pipeline: { select: { name: true } },
