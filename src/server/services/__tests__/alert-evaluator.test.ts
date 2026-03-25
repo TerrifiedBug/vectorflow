@@ -35,6 +35,7 @@ function makeAlertRule(
     condition: overrides.condition ?? "gt",
     threshold: overrides.threshold ?? 80,
     durationSeconds: overrides.durationSeconds ?? 0,
+    snoozedUntil: overrides.snoozedUntil ?? null,
     createdAt: overrides.createdAt ?? NOW,
     updatedAt: overrides.updatedAt ?? NOW,
     pipeline: overrides.pipeline ?? null,
@@ -54,6 +55,8 @@ function makeAlertEvent(
     firedAt: overrides.firedAt ?? NOW,
     resolvedAt: overrides.resolvedAt ?? null,
     notifiedAt: overrides.notifiedAt ?? null,
+    acknowledgedAt: overrides.acknowledgedAt ?? null,
+    acknowledgedBy: overrides.acknowledgedBy ?? null,
   };
 }
 
