@@ -39,6 +39,82 @@ export function formatWebhookMessage(payload: WebhookPayload): string {
   return lines.join("\n");
 }
 
+export interface SingleWebhookResult {
+  success: boolean;
+  statusCode?: number;
+  error?: string;
+}
+
+/**
+ * Deliver a payload to a single webhook. Returns a structured result
+ * indicating success/failure, HTTP status code, and any error message.
+ */
+export async function deliverSingleWebhook(
+  webhook: {
+    url: string;
+    headers: unknown;
+    hmacSecret: string | null;
+  },
+  payload: WebhookPayload,
+): Promise<SingleWebhookResult> {
+  // SSRF protection: validate webhook URL resolves to a public IP
+  try {
+    await validatePublicUrl(webhook.url);
+  } catch {
+    return {
+      success: false,
+      error: `Skipped: private/reserved IP for ${webhook.url}`,
+    };
+  }
+
+  const outgoing = {
+    ...payload,
+    content: formatWebhookMessage(payload),
+  };
+
+  const body = JSON.stringify(outgoing);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((webhook.headers as Record<string, string>) ?? {}),
+  };
+
+  if (webhook.hmacSecret) {
+    const signature = crypto
+      .createHmac("sha256", webhook.hmacSecret)
+      .update(body)
+      .digest("hex");
+    headers["X-VectorFlow-Signature"] = `sha256=${signature}`;
+  }
+
+  try {
+    const res = await fetch(webhook.url, {
+      method: "POST",
+      headers,
+      body,
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!res.ok) {
+      return {
+        success: false,
+        statusCode: res.status,
+        error: `HTTP ${res.status}`,
+      };
+    }
+
+    return { success: true, statusCode: res.status };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unknown webhook error",
+    };
+  }
+}
+
+/**
+ * Deliver a payload to all enabled webhooks for an environment.
+ * Backward-compatible batch wrapper around deliverSingleWebhook.
+ */
 export async function deliverWebhooks(
   environmentId: string,
   payload: WebhookPayload,
@@ -48,50 +124,11 @@ export async function deliverWebhooks(
   });
 
   for (const webhook of webhooks) {
-    // SSRF protection: validate webhook URL resolves to a public IP
-    try {
-      await validatePublicUrl(webhook.url);
-    } catch {
-      console.error(`Webhook delivery skipped for ${webhook.url}: private/reserved IP`);
-      continue;
-    }
-
-    // Always include a `content` field with a human-readable summary.
-    // Chat platforms (Discord, Slack, etc.) use this field; generic
-    // consumers can ignore it and read the structured fields instead.
-    const outgoing = {
-      ...payload,
-      content: formatWebhookMessage(payload),
-    };
-
-    const body = JSON.stringify(outgoing);
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...((webhook.headers as Record<string, string>) ?? {}),
-    };
-
-    if (webhook.hmacSecret) {
-      const signature = crypto
-        .createHmac("sha256", webhook.hmacSecret)
-        .update(body)
-        .digest("hex");
-      headers["X-VectorFlow-Signature"] = `sha256=${signature}`;
-    }
-
-    try {
-      const res = await fetch(webhook.url, {
-        method: "POST",
-        headers,
-        body,
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!res.ok) {
-        console.error(
-          `Webhook delivery failed to ${webhook.url}: ${res.status}`,
-        );
-      }
-    } catch (err) {
-      console.error(`Webhook delivery error to ${webhook.url}:`, err);
+    const result = await deliverSingleWebhook(webhook, payload);
+    if (!result.success) {
+      console.error(
+        `Webhook delivery failed to ${webhook.url}: ${result.error}`,
+      );
     }
   }
 }

@@ -259,6 +259,17 @@ export const withTeamAccess = (minRole: Role) =>
       }
     }
 
+    // Resolve alertEventId → AlertEvent → AlertRule → environment.teamId
+    if (!teamId && rawInput?.alertEventId) {
+      const alertEvent = await prisma.alertEvent.findUnique({
+        where: { id: rawInput.alertEventId as string },
+        select: { alertRule: { select: { environment: { select: { teamId: true } } } } },
+      });
+      if (alertEvent) {
+        teamId = alertEvent.alertRule.environment.teamId ?? undefined;
+      }
+    }
+
     // Resolve nodeId → VectorNode → environment.teamId (for fleet.nodeLogs, fleet.nodeMetrics)
     if (!teamId && rawInput?.nodeId) {
       const node = await prisma.vectorNode.findUnique({
