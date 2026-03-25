@@ -36,6 +36,7 @@ export function NodeSparkline({ samples, width = 60, height = 20 }: NodeSparklin
         strokeWidth={1.5}
         strokeLinejoin="round"
         strokeLinecap="round"
+        style={{ transition: "stroke 300ms ease" }}
       />
     </svg>
   );

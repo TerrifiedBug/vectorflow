@@ -180,7 +180,7 @@ export default function TemplatesPage() {
     createPipelineMutation.isPending || saveGraphMutation.isPending;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Environment notice */}
       {!selectedEnvironmentId && (
         <EmptyState title="Select an environment from the header to use templates" className="p-4 text-sm" />
