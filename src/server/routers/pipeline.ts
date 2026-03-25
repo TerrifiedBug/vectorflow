@@ -109,12 +109,15 @@ export const pipelineRouter = router({
 
       // Compare current config against the deployed version
       let hasConfigChanges = false;
+      let deployedVersionNumber: number | null = null;
       if (!pipeline.isDraft && pipeline.deployedAt) {
         const latestVersion = await prisma.pipelineVersion.findFirst({
           where: { pipelineId: input.id },
           orderBy: { version: "desc" },
           select: { configYaml: true, logLevel: true, version: true },
         });
+
+        deployedVersionNumber = latestVersion?.version ?? null;
 
         hasConfigChanges = detectConfigChanges({
           nodes: decryptedNodes,
@@ -130,6 +133,7 @@ export const pipelineRouter = router({
         ...pipeline,
         nodes: decryptedNodes,
         hasConfigChanges,
+        deployedVersionNumber,
         gitOpsMode: pipeline.environment.gitOpsMode,
       };
     }),
