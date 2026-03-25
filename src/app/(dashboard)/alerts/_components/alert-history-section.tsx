@@ -13,10 +13,12 @@ import {
 } from "lucide-react";
 
 import { DeliveryStatusPanel } from "./delivery-status-panel";
+import { AlertTimeline } from "./alert-timeline";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import {
@@ -109,6 +111,9 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
   const isLoading = eventsQuery.isLoading;
   const isFetchingMore = eventsQuery.isFetching && !!cursor;
 
+  // Merged list used by both views
+  const visibleItems = cursor ? displayItems : items;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -124,141 +129,154 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
-      ) : displayItems.length === 0 && items.length === 0 ? (
+      ) : visibleItems.length === 0 && items.length === 0 ? (
         <EmptyState title="No alert events yet" description="Alert events will appear here when rules are triggered." />
       ) : (
-        <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[30px]" />
-                <TableHead>Timestamp</TableHead>
-                <TableHead>Rule Name</TableHead>
-                <TableHead>Node</TableHead>
-                <TableHead>Pipeline</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Value</TableHead>
-                <TableHead>Message</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(cursor ? displayItems : items).map((event) => {
-                const isExpanded = expandedEventId === event.id;
-                return (
-                  <Fragment key={event.id}>
-                    <TableRow
-                      className="cursor-pointer"
-                      onClick={() =>
-                        setExpandedEventId(isExpanded ? null : event.id)
-                      }
-                    >
-                      <TableCell className="w-[30px] px-2">
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground whitespace-nowrap">
-                        {formatTimestamp(event.firedAt)}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {event.alertRule.name}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {event.node?.host ?? "-"}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {event.alertRule.pipeline?.name ?? "-"}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <StatusBadge
-                            variant={
-                              event.status === "firing"
-                                ? "error"
-                                : event.status === "acknowledged"
-                                  ? "degraded"
-                                  : "healthy"
-                            }
-                          >
-                            {event.status === "firing"
-                              ? "Firing"
-                              : event.status === "acknowledged"
-                                ? "Acknowledged"
-                                : "Resolved"}
-                          </StatusBadge>
-                          {event.status === "firing" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-6 gap-1 px-2 text-xs"
-                              disabled={acknowledgeMutation.isPending}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                acknowledgeMutation.mutate({
-                                  alertEventId: event.id,
-                                });
-                              }}
+        <Tabs defaultValue="table">
+          <TabsList>
+            <TabsTrigger value="table">Table</TabsTrigger>
+            <TabsTrigger value="timeline">Timeline</TabsTrigger>
+          </TabsList>
+
+          {/* ── Table view ── */}
+          <TabsContent value="table">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[30px]" />
+                  <TableHead>Timestamp</TableHead>
+                  <TableHead>Rule Name</TableHead>
+                  <TableHead>Node</TableHead>
+                  <TableHead>Pipeline</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Value</TableHead>
+                  <TableHead>Message</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibleItems.map((event) => {
+                  const isExpanded = expandedEventId === event.id;
+                  return (
+                    <Fragment key={event.id}>
+                      <TableRow
+                        className="cursor-pointer"
+                        onClick={() =>
+                          setExpandedEventId(isExpanded ? null : event.id)
+                        }
+                      >
+                        <TableCell className="w-[30px] px-2">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground whitespace-nowrap">
+                          {formatTimestamp(event.firedAt)}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {event.alertRule.name}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {event.node?.host ?? "-"}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {event.alertRule.pipeline?.name ?? "-"}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <StatusBadge
+                              variant={
+                                event.status === "firing"
+                                  ? "error"
+                                  : event.status === "acknowledged"
+                                    ? "degraded"
+                                    : "healthy"
+                              }
                             >
-                              <CheckCircle2 className="h-3 w-3" />
-                              Ack
-                            </Button>
-                          )}
-                        </div>
-                        {event.status === "acknowledged" &&
-                          event.acknowledgedAt && (
-                            <p className="mt-0.5 text-[10px] text-muted-foreground">
-                              {formatTimestamp(event.acknowledgedAt)}
-                              {event.acknowledgedBy &&
-                                ` by ${event.acknowledgedBy}`}
-                            </p>
-                          )}
-                      </TableCell>
-                      <TableCell className="font-mono tabular-nums">
-                        {typeof event.value === "number"
-                          ? event.value.toFixed(2)
-                          : event.value}
-                      </TableCell>
-                      <TableCell className="max-w-[300px] truncate text-muted-foreground">
-                        {event.message || "-"}
-                      </TableCell>
-                    </TableRow>
-                    {isExpanded && (
-                      <TableRow className="bg-muted/30 hover:bg-muted/30">
-                        <TableCell colSpan={99} className="p-0">
-                          <DeliveryStatusPanel
-                            alertEventId={event.id}
-                            isOpen={true}
-                          />
+                              {event.status === "firing"
+                                ? "Firing"
+                                : event.status === "acknowledged"
+                                  ? "Acknowledged"
+                                  : "Resolved"}
+                            </StatusBadge>
+                            {event.status === "firing" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 gap-1 px-2 text-xs"
+                                disabled={acknowledgeMutation.isPending}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  acknowledgeMutation.mutate({
+                                    alertEventId: event.id,
+                                  });
+                                }}
+                              >
+                                <CheckCircle2 className="h-3 w-3" />
+                                Ack
+                              </Button>
+                            )}
+                          </div>
+                          {event.status === "acknowledged" &&
+                            event.acknowledgedAt && (
+                              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                {formatTimestamp(event.acknowledgedAt)}
+                                {event.acknowledgedBy &&
+                                  ` by ${event.acknowledgedBy}`}
+                              </p>
+                            )}
+                        </TableCell>
+                        <TableCell className="font-mono tabular-nums">
+                          {typeof event.value === "number"
+                            ? event.value.toFixed(2)
+                            : event.value}
+                        </TableCell>
+                        <TableCell className="max-w-[300px] truncate text-muted-foreground">
+                          {event.message || "-"}
                         </TableCell>
                       </TableRow>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </TableBody>
-          </Table>
+                      {isExpanded && (
+                        <TableRow className="bg-muted/30 hover:bg-muted/30">
+                          <TableCell colSpan={99} className="p-0">
+                            <DeliveryStatusPanel
+                              alertEventId={event.id}
+                              isOpen={true}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
 
-          {nextCursor && (
-            <div className="flex justify-center pt-2">
-              <Button
-                variant="outline"
-                onClick={loadMore}
-                disabled={isFetchingMore}
-              >
-                {isFetchingMore ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading...
-                  </>
-                ) : (
-                  "Load more"
-                )}
-              </Button>
-            </div>
-          )}
-        </>
+            {nextCursor && (
+              <div className="flex justify-center pt-2">
+                <Button
+                  variant="outline"
+                  onClick={loadMore}
+                  disabled={isFetchingMore}
+                >
+                  {isFetchingMore ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    "Load more"
+                  )}
+                </Button>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ── Timeline view ── */}
+          <TabsContent value="timeline">
+            <AlertTimeline events={visibleItems} />
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
