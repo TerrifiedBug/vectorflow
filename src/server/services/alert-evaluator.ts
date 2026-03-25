@@ -226,11 +226,19 @@ export async function evaluateAlerts(
 
   if (!node) return [];
 
-  // Load all enabled rules for this environment (include pipeline name for messages)
+  // Load all enabled, non-snoozed rules for this environment
   const rules = await prisma.alertRule.findMany({
     where: {
       environmentId,
       enabled: true,
+      AND: [
+        {
+          OR: [
+            { snoozedUntil: null },
+            { snoozedUntil: { lt: new Date() } },
+          ],
+        },
+      ],
     },
     include: {
       pipeline: { select: { name: true } },
@@ -272,11 +280,11 @@ export async function evaluateAlerts(
 
       // Only fire if the condition has persisted for the required duration
       if (elapsedSeconds >= (rule.durationSeconds ?? 0)) {
-        // Check if there is already an open (firing) event for this rule
+        // Check if there is already an open (firing or acknowledged) event for this rule
         const existingEvent = await prisma.alertEvent.findFirst({
           where: {
             alertRuleId: rule.id,
-            status: "firing",
+            status: { in: ["firing", "acknowledged"] },
             resolvedAt: null,
           },
           orderBy: { firedAt: "desc" },
@@ -301,11 +309,11 @@ export async function evaluateAlerts(
       // Condition no longer met — clear duration tracking
       conditionFirstSeen.delete(`${rule.id}:${nodeId}`);
 
-      // Resolve any open firing event
+      // Resolve any open firing or acknowledged event
       const openEvent = await prisma.alertEvent.findFirst({
         where: {
           alertRuleId: rule.id,
-          status: "firing",
+          status: { in: ["firing", "acknowledged"] },
           resolvedAt: null,
         },
         orderBy: { firedAt: "desc" },
