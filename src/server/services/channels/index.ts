@@ -4,6 +4,7 @@ import { slackDriver } from "./slack";
 import { emailDriver } from "./email";
 import { pagerdutyDriver } from "./pagerduty";
 import { webhookDriver } from "./webhook";
+import { trackChannelDelivery } from "@/server/services/delivery-tracking";
 
 export type { ChannelPayload, ChannelDeliveryResult, ChannelDriver };
 
@@ -32,14 +33,19 @@ export function getDriver(type: string): ChannelDriver {
  * If alertRuleId is provided, delivers only to channels linked via
  * AlertRuleChannel. Falls back to all enabled channels in the environment
  * if no specific channels are linked.
+ *
+ * When alertEventId is provided, each delivery is wrapped with delivery
+ * tracking so a DeliveryAttempt record is persisted per channel.
  */
 export async function deliverToChannels(
   environmentId: string,
   alertRuleId: string | null,
   payload: ChannelPayload,
+  alertEventId?: string,
 ): Promise<ChannelDeliveryResult[]> {
   let channels: Array<{
     id: string;
+    name: string;
     type: string;
     config: unknown;
   }>;
@@ -50,7 +56,7 @@ export async function deliverToChannels(
       where: { alertRuleId },
       include: {
         channel: {
-          select: { id: true, type: true, config: true, enabled: true },
+          select: { id: true, name: true, type: true, config: true, enabled: true },
         },
       },
     });
@@ -66,37 +72,57 @@ export async function deliverToChannels(
       // No explicit routing — broadcast to all enabled env channels
       channels = await prisma.notificationChannel.findMany({
         where: { environmentId, enabled: true },
-        select: { id: true, type: true, config: true },
+        select: { id: true, name: true, type: true, config: true },
       });
     }
   } else {
     // No specific rule — use all enabled channels in the environment
     channels = await prisma.notificationChannel.findMany({
       where: { environmentId, enabled: true },
-      select: { id: true, type: true, config: true },
+      select: { id: true, name: true, type: true, config: true },
     });
   }
 
   const results: ChannelDeliveryResult[] = [];
 
   for (const channel of channels) {
-    try {
-      const driver = getDriver(channel.type);
-      const result = await driver.deliver(
-        channel.config as Record<string, unknown>,
-        payload,
+    if (alertEventId) {
+      // Tracked delivery: wraps each channel call with a DeliveryAttempt record
+      const tracked = await trackChannelDelivery(
+        alertEventId,
+        channel.id,
+        channel.type,
+        channel.name,
+        async () => {
+          const driver = getDriver(channel.type);
+          const result = await driver.deliver(
+            channel.config as Record<string, unknown>,
+            payload,
+          );
+          return { success: result.success, error: result.error };
+        },
       );
-      results.push({ ...result, channelId: channel.id });
-    } catch (err) {
-      console.error(
-        `Channel delivery error (${channel.type} / ${channel.id}):`,
-        err,
-      );
-      results.push({
-        channelId: channel.id,
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      });
+      results.push({ channelId: channel.id, success: tracked.success, error: tracked.error });
+    } else {
+      // Untracked delivery (no alertEventId context)
+      try {
+        const driver = getDriver(channel.type);
+        const result = await driver.deliver(
+          channel.config as Record<string, unknown>,
+          payload,
+        );
+        results.push({ ...result, channelId: channel.id });
+      } catch (err) {
+        console.error(
+          `Channel delivery error (${channel.type} / ${channel.id}):`,
+          err,
+        );
+        results.push({
+          channelId: channel.id,
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
     }
   }
 
