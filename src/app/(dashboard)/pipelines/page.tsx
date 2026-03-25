@@ -197,14 +197,14 @@ export default function PipelinesPage() {
 
   if (pipelinesQuery.isError) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-6">
         <QueryError message="Failed to load pipelines" onRetry={() => pipelinesQuery.refetch()} />
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-6">
       <div className="flex items-center justify-end">
         <Button asChild size="sm">
           <Link href="/pipelines/new">
