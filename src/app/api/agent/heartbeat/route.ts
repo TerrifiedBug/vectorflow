@@ -12,8 +12,9 @@ import { sseRegistry } from "@/server/services/sse-registry";
 import type { FleetStatusEvent, LogEntryEvent, StatusChangeEvent } from "@/lib/sse/types";
 import { evaluateAlerts } from "@/server/services/alert-evaluator";
 import { batchUpsertPipelineStatuses } from "@/server/services/heartbeat-batch";
-import { deliverWebhooks } from "@/server/services/webhook-delivery";
+import { deliverSingleWebhook } from "@/server/services/webhook-delivery";
 import { deliverToChannels } from "@/server/services/channels";
+import { trackWebhookDelivery } from "@/server/services/delivery-tracking";
 import { DeploymentMode } from "@/generated/prisma";
 import { isVersionOlder } from "@/lib/version";
 
@@ -552,14 +553,27 @@ export async function POST(request: Request) {
             dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/alerts`,
           };
 
-          // Deliver to legacy webhooks (backward compatibility)
-          await deliverWebhooks(alert.rule.environmentId, channelPayload);
+          // Deliver to legacy webhooks with delivery tracking
+          const webhooks = await prisma.alertWebhook.findMany({
+            where: { environmentId: alert.rule.environmentId, enabled: true },
+          });
+          for (const webhook of webhooks) {
+            trackWebhookDelivery(
+              alert.event.id,
+              webhook.id,
+              webhook.url,
+              () => deliverSingleWebhook(webhook, channelPayload),
+            ).catch((err) =>
+              console.error(`Tracked webhook delivery error for ${webhook.url}:`, err),
+            );
+          }
 
-          // Deliver to notification channels
+          // Deliver to notification channels with delivery tracking
           deliverToChannels(
             alert.rule.environmentId,
             alert.rule.id,
             channelPayload,
+            alert.event.id,
           ).catch((err) =>
             console.error("Channel delivery error:", err),
           );
