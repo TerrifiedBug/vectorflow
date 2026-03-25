@@ -77,6 +77,7 @@ interface FlowToolbarProps {
   aiEnabled?: boolean;
   onAiOpen?: () => void;
   onDebugOpen?: () => void;
+  deployedVersionNumber?: number | null;
 }
 
 function downloadFile(content: string, filename: string) {
@@ -111,6 +112,7 @@ export function FlowToolbar({
   aiEnabled,
   onAiOpen,
   onDebugOpen,
+  deployedVersionNumber,
 }: FlowToolbarProps) {
   const globalConfig = useFlowStore((s) => s.globalConfig);
   const canUndo = useFlowStore((s) => s.canUndo);
@@ -548,7 +550,7 @@ export function FlowToolbar({
                       Deploy
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Changes detected — deploy to update</TooltipContent>
+                  <TooltipContent>Changes detected{deployedVersionNumber != null ? ` since v${deployedVersionNumber}` : ''} — deploy to update</TooltipContent>
                 </Tooltip>
                 {onDiscardChanges && (
                   <Tooltip>
@@ -589,7 +591,7 @@ export function FlowToolbar({
             <>
               <div className="flex items-center gap-1.5 px-2.5 text-xs text-green-600 dark:text-green-400">
                 <CircleCheck className="h-3.5 w-3.5" />
-                <span className="font-medium">Deployed</span>
+                <span className="font-medium">Deployed{deployedVersionNumber != null ? ` v${deployedVersionNumber}` : ''}</span>
               </div>
               <Tooltip>
                 <TooltipTrigger asChild>
