@@ -651,6 +651,26 @@ export const alertRouter = router({
       }
     }),
 
+  listDeliveries: protectedProcedure
+    .input(z.object({ alertEventId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return prisma.deliveryAttempt.findMany({
+        where: { alertEventId: input.alertEventId },
+        select: {
+          id: true,
+          channelType: true,
+          channelName: true,
+          status: true,
+          statusCode: true,
+          errorMessage: true,
+          requestedAt: true,
+          completedAt: true,
+        },
+        orderBy: { requestedAt: "desc" },
+      });
+    }),
+
   // ─── Alert Events ──────────────────────────────────────────────────
 
   listEvents: protectedProcedure
