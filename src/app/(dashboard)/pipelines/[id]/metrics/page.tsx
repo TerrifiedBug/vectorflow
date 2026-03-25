@@ -73,7 +73,7 @@ export default function PipelineMetricsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">
+          <h2 className="text-2xl font-semibold tracking-tight">
             {pipeline?.name ?? "Pipeline"} — Metrics
           </h2>
           <p className="text-muted-foreground">
