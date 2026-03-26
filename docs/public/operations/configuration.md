@@ -28,6 +28,7 @@ These variables must be set before the server can start. Without them, the appli
 | `NODE_ENV` | `production` | Set automatically in Docker. Use `production` for standalone deployments |
 | `VF_BACKUP_DIR` | `/backups` | Directory for database backup files |
 | `VF_DISABLE_LOCAL_AUTH` | `false` | Hide the local login form and enforce SSO-only authentication. Requires OIDC to be configured |
+| `REDIS_URL` | *(none — single-instance mode)* | Redis connection string for HA mode (e.g., `redis://redis:6379`). Enables leader election, cross-instance SSE broadcast, and metric distribution. When unset, VectorFlow runs as a single instance with no behavioral change |
 | `VF_LOG_LEVEL` | `info` | Server log verbosity: `debug`, `info`, `warn`, `error`. Set to `debug` for verbose logging of OIDC authentication, SCIM provisioning, agent enrollment, and group sync operations |
 
 ### Docker Compose variables

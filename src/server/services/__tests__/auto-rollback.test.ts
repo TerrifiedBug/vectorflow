@@ -23,8 +23,8 @@ vi.mock("@/server/services/event-alerts", () => ({
   fireEventAlert: vi.fn(),
 }));
 
-vi.mock("@/server/services/sse-registry", () => ({
-  sseRegistry: { broadcast: vi.fn() },
+vi.mock("@/server/services/sse-broadcast", () => ({
+  broadcastSSE: vi.fn(),
 }));
 
 import { prisma } from "@/lib/prisma";
@@ -34,12 +34,12 @@ import {
 } from "@/server/services/auto-rollback";
 import { deployFromVersion } from "@/server/services/pipeline-version";
 import { fireEventAlert } from "@/server/services/event-alerts";
-import { sseRegistry } from "@/server/services/sse-registry";
+import { broadcastSSE } from "@/server/services/sse-broadcast";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const deployFromVersionMock = vi.mocked(deployFromVersion);
 const fireEventAlertMock = vi.mocked(fireEventAlert);
-const broadcastMock = vi.mocked(sseRegistry.broadcast);
+const broadcastMock = vi.mocked(broadcastSSE);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
