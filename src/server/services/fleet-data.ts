@@ -256,8 +256,8 @@ export async function getNodeCapacity(
     JOIN "VectorNode" n ON n."id" = nm."nodeId"
     WHERE n."environmentId" = ${environmentId}
       AND nm."timestamp" >= ${since}
-    GROUP BY nm."nodeId", n."name", date_trunc(${bucket}, nm."timestamp")
-    ORDER BY nm."nodeId", bucket
+    GROUP BY 1, 2, 3
+    ORDER BY 1, 3
   `);
 
   // Group flat rows into per-node capacity objects
