@@ -160,3 +160,39 @@ export async function getDownstreams(pipelineId: string) {
     orderBy: { createdAt: "asc" },
   });
 }
+
+/**
+ * Get upstream dependencies of a pipeline where the upstream is still a draft
+ * (undeployed). Used to warn when deploying a pipeline whose upstreams aren't
+ * deployed yet.
+ */
+export async function getUndeployedUpstreams(pipelineId: string) {
+  return prisma.pipelineDependency.findMany({
+    where: {
+      downstreamId: pipelineId,
+      upstream: { isDraft: true },
+    },
+    include: {
+      upstream: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+/**
+ * Get downstream dependencies of a pipeline where the downstream is currently
+ * deployed (not a draft). Used to warn when undeploying a pipeline that has
+ * deployed dependents.
+ */
+export async function getDeployedDownstreams(pipelineId: string) {
+  return prisma.pipelineDependency.findMany({
+    where: {
+      upstreamId: pipelineId,
+      downstream: { isDraft: false },
+    },
+    include: {
+      downstream: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
