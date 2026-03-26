@@ -6,6 +6,8 @@ import {
   addDependency,
   removeDependency,
   getUpstreams,
+  getUndeployedUpstreams,
+  getDeployedDownstreams,
 } from "@/server/services/pipeline-dependency";
 
 export const pipelineDependencyRouter = router({
@@ -59,5 +61,19 @@ export const pipelineDependencyRouter = router({
         select: { id: true, name: true },
         orderBy: { name: "asc" },
       });
+    }),
+
+  deployWarnings: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return getUndeployedUpstreams(input.pipelineId);
+    }),
+
+  undeployWarnings: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return getDeployedDownstreams(input.pipelineId);
     }),
 });
