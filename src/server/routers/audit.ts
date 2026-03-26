@@ -2,6 +2,19 @@ import { z } from "zod";
 import { router, protectedProcedure } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 
+/** Actions that represent deployment lifecycle events */
+export const DEPLOYMENT_ACTIONS = [
+  "deploy.agent",
+  "deploy.from_version",
+  "deploy.undeploy",
+  "deploy.request_submitted",
+  "deployRequest.approved",
+  "deployRequest.deployed",
+  "deployRequest.rejected",
+  "deploy.cancel_request",
+  "pipeline.rollback",
+] as const;
+
 export const auditRouter = router({
   list: protectedProcedure
     .input(
@@ -134,5 +147,149 @@ export const auditRouter = router({
       distinct: ["userId"],
     });
     return results.map((r) => r.user).filter((u): u is NonNullable<typeof u> => u !== null);
+  }),
+
+  /** Deployment history: audit entries filtered to deployment-related actions */
+  deployments: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string().optional(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+        cursor: z.string().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const { pipelineId, startDate, endDate, cursor } = input;
+      const take = 50;
+
+      const conditions: Record<string, unknown>[] = [
+        { action: { in: [...DEPLOYMENT_ACTIONS] } },
+      ];
+
+      if (startDate || endDate) {
+        const createdAt: Record<string, Date> = {};
+        if (startDate) {
+          createdAt.gte = new Date(startDate);
+        }
+        if (endDate) {
+          createdAt.lte = new Date(endDate);
+        }
+        conditions.push({ createdAt });
+      }
+
+      // If pipelineId is provided, filter audit logs that reference this pipeline.
+      // Audit logs reference pipelines either via entityId (for Pipeline entity type)
+      // or via metadata.input.pipelineId (for DeployRequest entity type).
+      if (pipelineId) {
+        conditions.push({
+          OR: [
+            { entityType: "Pipeline", entityId: pipelineId },
+            { entityType: "DeployRequest", entityId: pipelineId },
+          ],
+        });
+      }
+
+      const where = { AND: conditions };
+
+      const items = await prisma.auditLog.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: take + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+
+      let nextCursor: string | undefined;
+      if (items.length > take) {
+        const nextItem = items.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      // Collect unique pipeline IDs from entityId values and metadata
+      const pipelineIds = new Set<string>();
+      for (const item of items) {
+        if (item.entityType === "Pipeline" && item.entityId) {
+          pipelineIds.add(item.entityId);
+        }
+        const meta = item.metadata as Record<string, unknown> | null;
+        const metaInput = meta?.input as Record<string, unknown> | undefined;
+        if (metaInput?.pipelineId && typeof metaInput.pipelineId === "string") {
+          pipelineIds.add(metaInput.pipelineId);
+        }
+      }
+
+      // Batch-fetch pipeline names
+      const pipelines = pipelineIds.size > 0
+        ? await prisma.pipeline.findMany({
+            where: { id: { in: [...pipelineIds] } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const pipelineMap = new Map(pipelines.map((p) => [p.id, p.name]));
+
+      // Enrich items with pipeline name and extracted version info from metadata
+      const enrichedItems = items.map((item) => {
+        const meta = item.metadata as Record<string, unknown> | null;
+        const metaInput = meta?.input as Record<string, unknown> | undefined;
+
+        // Determine the pipeline ID: for Pipeline entity type use entityId,
+        // for DeployRequest use metadata.input.pipelineId
+        const itemPipelineId =
+          item.entityType === "Pipeline"
+            ? item.entityId
+            : typeof metaInput?.pipelineId === "string"
+              ? metaInput.pipelineId
+              : null;
+
+        return {
+          ...item,
+          pipelineName: itemPipelineId ? pipelineMap.get(itemPipelineId) ?? null : null,
+          pipelineId: itemPipelineId,
+          versionInfo: metaInput?.newVersion
+            ? String(metaInput.newVersion)
+            : metaInput?.sourceVersionId
+              ? String(metaInput.sourceVersionId)
+              : null,
+          changelog: typeof metaInput?.changelog === "string" ? metaInput.changelog : null,
+        };
+      });
+
+      return {
+        items: enrichedItems,
+        nextCursor,
+      };
+    }),
+
+  /** Distinct pipelines that have deployment audit entries, for filter dropdown */
+  deploymentPipelines: protectedProcedure.query(async () => {
+    // Get distinct entityIds from deployment audit logs for Pipeline entity type
+    const pipelineAudits = await prisma.auditLog.findMany({
+      where: {
+        action: { in: [...DEPLOYMENT_ACTIONS] },
+        entityType: "Pipeline",
+      },
+      select: { entityId: true },
+      distinct: ["entityId"],
+    });
+
+    const pipelineIds = pipelineAudits.map((a) => a.entityId);
+    if (pipelineIds.length === 0) return [];
+
+    const pipelines = await prisma.pipeline.findMany({
+      where: { id: { in: pipelineIds } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+
+    return pipelines;
   }),
 });
