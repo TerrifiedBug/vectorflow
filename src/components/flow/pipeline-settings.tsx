@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ChevronRight, Plus, Trash2, X } from "lucide-react";
+import { ChevronRight, ChevronsUpDown, Plus, Trash2, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
@@ -24,6 +24,19 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { tagBadgeClass } from "@/lib/badge-variants";
 
 interface PipelineSettingsProps {
@@ -261,6 +274,17 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
         </>
       )}
 
+      {/* Dependencies */}
+      {pipelineId && pipeline?.environmentId && (
+        <>
+          <Separator />
+          <DependenciesSettings
+            pipelineId={pipelineId}
+            environmentId={pipeline.environmentId}
+          />
+        </>
+      )}
+
       <Separator />
 
       {/* Global Configuration JSON */}
@@ -442,6 +466,186 @@ function AutoRollbackSettings({
             </div>
           </div>
         </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dependencies settings sub-component
+// ---------------------------------------------------------------------------
+
+function DependenciesSettings({
+  pipelineId,
+  environmentId,
+}: {
+  pipelineId: string;
+  environmentId: string;
+}) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const [depsOpen, setDepsOpen] = useState(false);
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  // Current upstream dependencies
+  const depsQuery = useQuery(
+    trpc.pipelineDependency.list.queryOptions({ pipelineId }),
+  );
+  const deps = depsQuery.data ?? [];
+
+  // Candidate pipelines for the combobox
+  const candidatesQuery = useQuery(
+    trpc.pipelineDependency.listCandidates.queryOptions({
+      pipelineId,
+      environmentId,
+    }),
+  );
+  const candidates = candidatesQuery.data ?? [];
+
+  // Filter out already-added dependencies from candidates
+  const addedIds = new Set(deps.map((d) => d.upstream.id));
+  const availableCandidates = candidates.filter((c) => !addedIds.has(c.id));
+
+  const depsListKey = trpc.pipelineDependency.list.queryKey({ pipelineId });
+  const candidatesKey = trpc.pipelineDependency.listCandidates.queryKey({
+    pipelineId,
+    environmentId,
+  });
+
+  const addMutation = useMutation(
+    trpc.pipelineDependency.add.mutationOptions({
+      onSuccess: () => {
+        setAddError(null);
+        setPopoverOpen(false);
+        queryClient.invalidateQueries({ queryKey: depsListKey });
+        queryClient.invalidateQueries({ queryKey: candidatesKey });
+        toast.success("Dependency added");
+      },
+      onError: (error) => {
+        // Show cycle and self-reference errors inline
+        if (error.message) {
+          setAddError(error.message);
+        } else {
+          setAddError("Failed to add dependency");
+        }
+      },
+    }),
+  );
+
+  const removeMutation = useMutation(
+    trpc.pipelineDependency.remove.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: depsListKey });
+        queryClient.invalidateQueries({ queryKey: candidatesKey });
+        toast.success("Dependency removed");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to remove dependency");
+      },
+    }),
+  );
+
+  const handleAdd = (upstreamId: string) => {
+    setAddError(null);
+    addMutation.mutate({ upstreamId, downstreamId: pipelineId });
+  };
+
+  return (
+    <Collapsible open={depsOpen} onOpenChange={setDepsOpen}>
+      <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2 text-sm font-medium transition-colors hover:text-foreground">
+        <ChevronRight
+          className={`h-4 w-4 shrink-0 transition-transform ${depsOpen ? "rotate-90" : ""}`}
+        />
+        <span className="text-left">Dependencies</span>
+        {deps.length > 0 && (
+          <Badge variant="secondary" className="ml-auto shrink-0 text-xs">
+            {deps.length}
+          </Badge>
+        )}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-3 space-y-3">
+        {/* Current upstream dependencies */}
+        {deps.length > 0 && (
+          <div className="space-y-2">
+            {deps.map((dep) => (
+              <div
+                key={dep.id}
+                className="flex items-center justify-between rounded-md border px-3 py-2 text-xs"
+              >
+                <div>
+                  <span className="font-medium">{dep.upstream.name}</span>
+                  {dep.description && (
+                    <span className="ml-1.5 text-muted-foreground">
+                      — {dep.description}
+                    </span>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                  onClick={() => removeMutation.mutate({ id: dep.id })}
+                  disabled={removeMutation.isPending}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        {deps.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            No upstream dependencies configured.
+          </p>
+        )}
+
+        {/* Add dependency combobox */}
+        <Popover
+          open={popoverOpen}
+          onOpenChange={(open) => {
+            setPopoverOpen(open);
+            if (!open) setAddError(null);
+          }}
+        >
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={popoverOpen}
+              className="w-full justify-between text-xs font-normal"
+              size="sm"
+            >
+              Add upstream dependency…
+              <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+            <Command>
+              <CommandInput placeholder="Search pipelines..." />
+              <CommandList>
+                <CommandEmpty>No pipelines found.</CommandEmpty>
+                <CommandGroup>
+                  {availableCandidates.map((candidate) => (
+                    <CommandItem
+                      key={candidate.id}
+                      value={candidate.name}
+                      onSelect={() => handleAdd(candidate.id)}
+                    >
+                      {candidate.name}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+
+        {/* Inline error for cycle / self-reference */}
+        {addError && (
+          <p className="text-xs text-destructive">{addError}</p>
+        )}
       </CollapsibleContent>
     </Collapsible>
   );
