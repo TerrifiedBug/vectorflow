@@ -196,3 +196,32 @@ export async function getDeployedDownstreams(pipelineId: string) {
     orderBy: { createdAt: "asc" },
   });
 }
+
+/**
+ * Get the full dependency graph for an environment: all pipelines and all
+ * PipelineDependency edges. Used by the dependency-graph visualization page.
+ */
+export async function getDependencyGraph(environmentId: string) {
+  const [pipelines, dependencies] = await Promise.all([
+    prisma.pipeline.findMany({
+      where: { environmentId },
+      select: {
+        id: true,
+        name: true,
+        isDraft: true,
+        nodeStatuses: { select: { status: true } },
+      },
+    }),
+    prisma.pipelineDependency.findMany({
+      where: { upstream: { environmentId } },
+      select: {
+        id: true,
+        upstreamId: true,
+        downstreamId: true,
+        description: true,
+      },
+    }),
+  ]);
+
+  return { pipelines, dependencies };
+}
