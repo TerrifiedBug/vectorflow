@@ -6,6 +6,7 @@ import { LogLevel } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { checkDevAgentVersion } from "@/server/services/version-check";
 import { pushRegistry } from "@/server/services/push-registry";
+import { relayPush } from "@/server/services/push-broadcast";
 import { getFleetOverview, getVolumeTrend, getNodeThroughput, getNodeCapacity, getDataLoss, getMatrixThroughput } from "@/server/services/fleet-data";
 
 export const fleetRouter = router({
@@ -436,7 +437,7 @@ export const fleetRouter = router({
       });
 
       // Push action to agent via SSE (fallback: agent reads pendingAction on next poll)
-      pushRegistry.send(input.nodeId, {
+      relayPush(input.nodeId, {
         type: "action",
         action: "self_update",
         targetVersion,
@@ -509,7 +510,7 @@ export const fleetRouter = router({
       });
 
       // Maintenance mode changes what the config endpoint returns — notify agent to re-poll
-      pushRegistry.send(input.nodeId, {
+      relayPush(input.nodeId, {
         type: "config_changed",
         reason: input.enabled ? "maintenance_on" : "maintenance_off",
       });

@@ -28,11 +28,8 @@ vi.mock("@/server/services/sse-broadcast", () => ({
   broadcastSSE: vi.fn(),
 }));
 
-vi.mock("@/server/services/push-registry", () => ({
-  pushRegistry: {
-    send: vi.fn().mockReturnValue(true),
-    broadcast: vi.fn().mockReturnValue([]),
-  },
+vi.mock("@/server/services/push-broadcast", () => ({
+  relayPush: vi.fn().mockReturnValue(true),
 }));
 
 vi.mock("@/lib/config-generator", () => ({
@@ -50,14 +47,14 @@ import { StagedRolloutService } from "@/server/services/staged-rollout";
 import { createVersion, deployFromVersion } from "@/server/services/pipeline-version";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
-import { pushRegistry } from "@/server/services/push-registry";
+import { relayPush } from "@/server/services/push-broadcast";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const createVersionMock = vi.mocked(createVersion);
 const deployFromVersionMock = vi.mocked(deployFromVersion);
 const fireEventAlertMock = vi.mocked(fireEventAlert);
 const broadcastMock = vi.mocked(broadcastSSE);
-const pushSendMock = vi.mocked(pushRegistry.send);
+const relayPushMock = vi.mocked(relayPush);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -206,13 +203,13 @@ describe("StagedRolloutService", () => {
         expect.any(Array), // edgesSnapshot
       );
 
-      // pushRegistry.send called for canary nodes ONLY (node-1 and node-2)
-      expect(pushSendMock).toHaveBeenCalledTimes(2);
-      expect(pushSendMock).toHaveBeenCalledWith(
+      // relayPush called for canary nodes ONLY (node-1 and node-2)
+      expect(relayPushMock).toHaveBeenCalledTimes(2);
+      expect(relayPushMock).toHaveBeenCalledWith(
         "node-1",
         expect.objectContaining({ type: "config_changed", pipelineId: "pipe-1", reason: "canary_deploy" }),
       );
-      expect(pushSendMock).toHaveBeenCalledWith(
+      expect(relayPushMock).toHaveBeenCalledWith(
         "node-2",
         expect.objectContaining({ type: "config_changed", pipelineId: "pipe-1", reason: "canary_deploy" }),
       );
@@ -328,16 +325,16 @@ describe("StagedRolloutService", () => {
       await service.broadenRollout("rollout-1");
 
       // Push to remaining nodes (3 nodes)
-      expect(pushSendMock).toHaveBeenCalledTimes(3);
-      expect(pushSendMock).toHaveBeenCalledWith(
+      expect(relayPushMock).toHaveBeenCalledTimes(3);
+      expect(relayPushMock).toHaveBeenCalledWith(
         "node-3",
         expect.objectContaining({ type: "config_changed", reason: "canary_broadened" }),
       );
-      expect(pushSendMock).toHaveBeenCalledWith(
+      expect(relayPushMock).toHaveBeenCalledWith(
         "node-4",
         expect.objectContaining({ type: "config_changed", reason: "canary_broadened" }),
       );
-      expect(pushSendMock).toHaveBeenCalledWith(
+      expect(relayPushMock).toHaveBeenCalledWith(
         "node-5",
         expect.objectContaining({ type: "config_changed", reason: "canary_broadened" }),
       );
@@ -371,7 +368,7 @@ describe("StagedRolloutService", () => {
         'Cannot broaden rollout in status "CANARY_DEPLOYED"',
       );
 
-      expect(pushSendMock).not.toHaveBeenCalled();
+      expect(relayPushMock).not.toHaveBeenCalled();
     });
 
     it("throws when rollout is not found", async () => {
