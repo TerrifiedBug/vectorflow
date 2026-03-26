@@ -253,6 +253,14 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
         </>
       )}
 
+      {/* Auto-Rollback Configuration */}
+      {pipelineId && (
+        <>
+          <Separator />
+          <AutoRollbackSettings pipelineId={pipelineId} pipeline={pipeline} />
+        </>
+      )}
+
       <Separator />
 
       {/* Global Configuration JSON */}
@@ -295,6 +303,147 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
         </>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Auto-rollback settings sub-component
+// ---------------------------------------------------------------------------
+
+function AutoRollbackSettings({
+  pipelineId,
+  pipeline,
+}: {
+  pipelineId: string;
+  pipeline: { autoRollbackEnabled: boolean; autoRollbackThreshold: number; autoRollbackWindowMinutes: number } | null | undefined;
+}) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const [rollbackOpen, setRollbackOpen] = useState(false);
+  const [threshold, setThreshold] = useState(
+    String(pipeline?.autoRollbackThreshold ?? 5),
+  );
+  const [windowMinutes, setWindowMinutes] = useState(
+    String(pipeline?.autoRollbackWindowMinutes ?? 5),
+  );
+
+  // Sync local state when pipeline data loads or changes
+  useEffect(() => {
+    if (pipeline) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setThreshold(String(pipeline.autoRollbackThreshold));
+      setWindowMinutes(String(pipeline.autoRollbackWindowMinutes));
+    }
+  }, [pipeline]);
+
+  const pipelineQueryKey = trpc.pipeline.get.queryKey({ id: pipelineId });
+
+  const updateRollbackMutation = useMutation(
+    trpc.pipeline.update.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: pipelineQueryKey });
+        toast.success("Auto-rollback settings updated");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to update auto-rollback settings");
+      },
+    }),
+  );
+
+  const handleToggle = (checked: boolean) => {
+    updateRollbackMutation.mutate({
+      id: pipelineId,
+      autoRollbackEnabled: checked,
+    });
+  };
+
+  const handleSaveThreshold = () => {
+    const parsed = parseFloat(threshold);
+    if (isNaN(parsed) || parsed <= 0 || parsed > 100) {
+      toast.error("Threshold must be a number between 0 and 100");
+      return;
+    }
+    updateRollbackMutation.mutate({
+      id: pipelineId,
+      autoRollbackThreshold: parsed,
+    });
+  };
+
+  const handleSaveWindow = () => {
+    const parsed = parseInt(windowMinutes, 10);
+    if (isNaN(parsed) || parsed <= 0 || parsed > 60) {
+      toast.error("Window must be an integer between 1 and 60");
+      return;
+    }
+    updateRollbackMutation.mutate({
+      id: pipelineId,
+      autoRollbackWindowMinutes: parsed,
+    });
+  };
+
+  const isEnabled = pipeline?.autoRollbackEnabled ?? false;
+
+  return (
+    <Collapsible open={rollbackOpen} onOpenChange={setRollbackOpen}>
+      <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2 text-sm font-medium transition-colors hover:text-foreground">
+        <ChevronRight
+          className={`h-4 w-4 shrink-0 transition-transform ${rollbackOpen ? "rotate-90" : ""}`}
+        />
+        <span className="text-left">Auto-Rollback</span>
+        {isEnabled && (
+          <Badge variant="secondary" className="ml-auto shrink-0 text-xs">
+            enabled
+          </Badge>
+        )}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <Label>Enable auto-rollback</Label>
+          <Switch
+            checked={isEnabled}
+            onCheckedChange={handleToggle}
+            disabled={updateRollbackMutation.isPending}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Automatically roll back to the previous version when the aggregate error rate exceeds the threshold after deploy.
+        </p>
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <Label className="text-xs">Error Rate Threshold (%)</Label>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                step="any"
+                min="0"
+                max="100"
+                value={threshold}
+                onChange={(e) => setThreshold(e.target.value)}
+                onBlur={handleSaveThreshold}
+                className="h-8 text-xs"
+                disabled={updateRollbackMutation.isPending}
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Monitoring Window (minutes)</Label>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min="1"
+                max="60"
+                value={windowMinutes}
+                onChange={(e) => setWindowMinutes(e.target.value)}
+                onBlur={handleSaveWindow}
+                className="h-8 text-xs"
+                disabled={updateRollbackMutation.isPending}
+              />
+            </div>
+          </div>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

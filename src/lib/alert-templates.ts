@@ -15,6 +15,9 @@ import {
   ServerOff,
   CircleX,
   Trash2,
+  TrendingDown,
+  Activity,
+  Scale,
 } from "lucide-react";
 
 export interface AlertRuleTemplate {
@@ -118,6 +121,58 @@ export const ALERT_RULE_TEMPLATES: AlertRuleTemplate[] = [
       condition: "gt",
       threshold: "10",
       durationSeconds: "60",
+    },
+  },
+  {
+    id: "fleet-error-rate",
+    name: "Fleet Error Rate",
+    description:
+      "Alert when total error rate across all pipelines exceeds 5% for 60 seconds.",
+    icon: AlertTriangle,
+    defaults: {
+      metric: "fleet_error_rate",
+      condition: "gt",
+      threshold: "5",
+      durationSeconds: "60",
+    },
+  },
+  {
+    id: "fleet-throughput-drop",
+    name: "Fleet Throughput Drop",
+    description:
+      "Alert when total throughput drops by 20% compared to previous period for 2 minutes.",
+    icon: TrendingDown,
+    defaults: {
+      metric: "fleet_throughput_drop",
+      condition: "gt",
+      threshold: "20",
+      durationSeconds: "120",
+    },
+  },
+  {
+    id: "fleet-event-volume",
+    name: "Fleet Event Volume",
+    description:
+      "Alert when total event volume drops below 1000 events for 60 seconds.",
+    icon: Activity,
+    defaults: {
+      metric: "fleet_event_volume",
+      condition: "lt",
+      threshold: "1000",
+      durationSeconds: "60",
+    },
+  },
+  {
+    id: "node-load-imbalance",
+    name: "Node Load Imbalance",
+    description:
+      "Alert when any node deviates from fleet average by more than 30% for 2 minutes.",
+    icon: Scale,
+    defaults: {
+      metric: "node_load_imbalance",
+      condition: "gt",
+      threshold: "30",
+      durationSeconds: "120",
     },
   },
 ];
