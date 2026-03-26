@@ -1,0 +1,106 @@
+# High-Availability VectorFlow stack
+# Two VectorFlow instances behind nginx, with Redis for cross-instance coordination.
+#
+# Quick start:
+#   cp .env.example .env   # fill in secrets
+#   docker compose -f docker/server/docker-compose.ha.yml up -d
+#
+# Required env vars:
+#   POSTGRES_PASSWORD   — PostgreSQL password
+#   NEXTAUTH_SECRET     — NextAuth session signing secret
+#   NEXTAUTH_URL        — Public URL (e.g. http://localhost:3000)
+#
+# Optional:
+#   VF_VERSION          — VectorFlow image tag (default: latest)
+
+services:
+  postgres:
+    container_name: vectorflow-ha-postgres
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: vectorflow
+      POSTGRES_USER: vectorflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vectorflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    container_name: vectorflow-ha-redis
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  vf1:
+    container_name: vectorflow-ha-1
+    image: ghcr.io/terrifiedbug/vectorflow-server:${VF_VERSION:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://vectorflow:${POSTGRES_PASSWORD}@postgres:5432/vectorflow
+      REDIS_URL: redis://redis:6379
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      AUTH_TRUST_HOST: "true"
+    volumes:
+      - vfdata1:/app/.vectorflow
+      - backups:/backups
+    restart: unless-stopped
+
+  vf2:
+    container_name: vectorflow-ha-2
+    image: ghcr.io/terrifiedbug/vectorflow-server:${VF_VERSION:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://vectorflow:${POSTGRES_PASSWORD}@postgres:5432/vectorflow
+      REDIS_URL: redis://redis:6379
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      AUTH_TRUST_HOST: "true"
+    volumes:
+      - vfdata2:/app/.vectorflow
+      - backups:/backups
+    restart: unless-stopped
+
+  nginx:
+    container_name: vectorflow-ha-nginx
+    image: nginx:alpine
+    depends_on:
+      - vf1
+      - vf2
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./nginx-ha.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+    name: vectorflow-ha-pgdata
+  redisdata:
+    name: vectorflow-ha-redisdata
+  vfdata1:
+    name: vectorflow-ha-data1
+  vfdata2:
+    name: vectorflow-ha-data2
+  backups:
+    name: vectorflow-ha-backups
