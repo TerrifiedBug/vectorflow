@@ -1,6 +1,7 @@
 node_modules
 .next
 .git
+.gsd
 *.md
 docs
 .env*
