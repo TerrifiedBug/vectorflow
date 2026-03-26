@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
@@ -38,6 +38,8 @@ import { isVersionOlder } from "@/lib/version";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { FleetListToolbar } from "@/components/fleet/fleet-list-toolbar";
+import { ArrowUp, ArrowDown } from "lucide-react";
 
 const AGENT_REPO = "TerrifiedBug/vectorflow";
 
@@ -59,18 +61,75 @@ export default function FleetPage() {
 
   // Pick the first environment if none is selected yet
   const activeEnvId = selectedEnvironmentId || environments[0]?.id || "";
+
+  // --- Filter state ---
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [labelFilter, setLabelFilter] = useState<Record<string, string>>({});
+  type SortField = "name" | "status" | "lastSeen";
+  type SortDirection = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+
+  const handleSort = useCallback(
+    (field: SortField) => {
+      if (field === sortField) {
+        setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+      } else {
+        setSortField(field);
+        setSortDirection("asc");
+      }
+    },
+    [sortField],
+  );
+
   const nodesQuery = useQuery(
     trpc.fleet.list.queryOptions(
-      { environmentId: activeEnvId },
+      {
+        environmentId: activeEnvId,
+        ...(search ? { search } : {}),
+        ...(statusFilter.length > 0 ? { status: statusFilter } : {}),
+        ...(Object.keys(labelFilter).length > 0 ? { labels: labelFilter } : {}),
+      },
       { enabled: !!activeEnvId }
     )
   );
+
+  // Available labels for the toolbar
+  const labelsQuery = useQuery(
+    trpc.fleet.listLabels.queryOptions(
+      { environmentId: activeEnvId },
+      { enabled: !!activeEnvId },
+    ),
+  );
+  const availableLabels = labelsQuery.data ?? {};
 
   const isLoading =
     environmentsQuery.isLoading ||
     nodesQuery.isLoading;
 
-  const nodes = nodesQuery.data ?? [];
+  const rawNodes = nodesQuery.data ?? [];
+
+  // Sort client-side
+  const nodes = useMemo(() => {
+    const sorted = [...rawNodes];
+    sorted.sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case "name":
+          cmp = a.name.localeCompare(b.name);
+          break;
+        case "status":
+          cmp = a.status.localeCompare(b.status);
+          break;
+        case "lastSeen":
+          cmp = (new Date(a.lastSeen ?? 0)).getTime() - (new Date(b.lastSeen ?? 0)).getTime();
+          break;
+      }
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [rawNodes, sortField, sortDirection]);
 
   const versionQuery = useQuery(
     trpc.settings.checkVersion.queryOptions(undefined, {
@@ -126,29 +185,84 @@ export default function FleetPage() {
 
   return (
     <div className="space-y-6">
+      {/* Toolbar — shown when not loading and nodes exist or filters active */}
+      {!isLoading && (rawNodes.length > 0 || search || statusFilter.length > 0 || Object.keys(labelFilter).length > 0) && (
+        <FleetListToolbar
+          search={search}
+          onSearchChange={setSearch}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          labelFilter={labelFilter}
+          onLabelFilterChange={setLabelFilter}
+          availableLabels={availableLabels}
+        />
+      )}
+
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
-      ) : nodes.length === 0 ? (
+      ) : rawNodes.length === 0 && !search && statusFilter.length === 0 && Object.keys(labelFilter).length === 0 ? (
         <EmptyState
           title="No agents enrolled yet"
           description="Generate an enrollment token in the environment settings to connect agents."
         />
+      ) : nodes.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
+          <p className="text-muted-foreground">No agents match your filters</p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => {
+              setSearch("");
+              setStatusFilter([]);
+              setLabelFilter({});
+            }}
+          >
+            Clear filters
+          </Button>
+        </div>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
+              <TableHead>
+                <button
+                  type="button"
+                  onClick={() => handleSort("name")}
+                  className="inline-flex items-center gap-1 hover:text-foreground transition-colors -ml-1 px-1 rounded"
+                >
+                  Name
+                  {sortField === "name" && (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                </button>
+              </TableHead>
               <TableHead>Host:Port</TableHead>
               <TableHead>Environment</TableHead>
               <TableHead>Labels</TableHead>
               <TableHead>Version</TableHead>
               <TableHead>Agent Version</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Last Seen</TableHead>
+              <TableHead>
+                <button
+                  type="button"
+                  onClick={() => handleSort("status")}
+                  className="inline-flex items-center gap-1 hover:text-foreground transition-colors -ml-1 px-1 rounded"
+                >
+                  Status
+                  {sortField === "status" && (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                </button>
+              </TableHead>
+              <TableHead>
+                <button
+                  type="button"
+                  onClick={() => handleSort("lastSeen")}
+                  className="inline-flex items-center gap-1 hover:text-foreground transition-colors -ml-1 px-1 rounded"
+                >
+                  Last Seen
+                  {sortField === "lastSeen" && (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                </button>
+              </TableHead>
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>

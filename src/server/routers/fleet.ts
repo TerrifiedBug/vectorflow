@@ -9,17 +9,52 @@ import { pushRegistry } from "@/server/services/push-registry";
 
 export const fleetRouter = router({
   list: protectedProcedure
-    .input(z.object({ environmentId: z.string() }))
+    .input(
+      z.object({
+        environmentId: z.string(),
+        search: z.string().optional(),
+        status: z.array(z.string()).optional(),
+        labels: z.record(z.string(), z.string()).optional(),
+      }),
+    )
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const where: any = { environmentId: input.environmentId };
+
+      // Search by name or host
+      if (input.search) {
+        where.OR = [
+          { name: { contains: input.search, mode: "insensitive" } },
+          { host: { contains: input.search, mode: "insensitive" } },
+        ];
+      }
+
+      // Status filter
+      if (input.status && input.status.length > 0) {
+        where.status = { in: input.status };
+      }
+
       const nodes = await prisma.vectorNode.findMany({
-        where: { environmentId: input.environmentId },
+        where,
         include: {
           environment: { select: { id: true, name: true } },
         },
         orderBy: { createdAt: "desc" },
       });
-      return nodes.map((node) => ({
+
+      // Label filtering (post-query since labels are JSON)
+      let filtered = nodes;
+      if (input.labels && Object.keys(input.labels).length > 0) {
+        filtered = nodes.filter((node) => {
+          const nodeLabels = (node.labels as Record<string, string>) ?? {};
+          return Object.entries(input.labels!).every(
+            ([key, value]) => nodeLabels[key] === value,
+          );
+        });
+      }
+
+      return filtered.map((node) => ({
         ...node,
         pushConnected: pushRegistry.isConnected(node.id),
       }));
