@@ -13,6 +13,10 @@ export const DEPLOYMENT_ACTIONS = [
   "deployRequest.rejected",
   "deploy.cancel_request",
   "pipeline.rollback",
+  "deploy.staged_created",
+  "deploy.staged_broadened",
+  "deploy.staged_rolled_back",
+  "deploy.auto_rollback",
 ] as const;
 
 export const auditRouter = router({
@@ -236,6 +240,30 @@ export const auditRouter = router({
         : [];
       const pipelineMap = new Map(pipelines.map((p) => [p.id, p.name]));
 
+      // Collect unique node IDs from metadata.pushedNodeIds across all items
+      const allNodeIds = new Set<string>();
+      for (const item of items) {
+        const meta = item.metadata as Record<string, unknown> | null;
+        const pushed = meta?.pushedNodeIds;
+        if (Array.isArray(pushed)) {
+          for (const id of pushed) {
+            if (typeof id === "string") allNodeIds.add(id);
+          }
+        }
+      }
+
+      // Batch-fetch VectorNode names
+      const nodeMap = new Map<string, string>();
+      if (allNodeIds.size > 0) {
+        const nodes = await prisma.vectorNode.findMany({
+          where: { id: { in: [...allNodeIds] } },
+          select: { id: true, name: true },
+        });
+        for (const node of nodes) {
+          nodeMap.set(node.id, node.name);
+        }
+      }
+
       // Enrich items with pipeline name and extracted version info from metadata
       const enrichedItems = items.map((item) => {
         const meta = item.metadata as Record<string, unknown> | null;
@@ -250,6 +278,14 @@ export const auditRouter = router({
               ? metaInput.pipelineId
               : null;
 
+        // Resolve pushedNodeIds to human-readable names
+        const pushed = meta?.pushedNodeIds;
+        const pushedNodeNames: string[] | null = Array.isArray(pushed)
+          ? pushed
+              .filter((id): id is string => typeof id === "string")
+              .map((id) => nodeMap.get(id) ?? id)
+          : null;
+
         return {
           ...item,
           pipelineName: itemPipelineId ? pipelineMap.get(itemPipelineId) ?? null : null,
@@ -260,6 +296,7 @@ export const auditRouter = router({
               ? String(metaInput.sourceVersionId)
               : null,
           changelog: typeof metaInput?.changelog === "string" ? metaInput.changelog : null,
+          pushedNodeNames,
         };
       });
 
@@ -411,6 +448,30 @@ export const auditRouter = router({
         : [];
       const pipelineMap = new Map(pipelines.map((p) => [p.id, p.name]));
 
+      // Collect unique node IDs from metadata.pushedNodeIds across all items
+      const exportNodeIds = new Set<string>();
+      for (const item of items) {
+        const meta = item.metadata as Record<string, unknown> | null;
+        const pushed = meta?.pushedNodeIds;
+        if (Array.isArray(pushed)) {
+          for (const id of pushed) {
+            if (typeof id === "string") exportNodeIds.add(id);
+          }
+        }
+      }
+
+      // Batch-fetch VectorNode names
+      const exportNodeMap = new Map<string, string>();
+      if (exportNodeIds.size > 0) {
+        const nodes = await prisma.vectorNode.findMany({
+          where: { id: { in: [...exportNodeIds] } },
+          select: { id: true, name: true },
+        });
+        for (const node of nodes) {
+          exportNodeMap.set(node.id, node.name);
+        }
+      }
+
       // Enrich items with pipeline name and extracted version info from metadata
       const enrichedItems = items.map((item) => {
         const meta = item.metadata as Record<string, unknown> | null;
@@ -423,6 +484,14 @@ export const auditRouter = router({
               ? metaInput.pipelineId
               : null;
 
+        // Resolve pushedNodeIds to human-readable names
+        const pushed = meta?.pushedNodeIds;
+        const pushedNodeNames: string[] | null = Array.isArray(pushed)
+          ? pushed
+              .filter((id): id is string => typeof id === "string")
+              .map((id) => exportNodeMap.get(id) ?? id)
+          : null;
+
         return {
           ...item,
           pipelineName: itemPipelineId ? pipelineMap.get(itemPipelineId) ?? null : null,
@@ -433,6 +502,7 @@ export const auditRouter = router({
               ? String(metaInput.sourceVersionId)
               : null,
           changelog: typeof metaInput?.changelog === "string" ? metaInput.changelog : null,
+          pushedNodeNames,
         };
       });
 

@@ -459,3 +459,150 @@ describe("audit.exportDeployments", () => {
     expect(result.items[0].changelog).toBe("Staged deploy");
   });
 });
+
+// ─── DEPLOYMENT_ACTIONS constant ────────────────────────────────────────────
+
+describe("DEPLOYMENT_ACTIONS", () => {
+  it("includes staged rollout and auto-rollback actions", () => {
+    expect(DEPLOYMENT_ACTIONS).toContain("deploy.staged_created");
+    expect(DEPLOYMENT_ACTIONS).toContain("deploy.staged_broadened");
+    expect(DEPLOYMENT_ACTIONS).toContain("deploy.staged_rolled_back");
+    expect(DEPLOYMENT_ACTIONS).toContain("deploy.auto_rollback");
+  });
+
+  it("still includes all original deployment actions", () => {
+    expect(DEPLOYMENT_ACTIONS).toContain("deploy.agent");
+    expect(DEPLOYMENT_ACTIONS).toContain("deploy.from_version");
+    expect(DEPLOYMENT_ACTIONS).toContain("deploy.undeploy");
+    expect(DEPLOYMENT_ACTIONS).toContain("deploy.request_submitted");
+    expect(DEPLOYMENT_ACTIONS).toContain("deployRequest.approved");
+    expect(DEPLOYMENT_ACTIONS).toContain("deployRequest.deployed");
+    expect(DEPLOYMENT_ACTIONS).toContain("deployRequest.rejected");
+    expect(DEPLOYMENT_ACTIONS).toContain("deploy.cancel_request");
+    expect(DEPLOYMENT_ACTIONS).toContain("pipeline.rollback");
+  });
+});
+
+// ─── pushedNodeIds enrichment ───────────────────────────────────────────────
+
+describe("audit.deployments pushedNodeIds enrichment", () => {
+  it("resolves pushedNodeIds from metadata to node names", async () => {
+    const entry = makeAuditEntry({
+      action: "deploy.agent",
+      metadata: {
+        timestamp: "2025-01-01T00:00:00Z",
+        input: { pipelineId: "pipeline-1", changelog: "Deploy" },
+        pushedNodeIds: ["node-1", "node-2"],
+      },
+    });
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([entry] as never);
+    prismaMock.pipeline.findMany.mockResolvedValueOnce([
+      { id: "pipeline-1", name: "My Pipeline" },
+    ] as never);
+    prismaMock.vectorNode.findMany.mockResolvedValueOnce([
+      { id: "node-1", name: "us-east-1-prod" },
+      { id: "node-2", name: "eu-west-1-prod" },
+    ] as never);
+
+    const result = await caller.deployments({});
+
+    expect(result.items[0].pushedNodeNames).toEqual(["us-east-1-prod", "eu-west-1-prod"]);
+  });
+
+  it("falls back to node ID when node name is not found", async () => {
+    const entry = makeAuditEntry({
+      action: "deploy.agent",
+      metadata: {
+        timestamp: "2025-01-01T00:00:00Z",
+        input: { pipelineId: "pipeline-1", changelog: "Deploy" },
+        pushedNodeIds: ["node-1", "node-deleted"],
+      },
+    });
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([entry] as never);
+    prismaMock.pipeline.findMany.mockResolvedValueOnce([
+      { id: "pipeline-1", name: "My Pipeline" },
+    ] as never);
+    prismaMock.vectorNode.findMany.mockResolvedValueOnce([
+      { id: "node-1", name: "us-east-1-prod" },
+    ] as never);
+
+    const result = await caller.deployments({});
+
+    expect(result.items[0].pushedNodeNames).toEqual(["us-east-1-prod", "node-deleted"]);
+  });
+
+  it("returns null pushedNodeNames when metadata has no pushedNodeIds", async () => {
+    const entry = makeAuditEntry({
+      action: "deploy.agent",
+      metadata: {
+        timestamp: "2025-01-01T00:00:00Z",
+        input: { pipelineId: "pipeline-1", changelog: "Deploy" },
+      },
+    });
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([entry] as never);
+    prismaMock.pipeline.findMany.mockResolvedValueOnce([
+      { id: "pipeline-1", name: "My Pipeline" },
+    ] as never);
+
+    const result = await caller.deployments({});
+
+    expect(result.items[0].pushedNodeNames).toBeNull();
+    expect(prismaMock.vectorNode.findMany).not.toHaveBeenCalled();
+  });
+
+  it("does not query VectorNode when no items have pushedNodeIds", async () => {
+    const entry = makeAuditEntry({ metadata: null });
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([entry] as never);
+    prismaMock.pipeline.findMany.mockResolvedValueOnce([
+      { id: "pipeline-1", name: "My Pipeline" },
+    ] as never);
+
+    await caller.deployments({});
+
+    expect(prismaMock.vectorNode.findMany).not.toHaveBeenCalled();
+  });
+
+  it("batch-resolves node IDs across multiple audit entries", async () => {
+    const entry1 = makeAuditEntry({
+      id: "audit-1",
+      action: "deploy.agent",
+      metadata: {
+        timestamp: "2025-01-01T00:00:00Z",
+        input: { pipelineId: "pipeline-1", changelog: "Deploy 1" },
+        pushedNodeIds: ["node-1"],
+      },
+    });
+    const entry2 = makeAuditEntry({
+      id: "audit-2",
+      action: "deploy.from_version",
+      metadata: {
+        timestamp: "2025-01-02T00:00:00Z",
+        input: { pipelineId: "pipeline-1", changelog: "Deploy 2" },
+        pushedNodeIds: ["node-2", "node-3"],
+      },
+    });
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([entry1, entry2] as never);
+    prismaMock.pipeline.findMany.mockResolvedValueOnce([
+      { id: "pipeline-1", name: "My Pipeline" },
+    ] as never);
+    prismaMock.vectorNode.findMany.mockResolvedValueOnce([
+      { id: "node-1", name: "node-alpha" },
+      { id: "node-2", name: "node-beta" },
+      { id: "node-3", name: "node-gamma" },
+    ] as never);
+
+    const result = await caller.deployments({});
+
+    // Should batch all node IDs into a single query
+    expect(prismaMock.vectorNode.findMany).toHaveBeenCalledTimes(1);
+    const nodeQuery = prismaMock.vectorNode.findMany.mock.calls[0][0] as Record<string, unknown>;
+    const nodeWhere = nodeQuery.where as { id: { in: string[] } };
+    expect(nodeWhere.id.in).toHaveLength(3);
+    expect(nodeWhere.id.in).toContain("node-1");
+    expect(nodeWhere.id.in).toContain("node-2");
+    expect(nodeWhere.id.in).toContain("node-3");
+
+    expect(result.items[0].pushedNodeNames).toEqual(["node-alpha"]);
+    expect(result.items[1].pushedNodeNames).toEqual(["node-beta", "node-gamma"]);
+  });
+});
