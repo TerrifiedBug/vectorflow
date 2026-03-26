@@ -540,6 +540,7 @@ export async function listPipelinesForEnvironment(environmentId: string) {
           eventsDiscarded: true,
           bytesIn: true,
           bytesOut: true,
+          uptimeSeconds: true,
         },
       },
       nodes: {
@@ -625,6 +626,12 @@ export async function listPipelinesForEnvironment(environmentId: string) {
         .map((n) => n.sharedComponent!.name),
       upstreamDepCount: p._count.upstreamDeps,
       downstreamDepCount: p._count.downstreamDeps,
+      minUptimeSeconds: (() => {
+        const runningUptimes = p.nodeStatuses
+          .filter((s) => s.status === "RUNNING" && s.uptimeSeconds != null)
+          .map((s) => s.uptimeSeconds!);
+        return runningUptimes.length > 0 ? Math.min(...runningUptimes) : null;
+      })(),
     };
   }));
 }
