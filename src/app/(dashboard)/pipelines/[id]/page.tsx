@@ -202,14 +202,25 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     ),
   );
 
-  // Lightweight check for recent errors (for toolbar badge) — 24h window
-  const [errorCheckSince] = useState(
-    () => new Date(Date.now() - 24 * 60 * 60 * 1000),
-  );
+  // Compute session start from minimum uptime across all running nodes
+  const sessionStart = useMemo(() => {
+    const statuses = pipelineQuery.data?.nodeStatuses;
+    if (!statuses || statuses.length === 0) return null;
+    const uptimes = statuses
+      .filter((s: { status: string; uptimeSeconds: number | null }) =>
+        s.status === "RUNNING" && s.uptimeSeconds != null
+      )
+      .map((s: { uptimeSeconds: number | null }) => s.uptimeSeconds!);
+    if (uptimes.length === 0) return null;
+    const minUptime = Math.min(...uptimes);
+    return new Date(Date.now() - minUptime * 1000);
+  }, [pipelineQuery.data?.nodeStatuses]);
+
+  // Lightweight check for recent errors (for toolbar badge) — scoped to current session
   const recentErrorsQuery = useQuery(
     trpc.pipeline.logs.queryOptions(
-      { pipelineId, levels: ["ERROR"], limit: 1, since: errorCheckSince },
-      { enabled: !!isDeployed && !logsOpen, refetchInterval: 10000 },
+      { pipelineId, levels: ["ERROR"], limit: 1, since: sessionStart! },
+      { enabled: !!isDeployed && !logsOpen && !!sessionStart, refetchInterval: 10000 },
     ),
   );
   const hasRecentErrors = (recentErrorsQuery.data?.items?.length ?? 0) > 0;
