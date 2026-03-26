@@ -200,18 +200,20 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     ),
   );
 
-  // Compute session start from minimum uptime across all running nodes
-  const sessionStart = useMemo(() => {
+  // Compute session start from minimum uptime across all running nodes.
+  // We derive it inside useEffect (not useMemo) because Date.now() is impure.
+  const [sessionStart, setSessionStart] = useState<Date | null>(null);
+  useEffect(() => {
     const statuses = pipelineQuery.data?.nodeStatuses;
-    if (!statuses || statuses.length === 0) return null;
+    if (!statuses || statuses.length === 0) { setSessionStart(null); return; }
     const uptimes = statuses
       .filter((s: { status: string; uptimeSeconds: number | null }) =>
         s.status === "RUNNING" && s.uptimeSeconds != null
       )
       .map((s: { uptimeSeconds: number | null }) => s.uptimeSeconds!);
-    if (uptimes.length === 0) return null;
+    if (uptimes.length === 0) { setSessionStart(null); return; }
     const minUptime = Math.min(...uptimes);
-    return new Date(Date.now() - minUptime * 1000);
+    setSessionStart(new Date(Date.now() - minUptime * 1000));
   }, [pipelineQuery.data?.nodeStatuses]);
 
   // Lightweight check for recent errors (for toolbar badge) — scoped to current session
