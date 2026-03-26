@@ -37,7 +37,7 @@ export class LeaderElection {
   private readonly redis: Redis | null;
   private readonly leaderKey = "vectorflow:leader";
   private readonly ttlSeconds: number;
-  private readonly renewIntervalMs: number;
+  readonly renewIntervalMs: number;
 
   private _isLeader = false;
   private renewTimer: ReturnType<typeof setInterval> | null = null;
