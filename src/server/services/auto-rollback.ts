@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { deployFromVersion } from "@/server/services/pipeline-version";
 import { fireEventAlert } from "@/server/services/event-alerts";
-import { sseRegistry } from "@/server/services/sse-registry";
+import { broadcastSSE } from "@/server/services/sse-broadcast";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -211,7 +211,7 @@ export class AutoRollbackService {
         });
 
         // Broadcast SSE event
-        sseRegistry.broadcast(
+        broadcastSSE(
           {
             type: "pipeline_status",
             pipelineId: pipeline.id,

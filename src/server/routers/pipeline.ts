@@ -21,7 +21,7 @@ import { deployAgent, undeployAgent } from "@/server/services/deploy-agent";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
 import { pushRegistry } from "@/server/services/push-registry";
-import { sseRegistry } from "@/server/services/sse-registry";
+import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { fireEventAlert } from "@/server/services/event-alerts";
 
 /** Pipeline names must be safe identifiers */
@@ -586,7 +586,7 @@ export const pipelineRouter = router({
             }
           }
 
-          sseRegistry.broadcast({
+          broadcastSSE({
             type: "status_change",
             nodeId: "",
             fromStatus: "",
