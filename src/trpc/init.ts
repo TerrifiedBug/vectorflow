@@ -155,6 +155,18 @@ export const withTeamAccess = (minRole: Role) =>
       teamId = pipeline.environment.teamId ?? undefined;
     }
 
+    // Resolve teamId from pipelineIds array (batch endpoints — uses first ID for team resolution)
+    if (!teamId && Array.isArray(rawInput?.pipelineIds) && (rawInput.pipelineIds as string[]).length > 0) {
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: (rawInput.pipelineIds as string[])[0] },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (!pipeline) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+      teamId = pipeline.environment.teamId ?? undefined;
+    }
+
     // Fallback: try input.id as various entity types
     if (!teamId && rawInput?.id) {
       const pipeline = await prisma.pipeline.findUnique({
@@ -213,6 +225,16 @@ export const withTeamAccess = (minRole: Role) =>
       });
       if (alertWebhook) {
         teamId = alertWebhook.environment.teamId ?? undefined;
+      }
+    }
+
+    if (!teamId && rawInput?.id) {
+      const pipelineGroup = await prisma.pipelineGroup.findUnique({
+        where: { id: rawInput.id as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (pipelineGroup) {
+        teamId = pipelineGroup.environment.teamId ?? undefined;
       }
     }
 
