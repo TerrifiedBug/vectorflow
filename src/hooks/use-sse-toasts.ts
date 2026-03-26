@@ -65,6 +65,44 @@ export function getToastConfig(event: SSEEvent): ToastConfig {
     return null;
   }
 
+  if (event.type === "pipeline_status") {
+    const { action, pipelineId } = event;
+    switch (action) {
+      case "canary_deployed":
+        return {
+          type: "info",
+          message: "Canary deploy started",
+          dedupeKey: `pipeline_status:${pipelineId}:${action}`,
+        };
+      case "canary_health_check_ready":
+        return {
+          type: "info",
+          message: "Canary health check window expired — review canary health",
+          dedupeKey: `pipeline_status:${pipelineId}:${action}`,
+        };
+      case "canary_broadened":
+        return {
+          type: "success",
+          message: "Canary broadened to all nodes",
+          dedupeKey: `pipeline_status:${pipelineId}:${action}`,
+        };
+      case "canary_rolled_back":
+        return {
+          type: "warning",
+          message: "Canary deploy rolled back",
+          dedupeKey: `pipeline_status:${pipelineId}:${action}`,
+        };
+      case "auto_rollback":
+        return {
+          type: "warning",
+          message: event.message || "Auto-rollback triggered",
+          dedupeKey: `pipeline_status:${pipelineId}:${action}`,
+        };
+      default:
+        return null;
+    }
+  }
+
   // metric_update, log_entry, etc. — no toast
   return null;
 }
@@ -138,6 +176,7 @@ export function useSSEToasts(): void {
     const subIds = [
       subscribe("status_change", handler),
       subscribe("fleet_status", handler),
+      subscribe("pipeline_status", handler),
     ];
 
     // Periodic cleanup of expired dedup entries
