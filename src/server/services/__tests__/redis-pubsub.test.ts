@@ -12,6 +12,7 @@ const {
   mockSubscriberOn,
   mockBroadcast,
   mockMergeSample,
+  mockPushSend,
 } = vi.hoisted(() => ({
   mockPublish: vi.fn().mockResolvedValue(1),
   mockSubscribe: vi.fn().mockResolvedValue(undefined),
@@ -21,6 +22,7 @@ const {
   mockSubscriberOn: vi.fn(),
   mockBroadcast: vi.fn(),
   mockMergeSample: vi.fn(),
+  mockPushSend: vi.fn(),
 }));
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
@@ -66,6 +68,12 @@ vi.mock("@/server/services/metric-store", () => ({
   },
 }));
 
+vi.mock("@/server/services/push-registry", () => ({
+  pushRegistry: {
+    send: mockPushSend,
+  },
+}));
+
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
 import {
@@ -73,11 +81,13 @@ import {
   shutdownPubSub,
   publishSSE,
   publishMetrics,
+  publishPush,
   _handleMessageForTest as handleMessage,
 } from "@/server/services/redis-pubsub";
 import { getRedis } from "@/lib/redis";
 import type { SSEEvent, MetricUpdateEvent } from "@/lib/sse/types";
 import type { MetricSample } from "@/server/services/metric-store";
+import type { PushMessage } from "@/server/services/push-types";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -236,6 +246,45 @@ describe("redis-pubsub", () => {
     });
   });
 
+  // ── publishPush ─────────────────────────────────────────────────────────
+
+  describe("publishPush", () => {
+    it("publishes correct envelope to Redis", () => {
+      mockRedisClient = createMockRedis();
+      vi.mocked(getRedis).mockReturnValue(mockRedisClient as never);
+
+      const message: PushMessage = {
+        type: "config_changed",
+        reason: "deploy",
+      };
+
+      publishPush("node-42", message);
+
+      expect(mockPublish).toHaveBeenCalledOnce();
+      const [channel, payload] = mockPublish.mock.calls[0];
+      expect(channel).toBe("vectorflow:events");
+      const parsed = JSON.parse(payload);
+      expect(parsed).toEqual({
+        type: "push",
+        originInstanceId: "instance-A",
+        payload: { nodeId: "node-42", message },
+      });
+    });
+
+    it("is a no-op when Redis is unavailable", () => {
+      vi.mocked(getRedis).mockReturnValue(null);
+
+      const message: PushMessage = {
+        type: "config_changed",
+        reason: "deploy",
+      };
+
+      publishPush("node-42", message);
+
+      expect(mockPublish).not.toHaveBeenCalled();
+    });
+  });
+
   // ── Subscriber message handler ──────────────────────────────────────────
 
   describe("subscriber message handler", () => {
@@ -332,6 +381,41 @@ describe("redis-pubsub", () => {
       expect(console.warn).toHaveBeenCalledWith(
         expect.stringContaining("Malformed message"),
       );
+    });
+
+    it("delivers push messages to pushRegistry.send() with correct nodeId and message", () => {
+      const message: PushMessage = {
+        type: "config_changed",
+        pipelineId: "pipe-1",
+        reason: "deploy",
+      };
+
+      const envelope = {
+        type: "push",
+        originInstanceId: "instance-B",
+        payload: { nodeId: "node-42", message },
+      };
+
+      handleMessage(JSON.stringify(envelope));
+
+      expect(mockPushSend).toHaveBeenCalledWith("node-42", message);
+    });
+
+    it("filters self-published push messages (echo prevention)", () => {
+      const message: PushMessage = {
+        type: "config_changed",
+        reason: "deploy",
+      };
+
+      const envelope = {
+        type: "push",
+        originInstanceId: "instance-A", // same as our instance
+        payload: { nodeId: "node-42", message },
+      };
+
+      handleMessage(JSON.stringify(envelope));
+
+      expect(mockPushSend).not.toHaveBeenCalled();
     });
   });
 

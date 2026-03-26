@@ -1,9 +1,11 @@
 import type Redis from "ioredis";
 import type { SSEEvent, MetricUpdateEvent } from "@/lib/sse/types";
+import type { PushMessage } from "@/server/services/push-types";
 import { getRedis } from "@/lib/redis";
 import { leaderElection } from "@/server/services/leader-election";
 import { sseRegistry } from "@/server/services/sse-registry";
 import { metricStore } from "@/server/services/metric-store";
+import { pushRegistry } from "@/server/services/push-registry";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -11,12 +13,24 @@ const CHANNEL = "vectorflow:events";
 
 // ─── Envelope Type ──────────────────────────────────────────────────────────
 
-export interface PubSubEnvelope {
-  type: "sse" | "metric";
-  originInstanceId: string;
-  environmentId: string;
-  payload: SSEEvent | MetricUpdateEvent[];
-}
+export type PubSubEnvelope =
+  | {
+      type: "sse";
+      originInstanceId: string;
+      environmentId: string;
+      payload: SSEEvent;
+    }
+  | {
+      type: "metric";
+      originInstanceId: string;
+      environmentId: string;
+      payload: MetricUpdateEvent[];
+    }
+  | {
+      type: "push";
+      originInstanceId: string;
+      payload: { nodeId: string; message: PushMessage };
+    };
 
 // ─── Module State ───────────────────────────────────────────────────────────
 
@@ -117,6 +131,25 @@ export function publishMetrics(
   });
 }
 
+/**
+ * Publish a push message to all instances via Redis pub/sub.
+ * Fire-and-forget with `.catch()` logging. No-op when Redis unavailable.
+ */
+export function publishPush(nodeId: string, message: PushMessage): void {
+  const redis = getRedis();
+  if (!redis) return;
+
+  const envelope: PubSubEnvelope = {
+    type: "push",
+    originInstanceId: leaderElection.instanceId,
+    payload: { nodeId, message },
+  };
+
+  redis.publish(CHANNEL, JSON.stringify(envelope)).catch((err: Error) => {
+    console.error(`[redis-pubsub] Publish push error: ${err.message}`);
+  });
+}
+
 // ─── Subscriber Message Handler ─────────────────────────────────────────────
 
 function handleMessage(message: string): void {
@@ -153,6 +186,10 @@ function handleMessage(message: string): void {
       );
       sseRegistry.broadcast(event, envelope.environmentId);
     }
+  } else if (envelope.type === "push") {
+    // Deliver push message to the target agent if connected locally
+    const { nodeId, message } = envelope.payload;
+    pushRegistry.send(nodeId, message);
   }
 }
 
