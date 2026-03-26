@@ -9,12 +9,29 @@ import Link from "next/link";
 import { StatusDot } from "@/components/ui/status-dot";
 import { pipelineStatusVariant, pipelineStatusLabel } from "@/lib/status";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
+import { formatEventsRate } from "@/lib/format";
+import type { TimeRange } from "@/server/services/fleet-data";
+
+interface MatrixCellThroughput {
+  pipelineId: string;
+  nodeId: string;
+  eventsPerSec: number;
+  bytesPerSec: number;
+  lossRate: number;
+}
 
 interface DeploymentMatrixProps {
   environmentId: string;
+  range?: TimeRange;
+  lossThreshold?: number;
+  throughputData?: MatrixCellThroughput[];
 }
 
-export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
+export function DeploymentMatrix({
+  environmentId,
+  lossThreshold = 0.05,
+  throughputData,
+}: DeploymentMatrixProps) {
   const trpc = useTRPC();
   const polling = usePollingInterval(15_000);
 
@@ -47,6 +64,14 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
 
   if (nodes.length === 0) {
     return null;
+  }
+
+  // Index throughput data by pipelineId:nodeId for O(1) lookup
+  const throughputMap = new Map<string, MatrixCellThroughput>();
+  if (throughputData) {
+    for (const cell of throughputData) {
+      throughputMap.set(`${cell.pipelineId}:${cell.nodeId}`, cell);
+    }
   }
 
   return (
@@ -93,6 +118,12 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
                 const ps = node.pipelineStatuses.find(
                   (s) => s.pipelineId === pipeline.id
                 );
+                const cellThroughput = throughputMap.get(
+                  `${pipeline.id}:${node.id}`
+                );
+                const hasLoss =
+                  cellThroughput != null &&
+                  cellThroughput.lossRate > lossThreshold;
 
                 if (!ps) {
                   return (
@@ -107,7 +138,16 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
                 const isOutdated = ps.version < pipeline.latestVersion;
 
                 return (
-                  <td key={node.id} className={`px-3 py-2 text-center ${node.maintenanceMode ? "opacity-30" : ""}`}>
+                  <td
+                    key={node.id}
+                    className={`px-3 py-2 text-center ${
+                      node.maintenanceMode ? "opacity-30" : ""
+                    } ${
+                      hasLoss
+                        ? "bg-red-50/60 dark:bg-red-950/20 border-l border-r border-red-200/50 dark:border-red-800/30"
+                        : ""
+                    }`}
+                  >
                     <div className="flex flex-col items-center gap-0.5">
                       {isOutdated ? (
                         <div
@@ -128,6 +168,27 @@ export function DeploymentMatrix({ environmentId }: DeploymentMatrixProps) {
                           title={pipelineStatusLabel(ps.status)}
                         >
                           <StatusDot variant={pipelineStatusVariant(ps.status)} />
+                        </div>
+                      )}
+                      {cellThroughput != null && (
+                        <div
+                          className={`text-[10px] tabular-nums ${
+                            hasLoss
+                              ? "text-red-600 dark:text-red-400 font-medium"
+                              : "text-muted-foreground"
+                          }`}
+                          title={
+                            hasLoss
+                              ? `${(cellThroughput.lossRate * 100).toFixed(1)}% data loss`
+                              : undefined
+                          }
+                        >
+                          {formatEventsRate(cellThroughput.eventsPerSec)}
+                          {hasLoss && (
+                            <span className="ml-0.5">
+                              ⚠
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>

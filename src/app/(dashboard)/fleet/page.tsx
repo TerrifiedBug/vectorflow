@@ -185,6 +185,18 @@ export default function FleetPage() {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center gap-1">
+        <Link
+          href="/fleet/overview"
+          className="rounded-full px-3 h-7 text-xs font-medium border transition-colors bg-transparent text-muted-foreground border-border hover:bg-muted inline-flex items-center"
+        >
+          Overview
+        </Link>
+        <span className="rounded-full px-3 h-7 text-xs font-medium border transition-colors bg-accent text-accent-foreground border-transparent inline-flex items-center">
+          Nodes
+        </span>
+      </div>
+
       {/* Toolbar — shown when not loading and nodes exist or filters active */}
       {!isLoading && (rawNodes.length > 0 || search || statusFilter.length > 0 || Object.keys(labelFilter).length > 0) && (
         <FleetListToolbar
