@@ -214,6 +214,7 @@ Always use strong, random values for `NEXTAUTH_SECRET` and `POSTGRES_PASSWORD`. 
 | `DATABASE_URL` | Yes | -- | PostgreSQL connection string (e.g., `postgresql://user:pass@host:5432/vectorflow`) |
 | `NEXTAUTH_SECRET` | Yes | -- | Session encryption key. Must be 32+ characters. Generate with `openssl rand -base64 32` |
 | `NEXTAUTH_URL` | No | -- | Canonical server URL (e.g., `https://vectorflow.example.com`). When unset, inferred from the `Host` header |
+| `REDIS_URL` | No | -- | Redis connection string for HA mode (e.g., `redis://redis:6379`). Enables leader election, cross-instance SSE broadcast, and metric distribution. When unset, VectorFlow runs as a single instance with no behavioral change |
 | `PORT` | No | `3000` | HTTP listen port |
 | `NODE_ENV` | No | `production` | Set automatically in Docker. Use `production` for standalone deployments |
 
@@ -294,3 +295,69 @@ For deployments managing more than 50 agents, consider tuning PostgreSQL:
 | Large (50+ agents) | 4 cores | 4 GB | 50 GB+ |
 
 These are minimums. The server is lightweight -- most resources go to PostgreSQL.
+
+## High Availability
+
+VectorFlow supports running two or more instances behind a load balancer for high availability. When `REDIS_URL` is set, instances coordinate through Redis to provide:
+
+- **Leader election** — only one instance runs singleton services (backup scheduler, alert evaluator, metric aggregation), with automatic failover if the leader goes down
+- **Cross-instance SSE broadcast** — all SSE connections receive all fleet events regardless of which instance the client is connected to
+- **Metric distribution** — heartbeat metrics processed by any instance are visible on all instances
+- **Agent push relay** — configuration pushes reach agents connected to any instance
+
+When `REDIS_URL` is not set, VectorFlow runs in single-instance mode with no behavioral change.
+
+### Prerequisites
+
+- **Redis 7+** (included in the HA Compose file)
+- All instances must share the same `DATABASE_URL`, `NEXTAUTH_SECRET`, and `REDIS_URL`
+
+### Quick start
+
+Download the HA Compose file and nginx config:
+
+```bash
+mkdir -p vectorflow && cd vectorflow
+
+curl -sSfL -o docker-compose.ha.yml \
+  https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/docker/server/docker-compose.ha.yml
+
+curl -sSfL -o nginx-ha.conf \
+  https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/docker/server/nginx-ha.conf
+```
+
+Create your `.env` file:
+
+```bash
+cat > .env << 'EOF'
+POSTGRES_PASSWORD=<random-32-char-string>
+NEXTAUTH_SECRET=<random-32-char-string>
+NEXTAUTH_URL=http://localhost:3000
+EOF
+```
+
+{% hint style="info" %}
+`REDIS_URL` is set automatically inside the Compose file — you do not need to add it to `.env`.
+{% endhint %}
+
+Start the stack:
+
+```bash
+docker compose -f docker-compose.ha.yml up -d
+```
+
+This starts five services: PostgreSQL, Redis, two VectorFlow instances (`vf1` and `vf2`), and an nginx reverse proxy on port 3000.
+
+### How it works
+
+On startup, instances compete for a Redis-based leader lock. The winner becomes the **leader** and runs singleton services (backup scheduler, alert evaluator, metric aggregation). The other instance runs as a **follower**, serving HTTP traffic and API requests but not running singletons. If the leader goes down, a follower automatically takes over.
+
+Both instances sit behind nginx, which round-robins HTTP requests across them. SSE connections stay open to whichever instance the client connects to, and Redis pub/sub ensures all instances broadcast the same events.
+
+{% hint style="warning" %}
+`NEXTAUTH_SECRET` must be identical across all instances — sessions signed by one instance must be verifiable by the other. The HA Compose file handles this automatically by sharing the same environment variable.
+{% endhint %}
+
+### Scaling beyond two instances
+
+To add more instances, duplicate a `vf` service block in `docker-compose.ha.yml` and add the new service name to the nginx `upstream` block in `nginx-ha.conf`. Leader election and Redis coordination scale to any number of instances.
