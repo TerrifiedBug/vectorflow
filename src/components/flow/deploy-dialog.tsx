@@ -30,6 +30,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ConfigDiff } from "@/components/ui/config-diff";
@@ -49,6 +51,8 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [labelPopoverOpen, setLabelPopoverOpen] = useState(false);
   const [rejectNote, setRejectNote] = useState("");
+  const [stagedDeploy, setStagedDeploy] = useState(false);
+  const [healthCheckWindow, setHealthCheckWindow] = useState(5);
 
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
@@ -234,6 +238,23 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     })
   );
 
+  const stagedDeployMutation = useMutation(
+    trpc.stagedRollout.create.mutationOptions({
+      onSuccess: () => {
+        setDeploying(false);
+        queryClient.invalidateQueries();
+        toast.success("Canary deploy started", {
+          description: `Deploying to ${matchingNodeCount} canary node${matchingNodeCount !== 1 ? "s" : ""}`,
+        });
+        onOpenChange(false);
+      },
+      onError: (err) => {
+        setDeploying(false);
+        toast.error("Canary deploy failed", { description: err.message });
+      },
+    })
+  );
+
   const env = envQuery.data;
   const preview = previewQuery.data;
   const userRole = roleQuery.data?.role;
@@ -272,6 +293,15 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
   function handleDeploy() {
     setDeploying(true);
+    if (stagedDeploy) {
+      stagedDeployMutation.mutate({
+        pipelineId,
+        canarySelector: nodeSelector,
+        healthCheckWindowMinutes: healthCheckWindow,
+        changelog: changelog.trim(),
+      });
+      return;
+    }
     agentMutation.mutate({
       pipelineId,
       changelog: changelog.trim(),
@@ -280,7 +310,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   }
 
   return (
-    <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) { setChangelog(""); setSelectedLabels([]); setRejectNote(""); } onOpenChange(val); }}>
+    <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) { setChangelog(""); setSelectedLabels([]); setRejectNote(""); setStagedDeploy(false); setHealthCheckWindow(5); } onOpenChange(val); }}>
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -544,6 +574,44 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 <p className="text-xs text-muted-foreground">
                   {matchingNodeCount} of {totalNodeCount} node{totalNodeCount !== 1 ? "s" : ""} match
                 </p>
+
+                {/* Staged canary deploy toggle */}
+                {selectedLabels.length > 0 && (
+                  <div className="space-y-2 rounded-md border p-3">
+                    <div className="flex items-center justify-between">
+                      <label htmlFor="staged-deploy" className="text-xs font-medium">
+                        Staged Canary Deploy
+                      </label>
+                      <Switch
+                        id="staged-deploy"
+                        size="sm"
+                        checked={stagedDeploy}
+                        onCheckedChange={setStagedDeploy}
+                      />
+                    </div>
+                    {stagedDeploy && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <label htmlFor="health-window" className="text-xs text-muted-foreground whitespace-nowrap">
+                            Health Check Window (min)
+                          </label>
+                          <Input
+                            id="health-window"
+                            type="number"
+                            min={1}
+                            max={60}
+                            value={healthCheckWindow}
+                            onChange={(e) => setHealthCheckWindow(Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
+                            className="h-7 w-16 text-xs"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {matchingNodeCount} canary node{matchingNodeCount !== 1 ? "s" : ""}, {totalNodeCount - matchingNodeCount} remaining
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -662,7 +730,9 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                   disabled={isLoading || !isValid || deploying || !changelog.trim()}
                 >
                   {deploying ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{requiresApproval ? "Requesting..." : "Deploying..."}</>
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{stagedDeploy ? "Deploying Canary..." : requiresApproval ? "Requesting..." : "Deploying..."}</>
+                  ) : stagedDeploy ? (
+                    <><Rocket className="mr-2 h-4 w-4" />Deploy to Canary Nodes</>
                   ) : requiresApproval ? (
                     <><Clock className="mr-2 h-4 w-4" />Request Deploy</>
                   ) : (

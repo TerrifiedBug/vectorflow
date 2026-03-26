@@ -236,12 +236,15 @@ export const pipelineRouter = router({
         ).optional(),
         enrichMetadata: z.boolean().optional(),
         groupId: z.string().nullable().optional(),
+        autoRollbackEnabled: z.boolean().optional(),
+        autoRollbackThreshold: z.number().positive().max(100).optional(),
+        autoRollbackWindowMinutes: z.number().int().positive().max(60).optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.updated", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
-      const { id, tags, enrichMetadata, groupId, ...data } = input;
+      const { id, tags, enrichMetadata, groupId, autoRollbackEnabled, autoRollbackThreshold, autoRollbackWindowMinutes, ...data } = input;
       const existing = await prisma.pipeline.findUnique({
         where: { id },
         select: { id: true, tags: true, environmentId: true, environment: { select: { teamId: true } } },
@@ -298,6 +301,9 @@ export const pipelineRouter = router({
           ...(tags !== undefined ? { tags } : {}),
           ...(enrichMetadata !== undefined ? { enrichMetadata } : {}),
           ...(groupId !== undefined ? { groupId } : {}),
+          ...(autoRollbackEnabled !== undefined ? { autoRollbackEnabled } : {}),
+          ...(autoRollbackThreshold !== undefined ? { autoRollbackThreshold } : {}),
+          ...(autoRollbackWindowMinutes !== undefined ? { autoRollbackWindowMinutes } : {}),
           updatedById: ctx.session.user?.id,
         },
       });

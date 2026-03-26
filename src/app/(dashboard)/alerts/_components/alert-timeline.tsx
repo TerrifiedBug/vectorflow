@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { isFleetMetric } from "@/lib/alert-metrics";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -152,7 +153,11 @@ function EventTimelineCard({ event }: { event: AlertEvent }) {
           </StatusBadge>
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          {event.node && <span>Node: {event.node.host}</span>}
+          {event.node ? (
+            <span>Node: {event.node.host}</span>
+          ) : isFleetMetric(event.alertRule.metric) ? (
+            <span>Scope: Fleet</span>
+          ) : null}
           {event.alertRule.pipeline && (
             <span>Pipeline: {event.alertRule.pipeline.name}</span>
           )}

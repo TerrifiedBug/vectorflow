@@ -27,6 +27,11 @@ export const METRIC_LABELS: Record<string, string> = {
   certificate_expiring: "Certificate Expiring",
   node_joined: "Node Joined",
   node_left: "Node Left",
+  // Fleet (cluster-wide, evaluated by FleetAlertService)
+  fleet_error_rate: "Fleet Error Rate",
+  fleet_throughput_drop: "Fleet Throughput Drop",
+  fleet_event_volume: "Fleet Event Volume",
+  node_load_imbalance: "Node Load Imbalance",
 };
 
 export const CONDITION_LABELS: Record<string, string> = {
@@ -46,6 +51,11 @@ export const GLOBAL_METRICS = new Set([
   "certificate_expiring",
   "node_joined",
   "node_left",
+  // Fleet metrics are cluster-wide, never pipeline-scoped
+  "fleet_error_rate",
+  "fleet_throughput_drop",
+  "fleet_event_volume",
+  "node_load_imbalance",
 ]);
 
 export const CHANNEL_TYPE_LABELS: Record<string, string> = {

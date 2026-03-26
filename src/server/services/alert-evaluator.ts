@@ -7,6 +7,17 @@ import type {
 } from "@/generated/prisma";
 
 // ---------------------------------------------------------------------------
+// Fleet-scoped metrics — handled by FleetAlertService, not per-node heartbeat.
+// ---------------------------------------------------------------------------
+
+export const FLEET_METRICS = new Set<AlertMetric>([
+  "fleet_error_rate",
+  "fleet_throughput_drop",
+  "fleet_event_volume",
+  "node_load_imbalance",
+]);
+
+// ---------------------------------------------------------------------------
 // In-memory map tracking when a rule condition was first observed as true.
 // Keyed by "alertRuleId:nodeId" → firstSeenAt timestamp.
 // ---------------------------------------------------------------------------
@@ -17,7 +28,7 @@ const conditionFirstSeen = new Map<string, Date>();
 // ---------------------------------------------------------------------------
 
 /** Compare a numeric value against a threshold using the given condition. */
-function checkCondition(
+export function checkCondition(
   value: number,
   condition: AlertCondition,
   threshold: number,
@@ -251,6 +262,9 @@ export async function evaluateAlerts(
     // Skip event-based rules — they fire inline, not via polling
     if (!rule.condition || rule.threshold == null) continue;
 
+    // Skip fleet-scoped metrics — handled by FleetAlertService
+    if (FLEET_METRICS.has(rule.metric)) continue;
+
     const value = await readMetricValue(
       rule.metric,
       nodeId,
@@ -347,6 +361,10 @@ const METRIC_LABELS: Record<AlertMetric, string> = {
   error_rate: "Error rate",
   discarded_rate: "Discarded event rate",
   pipeline_crashed: "Pipeline crashed",
+  fleet_error_rate: "Fleet error rate",
+  fleet_throughput_drop: "Fleet throughput drop",
+  fleet_event_volume: "Fleet event volume",
+  node_load_imbalance: "Node load imbalance",
   deploy_requested: "Deploy requested",
   deploy_completed: "Deploy completed",
   deploy_rejected: "Deploy rejected",

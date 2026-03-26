@@ -53,6 +53,17 @@ export const POST = apiRoute(
       "error_rate",
       "discarded_rate",
       "pipeline_crashed",
+      "fleet_error_rate",
+      "fleet_throughput_drop",
+      "fleet_event_volume",
+      "node_load_imbalance",
+    ];
+
+    const fleetMetrics = [
+      "fleet_error_rate",
+      "fleet_throughput_drop",
+      "fleet_event_volume",
+      "node_load_imbalance",
     ];
     const validConditions = ["gt", "lt", "eq"];
 
@@ -68,6 +79,13 @@ export const POST = apiRoute(
         {
           error: `Invalid condition. Must be one of: ${validConditions.join(", ")}`,
         },
+        { status: 400 },
+      );
+    }
+
+    if (fleetMetrics.includes(body.metric) && body.pipelineId) {
+      return NextResponse.json(
+        { error: "Fleet metrics cannot be scoped to a specific pipeline" },
         { status: 400 },
       );
     }
