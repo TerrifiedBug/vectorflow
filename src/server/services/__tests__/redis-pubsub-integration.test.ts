@@ -144,9 +144,10 @@ describe("redis-pubsub integration", () => {
       const publishedMessage = mockPublish.mock.calls[0]?.[1];
       expect(publishedMessage).toBeDefined();
 
-      const envelope: PubSubEnvelope = JSON.parse(publishedMessage);
+      const envelope = JSON.parse(publishedMessage) as PubSubEnvelope;
       expect(envelope.type).toBe("sse");
       expect(envelope.originInstanceId).toBe("instance-A");
+      if (envelope.type !== "sse") throw new Error("Expected SSE envelope");
       expect(envelope.environmentId).toBe(envId);
       expect(envelope.payload).toEqual(event);
 
