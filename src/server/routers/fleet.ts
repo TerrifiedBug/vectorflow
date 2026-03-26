@@ -6,7 +6,7 @@ import { LogLevel } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { checkDevAgentVersion } from "@/server/services/version-check";
 import { pushRegistry } from "@/server/services/push-registry";
-import { getFleetOverview, getVolumeTrend, getNodeThroughput, getNodeCapacity } from "@/server/services/fleet-data";
+import { getFleetOverview, getVolumeTrend, getNodeThroughput, getNodeCapacity, getDataLoss, getMatrixThroughput } from "@/server/services/fleet-data";
 
 export const fleetRouter = router({
   list: protectedProcedure
@@ -574,5 +574,30 @@ export const fleetRouter = router({
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return getNodeCapacity(input.environmentId, input.range);
+    }),
+
+  dataLoss: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        range: z.enum(["1h", "6h", "1d", "7d", "30d"]).default("1d"),
+        threshold: z.number().min(0).max(1).default(0.05),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return getDataLoss(input.environmentId, input.range, input.threshold);
+    }),
+
+  matrixThroughput: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        range: z.enum(["1h", "6h", "1d", "7d", "30d"]).default("1d"),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return getMatrixThroughput(input.environmentId, input.range);
     }),
 });

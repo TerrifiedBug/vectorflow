@@ -10,6 +10,8 @@ import {
   getVolumeTrend,
   getNodeThroughput,
   getNodeCapacity,
+  getDataLoss,
+  getMatrixThroughput,
   type TimeRange,
 } from "@/server/services/fleet-data";
 
@@ -302,5 +304,154 @@ describe("getNodeCapacity", () => {
       diskPct: 0,
       cpuLoad: 0,
     });
+  });
+});
+
+describe("getDataLoss", () => {
+  it("returns pipelines exceeding the loss threshold", async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      {
+        pipeline_id: "p1",
+        pipeline_name: "ingest-logs",
+        node_id: "node-1",
+        node_name: "us-east-1",
+        events_in: BigInt(1000),
+        events_out: BigInt(800), // 20% loss
+      },
+      {
+        pipeline_id: "p2",
+        pipeline_name: "metrics-agg",
+        node_id: "node-1",
+        node_name: "us-east-1",
+        events_in: BigInt(500),
+        events_out: BigInt(490), // 2% loss
+      },
+    ]);
+
+    const result = await getDataLoss("env-1", "1d", 0.05);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      pipelineId: "p1",
+      pipelineName: "ingest-logs",
+      nodeId: "node-1",
+      nodeName: "us-east-1",
+      eventsIn: 1000,
+      eventsOut: 800,
+      lossRate: 0.2,
+    });
+  });
+
+  it("skips pipelines with zero throughput", async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      {
+        pipeline_id: "p1",
+        pipeline_name: "idle-pipeline",
+        node_id: null,
+        node_name: null,
+        events_in: BigInt(0),
+        events_out: BigInt(0),
+      },
+    ]);
+
+    const result = await getDataLoss("env-1", "7d", 0.05);
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns empty array when no data loss detected", async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      {
+        pipeline_id: "p1",
+        pipeline_name: "healthy",
+        node_id: "node-1",
+        node_name: "us-east-1",
+        events_in: BigInt(1000),
+        events_out: BigInt(999), // 0.1% loss
+      },
+    ]);
+
+    const result = await getDataLoss("env-1", "1d", 0.05);
+
+    expect(result).toEqual([]);
+  });
+
+  it("sorts results by loss rate descending", async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      {
+        pipeline_id: "p1",
+        pipeline_name: "moderate-loss",
+        node_id: "node-1",
+        node_name: "us-east-1",
+        events_in: BigInt(1000),
+        events_out: BigInt(850), // 15% loss
+      },
+      {
+        pipeline_id: "p2",
+        pipeline_name: "severe-loss",
+        node_id: "node-1",
+        node_name: "us-east-1",
+        events_in: BigInt(1000),
+        events_out: BigInt(500), // 50% loss
+      },
+    ]);
+
+    const result = await getDataLoss("env-1", "1d", 0.05);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].pipelineName).toBe("severe-loss");
+    expect(result[1].pipelineName).toBe("moderate-loss");
+  });
+});
+
+describe("getMatrixThroughput", () => {
+  it("returns per-cell throughput rates and loss", async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      {
+        pipeline_id: "p1",
+        node_id: "node-1",
+        events_in: BigInt(86400), // 1 evt/sec over 1d
+        events_out: BigInt(82080), // 5% loss
+        bytes_in: BigInt(864000),
+        bytes_out: BigInt(820800),
+      },
+    ]);
+
+    const result = await getMatrixThroughput("env-1", "1d");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].pipelineId).toBe("p1");
+    expect(result[0].nodeId).toBe("node-1");
+    expect(result[0].eventsPerSec).toBe(1);
+    expect(result[0].lossRate).toBe(0.05);
+    expect(result[0].bytesPerSec).toBe(
+      Math.round((864000 + 820800) / 86400)
+    );
+  });
+
+  it("returns empty array when no metrics exist", async () => {
+    mockQueryRaw.mockResolvedValueOnce([]);
+
+    const result = await getMatrixThroughput("env-1", "7d");
+
+    expect(result).toEqual([]);
+  });
+
+  it("handles zero events gracefully", async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      {
+        pipeline_id: "p1",
+        node_id: "node-1",
+        events_in: BigInt(0),
+        events_out: BigInt(0),
+        bytes_in: BigInt(0),
+        bytes_out: BigInt(0),
+      },
+    ]);
+
+    const result = await getMatrixThroughput("env-1", "1d");
+
+    expect(result[0].eventsPerSec).toBe(0);
+    expect(result[0].lossRate).toBe(0);
   });
 });

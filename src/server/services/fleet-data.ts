@@ -44,6 +44,24 @@ export interface NodeCapacity {
   buckets: NodeCapacityBucket[];
 }
 
+export interface PipelineDataLoss {
+  pipelineId: string;
+  pipelineName: string;
+  nodeId: string | null;
+  nodeName: string | null;
+  eventsIn: number;
+  eventsOut: number;
+  lossRate: number;
+}
+
+export interface MatrixCellThroughput {
+  pipelineId: string;
+  nodeId: string;
+  eventsPerSec: number;
+  bytesPerSec: number;
+  lossRate: number;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const RANGE_MS: Record<TimeRange, number> = {
@@ -259,4 +277,112 @@ export async function getNodeCapacity(
   }
 
   return Array.from(nodeMap.values());
+}
+
+// ─── Data Loss Detection ────────────────────────────────────────────────────
+
+export async function getDataLoss(
+  environmentId: string,
+  range: TimeRange,
+  threshold: number = 0.05,
+): Promise<PipelineDataLoss[]> {
+  const since = sinceDate(range);
+
+  const rows = await prisma.$queryRaw<
+    {
+      pipeline_id: string;
+      pipeline_name: string;
+      node_id: string | null;
+      node_name: string | null;
+      events_in: bigint | null;
+      events_out: bigint | null;
+    }[]
+  >(Prisma.sql`
+    SELECT
+      p."id"              AS pipeline_id,
+      p."name"            AS pipeline_name,
+      n."id"              AS node_id,
+      n."name"            AS node_name,
+      SUM(pm."eventsIn")  AS events_in,
+      SUM(pm."eventsOut") AS events_out
+    FROM "PipelineMetric" pm
+    JOIN "Pipeline" p ON p."id" = pm."pipelineId"
+    LEFT JOIN "VectorNode" n ON n."id" = pm."nodeId"
+    WHERE pm."componentId" IS NULL
+      AND pm."timestamp" >= ${since}
+      AND p."environmentId" = ${environmentId}
+    GROUP BY p."id", p."name", n."id", n."name"
+    ORDER BY p."name", n."name"
+  `);
+
+  const results: PipelineDataLoss[] = [];
+  for (const r of rows) {
+    const eventsIn = Number(r.events_in ?? 0);
+    const eventsOut = Number(r.events_out ?? 0);
+    if (eventsIn === 0) continue;
+    const lossRate = (eventsIn - eventsOut) / eventsIn;
+    if (lossRate <= threshold) continue;
+    results.push({
+      pipelineId: r.pipeline_id,
+      pipelineName: r.pipeline_name,
+      nodeId: r.node_id,
+      nodeName: r.node_name,
+      eventsIn,
+      eventsOut,
+      lossRate: Math.round(lossRate * 10000) / 10000,
+    });
+  }
+
+  return results.sort((a, b) => b.lossRate - a.lossRate);
+}
+
+// ─── Matrix Throughput ──────────────────────────────────────────────────────
+
+export async function getMatrixThroughput(
+  environmentId: string,
+  range: TimeRange,
+): Promise<MatrixCellThroughput[]> {
+  const since = sinceDate(range);
+  const windowSeconds = RANGE_MS[range] / 1000;
+
+  const rows = await prisma.$queryRaw<
+    {
+      pipeline_id: string;
+      node_id: string;
+      events_in: bigint | null;
+      events_out: bigint | null;
+      bytes_in: bigint | null;
+      bytes_out: bigint | null;
+    }[]
+  >(Prisma.sql`
+    SELECT
+      pm."pipelineId"      AS pipeline_id,
+      pm."nodeId"          AS node_id,
+      SUM(pm."eventsIn")   AS events_in,
+      SUM(pm."eventsOut")  AS events_out,
+      SUM(pm."bytesIn")    AS bytes_in,
+      SUM(pm."bytesOut")   AS bytes_out
+    FROM "PipelineMetric" pm
+    JOIN "Pipeline" p ON p."id" = pm."pipelineId"
+    WHERE pm."componentId" IS NULL
+      AND pm."nodeId" IS NOT NULL
+      AND pm."timestamp" >= ${since}
+      AND p."environmentId" = ${environmentId}
+    GROUP BY pm."pipelineId", pm."nodeId"
+  `);
+
+  return rows.map((r) => {
+    const eventsIn = Number(r.events_in ?? 0);
+    const eventsOut = Number(r.events_out ?? 0);
+    const bytesIn = Number(r.bytes_in ?? 0);
+    const bytesOut = Number(r.bytes_out ?? 0);
+    const lossRate = eventsIn > 0 ? (eventsIn - eventsOut) / eventsIn : 0;
+    return {
+      pipelineId: r.pipeline_id,
+      nodeId: r.node_id,
+      eventsPerSec: Math.round((eventsIn / windowSeconds) * 100) / 100,
+      bytesPerSec: Math.round((bytesIn + bytesOut) / windowSeconds),
+      lossRate: Math.round(Math.max(0, lossRate) * 10000) / 10000,
+    };
+  });
 }

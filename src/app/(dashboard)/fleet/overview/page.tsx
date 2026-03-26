@@ -10,8 +10,11 @@ import { FleetKpiCards } from "@/components/fleet/fleet-kpi-cards";
 import { FleetVolumeChart } from "@/components/fleet/fleet-volume-chart";
 import { FleetThroughputChart } from "@/components/fleet/fleet-throughput-chart";
 import { FleetCapacityChart } from "@/components/fleet/fleet-capacity-chart";
+import { DataLossTable } from "@/components/fleet/data-loss-table";
+import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ArrowLeft } from "lucide-react";
 
@@ -21,6 +24,7 @@ export default function FleetOverviewPage() {
   const trpc = useTRPC();
   const { selectedEnvironmentId } = useEnvironmentStore();
   const [range, setRange] = useState<TimeRange>("1d");
+  const [lossThreshold, setLossThreshold] = useState(0.05);
   const polling = usePollingInterval(15_000);
 
   const overview = useQuery({
@@ -52,6 +56,25 @@ export default function FleetOverviewPage() {
 
   const nodeCapacity = useQuery({
     ...trpc.fleet.nodeCapacity.queryOptions({
+      environmentId: selectedEnvironmentId ?? "",
+      range,
+    }),
+    enabled: !!selectedEnvironmentId,
+    refetchInterval: polling,
+  });
+
+  const dataLoss = useQuery({
+    ...trpc.fleet.dataLoss.queryOptions({
+      environmentId: selectedEnvironmentId ?? "",
+      range,
+      threshold: lossThreshold,
+    }),
+    enabled: !!selectedEnvironmentId,
+    refetchInterval: polling,
+  });
+
+  const matrixThroughput = useQuery({
+    ...trpc.fleet.matrixThroughput.queryOptions({
       environmentId: selectedEnvironmentId ?? "",
       range,
     }),
@@ -128,6 +151,27 @@ export default function FleetOverviewPage() {
         isLoading={nodeCapacity.isLoading}
         range={range}
       />
+
+      <DataLossTable
+        data={dataLoss.data}
+        isLoading={dataLoss.isLoading}
+        threshold={lossThreshold}
+        onThresholdChange={setLossThreshold}
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-semibold">Deployment Matrix</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DeploymentMatrix
+            environmentId={selectedEnvironmentId}
+            range={range}
+            lossThreshold={lossThreshold}
+            throughputData={matrixThroughput.data}
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

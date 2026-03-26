@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { getInvalidationKeys } from "../use-realtime-invalidation";
 
 describe("getInvalidationKeys", () => {
-  it("maps metric_update to 10 query key prefixes", () => {
+  it("maps metric_update to 12 query key prefixes", () => {
     const keys = getInvalidationKeys("metric_update");
-    expect(keys).toHaveLength(10);
+    expect(keys).toHaveLength(12);
     expect(keys).toContainEqual(["dashboard", "stats"]);
     expect(keys).toContainEqual(["dashboard", "pipelineCards"]);
     expect(keys).toContainEqual(["dashboard", "chartMetrics"]);
@@ -15,6 +15,8 @@ describe("getInvalidationKeys", () => {
     expect(keys).toContainEqual(["fleet", "volumeTrend"]);
     expect(keys).toContainEqual(["fleet", "nodeThroughput"]);
     expect(keys).toContainEqual(["fleet", "nodeCapacity"]);
+    expect(keys).toContainEqual(["fleet", "dataLoss"]);
+    expect(keys).toContainEqual(["fleet", "matrixThroughput"]);
   });
 
   it("maps fleet_status to 7 query key prefixes", () => {
