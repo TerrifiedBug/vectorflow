@@ -12,7 +12,7 @@ import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { pushRegistry } from "@/server/services/push-registry";
-import { sseRegistry } from "@/server/services/sse-registry";
+import { broadcastSSE } from "@/server/services/sse-broadcast";
 
 export const deployRouter = router({
   preview: protectedProcedure
@@ -253,7 +253,7 @@ export const deployRouter = router({
           pipelineId: input.pipelineId,
         });
 
-        sseRegistry.broadcast({
+        broadcastSSE({
           type: "status_change",
           nodeId: "",
           fromStatus: "",
@@ -371,7 +371,7 @@ export const deployRouter = router({
         pipelineId: input.pipelineId,
       });
 
-      sseRegistry.broadcast({
+      broadcastSSE({
         type: "status_change",
         nodeId: "",
         fromStatus: "",
@@ -561,7 +561,7 @@ export const deployRouter = router({
           select: { name: true },
         });
 
-        sseRegistry.broadcast({
+        broadcastSSE({
           type: "status_change",
           nodeId: "",
           fromStatus: "",

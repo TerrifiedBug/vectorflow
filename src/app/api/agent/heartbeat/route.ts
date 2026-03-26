@@ -8,7 +8,7 @@ import { ingestMetrics } from "@/server/services/metrics-ingest";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
 import { metricStore } from "@/server/services/metric-store";
-import { sseRegistry } from "@/server/services/sse-registry";
+import { broadcastSSE, broadcastMetrics } from "@/server/services/sse-broadcast";
 import type { FleetStatusEvent, LogEntryEvent, StatusChangeEvent } from "@/lib/sse/types";
 import { evaluateAlerts } from "@/server/services/alert-evaluator";
 import { isLeader } from "@/server/services/leader-election";
@@ -347,7 +347,7 @@ export async function POST(request: Request) {
         toStatus: "HEALTHY",
         reason: "heartbeat received",
       };
-      sseRegistry.broadcast(statusEvent, agent.environmentId);
+      broadcastSSE(statusEvent, agent.environmentId);
     }
 
     // Merge agent-reported labels with existing UI-set labels.
@@ -419,7 +419,7 @@ export async function POST(request: Request) {
           pipelineId: p.pipelineId,
           pipelineName: pipelineNameMap.get(p.pipelineId) ?? p.pipelineId,
         };
-        sseRegistry.broadcast(pipelineStatusEvent, agent.environmentId);
+        broadcastSSE(pipelineStatusEvent, agent.environmentId);
       }
     }
 
@@ -445,7 +445,7 @@ export async function POST(request: Request) {
       status: "HEALTHY",
       timestamp: now.getTime(),
     };
-    sseRegistry.broadcast(fleetEvent, agent.environmentId);
+    broadcastSSE(fleetEvent, agent.environmentId);
 
     // Store host metrics time-series data
     if (hostMetrics) {
@@ -554,8 +554,10 @@ export async function POST(request: Request) {
         // Flush MetricStore and broadcast metric_update events to browser SSE connections
         const flushEvents = metricStore.flush(agent.nodeId, ps.pipelineId);
         for (const event of flushEvents) {
-          sseRegistry.broadcast(event, agent.environmentId);
+          broadcastSSE(event, agent.environmentId);
         }
+        // Publish the full batch to Redis for cross-instance delivery
+        broadcastMetrics(flushEvents, agent.environmentId);
       }
     }
 
@@ -572,7 +574,7 @@ export async function POST(request: Request) {
           pipelineId: ps.pipelineId,
           lines: ps.recentLogs,
         };
-        sseRegistry.broadcast(logEvent, agent.environmentId);
+        broadcastSSE(logEvent, agent.environmentId);
       }
     }
 
