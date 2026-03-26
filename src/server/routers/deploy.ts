@@ -239,6 +239,9 @@ export const deployRouter = router({
         metadata: {
           timestamp: new Date().toISOString(),
           input: { pipelineId: input.pipelineId, changelog: input.changelog },
+          ...(result.pushedNodeIds && result.pushedNodeIds.length > 0
+            ? { pushedNodeIds: result.pushedNodeIds }
+            : {}),
         },
         teamId: (ctx as Record<string, unknown>).teamId as string | null ?? null,
         environmentId: pipeline.environment.id,
