@@ -1,9 +1,17 @@
 "use client";
 
-import { useState, Fragment } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useState, useCallback, useMemo, Fragment } from "react";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ChevronDown, ChevronRight, ExternalLink, Rocket } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Download,
+  ExternalLink,
+  GitBranch,
+  Rocket,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -61,8 +69,17 @@ function formatDeployAction(action: string): string {
   return labels[action] ?? action;
 }
 
+/** Escape a CSV field value — wrap in quotes if it contains commas, quotes, or newlines */
+function csvEscape(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
 export default function DeploymentHistoryPage() {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
 
   // Filter state
   const [pipelineFilter, setPipelineFilter] = useState<string>("");
@@ -72,18 +89,26 @@ export default function DeploymentHistoryPage() {
   // Expanded row tracking
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
+  // Export loading state
+  const [isExporting, setIsExporting] = useState(false);
+
   // Fetch pipeline filter options
   const pipelinesQuery = useQuery(
     trpc.audit.deploymentPipelines.queryOptions()
   );
   const pipelines = pipelinesQuery.data ?? [];
 
+  // 24h summary stats
+  const summaryQuery = useQuery(
+    trpc.audit.deploymentSummary.queryOptions()
+  );
+
   // Build query input
-  const queryInput = {
+  const queryInput = useMemo(() => ({
     ...(pipelineFilter ? { pipelineId: pipelineFilter } : {}),
     ...(startDate ? { startDate } : {}),
     ...(endDate ? { endDate } : {}),
-  };
+  }), [pipelineFilter, startDate, endDate]);
 
   // Infinite query for cursor-based pagination
   const deploymentsQuery = useInfiniteQuery(
@@ -91,6 +116,38 @@ export default function DeploymentHistoryPage() {
       getNextPageParam: (lastPage) => lastPage.nextCursor,
     })
   );
+
+  // CSV export handler
+  const handleExportCsv = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const data = await queryClient.fetchQuery(
+        trpc.audit.exportDeployments.queryOptions(queryInput)
+      );
+      const headers = ["Time", "Action", "Pipeline", "User", "Version", "Changelog"];
+      const rows = data.items.map((item) => [
+        csvEscape(new Date(item.createdAt).toISOString()),
+        csvEscape(formatDeployAction(item.action)),
+        csvEscape(item.pipelineName ?? ""),
+        csvEscape(item.user?.name ?? item.user?.email ?? ""),
+        csvEscape(item.versionInfo ?? ""),
+        csvEscape(item.changelog ?? ""),
+      ]);
+      const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `deployment-history-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [queryClient, trpc.audit.exportDeployments, queryInput]);
 
   const allItems =
     deploymentsQuery.data?.pages.flatMap((page) => page.items) ?? [];
@@ -123,13 +180,76 @@ export default function DeploymentHistoryPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Deployment History
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Chronological timeline of deploy, undeploy, and rollback actions
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Deployment History
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Chronological timeline of deploy, undeploy, and rollback actions
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExportCsv}
+          disabled={isExporting}
+        >
+          <Download className="mr-2 h-4 w-4" />
+          {isExporting ? "Exporting…" : "Export CSV"}
+        </Button>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        {summaryQuery.isLoading ? (
+          <>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-6">
+                  <Skeleton className="h-4 w-24 mb-3" />
+                  <Skeleton className="h-8 w-16" />
+                </CardContent>
+              </Card>
+            ))}
+          </>
+        ) : (
+          <>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                  <Rocket className="h-4 w-4" />
+                  Deployments (24h)
+                </div>
+                <p className="text-3xl font-bold tabular-nums">
+                  {summaryQuery.data?.deployCount ?? 0}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                  <Users className="h-4 w-4" />
+                  Unique Deployers
+                </div>
+                <p className="text-3xl font-bold tabular-nums">
+                  {summaryQuery.data?.uniqueDeployers ?? 0}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                  <GitBranch className="h-4 w-4" />
+                  Pipelines Affected
+                </div>
+                <p className="text-3xl font-bold tabular-nums">
+                  {summaryQuery.data?.affectedPipelines ?? 0}
+                </p>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
 
       {/* Filter bar */}
