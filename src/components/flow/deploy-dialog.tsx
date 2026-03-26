@@ -71,6 +71,12 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     enabled: open,
   });
 
+  const deployWarningsQuery = useQuery({
+    ...trpc.pipelineDependency.deployWarnings.queryOptions({ pipelineId }),
+    enabled: open,
+  });
+  const deployWarningsData = deployWarningsQuery.data;
+
   const environmentId = envQuery.data?.environmentId;
 
   const labelsQuery = useQuery({
@@ -485,6 +491,20 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 <p className="text-xs text-amber-700 dark:text-amber-300">
                   This environment requires deploy approval for editors. As an admin, your deploy will proceed immediately.
                 </p>
+              </div>
+            )}
+
+            {deployWarningsData && deployWarningsData.length > 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                <div className="text-xs text-amber-700 dark:text-amber-300">
+                  <p className="font-medium">Undeployed upstream dependencies:</p>
+                  <ul className="mt-1 list-disc list-inside">
+                    {deployWarningsData.map(dep => (
+                      <li key={dep.upstream.id}>{dep.upstream.name}</li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             )}
 
