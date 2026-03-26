@@ -9,7 +9,7 @@ import {
   type Node,
   type Edge,
 } from "@xyflow/react";
-import { Trash2, Pencil, Check, X } from "lucide-react";
+import { Trash2, Pencil, Check, X, AlertTriangle } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml } from "@/lib/config-generator";
@@ -157,6 +157,13 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const pipelineQuery = useQuery(
     trpc.pipeline.get.queryOptions({ id: pipelineId })
   );
+
+  // Fetch undeploy dependency warnings
+  const undeployWarningsQuery = useQuery({
+    ...trpc.pipelineDependency.undeployWarnings.queryOptions({ pipelineId }),
+    enabled: undeployOpen,
+  });
+  const undeployWarningsData = undeployWarningsQuery.data;
 
   // Warn before navigating away with unsaved changes
   useEffect(() => {
@@ -518,7 +525,26 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         open={undeployOpen}
         onOpenChange={setUndeployOpen}
         title="Undeploy pipeline?"
-        description="This will stop the running pipeline and remove the deployed configuration. You can redeploy at any time."
+        description={
+          undeployWarningsData && undeployWarningsData.length > 0 ? (
+            <div className="space-y-3">
+              <p>This will stop the running pipeline and remove the deployed configuration. You can redeploy at any time.</p>
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                <div className="text-xs text-amber-700 dark:text-amber-300">
+                  <p className="font-medium">Deployed downstream pipelines depend on this:</p>
+                  <ul className="mt-1 list-disc list-inside">
+                    {undeployWarningsData.map(dep => (
+                      <li key={dep.downstream.id}>{dep.downstream.name}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          ) : (
+            "This will stop the running pipeline and remove the deployed configuration. You can redeploy at any time."
+          )
+        }
         confirmLabel="Undeploy"
         variant="destructive"
         isPending={undeployMutation.isPending}

@@ -20,8 +20,8 @@ import { gitSyncDeletePipeline } from "@/server/services/git-sync";
 import { deployAgent, undeployAgent } from "@/server/services/deploy-agent";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
-import { pushRegistry } from "@/server/services/push-registry";
-import { sseRegistry } from "@/server/services/sse-registry";
+import { relayPush } from "@/server/services/push-broadcast";
+import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { fireEventAlert } from "@/server/services/event-alerts";
 
 /** Pipeline names must be safe identifiers */
@@ -578,7 +578,7 @@ export const pipelineRouter = router({
             const selectorEntries = Object.entries(nodeSelector ?? {});
             const matches = selectorEntries.every(([k, v]) => labels[k] === v);
             if (matches) {
-              pushRegistry.send(node.id, {
+              relayPush(node.id, {
                 type: "config_changed",
                 pipelineId: input.pipelineId,
                 reason: "rollback",
@@ -586,7 +586,7 @@ export const pipelineRouter = router({
             }
           }
 
-          sseRegistry.broadcast({
+          broadcastSSE({
             type: "status_change",
             nodeId: "",
             fromStatus: "",
@@ -783,7 +783,7 @@ export const pipelineRouter = router({
         select: { nodeId: true },
       });
       for (const { nodeId } of statuses) {
-        pushRegistry.send(nodeId, {
+        relayPush(nodeId, {
           type: "sample_request",
           requestId: request.id,
           pipelineId: input.pipelineId,

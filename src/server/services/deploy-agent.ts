@@ -6,7 +6,7 @@ import { createVersion } from "@/server/services/pipeline-version";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { startSystemVector, stopSystemVector } from "@/server/services/system-vector";
 import { gitSyncCommitPipeline } from "@/server/services/git-sync";
-import { pushRegistry } from "@/server/services/push-registry";
+import { relayPush } from "@/server/services/push-broadcast";
 
 export interface AgentDeployResult {
   success: boolean;
@@ -15,6 +15,7 @@ export interface AgentDeployResult {
   versionNumber?: number;
   validationErrors?: Array<{ message: string; componentKey?: string }>;
   gitSyncError?: string;
+  pushedNodeIds?: string[];
 }
 
 /**
@@ -168,6 +169,7 @@ export async function deployAgent(
 
   // Notify connected agents that config has changed — they will re-poll
   // to get the full assembled config with secrets and certs resolved.
+  const pushedNodeIds: string[] = [];
   if (!pipeline.isSystem) {
     const nodeSelector = pipeline.nodeSelector as Record<string, string> | null;
     const targetNodes = await prisma.vectorNode.findMany({
@@ -179,11 +181,12 @@ export async function deployAgent(
       const selectorEntries = Object.entries(nodeSelector ?? {});
       const matches = selectorEntries.every(([k, v]) => labels[k] === v);
       if (matches) {
-        pushRegistry.send(node.id, {
+        const sent = relayPush(node.id, {
           type: "config_changed",
           pipelineId,
           reason: "deploy",
         });
+        if (sent) pushedNodeIds.push(node.id);
       }
     }
   }
@@ -193,6 +196,7 @@ export async function deployAgent(
     versionId: version.id,
     versionNumber: version.version,
     gitSyncError,
+    pushedNodeIds,
   };
 }
 

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { type Prisma, type ComponentKind } from "@/generated/prisma";
 import { TRPCError } from "@trpc/server";
-import { pushRegistry } from "@/server/services/push-registry";
+import { relayPush } from "@/server/services/push-broadcast";
 
 /**
  * Creates an immutable pipeline version snapshot with auto-incrementing
@@ -308,7 +308,7 @@ export async function deployFromVersion(
         const selectorEntries = Object.entries(nodeSelector ?? {});
         const matches = selectorEntries.every(([k, v]) => labels[k] === v);
         if (matches) {
-          const sent = pushRegistry.send(node.id, {
+          const sent = relayPush(node.id, {
             type: "config_changed",
             pipelineId,
             reason: "deploy_from_version",

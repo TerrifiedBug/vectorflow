@@ -11,8 +11,8 @@ import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
 import { fireEventAlert } from "@/server/services/event-alerts";
-import { pushRegistry } from "@/server/services/push-registry";
-import { sseRegistry } from "@/server/services/sse-registry";
+import { relayPush } from "@/server/services/push-broadcast";
+import { broadcastSSE } from "@/server/services/sse-broadcast";
 
 export const deployRouter = router({
   preview: protectedProcedure
@@ -239,6 +239,9 @@ export const deployRouter = router({
         metadata: {
           timestamp: new Date().toISOString(),
           input: { pipelineId: input.pipelineId, changelog: input.changelog },
+          ...(result.pushedNodeIds && result.pushedNodeIds.length > 0
+            ? { pushedNodeIds: result.pushedNodeIds }
+            : {}),
         },
         teamId: (ctx as Record<string, unknown>).teamId as string | null ?? null,
         environmentId: pipeline.environment.id,
@@ -253,7 +256,7 @@ export const deployRouter = router({
           pipelineId: input.pipelineId,
         });
 
-        sseRegistry.broadcast({
+        broadcastSSE({
           type: "status_change",
           nodeId: "",
           fromStatus: "",
@@ -289,7 +292,7 @@ export const deployRouter = router({
           select: { id: true },
         });
         for (const node of nodes) {
-          pushRegistry.send(node.id, {
+          relayPush(node.id, {
             type: "config_changed",
             pipelineId: input.pipelineId,
             reason: "undeploy",
@@ -371,7 +374,7 @@ export const deployRouter = router({
         pipelineId: input.pipelineId,
       });
 
-      sseRegistry.broadcast({
+      broadcastSSE({
         type: "status_change",
         nodeId: "",
         fromStatus: "",
@@ -561,7 +564,7 @@ export const deployRouter = router({
           select: { name: true },
         });
 
-        sseRegistry.broadcast({
+        broadcastSSE({
           type: "status_change",
           nodeId: "",
           fromStatus: "",

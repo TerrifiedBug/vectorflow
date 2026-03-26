@@ -25,8 +25,8 @@ vi.mock("@/server/services/git-sync", () => ({
   gitSyncCommitPipeline: vi.fn(),
 }));
 
-vi.mock("@/server/services/push-registry", () => ({
-  pushRegistry: { send: vi.fn() },
+vi.mock("@/server/services/push-broadcast", () => ({
+  relayPush: vi.fn(),
 }));
 
 vi.mock("@/server/services/config-crypto", () => ({
@@ -45,7 +45,7 @@ import { generateVectorYaml } from "@/lib/config-generator";
 import { validateConfig } from "@/server/services/validator";
 import { createVersion } from "@/server/services/pipeline-version";
 import { startSystemVector } from "@/server/services/system-vector";
-import { pushRegistry } from "@/server/services/push-registry";
+import { relayPush } from "@/server/services/push-broadcast";
 import { deployAgent, undeployAgent } from "@/server/services/deploy-agent";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -53,7 +53,7 @@ const validateConfigMock = validateConfig as ReturnType<typeof vi.fn>;
 const createVersionMock = createVersion as ReturnType<typeof vi.fn>;
 const generateYamlMock = generateVectorYaml as ReturnType<typeof vi.fn>;
 const startSystemVectorMock = startSystemVector as ReturnType<typeof vi.fn>;
-const pushRegistrySendMock = pushRegistry.send as ReturnType<typeof vi.fn>;
+const relayPushMock = vi.mocked(relayPush);
 
 // ─── Fixture helpers ────────────────────────────────────────────────────────
 
@@ -261,8 +261,8 @@ describe("deployAgent", () => {
 
     expect(result.success).toBe(true);
     // Only matching node should receive push
-    expect(pushRegistrySendMock).toHaveBeenCalledTimes(1);
-    expect(pushRegistrySendMock).toHaveBeenCalledWith("vnode-1", {
+    expect(relayPushMock).toHaveBeenCalledTimes(1);
+    expect(relayPushMock).toHaveBeenCalledWith("vnode-1", {
       type: "config_changed",
       pipelineId: "pipeline-1",
       reason: "deploy",

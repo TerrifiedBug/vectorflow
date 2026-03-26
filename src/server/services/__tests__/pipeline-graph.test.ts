@@ -381,6 +381,9 @@ describe("listPipelinesForEnvironment", () => {
         ],
         edges: [],
         versions: [{ version: 1, configYaml: deployedYaml, logLevel: null }],
+        groupId: null,
+        group: null,
+        _count: { upstreamDeps: 0, downstreamDeps: 0 },
       },
     ] as never);
 
@@ -431,6 +434,9 @@ describe("listPipelinesForEnvironment", () => {
         ],
         edges: [],
         versions: [{ version: 1, configYaml: "yaml", logLevel: null }],
+        groupId: null,
+        group: null,
+        _count: { upstreamDeps: 0, downstreamDeps: 0 },
       },
     ] as never);
 
@@ -461,6 +467,9 @@ describe("listPipelinesForEnvironment", () => {
         nodes: [],
         edges: [],
         versions: [],
+        groupId: null,
+        group: null,
+        _count: { upstreamDeps: 0, downstreamDeps: 0 },
       },
     ] as never);
 
