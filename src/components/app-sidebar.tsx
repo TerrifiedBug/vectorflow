@@ -10,6 +10,7 @@ import {
   Layers,
   FileText,
   ScrollText,
+  Rocket,
   Bell,
   BarChart3,
   Settings,
@@ -46,6 +47,7 @@ const navItems = [
   { title: "Environments", href: "/environments", icon: Layers },
   { title: "Library", href: "/library", icon: FileText },
   { title: "Audit Log", href: "/audit", icon: ScrollText },
+  { title: "Deployments", href: "/audit/deployments", icon: Rocket },
   { title: "Alerts", href: "/alerts", icon: Bell },
   { title: "Analytics", href: "/analytics", icon: BarChart3 },
   { title: "Settings", href: "/settings", icon: Settings, requiredRole: "ADMIN" as const },
@@ -124,10 +126,18 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {visibleItems.map((item) => {
-                  const isActive =
+                  // Longest-prefix-wins: prefer the most specific match
+                  const matchesPath =
                     item.href === "/"
                       ? pathname === "/"
-                      : pathname.startsWith(item.href);
+                      : pathname === item.href || pathname.startsWith(item.href + "/");
+                  const moreSpecificMatch = matchesPath && visibleItems.some(
+                    (other) =>
+                      other.href !== item.href &&
+                      other.href.startsWith(item.href + "/") &&
+                      (pathname === other.href || pathname.startsWith(other.href + "/"))
+                  );
+                  const isActive = matchesPath && !moreSpecificMatch;
 
                   return (
                     <SidebarMenuItem key={item.href}>
