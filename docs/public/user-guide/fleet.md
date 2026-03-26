@@ -166,6 +166,29 @@ The deploy dialog shows a live count of matching nodes (e.g., "3 of 5 nodes matc
 Changing a pipeline's node selector on a subsequent deploy updates the targeting. Nodes that no longer match will stop the pipeline on their next poll.
 {% endhint %}
 
+## Node groups
+
+Node groups let administrators segment their fleet into logical clusters based on node labels -- for example by datacenter, role, or region. Groups are managed from **Settings > Fleet**.
+
+Each node group has:
+
+| Field | Description |
+|-------|-------------|
+| **Name** | A unique display name for the group within the environment. |
+| **Criteria** | A label selector (key-value pairs) that determines which enrolling nodes match the group. An empty criteria matches all nodes. |
+| **Label template** | Key-value labels that are automatically merged into a node's labels when it enrolls and matches the group's criteria. |
+| **Required labels** | Label keys that every node should have. Nodes missing any required label are flagged as non-compliant in the fleet list. |
+
+{% hint style="info" %}
+Label templates are applied once at enrollment time. Changing a group's template does not retroactively update existing nodes.
+{% endhint %}
+
+## Label compliance
+
+When node groups define **required labels**, the fleet list displays a **Non-compliant** badge next to any node that is missing one or more of those labels. This is a warn-only indicator -- non-compliant nodes continue to receive heartbeats and deployments normally.
+
+To resolve a non-compliant node, add the missing labels via the node detail page or ensure the node enrolls with matching labels so that group templates apply automatically.
+
 ## Maintenance mode
 
 Maintenance mode lets you temporarily stop all pipelines on a node without removing it from the fleet. This is useful for host upgrades, kernel patches, disk maintenance, or any situation where you need the node idle but still connected.
