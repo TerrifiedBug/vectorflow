@@ -8,6 +8,7 @@ import {
   getUpstreams,
   getUndeployedUpstreams,
   getDeployedDownstreams,
+  getDependencyGraph,
 } from "@/server/services/pipeline-dependency";
 
 export const pipelineDependencyRouter = router({
@@ -75,5 +76,12 @@ export const pipelineDependencyRouter = router({
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return getDeployedDownstreams(input.pipelineId);
+    }),
+
+  graph: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return getDependencyGraph(input.environmentId);
     }),
 });
