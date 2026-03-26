@@ -33,7 +33,6 @@ import { ComponentPalette } from "@/components/flow/component-palette";
 import { FlowCanvas } from "@/components/flow/flow-canvas";
 import { FlowToolbar } from "@/components/flow/flow-toolbar";
 import { AiPipelineDialog } from "@/components/flow/ai-pipeline-dialog";
-import { AiDebugPanel } from "@/components/flow/ai-debug-panel";
 import { DetailPanel } from "@/components/flow/detail-panel";
 import { DeployDialog } from "@/components/flow/deploy-dialog";
 import { SaveTemplateDialog } from "@/components/flow/save-template-dialog";
@@ -128,7 +127,6 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
-  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   const teamQuery = useQuery(
@@ -202,14 +200,27 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     ),
   );
 
-  // Lightweight check for recent errors (for toolbar badge) — 24h window
-  const [errorCheckSince] = useState(
-    () => new Date(Date.now() - 24 * 60 * 60 * 1000),
-  );
+  // Compute session start from minimum uptime across all running nodes.
+  // Use dataUpdatedAt (stable timestamp from React Query) instead of Date.now()
+  // to satisfy react-hooks/purity (no impure calls) and avoid useEffect+setState.
+  const sessionStart = useMemo(() => {
+    const statuses = pipelineQuery.data?.nodeStatuses;
+    if (!statuses || statuses.length === 0) return null;
+    const uptimes = statuses
+      .filter((s: { status: string; uptimeSeconds: number | null }) =>
+        s.status === "RUNNING" && s.uptimeSeconds != null
+      )
+      .map((s: { uptimeSeconds: number | null }) => s.uptimeSeconds!);
+    if (uptimes.length === 0) return null;
+    const minUptime = Math.min(...uptimes);
+    return new Date(pipelineQuery.dataUpdatedAt - minUptime * 1000);
+  }, [pipelineQuery.data?.nodeStatuses, pipelineQuery.dataUpdatedAt]);
+
+  // Lightweight check for recent errors (for toolbar badge) — scoped to current session
   const recentErrorsQuery = useQuery(
     trpc.pipeline.logs.queryOptions(
-      { pipelineId, levels: ["ERROR"], limit: 1, since: errorCheckSince },
-      { enabled: !!isDeployed && !logsOpen, refetchInterval: 10000 },
+      { pipelineId, levels: ["ERROR"], limit: 1, since: sessionStart! },
+      { enabled: !!isDeployed && !logsOpen && !!sessionStart, refetchInterval: 10000 },
     ),
   );
   const hasRecentErrors = (recentErrorsQuery.data?.items?.length ?? 0) > 0;
@@ -464,7 +475,6 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             onDiscardChanges={() => setDiscardOpen(true)}
             aiEnabled={aiEnabled}
             onAiOpen={() => setAiDialogOpen(true)}
-            onDebugOpen={() => setDebugPanelOpen(true)}
             deployedVersionNumber={pipelineQuery.data?.deployedVersionNumber}
           />
         </div>
@@ -582,13 +592,6 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
           onOpenChange={setAiDialogOpen}
           pipelineId={pipelineId}
           environmentName={pipelineQuery.data?.environment?.name}
-        />
-      )}
-      {aiEnabled && (
-        <AiDebugPanel
-          open={debugPanelOpen}
-          onOpenChange={setDebugPanelOpen}
-          pipelineId={pipelineId}
           currentYaml={currentYaml}
         />
       )}

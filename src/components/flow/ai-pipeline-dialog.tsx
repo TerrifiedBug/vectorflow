@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { Loader2, RotateCcw, Sparkles, AlertTriangle, MessageSquarePlus, Undo2 } from "lucide-react";
+import { Loader2, RotateCcw, Sparkles, AlertTriangle, MessageSquarePlus, Undo2, Bot, User, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -19,6 +19,7 @@ import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml, importVectorConfig } from "@/lib/config-generator";
 import { toast } from "sonner";
 import { useAiConversation } from "@/hooks/use-ai-conversation";
+import { useAiDebugConversation } from "@/hooks/use-ai-debug-conversation";
 import { AiMessageBubble } from "./ai-message-bubble";
 import { validateSuggestions } from "@/lib/ai/suggestion-validator";
 import { detectOutdatedSuggestions } from "@/lib/ai/suggestion-validator";
@@ -29,6 +30,7 @@ interface AiPipelineDialogProps {
   onOpenChange: (open: boolean) => void;
   pipelineId: string;
   environmentName?: string;
+  currentYaml?: string;
 }
 
 export function AiPipelineDialog({
@@ -36,8 +38,9 @@ export function AiPipelineDialog({
   onOpenChange,
   pipelineId,
   environmentName,
+  currentYaml: currentYamlProp,
 }: AiPipelineDialogProps) {
-  const [mode, setMode] = useState<"generate" | "review">("generate");
+  const [mode, setMode] = useState<"generate" | "review" | "debug">("generate");
 
   // --- Generate tab state (unchanged from original) ---
   const [genPrompt, setGenPrompt] = useState("");
@@ -86,6 +89,12 @@ export function AiPipelineDialog({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversation.messages, conversation.streamingContent]);
+
+  // --- Debug tab state ---
+  const debugConversation = useAiDebugConversation({ pipelineId, currentYaml: currentYamlProp });
+  const [debugPrompt, setDebugPrompt] = useState("");
+  const debugTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const debugMessagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-grow for generate textarea
   useEffect(() => {
@@ -332,25 +341,58 @@ export function AiPipelineDialog({
     [applySuggestions, conversation],
   );
 
+  // --- Debug tab handlers ---
+
+  useEffect(() => {
+    debugMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [debugConversation.messages, debugConversation.streamingContent]);
+
+  useEffect(() => {
+    const ta = debugTextareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    const maxHeight = 4 * 24;
+    ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
+  }, [debugPrompt]);
+
+  const handleDebugSubmit = useCallback(
+    (e?: React.FormEvent) => {
+      e?.preventDefault();
+      if (!debugPrompt.trim()) return;
+      const message = debugPrompt;
+      setDebugPrompt("");
+      debugConversation.sendMessage(message);
+    },
+    [debugPrompt, debugConversation],
+  );
+
+  const handleDebugKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleDebugSubmit();
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col min-h-0 overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
-            AI Pipeline Builder
+            AI Assistant
           </DialogTitle>
           <DialogDescription>
-            Describe what you want to build, or ask for a review of your current pipeline.
+            Generate pipeline components, review your configuration, or debug issues.
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={mode} onValueChange={(v) => setMode(v as "generate" | "review")} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs value={mode} onValueChange={(v) => setMode(v as "generate" | "review" | "debug")} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="generate">Generate</TabsTrigger>
             <TabsTrigger value="review" disabled={nodes.length === 0}>
               Review
             </TabsTrigger>
+            <TabsTrigger value="debug">Debug</TabsTrigger>
           </TabsList>
 
           {/* ---- Generate tab (unchanged) ---- */}
@@ -524,6 +566,143 @@ export function AiPipelineDialog({
                   </div>
                 </div>
               </>
+            )}
+          </TabsContent>
+
+          {/* ---- Debug tab (chat with AI about errors) ---- */}
+          <TabsContent value="debug" className="flex flex-col flex-1 mt-4 min-h-0 overflow-hidden">
+            {debugConversation.isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="flex-1 min-h-0 overflow-y-auto pr-2">
+                  <div className="space-y-4 pb-4">
+                    {debugConversation.messages.length === 0 &&
+                      !debugConversation.isStreaming && (
+                        <p className="text-sm text-muted-foreground text-center py-8">
+                          Ask the AI to help debug your pipeline — it has access to
+                          your configuration, metrics, SLI health, and recent error
+                          logs.
+                        </p>
+                      )}
+
+                    {debugConversation.messages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`flex items-start gap-3 ${
+                          msg.role === "user" ? "flex-row-reverse" : ""
+                        }`}
+                      >
+                        <div
+                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                            msg.role === "user"
+                              ? "bg-primary/10"
+                              : "bg-violet-500/10"
+                          }`}
+                        >
+                          {msg.role === "user" ? (
+                            <User className="h-3.5 w-3.5 text-primary" />
+                          ) : (
+                            <Bot className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                          )}
+                        </div>
+                        <div
+                          className={`flex-1 pt-0.5 ${
+                            msg.role === "user" ? "text-right" : ""
+                          }`}
+                        >
+                          <div
+                            className={`inline-block rounded-lg px-3 py-2 text-sm ${
+                              msg.role === "user"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted"
+                            }`}
+                          >
+                            <div className="whitespace-pre-wrap">
+                              {msg.content}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {debugConversation.isStreaming && debugConversation.streamingContent && (
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500/10">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-600 dark:text-violet-400" />
+                        </div>
+                        <div className="flex-1 pt-0.5">
+                          <div className="inline-block rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap">
+                            {debugConversation.streamingContent}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {debugConversation.isStreaming && !debugConversation.streamingContent && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Analyzing pipeline...
+                      </div>
+                    )}
+
+                    <div ref={debugMessagesEndRef} />
+                  </div>
+                </div>
+
+                {debugConversation.error && (
+                  <div className="flex items-start gap-2 rounded border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive mb-3">
+                    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                    {debugConversation.error}
+                  </div>
+                )}
+
+                <div className="pt-3 border-t space-y-2">
+                  <form onSubmit={handleDebugSubmit} className="flex gap-2">
+                    <textarea
+                      ref={debugTextareaRef}
+                      value={debugPrompt}
+                      onChange={(e) => setDebugPrompt(e.target.value)}
+                      onKeyDown={handleDebugKeyDown}
+                      placeholder="Why is this pipeline dropping events?"
+                      disabled={debugConversation.isStreaming}
+                      rows={1}
+                      className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                    />
+                    {debugConversation.isStreaming ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={debugConversation.cancelStreaming}
+                      >
+                        Cancel
+                      </Button>
+                    ) : (
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={!debugPrompt.trim()}
+                      >
+                        <Send className="h-3.5 w-3.5 mr-1.5" />
+                        Send
+                      </Button>
+                    )}
+                  </form>
+                  {debugConversation.messages.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={debugConversation.startNewConversation}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <MessageSquarePlus className="h-3 w-3" />
+                      New Conversation
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
           </TabsContent>
         </Tabs>
