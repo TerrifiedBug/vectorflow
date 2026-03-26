@@ -278,3 +278,184 @@ describe("audit.deploymentPipelines", () => {
     expect(where.entityType).toBe("Pipeline");
   });
 });
+
+// ─── deploymentSummary procedure ────────────────────────────────────────────
+
+describe("audit.deploymentSummary", () => {
+  it("returns aggregated deployment stats from the last 24 hours", async () => {
+    const entries = [
+      makeAuditEntry({
+        id: "a1",
+        userId: "user-1",
+        entityType: "Pipeline",
+        entityId: "pipeline-1",
+        metadata: { input: { pipelineId: "pipeline-1" } },
+      }),
+      makeAuditEntry({
+        id: "a2",
+        userId: "user-2",
+        entityType: "Pipeline",
+        entityId: "pipeline-2",
+        metadata: { input: { pipelineId: "pipeline-2" } },
+      }),
+      makeAuditEntry({
+        id: "a3",
+        userId: "user-1",
+        entityType: "Pipeline",
+        entityId: "pipeline-1",
+        metadata: { input: { pipelineId: "pipeline-1" } },
+      }),
+    ];
+    prismaMock.auditLog.findMany.mockResolvedValueOnce(entries as never);
+
+    const result = await caller.deploymentSummary();
+
+    expect(result.deployCount).toBe(3);
+    expect(result.uniqueDeployers).toBe(2);
+    expect(result.affectedPipelines).toBe(2);
+  });
+
+  it("returns zeros when no deployments in the last 24 hours", async () => {
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([] as never);
+
+    const result = await caller.deploymentSummary();
+
+    expect(result.deployCount).toBe(0);
+    expect(result.uniqueDeployers).toBe(0);
+    expect(result.affectedPipelines).toBe(0);
+  });
+
+  it("filters by DEPLOYMENT_ACTIONS and 24h time window", async () => {
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([] as never);
+
+    const before = Date.now();
+    await caller.deploymentSummary();
+
+    const findManyCall = prismaMock.auditLog.findMany.mock.calls[0][0] as Record<string, unknown>;
+    const where = findManyCall.where as { action: unknown; createdAt: { gte: Date } };
+    expect(where.action).toEqual({ in: [...DEPLOYMENT_ACTIONS] });
+    // The gte date should be approximately 24 hours ago
+    const expectedGte = new Date(before - 24 * 60 * 60 * 1000);
+    expect(where.createdAt.gte.getTime()).toBeGreaterThanOrEqual(expectedGte.getTime() - 1000);
+    expect(where.createdAt.gte.getTime()).toBeLessThanOrEqual(before);
+  });
+
+  it("counts pipelines from DeployRequest metadata", async () => {
+    const entry = makeAuditEntry({
+      entityType: "DeployRequest",
+      entityId: "deploy-req-1",
+      metadata: { input: { pipelineId: "pipeline-99" } },
+    });
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([entry] as never);
+
+    const result = await caller.deploymentSummary();
+
+    expect(result.affectedPipelines).toBe(1);
+  });
+
+  it("handles entries with null userId", async () => {
+    const entry = makeAuditEntry({ userId: null });
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([entry] as never);
+
+    const result = await caller.deploymentSummary();
+
+    expect(result.deployCount).toBe(1);
+    expect(result.uniqueDeployers).toBe(0);
+  });
+});
+
+// ─── exportDeployments procedure ────────────────────────────────────────────
+
+describe("audit.exportDeployments", () => {
+  it("returns enriched deployment entries without cursor", async () => {
+    const entry = makeAuditEntry();
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([entry] as never);
+    prismaMock.pipeline.findMany.mockResolvedValueOnce([
+      { id: "pipeline-1", name: "My Pipeline" },
+    ] as never);
+
+    const result = await caller.exportDeployments({});
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].pipelineName).toBe("My Pipeline");
+    expect(result.items[0].changelog).toBe("Initial deploy");
+    // No cursor in export response
+    expect((result as Record<string, unknown>).nextCursor).toBeUndefined();
+  });
+
+  it("applies pipelineId filter", async () => {
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([] as never);
+
+    await caller.exportDeployments({ pipelineId: "pipeline-5" });
+
+    const findManyCall = prismaMock.auditLog.findMany.mock.calls[0][0];
+    const andConditions = (findManyCall as Record<string, unknown>).where as { AND: Record<string, unknown>[] };
+    expect(andConditions.AND).toContainEqual({
+      OR: [
+        { entityType: "Pipeline", entityId: "pipeline-5" },
+        { entityType: "DeployRequest", entityId: "pipeline-5" },
+      ],
+    });
+  });
+
+  it("applies date range filter", async () => {
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([] as never);
+
+    await caller.exportDeployments({
+      startDate: "2025-03-01",
+      endDate: "2025-03-31",
+    });
+
+    const findManyCall = prismaMock.auditLog.findMany.mock.calls[0][0];
+    const andConditions = (findManyCall as Record<string, unknown>).where as { AND: Record<string, unknown>[] };
+    const dateCondition = andConditions.AND.find(
+      (c) => "createdAt" in c
+    ) as { createdAt: { gte?: Date; lte?: Date } };
+    expect(dateCondition).toBeDefined();
+    expect(dateCondition.createdAt.gte).toEqual(new Date("2025-03-01"));
+    expect(dateCondition.createdAt.lte).toEqual(new Date("2025-03-31"));
+  });
+
+  it("limits results to 10,000 rows", async () => {
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([] as never);
+
+    await caller.exportDeployments({});
+
+    const findManyCall = prismaMock.auditLog.findMany.mock.calls[0][0] as Record<string, unknown>;
+    expect(findManyCall.take).toBe(10_000);
+    // No cursor logic in export
+    expect(findManyCall.cursor).toBeUndefined();
+    expect(findManyCall.skip).toBeUndefined();
+  });
+
+  it("returns empty result when no matching entries exist", async () => {
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([] as never);
+
+    const result = await caller.exportDeployments({});
+
+    expect(result.items).toHaveLength(0);
+    expect(prismaMock.pipeline.findMany).not.toHaveBeenCalled();
+  });
+
+  it("handles DeployRequest entity type entries in export", async () => {
+    const entry = makeAuditEntry({
+      action: "deploy.request_submitted",
+      entityType: "DeployRequest",
+      entityId: "deploy-req-1",
+      metadata: {
+        timestamp: "2025-01-01T00:00:00Z",
+        input: { pipelineId: "pipeline-2", changelog: "Staged deploy" },
+      },
+    });
+    prismaMock.auditLog.findMany.mockResolvedValueOnce([entry] as never);
+    prismaMock.pipeline.findMany.mockResolvedValueOnce([
+      { id: "pipeline-2", name: "Staging Pipeline" },
+    ] as never);
+
+    const result = await caller.exportDeployments({});
+
+    expect(result.items[0].pipelineName).toBe("Staging Pipeline");
+    expect(result.items[0].pipelineId).toBe("pipeline-2");
+    expect(result.items[0].changelog).toBe("Staged deploy");
+  });
+});
