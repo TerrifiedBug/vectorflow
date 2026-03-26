@@ -11,6 +11,7 @@ import { metricStore } from "@/server/services/metric-store";
 import { sseRegistry } from "@/server/services/sse-registry";
 import type { FleetStatusEvent, LogEntryEvent, StatusChangeEvent } from "@/lib/sse/types";
 import { evaluateAlerts } from "@/server/services/alert-evaluator";
+import { isLeader } from "@/server/services/leader-election";
 import { batchUpsertPipelineStatuses } from "@/server/services/heartbeat-batch";
 import { deliverSingleWebhook } from "@/server/services/webhook-delivery";
 import { deliverToChannels } from "@/server/services/channels";
@@ -589,14 +590,17 @@ export async function POST(request: Request) {
       console.error("Node health check error:", err),
     );
 
-    // Evaluate alert rules and deliver webhooks for any fired/resolved alerts (fire-and-forget)
-    evaluateAndDeliverAlerts(agent.nodeId, agent.environmentId).catch((err) =>
-      console.error("Alert evaluation failed:", err),
-    );
+    // Evaluate alert rules and deliver webhooks for any fired/resolved alerts (fire-and-forget).
+    // Only the leader instance evaluates alerts — followers skip since the leader handles it from DB state.
+    if (isLeader()) {
+      evaluateAndDeliverAlerts(agent.nodeId, agent.environmentId).catch((err) =>
+        console.error("Alert evaluation failed:", err),
+      );
+    }
 
-    // Throttle cleanup to once per hour
+    // Throttle cleanup to once per hour. Only leader runs cleanup.
     const ONE_HOUR = 60 * 60 * 1000;
-    if (Date.now() - lastCleanup > ONE_HOUR) {
+    if (isLeader() && Date.now() - lastCleanup > ONE_HOUR) {
       lastCleanup = Date.now();
       cleanupOldMetrics().catch((err) =>
         console.error("Metrics cleanup error:", err),
