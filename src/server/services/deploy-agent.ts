@@ -6,7 +6,7 @@ import { createVersion } from "@/server/services/pipeline-version";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { startSystemVector, stopSystemVector } from "@/server/services/system-vector";
 import { gitSyncCommitPipeline } from "@/server/services/git-sync";
-import { pushRegistry } from "@/server/services/push-registry";
+import { relayPush } from "@/server/services/push-broadcast";
 
 export interface AgentDeployResult {
   success: boolean;
@@ -179,7 +179,7 @@ export async function deployAgent(
       const selectorEntries = Object.entries(nodeSelector ?? {});
       const matches = selectorEntries.every(([k, v]) => labels[k] === v);
       if (matches) {
-        pushRegistry.send(node.id, {
+        relayPush(node.id, {
           type: "config_changed",
           pipelineId,
           reason: "deploy",
