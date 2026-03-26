@@ -21,6 +21,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { isFleetMetric } from "@/lib/alert-metrics";
 import {
   Table,
   TableBody,
@@ -178,7 +179,7 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
                           {event.alertRule.name}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {event.node?.host ?? "-"}
+                          {event.node?.host ?? (isFleetMetric(event.alertRule.metric) ? "Fleet" : "-")}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {event.alertRule.pipeline?.name ?? "-"}

@@ -58,4 +58,34 @@ export async function register() {
   } catch (error) {
     console.error("Failed to initialize retry service:", error);
   }
+
+  // Start auto-rollback monitoring service.
+  try {
+    const { initAutoRollbackService } = await import(
+      "@/server/services/auto-rollback"
+    );
+    initAutoRollbackService();
+  } catch (error) {
+    console.error("Failed to initialize auto-rollback service:", error);
+  }
+
+  // Start staged rollout health-check monitoring service.
+  try {
+    const { initStagedRolloutService } = await import(
+      "@/server/services/staged-rollout"
+    );
+    initStagedRolloutService();
+  } catch (error) {
+    console.error("Failed to initialize staged rollout service:", error);
+  }
+
+  // Start fleet alert evaluation service.
+  try {
+    const { initFleetAlertService } = await import(
+      "@/server/services/fleet-alert-service"
+    );
+    initFleetAlertService();
+  } catch (error) {
+    console.error("Failed to initialize fleet alert service:", error);
+  }
 }
