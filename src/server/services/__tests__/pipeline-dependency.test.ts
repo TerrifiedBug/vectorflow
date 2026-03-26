@@ -19,6 +19,7 @@ import {
   getDownstreams,
   getUndeployedUpstreams,
   getDeployedDownstreams,
+  getDependencyGraph,
 } from "@/server/services/pipeline-dependency";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -372,5 +373,76 @@ describe("getDeployedDownstreams", () => {
 
     const result = await getDeployedDownstreams("p-no-deps");
     expect(result).toHaveLength(0);
+  });
+});
+
+// ─── Tests: getDependencyGraph ──────────────────────────────────────────────
+
+describe("getDependencyGraph", () => {
+  it("returns pipelines and dependencies for the given environment", async () => {
+    const pipelines = [
+      { id: "p1", name: "Pipeline p1", isDraft: false, nodeStatuses: [{ status: "running" }] },
+      { id: "p2", name: "Pipeline p2", isDraft: true, nodeStatuses: [] },
+    ];
+    const dependencies = [
+      { id: "dep-1", upstreamId: "p1", downstreamId: "p2", description: "p2 depends on p1" },
+    ];
+
+    prismaMock.pipeline.findMany.mockResolvedValueOnce(pipelines as never);
+    prismaMock.pipelineDependency.findMany.mockResolvedValueOnce(dependencies as never);
+
+    const result = await getDependencyGraph("env-1");
+
+    expect(result.pipelines).toHaveLength(2);
+    expect(result.pipelines[0].id).toBe("p1");
+    expect(result.pipelines[1].id).toBe("p2");
+    expect(result.dependencies).toHaveLength(1);
+    expect(result.dependencies[0].upstreamId).toBe("p1");
+    expect(result.dependencies[0].downstreamId).toBe("p2");
+
+    expect(prismaMock.pipeline.findMany).toHaveBeenCalledWith({
+      where: { environmentId: "env-1" },
+      select: {
+        id: true,
+        name: true,
+        isDraft: true,
+        nodeStatuses: { select: { status: true } },
+      },
+    });
+
+    expect(prismaMock.pipelineDependency.findMany).toHaveBeenCalledWith({
+      where: { upstream: { environmentId: "env-1" } },
+      select: {
+        id: true,
+        upstreamId: true,
+        downstreamId: true,
+        description: true,
+      },
+    });
+  });
+
+  it("returns empty arrays when no pipelines exist", async () => {
+    prismaMock.pipeline.findMany.mockResolvedValueOnce([] as never);
+    prismaMock.pipelineDependency.findMany.mockResolvedValueOnce([] as never);
+
+    const result = await getDependencyGraph("env-empty");
+
+    expect(result.pipelines).toHaveLength(0);
+    expect(result.dependencies).toHaveLength(0);
+  });
+
+  it("returns pipelines with empty dependencies when no deps exist", async () => {
+    const pipelines = [
+      { id: "p1", name: "Pipeline p1", isDraft: false, nodeStatuses: [] },
+      { id: "p2", name: "Pipeline p2", isDraft: true, nodeStatuses: [] },
+    ];
+
+    prismaMock.pipeline.findMany.mockResolvedValueOnce(pipelines as never);
+    prismaMock.pipelineDependency.findMany.mockResolvedValueOnce([] as never);
+
+    const result = await getDependencyGraph("env-1");
+
+    expect(result.pipelines).toHaveLength(2);
+    expect(result.dependencies).toHaveLength(0);
   });
 });
