@@ -22,7 +22,6 @@ import {
   Clock,
   X,
   Sparkles,
-  Bug,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -76,7 +75,6 @@ interface FlowToolbarProps {
   onDiscardChanges?: () => void;
   aiEnabled?: boolean;
   onAiOpen?: () => void;
-  onDebugOpen?: () => void;
   deployedVersionNumber?: number | null;
 }
 
@@ -111,7 +109,6 @@ export function FlowToolbar({
   onDiscardChanges,
   aiEnabled,
   onAiOpen,
-  onDebugOpen,
   deployedVersionNumber,
 }: FlowToolbarProps) {
   const globalConfig = useFlowStore((s) => s.globalConfig);
@@ -341,36 +338,20 @@ export function FlowToolbar({
         </Tooltip>
 
         {aiEnabled && (
-          <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onAiOpen}
-                  className="h-7 w-7 p-0"
-                  aria-label="AI pipeline builder"
-                >
-                  <Sparkles className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>AI pipeline builder</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={processStatus === "CRASHED" ? "destructive" : "ghost"}
-                  size="sm"
-                  onClick={onDebugOpen}
-                  className="h-7 w-7 p-0"
-                  aria-label="Debug with AI"
-                >
-                  <Bug className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Debug with AI</TooltipContent>
-            </Tooltip>
-          </>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onAiOpen}
+                className="h-7 w-7 p-0"
+                aria-label="AI assistant"
+              >
+                <Sparkles className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>AI assistant</TooltipContent>
+          </Tooltip>
         )}
 
         {pipelineId && (

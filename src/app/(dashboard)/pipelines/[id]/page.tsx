@@ -33,7 +33,6 @@ import { ComponentPalette } from "@/components/flow/component-palette";
 import { FlowCanvas } from "@/components/flow/flow-canvas";
 import { FlowToolbar } from "@/components/flow/flow-toolbar";
 import { AiPipelineDialog } from "@/components/flow/ai-pipeline-dialog";
-import { AiDebugPanel } from "@/components/flow/ai-debug-panel";
 import { DetailPanel } from "@/components/flow/detail-panel";
 import { DeployDialog } from "@/components/flow/deploy-dialog";
 import { SaveTemplateDialog } from "@/components/flow/save-template-dialog";
@@ -128,7 +127,6 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
-  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   const teamQuery = useQuery(
@@ -475,7 +473,6 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             onDiscardChanges={() => setDiscardOpen(true)}
             aiEnabled={aiEnabled}
             onAiOpen={() => setAiDialogOpen(true)}
-            onDebugOpen={() => setDebugPanelOpen(true)}
             deployedVersionNumber={pipelineQuery.data?.deployedVersionNumber}
           />
         </div>
@@ -593,13 +590,6 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
           onOpenChange={setAiDialogOpen}
           pipelineId={pipelineId}
           environmentName={pipelineQuery.data?.environment?.name}
-        />
-      )}
-      {aiEnabled && (
-        <AiDebugPanel
-          open={debugPanelOpen}
-          onOpenChange={setDebugPanelOpen}
-          pipelineId={pipelineId}
           currentYaml={currentYaml}
         />
       )}
