@@ -10,6 +10,7 @@ import {
   ExternalLink,
   GitBranch,
   Rocket,
+  Server,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -42,6 +43,16 @@ const ALL_VALUE = "__all__";
 
 /** Color map for deployment action types */
 function getDeployActionColor(action: string): string {
+  // Staged rollout actions — match before generic "rollback" / "deploy"
+  if (action === "deploy.staged_created")
+    return "bg-teal-500/15 text-teal-700 dark:text-teal-400";
+  if (action === "deploy.staged_broadened")
+    return "bg-purple-500/15 text-purple-700 dark:text-purple-400";
+  if (action === "deploy.staged_rolled_back")
+    return "bg-orange-500/15 text-orange-700 dark:text-orange-400";
+  if (action === "deploy.auto_rollback")
+    return "bg-red-500/15 text-red-700 dark:text-red-400";
+
   if (action.includes("undeploy"))
     return "bg-red-500/15 text-red-700 dark:text-red-400";
   if (action.includes("rollback"))
@@ -65,6 +76,10 @@ function formatDeployAction(action: string): string {
     "deployRequest.rejected": "Request Rejected",
     "deploy.cancel_request": "Request Cancelled",
     "pipeline.rollback": "Rollback",
+    "deploy.staged_created": "Staged Rollout Created",
+    "deploy.staged_broadened": "Staged Rollout Broadened",
+    "deploy.staged_rolled_back": "Staged Rollback",
+    "deploy.auto_rollback": "Auto-Rollback",
   };
   return labels[action] ?? action;
 }
@@ -369,7 +384,11 @@ export default function DeploymentHistoryPage() {
                   const isExpanded = expandedRows.has(entry.id);
                   const hasChangelog = !!entry.changelog;
                   const hasPipelineLink = !!entry.pipelineId;
-                  const hasExpandContent = hasChangelog || hasPipelineLink;
+                  const hasNodeNames =
+                    Array.isArray(entry.pushedNodeNames) &&
+                    entry.pushedNodeNames.length > 0;
+                  const hasExpandContent =
+                    hasChangelog || hasPipelineLink || hasNodeNames;
 
                   return (
                     <Fragment key={entry.id}>
@@ -419,6 +438,27 @@ export default function DeploymentHistoryPage() {
                         <TableRow className="bg-muted/30 hover:bg-muted/30">
                           <TableCell colSpan={6} className="p-4">
                             <div className="space-y-3">
+                              {hasNodeNames && (
+                                <div>
+                                  <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                                    <Server className="h-3.5 w-3.5" />
+                                    Nodes Affected
+                                  </p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {entry.pushedNodeNames!.map(
+                                      (name, idx) => (
+                                        <Badge
+                                          key={idx}
+                                          variant="secondary"
+                                          className="text-xs"
+                                        >
+                                          {name}
+                                        </Badge>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                               {hasChangelog && (
                                 <div>
                                   <p className="text-xs font-medium text-muted-foreground mb-2">
