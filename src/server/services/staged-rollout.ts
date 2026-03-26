@@ -2,8 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
 import { createVersion, deployFromVersion } from "@/server/services/pipeline-version";
 import { fireEventAlert } from "@/server/services/event-alerts";
-import { sseRegistry } from "@/server/services/sse-registry";
-import { pushRegistry } from "@/server/services/push-registry";
+import { broadcastSSE } from "@/server/services/sse-broadcast";
+import { relayPush } from "@/server/services/push-broadcast";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { TRPCError } from "@trpc/server";
@@ -71,7 +71,7 @@ export class StagedRolloutService {
             data: { status: "HEALTH_CHECK" },
           });
 
-          sseRegistry.broadcast(
+          broadcastSSE(
             {
               type: "pipeline_status",
               pipelineId: rollout.pipelineId,
@@ -245,7 +245,7 @@ export class StagedRolloutService {
 
     // Send push notifications ONLY to canary nodes
     for (const nodeId of canaryNodeIds) {
-      pushRegistry.send(nodeId, {
+      relayPush(nodeId, {
         type: "config_changed",
         pipelineId,
         reason: "canary_deploy",
@@ -284,7 +284,7 @@ export class StagedRolloutService {
     });
 
     // Broadcast SSE event
-    sseRegistry.broadcast(
+    broadcastSSE(
       {
         type: "pipeline_status",
         pipelineId,
@@ -331,7 +331,7 @@ export class StagedRolloutService {
     // Send config_changed push to remaining nodes
     const remainingNodeIds = (rollout.remainingNodeIds as string[]) ?? [];
     for (const nodeId of remainingNodeIds) {
-      pushRegistry.send(nodeId, {
+      relayPush(nodeId, {
         type: "config_changed",
         pipelineId: rollout.pipelineId,
         reason: "canary_broadened",
@@ -354,7 +354,7 @@ export class StagedRolloutService {
     });
 
     // Broadcast SSE event
-    sseRegistry.broadcast(
+    broadcastSSE(
       {
         type: "pipeline_status",
         pipelineId: rollout.pipelineId,
@@ -424,7 +424,7 @@ export class StagedRolloutService {
     });
 
     // Broadcast SSE event
-    sseRegistry.broadcast(
+    broadcastSSE(
       {
         type: "pipeline_status",
         pipelineId: rollout.pipelineId,

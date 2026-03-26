@@ -9,8 +9,8 @@ vi.mock("@/lib/prisma", () => ({
   prisma: mockDeep<PrismaClient>(),
 }));
 
-vi.mock("@/server/services/push-registry", () => ({
-  pushRegistry: { send: vi.fn() },
+vi.mock("@/server/services/push-broadcast", () => ({
+  relayPush: vi.fn(),
 }));
 
 vi.mock("@/server/services/sse-registry", () => ({
@@ -20,7 +20,7 @@ vi.mock("@/server/services/sse-registry", () => ({
 // ─── Import the mocked modules + SUT ───────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
-import { pushRegistry } from "@/server/services/push-registry";
+import { relayPush } from "@/server/services/push-broadcast";
 import {
   listVersionsSummary,
   deployFromVersion,
@@ -29,7 +29,7 @@ import {
 } from "@/server/services/pipeline-version";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
-const pushRegistrySendMock = pushRegistry.send as ReturnType<typeof vi.fn>;
+const relayPushMock = vi.mocked(relayPush);
 
 // ─── Fixture helpers ────────────────────────────────────────────────────────
 
@@ -235,7 +235,7 @@ describe("deployFromVersion", () => {
       { id: "vnode-2", labels: { role: "other" } },
     ] as never);
 
-    pushRegistrySendMock.mockReturnValue(true);
+    relayPushMock.mockReturnValue(true);
 
     const result = await deployFromVersion("pipeline-1", "source-v1", "user-1");
 
@@ -251,8 +251,8 @@ describe("deployFromVersion", () => {
     );
 
     // Verify push notification sent only to matching node
-    expect(pushRegistrySendMock).toHaveBeenCalledTimes(1);
-    expect(pushRegistrySendMock).toHaveBeenCalledWith("vnode-1", {
+    expect(relayPushMock).toHaveBeenCalledTimes(1);
+    expect(relayPushMock).toHaveBeenCalledWith("vnode-1", {
       type: "config_changed",
       pipelineId: "pipeline-1",
       reason: "deploy_from_version",
@@ -280,7 +280,7 @@ describe("deployFromVersion", () => {
     prismaMock.vectorNode.findMany.mockResolvedValue([
       { id: "vnode-1", labels: {} },
     ] as never);
-    pushRegistrySendMock.mockReturnValue(true);
+    relayPushMock.mockReturnValue(true);
 
     const result = await deployFromVersion("pipeline-1", "version-1", "user-1", "Custom changelog");
 
@@ -397,8 +397,8 @@ describe("rollback", () => {
     );
 
     // Verify the caller can now compose push: push is NOT called by rollback() itself
-    // (push lives in the router layer, tested by the fact that pushRegistrySendMock is not called)
-    expect(pushRegistrySendMock).not.toHaveBeenCalled();
+    // (push lives in the router layer, tested by the fact that relayPushMock is not called)
+    expect(relayPushMock).not.toHaveBeenCalled();
   });
 
   it("rollback throws NOT_FOUND when target version does not exist", async () => {
