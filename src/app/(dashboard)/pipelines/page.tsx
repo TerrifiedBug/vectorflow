@@ -289,7 +289,7 @@ export default function PipelinesPage() {
   const pipelinesQuery = useQuery(
     trpc.pipeline.list.queryOptions(
       { environmentId: effectiveEnvId },
-      { enabled: !!effectiveEnvId },
+      { enabled: !!effectiveEnvId, refetchInterval: 30_000 },
     ),
   );
 
