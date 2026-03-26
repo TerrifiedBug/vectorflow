@@ -40,9 +40,19 @@ export interface StatusChangeEvent {
   pipelineName?: string;
 }
 
+/** Pipeline-level status change (deploy, rollback, etc.). */
+export interface PipelineStatusEvent {
+  type: "pipeline_status";
+  pipelineId: string;
+  action: string;
+  message: string;
+  timestamp: number;
+}
+
 /** All SSE event types the browser can receive. */
 export type SSEEvent =
   | MetricUpdateEvent
   | FleetStatusEvent
   | LogEntryEvent
-  | StatusChangeEvent;
+  | StatusChangeEvent
+  | PipelineStatusEvent;

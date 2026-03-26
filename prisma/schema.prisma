@@ -38,6 +38,7 @@ model User {
   aiConversationsCreated AiConversation[] @relation("AiConversationCreatedBy")
   aiMessagesCreated      AiMessage[]      @relation("AiMessageCreatedBy")
   pipelineVersionsCreated PipelineVersion[] @relation("PipelineVersionCreatedBy")
+  stagedRolloutsCreated  StagedRollout[]  @relation("StagedRolloutCreatedBy")
   createdAt              DateTime         @default(now())
 }
 
@@ -146,6 +147,7 @@ model Environment {
   teamDefaults            Team[]            @relation("teamDefault")
   sharedComponents        SharedComponent[]
   pipelineGroups          PipelineGroup[]
+  stagedRollouts          StagedRollout[]
   createdAt               DateTime      @default(now())
 }
 
@@ -311,8 +313,12 @@ model Pipeline {
   slis            PipelineSli[]
   enrichMetadata    Boolean              @default(false)
   tags              Json?                @default("[]")   // string[] of classification tags like ["PII", "PCI-DSS"]
+  autoRollbackEnabled        Boolean  @default(false)
+  autoRollbackThreshold      Float    @default(5.0)
+  autoRollbackWindowMinutes  Int      @default(5)
   aiConversations AiConversation[]
   deployRequests  DeployRequest[]
+  stagedRollouts  StagedRollout[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 }
@@ -478,7 +484,38 @@ model PipelineVersion {
   changelog   String?
   createdAt   DateTime @default(now())
 
+  stagedRolloutsAsCanary   StagedRollout[] @relation("StagedRolloutCanaryVersion")
+  stagedRolloutsAsPrevious StagedRollout[] @relation("StagedRolloutPreviousVersion")
+
   @@index([pipelineId, version])
+}
+
+model StagedRollout {
+  id                      String           @id @default(cuid())
+  pipelineId              String
+  pipeline                Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  environmentId           String
+  environment             Environment      @relation(fields: [environmentId], references: [id])
+  canaryVersionId         String
+  canaryVersion           PipelineVersion  @relation("StagedRolloutCanaryVersion", fields: [canaryVersionId], references: [id])
+  previousVersionId       String?
+  previousVersion         PipelineVersion? @relation("StagedRolloutPreviousVersion", fields: [previousVersionId], references: [id])
+  canarySelector          Json
+  originalSelector        Json?
+  canaryNodeIds           Json
+  remainingNodeIds        Json?
+  status                  String           @default("CANARY_DEPLOYED")
+  healthCheckWindowMinutes Int             @default(5)
+  healthCheckExpiresAt    DateTime?
+  broadenedAt             DateTime?
+  rolledBackAt            DateTime?
+  createdById             String
+  createdBy               User             @relation("StagedRolloutCreatedBy", fields: [createdById], references: [id])
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+
+  @@index([pipelineId, status])
+  @@index([status, healthCheckExpiresAt])
 }
 
 model Secret {
@@ -650,7 +687,7 @@ model DeployRequest {
 }
 
 enum AlertMetric {
-  // Infrastructure (threshold-based)
+  // Infrastructure (threshold-based, per-node)
   node_unreachable
   cpu_usage
   memory_usage
@@ -658,6 +695,12 @@ enum AlertMetric {
   error_rate
   discarded_rate
   pipeline_crashed
+
+  // Fleet-wide (threshold-based, per-environment)
+  fleet_error_rate
+  fleet_throughput_drop
+  fleet_event_volume
+  node_load_imbalance
 
   // Events (fire on occurrence)
   deploy_requested

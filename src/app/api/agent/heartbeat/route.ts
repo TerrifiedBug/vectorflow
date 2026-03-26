@@ -122,6 +122,134 @@ interface PipelineStatus {
   recentLogs?: string[];
 }
 
+type SampleResult = {
+  requestId: string;
+  componentKey?: string;
+  events?: unknown[] | null;
+  schema?: Array<{ path: string; type: string; sample: string }> | null;
+  error?: string;
+};
+
+async function processSampleResults(results: SampleResult[], nodeId: string): Promise<void> {
+  for (const result of results) {
+    if (!result.requestId) continue;
+    const request = await prisma.eventSampleRequest.findUnique({
+      where: { id: result.requestId },
+      select: { pipelineId: true, status: true },
+    });
+    if (!request || request.status !== "PENDING") continue;
+
+    try {
+      await prisma.eventSample.create({
+        data: {
+          requestId: result.requestId,
+          pipelineId: request.pipelineId,
+          componentKey: result.componentKey ?? "",
+          events: (result.events ?? []) as Prisma.InputJsonValue,
+          schema: (result.schema ?? []) as Prisma.InputJsonValue,
+          error: result.error ?? null,
+        },
+      });
+
+      await prisma.eventSampleRequest.update({
+        where: { id: result.requestId },
+        data: {
+          status: result.error ? "ERROR" : "COMPLETED",
+          completedAt: new Date(),
+          nodeId,
+        },
+      });
+    } catch (err) {
+      // Only mark as ERROR if the EventSample write itself failed.
+      // If another agent already submitted a successful result, the
+      // request may already be COMPLETED — avoid overwriting that.
+      const current = await prisma.eventSampleRequest.findUnique({
+        where: { id: result.requestId },
+        select: { status: true },
+      });
+      if (current && current.status === "PENDING") {
+        await prisma.eventSampleRequest.update({
+          where: { id: result.requestId },
+          data: {
+            status: "ERROR",
+            completedAt: new Date(),
+            nodeId,
+          },
+        });
+      }
+      console.error("EventSample write error:", err);
+    }
+  }
+}
+
+async function evaluateAndDeliverAlerts(nodeId: string, environmentId: string): Promise<void> {
+  const firedAlerts = await evaluateAlerts(nodeId, environmentId);
+
+  if (firedAlerts.length > 0) {
+    const [nodeInfo, envInfo] = await Promise.all([
+      prisma.vectorNode.findUnique({
+        where: { id: nodeId },
+        select: { host: true },
+      }),
+      prisma.environment.findUnique({
+        where: { id: environmentId },
+        select: { name: true, team: { select: { name: true } } },
+      }),
+    ]);
+
+    for (const alert of firedAlerts) {
+      const pipeline = alert.rule.pipelineId
+        ? await prisma.pipeline.findUnique({
+            where: { id: alert.rule.pipelineId },
+            select: { name: true },
+          })
+        : null;
+
+      const channelPayload = {
+        alertId: alert.event.id,
+        status: alert.event.status as "firing" | "resolved",
+        ruleName: alert.rule.name,
+        severity: "warning",
+        environment: envInfo?.name ?? "Unknown",
+        team: envInfo?.team?.name,
+        node: nodeInfo?.host ?? nodeId,
+        pipeline: pipeline?.name,
+        metric: alert.rule.metric,
+        value: alert.event.value,
+        threshold: alert.rule.threshold ?? 0,
+        message: alert.event.message ?? "",
+        timestamp: alert.event.firedAt.toISOString(),
+        dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/alerts`,
+      };
+
+      // Deliver to legacy webhooks with delivery tracking
+      const webhooks = await prisma.alertWebhook.findMany({
+        where: { environmentId: alert.rule.environmentId, enabled: true },
+      });
+      for (const webhook of webhooks) {
+        trackWebhookDelivery(
+          alert.event.id,
+          webhook.id,
+          webhook.url,
+          () => deliverSingleWebhook(webhook, channelPayload),
+        ).catch((err) =>
+          console.error(`Tracked webhook delivery error for ${webhook.url}:`, err),
+        );
+      }
+
+      // Deliver to notification channels with delivery tracking
+      deliverToChannels(
+        alert.rule.environmentId,
+        alert.rule.id,
+        channelPayload,
+        alert.event.id,
+      ).catch((err) =>
+        console.error("Channel delivery error:", err),
+      );
+    }
+  }
+}
+
 
 export async function POST(request: Request) {
   const agent = await authenticateAgent(request);
@@ -396,20 +524,16 @@ export async function POST(request: Request) {
     }
 
     if (componentLatencyRows.length > 0) {
-      try {
-        await prisma.$transaction([
-          prisma.pipelineMetric.deleteMany({
-            where: {
-              nodeId: agent.nodeId,
-              componentId: { not: null },
-              timestamp: minuteTimestamp,
-            },
-          }),
-          prisma.pipelineMetric.createMany({ data: componentLatencyRows }),
-        ]);
-      } catch (err) {
-        console.error("Per-component latency upsert error:", err);
-      }
+      prisma.$transaction([
+        prisma.pipelineMetric.deleteMany({
+          where: {
+            nodeId: agent.nodeId,
+            componentId: { not: null },
+            timestamp: minuteTimestamp,
+          },
+        }),
+        prisma.pipelineMetric.createMany({ data: componentLatencyRows }),
+      ]).catch((err) => console.error("Per-component latency upsert error:", err));
     }
 
     // Feed per-component metrics into the in-memory MetricStore for editor overlays
@@ -451,59 +575,13 @@ export async function POST(request: Request) {
       }
     }
 
-    // Process event sample results from the agent
+    // Process event sample results from the agent (fire-and-forget)
     const sampleResults = parsed.data.sampleResults;
 
     if (Array.isArray(sampleResults) && sampleResults.length > 0) {
-      for (const result of sampleResults) {
-        if (!result.requestId) continue;
-        const request = await prisma.eventSampleRequest.findUnique({
-          where: { id: result.requestId },
-          select: { pipelineId: true, status: true },
-        });
-        if (!request || request.status !== "PENDING") continue;
-
-        try {
-          await prisma.eventSample.create({
-            data: {
-              requestId: result.requestId,
-              pipelineId: request.pipelineId,
-              componentKey: result.componentKey ?? "",
-              events: (result.events ?? []) as Prisma.InputJsonValue,
-              schema: (result.schema ?? []) as Prisma.InputJsonValue,
-              error: result.error ?? null,
-            },
-          });
-
-          await prisma.eventSampleRequest.update({
-            where: { id: result.requestId },
-            data: {
-              status: result.error ? "ERROR" : "COMPLETED",
-              completedAt: new Date(),
-              nodeId: agent.nodeId,
-            },
-          });
-        } catch (err) {
-          // Only mark as ERROR if the EventSample write itself failed.
-          // If another agent already submitted a successful result, the
-          // request may already be COMPLETED — avoid overwriting that.
-          const current = await prisma.eventSampleRequest.findUnique({
-            where: { id: result.requestId },
-            select: { status: true },
-          });
-          if (current && current.status === "PENDING") {
-            await prisma.eventSampleRequest.update({
-              where: { id: result.requestId },
-              data: {
-                status: "ERROR",
-                completedAt: new Date(),
-                nodeId: agent.nodeId,
-              },
-            });
-          }
-          console.error("EventSample write error:", err);
-        }
-      }
+      processSampleResults(sampleResults, agent.nodeId).catch((err) =>
+        console.error("Sample processing error:", err),
+      );
     }
 
     // Check fleet-wide node health
@@ -511,77 +589,10 @@ export async function POST(request: Request) {
       console.error("Node health check error:", err),
     );
 
-    // Evaluate alert rules and deliver webhooks for any fired/resolved alerts
-    try {
-      const firedAlerts = await evaluateAlerts(agent.nodeId, agent.environmentId);
-
-      if (firedAlerts.length > 0) {
-        // Fetch context once for all alerts in this batch
-        const [nodeInfo, envInfo] = await Promise.all([
-          prisma.vectorNode.findUnique({
-            where: { id: agent.nodeId },
-            select: { host: true },
-          }),
-          prisma.environment.findUnique({
-            where: { id: agent.environmentId },
-            select: { name: true, team: { select: { name: true } } },
-          }),
-        ]);
-
-        for (const alert of firedAlerts) {
-          const pipeline = alert.rule.pipelineId
-            ? await prisma.pipeline.findUnique({
-                where: { id: alert.rule.pipelineId },
-                select: { name: true },
-              })
-            : null;
-
-          const channelPayload = {
-            alertId: alert.event.id,
-            status: alert.event.status as "firing" | "resolved",
-            ruleName: alert.rule.name,
-            severity: "warning",
-            environment: envInfo?.name ?? "Unknown",
-            team: envInfo?.team?.name,
-            node: nodeInfo?.host ?? agent.nodeId,
-            pipeline: pipeline?.name,
-            metric: alert.rule.metric,
-            value: alert.event.value,
-            threshold: alert.rule.threshold ?? 0,
-            message: alert.event.message ?? "",
-            timestamp: alert.event.firedAt.toISOString(),
-            dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/alerts`,
-          };
-
-          // Deliver to legacy webhooks with delivery tracking
-          const webhooks = await prisma.alertWebhook.findMany({
-            where: { environmentId: alert.rule.environmentId, enabled: true },
-          });
-          for (const webhook of webhooks) {
-            trackWebhookDelivery(
-              alert.event.id,
-              webhook.id,
-              webhook.url,
-              () => deliverSingleWebhook(webhook, channelPayload),
-            ).catch((err) =>
-              console.error(`Tracked webhook delivery error for ${webhook.url}:`, err),
-            );
-          }
-
-          // Deliver to notification channels with delivery tracking
-          deliverToChannels(
-            alert.rule.environmentId,
-            alert.rule.id,
-            channelPayload,
-            alert.event.id,
-          ).catch((err) =>
-            console.error("Channel delivery error:", err),
-          );
-        }
-      }
-    } catch (err) {
-      console.error("Alert evaluation failed:", err);
-    }
+    // Evaluate alert rules and deliver webhooks for any fired/resolved alerts (fire-and-forget)
+    evaluateAndDeliverAlerts(agent.nodeId, agent.environmentId).catch((err) =>
+      console.error("Alert evaluation failed:", err),
+    );
 
     // Throttle cleanup to once per hour
     const ONE_HOUR = 60 * 60 * 1000;

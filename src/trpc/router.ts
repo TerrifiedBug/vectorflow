@@ -22,6 +22,7 @@ import { userPreferenceRouter } from "@/server/routers/user-preference";
 import { sharedComponentRouter } from "@/server/routers/shared-component";
 import { aiRouter } from "@/server/routers/ai";
 import { pipelineGroupRouter } from "@/server/routers/pipeline-group";
+import { stagedRolloutRouter } from "@/server/routers/staged-rollout";
 
 export const appRouter = router({
   team: teamRouter,
@@ -47,6 +48,7 @@ export const appRouter = router({
   sharedComponent: sharedComponentRouter,
   ai: aiRouter,
   pipelineGroup: pipelineGroupRouter,
+  stagedRollout: stagedRolloutRouter,
 });
 
 export type AppRouter = typeof appRouter;

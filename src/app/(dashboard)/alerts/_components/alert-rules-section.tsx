@@ -58,7 +58,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { isEventMetric } from "@/lib/alert-metrics";
+import { isEventMetric, isFleetMetric } from "@/lib/alert-metrics";
 
 import {
   METRIC_LABELS,
@@ -368,7 +368,9 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                   {BINARY_METRICS.has(rule.metric) || rule.durationSeconds == null ? "—" : `${rule.durationSeconds}s`}
                 </TableCell>
                 <TableCell>
-                  {GLOBAL_METRICS.has(rule.metric) ? (
+                  {isFleetMetric(rule.metric) ? (
+                    <Badge variant="secondary">Fleet</Badge>
+                  ) : GLOBAL_METRICS.has(rule.metric) ? (
                     <span className="text-muted-foreground">—</span>
                   ) : rule.pipeline ? (
                     <Badge variant="outline">{rule.pipeline.name}</Badge>
@@ -558,6 +560,13 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                         <SelectItem value="certificate_expiring">Certificate Expiring</SelectItem>
                         <SelectItem value="node_joined">Node Joined</SelectItem>
                         <SelectItem value="node_left">Node Left</SelectItem>
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Fleet</SelectLabel>
+                        <SelectItem value="fleet_error_rate">Fleet Error Rate</SelectItem>
+                        <SelectItem value="fleet_throughput_drop">Fleet Throughput Drop</SelectItem>
+                        <SelectItem value="fleet_event_volume">Fleet Event Volume</SelectItem>
+                        <SelectItem value="node_load_imbalance">Node Load Imbalance</SelectItem>
                       </SelectGroup>
                     </SelectContent>
                   </Select>

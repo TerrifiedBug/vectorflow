@@ -12,6 +12,7 @@ import {
 import { validatePublicUrl, validateSmtpHost } from "@/server/services/url-validation";
 import { getDriver } from "@/server/services/channels";
 import { isEventMetric } from "@/server/services/event-alerts";
+import { FLEET_METRICS } from "@/server/services/alert-evaluator";
 
 export const alertRouter = router({
   // ─── Alert Rules ───────────────────────────────────────────────────
@@ -85,6 +86,14 @@ export const alertRouter = router({
             message: "One or more channel IDs are invalid or belong to a different environment",
           });
         }
+      }
+
+      // Fleet metrics apply to the entire environment — reject if pipelineId is set
+      if (FLEET_METRICS.has(input.metric) && input.pipelineId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Fleet metrics apply to the entire environment and cannot be scoped to a specific pipeline",
+        });
       }
 
       // Event-based metrics fire on occurrence — they don't use thresholds
