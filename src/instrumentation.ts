@@ -2,7 +2,30 @@ export async function register() {
   // Only run in the Node.js runtime — Edge doesn't support child_process/fs/path.
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
+  // Initialize leader election FIRST — determines which services this instance runs.
+  let leaderIsLeader: () => boolean;
+  let leaderRenewIntervalMs = 5000;
+  try {
+    const { initLeaderElection, isLeader, leaderElection } = await import(
+      "@/server/services/leader-election"
+    );
+    await initLeaderElection();
+    leaderIsLeader = isLeader;
+    leaderRenewIntervalMs = leaderElection.renewIntervalMs ?? 5000;
+  } catch (error) {
+    console.error(
+      "[instrumentation] Leader election init failed — assuming leadership (single-instance fallback):",
+      error,
+    );
+    leaderIsLeader = () => true;
+  }
+
+  console.log(
+    `[instrumentation] Instance is ${leaderIsLeader() ? "leader" : "follower"} — ${leaderIsLeader() ? "starting" : "skipping"} singleton services`,
+  );
+
   // Start system Vector process if a deployed system pipeline exists.
+  // NOTE: System Vector runs on every instance — it's not a singleton service.
   try {
     const { prisma } = await import("@/lib/prisma");
     const { startSystemVector } = await import(
@@ -39,53 +62,73 @@ export async function register() {
     console.error("Failed to start system Vector on boot:", error);
   }
 
-  // Start backup scheduler if enabled.
-  try {
-    const { initBackupScheduler } = await import(
-      "@/server/services/backup-scheduler"
-    );
-    await initBackupScheduler();
-  } catch (error) {
-    console.error("Failed to initialize backup scheduler:", error);
+  // ─── Singleton services (leader-only) ─────────────────────────────────
+
+  async function startSingletonServices(): Promise<void> {
+    // Start backup scheduler if enabled.
+    try {
+      const { initBackupScheduler } = await import(
+        "@/server/services/backup-scheduler"
+      );
+      await initBackupScheduler();
+    } catch (error) {
+      console.error("Failed to initialize backup scheduler:", error);
+    }
+
+    // Start delivery retry service.
+    try {
+      const { initRetryService } = await import(
+        "@/server/services/retry-service"
+      );
+      initRetryService();
+    } catch (error) {
+      console.error("Failed to initialize retry service:", error);
+    }
+
+    // Start auto-rollback monitoring service.
+    try {
+      const { initAutoRollbackService } = await import(
+        "@/server/services/auto-rollback"
+      );
+      initAutoRollbackService();
+    } catch (error) {
+      console.error("Failed to initialize auto-rollback service:", error);
+    }
+
+    // Start staged rollout health-check monitoring service.
+    try {
+      const { initStagedRolloutService } = await import(
+        "@/server/services/staged-rollout"
+      );
+      initStagedRolloutService();
+    } catch (error) {
+      console.error("Failed to initialize staged rollout service:", error);
+    }
+
+    // Start fleet alert evaluation service.
+    try {
+      const { initFleetAlertService } = await import(
+        "@/server/services/fleet-alert-service"
+      );
+      initFleetAlertService();
+    } catch (error) {
+      console.error("Failed to initialize fleet alert service:", error);
+    }
   }
 
-  // Start delivery retry service.
-  try {
-    const { initRetryService } = await import(
-      "@/server/services/retry-service"
-    );
-    initRetryService();
-  } catch (error) {
-    console.error("Failed to initialize retry service:", error);
-  }
-
-  // Start auto-rollback monitoring service.
-  try {
-    const { initAutoRollbackService } = await import(
-      "@/server/services/auto-rollback"
-    );
-    initAutoRollbackService();
-  } catch (error) {
-    console.error("Failed to initialize auto-rollback service:", error);
-  }
-
-  // Start staged rollout health-check monitoring service.
-  try {
-    const { initStagedRolloutService } = await import(
-      "@/server/services/staged-rollout"
-    );
-    initStagedRolloutService();
-  } catch (error) {
-    console.error("Failed to initialize staged rollout service:", error);
-  }
-
-  // Start fleet alert evaluation service.
-  try {
-    const { initFleetAlertService } = await import(
-      "@/server/services/fleet-alert-service"
-    );
-    initFleetAlertService();
-  } catch (error) {
-    console.error("Failed to initialize fleet alert service:", error);
+  if (leaderIsLeader()) {
+    await startSingletonServices();
+  } else {
+    // Follower: poll for leadership acquisition (failover).
+    // Once leadership is acquired, start services and stop polling.
+    const failoverTimer = setInterval(async () => {
+      if (leaderIsLeader()) {
+        clearInterval(failoverTimer);
+        console.log(
+          "[instrumentation] Leadership acquired via failover — starting singleton services",
+        );
+        await startSingletonServices();
+      }
+    }, leaderRenewIntervalMs);
   }
 }
