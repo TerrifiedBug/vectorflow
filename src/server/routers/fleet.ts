@@ -6,7 +6,7 @@ import { LogLevel } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { checkDevAgentVersion } from "@/server/services/version-check";
 import { pushRegistry } from "@/server/services/push-registry";
-import { getFleetOverview, getVolumeTrend } from "@/server/services/fleet-data";
+import { getFleetOverview, getVolumeTrend, getNodeThroughput, getNodeCapacity } from "@/server/services/fleet-data";
 
 export const fleetRouter = router({
   list: protectedProcedure
@@ -550,5 +550,29 @@ export const fleetRouter = router({
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return getVolumeTrend(input.environmentId, input.range);
+    }),
+
+  nodeThroughput: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        range: z.enum(["1h", "6h", "1d", "7d", "30d"]).default("1d"),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return getNodeThroughput(input.environmentId, input.range);
+    }),
+
+  nodeCapacity: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        range: z.enum(["1h", "6h", "1d", "7d", "30d"]).default("1d"),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return getNodeCapacity(input.environmentId, input.range);
     }),
 });

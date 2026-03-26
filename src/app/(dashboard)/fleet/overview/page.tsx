@@ -8,6 +8,8 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
 import { FleetKpiCards } from "@/components/fleet/fleet-kpi-cards";
 import { FleetVolumeChart } from "@/components/fleet/fleet-volume-chart";
+import { FleetThroughputChart } from "@/components/fleet/fleet-throughput-chart";
+import { FleetCapacityChart } from "@/components/fleet/fleet-capacity-chart";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { cn } from "@/lib/utils";
@@ -32,6 +34,24 @@ export default function FleetOverviewPage() {
 
   const volumeTrend = useQuery({
     ...trpc.fleet.volumeTrend.queryOptions({
+      environmentId: selectedEnvironmentId ?? "",
+      range,
+    }),
+    enabled: !!selectedEnvironmentId,
+    refetchInterval: polling,
+  });
+
+  const nodeThroughput = useQuery({
+    ...trpc.fleet.nodeThroughput.queryOptions({
+      environmentId: selectedEnvironmentId ?? "",
+      range,
+    }),
+    enabled: !!selectedEnvironmentId,
+    refetchInterval: polling,
+  });
+
+  const nodeCapacity = useQuery({
+    ...trpc.fleet.nodeCapacity.queryOptions({
       environmentId: selectedEnvironmentId ?? "",
       range,
     }),
@@ -95,6 +115,17 @@ export default function FleetOverviewPage() {
       <FleetVolumeChart
         data={volumeTrend.data}
         isLoading={volumeTrend.isLoading}
+        range={range}
+      />
+
+      <FleetThroughputChart
+        data={nodeThroughput.data}
+        isLoading={nodeThroughput.isLoading}
+      />
+
+      <FleetCapacityChart
+        data={nodeCapacity.data}
+        isLoading={nodeCapacity.isLoading}
         range={range}
       />
     </div>

@@ -22,6 +22,28 @@ export interface VolumeBucket {
   eventsOut: number;
 }
 
+export interface NodeThroughput {
+  nodeId: string;
+  nodeName: string;
+  bytesIn: number;
+  bytesOut: number;
+  eventsIn: number;
+  eventsOut: number;
+}
+
+export interface NodeCapacityBucket {
+  bucket: string;
+  memoryPct: number;
+  diskPct: number;
+  cpuLoad: number;
+}
+
+export interface NodeCapacity {
+  nodeId: string;
+  nodeName: string;
+  buckets: NodeCapacityBucket[];
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const RANGE_MS: Record<TimeRange, number> = {
@@ -135,4 +157,106 @@ export async function getVolumeTrend(
     eventsIn: Number(r.events_in ?? 0),
     eventsOut: Number(r.events_out ?? 0),
   }));
+}
+
+// ─── Node Throughput Comparison ──────────────────────────────────────────────
+
+export async function getNodeThroughput(
+  environmentId: string,
+  range: TimeRange,
+): Promise<NodeThroughput[]> {
+  const since = sinceDate(range);
+
+  const rows = await prisma.$queryRaw<
+    {
+      node_id: string;
+      node_name: string;
+      bytes_in: bigint | null;
+      bytes_out: bigint | null;
+      events_in: bigint | null;
+      events_out: bigint | null;
+    }[]
+  >(Prisma.sql`
+    SELECT
+      n."id"            AS node_id,
+      n."name"          AS node_name,
+      SUM(pm."bytesIn")  AS bytes_in,
+      SUM(pm."bytesOut") AS bytes_out,
+      SUM(pm."eventsIn") AS events_in,
+      SUM(pm."eventsOut") AS events_out
+    FROM "PipelineMetric" pm
+    JOIN "VectorNode" n ON n."id" = pm."nodeId"
+    WHERE pm."componentId" IS NULL
+      AND pm."nodeId" IS NOT NULL
+      AND pm."timestamp" >= ${since}
+      AND n."environmentId" = ${environmentId}
+    GROUP BY n."id", n."name"
+    ORDER BY SUM(pm."bytesIn") DESC
+  `);
+
+  return rows.map((r) => ({
+    nodeId: r.node_id,
+    nodeName: r.node_name,
+    bytesIn: Number(r.bytes_in ?? 0),
+    bytesOut: Number(r.bytes_out ?? 0),
+    eventsIn: Number(r.events_in ?? 0),
+    eventsOut: Number(r.events_out ?? 0),
+  }));
+}
+
+// ─── Node Capacity Utilization ───────────────────────────────────────────────
+
+export async function getNodeCapacity(
+  environmentId: string,
+  range: TimeRange,
+): Promise<NodeCapacity[]> {
+  const since = sinceDate(range);
+  const bucket = BUCKET_SIZE[range];
+
+  const rows = await prisma.$queryRaw<
+    {
+      node_id: string;
+      node_name: string;
+      bucket: Date;
+      memory_pct: number | null;
+      disk_pct: number | null;
+      cpu_load: number | null;
+    }[]
+  >(Prisma.sql`
+    SELECT
+      nm."nodeId"        AS node_id,
+      n."name"           AS node_name,
+      date_trunc(${bucket}, nm."timestamp") AS bucket,
+      AVG(CASE WHEN nm."memoryTotalBytes" > 0
+        THEN nm."memoryUsedBytes"::float / nm."memoryTotalBytes" * 100
+        ELSE 0 END)     AS memory_pct,
+      AVG(CASE WHEN nm."fsTotalBytes" > 0
+        THEN nm."fsUsedBytes"::float / nm."fsTotalBytes" * 100
+        ELSE 0 END)     AS disk_pct,
+      AVG(nm."loadAvg1") AS cpu_load
+    FROM "NodeMetric" nm
+    JOIN "VectorNode" n ON n."id" = nm."nodeId"
+    WHERE n."environmentId" = ${environmentId}
+      AND nm."timestamp" >= ${since}
+    GROUP BY nm."nodeId", n."name", date_trunc(${bucket}, nm."timestamp")
+    ORDER BY nm."nodeId", bucket
+  `);
+
+  // Group flat rows into per-node capacity objects
+  const nodeMap = new Map<string, NodeCapacity>();
+  for (const r of rows) {
+    let node = nodeMap.get(r.node_id);
+    if (!node) {
+      node = { nodeId: r.node_id, nodeName: r.node_name, buckets: [] };
+      nodeMap.set(r.node_id, node);
+    }
+    node.buckets.push({
+      bucket: (r.bucket instanceof Date ? r.bucket : new Date(r.bucket)).toISOString(),
+      memoryPct: Math.round((r.memory_pct ?? 0) * 10) / 10,
+      diskPct: Math.round((r.disk_pct ?? 0) * 10) / 10,
+      cpuLoad: Math.round((r.cpu_load ?? 0) * 100) / 100,
+    });
+  }
+
+  return Array.from(nodeMap.values());
 }
