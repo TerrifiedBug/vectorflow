@@ -292,4 +292,150 @@ export const auditRouter = router({
 
     return pipelines;
   }),
+
+  /** Summary stats for deployment activity in the last 24 hours */
+  deploymentSummary: protectedProcedure.query(async () => {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const items = await prisma.auditLog.findMany({
+      where: {
+        action: { in: [...DEPLOYMENT_ACTIONS] },
+        createdAt: { gte: twentyFourHoursAgo },
+      },
+      select: {
+        userId: true,
+        entityType: true,
+        entityId: true,
+        metadata: true,
+      },
+    });
+
+    // Compute aggregates in JS
+    const uniqueDeployers = new Set<string>();
+    const affectedPipelines = new Set<string>();
+
+    for (const item of items) {
+      if (item.userId) {
+        uniqueDeployers.add(item.userId);
+      }
+      if (item.entityType === "Pipeline" && item.entityId) {
+        affectedPipelines.add(item.entityId);
+      }
+      const meta = item.metadata as Record<string, unknown> | null;
+      const metaInput = meta?.input as Record<string, unknown> | undefined;
+      if (metaInput?.pipelineId && typeof metaInput.pipelineId === "string") {
+        affectedPipelines.add(metaInput.pipelineId);
+      }
+    }
+
+    return {
+      deployCount: items.length,
+      uniqueDeployers: uniqueDeployers.size,
+      affectedPipelines: affectedPipelines.size,
+    };
+  }),
+
+  /** Export deployment history — same filters as deployments but returns all records (up to 10,000), no cursor */
+  exportDeployments: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string().optional(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const { pipelineId, startDate, endDate } = input;
+      const maxExportRows = 10_000;
+
+      const conditions: Record<string, unknown>[] = [
+        { action: { in: [...DEPLOYMENT_ACTIONS] } },
+      ];
+
+      if (startDate || endDate) {
+        const createdAt: Record<string, Date> = {};
+        if (startDate) {
+          createdAt.gte = new Date(startDate);
+        }
+        if (endDate) {
+          createdAt.lte = new Date(endDate);
+        }
+        conditions.push({ createdAt });
+      }
+
+      if (pipelineId) {
+        conditions.push({
+          OR: [
+            { entityType: "Pipeline", entityId: pipelineId },
+            { entityType: "DeployRequest", entityId: pipelineId },
+          ],
+        });
+      }
+
+      const where = { AND: conditions };
+
+      const items = await prisma.auditLog.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: maxExportRows,
+      });
+
+      // Collect unique pipeline IDs from entityId values and metadata
+      const pipelineIds = new Set<string>();
+      for (const item of items) {
+        if (item.entityType === "Pipeline" && item.entityId) {
+          pipelineIds.add(item.entityId);
+        }
+        const meta = item.metadata as Record<string, unknown> | null;
+        const metaInput = meta?.input as Record<string, unknown> | undefined;
+        if (metaInput?.pipelineId && typeof metaInput.pipelineId === "string") {
+          pipelineIds.add(metaInput.pipelineId);
+        }
+      }
+
+      // Batch-fetch pipeline names
+      const pipelines = pipelineIds.size > 0
+        ? await prisma.pipeline.findMany({
+            where: { id: { in: [...pipelineIds] } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const pipelineMap = new Map(pipelines.map((p) => [p.id, p.name]));
+
+      // Enrich items with pipeline name and extracted version info from metadata
+      const enrichedItems = items.map((item) => {
+        const meta = item.metadata as Record<string, unknown> | null;
+        const metaInput = meta?.input as Record<string, unknown> | undefined;
+
+        const itemPipelineId =
+          item.entityType === "Pipeline"
+            ? item.entityId
+            : typeof metaInput?.pipelineId === "string"
+              ? metaInput.pipelineId
+              : null;
+
+        return {
+          ...item,
+          pipelineName: itemPipelineId ? pipelineMap.get(itemPipelineId) ?? null : null,
+          pipelineId: itemPipelineId,
+          versionInfo: metaInput?.newVersion
+            ? String(metaInput.newVersion)
+            : metaInput?.sourceVersionId
+              ? String(metaInput.sourceVersionId)
+              : null,
+          changelog: typeof metaInput?.changelog === "string" ? metaInput.changelog : null,
+        };
+      });
+
+      return { items: enrichedItems };
+    }),
 });
