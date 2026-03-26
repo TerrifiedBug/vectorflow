@@ -90,7 +90,7 @@ export const pipelineRouter = router({
           edges: true,
           environment: { select: { teamId: true, gitOpsMode: true, name: true } },
           nodeStatuses: {
-            select: { status: true },
+            select: { status: true, uptimeSeconds: true },
           },
         },
       });

@@ -124,6 +124,15 @@ function getReductionPercent(totals: {
   return Math.max(0, (1 - evOut / evIn) * 100);
 }
 
+function formatUptime(seconds: number | null): string {
+  if (seconds == null) return "\u2014";
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400)
+    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+  return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
+}
+
 /** Derive display status string for a pipeline row. */
 function derivePipelineStatus(
   pipeline: { isDraft: boolean; nodeStatuses: Array<{ status: string }> },
@@ -587,6 +596,7 @@ export default function PipelinesPage() {
                 currentDirection={sortDirection}
                 onSort={handleSort}
               />
+              <TableHead className="text-right">Uptime</TableHead>
               <TableHead className="text-center">Health</TableHead>
               <SortableHeader
                 label="Events/sec In"
@@ -757,6 +767,10 @@ export default function PipelinesPage() {
                         </Tooltip>
                       )}
                     </div>
+                  </TableCell>
+                  {/* Uptime */}
+                  <TableCell className="text-right font-mono text-sm tabular-nums text-muted-foreground">
+                    {formatUptime(pipeline.minUptimeSeconds)}
                   </TableCell>
                   {/* Health — batch data instead of per-row query */}
                   <TableCell className="text-center">
