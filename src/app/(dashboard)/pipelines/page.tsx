@@ -736,6 +736,26 @@ export default function PipelinesPage() {
                           Updates available
                         </Badge>
                       )}
+                      {((pipeline.upstreamDepCount ?? 0) > 0 ||
+                        (pipeline.downstreamDepCount ?? 0) > 0) && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Link href="/pipelines/dependencies">
+                              <Network className="h-3.5 w-3.5 text-muted-foreground" />
+                            </Link>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {[
+                              (pipeline.upstreamDepCount ?? 0) > 0 &&
+                                `${pipeline.upstreamDepCount} upstream`,
+                              (pipeline.downstreamDepCount ?? 0) > 0 &&
+                                `${pipeline.downstreamDepCount} downstream`,
+                            ]
+                              .filter(Boolean)
+                              .join(", ")}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                     </div>
                   </TableCell>
                   {/* Health — batch data instead of per-row query */}
