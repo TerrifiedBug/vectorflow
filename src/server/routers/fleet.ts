@@ -6,6 +6,7 @@ import { LogLevel } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { checkDevAgentVersion } from "@/server/services/version-check";
 import { pushRegistry } from "@/server/services/push-registry";
+import { getFleetOverview, getVolumeTrend } from "@/server/services/fleet-data";
 
 export const fleetRouter = router({
   list: protectedProcedure
@@ -525,5 +526,29 @@ export const fleetRouter = router({
           latestVersion: p.versions[0]?.version ?? 1,
         })),
       };
+    }),
+
+  overview: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        range: z.enum(["1h", "6h", "1d", "7d", "30d"]).default("1d"),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return getFleetOverview(input.environmentId, input.range);
+    }),
+
+  volumeTrend: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        range: z.enum(["1h", "6h", "1d", "7d", "30d"]).default("1d"),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return getVolumeTrend(input.environmentId, input.range);
     }),
 });

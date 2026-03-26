@@ -29,6 +29,8 @@ export function getInvalidationKeys(
         ["dashboard", "volumeAnalytics"],
         ["metrics", "getNodePipelineRates"],
         ["fleet", "nodeMetrics"],
+        ["fleet", "overview"],
+        ["fleet", "volumeTrend"],
       ];
 
     case "fleet_status":
