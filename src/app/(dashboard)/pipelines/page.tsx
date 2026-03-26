@@ -18,6 +18,7 @@ import {
   ArrowUp,
   ArrowDown,
   FolderOpen,
+  Network,
 } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
@@ -491,7 +492,13 @@ export default function PipelinesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/pipelines/dependencies">
+            <Network className="mr-1.5 h-3.5 w-3.5" />
+            Dependencies
+          </Link>
+        </Button>
         <Button asChild size="sm">
           <Link href="/pipelines/new">
             <Plus className="mr-1.5 h-3.5 w-3.5" />
