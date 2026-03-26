@@ -145,6 +145,7 @@ model Environment {
   deployRequests          DeployRequest[]
   teamDefaults            Team[]            @relation("teamDefault")
   sharedComponents        SharedComponent[]
+  pipelineGroups          PipelineGroup[]
   createdAt               DateTime      @default(now())
 }
 
@@ -267,12 +268,28 @@ enum ProcessStatus {
   PENDING
 }
 
+model PipelineGroup {
+  id            String      @id @default(cuid())
+  name          String
+  color         String?
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id])
+  pipelines     Pipeline[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([environmentId, name])
+  @@index([environmentId])
+}
+
 model Pipeline {
   id            String               @id @default(cuid())
   name          String
   description   String?
   environmentId String
   environment   Environment          @relation(fields: [environmentId], references: [id])
+  groupId       String?
+  group         PipelineGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
   nodes         PipelineNode[]
   edges         PipelineEdge[]
   versions      PipelineVersion[]
