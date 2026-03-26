@@ -567,6 +567,9 @@ export async function listPipelinesForEnvironment(environmentId: string) {
           sourcePort: true,
         },
       },
+      _count: {
+        select: { upstreamDeps: true, downstreamDeps: true },
+      },
       versions: {
         orderBy: { version: "desc" as const },
         take: 1,
@@ -620,6 +623,8 @@ export async function listPipelinesForEnvironment(environmentId: string) {
       staleComponentNames: p.nodes
         .filter((n) => n.sharedComponentId && n.sharedComponent && (n.sharedComponentVersion ?? 0) < n.sharedComponent.version)
         .map((n) => n.sharedComponent!.name),
+      upstreamDepCount: p._count.upstreamDeps,
+      downstreamDepCount: p._count.downstreamDeps,
     };
   }));
 }

@@ -319,8 +319,24 @@ model Pipeline {
   aiConversations AiConversation[]
   deployRequests  DeployRequest[]
   stagedRollouts  StagedRollout[]
+  upstreamDeps    PipelineDependency[] @relation("PipelineDownstream")
+  downstreamDeps  PipelineDependency[] @relation("PipelineUpstream")
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
+}
+
+model PipelineDependency {
+  id           String   @id @default(cuid())
+  upstreamId   String
+  upstream     Pipeline @relation("PipelineUpstream", fields: [upstreamId], references: [id], onDelete: Cascade)
+  downstreamId String
+  downstream   Pipeline @relation("PipelineDownstream", fields: [downstreamId], references: [id], onDelete: Cascade)
+  description  String?
+  createdAt    DateTime @default(now())
+
+  @@unique([upstreamId, downstreamId])
+  @@index([upstreamId])
+  @@index([downstreamId])
 }
 
 model NodePipelineStatus {
