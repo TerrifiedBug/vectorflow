@@ -17,6 +17,8 @@ import {
   removeDependency,
   getUpstreams,
   getDownstreams,
+  getUndeployedUpstreams,
+  getDeployedDownstreams,
 } from "@/server/services/pipeline-dependency";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -280,6 +282,95 @@ describe("getDownstreams", () => {
     prismaMock.pipelineDependency.findMany.mockResolvedValueOnce([] as never);
 
     const result = await getDownstreams("p1");
+    expect(result).toHaveLength(0);
+  });
+});
+
+// ─── Tests: getUndeployedUpstreams ──────────────────────────────────────────
+
+describe("getUndeployedUpstreams", () => {
+  it("returns only upstreams where isDraft=true", async () => {
+    const deps = [
+      {
+        ...makeDep({ upstreamId: "p1", downstreamId: "p3" }),
+        upstream: { id: "p1", name: "Pipeline p1" },
+      },
+    ];
+    prismaMock.pipelineDependency.findMany.mockResolvedValueOnce(deps as never);
+
+    const result = await getUndeployedUpstreams("p3");
+    expect(result).toHaveLength(1);
+    expect(result[0].upstream.id).toBe("p1");
+    expect(prismaMock.pipelineDependency.findMany).toHaveBeenCalledWith({
+      where: {
+        downstreamId: "p3",
+        upstream: { isDraft: true },
+      },
+      include: {
+        upstream: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  });
+
+  it("returns empty array when all upstreams are deployed", async () => {
+    prismaMock.pipelineDependency.findMany.mockResolvedValueOnce([] as never);
+
+    const result = await getUndeployedUpstreams("p3");
+    expect(result).toHaveLength(0);
+  });
+
+  it("returns empty array when pipeline has no upstreams", async () => {
+    prismaMock.pipelineDependency.findMany.mockResolvedValueOnce([] as never);
+
+    const result = await getUndeployedUpstreams("p-no-deps");
+    expect(result).toHaveLength(0);
+  });
+});
+
+// ─── Tests: getDeployedDownstreams ──────────────────────────────────────────
+
+describe("getDeployedDownstreams", () => {
+  it("returns only downstreams where isDraft=false", async () => {
+    const deps = [
+      {
+        ...makeDep({ upstreamId: "p1", downstreamId: "p2" }),
+        downstream: { id: "p2", name: "Pipeline p2" },
+      },
+      {
+        ...makeDep({ upstreamId: "p1", downstreamId: "p4" }),
+        downstream: { id: "p4", name: "Pipeline p4" },
+      },
+    ];
+    prismaMock.pipelineDependency.findMany.mockResolvedValueOnce(deps as never);
+
+    const result = await getDeployedDownstreams("p1");
+    expect(result).toHaveLength(2);
+    expect(result[0].downstream.id).toBe("p2");
+    expect(result[1].downstream.id).toBe("p4");
+    expect(prismaMock.pipelineDependency.findMany).toHaveBeenCalledWith({
+      where: {
+        upstreamId: "p1",
+        downstream: { isDraft: false },
+      },
+      include: {
+        downstream: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  });
+
+  it("returns empty array when all downstreams are drafts", async () => {
+    prismaMock.pipelineDependency.findMany.mockResolvedValueOnce([] as never);
+
+    const result = await getDeployedDownstreams("p1");
+    expect(result).toHaveLength(0);
+  });
+
+  it("returns empty array when pipeline has no downstreams", async () => {
+    prismaMock.pipelineDependency.findMany.mockResolvedValueOnce([] as never);
+
+    const result = await getDeployedDownstreams("p-no-deps");
     expect(result).toHaveLength(0);
   });
 });
