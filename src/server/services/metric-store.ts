@@ -139,6 +139,19 @@ export class MetricStore {
     return sample;
   }
 
+  /**
+   * Insert a pre-computed sample from a remote instance (cross-instance merge).
+   * Respects MAX_SAMPLES cap. Does NOT update prevTotals — rate computation
+   * continues independently from local heartbeats.
+   */
+  mergeSample(nodeId: string, pipelineId: string, componentId: string, sample: MetricSample): void {
+    const key = `${nodeId}:${pipelineId}:${componentId}`;
+    const arr = this.samples.get(key) ?? [];
+    arr.push(sample);
+    if (arr.length > MAX_SAMPLES) arr.shift();
+    this.samples.set(key, arr);
+  }
+
   getSamples(nodeId: string, pipelineId: string, componentId: string, minutes = 60): MetricSample[] {
     const key = `${nodeId}:${pipelineId}:${componentId}`;
     const arr = this.samples.get(key) ?? [];
