@@ -21,6 +21,7 @@ import { serviceAccountRouter } from "@/server/routers/service-account";
 import { userPreferenceRouter } from "@/server/routers/user-preference";
 import { sharedComponentRouter } from "@/server/routers/shared-component";
 import { aiRouter } from "@/server/routers/ai";
+import { pipelineGroupRouter } from "@/server/routers/pipeline-group";
 
 export const appRouter = router({
   team: teamRouter,
@@ -45,6 +46,7 @@ export const appRouter = router({
   userPreference: userPreferenceRouter,
   sharedComponent: sharedComponentRouter,
   ai: aiRouter,
+  pipelineGroup: pipelineGroupRouter,
 });
 
 export type AppRouter = typeof appRouter;

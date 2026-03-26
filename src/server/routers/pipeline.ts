@@ -17,7 +17,9 @@ import { getOrCreateSystemEnvironment } from "@/server/services/system-environme
 import { saveGraphComponents, promotePipeline, discardPipelineChanges, detectConfigChanges, listPipelinesForEnvironment } from "@/server/services/pipeline-graph";
 import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
 import { gitSyncDeletePipeline } from "@/server/services/git-sync";
+import { deployAgent, undeployAgent } from "@/server/services/deploy-agent";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
+import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
 import { pushRegistry } from "@/server/services/push-registry";
 import { sseRegistry } from "@/server/services/sse-registry";
 import { fireEventAlert } from "@/server/services/event-alerts";
@@ -233,15 +235,16 @@ export const pipelineRouter = router({
           { message: "Duplicate tags are not allowed" },
         ).optional(),
         enrichMetadata: z.boolean().optional(),
+        groupId: z.string().nullable().optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.updated", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
-      const { id, tags, enrichMetadata, ...data } = input;
+      const { id, tags, enrichMetadata, groupId, ...data } = input;
       const existing = await prisma.pipeline.findUnique({
         where: { id },
-        select: { id: true, tags: true, environment: { select: { teamId: true } } },
+        select: { id: true, tags: true, environmentId: true, environment: { select: { teamId: true } } },
       });
       if (!existing) {
         throw new TRPCError({
@@ -274,12 +277,27 @@ export const pipelineRouter = router({
         }
       }
 
+      // Validate groupId belongs to the same environment as the pipeline
+      if (groupId !== undefined && groupId !== null) {
+        const group = await prisma.pipelineGroup.findUnique({
+          where: { id: groupId },
+          select: { environmentId: true },
+        });
+        if (!group || group.environmentId !== existing.environmentId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Pipeline group not found in this environment",
+          });
+        }
+      }
+
       const updated = await prisma.pipeline.update({
         where: { id },
         data: {
           ...data,
           ...(tags !== undefined ? { tags } : {}),
           ...(enrichMetadata !== undefined ? { enrichMetadata } : {}),
+          ...(groupId !== undefined ? { groupId } : {}),
           updatedById: ctx.session.user?.id,
         },
       });
@@ -903,5 +921,119 @@ export const pipelineRouter = router({
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return evaluatePipelineHealth(input.pipelineId);
+    }),
+
+  batchHealth: protectedProcedure
+    .input(z.object({ pipelineIds: z.array(z.string()).max(200) }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return batchEvaluatePipelineHealth(input.pipelineIds);
+    }),
+
+  // ── Bulk operations ─────────────────────────────────────────────────────
+
+  bulkDeploy: protectedProcedure
+    .input(
+      z.object({
+        pipelineIds: z.array(z.string()).min(1).max(50),
+        changelog: z.string().min(1),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user?.id;
+      if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
+
+      const results: Array<{ pipelineId: string; success: boolean; error?: string }> = [];
+
+      for (const pipelineId of input.pipelineIds) {
+        try {
+          const result = await deployAgent(pipelineId, userId, input.changelog);
+          results.push({ pipelineId, success: result.success, error: result.error });
+        } catch (err) {
+          results.push({
+            pipelineId,
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      }
+
+      return { results, total: results.length, succeeded: results.filter((r) => r.success).length };
+    }),
+
+  bulkUndeploy: protectedProcedure
+    .input(
+      z.object({
+        pipelineIds: z.array(z.string()).min(1).max(50),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .mutation(async ({ input }) => {
+      const results: Array<{ pipelineId: string; success: boolean; error?: string }> = [];
+
+      for (const pipelineId of input.pipelineIds) {
+        try {
+          const result = await undeployAgent(pipelineId);
+          results.push({ pipelineId, success: result.success, error: result.error });
+        } catch (err) {
+          results.push({
+            pipelineId,
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      }
+
+      return { results, total: results.length, succeeded: results.filter((r) => r.success).length };
+    }),
+
+  bulkDelete: protectedProcedure
+    .input(
+      z.object({
+        pipelineIds: z.array(z.string()).min(1).max(50),
+      }),
+    )
+    .use(withTeamAccess("ADMIN"))
+    .mutation(async ({ input }) => {
+      const results: Array<{ pipelineId: string; success: boolean; error?: string }> = [];
+
+      for (const pipelineId of input.pipelineIds) {
+        try {
+          const pipeline = await prisma.pipeline.findUnique({
+            where: { id: pipelineId },
+            select: { id: true, isSystem: true, deployedAt: true, environmentId: true },
+          });
+
+          if (!pipeline) {
+            results.push({ pipelineId, success: false, error: "Pipeline not found" });
+            continue;
+          }
+
+          if (pipeline.isSystem) {
+            results.push({ pipelineId, success: false, error: "Cannot delete system pipeline" });
+            continue;
+          }
+
+          // Undeploy first if deployed
+          if (pipeline.deployedAt) {
+            await prisma.pipeline.update({
+              where: { id: pipelineId },
+              data: { isDraft: true, deployedAt: null },
+            });
+          }
+
+          await prisma.pipeline.delete({ where: { id: pipelineId } });
+          results.push({ pipelineId, success: true });
+        } catch (err) {
+          results.push({
+            pipelineId,
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      }
+
+      return { results, total: results.length, succeeded: results.filter((r) => r.success).length };
     }),
 });
