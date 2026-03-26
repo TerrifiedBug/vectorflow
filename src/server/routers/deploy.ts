@@ -11,7 +11,7 @@ import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
 import { fireEventAlert } from "@/server/services/event-alerts";
-import { pushRegistry } from "@/server/services/push-registry";
+import { relayPush } from "@/server/services/push-broadcast";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 
 export const deployRouter = router({
@@ -289,7 +289,7 @@ export const deployRouter = router({
           select: { id: true },
         });
         for (const node of nodes) {
-          pushRegistry.send(node.id, {
+          relayPush(node.id, {
             type: "config_changed",
             pipelineId: input.pipelineId,
             reason: "undeploy",

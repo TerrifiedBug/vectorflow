@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute } from "../../../_lib/api-handler";
 import { rollback } from "@/server/services/pipeline-version";
-import { pushRegistry } from "@/server/services/push-registry";
+import { relayPush } from "@/server/services/push-broadcast";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { fireEventAlert } from "@/server/services/event-alerts";
 
@@ -70,7 +70,7 @@ export const POST = apiRoute(
           const selectorEntries = Object.entries(nodeSelector ?? {});
           const matches = selectorEntries.every(([k, v]) => labels[k] === v);
           if (matches) {
-            pushRegistry.send(node.id, {
+            relayPush(node.id, {
               type: "config_changed",
               pipelineId: pipeline.id,
               reason: "rollback",
