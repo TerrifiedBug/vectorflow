@@ -24,6 +24,18 @@ export async function register() {
     `[instrumentation] Instance is ${leaderIsLeader() ? "leader" : "follower"} — ${leaderIsLeader() ? "starting" : "skipping"} singleton services`,
   );
 
+  // Initialize Redis pub/sub for cross-instance SSE broadcasting.
+  // Runs on EVERY instance (not just leader) since any instance may have browser SSE connections.
+  try {
+    const { initPubSub } = await import("@/server/services/redis-pubsub");
+    await initPubSub();
+  } catch (error) {
+    console.error(
+      "[instrumentation] Redis pub/sub init failed — continuing without cross-instance SSE:",
+      error,
+    );
+  }
+
   // Start system Vector process if a deployed system pipeline exists.
   // NOTE: System Vector runs on every instance — it's not a singleton service.
   try {

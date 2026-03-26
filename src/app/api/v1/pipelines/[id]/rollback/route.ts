@@ -4,7 +4,7 @@ import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute } from "../../../_lib/api-handler";
 import { rollback } from "@/server/services/pipeline-version";
 import { pushRegistry } from "@/server/services/push-registry";
-import { sseRegistry } from "@/server/services/sse-registry";
+import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { fireEventAlert } from "@/server/services/event-alerts";
 
 export const POST = apiRoute(
@@ -78,7 +78,7 @@ export const POST = apiRoute(
           }
         }
 
-        sseRegistry.broadcast({
+        broadcastSSE({
           type: "status_change",
           nodeId: "",
           fromStatus: "",

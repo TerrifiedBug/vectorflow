@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
 import { createVersion, deployFromVersion } from "@/server/services/pipeline-version";
 import { fireEventAlert } from "@/server/services/event-alerts";
-import { sseRegistry } from "@/server/services/sse-registry";
+import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { pushRegistry } from "@/server/services/push-registry";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
@@ -71,7 +71,7 @@ export class StagedRolloutService {
             data: { status: "HEALTH_CHECK" },
           });
 
-          sseRegistry.broadcast(
+          broadcastSSE(
             {
               type: "pipeline_status",
               pipelineId: rollout.pipelineId,
@@ -284,7 +284,7 @@ export class StagedRolloutService {
     });
 
     // Broadcast SSE event
-    sseRegistry.broadcast(
+    broadcastSSE(
       {
         type: "pipeline_status",
         pipelineId,
@@ -354,7 +354,7 @@ export class StagedRolloutService {
     });
 
     // Broadcast SSE event
-    sseRegistry.broadcast(
+    broadcastSSE(
       {
         type: "pipeline_status",
         pipelineId: rollout.pipelineId,
@@ -424,7 +424,7 @@ export class StagedRolloutService {
     });
 
     // Broadcast SSE event
-    sseRegistry.broadcast(
+    broadcastSSE(
       {
         type: "pipeline_status",
         pipelineId: rollout.pipelineId,
