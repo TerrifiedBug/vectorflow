@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { deployFromVersion } from "@/server/services/pipeline-version";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
+import { writeAuditLog } from "@/server/services/audit";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -164,12 +165,29 @@ export class AutoRollbackService {
         }
 
         // Perform the rollback
-        await deployFromVersion(
+        const rollbackResult = await deployFromVersion(
           pipeline.id,
           previousVersion!.id,
           latestVersion!.createdById,
           `Auto-rollback: error rate ${errorRate.toFixed(2)}% exceeded threshold ${pipeline.autoRollbackThreshold}%`,
         );
+
+        // Audit log for auto-rollback
+        writeAuditLog({
+          userId: latestVersion!.createdById,
+          action: "deploy.auto_rollback",
+          entityType: "Pipeline",
+          entityId: pipeline.id,
+          metadata: {
+            timestamp: new Date().toISOString(),
+            errorRate: errorRate.toFixed(2),
+            threshold: pipeline.autoRollbackThreshold,
+            rolledBackFromVersion: latestVersion!.version,
+            rolledBackToVersion: previousVersion!.version,
+            pushedNodeIds: rollbackResult.pushedNodeIds,
+          },
+          environmentId: pipeline.environmentId,
+        }).catch(() => {});
 
         // Disable auto-rollback to prevent loops
         await prisma.pipeline.update({
