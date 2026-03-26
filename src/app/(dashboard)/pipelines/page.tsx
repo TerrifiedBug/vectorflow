@@ -125,7 +125,7 @@ function getReductionPercent(totals: {
 }
 
 function formatUptime(seconds: number | null): string {
-  if (!seconds) return "\u2014";
+  if (seconds == null) return "\u2014";
   if (seconds < 60) return `${seconds}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
   if (seconds < 86400)
