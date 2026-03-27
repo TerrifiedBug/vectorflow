@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production-Grade Backups
-status: verifying
-stopped_at: Completed 14-02-PLAN.md
-last_updated: "2026-03-27T22:18:22.014Z"
+status: executing
+stopped_at: Completed 15-01-PLAN.md
+last_updated: "2026-03-27T22:54:34.086Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 4
+  completed_phases: 3
+  total_plans: 9
+  completed_plans: 8
 ---
 
 # Project State
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** A corporate platform team can manage their entire Vector pipeline fleet at scale — organizing, promoting, and operating hundreds of pipelines across environments — without outgrowing VectorFlow.
-**Current focus:** Phase 13 — backup-listing-history
+**Current focus:** Phase 15 — restore-ux-cleanup
 
 ## Current Position
 
-Phase: 13 (backup-listing-history) — EXECUTING
+Phase: 15 (restore-ux-cleanup) — EXECUTING
 Plan: 2 of 2
-Status: Phase complete — ready for verification
+Status: Ready to execute
 Last activity: 2026-03-27
 
 ```
@@ -54,6 +54,7 @@ v1.2 Progress: [░░░░░░░░░░░░░░░░░░░░] 0%
 | Phase 13 P01 | 15 | 2 tasks | 4 files |
 | Phase 14 P01 | 11 | 2 tasks | 6 files |
 | Phase 14 P02 | 525541 | 2 tasks | 3 files |
+| Phase 15 P01 | 17 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,9 @@ v1.2 Progress: [░░░░░░░░░░░░░░░░░░░░] 0%
 - [Phase 14]: forcePathStyle auto-enabled when custom endpoint set (MinIO/DigitalOcean Spaces support)
 - [Phase 14]: ContentLength must be set on PutObjectCommand to prevent AWS SDK retry-hang on Node.js streams
 - [Phase 14]: S3 streaming via GetObjectCommand in download route: direct transformToWebStream() avoids temp file I/O for browser downloads
+- [Phase 15]: previewBackup uses .query() not .mutation() — transient S3 I/O is acceptable side effect for read procedure
+- [Phase 15]: restoreFromBackup returns { success: true } instead of process.exit(0) — caller signals restart need
+- [Phase 15]: runOrphanCleanup wrapped in try/catch in scheduler — orphan errors do not abort backup cron lifecycle
 
 ### Pending Todos
 
@@ -88,6 +92,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-27T22:18:22.012Z
-Stopped at: Completed 14-02-PLAN.md
+Last session: 2026-03-27T22:54:34.083Z
+Stopped at: Completed 15-01-PLAN.md
 Resume file: None
