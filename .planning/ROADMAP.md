@@ -3,7 +3,8 @@
 ## Milestones
 
 - ✅ **v1.0 Enterprise Scale** — Phases 1-7 (shipped 2026-03-27) — [archive](milestones/v1.0-ROADMAP.md)
-- 🚧 **v1.1 UX Polish** — Phases 8-11 (in progress)
+- ✅ **v1.1 UX Polish** — Phases 8-11 (shipped 2026-03-27) — [archive](milestones/v1.1-ROADMAP.md)
+- 🔵 **v1.2 Production-Grade Backups** — Phases 12-15 (active)
 
 ## Phases
 
@@ -20,82 +21,79 @@
 
 </details>
 
-### 🚧 v1.1 UX Polish (In Progress)
+<details>
+<summary>✅ v1.1 UX Polish (Phases 8-11) — SHIPPED 2026-03-27</summary>
 
-**Milestone Goal:** Improve navigation, filtering, and alert organization so operators can find what matters faster.
+- [x] Phase 8: Pipeline Folders in Sidebar (2/2 plans) — completed 2026-03-27
+- [x] Phase 9: Alerts Page Categorization (2/2 plans) — completed 2026-03-27
+- [x] Phase 10: Deployment Matrix Filters (2/2 plans) — completed 2026-03-27
+- [x] Phase 11: Compliance Tags Rename (1/1 plan) — completed 2026-03-27
 
-- [ ] **Phase 8: Pipeline Folders in Sidebar** - Move group tree from content area to a sliding sidebar panel for persistent navigation
-- [ ] **Phase 9: Alerts Page Categorization** - Separate actionable alerts from informational with filter tabs and badge counts
-- [x] **Phase 10: Deployment Matrix Filters** - Add search, status, and tag filtering to the fleet deployment matrix (completed 2026-03-27)
-- [ ] **Phase 11: Compliance Tags Rename** - Rename "Data Classification Tags" to "Compliance Tags" across all UI surfaces
+</details>
+
+### v1.2 Production-Grade Backups
+
+- [ ] **Phase 12: Backup Registry Foundation** - BackupRecord table, error capture, disk checks, and checksums
+- [ ] **Phase 13: Backup Listing & History** - GUI queries database, reliable history without disappearing entries
+- [ ] **Phase 14: S3 Remote Storage** - S3-compatible backend with settings, upload, restore, and connection test
+- [ ] **Phase 15: Restore UX & Cleanup** - Preview, multi-step confirmation, progress, and orphan cleanup
 
 ## Phase Details
 
-### Phase 8: Pipeline Folders in Sidebar
-**Goal**: Users can browse and filter pipelines via a persistent sidebar folder tree, freeing the content area for a full-width pipeline table
-**Depends on**: Nothing (first phase of v1.1)
-**Requirements**: NAV-01, NAV-02, NAV-03, NAV-04
+### Phase 12: Backup Registry Foundation
+**Goal**: The backup system persists reliable metadata so all future backup operations have a trustworthy source of truth
+**Depends on**: Nothing (foundation phase for this milestone)
+**Requirements**: BREG-01, RELY-01, RELY-02, RELY-03
 **Success Criteria** (what must be TRUE):
-  1. When a user navigates to /pipelines, a sidebar panel slides in showing "All Pipelines" and the folder tree with expand/collapse, matching the Settings/Library sliding pattern
-  2. Clicking a folder in the sidebar filters the pipeline list to show only that group's pipelines
-  3. Clicking "Manage" in the sidebar Pipelines panel opens the manage groups dialog
-  4. The pipeline table uses full content width with no inline groups panel
+  1. Each backup operation creates a BackupRecord row capturing id, status, size, duration, storage location, error, and type
+  2. When a backup fails, the full error detail is stored in BackupRecord and surfaces in the UI (no silent failures)
+  3. Before a backup starts, available disk space is checked and a warning is shown if below the configured threshold
+  4. Every completed backup has a SHA256 checksum stored alongside it that is verified automatically before any restore begins
 **Plans:** 1/2 plans executed
 Plans:
-- [x] 08-01-PLAN.md — Store, tree adaptation, and ManageGroupsDialog bug fix
-- [x] 08-02-PLAN.md — Sidebar panel wiring, page cleanup, and visual verification
-**UI hint**: yes
+- [x] 12-01-PLAN.md — BackupRecord Prisma model, migration SQL, checkDiskSpace and computeChecksum helpers
+- [ ] 12-02-PLAN.md — createBackup/restoreFromBackup integration, scheduler fix, tests, docs
 
-### Phase 9: Alerts Page Categorization
-**Goal**: Operators can quickly triage alerts by separating actionable infrastructure problems from informational system events
-**Depends on**: Phase 8
-**Requirements**: ALERT-01, ALERT-02, ALERT-03, ALERT-04, ALERT-05
+### Phase 13: Backup Listing & History
+**Goal**: Operators can reliably see all their backups — scheduled and manual — with no entries disappearing from the GUI
+**Depends on**: Phase 12
+**Requirements**: BREG-02, BREG-03
 **Success Criteria** (what must be TRUE):
-  1. Alert history section displays filter tabs (All / Actionable / Informational) above the event table
-  2. Selecting Actionable tab shows only infrastructure/threshold alerts (crashes, unreachable, CPU, memory, disk, error rate, fleet errors)
-  3. Selecting Informational tab shows only event-based alerts (deployed, joined, left, promotion, backup, certificate, SCIM)
-  4. Each tab displays a badge count of firing/unresolved alerts in that category
-  5. The Actionable tab is selected by default when landing on the alerts page
-**Plans:** 2 plans
-Plans:
-- [x] 09-01-PLAN.md — TDD: getAlertCategory utility with unit tests
-- [x] 09-02-PLAN.md — Category tabs, filtering, and badge counts in AlertHistorySection
+  1. The backup list page queries the BackupRecord table instead of scanning the filesystem — entries never vanish between page loads
+  2. Both scheduled and manual backups appear in the history list with status, size, duration, and timestamp
+  3. A backup that was present on the previous page load is still present after refresh, even if the underlying file moved or the process restarted
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 10: Deployment Matrix Filters
-**Goal**: Operators can quickly locate specific pipelines within a large deployment matrix using search, status, and tag filters
-**Depends on**: Phase 9
-**Requirements**: MATRIX-01, MATRIX-02, MATRIX-03, MATRIX-04
+### Phase 14: S3 Remote Storage
+**Goal**: Operators can direct all backups to an S3-compatible bucket and restore from it without touching the local filesystem
+**Depends on**: Phase 12
+**Requirements**: S3-01, S3-02, S3-03, S3-04
 **Success Criteria** (what must be TRUE):
-  1. Deployment matrix has a toolbar with a search input that filters rows by pipeline name (client-side, instant)
-  2. Deployment matrix toolbar has a status filter dropdown (Running, Stopped, Crashed) that filters matrix rows
-  3. Deployment matrix toolbar has a tag filter for compliance tags that filters matrix rows
-  4. Filter state (search, status, tags) persists in URL query params so filtered views are shareable and survive page refresh
-**Plans:** 2/2 plans complete
-Plans:
-- [x] 10-01-PLAN.md — Backend tags extension, useMatrixFilters hook, and DeploymentMatrixToolbar component
-- [x] 10-02-PLAN.md — Fleet page wiring, matrix modifications, and visual verification
+  1. User can enter S3 bucket, prefix, region, and credentials in settings and test the connection before saving
+  2. User can toggle between Local and S3 storage backends; the active backend is clearly indicated in the UI
+  3. After a backup completes with S3 configured, the file is present in the configured S3 bucket under the expected prefix
+  4. User can select an S3-stored backup and restore from it — the file is downloaded and applied without manual steps
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 11: Compliance Tags Rename
-**Goal**: Eliminate naming confusion between "Data Classification Tags" and node "Labels" by adopting the clearer "Compliance Tags" name
-**Depends on**: Phase 10
-**Requirements**: NAME-01
+### Phase 15: Restore UX & Cleanup
+**Goal**: Operators can restore confidently with full visibility into what they are about to apply, and the system automatically handles stale records and orphaned files
+**Depends on**: Phase 13, Phase 14
+**Requirements**: REST-01, REST-02, REST-03, BREG-04
 **Success Criteria** (what must be TRUE):
-  1. Team settings page shows "Compliance Tags" instead of "Data Classification Tags"
-  2. Pipeline toolbar, bulk action bar, and all related UI text use "Compliance Tags" consistently
-**Plans:** 1 plan
-Plans:
-- [ ] 11-01-PLAN.md — Rename "Classification Tags" to "Compliance Tags" in source code and docs
+  1. Before executing a restore, the user sees a preview showing team count, pipeline count, user count, environment count, VF version, and migration level from the backup
+  2. Restore follows a select → preview → confirm → execute flow; there is no way to trigger a restore without passing through the confirmation step
+  3. Restore shows a progress indicator and completes gracefully — the process does not call process.exit(0) or leave the UI in an ambiguous state
+  4. The system detects orphaned backup files (dump without DB record) and DB records without files on a schedule and removes stale entries automatically
+**Plans**: TBD
 **UI hint**: yes
 
-## Progress
+## Progress Table
 
-**Execution Order:** Phase 8 -> 9 -> 10 -> 11
-
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 8. Pipeline Folders in Sidebar | v1.1 | 1/2 | In Progress|  |
-| 9. Alerts Page Categorization | v1.1 | 0/2 | Planned | - |
-| 10. Deployment Matrix Filters | v1.1 | 2/2 | Complete    | 2026-03-27 |
-| 11. Compliance Tags Rename | v1.1 | 0/1 | Planned | - |
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 12. Backup Registry Foundation | 1/2 | In Progress|  |
+| 13. Backup Listing & History | 0/? | Not started | - |
+| 14. S3 Remote Storage | 0/? | Not started | - |
+| 15. Restore UX & Cleanup | 0/? | Not started | - |
