@@ -6,6 +6,7 @@ import fs from "fs/promises";
 import path from "path";
 
 import { prisma } from "@/lib/prisma";
+import { debugLog } from "@/lib/logger";
 
 const execFileAsync = promisify(execFile);
 
@@ -171,23 +172,55 @@ export async function computeChecksum(filePath: string): Promise<string> {
 /**
  * Spawn pg_dump to create a compressed custom-format backup.
  * Writes the dump file and a companion metadata JSON file.
+ * Creates a BackupRecord in the database on both success and failure.
+ * Checks disk space before starting and logs a warning if below threshold.
  * Updates SystemSettings with backup status.
  */
-export async function createBackup(): Promise<BackupMetadata> {
+export async function createBackup(
+  type: "scheduled" | "manual" | "pre_restore" = "manual"
+): Promise<BackupMetadata> {
   if (backupInProgress) {
     throw new Error("A backup is already in progress");
   }
 
   backupInProgress = true;
+  const startMs = Date.now();
+
+  // Generate filename/path upfront so the record can be created with them
+  const timestamp = new Date().toISOString();
+  const safeName = `vectorflow-${timestamp.replace(/[:.]/g, "-")}`;
+  const dumpFilename = `${safeName}.dump`;
+  const dumpPath = path.join(BACKUP_DIR, dumpFilename);
+  const metaPath = path.join(BACKUP_DIR, `${safeName}.meta.json`);
+
+  // Create in_progress BackupRecord immediately (filename and storageLocation populated upfront)
+  const record = await prisma.backupRecord.create({
+    data: {
+      filename: dumpFilename,
+      status: "in_progress",
+      type,
+      storageLocation: dumpPath,
+      vfVersion: VF_VERSION,
+    },
+  });
 
   try {
     await ensureBackupDir();
 
+    // Check disk space (warn but do NOT abort -- RELY-02)
+    try {
+      const diskCheck = await checkDiskSpace(BACKUP_DIR);
+      if (diskCheck.belowThreshold) {
+        debugLog("backup", "Low disk space warning", {
+          availableMb: diskCheck.availableMb,
+          threshold: BACKUP_DISK_WARN_THRESHOLD_MB,
+        });
+      }
+    } catch (diskErr) {
+      debugLog("backup", "Could not check disk space", { error: diskErr });
+    }
+
     const db = parseDatabaseUrl();
-    const timestamp = new Date().toISOString();
-    const safeName = `vectorflow-${timestamp.replace(/[:.]/g, "-")}`;
-    const dumpPath = path.join(BACKUP_DIR, `${safeName}.dump`);
-    const metaPath = path.join(BACKUP_DIR, `${safeName}.meta.json`);
 
     // Run pg_dump
     await execFileAsync(
@@ -199,11 +232,12 @@ export async function createBackup(): Promise<BackupMetadata> {
       },
     );
 
-    // Gather metadata
-    const [stat, migrationInfo, pgVersion] = await Promise.all([
+    // Gather metadata (stat, migration info, pg version, checksum -- all in parallel)
+    const [stat, migrationInfo, pgVersion, checksum] = await Promise.all([
       fs.stat(dumpPath),
       getMigrationInfo(),
       getPgVersion(),
+      computeChecksum(dumpPath),
     ]);
 
     const metadata: BackupMetadata = {
@@ -215,9 +249,25 @@ export async function createBackup(): Promise<BackupMetadata> {
       pgVersion,
     };
 
+    // Write companion .meta.json (preserved for backward compat until Phase 13)
     await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2));
 
-    // Update SystemSettings
+    // Update BackupRecord to success
+    await prisma.backupRecord.update({
+      where: { id: record.id },
+      data: {
+        status: "success",
+        sizeBytes: BigInt(stat.size),
+        durationMs: Date.now() - startMs,
+        checksum,
+        migrationCount: migrationInfo.count,
+        lastMigration: migrationInfo.lastMigration,
+        pgVersion,
+        completedAt: new Date(),
+      },
+    });
+
+    // Update SystemSettings (existing behavior preserved)
     await prisma.systemSettings.update({
       where: { id: "singleton" },
       data: {
@@ -229,10 +279,20 @@ export async function createBackup(): Promise<BackupMetadata> {
 
     return metadata;
   } catch (err) {
-    // Record failure in SystemSettings
-    const message =
-      err instanceof Error ? err.message : "Unknown backup error";
+    const message = err instanceof Error ? err.message : "Unknown backup error";
 
+    // Update BackupRecord to failed
+    await prisma.backupRecord.update({
+      where: { id: record.id },
+      data: {
+        status: "failed",
+        error: message,
+        durationMs: Date.now() - startMs,
+        completedAt: new Date(),
+      },
+    }).catch(() => {}); // best-effort -- don't mask original error
+
+    // Update SystemSettings (existing behavior preserved)
     try {
       await prisma.systemSettings.update({
         where: { id: "singleton" },
@@ -243,7 +303,7 @@ export async function createBackup(): Promise<BackupMetadata> {
         },
       });
     } catch {
-      // best-effort — don't mask the original error
+      // best-effort
     }
 
     throw err;
@@ -330,9 +390,10 @@ export async function deleteBackup(filename: string): Promise<void> {
  * Restore a database from a backup file.
  *
  * 1. Validates version compatibility (blocks if backup has more migrations than current).
- * 2. Creates a safety backup first.
- * 3. Runs pg_restore --clean --if-exists.
- * 4. Exits the process so Docker restarts the container.
+ * 2. Verifies checksum against BackupRecord if one exists (skips for legacy backups).
+ * 3. Creates a safety backup first.
+ * 4. Runs pg_restore --clean --if-exists.
+ * 5. Exits the process so Docker restarts the container.
  */
 export async function restoreFromBackup(filename: string): Promise<void> {
   const safe = sanitizeFilename(filename);
@@ -368,8 +429,25 @@ export async function restoreFromBackup(filename: string): Promise<void> {
     );
   }
 
+  // Verify checksum against BackupRecord if one exists (RELY-03)
+  const backupRecord = await prisma.backupRecord.findFirst({
+    where: { filename: safe, status: "success" },
+    select: { checksum: true },
+  });
+
+  if (backupRecord?.checksum) {
+    const currentChecksum = await computeChecksum(dumpPath);
+    if (currentChecksum !== backupRecord.checksum) {
+      throw new Error(
+        "Backup file checksum mismatch -- file may be corrupt. " +
+        `Expected: ${backupRecord.checksum.slice(0, 16)}..., Got: ${currentChecksum.slice(0, 16)}...`
+      );
+    }
+  }
+  // If no BackupRecord exists (legacy backup created before Phase 12), skip checksum verification
+
   // Create a safety backup before restoring
-  await createBackup();
+  await createBackup("pre_restore");
 
   // Run pg_restore
   const db = parseDatabaseUrl();
