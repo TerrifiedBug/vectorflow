@@ -35,7 +35,7 @@
 
 - [x] **Phase 12: Backup Registry Foundation** - BackupRecord table, error capture, disk checks, and checksums (completed 2026-03-27)
 - [ ] **Phase 13: Backup Listing & History** - GUI queries database, reliable history without disappearing entries
-- [ ] **Phase 14: S3 Remote Storage** - S3-compatible backend with settings, upload, restore, and connection test
+- [x] **Phase 14: S3 Remote Storage** - S3-compatible backend with settings, upload, restore, and connection test (completed 2026-03-27)
 - [ ] **Phase 15: Restore UX & Cleanup** - Preview, multi-step confirmation, progress, and orphan cleanup
 
 ## Phase Details
@@ -89,7 +89,10 @@ Plans:
   2. Restore follows a select → preview → confirm → execute flow; there is no way to trigger a restore without passing through the confirmation step
   3. Restore shows a progress indicator and completes gracefully — the process does not call process.exit(0) or leave the UI in an ambiguous state
   4. The system detects orphaned backup files (dump without DB record) and DB records without files on a schedule and removes stale entries automatically
-**Plans**: TBD
+**Plans:** 1/2 plans executed
+Plans:
+- [x] 15-01-PLAN.md — previewBackup service, restoreFromBackup fix (no process.exit), runOrphanCleanup, Prisma migration, tRPC procedures, tests
+- [ ] 15-02-PLAN.md — RestoreDialog multi-step UI component, orphaned badge, public docs update
 **UI hint**: yes
 
 ## Progress Table
@@ -98,5 +101,5 @@ Plans:
 |-------|----------------|--------|-----------|
 | 12. Backup Registry Foundation | 2/2 | Complete    | 2026-03-27 |
 | 13. Backup Listing & History | 1/2 | In Progress|  |
-| 14. S3 Remote Storage | 0/? | Not started | - |
-| 15. Restore UX & Cleanup | 0/? | Not started | - |
+| 14. S3 Remote Storage | 0/? | Complete    | 2026-03-27 |
+| 15. Restore UX & Cleanup | 1/2 | In Progress|  |
