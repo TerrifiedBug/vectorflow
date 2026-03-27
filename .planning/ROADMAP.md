@@ -33,7 +33,7 @@
 
 ### v1.2 Production-Grade Backups
 
-- [ ] **Phase 12: Backup Registry Foundation** - BackupRecord table, error capture, disk checks, and checksums
+- [x] **Phase 12: Backup Registry Foundation** - BackupRecord table, error capture, disk checks, and checksums (completed 2026-03-27)
 - [ ] **Phase 13: Backup Listing & History** - GUI queries database, reliable history without disappearing entries
 - [ ] **Phase 14: S3 Remote Storage** - S3-compatible backend with settings, upload, restore, and connection test
 - [ ] **Phase 15: Restore UX & Cleanup** - Preview, multi-step confirmation, progress, and orphan cleanup
@@ -49,10 +49,10 @@
   2. When a backup fails, the full error detail is stored in BackupRecord and surfaces in the UI (no silent failures)
   3. Before a backup starts, available disk space is checked and a warning is shown if below the configured threshold
   4. Every completed backup has a SHA256 checksum stored alongside it that is verified automatically before any restore begins
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 12-01-PLAN.md — BackupRecord Prisma model, migration SQL, checkDiskSpace and computeChecksum helpers
-- [ ] 12-02-PLAN.md — createBackup/restoreFromBackup integration, scheduler fix, tests, docs
+- [x] 12-02-PLAN.md — createBackup/restoreFromBackup integration, scheduler fix, tests, docs
 
 ### Phase 13: Backup Listing & History
 **Goal**: Operators can reliably see all their backups — scheduled and manual — with no entries disappearing from the GUI
@@ -93,7 +93,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 12. Backup Registry Foundation | 1/2 | In Progress|  |
+| 12. Backup Registry Foundation | 2/2 | Complete   | 2026-03-27 |
 | 13. Backup Listing & History | 0/? | Not started | - |
 | 14. S3 Remote Storage | 0/? | Not started | - |
 | 15. Restore UX & Cleanup | 0/? | Not started | - |

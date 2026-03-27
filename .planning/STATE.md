@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production-Grade Backups
-status: executing
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-03-27T19:02:32.812Z"
+status: verifying
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-03-27T19:14:18.341Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 Phase: 12 (backup-registry-foundation) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-27
 
 ```
@@ -50,6 +50,7 @@ v1.2 Progress: [░░░░░░░░░░░░░░░░░░░░] 0%
 | 14. S3 Remote Storage | 0 | — | — |
 | 15. Restore UX & Cleanup | 0 | — | — |
 | Phase 12-backup-registry-foundation P01 | 4 | 2 tasks | 3 files |
+| Phase 12 P02 | 18 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,8 @@ v1.2 Progress: [░░░░░░░░░░░░░░░░░░░░] 0%
 - [Phase 12-backup-registry-foundation]: BigInt? for sizeBytes field to handle >2GB backups without integer overflow
 - [Phase 12-backup-registry-foundation]: Default disk warning threshold 500 MB via VF_BACKUP_DISK_WARN_MB env var
 - [Phase 12-backup-registry-foundation]: Streaming reads in computeChecksum to prevent OOM on large dump files
+- [Phase 12]: BackupRecord created upfront with filename and storageLocation at create time, not in update
+- [Phase 12]: computeChecksum called in parallel with stat/migrationInfo/pgVersion after pg_dump for performance
 
 ### Pending Todos
 
@@ -75,6 +78,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-27T19:02:32.810Z
-Stopped at: Completed 12-01-PLAN.md
+Last session: 2026-03-27T19:14:18.338Z
+Stopped at: Completed 12-02-PLAN.md
 Resume file: None
