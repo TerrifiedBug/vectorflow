@@ -195,6 +195,12 @@ export default function FleetPage() {
         >
           Overview
         </Link>
+        <Link
+          href="/fleet/health"
+          className="rounded-full px-3 h-7 text-xs font-medium border transition-colors bg-transparent text-muted-foreground border-border hover:bg-muted inline-flex items-center"
+        >
+          Health
+        </Link>
       </div>
 
       {/* Toolbar — shown when not loading and nodes exist or filters active */}

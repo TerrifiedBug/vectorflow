@@ -189,6 +189,52 @@ When node groups define **required labels**, the fleet list displays a **Non-com
 
 To resolve a non-compliant node, add the missing labels via the node detail page or ensure the node enrolls with matching labels so that group templates apply automatically.
 
+## Fleet health dashboard
+
+The Health tab on the Fleet page provides an aggregated view of fleet status organized by node group. This is especially useful for large fleets where you want to see health at a glance before drilling into individual nodes.
+
+### Group summary cards
+
+Each node group is represented as a collapsible card showing three metrics:
+
+| Metric | Description |
+|--------|-------------|
+| **Online** | Count of HEALTHY nodes out of the group total (e.g. `4/5`). Shown in amber when any nodes are offline. |
+| **Alerts** | Count of nodes with at least one firing alert rule. Shown in red when greater than zero. |
+| **Compliance** | Percentage of nodes that have all required labels defined by the group. Shown in amber when below 100%. |
+
+### Drill-down
+
+Click any group card to expand it and see a per-node detail table with:
+
+- **Name** — the node name, linked to its detail page
+- **Status** — current health status badge (Healthy, Degraded, Unreachable, Unknown)
+- **CPU Load** — the 1-minute load average from the latest heartbeat, or `--` if no metrics are available
+- **Last Seen** — how long ago the node last sent a heartbeat
+- **Compliance** — whether the node has all required labels for the group
+
+Nodes are sorted by health status with the least healthy nodes shown first, then alphabetically by name.
+
+### Filtering
+
+The toolbar above the group cards supports three filter types:
+
+- **Group** — show only a specific group card
+- **Labels** — filter by label key/value pairs (applied to the per-node detail table inside expanded cards)
+- **Compliance** — toggle between All, Compliant (100% compliance rate), or Non-compliant (below 100%)
+
+{% hint style="info" %}
+Filter state is stored in the URL as query parameters, so you can copy and share the URL with filters applied.
+{% endhint %}
+
+### Ungrouped nodes
+
+Nodes that do not match the criteria of any defined group appear under an **Ungrouped** card. This card behaves the same as any other group card — you can expand it to see the per-node table.
+
+{% hint style="info" %}
+The Ungrouped card only appears when at least one node exists outside all group criteria. If all nodes belong to a group, no Ungrouped card is shown.
+{% endhint %}
+
 ## Maintenance mode
 
 Maintenance mode lets you temporarily stop all pipelines on a node without removing it from the fleet. This is useful for host upgrades, kernel patches, disk maintenance, or any situation where you need the node idle but still connected.
