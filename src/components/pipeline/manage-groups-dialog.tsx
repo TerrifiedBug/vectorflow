@@ -72,7 +72,7 @@ export function ManageGroupsDialog({
   // --- Create ---
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState<string>(GROUP_COLORS[0]);
-  const [newParentId, setNewParentId] = useState<string>("");
+  const [newParentId, setNewParentId] = useState<string>("__root__");
 
   const createMutation = useMutation(
     trpc.pipelineGroup.create.mutationOptions({
@@ -80,7 +80,7 @@ export function ManageGroupsDialog({
         toast.success("Group created");
         setNewName("");
         setNewColor(GROUP_COLORS[0]);
-        setNewParentId("");
+        setNewParentId("__root__");
         queryClient.invalidateQueries({ queryKey: trpc.pipelineGroup.list.queryKey() });
       },
       onError: (err) => toast.error(err.message),
@@ -144,7 +144,7 @@ export function ManageGroupsDialog({
                 environmentId,
                 name: newName.trim(),
                 color: newColor,
-                parentId: newParentId || undefined,
+                parentId: newParentId === "__root__" ? undefined : newParentId,
               });
             }}
           >
@@ -176,7 +176,7 @@ export function ManageGroupsDialog({
                   <SelectValue placeholder="Parent group (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">
+                  <SelectItem value="__root__">
                     <span className="text-muted-foreground">(Root level)</span>
                   </SelectItem>
                   {eligibleParents.map((g) => (
