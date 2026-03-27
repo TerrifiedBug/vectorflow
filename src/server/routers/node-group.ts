@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
+import { nodeMatchesGroup } from "@/lib/node-group-utils";
 
 export const nodeGroupRouter = router({
   list: protectedProcedure
@@ -129,4 +130,229 @@ export const nodeGroupRouter = router({
         where: { id: input.id },
       });
     }),
+
+  /**
+   * NODE-04: Aggregated per-group health stats for the fleet dashboard.
+   * Single round trip: 3 parallel queries, application-layer aggregation.
+   */
+  groupHealthStats: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const { environmentId } = input;
+
+      const [nodes, groups, firingAlerts] = await Promise.all([
+        prisma.vectorNode.findMany({
+          where: { environmentId },
+          select: { id: true, status: true, labels: true },
+        }),
+        prisma.nodeGroup.findMany({
+          where: { environmentId },
+          orderBy: { name: "asc" },
+        }),
+        prisma.alertEvent.findMany({
+          where: { status: "firing", node: { environmentId } },
+          select: { nodeId: true },
+        }),
+      ]);
+
+      const firingNodeIds = new Set(
+        firingAlerts.map((a) => a.nodeId).filter(Boolean) as string[],
+      );
+
+      const assignedNodeIds = new Set<string>();
+
+      const groupStats = groups.map((group) => {
+        const criteria = group.criteria as Record<string, string>;
+        const requiredLabels = group.requiredLabels as string[];
+
+        const matchedNodes = nodes.filter((n) => {
+          const nodeLabels = (n.labels as Record<string, string>) ?? {};
+          return nodeMatchesGroup(nodeLabels, criteria);
+        });
+
+        for (const n of matchedNodes) {
+          assignedNodeIds.add(n.id);
+        }
+
+        const totalNodes = matchedNodes.length;
+        const onlineCount = matchedNodes.filter((n) => n.status === "HEALTHY").length;
+        const alertCount = matchedNodes.filter((n) => firingNodeIds.has(n.id)).length;
+
+        let complianceRate = 100;
+        if (requiredLabels.length > 0 && totalNodes > 0) {
+          const compliantCount = matchedNodes.filter((n) => {
+            const nodeLabels = (n.labels as Record<string, string>) ?? {};
+            return requiredLabels.every((key) =>
+              Object.prototype.hasOwnProperty.call(nodeLabels, key),
+            );
+          }).length;
+          complianceRate = Math.round((compliantCount / totalNodes) * 100);
+        }
+
+        return {
+          ...group,
+          totalNodes,
+          onlineCount,
+          alertCount,
+          complianceRate,
+        };
+      });
+
+      // Synthetic "Ungrouped" entry for nodes not matching any group
+      const ungroupedNodes = nodes.filter((n) => !assignedNodeIds.has(n.id));
+      if (ungroupedNodes.length > 0) {
+        const ungroupedOnlineCount = ungroupedNodes.filter((n) => n.status === "HEALTHY").length;
+        const ungroupedAlertCount = ungroupedNodes.filter((n) => firingNodeIds.has(n.id)).length;
+        groupStats.push({
+          id: "__ungrouped__",
+          name: "Ungrouped",
+          environmentId,
+          criteria: {},
+          labelTemplate: {},
+          requiredLabels: [],
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+          totalNodes: ungroupedNodes.length,
+          onlineCount: ungroupedOnlineCount,
+          alertCount: ungroupedAlertCount,
+          complianceRate: 100,
+        });
+      }
+
+      return groupStats;
+    }),
+
+  /**
+   * NODE-05: Per-node detail for a group, sorted by health status (worst first).
+   * Used for the drill-down view in the fleet health dashboard.
+   */
+  nodesInGroup: protectedProcedure
+    .input(z.object({ groupId: z.string(), environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const { groupId, environmentId } = input;
+
+      let groupCriteria: Record<string, string> = {};
+      let requiredLabels: string[] = [];
+
+      if (groupId === "__ungrouped__") {
+        // Fetch all groups to determine which nodes are ungrouped
+        const allGroups = await prisma.nodeGroup.findMany({
+          where: { environmentId },
+        });
+
+        const allNodes = await prisma.vectorNode.findMany({
+          where: { environmentId },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            labels: true,
+            lastSeen: true,
+            nodeMetrics: {
+              orderBy: { timestamp: "desc" },
+              take: 1,
+              select: { loadAvg1: true },
+            },
+          },
+        });
+
+        const assignedIds = new Set<string>();
+        for (const group of allGroups) {
+          const criteria = group.criteria as Record<string, string>;
+          for (const n of allNodes) {
+            const nodeLabels = (n.labels as Record<string, string>) ?? {};
+            if (nodeMatchesGroup(nodeLabels, criteria)) {
+              assignedIds.add(n.id);
+            }
+          }
+        }
+
+        const ungroupedNodes = allNodes.filter((n) => !assignedIds.has(n.id));
+        return sortAndMapNodes(ungroupedNodes, []);
+      }
+
+      // Normal group lookup
+      const group = await prisma.nodeGroup.findUnique({
+        where: { id: groupId },
+      });
+      if (!group) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Node group not found",
+        });
+      }
+
+      groupCriteria = group.criteria as Record<string, string>;
+      requiredLabels = group.requiredLabels as string[];
+
+      const allNodes = await prisma.vectorNode.findMany({
+        where: { environmentId: group.environmentId },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          labels: true,
+          lastSeen: true,
+          nodeMetrics: {
+            orderBy: { timestamp: "desc" },
+            take: 1,
+            select: { loadAvg1: true },
+          },
+        },
+      });
+
+      const matchedNodes = allNodes.filter((n) => {
+        const nodeLabels = (n.labels as Record<string, string>) ?? {};
+        return nodeMatchesGroup(nodeLabels, groupCriteria);
+      });
+
+      return sortAndMapNodes(matchedNodes, requiredLabels);
+    }),
 });
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const STATUS_ORDER: Record<string, number> = {
+  UNREACHABLE: 0,
+  DEGRADED: 1,
+  UNKNOWN: 2,
+  HEALTHY: 3,
+};
+
+function sortAndMapNodes(
+  nodes: Array<{
+    id: string;
+    name: string;
+    status: string;
+    labels: unknown;
+    lastSeen: Date | null;
+    nodeMetrics: Array<{ loadAvg1: number }>;
+  }>,
+  requiredLabels: string[],
+) {
+  return nodes
+    .map((n) => ({
+      id: n.id,
+      name: n.name,
+      status: n.status,
+      labels: n.labels,
+      lastSeen: n.lastSeen,
+      cpuLoad: n.nodeMetrics[0]?.loadAvg1 ?? null,
+      labelCompliant:
+        requiredLabels.length === 0 ||
+        requiredLabels.every((key) =>
+          Object.prototype.hasOwnProperty.call(
+            (n.labels as Record<string, string>) ?? {},
+            key,
+          ),
+        ),
+    }))
+    .sort((a, b) => {
+      const statusDiff =
+        (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99);
+      if (statusDiff !== 0) return statusDiff;
+      return a.name.localeCompare(b.name);
+    });
+}
