@@ -65,6 +65,24 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatDuration(ms: number | null | undefined): string {
+  if (!ms) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  if (status === "success") return <Badge variant="secondary">Success</Badge>;
+  if (status === "failed") return <Badge variant="destructive">Failed</Badge>;
+  return <Badge variant="outline">In progress</Badge>;
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  manual: "Manual",
+  scheduled: "Scheduled",
+  pre_restore: "Pre-restore",
+};
+
 // ─── Backup Settings ────────────────────────────────────────────────────────────
 
 export function BackupSettings() {
@@ -217,16 +235,16 @@ export function BackupSettings() {
         </CardContent>
       </Card>
 
-      {/* Failed Backup Alert */}
-      {settingsQuery.data?.lastBackupStatus === "failed" && (
+      {/* Failed Backup Alert — reads from most recent BackupRecord (single source of truth) */}
+      {backupsQuery.data?.[0]?.status === "failed" && (
         <Card className="border-destructive/50">
           <CardContent className="flex items-start gap-3 p-4">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
             <div className="text-sm">
               <p className="font-medium text-destructive">Last backup failed</p>
               <p className="text-muted-foreground">
-                {settingsQuery.data.lastBackupError || "Unknown error"} &mdash;{" "}
-                {formatRelativeTime(settingsQuery.data.lastBackupAt)}
+                {backupsQuery.data[0].error || "Unknown error"} &mdash;{" "}
+                {formatRelativeTime(backupsQuery.data[0].startedAt)}
               </p>
             </div>
           </CardContent>
@@ -253,14 +271,14 @@ export function BackupSettings() {
             )}
             Create Backup Now
           </Button>
-          {settingsQuery.data?.lastBackupAt && (
+          {backupsQuery.data?.[0] && (
             <p className="text-sm text-muted-foreground">
-              Last backup: {formatRelativeTime(settingsQuery.data.lastBackupAt)}
-              {settingsQuery.data.lastBackupStatus && (
-                <> &mdash; {settingsQuery.data.lastBackupStatus}</>
+              Last backup: {formatRelativeTime(backupsQuery.data[0].startedAt)}
+              {backupsQuery.data[0].status && (
+                <> &mdash; {backupsQuery.data[0].status}</>
               )}
-              {settingsQuery.data.lastBackupError && (
-                <span className="text-destructive"> ({settingsQuery.data.lastBackupError})</span>
+              {backupsQuery.data[0].status === "failed" && backupsQuery.data[0].error && (
+                <span className="text-destructive"> ({backupsQuery.data[0].error})</span>
               )}
             </p>
           )}
@@ -288,9 +306,10 @@ export function BackupSettings() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Size</TableHead>
-                  <TableHead>Version</TableHead>
-                  <TableHead>Migrations</TableHead>
+                  <TableHead>Duration</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -298,13 +317,20 @@ export function BackupSettings() {
                 {backupsQuery.data.map((backup) => (
                   <TableRow key={backup.filename}>
                     <TableCell className="tabular-nums">
-                      {new Date(backup.timestamp).toLocaleString()}
+                      {new Date(backup.startedAt).toLocaleString()}
                     </TableCell>
-                    <TableCell className="tabular-nums">{formatBytes(backup.sizeBytes)}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{backup.version}</Badge>
+                      {TYPE_LABELS[backup.type] ?? backup.type}
                     </TableCell>
-                    <TableCell>{backup.migrationCount}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={backup.status} />
+                    </TableCell>
+                    <TableCell className="tabular-nums">
+                      {formatBytes(Number(backup.sizeBytes ?? 0))}
+                    </TableCell>
+                    <TableCell className="tabular-nums">
+                      {formatDuration(backup.durationMs)}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button
