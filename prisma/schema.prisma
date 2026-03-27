@@ -34,6 +34,8 @@ model User {
   deployRequestsMade     DeployRequest[]  @relation("deployRequester")
   deployRequestsReviewed DeployRequest[]  @relation("deployReviewer")
   deployRequestsExecuted DeployRequest[]  @relation("deployExecutor")
+  promotionRequests      PromotionRequest[] @relation("PromotionRequester")
+  promotionApprovals     PromotionRequest[] @relation("PromotionApprover")
   preferences            UserPreference[]
   aiConversationsCreated AiConversation[] @relation("AiConversationCreatedBy")
   aiMessagesCreated      AiMessage[]      @relation("AiMessageCreatedBy")
@@ -149,6 +151,8 @@ model Environment {
   sharedComponents        SharedComponent[]
   pipelineGroups          PipelineGroup[]
   stagedRollouts          StagedRollout[]
+  promotionSources        PromotionRequest[] @relation("PromotionSourceEnv")
+  promotionTargets        PromotionRequest[] @relation("PromotionTargetEnv")
   createdAt               DateTime      @default(now())
 }
 
@@ -322,6 +326,8 @@ model Pipeline {
   stagedRollouts  StagedRollout[]
   upstreamDeps    PipelineDependency[] @relation("PipelineDownstream")
   downstreamDeps  PipelineDependency[] @relation("PipelineUpstream")
+  promotionSources    PromotionRequest[] @relation("PromotionSource")
+  promotionTargets    PromotionRequest[] @relation("PromotionTarget")
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 }
@@ -701,6 +707,35 @@ model DeployRequest {
 
   @@index([pipelineId, status])
   @@index([environmentId, status])
+}
+
+model PromotionRequest {
+  id                    String      @id @default(cuid())
+  sourcePipelineId      String
+  sourcePipeline        Pipeline    @relation("PromotionSource", fields: [sourcePipelineId], references: [id], onDelete: Cascade)
+  targetPipelineId      String?
+  targetPipeline        Pipeline?   @relation("PromotionTarget", fields: [targetPipelineId], references: [id], onDelete: SetNull)
+  sourceEnvironmentId   String
+  sourceEnvironment     Environment @relation("PromotionSourceEnv", fields: [sourceEnvironmentId], references: [id], onDelete: Cascade)
+  targetEnvironmentId   String
+  targetEnvironment     Environment @relation("PromotionTargetEnv", fields: [targetEnvironmentId], references: [id], onDelete: Cascade)
+  status                String      @default("PENDING") // PENDING | APPROVED | DEPLOYED | REJECTED | CANCELLED
+  promotedById          String?
+  promotedBy            User?       @relation("PromotionRequester", fields: [promotedById], references: [id], onDelete: SetNull)
+  approvedById          String?
+  approvedBy            User?       @relation("PromotionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  nodesSnapshot         Json?
+  edgesSnapshot         Json?
+  globalConfigSnapshot  Json?
+  targetPipelineName    String?
+  reviewNote            String?
+  createdAt             DateTime    @default(now())
+  reviewedAt            DateTime?
+  deployedAt            DateTime?
+
+  @@index([sourcePipelineId, status])
+  @@index([sourceEnvironmentId])
+  @@index([targetEnvironmentId])
 }
 
 enum AlertMetric {
