@@ -123,9 +123,9 @@ Each metric can only have one SLI per pipeline. Adding an SLI for a metric that 
 If no metric data is available for the evaluation window (for example, the pipeline was recently deployed or has no traffic), the SLI is treated as **breached** and the pipeline health will show as **Degraded**.
 {% endhint %}
 
-## Data classification tags
+## Compliance tags
 
-Classification tags let you label pipelines with compliance or sensitivity markers such as **PII**, **PHI**, **PCI-DSS**, **Internal**, or **Public**. Tags appear as color-coded badges next to pipeline names in the list and help teams quickly identify which data-handling rules apply to each pipeline.
+Compliance tags let you label pipelines with compliance or sensitivity markers such as **PII**, **PHI**, **PCI-DSS**, **Internal**, or **Public**. Tags appear as color-coded badges next to pipeline names in the list and help teams quickly identify which data-handling rules apply to each pipeline.
 
 ### Defining available tags (Admin)
 
@@ -138,7 +138,7 @@ Navigate to **Settings** and select the **Team** tab.
 {% endstep %}
 {% step %}
 ### Add tags
-Scroll to the **Data Classification Tags** card. Type a tag name (up to 30 characters) and click **Add**. Repeat for each tag you want to make available.
+Scroll to the **Compliance Tags** card. Type a tag name (up to 30 characters) and click **Add**. Repeat for each tag you want to make available.
 {% endstep %}
 {% step %}
 ### Remove tags
@@ -155,7 +155,7 @@ Open a pipeline in the editor, then click the **gear icon** in the toolbar to op
 {% endstep %}
 {% step %}
 ### Select tags
-In the **Classification Tags** section, use the dropdown to add tags from the team's available list. Tags are saved immediately.
+In the **Compliance Tags** section, use the dropdown to add tags from the team's available list. Tags are saved immediately.
 {% endstep %}
 {% step %}
 ### Remove tags
