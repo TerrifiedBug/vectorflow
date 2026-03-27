@@ -64,6 +64,8 @@ The backup settings page shows the status of the most recent backup attempt:
 - **Success** -- The last backup completed without errors. The timestamp and file size are displayed.
 - **Failed** -- A red error banner appears at the top of the page showing the error message from the failed backup attempt (e.g., `pg_dump` timeout, disk full, permission denied). The banner persists until the next successful backup.
 
+Failed backups are also visible in the backup list with a red **Failed** status badge and their error details. You can delete failed backup entries to clean them up. Download and Restore actions are only available for successful backups.
+
 {% hint style="warning" %}
 If automatic backups are enabled but consistently failing, the error banner provides the diagnostic message needed to troubleshoot. Common causes include insufficient disk space in `VF_BACKUP_DIR`, PostgreSQL connection issues, or `pg_dump` not being available in the container.
 {% endhint %}
@@ -72,9 +74,15 @@ If automatic backups are enabled but consistently failing, the error banner prov
 
 You can trigger a backup at any time from the **Settings > Backup** page by clicking **Create Backup**. The backup runs immediately and appears in the backup list when complete.
 
+The backup list is database-backed and shows all backups — both scheduled and manual — with their type, status, size, and duration. Backups persist across page refreshes and server restarts.
+
 Each backup generates two files:
 - `vectorflow-<timestamp>.dump` -- The compressed PostgreSQL dump
 - `vectorflow-<timestamp>.meta.json` -- Metadata (VectorFlow version, migration count, PostgreSQL version, file size)
+
+{% hint style="info" %}
+When upgrading from a version before v1.2, any existing backup files in `VF_BACKUP_DIR` are automatically imported into the database on first startup. No manual action is required — your existing backups will appear in the list automatically.
+{% endhint %}
 
 ## Downloading backups
 
