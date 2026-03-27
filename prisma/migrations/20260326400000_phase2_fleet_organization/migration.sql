@@ -3,7 +3,7 @@
 
 -- AlterTable: Remove unique constraint on PipelineGroup(environmentId, name)
 -- and add parentId self-reference
-ALTER TABLE "PipelineGroup" DROP CONSTRAINT "PipelineGroup_environmentId_name_key";
+DROP INDEX "PipelineGroup_environmentId_name_key";
 
 ALTER TABLE "PipelineGroup" ADD COLUMN "parentId" TEXT;
 
