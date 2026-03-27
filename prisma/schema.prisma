@@ -139,7 +139,7 @@ model Environment {
   gitRepoUrl          String?
   gitBranch           String?       @default("main")
   gitToken            String?       // Stored encrypted via crypto.ts
-  gitOpsMode          String        @default("off")   // "off" | "push" | "bidirectional"
+  gitOpsMode          String        @default("off")   // "off" | "push" | "bidirectional" | "promotion"
   gitWebhookSecret    String?       // HMAC secret for validating incoming git webhooks
   requireDeployApproval   Boolean       @default(false)
   alertRules              AlertRule[]
@@ -738,7 +738,7 @@ model PromotionRequest {
   sourceEnvironment     Environment @relation("PromotionSourceEnv", fields: [sourceEnvironmentId], references: [id], onDelete: Cascade)
   targetEnvironmentId   String
   targetEnvironment     Environment @relation("PromotionTargetEnv", fields: [targetEnvironmentId], references: [id], onDelete: Cascade)
-  status                String      @default("PENDING") // PENDING | APPROVED | DEPLOYED | REJECTED | CANCELLED
+  status                String      @default("PENDING") // PENDING | APPROVED | DEPLOYED | REJECTED | CANCELLED | AWAITING_PR_MERGE | DEPLOYING
   promotedById          String?
   promotedBy            User?       @relation("PromotionRequester", fields: [promotedById], references: [id], onDelete: SetNull)
   approvedById          String?
@@ -748,6 +748,8 @@ model PromotionRequest {
   globalConfigSnapshot  Json?
   targetPipelineName    String?
   reviewNote            String?
+  prUrl                 String?     // GitHub PR HTML URL (GitOps promotion only)
+  prNumber              Int?        // GitHub PR number (GitOps promotion only)
   createdAt             DateTime    @default(now())
   reviewedAt            DateTime?
   deployedAt            DateTime?
