@@ -626,12 +626,12 @@ describe("restoreFromBackup - BackupRecord fallback", () => {
     fsMock.writeFile.mockResolvedValue(undefined);
 
     mockExecFile.mockImplementation(
-      (_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
+      ((_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
         (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
           null,
           { stdout: "16.1", stderr: "" }
         );
-      }
+      }) as never
     );
 
     prismaMock.backupRecord.create.mockResolvedValue({
