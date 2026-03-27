@@ -60,14 +60,24 @@ function TreeNode({
   selectedGroupId,
   onSelectGroup,
   pipelineCounts,
+  expandedGroupIds,
+  onToggleExpand,
 }: {
   node: GroupNode;
   depth: number;
   selectedGroupId: string | null;
   onSelectGroup: (groupId: string | null) => void;
   pipelineCounts: Record<string, number>;
+  expandedGroupIds?: Set<string>;
+  onToggleExpand?: (id: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  // If external control is provided, use it; otherwise fall back to local state
+  const [localExpanded, setLocalExpanded] = useState(true);
+  const expanded = expandedGroupIds ? expandedGroupIds.has(node.id) : localExpanded;
+  const handleToggle = onToggleExpand
+    ? () => onToggleExpand(node.id)
+    : () => setLocalExpanded((v) => !v);
+
   const hasChildren = node.children.length > 0;
   const isSelected = selectedGroupId === node.id;
   const count = pipelineCounts[node.id] ?? 0;
@@ -87,7 +97,7 @@ function TreeNode({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              setExpanded((v) => !v);
+              handleToggle();
             }}
             className="flex items-center shrink-0 text-muted-foreground hover:text-foreground"
           >
@@ -131,6 +141,8 @@ function TreeNode({
               selectedGroupId={selectedGroupId}
               onSelectGroup={onSelectGroup}
               pipelineCounts={pipelineCounts}
+              expandedGroupIds={expandedGroupIds}
+              onToggleExpand={onToggleExpand}
             />
           ))}
         </div>
@@ -145,12 +157,16 @@ interface PipelineGroupTreeProps {
   environmentId: string;
   selectedGroupId: string | null;
   onSelectGroup: (groupId: string | null) => void;
+  expandedGroupIds?: Set<string>;
+  onToggleExpand?: (id: string) => void;
 }
 
 export function PipelineGroupTree({
   environmentId,
   selectedGroupId,
   onSelectGroup,
+  expandedGroupIds,
+  onToggleExpand,
 }: PipelineGroupTreeProps) {
   const trpc = useTRPC();
 
@@ -202,6 +218,8 @@ export function PipelineGroupTree({
           selectedGroupId={selectedGroupId}
           onSelectGroup={onSelectGroup}
           pipelineCounts={pipelineCounts}
+          expandedGroupIds={expandedGroupIds}
+          onToggleExpand={onToggleExpand}
         />
       ))}
     </div>
