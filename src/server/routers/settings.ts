@@ -1,6 +1,7 @@
 import { z } from "zod";
 import crypto from "crypto";
 import { TRPCError } from "@trpc/server";
+import { S3Client, HeadBucketCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { router, protectedProcedure, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
@@ -87,6 +88,20 @@ export const settingsRouter = router({
         lastBackupAt: settings.lastBackupAt,
         lastBackupStatus: settings.lastBackupStatus,
         lastBackupError: settings.lastBackupError,
+        backupStorageBackend: settings.backupStorageBackend,
+        s3Bucket: settings.s3Bucket,
+        s3Region: settings.s3Region,
+        s3Prefix: settings.s3Prefix,
+        s3AccessKeyId: settings.s3AccessKeyId,
+        s3SecretAccessKey: (() => {
+          if (!settings.s3SecretAccessKey) return null;
+          try {
+            return maskSecret(decrypt(settings.s3SecretAccessKey));
+          } catch {
+            return "****";
+          }
+        })(),
+        s3Endpoint: settings.s3Endpoint,
         scimEnabled: settings.scimEnabled,
         scimTokenConfigured: !!settings.scimBearerToken,
         updatedAt: settings.updatedAt,
@@ -392,6 +407,87 @@ export const settingsRouter = router({
 
       rescheduleBackup(input.enabled, input.cron);
       return result;
+    }),
+
+  testS3Connection: protectedProcedure
+    .use(requireSuperAdmin())
+    .input(z.object({
+      bucket: z.string().min(1),
+      region: z.string().min(1),
+      prefix: z.string().optional().default(""),
+      accessKeyId: z.string().min(1),
+      secretAccessKey: z.string().min(1),
+      endpoint: z.string().url().optional().or(z.literal("")),
+    }))
+    .mutation(async ({ input }) => {
+      const client = new S3Client({
+        region: input.region,
+        credentials: {
+          accessKeyId: input.accessKeyId,
+          secretAccessKey: input.secretAccessKey,
+        },
+        ...(input.endpoint ? { endpoint: input.endpoint } : {}),
+        forcePathStyle: !!input.endpoint,
+      });
+
+      const testKey = `${input.prefix ? input.prefix.replace(/\/$/, "") + "/" : ""}vf-conn-test-${Date.now()}`;
+
+      try {
+        await client.send(new HeadBucketCommand({ Bucket: input.bucket }));
+        await client.send(new PutObjectCommand({ Bucket: input.bucket, Key: testKey, Body: "ok" }));
+        await client.send(new DeleteObjectCommand({ Bucket: input.bucket, Key: testKey }));
+        return { success: true as const };
+      } catch (err) {
+        const name = err instanceof Error ? err.name : "";
+        if (name === "NoSuchBucket") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Bucket not found" });
+        }
+        if (name === "AccessDenied" || name === "AccessDeniedException") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Access denied -- check credentials and bucket policy" });
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `S3 connection failed: ${err instanceof Error ? err.message : "unknown"}`,
+        });
+      }
+    }),
+
+  updateStorageBackend: protectedProcedure
+    .use(requireSuperAdmin())
+    .input(z.object({
+      backend: z.enum(["local", "s3"]),
+      bucket: z.string().optional(),
+      region: z.string().optional(),
+      prefix: z.string().optional(),
+      accessKeyId: z.string().optional(),
+      secretAccessKey: z.string().optional(),
+      endpoint: z.string().optional(),
+    }))
+    .use(withAudit("settings.storage_backend_updated", "SystemSettings"))
+    .mutation(async ({ input }) => {
+      await getOrCreateSettings();
+
+      const data: Record<string, unknown> = {
+        backupStorageBackend: input.backend,
+      };
+
+      if (input.backend === "s3") {
+        if (input.bucket !== undefined) data.s3Bucket = input.bucket;
+        if (input.region !== undefined) data.s3Region = input.region;
+        if (input.prefix !== undefined) data.s3Prefix = input.prefix;
+        if (input.accessKeyId !== undefined) data.s3AccessKeyId = input.accessKeyId;
+        if (input.secretAccessKey && input.secretAccessKey !== "unchanged") {
+          data.s3SecretAccessKey = encrypt(input.secretAccessKey);
+        }
+        if (input.endpoint !== undefined) data.s3Endpoint = input.endpoint || null;
+      }
+      // When switching to "local", keep S3 credentials per locked decision:
+      // "Switching from S3 back to Local keeps credentials -- user may switch back"
+
+      return prisma.systemSettings.update({
+        where: { id: SETTINGS_ID },
+        data,
+      });
     }),
 
   // ─── SCIM Provisioning ────────────────────────────────────────────────────
