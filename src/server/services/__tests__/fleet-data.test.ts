@@ -313,18 +313,16 @@ describe("getDataLoss", () => {
       {
         pipeline_id: "p1",
         pipeline_name: "ingest-logs",
-        node_id: "node-1",
-        node_name: "us-east-1",
         events_in: BigInt(1000),
-        events_out: BigInt(800), // 20% loss
+        events_out: BigInt(800),
+        events_discarded: BigInt(0), // 20% actual loss
       },
       {
         pipeline_id: "p2",
         pipeline_name: "metrics-agg",
-        node_id: "node-1",
-        node_name: "us-east-1",
         events_in: BigInt(500),
-        events_out: BigInt(490), // 2% loss
+        events_out: BigInt(490),
+        events_discarded: BigInt(0), // 2% loss
       },
     ]);
 
@@ -334,10 +332,9 @@ describe("getDataLoss", () => {
     expect(result[0]).toEqual({
       pipelineId: "p1",
       pipelineName: "ingest-logs",
-      nodeId: "node-1",
-      nodeName: "us-east-1",
       eventsIn: 1000,
       eventsOut: 800,
+      eventsDiscarded: 0,
       lossRate: 0.2,
     });
   });
@@ -347,10 +344,9 @@ describe("getDataLoss", () => {
       {
         pipeline_id: "p1",
         pipeline_name: "idle-pipeline",
-        node_id: null,
-        node_name: null,
         events_in: BigInt(0),
         events_out: BigInt(0),
+        events_discarded: BigInt(0),
       },
     ]);
 
@@ -364,10 +360,9 @@ describe("getDataLoss", () => {
       {
         pipeline_id: "p1",
         pipeline_name: "healthy",
-        node_id: "node-1",
-        node_name: "us-east-1",
         events_in: BigInt(1000),
-        events_out: BigInt(999), // 0.1% loss
+        events_out: BigInt(999),
+        events_discarded: BigInt(0), // 0.1% loss
       },
     ]);
 
@@ -381,18 +376,16 @@ describe("getDataLoss", () => {
       {
         pipeline_id: "p1",
         pipeline_name: "moderate-loss",
-        node_id: "node-1",
-        node_name: "us-east-1",
         events_in: BigInt(1000),
-        events_out: BigInt(850), // 15% loss
+        events_out: BigInt(850),
+        events_discarded: BigInt(0), // 15% loss
       },
       {
         pipeline_id: "p2",
         pipeline_name: "severe-loss",
-        node_id: "node-1",
-        node_name: "us-east-1",
         events_in: BigInt(1000),
-        events_out: BigInt(500), // 50% loss
+        events_out: BigInt(500),
+        events_discarded: BigInt(0), // 50% loss
       },
     ]);
 

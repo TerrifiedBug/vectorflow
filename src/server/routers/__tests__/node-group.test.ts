@@ -415,7 +415,7 @@ describe("nodeGroupRouter", () => {
         makeNode({ id: "n-degraded", name: "gamma", status: "DEGRADED", labels: { region: "us-east" } }),
       ];
 
-      prismaMock.nodeGroup.findUnique.mockResolvedValue(group as never);
+      prismaMock.nodeGroup.findFirst.mockResolvedValue(group as never);
       prismaMock.vectorNode.findMany.mockResolvedValue(nodes as never);
 
       const result = await caller.nodesInGroup({ groupId: "ng-1", environmentId: "env-1" });
@@ -432,7 +432,7 @@ describe("nodeGroupRouter", () => {
         makeNode({ id: "n-no-metrics", name: "b", nodeMetrics: [] }),
       ];
 
-      prismaMock.nodeGroup.findUnique.mockResolvedValue(group as never);
+      prismaMock.nodeGroup.findFirst.mockResolvedValue(group as never);
       prismaMock.vectorNode.findMany.mockResolvedValue(nodes as never);
 
       const result = await caller.nodesInGroup({ groupId: "ng-1", environmentId: "env-1" });
@@ -448,7 +448,7 @@ describe("nodeGroupRouter", () => {
       const group = makeNodeGroup({ id: "ng-1", criteria: {}, requiredLabels: [] });
       const nodes = [makeNode({ id: "n-1", labels: {} })]; // no labels, but requiredLabels is empty
 
-      prismaMock.nodeGroup.findUnique.mockResolvedValue(group as never);
+      prismaMock.nodeGroup.findFirst.mockResolvedValue(group as never);
       prismaMock.vectorNode.findMany.mockResolvedValue(nodes as never);
 
       const result = await caller.nodesInGroup({ groupId: "ng-1", environmentId: "env-1" });
@@ -466,7 +466,7 @@ describe("nodeGroupRouter", () => {
         makeNode({ id: "n-missing-role", labels: { region: "us-east" } }), // missing 'role'
       ];
 
-      prismaMock.nodeGroup.findUnique.mockResolvedValue(group as never);
+      prismaMock.nodeGroup.findFirst.mockResolvedValue(group as never);
       prismaMock.vectorNode.findMany.mockResolvedValue(nodes as never);
 
       const result = await caller.nodesInGroup({ groupId: "ng-1", environmentId: "env-1" });
@@ -475,7 +475,7 @@ describe("nodeGroupRouter", () => {
     });
 
     it("Test 11: Throws NOT_FOUND for non-existent groupId", async () => {
-      prismaMock.nodeGroup.findUnique.mockResolvedValue(null);
+      prismaMock.nodeGroup.findFirst.mockResolvedValue(null);
 
       await expect(
         caller.nodesInGroup({ groupId: "nonexistent", environmentId: "env-1" }),
@@ -487,7 +487,7 @@ describe("nodeGroupRouter", () => {
       const lastSeen = new Date("2026-01-15T10:00:00Z");
       const nodes = [makeNode({ id: "n-1", lastSeen })];
 
-      prismaMock.nodeGroup.findUnique.mockResolvedValue(group as never);
+      prismaMock.nodeGroup.findFirst.mockResolvedValue(group as never);
       prismaMock.vectorNode.findMany.mockResolvedValue(nodes as never);
 
       const result = await caller.nodesInGroup({ groupId: "ng-1", environmentId: "env-1" });
