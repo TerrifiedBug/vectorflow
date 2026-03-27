@@ -81,6 +81,40 @@ export async function POST(request: Request) {
         metadata: { enrolledVia: "agent" },
       },
     });
+    // NODE-03: Auto-apply matching NodeGroup label templates
+    try {
+      const nodeGroups = await prisma.nodeGroup.findMany({
+        where: { environmentId: matchedEnv.id },
+      });
+
+      const mergedLabels: Record<string, string> = {};
+      for (const group of nodeGroups) {
+        const criteria = group.criteria as Record<string, string>;
+        const nodeLabels = (node.labels as Record<string, string>) ?? {};
+        const matches = Object.entries(criteria).every(
+          ([k, v]) => nodeLabels[k] === v,
+        );
+        if (matches) {
+          Object.assign(mergedLabels, group.labelTemplate as Record<string, string>);
+        }
+      }
+
+      if (Object.keys(mergedLabels).length > 0) {
+        await prisma.vectorNode.update({
+          where: { id: node.id },
+          data: {
+            labels: {
+              ...((node.labels as Record<string, string>) ?? {}),
+              ...mergedLabels,
+            },
+          },
+        });
+      }
+    } catch (err) {
+      // Non-fatal: enrollment still succeeds even if label template application fails
+      console.error("[enroll] label template application failed:", err);
+    }
+
     debugLog("enroll", `SUCCESS -- node ${node.id} enrolled in "${matchedEnv.name}"`);
 
     await prisma.nodeStatusEvent.create({

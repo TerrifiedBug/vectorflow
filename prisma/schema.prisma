@@ -147,6 +147,7 @@ model Environment {
   teamDefaults            Team[]            @relation("teamDefault")
   sharedComponents        SharedComponent[]
   pipelineGroups          PipelineGroup[]
+  nodeGroups              NodeGroup[]
   stagedRollouts          StagedRollout[]
   createdAt               DateTime      @default(now())
 }
@@ -271,12 +272,30 @@ enum ProcessStatus {
 }
 
 model PipelineGroup {
-  id            String      @id @default(cuid())
+  id            String          @id @default(cuid())
   name          String
   color         String?
   environmentId String
-  environment   Environment @relation(fields: [environmentId], references: [id])
+  environment   Environment     @relation(fields: [environmentId], references: [id])
+  parentId      String?
+  parent        PipelineGroup?  @relation("GroupChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children      PipelineGroup[] @relation("GroupChildren")
   pipelines     Pipeline[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([environmentId])
+  @@index([parentId])
+}
+
+model NodeGroup {
+  id            String      @id @default(cuid())
+  name          String
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id])
+  criteria      Json        @default("{}")
+  labelTemplate Json        @default("{}")
+  requiredLabels Json       @default("[]")
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
