@@ -111,6 +111,15 @@ Failed backups are also visible in the backup list with a red **Failed** status 
 If automatic backups are enabled but consistently failing, the error banner provides the diagnostic message needed to troubleshoot. Common causes include insufficient disk space in `VF_BACKUP_DIR`, PostgreSQL connection issues, or `pg_dump` not being available in the container.
 {% endhint %}
 
+### Orphan cleanup
+
+VectorFlow automatically detects and handles orphaned backup entries:
+
+- **Files without database records** -- If a `.dump` file exists in the backup directory but has no matching database entry, it is automatically deleted during the next scheduled cleanup cycle.
+- **Database records without files** -- If a backup record points to a file that no longer exists (locally or in S3), the record is marked as **Orphaned** in the backup list. Orphaned entries remain visible so operators can see what happened, and can be manually deleted.
+
+Orphan cleanup runs alongside retention cleanup after each scheduled backup. No manual configuration is needed.
+
 ## Manual backup
 
 You can trigger a backup at any time from the **Settings > Backup** page by clicking **Create Backup**. The backup runs immediately and appears in the backup list when complete.
@@ -159,7 +168,7 @@ For production deployments, consider mounting `VF_BACKUP_DIR` to a location that
 Restoring from a backup replaces the entire database with the contents of the backup file.
 
 {% hint style="danger" %}
-**Restoring a backup overwrites all current data.** All pipelines, users, secrets, and settings will be replaced with the state from the backup. This action cannot be undone (though VectorFlow automatically creates a safety backup before restoring).
+**Restoring a backup overwrites all current data.** All pipelines, users, secrets, and settings will be replaced with the state from the backup. VectorFlow shows a preview of the backup contents and requires a typed confirmation before proceeding. A safety backup is created automatically before restoring.
 {% endhint %}
 
 ### Restore from the UI
@@ -170,20 +179,30 @@ Restoring from a backup replaces the entire database with the contents of the ba
 Open the backup management page (Super Admin required).
 {% endstep %}
 {% step %}
-### Select a backup
-Find the backup you want to restore in the list. Review the metadata (timestamp, VectorFlow version, size).
+### Click Restore on a backup
+Find the backup you want to restore in the list and click the **Restore** button. A preview dialog opens showing the backup's metadata.
 {% endstep %}
 {% step %}
-### Click Restore
-Confirm the restore action. VectorFlow will:
+### Review the preview
+The preview shows:
+- **VectorFlow version** and **migration level** from when the backup was created
+- **PostgreSQL version** used for the dump
+- **Backup size** and **creation date**
+- **Tables present** in the dump file
+
+This information helps you verify you are restoring the correct backup.
+{% endstep %}
+{% step %}
+### Confirm the restore
+Click **Continue to Confirmation**, then type `RESTORE` in the confirmation field and click **Restore Database**. VectorFlow will:
 1. Validate version compatibility (blocks if the backup has more migrations than the current version)
-2. Create a safety backup of the current database
-3. Run `pg_restore --clean --if-exists` to replace the database
-4. Exit the process so the container restarts with the restored data
+2. Verify the backup file checksum
+3. Create a safety backup of the current database
+4. Run `pg_restore --clean --if-exists` to replace the database
 {% endstep %}
 {% step %}
-### Wait for restart
-The server process exits after restore. If running in Docker, the container restarts automatically. Database migrations run on startup to bring the schema up to date.
+### Restart the application
+After restore completes, the dialog shows a success message. Restart the application for all changes to take full effect. If running in Docker, restart the container. Database migrations run automatically on startup.
 {% endstep %}
 {% endstepper %}
 
