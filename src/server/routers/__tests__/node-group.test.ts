@@ -285,8 +285,8 @@ describe("nodeGroupRouter", () => {
 
       const result = await caller.groupHealthStats({ environmentId: "env-1" });
 
-      const usEast = result.find((r) => r.id === "ng-1");
-      const euWest = result.find((r) => r.id === "ng-2");
+      const usEast = result.find((r: { id: string }) => r.id === "ng-1");
+      const euWest = result.find((r: { id: string }) => r.id === "ng-2");
 
       expect(usEast).toBeDefined();
       expect(usEast!.totalNodes).toBe(2);
@@ -316,11 +316,11 @@ describe("nodeGroupRouter", () => {
 
       const result = await caller.groupHealthStats({ environmentId: "env-1" });
 
-      const allGroup = result.find((r) => r.id === "ng-all");
+      const allGroup = result.find((r: { id: string }) => r.id === "ng-all");
       expect(allGroup).toBeDefined();
       expect(allGroup!.totalNodes).toBe(3); // matches all
       // No ungrouped since all matched
-      expect(result.find((r) => r.id === "__ungrouped__")).toBeUndefined();
+      expect(result.find((r: { id: string }) => r.id === "__ungrouped__")).toBeUndefined();
     });
 
     it("Test 3: Includes synthetic 'Ungrouped' entry for nodes matching no group", async () => {
@@ -339,7 +339,7 @@ describe("nodeGroupRouter", () => {
 
       const result = await caller.groupHealthStats({ environmentId: "env-1" });
 
-      const ungrouped = result.find((r) => r.id === "__ungrouped__");
+      const ungrouped = result.find((r: { id: string }) => r.id === "__ungrouped__");
       expect(ungrouped).toBeDefined();
       expect(ungrouped!.name).toBe("Ungrouped");
       expect(ungrouped!.totalNodes).toBe(2); // n-2 and n-3
@@ -360,7 +360,7 @@ describe("nodeGroupRouter", () => {
 
       const result = await caller.groupHealthStats({ environmentId: "env-1" });
 
-      const group = result.find((r) => r.id === "ng-1");
+      const group = result.find((r: { id: string }) => r.id === "ng-1");
       expect(group!.complianceRate).toBe(100);
     });
 
@@ -385,7 +385,7 @@ describe("nodeGroupRouter", () => {
 
       const result = await caller.groupHealthStats({ environmentId: "env-1" });
 
-      const group = result.find((r) => r.id === "ng-1");
+      const group = result.find((r: { id: string }) => r.id === "ng-1");
       expect(group!.alertCount).toBe(1); // only the firing one
     });
 
@@ -437,8 +437,8 @@ describe("nodeGroupRouter", () => {
 
       const result = await caller.nodesInGroup({ groupId: "ng-1", environmentId: "env-1" });
 
-      const withMetrics = result.find((n) => n.id === "n-with-metrics");
-      const noMetrics = result.find((n) => n.id === "n-no-metrics");
+      const withMetrics = result.find((n: { id: string }) => n.id === "n-with-metrics");
+      const noMetrics = result.find((n: { id: string }) => n.id === "n-no-metrics");
 
       expect(withMetrics!.cpuLoad).toBe(0.75);
       expect(noMetrics!.cpuLoad).toBeNull();
