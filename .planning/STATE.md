@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production-Grade Backups
-status: executing
-stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-03-27T19:52:45.385Z"
+status: verifying
+stopped_at: Completed 14-01-PLAN.md
+last_updated: "2026-03-27T22:09:00.050Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 3
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 4
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 Phase: 13 (backup-listing-history) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-27
 
 ```
@@ -52,6 +52,7 @@ v1.2 Progress: [░░░░░░░░░░░░░░░░░░░░] 0%
 | Phase 12-backup-registry-foundation P01 | 4 | 2 tasks | 3 files |
 | Phase 12 P02 | 18 | 3 tasks | 5 files |
 | Phase 13 P01 | 15 | 2 tasks | 4 files |
+| Phase 14 P01 | 11 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,9 @@ v1.2 Progress: [░░░░░░░░░░░░░░░░░░░░] 0%
 - [Phase 13]: listBackups() returns BackupRecord[] (Prisma type) — no wrapper type needed, SuperJSON handles BigInt serialization
 - [Phase 13]: importLegacyBackups() is idempotent by design — no migration-done flag needed
 - [Phase 13]: UI failed-backup alert reads from backupsQuery.data[0].status (BackupRecord) instead of SystemSettings.lastBackupStatus — single source of truth
+- [Phase 14]: S3 upload synchronous — backup not complete until file is in configured storage; local copy deleted after successful S3 upload
+- [Phase 14]: forcePathStyle auto-enabled when custom endpoint set (MinIO/DigitalOcean Spaces support)
+- [Phase 14]: ContentLength must be set on PutObjectCommand to prevent AWS SDK retry-hang on Node.js streams
 
 ### Pending Todos
 
@@ -82,6 +86,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-27T19:52:45.383Z
-Stopped at: Completed 13-01-PLAN.md
+Last session: 2026-03-27T22:09:00.047Z
+Stopped at: Completed 14-01-PLAN.md
 Resume file: None
