@@ -10,8 +10,8 @@ Requirements for v1.2 Production-Grade Backups. Each maps to roadmap phases.
 ### Backup Registry
 
 - [x] **BREG-01**: Backup metadata is persisted in a BackupRecord database table (id, status, size, duration, storage location, error, type)
-- [ ] **BREG-02**: Backup listing in the GUI queries the database instead of scanning the filesystem
-- [ ] **BREG-03**: User can see all backup history (scheduled and manual) reliably without entries disappearing
+- [x] **BREG-02**: Backup listing in the GUI queries the database instead of scanning the filesystem
+- [x] **BREG-03**: User can see all backup history (scheduled and manual) reliably without entries disappearing
 - [ ] **BREG-04**: Orphaned backup files (dump without DB record, or DB record without file) are detected and cleaned up automatically
 
 ### Remote Storage
@@ -64,8 +64,8 @@ Requirements for v1.2 Production-Grade Backups. Each maps to roadmap phases.
 | RELY-01 | Phase 12 | Complete |
 | RELY-02 | Phase 12 | Complete |
 | RELY-03 | Phase 12 | Complete |
-| BREG-02 | Phase 13 | Pending |
-| BREG-03 | Phase 13 | Pending |
+| BREG-02 | Phase 13 | Complete |
+| BREG-03 | Phase 13 | Complete |
 | S3-01 | Phase 14 | Pending |
 | S3-02 | Phase 14 | Pending |
 | S3-03 | Phase 14 | Pending |
