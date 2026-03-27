@@ -74,7 +74,11 @@ Plans:
   2. Failed webhook deliveries are retried with exponential backoff; deliveries that fail permanently (4xx non-429, DNS failure) are moved to dead-letter immediately without blocking retries for other subscriptions
   3. Every webhook request carries an HMAC-SHA256 signature header following the Standard-Webhooks spec so receivers can verify authenticity
   4. Admin can view the delivery history for a subscription — timestamp, HTTP status, attempt number — and trigger a test delivery from the UI
-**Plans**: TBD
+**Plans**: 3/3 plans complete
+Plans:
+- [x] 04-01-PLAN.md — WebhookEndpoint + WebhookDelivery Prisma models, Standard-Webhooks delivery service, dead-letter classification
+- [x] 04-02-PLAN.md — webhookEndpoint tRPC router (CRUD, testDelivery, listDeliveries), event wiring, retry service extension
+- [x] 04-03-PLAN.md — Webhook management UI (/settings/webhooks), delivery history panel, public docs
 
 ### Phase 5: Cross-Environment Promotion (UI)
 **Goal**: Users can promote a pipeline from one environment to another via the UI with secret validation, substitution preview, and an approval workflow — without any git setup required
@@ -86,7 +90,11 @@ Plans:
   3. Before confirming, user sees a substitution diff showing exactly which secret keys and variable values will change in the target environment
   4. Promotion creates a PromotionRequest that goes through the existing approval workflow before the cloned pipeline appears in the target environment
   5. Each pipeline shows a promotion history log: source environment, target environment, who promoted, and when
-**Plans**: TBD
+**Plans:** 1/3 plans executed
+Plans:
+- [x] 05-01-PLAN.md — PromotionRequest Prisma model, promotion service (preflight, clone, execute), tRPC router with unit tests
+- [x] 05-02-PLAN.md — Multi-step PromotePipelineDialog, promotion history on pipeline detail page, public docs
+- [ ] 05-03-PLAN.md — Human verification of complete promotion flow
 **UI hint**: yes
 
 ### Phase 6: OpenAPI Specification
@@ -122,7 +130,7 @@ Note: Phase 3 depends on Phase 2. Phases 4 and 6 only depend on Phase 1 and can 
 | 1. Fleet Performance Foundation | 2/2 | Complete   | 2026-03-26 |
 | 2. Fleet Organization | 0/4 | Planned | - |
 | 3. Fleet Health Dashboard | 0/2 | Planned | - |
-| 4. Outbound Webhooks | 0/? | Not started | - |
-| 5. Cross-Environment Promotion (UI) | 0/? | Not started | - |
+| 4. Outbound Webhooks | 3/3 | Complete | 2026-03-27 |
+| 5. Cross-Environment Promotion (UI) | 1/3 | In Progress|  |
 | 6. OpenAPI Specification | 0/? | Not started | - |
 | 7. Cross-Environment Promotion (GitOps) | 0/? | Not started | - |
