@@ -1,5 +1,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
+import crypto from "crypto";
+import { createReadStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
 
@@ -16,6 +18,9 @@ const VF_VERSION = process.env.VF_VERSION ?? "dev";
 const PG_DUMP_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const PG_RESTORE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 const MIGRATIONS_DIR = path.join(process.cwd(), "prisma", "migrations");
+const BACKUP_DISK_WARN_THRESHOLD_MB = Number(
+  process.env.VF_BACKUP_DISK_WARN_MB ?? "500"
+);
 
 // In-memory lock to prevent concurrent backups
 let backupInProgress = false;
@@ -125,6 +130,38 @@ function sanitizeFilename(filename: string): string {
  */
 async function ensureBackupDir(): Promise<void> {
   await fs.mkdir(BACKUP_DIR, { recursive: true });
+}
+
+/**
+ * Check available disk space in the backup directory.
+ * Uses fs.statfs (Node 20+) to read filesystem stats.
+ * Returns available MB and whether it is below the configured threshold.
+ */
+export async function checkDiskSpace(dir: string): Promise<{
+  availableMb: number;
+  belowThreshold: boolean;
+}> {
+  const stats = await fs.statfs(dir);
+  const availableBytes = Number(stats.bavail) * Number(stats.bsize);
+  const availableMb = availableBytes / (1024 * 1024);
+  return {
+    availableMb: Math.round(availableMb * 100) / 100,
+    belowThreshold: availableMb < BACKUP_DISK_WARN_THRESHOLD_MB,
+  };
+}
+
+/**
+ * Compute a SHA256 checksum of a file using streaming reads.
+ * Returns the hex-encoded hash string.
+ */
+export async function computeChecksum(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    const stream = createReadStream(filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolve(hash.digest("hex")));
+    stream.on("error", reject);
+  });
 }
 
 // ---------------------------------------------------------------------------
