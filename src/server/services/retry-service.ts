@@ -2,12 +2,14 @@ import { prisma } from "@/lib/prisma";
 import {
   trackWebhookDelivery,
   trackChannelDelivery,
+  getNextRetryAt,
 } from "@/server/services/delivery-tracking";
 import {
   deliverSingleWebhook,
   type WebhookPayload,
 } from "@/server/services/webhook-delivery";
 import { getDriver } from "@/server/services/channels";
+import { deliverOutboundWebhook, isPermanentFailure } from "@/server/services/outbound-webhook";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -120,6 +122,116 @@ export class RetryService {
           `[retry-service] Error retrying attempt ${attempt.id}:`,
           err,
         );
+      }
+    }
+
+    // Also process outbound webhook retries
+    await this.processOutboundRetries();
+  }
+
+  /**
+   * Retry loop for outbound webhook deliveries (WebhookDelivery model).
+   * Separate from alert delivery retries to avoid coupling.
+   * IMPORTANT: Only queries status: "failed" — dead_letter records are NEVER retried.
+   */
+  async processOutboundRetries(): Promise<void> {
+    let dueRetries;
+    try {
+      dueRetries = await prisma.webhookDelivery.findMany({
+        where: {
+          status: "failed",
+          nextRetryAt: { lte: new Date() },
+          attemptNumber: { lt: MAX_ATTEMPT_NUMBER + 1 },
+        },
+        include: {
+          webhookEndpoint: { select: { url: true, encryptedSecret: true, enabled: true } },
+        },
+        orderBy: { nextRetryAt: "asc" },
+        take: BATCH_SIZE,
+      });
+    } catch (err) {
+      console.error("[retry-service] Error querying outbound webhook retries:", err);
+      return;
+    }
+
+    if (dueRetries.length === 0) return;
+
+    console.log(
+      `[retry-service] Found ${dueRetries.length} outbound webhook retr${dueRetries.length === 1 ? "y" : "ies"}`,
+    );
+
+    for (const delivery of dueRetries) {
+      try {
+        // Claim: null out nextRetryAt so another poll cycle won't re-pick it
+        await prisma.webhookDelivery.update({
+          where: { id: delivery.id },
+          data: { nextRetryAt: null },
+        });
+
+        // Skip if endpoint was disabled or deleted
+        if (!delivery.webhookEndpoint || !delivery.webhookEndpoint.enabled) {
+          await prisma.webhookDelivery.update({
+            where: { id: delivery.id },
+            data: { status: "dead_letter", completedAt: new Date() },
+          });
+          continue;
+        }
+
+        const nextAttemptNumber = delivery.attemptNumber + 1;
+        const result = await deliverOutboundWebhook(
+          {
+            url: delivery.webhookEndpoint.url,
+            encryptedSecret: delivery.webhookEndpoint.encryptedSecret,
+            id: delivery.webhookEndpointId,
+          },
+          delivery.payload as { type: string; timestamp: string; data: Record<string, unknown> },
+        );
+
+        if (result.success) {
+          await prisma.webhookDelivery.update({
+            where: { id: delivery.id },
+            data: {
+              status: "success",
+              statusCode: result.statusCode,
+              attemptNumber: nextAttemptNumber,
+              completedAt: new Date(),
+            },
+          });
+          console.log(
+            `[retry-service] Outbound webhook retry succeeded (delivery=${delivery.id}, attempt=${nextAttemptNumber})`,
+          );
+        } else if (isPermanentFailure(result)) {
+          await prisma.webhookDelivery.update({
+            where: { id: delivery.id },
+            data: {
+              status: "dead_letter",
+              statusCode: result.statusCode,
+              errorMessage: result.error,
+              attemptNumber: nextAttemptNumber,
+              completedAt: new Date(),
+            },
+          });
+          console.log(
+            `[retry-service] Outbound webhook dead-lettered (delivery=${delivery.id}): ${result.error}`,
+          );
+        } else {
+          const nextRetryAt = getNextRetryAt(nextAttemptNumber);
+          await prisma.webhookDelivery.update({
+            where: { id: delivery.id },
+            data: {
+              status: "failed",
+              statusCode: result.statusCode,
+              errorMessage: result.error,
+              attemptNumber: nextAttemptNumber,
+              nextRetryAt,
+            },
+          });
+          console.log(
+            `[retry-service] Outbound webhook retry failed (delivery=${delivery.id}, attempt=${nextAttemptNumber}): ${result.error}`,
+          );
+        }
+      } catch (err) {
+        console.error(`[retry-service] Error retrying outbound delivery ${delivery.id}:`, err);
       }
     }
   }
