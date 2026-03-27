@@ -390,3 +390,293 @@ describe("restoreFromBackup - checksum verification", () => {
     );
   });
 });
+
+// ─── listBackups (DB-backed) ──────────────────────────────────────────────────
+
+describe("listBackups (DB-backed)", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+    fsMock.mkdir.mockResolvedValue(undefined);
+  });
+
+  it("returns BackupRecord rows from database sorted by startedAt desc", async () => {
+    const records = [
+      {
+        id: "rec-2",
+        filename: "vectorflow-newer.dump",
+        status: "success",
+        type: "scheduled",
+        storageLocation: "/backups/vectorflow-newer.dump",
+        sizeBytes: BigInt(2048),
+        durationMs: 1200,
+        checksum: "abc",
+        migrationCount: 2,
+        lastMigration: "20240102_add_table",
+        pgVersion: "16.1",
+        vfVersion: "1.0.0",
+        error: null,
+        startedAt: new Date("2025-02-01T00:00:00Z"),
+        completedAt: new Date("2025-02-01T00:00:01Z"),
+      },
+      {
+        id: "rec-1",
+        filename: "vectorflow-older.dump",
+        status: "success",
+        type: "manual",
+        storageLocation: "/backups/vectorflow-older.dump",
+        sizeBytes: BigInt(1024),
+        durationMs: 900,
+        checksum: "def",
+        migrationCount: 1,
+        lastMigration: "20240101000000_init",
+        pgVersion: "16.1",
+        vfVersion: "1.0.0",
+        error: null,
+        startedAt: new Date("2025-01-01T00:00:00Z"),
+        completedAt: new Date("2025-01-01T00:00:01Z"),
+      },
+    ];
+
+    prismaMock.backupRecord.findMany.mockResolvedValue(records as never);
+
+    const result = await backupModule.listBackups();
+
+    expect(prismaMock.backupRecord.findMany).toHaveBeenCalledWith({
+      orderBy: { startedAt: "desc" },
+    });
+    expect(result).toEqual(records);
+    // No filesystem scanning
+    expect(fsMock.readdir).not.toHaveBeenCalled();
+  });
+
+  it("includes failed backups in results", async () => {
+    const failedRecord = {
+      id: "rec-failed",
+      filename: "vectorflow-failed.dump",
+      status: "failed",
+      type: "scheduled",
+      storageLocation: "/backups/vectorflow-failed.dump",
+      sizeBytes: null,
+      durationMs: 300,
+      checksum: null,
+      migrationCount: null,
+      lastMigration: null,
+      pgVersion: null,
+      vfVersion: "1.0.0",
+      error: "pg_dump: connection refused",
+      startedAt: new Date("2025-03-01T00:00:00Z"),
+      completedAt: new Date("2025-03-01T00:00:00Z"),
+    };
+
+    prismaMock.backupRecord.findMany.mockResolvedValue([failedRecord] as never);
+
+    const result = await backupModule.listBackups();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].status).toBe("failed");
+  });
+});
+
+// ─── deleteBackup (DB row removal) ───────────────────────────────────────────
+
+describe("deleteBackup (DB row removal)", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+    fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+    prismaMock.backupRecord.deleteMany.mockResolvedValue({ count: 1 } as never);
+  });
+
+  it("deletes both files and BackupRecord row", async () => {
+    await backupModule.deleteBackup("vectorflow-test.dump");
+
+    // Files are deleted
+    expect(fsMock.unlink).toHaveBeenCalledTimes(2);
+    // DB record is removed
+    expect(prismaMock.backupRecord.deleteMany).toHaveBeenCalledWith({
+      where: { filename: "vectorflow-test.dump" },
+    });
+  });
+});
+
+// ─── importLegacyBackups ─────────────────────────────────────────────────────
+
+describe("importLegacyBackups", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+    fsMock.mkdir.mockResolvedValue(undefined);
+  });
+
+  it("creates BackupRecord for .meta.json files without existing records", async () => {
+    fsMock.readdir.mockResolvedValue(["vectorflow-legacy.meta.json"] as never);
+    fsMock.access.mockResolvedValue(undefined);
+    fsMock.readFile.mockResolvedValue(
+      JSON.stringify({
+        version: "1.0.0",
+        timestamp: "2024-06-01T00:00:00.000Z",
+        migrationCount: 3,
+        lastMigration: "20240601_add_thing",
+        sizeBytes: 5000,
+        pgVersion: "15.2",
+      })
+    );
+    prismaMock.backupRecord.findFirst.mockResolvedValue(null);
+    prismaMock.backupRecord.create.mockResolvedValue({} as never);
+
+    const result = await backupModule.importLegacyBackups();
+
+    expect(prismaMock.backupRecord.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          filename: "vectorflow-legacy.dump",
+          status: "success",
+          type: "manual",
+        }),
+      })
+    );
+    expect(result).toEqual({ imported: 1, skipped: 0 });
+  });
+
+  it("skips files that already have BackupRecord rows", async () => {
+    fsMock.readdir.mockResolvedValue(["vectorflow-existing.meta.json"] as never);
+    fsMock.access.mockResolvedValue(undefined);
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      id: "existing-rec",
+    } as never);
+
+    const result = await backupModule.importLegacyBackups();
+
+    expect(prismaMock.backupRecord.create).not.toHaveBeenCalled();
+    expect(result).toEqual({ imported: 0, skipped: 1 });
+  });
+
+  it("skips .meta.json without matching .dump file", async () => {
+    fsMock.readdir.mockResolvedValue(["vectorflow-nodump.meta.json"] as never);
+    // .dump file does not exist
+    fsMock.access.mockRejectedValue(new Error("ENOENT"));
+
+    const result = await backupModule.importLegacyBackups();
+
+    expect(prismaMock.backupRecord.create).not.toHaveBeenCalled();
+    expect(result.skipped).toBe(1);
+  });
+});
+
+// ─── runRetentionCleanup (DB-backed) ─────────────────────────────────────────
+
+describe("runRetentionCleanup (DB-backed)", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+    fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+  });
+
+  it("deletes oldest backups beyond retention and removes DB records", async () => {
+    prismaMock.systemSettings.findUnique.mockResolvedValue({
+      backupRetentionCount: 2,
+    } as never);
+
+    const records = [
+      { id: "rec-3", filename: "vectorflow-newest.dump", status: "success", startedAt: new Date("2025-03-01") },
+      { id: "rec-2", filename: "vectorflow-middle.dump", status: "success", startedAt: new Date("2025-02-01") },
+      { id: "rec-1", filename: "vectorflow-oldest.dump", status: "success", startedAt: new Date("2025-01-01") },
+    ];
+
+    prismaMock.backupRecord.findMany.mockResolvedValue(records as never);
+    prismaMock.backupRecord.deleteMany.mockResolvedValue({ count: 1 } as never);
+
+    const deletedCount = await backupModule.runRetentionCleanup();
+
+    expect(deletedCount).toBe(1);
+    // The oldest record should be deleted from DB
+    expect(prismaMock.backupRecord.deleteMany).toHaveBeenCalledWith({
+      where: { filename: "vectorflow-oldest.dump" },
+    });
+    // File should also be unlinked
+    expect(fsMock.unlink).toHaveBeenCalled();
+  });
+});
+
+// ─── restoreFromBackup - BackupRecord fallback ────────────────────────────────
+
+describe("restoreFromBackup - BackupRecord fallback", () => {
+  const testFilename = "vectorflow-2025-06-01T00-00-00-000Z.dump";
+
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+
+    process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/testdb";
+
+    // Dump file exists
+    fsMock.access.mockResolvedValue(undefined);
+
+    // .meta.json is MISSING (throws)
+    fsMock.readFile.mockRejectedValue(new Error("ENOENT: no such file"));
+
+    // Migration dir: one migration (matching the BackupRecord)
+    fsMock.readdir.mockResolvedValue(["20240101000000_init"] as never);
+
+    // Set up mocks for the safety createBackup("pre_restore") call
+    fsMock.mkdir.mockResolvedValue(undefined);
+    fsMock.statfs.mockResolvedValue({ bavail: BigInt(200000), bsize: BigInt(4096) });
+    fsMock.stat.mockResolvedValue({ size: 1024 });
+    fsMock.writeFile.mockResolvedValue(undefined);
+
+    mockExecFile.mockImplementation(
+      (_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
+        (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+          null,
+          { stdout: "16.1", stderr: "" }
+        );
+      }
+    );
+
+    prismaMock.backupRecord.create.mockResolvedValue({
+      id: "rec-safety",
+      filename: "vectorflow-safety.dump",
+      status: "in_progress",
+      type: "pre_restore",
+      storageLocation: "/backups/vectorflow-safety.dump",
+      vfVersion: "dev",
+      sizeBytes: null,
+      durationMs: null,
+      checksum: null,
+      migrationCount: null,
+      lastMigration: null,
+      pgVersion: null,
+      error: null,
+      startedAt: new Date(),
+      completedAt: null,
+    } as never);
+    prismaMock.backupRecord.update.mockResolvedValue({} as never);
+    prismaMock.systemSettings.update.mockResolvedValue({} as never);
+
+    mockCreateReadStream.mockImplementation(() =>
+      makeReadableStream(Buffer.from("hello world")) as never
+    );
+
+    vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
+  });
+
+  it("falls back to BackupRecord when .meta.json is missing", async () => {
+    // BackupRecord has the metadata needed for restore
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      id: "rec-existing",
+      filename: testFilename,
+      status: "success",
+      checksum: null,
+      migrationCount: 1,
+      lastMigration: "20240101000000_init",
+      vfVersion: "1.0.0",
+      pgVersion: "16.1",
+      sizeBytes: BigInt(1024),
+      startedAt: new Date("2025-06-01T00:00:00Z"),
+    } as never);
+
+    // Should NOT throw "Backup metadata file not found" — should fall back to BackupRecord
+    await expect(backupModule.restoreFromBackup(testFilename)).resolves.toBeUndefined();
+  });
+});
