@@ -7,6 +7,7 @@ import path from "path";
 
 import { prisma } from "@/lib/prisma";
 import { debugLog } from "@/lib/logger";
+import type { BackupRecord } from "@/generated/prisma";
 
 const execFileAsync = promisify(execFile);
 
@@ -317,41 +318,14 @@ export async function createBackup(
 // ---------------------------------------------------------------------------
 
 /**
- * Read all .meta.json files from the backup directory and return them
- * sorted newest-first by timestamp.
+ * Return all backup records from the database, sorted newest-first.
+ * The BackupRecord table is the source of truth after Phase 12.
+ * Legacy backups are imported into the DB via importLegacyBackups() on startup.
  */
-export async function listBackups(): Promise<
-  (BackupMetadata & { filename: string })[]
-> {
-  await ensureBackupDir();
-
-  const entries = await fs.readdir(BACKUP_DIR);
-  const metaFiles = entries.filter((e) => e.endsWith(".meta.json"));
-
-  const results: (BackupMetadata & { filename: string })[] = [];
-
-  for (const metaFile of metaFiles) {
-    try {
-      const dumpFilename = metaFile.replace(/\.meta\.json$/, ".dump");
-      const dumpPath = path.join(BACKUP_DIR, dumpFilename);
-
-      // Skip orphaned .meta.json files where the .dump is missing
-      await fs.access(dumpPath);
-
-      const raw = await fs.readFile(path.join(BACKUP_DIR, metaFile), "utf-8");
-      const meta = JSON.parse(raw) as BackupMetadata;
-      results.push({ ...meta, filename: dumpFilename });
-    } catch {
-      // skip: either .dump missing or unparseable metadata
-    }
-  }
-
-  // Sort newest-first
-  results.sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-  );
-
-  return results;
+export async function listBackups(): Promise<BackupRecord[]> {
+  return prisma.backupRecord.findMany({
+    orderBy: { startedAt: "desc" },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -380,6 +354,79 @@ export async function deleteBackup(filename: string): Promise<void> {
     fs.unlink(dumpPath).catch(() => {}),
     fs.unlink(metaPath).catch(() => {}),
   ]);
+
+  // Delete the DB record (idempotent — deleteMany won't throw if missing)
+  await prisma.backupRecord.deleteMany({ where: { filename: safe } });
+}
+
+// ---------------------------------------------------------------------------
+// importLegacyBackups
+// ---------------------------------------------------------------------------
+
+/**
+ * Scan the backup directory for .meta.json files that lack a matching BackupRecord
+ * and create BackupRecord rows for them.
+ *
+ * Idempotent: files that already have a BackupRecord are skipped.
+ * Called on server startup (leader-only) to migrate pre-Phase-12 backups.
+ */
+export async function importLegacyBackups(): Promise<{
+  imported: number;
+  skipped: number;
+}> {
+  await ensureBackupDir();
+
+  const entries = await fs.readdir(BACKUP_DIR);
+  const metaFiles = entries.filter((e) => e.endsWith(".meta.json"));
+
+  let imported = 0;
+  let skipped = 0;
+
+  for (const metaFile of metaFiles) {
+    try {
+      const dumpFilename = metaFile.replace(/\.meta\.json$/, ".dump");
+
+      // Skip if dump file is missing
+      await fs.access(path.join(BACKUP_DIR, dumpFilename));
+
+      // Skip if BackupRecord already exists
+      const existing = await prisma.backupRecord.findFirst({
+        where: { filename: dumpFilename },
+      });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      // Parse .meta.json and create BackupRecord
+      const raw = await fs.readFile(path.join(BACKUP_DIR, metaFile), "utf-8");
+      const meta = JSON.parse(raw) as BackupMetadata;
+
+      await prisma.backupRecord.create({
+        data: {
+          filename: dumpFilename,
+          status: "success",
+          type: "manual", // unknown for legacy — default to manual
+          storageLocation: path.join(BACKUP_DIR, dumpFilename),
+          sizeBytes: BigInt(meta.sizeBytes),
+          vfVersion: meta.version,
+          migrationCount: meta.migrationCount,
+          lastMigration: meta.lastMigration,
+          pgVersion: meta.pgVersion,
+          startedAt: new Date(meta.timestamp),
+          completedAt: new Date(meta.timestamp),
+        },
+      });
+
+      imported++;
+    } catch {
+      // Per-file errors do not abort the full import
+      skipped++;
+    }
+  }
+
+  debugLog("backup", "legacy import complete", { imported, skipped });
+  return { imported, skipped };
 }
 
 // ---------------------------------------------------------------------------
@@ -411,13 +458,32 @@ export async function restoreFromBackup(filename: string): Promise<void> {
   // Verify the dump file exists
   await fs.access(dumpPath);
 
-  // Read and validate metadata
+  // Look up BackupRecord for checksum verification and metadata fallback
+  const backupRecord = await prisma.backupRecord.findFirst({
+    where: { filename: safe, status: "success" },
+  });
+
+  // Read and validate metadata — fall back to BackupRecord if .meta.json is missing
   let backupMeta: BackupMetadata | null = null;
   try {
     const raw = await fs.readFile(metaPath, "utf-8");
     backupMeta = JSON.parse(raw) as BackupMetadata;
   } catch {
-    throw new Error("Backup metadata file not found or unreadable");
+    // Fallback: read metadata from BackupRecord (Phase-12+ backups may not need .meta.json)
+    if (backupRecord) {
+      backupMeta = {
+        version: backupRecord.vfVersion ?? "unknown",
+        timestamp: backupRecord.startedAt.toISOString(),
+        migrationCount: backupRecord.migrationCount ?? 0,
+        lastMigration: backupRecord.lastMigration ?? "",
+        sizeBytes: Number(backupRecord.sizeBytes ?? 0),
+        pgVersion: backupRecord.pgVersion ?? "unknown",
+      };
+    } else {
+      throw new Error(
+        "Backup metadata file not found or unreadable and no BackupRecord exists"
+      );
+    }
   }
 
   // Version compatibility check: block if backup has more migrations than current
@@ -430,11 +496,6 @@ export async function restoreFromBackup(filename: string): Promise<void> {
   }
 
   // Verify checksum against BackupRecord if one exists (RELY-03)
-  const backupRecord = await prisma.backupRecord.findFirst({
-    where: { filename: safe, status: "success" },
-    select: { checksum: true },
-  });
-
   if (backupRecord?.checksum) {
     const currentChecksum = await computeChecksum(dumpPath);
     if (currentChecksum !== backupRecord.checksum) {
