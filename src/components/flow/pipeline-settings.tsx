@@ -215,12 +215,12 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
         </>
       )}
 
-      {/* Classification Tags */}
+      {/* Compliance Tags */}
       {pipelineId && (availableTags.length > 0 || currentTags.length > 0) && (
         <>
           <Separator />
           <div className="space-y-2">
-            <Label>Classification Tags</Label>
+            <Label>Compliance Tags</Label>
             <div className="flex flex-wrap gap-1.5">
               {currentTags.map((tag) => (
                 <Badge
