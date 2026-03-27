@@ -37,6 +37,22 @@ vi.mock("@/lib/logger", () => ({
   debugLog: vi.fn(),
 }));
 
+// Mock storage-backend
+vi.mock("@/server/services/storage-backend", () => ({
+  getActiveBackend: vi.fn(),
+  buildS3Key: vi.fn((prefix: string, filename: string) =>
+    prefix ? `${prefix}/${filename}` : filename
+  ),
+  buildS3StorageLocation: vi.fn((bucket: string, key: string) =>
+    `s3://${bucket}/${key}`
+  ),
+  parseS3StorageLocation: vi.fn((loc: string) => {
+    const without = loc.slice("s3://".length);
+    const idx = without.indexOf("/");
+    return { bucket: without.slice(0, idx), key: without.slice(idx + 1) };
+  }),
+}));
+
 // ─── Import mocked modules + SUT ─────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
@@ -45,6 +61,9 @@ import * as fsPromises from "fs/promises";
 import * as fsSync from "fs";
 import { checkDiskSpace, computeChecksum, createBackup } from "../backup";
 import * as backupModule from "../backup";
+import { getActiveBackend } from "@/server/services/storage-backend";
+
+const mockGetActiveBackend = vi.mocked(getActiveBackend);
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -561,6 +580,214 @@ describe("importLegacyBackups", () => {
 
     expect(prismaMock.backupRecord.create).not.toHaveBeenCalled();
     expect(result.skipped).toBe(1);
+  });
+});
+
+// ─── createBackup with S3 backend ────────────────────────────────────────────
+
+describe("createBackup with S3 backend", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+
+    process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/testdb";
+
+    fsMock.mkdir.mockResolvedValue(undefined);
+    fsMock.statfs.mockResolvedValue({ bavail: BigInt(200000), bsize: BigInt(4096) });
+    fsMock.stat.mockResolvedValue({ size: 2048 });
+    fsMock.readdir.mockResolvedValue(["20240101000000_init"]);
+    fsMock.writeFile.mockResolvedValue(undefined);
+    fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+
+    mockExecFile.mockImplementation(
+      (_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
+        (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+          null,
+          { stdout: "16.1", stderr: "" }
+        );
+      }
+    );
+
+    mockCreateReadStream.mockImplementation(() =>
+      makeReadableStream(Buffer.from("dump-file-data")) as never
+    );
+
+    prismaMock.backupRecord.create.mockResolvedValue({
+      id: "rec-s3",
+      filename: "vectorflow-test.dump",
+      status: "in_progress",
+      type: "manual",
+      storageLocation: "/backups/vectorflow-test.dump",
+      vfVersion: "dev",
+      sizeBytes: null,
+      durationMs: null,
+      checksum: null,
+      migrationCount: null,
+      lastMigration: null,
+      pgVersion: null,
+      error: null,
+      startedAt: new Date(),
+      completedAt: null,
+    } as never);
+
+    prismaMock.backupRecord.update.mockResolvedValue({} as never);
+    prismaMock.systemSettings.update.mockResolvedValue({} as never);
+  });
+
+  it("uploads to S3 and updates storageLocation when S3 is configured", async () => {
+    prismaMock.systemSettings.findUnique.mockResolvedValue({
+      backupStorageBackend: "s3",
+      s3Bucket: "my-bucket",
+      s3Prefix: "backups",
+    } as never);
+
+    const mockUpload = vi.fn().mockResolvedValue(undefined);
+    mockGetActiveBackend.mockResolvedValue({
+      upload: mockUpload,
+      download: vi.fn(),
+      delete: vi.fn(),
+      exists: vi.fn(),
+    });
+
+    await createBackup();
+
+    expect(mockUpload).toHaveBeenCalled();
+    expect(prismaMock.backupRecord.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          storageLocation: expect.stringMatching(/^s3:\/\/my-bucket\/backups\//),
+        }),
+      })
+    );
+  });
+
+  it("does not upload to S3 when local storage is configured", async () => {
+    prismaMock.systemSettings.findUnique.mockResolvedValue({
+      backupStorageBackend: "local",
+      s3Bucket: null,
+      s3Prefix: null,
+    } as never);
+
+    await createBackup();
+
+    expect(mockGetActiveBackend).not.toHaveBeenCalled();
+  });
+});
+
+// ─── deleteBackup with S3 backend ────────────────────────────────────────────
+
+describe("deleteBackup with S3 backend", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+    prismaMock.backupRecord.deleteMany.mockResolvedValue({ count: 1 } as never);
+  });
+
+  it("calls backend.delete for S3-stored backups", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      storageLocation: "s3://my-bucket/backups/test.dump",
+    } as never);
+
+    const mockDelete = vi.fn().mockResolvedValue(undefined);
+    mockGetActiveBackend.mockResolvedValue({
+      upload: vi.fn(),
+      download: vi.fn(),
+      delete: mockDelete,
+      exists: vi.fn(),
+    });
+
+    await backupModule.deleteBackup("test.dump");
+
+    expect(mockGetActiveBackend).toHaveBeenCalled();
+    expect(mockDelete).toHaveBeenCalledWith("backups/test.dump");
+  });
+});
+
+// ─── restoreFromBackup with S3 backend ───────────────────────────────────────
+
+describe("restoreFromBackup with S3 backend", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+
+    process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/testdb";
+
+    fsMock.access.mockResolvedValue(undefined);
+    fsMock.readFile.mockRejectedValue(new Error("ENOENT"));
+    fsMock.readdir.mockResolvedValue(["20240101000000_init"] as never);
+    fsMock.mkdir.mockResolvedValue(undefined);
+    fsMock.statfs.mockResolvedValue({ bavail: BigInt(200000), bsize: BigInt(4096) });
+    fsMock.stat.mockResolvedValue({ size: 1024 });
+    fsMock.writeFile.mockResolvedValue(undefined);
+    fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+
+    mockExecFile.mockImplementation(
+      (_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
+        (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+          null,
+          { stdout: "16.1", stderr: "" }
+        );
+      }
+    );
+
+    mockCreateReadStream.mockImplementation(() =>
+      makeReadableStream(Buffer.from("hello world")) as never
+    );
+
+    prismaMock.backupRecord.create.mockResolvedValue({
+      id: "rec-safety",
+      filename: "vectorflow-safety.dump",
+      status: "in_progress",
+      type: "pre_restore",
+      storageLocation: "/backups/vectorflow-safety.dump",
+      vfVersion: "dev",
+      sizeBytes: null,
+      durationMs: null,
+      checksum: null,
+      migrationCount: null,
+      lastMigration: null,
+      pgVersion: null,
+      error: null,
+      startedAt: new Date(),
+      completedAt: null,
+    } as never);
+    prismaMock.backupRecord.update.mockResolvedValue({} as never);
+    prismaMock.systemSettings.update.mockResolvedValue({} as never);
+    prismaMock.systemSettings.findUnique.mockResolvedValue({
+      backupStorageBackend: "local",
+      s3Bucket: null,
+      s3Prefix: null,
+    } as never);
+
+    vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
+  });
+
+  it("downloads from S3 before pg_restore for S3 backups", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      id: "rec-s3",
+      filename: "backup.dump",
+      status: "success",
+      checksum: null,
+      storageLocation: "s3://my-bucket/backups/backup.dump",
+      migrationCount: 1,
+      lastMigration: "20240101000000_init",
+      vfVersion: "1.0.0",
+      pgVersion: "16.1",
+      sizeBytes: BigInt(1024),
+      startedAt: new Date(),
+    } as never);
+
+    const mockDownload = vi.fn().mockResolvedValue(undefined);
+    mockGetActiveBackend.mockResolvedValue({
+      upload: vi.fn(),
+      download: mockDownload,
+      delete: vi.fn(),
+      exists: vi.fn(),
+    });
+
+    await backupModule.restoreFromBackup("backup.dump");
+
+    expect(mockDownload).toHaveBeenCalled();
   });
 });
 
