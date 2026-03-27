@@ -108,7 +108,7 @@ export default function FleetPage() {
     environmentsQuery.isLoading ||
     nodesQuery.isLoading;
 
-  const rawNodes = nodesQuery.data ?? [];
+  const rawNodes = useMemo(() => nodesQuery.data ?? [], [nodesQuery.data]);
 
   // Sort client-side
   const nodes = useMemo(() => {
@@ -194,6 +194,12 @@ export default function FleetPage() {
           className="rounded-full px-3 h-7 text-xs font-medium border transition-colors bg-transparent text-muted-foreground border-border hover:bg-muted inline-flex items-center"
         >
           Overview
+        </Link>
+        <Link
+          href="/fleet/health"
+          className="rounded-full px-3 h-7 text-xs font-medium border transition-colors bg-transparent text-muted-foreground border-border hover:bg-muted inline-flex items-center"
+        >
+          Health
         </Link>
       </div>
 
@@ -372,6 +378,18 @@ export default function FleetPage() {
                       </TooltipTrigger>
                       <TooltipContent>
                         SSE connected — real-time push enabled
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {node.labelCompliant === false && (
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 border-amber-500 text-amber-600 dark:text-amber-400">
+                          Non-compliant
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        This node is missing one or more required labels defined in node groups
                       </TooltipContent>
                     </Tooltip>
                   )}

@@ -103,7 +103,7 @@ export const environmentRouter = router({
         gitRepoUrl: z.string().url().optional().nullable(),
         gitBranch: z.string().min(1).max(100).optional().nullable(),
         gitToken: z.string().optional().nullable(),
-        gitOpsMode: z.enum(["off", "push", "bidirectional"]).optional(),
+        gitOpsMode: z.enum(["off", "push", "bidirectional", "promotion"]).optional(),
         requireDeployApproval: z.boolean().optional(),
       })
     )
@@ -147,17 +147,18 @@ export const environmentRouter = router({
         data.gitToken = gitToken ? encrypt(gitToken) : null;
       }
 
-      // Handle gitOpsMode — auto-generate webhook secret when switching to bidirectional
+      // Handle gitOpsMode — auto-generate webhook secret when switching to bidirectional or promotion
       let plaintextWebhookSecret: string | null = null;
       if (gitOpsModeInput !== undefined) {
         data.gitOpsMode = gitOpsModeInput;
 
-        if (gitOpsModeInput === "bidirectional" && !existing.gitWebhookSecret) {
+        const needsWebhookSecret = gitOpsModeInput === "bidirectional" || gitOpsModeInput === "promotion";
+        if (needsWebhookSecret && !existing.gitWebhookSecret) {
           plaintextWebhookSecret = crypto.randomBytes(32).toString("hex");
           data.gitWebhookSecret = encrypt(plaintextWebhookSecret);
         }
-        // Clear webhook secret when disabling bidirectional mode
-        if (gitOpsModeInput !== "bidirectional") {
+        // Clear webhook secret when disabling webhook-based modes
+        if (!needsWebhookSecret) {
           data.gitWebhookSecret = null;
         }
       }

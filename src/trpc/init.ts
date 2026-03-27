@@ -270,6 +270,17 @@ export const withTeamAccess = (minRole: Role) =>
       }
     }
 
+    // Resolve requestId → PromotionRequest → sourceEnvironment.teamId
+    if (!teamId && rawInput?.requestId) {
+      const promoReq = await prisma.promotionRequest.findUnique({
+        where: { id: rawInput.requestId as string },
+        select: { sourceEnvironment: { select: { teamId: true } } },
+      });
+      if (promoReq) {
+        teamId = promoReq.sourceEnvironment.teamId ?? undefined;
+      }
+    }
+
     // Resolve versionId → PipelineVersion → pipeline → environment.teamId
     if (!teamId && rawInput?.versionId) {
       const version = await prisma.pipelineVersion.findUnique({

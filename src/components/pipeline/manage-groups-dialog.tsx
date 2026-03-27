@@ -14,6 +14,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const GROUP_COLORS = [
   "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
@@ -43,9 +50,29 @@ export function ManageGroupsDialog({
   );
   const groups = groupsQuery.data ?? [];
 
+  // Compute group depths for parent selector (filter out depth-3 groups, they can't have children)
+  const groupDepths = new Map<string, number>();
+  function computeDepths() {
+    const byId = new Map(groups.map((g) => [g.id, g]));
+    for (const g of groups) {
+      let depth = 1;
+      let current: typeof g | undefined = g;
+      while (current?.parentId) {
+        depth++;
+        current = byId.get(current.parentId);
+      }
+      groupDepths.set(g.id, depth);
+    }
+  }
+  computeDepths();
+
+  // Groups that can be parents (depth 1 or 2 — children would be depth 2 or 3 max)
+  const eligibleParents = groups.filter((g) => (groupDepths.get(g.id) ?? 1) < 3);
+
   // --- Create ---
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState<string>(GROUP_COLORS[0]);
+  const [newParentId, setNewParentId] = useState<string>("");
 
   const createMutation = useMutation(
     trpc.pipelineGroup.create.mutationOptions({
@@ -53,6 +80,7 @@ export function ManageGroupsDialog({
         toast.success("Group created");
         setNewName("");
         setNewColor(GROUP_COLORS[0]);
+        setNewParentId("");
         queryClient.invalidateQueries({ queryKey: trpc.pipelineGroup.list.queryKey() });
       },
       onError: (err) => toast.error(err.message),
@@ -108,7 +136,7 @@ export function ManageGroupsDialog({
 
           {/* Create form */}
           <form
-            className="flex items-center gap-2"
+            className="space-y-2"
             onSubmit={(e) => {
               e.preventDefault();
               if (!newName.trim()) return;
@@ -116,29 +144,55 @@ export function ManageGroupsDialog({
                 environmentId,
                 name: newName.trim(),
                 color: newColor,
+                parentId: newParentId || undefined,
               });
             }}
           >
-            <ColorPicker value={newColor} onChange={setNewColor} />
-            <Input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="New group name..."
-              className="h-8 text-sm"
-              maxLength={100}
-            />
-            <Button
-              type="submit"
-              size="sm"
-              className="h-8 shrink-0"
-              disabled={!newName.trim() || createMutation.isPending}
-            >
-              {createMutation.isPending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Plus className="h-3.5 w-3.5" />
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <ColorPicker value={newColor} onChange={setNewColor} />
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="New group name..."
+                className="h-8 text-sm"
+                maxLength={100}
+              />
+              <Button
+                type="submit"
+                size="sm"
+                className="h-8 shrink-0"
+                disabled={!newName.trim() || createMutation.isPending}
+              >
+                {createMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Plus className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
+            {eligibleParents.length > 0 && (
+              <Select value={newParentId} onValueChange={setNewParentId}>
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="Parent group (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">
+                    <span className="text-muted-foreground">(Root level)</span>
+                  </SelectItem>
+                  {eligibleParents.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="inline-block h-2 w-2 rounded-full"
+                          style={{ backgroundColor: g.color ?? "#64748b" }}
+                        />
+                        {g.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </form>
 
           {/* Group list */}
