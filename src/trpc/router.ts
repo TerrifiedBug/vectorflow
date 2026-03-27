@@ -25,6 +25,7 @@ import { pipelineGroupRouter } from "@/server/routers/pipeline-group";
 import { nodeGroupRouter } from "@/server/routers/node-group";
 import { stagedRolloutRouter } from "@/server/routers/staged-rollout";
 import { pipelineDependencyRouter } from "@/server/routers/pipeline-dependency";
+import { webhookEndpointRouter } from "@/server/routers/webhook-endpoint";
 
 export const appRouter = router({
   team: teamRouter,
@@ -53,6 +54,7 @@ export const appRouter = router({
   nodeGroup: nodeGroupRouter,
   stagedRollout: stagedRolloutRouter,
   pipelineDependency: pipelineDependencyRouter,
+  webhookEndpoint: webhookEndpointRouter,
 });
 
 export type AppRouter = typeof appRouter;
