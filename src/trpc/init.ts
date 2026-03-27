@@ -167,6 +167,17 @@ export const withTeamAccess = (minRole: Role) =>
       teamId = pipeline.environment.teamId ?? undefined;
     }
 
+    // Resolve teamId from upstreamId (pipeline dependency endpoints)
+    if (!teamId && rawInput?.upstreamId) {
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: rawInput.upstreamId as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (pipeline) {
+        teamId = pipeline.environment.teamId ?? undefined;
+      }
+    }
+
     // Fallback: try input.id as various entity types
     if (!teamId && rawInput?.id) {
       const pipeline = await prisma.pipeline.findUnique({
