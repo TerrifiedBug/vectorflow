@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyEnrollmentToken, generateNodeToken } from "@/server/services/agent-token";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { debugLog } from "@/lib/logger";
+import { nodeMatchesGroup } from "@/lib/node-group-utils";
 
 const enrollSchema = z.object({
   token: z.string().min(1),
@@ -91,10 +92,7 @@ export async function POST(request: Request) {
       for (const group of nodeGroups) {
         const criteria = group.criteria as Record<string, string>;
         const nodeLabels = (node.labels as Record<string, string>) ?? {};
-        const matches = Object.entries(criteria).every(
-          ([k, v]) => nodeLabels[k] === v,
-        );
-        if (matches) {
+        if (nodeMatchesGroup(nodeLabels, criteria)) {
           Object.assign(mergedLabels, group.labelTemplate as Record<string, string>);
         }
       }
