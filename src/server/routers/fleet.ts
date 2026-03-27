@@ -559,6 +559,7 @@ export const fleetRouter = router({
         select: {
           id: true,
           name: true,
+          tags: true,
           versions: {
             orderBy: { version: "desc" },
             take: 1,
@@ -576,6 +577,7 @@ export const fleetRouter = router({
           id: p.id,
           name: p.name,
           latestVersion: p.versions[0]?.version ?? 1,
+          tags: (p.tags as string[]) ?? [],
         })),
       };
     }),
