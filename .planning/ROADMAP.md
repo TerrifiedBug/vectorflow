@@ -12,7 +12,7 @@ M016 makes VectorFlow production-ready for corporate platform teams managing hun
 
 - [x] **Phase 1: Fleet Performance Foundation** - Eliminate scale ceilings in the heartbeat/SSE/alert evaluation path so 100+ node fleets are stable (completed 2026-03-26)
 - [ ] **Phase 2: Fleet Organization** - Node groups with label enforcement, nested pipeline folders, and bulk tag operations
-- [ ] **Phase 3: Fleet Health Dashboard** - Aggregated group-level and per-node health view redesigned for 100+ nodes
+- [x] **Phase 3: Fleet Health Dashboard** - Aggregated group-level and per-node health view redesigned for 100+ nodes (completed 2026-03-27)
 - [ ] **Phase 4: Outbound Webhooks** - HMAC-signed event subscriptions with retry, dead-letter separation, and delivery history UI
 - [ ] **Phase 5: Cross-Environment Promotion (UI)** - One-click pipeline promotion across environments with secret pre-flight validation and approval workflow
 - [ ] **Phase 6: OpenAPI Specification** - Auto-generated OpenAPI 3.1 spec from existing REST v1 routes and marked tRPC procedures
@@ -48,7 +48,7 @@ Plans:
 - [x] 02-01-PLAN.md — Schema migration (NodeGroup + PipelineGroup parentId) + NodeGroup router + enrollment auto-assignment + label compliance
 - [x] 02-02-PLAN.md — PipelineGroup parentId/depth guard + bulk tag procedures (bulkAddTags/bulkRemoveTags)
 - [x] 02-03-PLAN.md — Node group management UI in fleet settings + compliance badges
-- [ ] 02-04-PLAN.md — Pipeline sidebar tree + breadcrumbs + bulk tag UI in action bar
+- [x] 02-04-PLAN.md — Pipeline sidebar tree + breadcrumbs + bulk tag UI in action bar
 **UI hint**: yes
 
 ### Phase 3: Fleet Health Dashboard
@@ -59,7 +59,10 @@ Plans:
   1. Fleet dashboard loads with a group-level summary (online count, alert count, label-compliance rate) without issuing one query per node
   2. User can click a node group to see per-node status, uptime, CPU load, and label compliance in a grid or table view
   3. User can filter the dashboard by node group, label key/value, or compliance status to isolate problem nodes in a 100+ node fleet
-**Plans**: TBD
+**Plans:** 2/2 plans complete
+Plans:
+- [x] 03-01-PLAN.md — Backend: groupHealthStats + nodesInGroup tRPC procedures with shared nodeMatchesGroup util + unit tests
+- [x] 03-02-PLAN.md — Frontend: Fleet health dashboard UI with group cards, expand/collapse drill-down, filter toolbar, URL params + docs
 **UI hint**: yes
 
 ### Phase 4: Outbound Webhooks
@@ -118,7 +121,7 @@ Note: Phase 3 depends on Phase 2. Phases 4 and 6 only depend on Phase 1 and can 
 |-------|----------------|--------|-----------|
 | 1. Fleet Performance Foundation | 2/2 | Complete   | 2026-03-26 |
 | 2. Fleet Organization | 0/4 | Planned | - |
-| 3. Fleet Health Dashboard | 0/? | Not started | - |
+| 3. Fleet Health Dashboard | 0/2 | Planned | - |
 | 4. Outbound Webhooks | 0/? | Not started | - |
 | 5. Cross-Environment Promotion (UI) | 0/? | Not started | - |
 | 6. OpenAPI Specification | 0/? | Not started | - |
