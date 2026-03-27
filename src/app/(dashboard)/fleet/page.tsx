@@ -39,6 +39,7 @@ import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { FleetListToolbar } from "@/components/fleet/fleet-list-toolbar";
+import { FleetTabs } from "@/components/fleet/fleet-tabs";
 import { ArrowUp, ArrowDown } from "lucide-react";
 
 const AGENT_REPO = "TerrifiedBug/vectorflow";
@@ -185,23 +186,7 @@ export default function FleetPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-1">
-        <span className="rounded-full px-3 h-7 text-xs font-medium border transition-colors bg-accent text-accent-foreground border-transparent inline-flex items-center">
-          Nodes
-        </span>
-        <Link
-          href="/fleet/overview"
-          className="rounded-full px-3 h-7 text-xs font-medium border transition-colors bg-transparent text-muted-foreground border-border hover:bg-muted inline-flex items-center"
-        >
-          Overview
-        </Link>
-        <Link
-          href="/fleet/health"
-          className="rounded-full px-3 h-7 text-xs font-medium border transition-colors bg-transparent text-muted-foreground border-border hover:bg-muted inline-flex items-center"
-        >
-          Health
-        </Link>
-      </div>
+      <FleetTabs active="nodes" />
 
       {/* Toolbar — shown when not loading and nodes exist or filters active */}
       {!isLoading && (rawNodes.length > 0 || search || statusFilter.length > 0 || Object.keys(labelFilter).length > 0) && (
