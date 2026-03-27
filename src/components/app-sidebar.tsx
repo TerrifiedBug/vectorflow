@@ -25,6 +25,9 @@ import { useTeamStore } from "@/stores/team-store";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { settingsNavGroups } from "@/components/settings-sidebar-nav";
 import { libraryNavItems } from "@/components/library-sidebar-nav";
+import { usePipelineSidebarStore } from "@/stores/pipeline-sidebar-store";
+import { PipelineGroupTree } from "@/components/pipeline/pipeline-group-tree";
+import { Button } from "@/components/ui/button";
 
 import {
   Sidebar,
@@ -84,10 +87,24 @@ export function AppSidebar() {
 
   const isSettingsMode = pathname.startsWith("/settings");
   const isLibraryMode = pathname.startsWith("/library");
-  const isSubMode = isSettingsMode || isLibraryMode;
+  const isPipelinesMode = pathname.startsWith("/pipelines");
+  const isSubMode = isSettingsMode || isLibraryMode || isPipelinesMode;
 
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
+
+  // Pipelines panel state
+  const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
+  const { selectedGroupId, setSelectedGroupId, expandedGroupIds, toggleExpandedGroup, setManageGroupsOpen } = usePipelineSidebarStore();
+
+  const environmentsQuery = useQuery(
+    trpc.environment.list.queryOptions(
+      { teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId },
+    ),
+  );
+  const environments = environmentsQuery.data ?? [];
+  const effectiveEnvId = selectedEnvironmentId || environments[0]?.id || "";
 
   return (
     <Sidebar collapsible="icon">
@@ -97,7 +114,7 @@ export function AppSidebar() {
             <Link href="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="h-4 w-4" />
               <span className="group-data-[collapsible=icon]:hidden">
-                {isSettingsMode ? "Settings" : "Library"}
+                {isSettingsMode ? "Settings" : isLibraryMode ? "Library" : "Pipelines"}
               </span>
             </Link>
           ) : (
@@ -224,6 +241,43 @@ export function AppSidebar() {
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </div>
+
+        {/* Pipelines nav panel */}
+        <div
+          className={cn(
+            "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
+            isPipelinesMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
+          )}
+        >
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center justify-between">
+              <span>Folders</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-auto py-0 px-1 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setManageGroupsOpen(true)}
+              >
+                Manage
+              </Button>
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              {!effectiveEnvId ? (
+                <div className="px-2 py-4 text-xs text-muted-foreground">
+                  Select an environment
+                </div>
+              ) : (
+                <PipelineGroupTree
+                  environmentId={effectiveEnvId}
+                  selectedGroupId={selectedGroupId}
+                  onSelectGroup={setSelectedGroupId}
+                  expandedGroupIds={expandedGroupIds}
+                  onToggleExpand={toggleExpandedGroup}
+                />
+              )}
             </SidebarGroupContent>
           </SidebarGroup>
         </div>
