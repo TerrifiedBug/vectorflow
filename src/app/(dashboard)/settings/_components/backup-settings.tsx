@@ -333,25 +333,29 @@ export function BackupSettings() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          asChild
-                        >
-                          <a
-                            href={`/api/backups/${encodeURIComponent(backup.filename)}/download`}
-                            download
-                          >
-                            <Download className="h-4 w-4" />
-                          </a>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setRestoreTarget(backup.filename)}
-                        >
-                          Restore
-                        </Button>
+                        {backup.status === "success" && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              asChild
+                            >
+                              <a
+                                href={`/api/backups/${encodeURIComponent(backup.filename)}/download`}
+                                download
+                              >
+                                <Download className="h-4 w-4" />
+                              </a>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setRestoreTarget(backup.filename)}
+                            >
+                              Restore
+                            </Button>
+                          </>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
