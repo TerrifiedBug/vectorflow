@@ -77,6 +77,17 @@ export async function register() {
   // ─── Singleton services (leader-only) ─────────────────────────────────
 
   async function startSingletonServices(): Promise<void> {
+    // Import legacy filesystem backups into BackupRecord table (idempotent).
+    try {
+      const { importLegacyBackups } = await import("@/server/services/backup");
+      const result = await importLegacyBackups();
+      console.log(
+        `[backup] Legacy import: ${result.imported} imported, ${result.skipped} skipped`,
+      );
+    } catch (error) {
+      console.error("Failed to import legacy backups:", error);
+    }
+
     // Start backup scheduler if enabled.
     try {
       const { initBackupScheduler } = await import(
