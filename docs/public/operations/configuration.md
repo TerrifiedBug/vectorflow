@@ -28,6 +28,8 @@ These variables must be set before the server can start. Without them, the appli
 | `NODE_ENV` | `production` | Set automatically in Docker. Use `production` for standalone deployments |
 | `VF_BACKUP_DIR` | `/backups` | Directory for database backup files |
 | `VF_BACKUP_DISK_WARN_MB` | `500` | Disk space warning threshold in MB. Before each backup, available space in `VF_BACKUP_DIR` is checked. If below this value, a warning is logged |
+
+> S3 remote storage is configured through the Settings UI, not environment variables. See [Remote Storage (S3)](backup-restore.md#remote-storage-s3).
 | `VF_DISABLE_LOCAL_AUTH` | `false` | Hide the local login form and enforce SSO-only authentication. Requires OIDC to be configured |
 | `REDIS_URL` | *(none — single-instance mode)* | Redis connection string for HA mode (e.g., `redis://redis:6379`). Enables leader election, cross-instance SSE broadcast, and metric distribution. When unset, VectorFlow runs as a single instance with no behavioral change |
 | `VF_LOG_LEVEL` | `info` | Server log verbosity: `debug`, `info`, `warn`, `error`. Set to `debug` for verbose logging of OIDC authentication, SCIM provisioning, agent enrollment, and group sync operations |
