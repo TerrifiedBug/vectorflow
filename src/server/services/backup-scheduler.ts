@@ -43,22 +43,26 @@ function scheduleJob(cronExpression: string): void {
   scheduledTask = cron.schedule(cronExpression, async () => {
     console.log("[backup] Starting scheduled backup...");
     try {
-      const metadata = await createBackup();
+      const metadata = await createBackup("scheduled");
       console.log(`[backup] Scheduled backup complete: ${metadata.sizeBytes} bytes`);
       await runRetentionCleanup();
     } catch (error) {
       console.error("[backup] Scheduled backup failed:", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
-      // Backup is system-wide — fire alert for all environments
-      prisma.environment.findMany({ where: { isSystem: false }, select: { id: true } })
-        .then((envs) => {
-          for (const env of envs) {
-            void fireEventAlert("backup_failed", env.id, {
-              message: `Scheduled backup failed: ${msg}`,
-            });
-          }
-        })
-        .catch(() => {});
+      // Fire backup_failed alert for all environments (properly awaited -- RELY-01)
+      try {
+        const envs = await prisma.environment.findMany({
+          where: { isSystem: false },
+          select: { id: true },
+        });
+        for (const env of envs) {
+          await fireEventAlert("backup_failed", env.id, {
+            message: `Scheduled backup failed: ${msg}`,
+          });
+        }
+      } catch (alertErr) {
+        console.error("[backup] Failed to fire backup_failed alerts:", alertErr);
+      }
     }
   });
 
