@@ -29,7 +29,7 @@ Requirements for v1.2 Production-Grade Backups. Each maps to roadmap phases.
 
 ### Reliability
 
-- [ ] **RELY-01**: Backup errors are fully captured in the BackupRecord with details surfaced in the UI and alerts that properly await
+- [x] **RELY-01**: Backup errors are fully captured in the BackupRecord with details surfaced in the UI and alerts that properly await
 - [x] **RELY-02**: Backup creation checks available disk space before starting and warns if below threshold
 - [x] **RELY-03**: SHA256 checksum is stored with each backup and verified before restore
 
@@ -61,7 +61,7 @@ Requirements for v1.2 Production-Grade Backups. Each maps to roadmap phases.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | BREG-01 | Phase 12 | Complete |
-| RELY-01 | Phase 12 | Pending |
+| RELY-01 | Phase 12 | Complete |
 | RELY-02 | Phase 12 | Complete |
 | RELY-03 | Phase 12 | Complete |
 | BREG-02 | Phase 13 | Pending |
