@@ -144,7 +144,7 @@ describe("bulk tag operations", () => {
       expect(result.total).toBe(2);
       expect(result.succeeded).toBe(2);
       expect(result.results).toHaveLength(2);
-      expect(result.results.every((r) => r.success)).toBe(true);
+      expect(result.results.every((r: { success: boolean }) => r.success)).toBe(true);
     });
 
     it("validates tags against team.availableTags before the loop", async () => {
@@ -189,7 +189,7 @@ describe("bulk tag operations", () => {
 
       expect(result.total).toBe(2);
       expect(result.succeeded).toBe(1);
-      const failedResult = result.results.find((r) => r.pipelineId === "p2");
+      const failedResult = result.results.find((r: { pipelineId: string }) => r.pipelineId === "p2");
       expect(failedResult?.success).toBe(false);
       expect(failedResult?.error).toBe("Pipeline not found");
     });
@@ -297,7 +297,7 @@ describe("bulk tag operations", () => {
 
       expect(result.total).toBe(2);
       expect(result.succeeded).toBe(1);
-      const failedResult = result.results.find((r) => r.pipelineId === "p2");
+      const failedResult = result.results.find((r: { pipelineId: string }) => r.pipelineId === "p2");
       expect(failedResult?.success).toBe(false);
     });
 

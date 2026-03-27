@@ -466,10 +466,10 @@ export function NodeGroupManagement({ environmentId }: NodeGroupManagementProps)
                     <span className="font-medium text-sm">{group.name}</span>
 
                     {/* Criteria */}
-                    {Object.keys(group.criteria).length > 0 ? (
+                    {Object.keys((group.criteria as Record<string, string>) ?? {}).length > 0 ? (
                       <div className="flex flex-wrap gap-1 items-center">
                         <span className="text-[11px] text-muted-foreground shrink-0">Criteria:</span>
-                        {Object.entries(group.criteria).map(([k, v]) => (
+                        {Object.entries((group.criteria as Record<string, string>) ?? {}).map(([k, v]) => (
                           <Badge key={k} variant="outline" className="text-[10px] px-1.5 py-0">
                             {k}={v}
                           </Badge>
@@ -483,10 +483,10 @@ export function NodeGroupManagement({ environmentId }: NodeGroupManagementProps)
                     )}
 
                     {/* Label Template */}
-                    {Object.keys(group.labelTemplate).length > 0 && (
+                    {Object.keys((group.labelTemplate as Record<string, string>) ?? {}).length > 0 && (
                       <div className="flex flex-wrap gap-1 items-center">
                         <span className="text-[11px] text-muted-foreground shrink-0">Template:</span>
-                        {Object.entries(group.labelTemplate).map(([k, v]) => (
+                        {Object.entries((group.labelTemplate as Record<string, string>) ?? {}).map(([k, v]) => (
                           <Badge key={k} variant="secondary" className="text-[10px] px-1.5 py-0">
                             {k}={v}
                           </Badge>
@@ -495,10 +495,10 @@ export function NodeGroupManagement({ environmentId }: NodeGroupManagementProps)
                     )}
 
                     {/* Required Labels */}
-                    {group.requiredLabels.length > 0 && (
+                    {((group.requiredLabels as string[]) ?? []).length > 0 && (
                       <div className="flex flex-wrap gap-1 items-center">
                         <span className="text-[11px] text-muted-foreground shrink-0">Required:</span>
-                        {group.requiredLabels.map((label) => (
+                        {((group.requiredLabels as string[]) ?? []).map((label: string) => (
                           <Badge key={label} variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-700 dark:text-amber-400">
                             {label}
                           </Badge>
@@ -518,7 +518,7 @@ export function NodeGroupManagement({ environmentId }: NodeGroupManagementProps)
                           name: group.name,
                           criteria: group.criteria as Record<string, string>,
                           labelTemplate: group.labelTemplate as Record<string, string>,
-                          requiredLabels: group.requiredLabels,
+                          requiredLabels: (group.requiredLabels as string[]) ?? [],
                         })
                       }
                     >
