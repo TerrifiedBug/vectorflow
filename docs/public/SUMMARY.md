@@ -31,6 +31,7 @@
 * [Service Accounts](operations/service-accounts.md)
 * [Backup &amp; Restore](operations/backup-restore.md)
 * [GitOps](operations/gitops.md)
+* [Outbound Webhooks](operations/outbound-webhooks.md)
 * [Security](operations/security.md)
 * [Upgrading](operations/upgrading.md)
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -19,7 +19,9 @@ import {
   ArrowDown,
   FolderOpen,
   Network,
+  ChevronRight,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
 
@@ -71,6 +73,12 @@ import {
 import { ManageGroupsDialog } from "@/components/pipeline/manage-groups-dialog";
 import { BulkActionBar } from "@/components/pipeline/bulk-action-bar";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  PipelineGroupTree,
+  buildBreadcrumbs,
+  buildGroupTree,
+  type GroupNode,
+} from "@/components/pipeline/pipeline-group-tree";
 
 // --- Helpers ---
 
@@ -362,6 +370,30 @@ export default function PipelinesPage() {
     [groupsQuery.data],
   );
 
+  // Extended groups with parentId for tree/breadcrumb features
+  const groupsWithParent = useMemo(
+    () =>
+      (groupsQuery.data ?? []).map((g) => ({
+        id: g.id,
+        name: g.name,
+        color: g.color,
+        parentId: g.parentId ?? null,
+      })),
+    [groupsQuery.data],
+  );
+
+  // Build group tree for "Move to group" nested menu
+  const groupTree = useMemo(
+    () => buildGroupTree(groupsWithParent),
+    [groupsWithParent],
+  );
+
+  // Breadcrumb path for currently selected group
+  const breadcrumbs = useMemo(
+    () => buildBreadcrumbs(groupsWithParent, groupId),
+    [groupsWithParent, groupId],
+  );
+
   // --- "Move to group" mutation ---
   const setGroupMutation = useMutation(
     trpc.pipeline.update.mutationOptions({
@@ -499,6 +531,30 @@ export default function PipelinesPage() {
     setGroupId(null);
   };
 
+  // Recursive renderer for nested "Move to group" dropdown items
+  function renderGroupMenuItems(
+    nodes: GroupNode[],
+    depth: number,
+    onMove: (groupId: string | null) => void,
+  ): React.ReactNode {
+    return nodes.map((node) => (
+      <Fragment key={node.id}>
+        <DropdownMenuItem
+          onClick={() => onMove(node.id)}
+          style={{ paddingLeft: `${(depth + 1) * 12}px` }}
+        >
+          <span
+            className="mr-2 inline-block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: node.color ?? "#64748b" }}
+          />
+          {node.name}
+        </DropdownMenuItem>
+        {node.children.length > 0 &&
+          renderGroupMenuItems(node.children, depth + 1, onMove)}
+      </Fragment>
+    ));
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-end gap-2">
@@ -516,56 +572,110 @@ export default function PipelinesPage() {
         </Button>
       </div>
 
-      {/* Toolbar — always shown when pipelines exist, even during loading */}
-      {!isLoading && pipelines.length > 0 && (
-        <PipelineListToolbar
-          search={search}
-          onSearchChange={setSearch}
-          statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
-          tagFilter={tagFilter}
-          onTagFilterChange={setTagFilter}
-          availableTags={availableTags}
-          groupId={groupId}
-          onGroupChange={setGroupId}
-          groups={groups}
-          onManageGroups={() => setManageGroupsOpen(true)}
-        />
-      )}
+      <div className="flex gap-6">
+        {/* Sidebar: group tree — only show when there are groups */}
+        {!isLoading && (groups.length > 0 || groupsQuery.isLoading) && effectiveEnvId && (
+          <div className="w-52 shrink-0">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Groups
+              </span>
+              <button
+                type="button"
+                onClick={() => setManageGroupsOpen(true)}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Manage
+              </button>
+            </div>
+            <PipelineGroupTree
+              environmentId={effectiveEnvId}
+              selectedGroupId={groupId}
+              onSelectGroup={setGroupId}
+            />
+          </div>
+        )}
 
-      {selectedPipelineIds.size > 0 && (
-        <BulkActionBar
-          selectedIds={[...selectedPipelineIds]}
-          onClearSelection={() => setSelectedPipelineIds(new Set())}
-        />
-      )}
+        {/* Main content */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {/* Toolbar — always shown when pipelines exist, even during loading */}
+          {!isLoading && pipelines.length > 0 && (
+            <PipelineListToolbar
+              search={search}
+              onSearchChange={setSearch}
+              statusFilter={statusFilter}
+              onStatusFilterChange={setStatusFilter}
+              tagFilter={tagFilter}
+              onTagFilterChange={setTagFilter}
+              availableTags={availableTags}
+              groupId={groupId}
+              onGroupChange={setGroupId}
+              groups={groups}
+              onManageGroups={() => setManageGroupsOpen(true)}
+            />
+          )}
 
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      ) : pipelines.length === 0 ? (
-        <EmptyState
-          title="No pipelines yet"
-          action={{
-            label: "Create your first pipeline",
-            href: "/pipelines/new",
-          }}
-        />
-      ) : filteredPipelines.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">No pipelines match your filters</p>
-          <Button
-            variant="outline"
-            className="mt-4"
-            onClick={clearAllFilters}
-          >
-            Clear filters
-          </Button>
-        </div>
-      ) : (
+          {selectedPipelineIds.size > 0 && (
+            <BulkActionBar
+              selectedIds={[...selectedPipelineIds]}
+              onClearSelection={() => setSelectedPipelineIds(new Set())}
+            />
+          )}
+
+          {/* Breadcrumb navigation */}
+          {groupId && breadcrumbs.length > 0 && (
+            <nav className="flex items-center gap-1 text-sm text-muted-foreground">
+              <button
+                type="button"
+                onClick={() => setGroupId(null)}
+                className="hover:text-foreground transition-colors"
+              >
+                All Pipelines
+              </button>
+              {breadcrumbs.map((crumb) => (
+                <Fragment key={String(crumb.id)}>
+                  <ChevronRight className="h-4 w-4 shrink-0" />
+                  <button
+                    type="button"
+                    onClick={() => setGroupId(crumb.id)}
+                    className={cn(
+                      "hover:text-foreground transition-colors",
+                      crumb.id === groupId && "text-foreground font-medium",
+                    )}
+                  >
+                    {crumb.name}
+                  </button>
+                </Fragment>
+              ))}
+            </nav>
+          )}
+
+          {isLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : pipelines.length === 0 ? (
+            <EmptyState
+              title="No pipelines yet"
+              action={{
+                label: "Create your first pipeline",
+                href: "/pipelines/new",
+              }}
+            />
+          ) : filteredPipelines.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
+              <p className="text-muted-foreground">No pipelines match your filters</p>
+              <Button
+                variant="outline"
+                className="mt-4"
+                onClick={clearAllFilters}
+              >
+                Clear filters
+              </Button>
+            </div>
+          ) : (
         <Table>
           <TableHeader>
             <TableRow>
@@ -936,20 +1046,9 @@ export default function PipelinesPage() {
                                 <span className="text-muted-foreground">No group</span>
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              {groups.map((g) => (
-                                <DropdownMenuItem
-                                  key={g.id}
-                                  onClick={() =>
-                                    setGroupMutation.mutate({ id: pipeline.id, groupId: g.id })
-                                  }
-                                >
-                                  <span
-                                    className="mr-2 inline-block h-2.5 w-2.5 rounded-full"
-                                    style={{ backgroundColor: g.color ?? "#64748b" }}
-                                  />
-                                  {g.name}
-                                </DropdownMenuItem>
-                              ))}
+                              {renderGroupMenuItems(groupTree, 0, (gid) =>
+                                setGroupMutation.mutate({ id: pipeline.id, groupId: gid })
+                              )}
                             </DropdownMenuSubContent>
                           </DropdownMenuSub>
                         )}
@@ -974,7 +1073,9 @@ export default function PipelinesPage() {
             })}
           </StaggerList>
         </Table>
-      )}
+          )}
+        </div>
+      </div>
 
       <ConfirmDialog
         open={!!deleteTarget}

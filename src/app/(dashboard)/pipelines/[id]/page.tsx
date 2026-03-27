@@ -10,6 +10,7 @@ import {
   type Edge,
 } from "@xyflow/react";
 import { Trash2, Pencil, Check, X, AlertTriangle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useTRPC } from "@/trpc/client";
 import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml } from "@/lib/config-generator";
@@ -114,6 +115,79 @@ function dbEdgesToFlowEdges(
     target: e.targetNodeId,
     ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
   }));
+}
+
+type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
+
+function statusVariant(status: string): BadgeVariant {
+  switch (status) {
+    case "DEPLOYED":
+      return "default";
+    case "PENDING":
+    case "APPROVED":
+      return "secondary";
+    case "REJECTED":
+      return "destructive";
+    case "CANCELLED":
+      return "outline";
+    default:
+      return "secondary";
+  }
+}
+
+function PromotionHistory({ pipelineId }: { pipelineId: string }) {
+  const trpc = useTRPC();
+  const { data: history, isLoading } = useQuery(
+    trpc.promotion.history.queryOptions({ pipelineId })
+  );
+
+  if (isLoading)
+    return (
+      <div className="shrink-0 border-t px-4 py-2 text-sm text-muted-foreground">
+        Loading promotion history...
+      </div>
+    );
+  if (!history?.length) return null;
+
+  return (
+    <div className="shrink-0 border-t">
+      <div className="space-y-3 p-4">
+        <h3 className="text-sm font-medium">Promotion History</h3>
+        <div className="rounded-md border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="px-3 py-2 text-left font-medium">Date</th>
+                <th className="px-3 py-2 text-left font-medium">Source</th>
+                <th className="px-3 py-2 text-left font-medium">Target</th>
+                <th className="px-3 py-2 text-left font-medium">Promoted By</th>
+                <th className="px-3 py-2 text-left font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((item) => (
+                <tr key={item.id} className="border-b last:border-0">
+                  <td className="px-3 py-2">
+                    {new Date(item.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="px-3 py-2">{item.sourceEnvironment.name}</td>
+                  <td className="px-3 py-2">{item.targetEnvironment.name}</td>
+                  <td className="px-3 py-2">
+                    {item.promotedBy?.name ?? item.promotedBy?.email ?? "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge variant={statusVariant(item.status)}>
+                      {item.status}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
@@ -529,6 +603,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
           <PipelineLogs pipelineId={pipelineId} />
         </div>
       )}
+      <PromotionHistory pipelineId={pipelineId} />
       <DeployDialog pipelineId={pipelineId} open={deployOpen} onOpenChange={setDeployOpen} />
       <SaveTemplateDialog open={templateOpen} onOpenChange={setTemplateOpen} />
       <ConfirmDialog

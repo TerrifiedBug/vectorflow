@@ -81,6 +81,8 @@ function makeNode(overrides: Partial<{
 describe("fleet.list", () => {
   beforeEach(() => {
     mockReset(prismaMock);
+    // Default: no node groups (vacuously compliant)
+    prismaMock.nodeGroup.findMany.mockResolvedValue([]);
   });
 
   it("returns all nodes when no filters", async () => {
@@ -167,5 +169,41 @@ describe("fleet.list", () => {
     const result = await caller.list({ environmentId: "env-1" });
 
     expect(result[0]).toHaveProperty("pushConnected", false);
+  });
+
+  // ── label compliance ────────────────────────────────────────────────────
+
+  it("returns labelCompliant=true when node has all required labels", async () => {
+    const nodes = [makeNode({ id: "n1", labels: { region: "us-east", role: "worker" } })];
+    prismaMock.vectorNode.findMany.mockResolvedValue(nodes as never);
+    prismaMock.nodeGroup.findMany.mockResolvedValue([
+      { requiredLabels: ["region", "role"] },
+    ] as never);
+
+    const result = await caller.list({ environmentId: "env-1" });
+
+    expect(result[0]).toHaveProperty("labelCompliant", true);
+  });
+
+  it("returns labelCompliant=false when node is missing a required label", async () => {
+    const nodes = [makeNode({ id: "n1", labels: { region: "us-east" } })];
+    prismaMock.vectorNode.findMany.mockResolvedValue(nodes as never);
+    prismaMock.nodeGroup.findMany.mockResolvedValue([
+      { requiredLabels: ["region", "role"] },
+    ] as never);
+
+    const result = await caller.list({ environmentId: "env-1" });
+
+    expect(result[0]).toHaveProperty("labelCompliant", false);
+  });
+
+  it("returns labelCompliant=true when no NodeGroups have required labels (vacuously compliant)", async () => {
+    const nodes = [makeNode({ id: "n1", labels: {} })];
+    prismaMock.vectorNode.findMany.mockResolvedValue(nodes as never);
+    prismaMock.nodeGroup.findMany.mockResolvedValue([]);
+
+    const result = await caller.list({ environmentId: "env-1" });
+
+    expect(result[0]).toHaveProperty("labelCompliant", true);
   });
 });

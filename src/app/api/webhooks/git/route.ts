@@ -6,18 +6,29 @@ import { decrypt } from "@/server/services/crypto";
 import { encryptNodeConfig } from "@/server/services/config-crypto";
 import { writeAuditLog } from "@/server/services/audit";
 import { ComponentKind, Prisma } from "@/generated/prisma";
+import { executePromotion } from "@/server/services/promotion-service";
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
   const signature = req.headers.get("x-hub-signature-256");
+  const eventType = req.headers.get("x-github-event") ?? "push";
+
+  // Handle GitHub ping (sent when webhook is first registered)
+  if (eventType === "ping") {
+    return NextResponse.json({ message: "pong" }, { status: 200 });
+  }
 
   if (!signature) {
     return NextResponse.json({ error: "Missing signature" }, { status: 401 });
   }
 
-  // 1. Find environments with bidirectional gitOps
+  // 1. Find environments with gitOps webhook configured.
+  //    Includes both bidirectional (push) and promotion (PR-based) modes.
   const environments = await prisma.environment.findMany({
-    where: { gitOpsMode: "bidirectional", gitWebhookSecret: { not: null } },
+    where: {
+      gitOpsMode: { in: ["bidirectional", "promotion"] },
+      gitWebhookSecret: { not: null },
+    },
   });
 
   // 2. Verify HMAC signature against each environment's webhook secret
@@ -45,7 +56,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  // 3. Parse GitHub push event
+  // 3. Parse payload
   let payload: Record<string, unknown>;
   try {
     payload = JSON.parse(body);
@@ -55,6 +66,57 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+
+  // ─── pull_request event: GitOps promotion merge trigger ──────────────────
+  if (eventType === "pull_request") {
+    // Only handle closed+merged — reject closed-without-merge
+    if (payload.action !== "closed") {
+      return NextResponse.json({ message: "Not a closed event, ignored" }, { status: 200 });
+    }
+    const pr = payload.pull_request as Record<string, unknown> | undefined;
+    if (!pr?.merged) {
+      return NextResponse.json({ message: "PR closed without merge, ignored" }, { status: 200 });
+    }
+
+    // Extract VF promotion request ID from PR body
+    const prBody = (pr.body as string) ?? "";
+    const match = prBody.match(/<!-- vf-promotion-request-id: ([a-z0-9]+) -->/);
+    if (!match) {
+      return NextResponse.json(
+        { message: "No VectorFlow promotion ID in PR body, ignored" },
+        { status: 200 },
+      );
+    }
+    const promotionRequestId = match[1];
+
+    // Atomic idempotency guard — prevents double-deploy on GitHub retry
+    const updated = await prisma.promotionRequest.updateMany({
+      where: { id: promotionRequestId, status: "AWAITING_PR_MERGE" },
+      data: { status: "DEPLOYING" },
+    });
+
+    if (updated.count === 0) {
+      // Already deployed, not found, or not in the right state — safe to ignore
+      return NextResponse.json(
+        { message: "Promotion already processed or not found" },
+        { status: 200 },
+      );
+    }
+
+    // Load the original promoter for audit attribution
+    const promotionRequest = await prisma.promotionRequest.findUnique({
+      where: { id: promotionRequestId },
+      select: { promotedById: true },
+    });
+
+    // Execute the promotion (the promoter is the logical actor)
+    const executorId = promotionRequest?.promotedById ?? "system";
+    await executePromotion(promotionRequestId, executorId);
+
+    return NextResponse.json({ deployed: true, promotionRequestId });
+  }
+
+  // ─── push event: Bidirectional GitOps config import ──────────────────────
   const ref: string | undefined = payload.ref as string | undefined; // "refs/heads/main"
   const branch = ref?.replace("refs/heads/", "");
 

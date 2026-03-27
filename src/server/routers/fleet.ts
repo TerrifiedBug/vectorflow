@@ -56,9 +56,25 @@ export const fleetRouter = router({
         });
       }
 
+      // Label compliance check (NODE-02)
+      const nodeGroups = await prisma.nodeGroup.findMany({
+        where: { environmentId: input.environmentId },
+        select: { requiredLabels: true },
+      });
+      const allRequiredLabels = [
+        ...new Set(nodeGroups.flatMap((g) => g.requiredLabels as string[])),
+      ];
+
       return filtered.map((node) => ({
         ...node,
         pushConnected: pushRegistry.isConnected(node.id),
+        labelCompliant: allRequiredLabels.length === 0 ||
+          allRequiredLabels.every((key) =>
+            Object.prototype.hasOwnProperty.call(
+              (node.labels as Record<string, string>) ?? {},
+              key,
+            ),
+          ),
       }));
     }),
 

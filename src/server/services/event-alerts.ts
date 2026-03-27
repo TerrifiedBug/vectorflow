@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { AlertMetric } from "@/generated/prisma";
 import { deliverToChannels } from "@/server/services/channels";
 import { deliverWebhooks } from "@/server/services/webhook-delivery";
+import { fireOutboundWebhooks } from "@/server/services/outbound-webhook";
 
 // Re-export from the shared (client-safe) module so existing server imports
 // continue to work without changes.
@@ -101,6 +102,25 @@ export async function fireEventAlert(
         // 4. Deliver to legacy webhooks and notification channels
         await deliverWebhooks(rule.environmentId, payload);
         await deliverToChannels(rule.environmentId, rule.id, payload);
+
+        // 4b. Deliver to outbound webhook subscriptions (team-scoped)
+        // void — never blocks the calling operation
+        if (rule.environment.team) {
+          void fireOutboundWebhooks(metric, rule.teamId, {
+            type: metric,
+            timestamp: event.firedAt.toISOString(),
+            data: {
+              alertId: event.id,
+              ruleName: rule.name,
+              environment: rule.environment.name,
+              team: rule.environment.team.name,
+              node: (metadata.nodeId as string) ?? undefined,
+              pipeline: rule.pipeline?.name ?? undefined,
+              message: metadata.message,
+              value: 0,
+            },
+          });
+        }
 
         // 5. Update the AlertEvent with notifiedAt timestamp
         await prisma.alertEvent.update({

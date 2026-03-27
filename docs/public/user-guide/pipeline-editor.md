@@ -258,6 +258,32 @@ Click the pipeline name in the top-left corner of the editor to rename it inline
 On Windows and Linux, use `Ctrl` instead of `Cmd` for all keyboard shortcuts.
 {% endhint %}
 
+## Cross-Environment Promotion
+
+Promote a pipeline from one environment to another (e.g., dev to staging, staging to production) with built-in validation and approval workflow.
+
+### Promoting a Pipeline
+
+1. From the pipeline list, click the **...** menu on any pipeline and select **Promote to...**
+2. Select the **target environment** and optionally rename the pipeline
+3. VectorFlow validates that all secret references in the pipeline exist in the target environment
+4. Review the **substitution diff** showing what will change between environments
+5. Click **Confirm Promotion** to submit
+
+### Approval Workflow
+
+If the target environment has **Require Deploy Approval** enabled, the promotion creates a request that must be approved by an administrator before the pipeline appears in the target environment.
+
+If approval is not required, the pipeline is promoted immediately.
+
+### Secret Pre-flight Validation
+
+Before promotion proceeds, VectorFlow checks that every `SECRET[name]` reference in the source pipeline has a corresponding secret defined in the target environment. If any secrets are missing, promotion is blocked with a clear list of which secrets need to be created.
+
+### Promotion History
+
+Each pipeline's detail page shows a promotion history log with source environment, target environment, who promoted, and the current status.
+
 ## AI-Powered Suggestions
 
 When AI is configured for your team (Settings → AI), two AI features become available:
