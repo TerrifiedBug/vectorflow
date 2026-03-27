@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Production-Grade Backups
-status: verifying
-stopped_at: Completed 12-02-PLAN.md
-last_updated: "2026-03-27T19:14:18.341Z"
+status: executing
+stopped_at: Completed 13-01-PLAN.md
+last_updated: "2026-03-27T19:52:45.385Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 4
+  completed_plans: 3
 ---
 
 # Project State
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** A corporate platform team can manage their entire Vector pipeline fleet at scale — organizing, promoting, and operating hundreds of pipelines across environments — without outgrowing VectorFlow.
-**Current focus:** Phase 12 — backup-registry-foundation
+**Current focus:** Phase 13 — backup-listing-history
 
 ## Current Position
 
-Phase: 12 (backup-registry-foundation) — EXECUTING
+Phase: 13 (backup-listing-history) — EXECUTING
 Plan: 2 of 2
-Status: Phase complete — ready for verification
+Status: Ready to execute
 Last activity: 2026-03-27
 
 ```
@@ -51,6 +51,7 @@ v1.2 Progress: [░░░░░░░░░░░░░░░░░░░░] 0%
 | 15. Restore UX & Cleanup | 0 | — | — |
 | Phase 12-backup-registry-foundation P01 | 4 | 2 tasks | 3 files |
 | Phase 12 P02 | 18 | 3 tasks | 5 files |
+| Phase 13 P01 | 15 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,9 @@ v1.2 Progress: [░░░░░░░░░░░░░░░░░░░░] 0%
 - [Phase 12-backup-registry-foundation]: Streaming reads in computeChecksum to prevent OOM on large dump files
 - [Phase 12]: BackupRecord created upfront with filename and storageLocation at create time, not in update
 - [Phase 12]: computeChecksum called in parallel with stat/migrationInfo/pgVersion after pg_dump for performance
+- [Phase 13]: listBackups() returns BackupRecord[] (Prisma type) — no wrapper type needed, SuperJSON handles BigInt serialization
+- [Phase 13]: importLegacyBackups() is idempotent by design — no migration-done flag needed
+- [Phase 13]: UI failed-backup alert reads from backupsQuery.data[0].status (BackupRecord) instead of SystemSettings.lastBackupStatus — single source of truth
 
 ### Pending Todos
 
@@ -78,6 +82,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-27T19:14:18.338Z
-Stopped at: Completed 12-02-PLAN.md
+Last session: 2026-03-27T19:52:45.383Z
+Stopped at: Completed 13-01-PLAN.md
 Resume file: None
