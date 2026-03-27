@@ -162,7 +162,7 @@ Click the **Settings** button in the toolbar to open the pipeline settings panel
 - **Metadata Enrichment** -- When enabled, VectorFlow automatically injects a `vectorflow_metadata_enrich` remap transform before every sink at deploy time. This adds two fields to every event:
   - `.vectorflow.environment` -- the name of the environment the pipeline is deployed in.
   - `.vectorflow.pipeline_version` -- the version number of this deployment.
-- **Classification Tags** -- Assign data classification labels (e.g. PII, PCI-DSS) to the pipeline.
+- **Compliance Tags** -- Assign compliance labels (e.g. PII, PCI-DSS) to the pipeline.
 - **Global Configuration (JSON)** -- Advanced Vector configuration such as enrichment tables.
 - **Health SLIs** -- Define service-level indicators to monitor pipeline health.
 
