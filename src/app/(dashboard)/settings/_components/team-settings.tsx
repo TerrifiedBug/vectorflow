@@ -219,7 +219,7 @@ export function TeamSettings() {
     })
   );
 
-  // Data classification tags
+  // Compliance tags
   const availableTagsQuery = useQuery(
     trpc.team.getAvailableTags.queryOptions(
       { teamId: selectedTeamId! },
@@ -692,9 +692,9 @@ export function TeamSettings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Data Classification Tags</CardTitle>
+          <CardTitle>Compliance Tags</CardTitle>
           <CardDescription>
-            Define classification tags that can be applied to pipelines in this team (e.g., PII, PHI, PCI-DSS).
+            Define compliance tags that can be applied to pipelines in this team (e.g., PII, PHI, PCI-DSS).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
