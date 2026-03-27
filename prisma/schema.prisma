@@ -650,6 +650,15 @@ model SystemSettings {
   lastBackupStatus     String?
   lastBackupError      String?
 
+  // S3 remote storage configuration
+  backupStorageBackend  String   @default("local")   // "local" | "s3"
+  s3Bucket              String?
+  s3Region              String?  @default("us-east-1")
+  s3Prefix              String?
+  s3AccessKeyId         String?
+  s3SecretAccessKey     String?  // Encrypted via crypto.ts
+  s3Endpoint            String?  // Optional custom endpoint (MinIO, DigitalOcean Spaces)
+
   latestServerRelease            String?
   latestServerReleaseCheckedAt   DateTime?
   latestServerReleaseEtag        String?
