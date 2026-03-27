@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 05-cross-environment-promotion-ui 05-02-PLAN.md
-last_updated: "2026-03-27T02:08:38.015Z"
+status: verifying
+stopped_at: Completed 06-openapi-specification 06-02-PLAN.md
+last_updated: "2026-03-27T02:44:23.994Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 7
-  completed_phases: 3
-  total_plans: 11
-  completed_plans: 12
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 3
   percent: 43
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-26)
 
 Phase: 05 (cross-environment-promotion-ui) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-27
 
 Progress: [████░░░░░░] 43%
@@ -64,6 +64,7 @@ Progress: [████░░░░░░] 43%
 | Phase 04-outbound-webhooks P03 | 8 | 2 tasks | 5 files |
 | Phase 05-cross-environment-promotion-ui P01 | 6 | 2 tasks | 7 files |
 | Phase 05-cross-environment-promotion-ui P02 | 8 | 2 tasks | 3 files |
+| Phase 06-openapi-specification P02 | 5 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,8 @@ Recent decisions affecting current work:
 - [Phase 05-cross-environment-promotion-ui]: executePromotion called directly from initiate when requireDeployApproval=false — no extra approval round-trip needed
 - [Phase 05-cross-environment-promotion-ui]: PromotionHistory rendered at bottom of pipeline editor layout (shrink-0 border-t div) — consistent with existing metrics/logs panel pattern, avoids restructuring the full-screen editor
 - [Phase 05-cross-environment-promotion-ui]: diffPreview only takes pipelineId (not targetEnvironmentId) — shows SECRET[name] vs env-var substitution format, not per-target diff
+- [Phase 06-openapi-specification]: Manual tRPC schema registration (not @trpc/openapi) — avoids tRPC upgrade risk with 28 routers
+- [Phase 06-openapi-specification]: CookieAuth scheme uses type:apiKey/in:cookie — correct OpenAPI 3.1 encoding for session cookie auth applied to tRPC operations
 
 ### Pending Todos
 
@@ -117,6 +120,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T02:08:38.013Z
-Stopped at: Completed 05-cross-environment-promotion-ui 05-02-PLAN.md
+Last session: 2026-03-27T02:44:23.992Z
+Stopped at: Completed 06-openapi-specification 06-02-PLAN.md
 Resume file: None
