@@ -11,10 +11,9 @@ import { formatCount, formatPercent } from "@/lib/format";
 interface PipelineDataLoss {
   pipelineId: string;
   pipelineName: string;
-  nodeId: string | null;
-  nodeName: string | null;
   eventsIn: number;
   eventsOut: number;
+  eventsDiscarded: number;
   lossRate: number;
 }
 
@@ -95,7 +94,6 @@ export function DataLossTable({
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="px-3 py-2 text-left font-medium text-muted-foreground">Pipeline</th>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Node</th>
                   <th className="px-3 py-2 text-right font-medium text-muted-foreground">Events In</th>
                   <th className="px-3 py-2 text-right font-medium text-muted-foreground">Events Out</th>
                   <th className="px-3 py-2 text-right font-medium text-muted-foreground">Loss Rate</th>
@@ -107,7 +105,7 @@ export function DataLossTable({
                   const severity = row.lossRate >= 0.2 ? "critical" : row.lossRate >= 0.1 ? "warning" : "minor";
                   return (
                     <tr
-                      key={`${row.pipelineId}-${row.nodeId ?? "all"}`}
+                      key={row.pipelineId}
                       className={`transition-colors hover:bg-muted/50 ${
                         severity === "critical"
                           ? "bg-red-50/50 dark:bg-red-950/10"
@@ -123,9 +121,6 @@ export function DataLossTable({
                         >
                           {row.pipelineName}
                         </Link>
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {row.nodeName ?? "—"}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         {formatCount(row.eventsIn)}
