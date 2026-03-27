@@ -14,6 +14,7 @@ import {
   deleteBackup,
   restoreFromBackup,
   runRetentionCleanup,
+  previewBackup,
 } from "@/server/services/backup";
 import { rescheduleBackup, isValidCron } from "@/server/services/backup-scheduler";
 import { validatePublicUrl } from "@/server/services/url-validation";
@@ -357,6 +358,13 @@ export const settingsRouter = router({
     .use(requireSuperAdmin())
     .query(async () => {
       return listBackups();
+    }),
+
+  previewBackup: protectedProcedure
+    .use(requireSuperAdmin())
+    .input(z.object({ filename: z.string().min(1) }))
+    .query(async ({ input }) => {
+      return previewBackup(input.filename);
     }),
 
   deleteBackup: protectedProcedure
