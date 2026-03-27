@@ -31,6 +31,47 @@ When you restore a backup, VectorFlow automatically verifies the checksum before
 Backups created before this feature was added (legacy backups) do not have stored checksums. VectorFlow skips checksum verification for these backups and proceeds with the restore.
 {% endhint %}
 
+## Remote Storage (S3)
+
+VectorFlow can store backups in any S3-compatible storage service, including AWS S3, MinIO, DigitalOcean Spaces, and Backblaze B2.
+
+### Configuring S3 storage
+
+1. Navigate to **Settings > Backups**
+2. Toggle the storage backend from **Local** to **S3**
+3. Fill in the required fields:
+   - **Bucket** -- the S3 bucket name
+   - **Region** -- the AWS region (e.g., `us-east-1`)
+   - **Access Key ID** -- IAM access key with S3 permissions
+   - **Secret Access Key** -- corresponding secret key (stored encrypted)
+4. Optional fields:
+   - **Prefix** -- key prefix for organizing backups (e.g., `backups/vectorflow`)
+   - **Endpoint URL** -- custom endpoint for MinIO or other S3-compatible services
+5. Click **Test Connection** to verify bucket access and write permissions
+6. Click **Save Storage Settings**
+
+### How it works
+
+- When S3 is configured, backups are uploaded to the S3 bucket immediately after creation. The local dump file is deleted after a successful upload to prevent disk exhaustion.
+- Each backup's storage location is recorded in the database (`s3://bucket/key` for S3, local path for disk).
+- Restoring from an S3-stored backup downloads the file temporarily, runs `pg_restore`, then deletes the temporary file.
+- The backup table shows a cloud icon for S3-stored backups and a disk icon for local backups.
+- Switching from S3 back to Local keeps your S3 credentials saved -- you can switch back without re-entering them.
+
+### Required S3 permissions
+
+The IAM user or role needs the following permissions on the target bucket:
+
+- `s3:HeadBucket` (connection test)
+- `s3:PutObject` (upload backups)
+- `s3:GetObject` (download for restore)
+- `s3:DeleteObject` (delete backups, cleanup test objects)
+- `s3:HeadObject` (check if backup exists)
+
+### MinIO and S3-compatible services
+
+For self-hosted S3-compatible services like MinIO, set the **Endpoint URL** field to the service address (e.g., `https://minio.internal:9000`). VectorFlow automatically enables path-style addressing when a custom endpoint is set.
+
 ## Automatic backups
 
 VectorFlow can run backups on a cron schedule with automatic retention cleanup.
