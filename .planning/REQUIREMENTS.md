@@ -16,9 +16,9 @@ Requirements for v1.2 Production-Grade Backups. Each maps to roadmap phases.
 
 ### Remote Storage
 
-- [ ] **S3-01**: User can configure S3-compatible storage (bucket, prefix, region, credentials) as the backup destination
-- [ ] **S3-02**: Backup files are uploaded to the configured S3 bucket after creation
-- [ ] **S3-03**: User can restore from a backup stored in S3 (downloaded and applied)
+- [x] **S3-01**: User can configure S3-compatible storage (bucket, prefix, region, credentials) as the backup destination
+- [x] **S3-02**: Backup files are uploaded to the configured S3 bucket after creation
+- [x] **S3-03**: User can restore from a backup stored in S3 (downloaded and applied)
 - [ ] **S3-04**: User can toggle between Local and S3 storage backends in settings with connection test and credential validation
 
 ### Restore Experience
@@ -66,9 +66,9 @@ Requirements for v1.2 Production-Grade Backups. Each maps to roadmap phases.
 | RELY-03 | Phase 12 | Complete |
 | BREG-02 | Phase 13 | Complete |
 | BREG-03 | Phase 13 | Complete |
-| S3-01 | Phase 14 | Pending |
-| S3-02 | Phase 14 | Pending |
-| S3-03 | Phase 14 | Pending |
+| S3-01 | Phase 14 | Complete |
+| S3-02 | Phase 14 | Complete |
+| S3-03 | Phase 14 | Complete |
 | S3-04 | Phase 14 | Pending |
 | REST-01 | Phase 15 | Pending |
 | REST-02 | Phase 15 | Pending |
