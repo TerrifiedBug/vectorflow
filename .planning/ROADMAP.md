@@ -26,7 +26,7 @@
 
 - [ ] **Phase 8: Pipeline Folders in Sidebar** - Move group tree from content area to a sliding sidebar panel for persistent navigation
 - [ ] **Phase 9: Alerts Page Categorization** - Separate actionable alerts from informational with filter tabs and badge counts
-- [ ] **Phase 10: Deployment Matrix Filters** - Add search, status, and tag filtering to the fleet deployment matrix
+- [x] **Phase 10: Deployment Matrix Filters** - Add search, status, and tag filtering to the fleet deployment matrix (completed 2026-03-27)
 - [ ] **Phase 11: Compliance Tags Rename** - Rename "Data Classification Tags" to "Compliance Tags" across all UI surfaces
 
 ## Phase Details
@@ -71,10 +71,10 @@ Plans:
   2. Deployment matrix toolbar has a status filter dropdown (Running, Stopped, Crashed) that filters matrix rows
   3. Deployment matrix toolbar has a tag filter for compliance tags that filters matrix rows
   4. Filter state (search, status, tags) persists in URL query params so filtered views are shareable and survive page refresh
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 10-01-PLAN.md — Backend tags extension, useMatrixFilters hook, and DeploymentMatrixToolbar component
-- [ ] 10-02-PLAN.md — Fleet page wiring, matrix modifications, and visual verification
+- [x] 10-02-PLAN.md — Fleet page wiring, matrix modifications, and visual verification
 **UI hint**: yes
 
 ### Phase 11: Compliance Tags Rename
@@ -84,7 +84,9 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Team settings page shows "Compliance Tags" instead of "Data Classification Tags"
   2. Pipeline toolbar, bulk action bar, and all related UI text use "Compliance Tags" consistently
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 11-01-PLAN.md — Rename "Classification Tags" to "Compliance Tags" in source code and docs
 **UI hint**: yes
 
 ## Progress
@@ -95,5 +97,5 @@ Plans:
 |-------|-----------|----------------|--------|-----------|
 | 8. Pipeline Folders in Sidebar | v1.1 | 1/2 | In Progress|  |
 | 9. Alerts Page Categorization | v1.1 | 0/2 | Planned | - |
-| 10. Deployment Matrix Filters | v1.1 | 1/2 | In Progress|  |
-| 11. Compliance Tags Rename | v1.1 | 0/0 | Not started | - |
+| 10. Deployment Matrix Filters | v1.1 | 2/2 | Complete    | 2026-03-27 |
+| 11. Compliance Tags Rename | v1.1 | 0/1 | Planned | - |
