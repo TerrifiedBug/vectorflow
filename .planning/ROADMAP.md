@@ -62,7 +62,10 @@ Plans:
   1. The backup list page queries the BackupRecord table instead of scanning the filesystem — entries never vanish between page loads
   2. Both scheduled and manual backups appear in the history list with status, size, duration, and timestamp
   3. A backup that was present on the previous page load is still present after refresh, even if the underlying file moved or the process restarted
-**Plans**: TBD
+**Plans:** 1/2 plans executed
+Plans:
+- [x] 13-01-PLAN.md — DB-backed listBackups, atomic delete, legacy import, retention fix, restore fallback, tests
+- [ ] 13-02-PLAN.md — UI table columns (Type, Status, Duration), failed backup display, docs update
 **UI hint**: yes
 
 ### Phase 14: S3 Remote Storage
@@ -93,7 +96,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 12. Backup Registry Foundation | 2/2 | Complete   | 2026-03-27 |
-| 13. Backup Listing & History | 0/? | Not started | - |
+| 12. Backup Registry Foundation | 2/2 | Complete    | 2026-03-27 |
+| 13. Backup Listing & History | 1/2 | In Progress|  |
 | 14. S3 Remote Storage | 0/? | Not started | - |
 | 15. Restore UX & Cleanup | 0/? | Not started | - |
