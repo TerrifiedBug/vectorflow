@@ -10,10 +10,14 @@ import {
   Download,
   AlertTriangle,
   Clock,
+  Cloud,
+  HardDrive,
+  PlugZap,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -98,12 +102,28 @@ export function BackupSettings() {
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
+  // Storage backend form state
+  const [storageBackend, setStorageBackend] = useState<"local" | "s3">("local");
+  const [s3Bucket, setS3Bucket] = useState("");
+  const [s3Region, setS3Region] = useState("us-east-1");
+  const [s3Prefix, setS3Prefix] = useState("");
+  const [s3AccessKeyId, setS3AccessKeyId] = useState("");
+  const [s3SecretAccessKey, setS3SecretAccessKey] = useState("");
+  const [s3Endpoint, setS3Endpoint] = useState("");
+
   useEffect(() => {
     if (settingsQuery.data) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setScheduleEnabled(settingsQuery.data.backupEnabled ?? false);
       setScheduleCron(settingsQuery.data.backupCron ?? "0 2 * * *");
       setRetentionCount(settingsQuery.data.backupRetentionCount ?? 7);
+      setStorageBackend((settingsQuery.data.backupStorageBackend as "local" | "s3") ?? "local");
+      setS3Bucket(settingsQuery.data.s3Bucket ?? "");
+      setS3Region(settingsQuery.data.s3Region ?? "us-east-1");
+      setS3Prefix(settingsQuery.data.s3Prefix ?? "");
+      setS3AccessKeyId(settingsQuery.data.s3AccessKeyId ?? "");
+      setS3SecretAccessKey(""); // Never pre-fill secret -- display masked value as placeholder
+      setS3Endpoint(settingsQuery.data.s3Endpoint ?? "");
     }
   }, [settingsQuery.data]);
 
@@ -157,10 +177,178 @@ export function BackupSettings() {
     }),
   );
 
+  const testS3Mutation = useMutation(
+    trpc.settings.testS3Connection.mutationOptions({
+      onSuccess: () => {
+        toast.success("S3 connection successful");
+      },
+      onError: (error) => {
+        toast.error(error.message || "S3 connection test failed");
+      },
+    }),
+  );
+
+  const updateStorageBackendMutation = useMutation(
+    trpc.settings.updateStorageBackend.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
+        toast.success("Storage backend updated");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to update storage backend");
+      },
+    }),
+  );
+
   if (settingsQuery.isError) return <QueryError message="Failed to load backup settings" onRetry={() => settingsQuery.refetch()} />;
 
   return (
     <div className="space-y-6">
+      {/* Storage Backend */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HardDrive className="h-5 w-5" />
+            Storage Backend
+          </CardTitle>
+          <CardDescription>
+            Choose where backup files are stored. S3-compatible storage works with AWS S3, MinIO, DigitalOcean Spaces, and Backblaze B2.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="storage-backend-toggle">
+              {storageBackend === "s3" ? (
+                <span className="flex items-center gap-2">
+                  <Cloud className="h-4 w-4" /> S3 Storage
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <HardDrive className="h-4 w-4" /> Local Storage
+                </span>
+              )}
+            </Label>
+            <Switch
+              id="storage-backend-toggle"
+              checked={storageBackend === "s3"}
+              onCheckedChange={(checked) => setStorageBackend(checked ? "s3" : "local")}
+            />
+          </div>
+
+          {storageBackend === "s3" && (
+            <div className="space-y-4 rounded-md border p-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="s3-bucket">Bucket *</Label>
+                  <Input
+                    id="s3-bucket"
+                    value={s3Bucket}
+                    onChange={(e) => setS3Bucket(e.target.value)}
+                    placeholder="my-backup-bucket"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="s3-region">Region *</Label>
+                  <Input
+                    id="s3-region"
+                    value={s3Region}
+                    onChange={(e) => setS3Region(e.target.value)}
+                    placeholder="us-east-1"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="s3-prefix">Prefix</Label>
+                  <Input
+                    id="s3-prefix"
+                    value={s3Prefix}
+                    onChange={(e) => setS3Prefix(e.target.value)}
+                    placeholder="backups/vectorflow"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="s3-endpoint">Endpoint URL</Label>
+                  <Input
+                    id="s3-endpoint"
+                    value={s3Endpoint}
+                    onChange={(e) => setS3Endpoint(e.target.value)}
+                    placeholder="https://minio.example.com:9000"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="s3-access-key">Access Key ID *</Label>
+                  <Input
+                    id="s3-access-key"
+                    value={s3AccessKeyId}
+                    onChange={(e) => setS3AccessKeyId(e.target.value)}
+                    placeholder="AKIAIOSFODNN7EXAMPLE"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="s3-secret-key">Secret Access Key *</Label>
+                  <Input
+                    id="s3-secret-key"
+                    type="password"
+                    value={s3SecretAccessKey}
+                    onChange={(e) => setS3SecretAccessKey(e.target.value)}
+                    placeholder={settingsQuery.data?.s3SecretAccessKey ? "Saved (enter new to change)" : "Enter secret access key"}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    testS3Mutation.mutate({
+                      bucket: s3Bucket,
+                      region: s3Region,
+                      prefix: s3Prefix,
+                      accessKeyId: s3AccessKeyId,
+                      secretAccessKey: s3SecretAccessKey,
+                      endpoint: s3Endpoint || undefined,
+                    })
+                  }
+                  disabled={testS3Mutation.isPending || !s3Bucket || !s3Region || !s3AccessKeyId || !s3SecretAccessKey}
+                >
+                  {testS3Mutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <PlugZap className="mr-2 h-4 w-4" />
+                  )}
+                  Test Connection
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <Button
+            onClick={() =>
+              updateStorageBackendMutation.mutate({
+                backend: storageBackend,
+                bucket: s3Bucket,
+                region: s3Region,
+                prefix: s3Prefix,
+                accessKeyId: s3AccessKeyId,
+                secretAccessKey: s3SecretAccessKey || "unchanged",
+                endpoint: s3Endpoint,
+              })
+            }
+            disabled={updateStorageBackendMutation.isPending}
+          >
+            {updateStorageBackendMutation.isPending && (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            )}
+            Save Storage Settings
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Backup Schedule */}
       <Card>
         <CardHeader>
@@ -310,6 +498,7 @@ export function BackupSettings() {
                   <TableHead>Status</TableHead>
                   <TableHead>Size</TableHead>
                   <TableHead>Duration</TableHead>
+                  <TableHead>Storage</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -330,6 +519,13 @@ export function BackupSettings() {
                     </TableCell>
                     <TableCell className="tabular-nums">
                       {formatDuration(backup.durationMs)}
+                    </TableCell>
+                    <TableCell>
+                      {backup.storageLocation?.startsWith("s3://") ? (
+                        <Cloud className="h-4 w-4 text-muted-foreground" aria-label="S3" />
+                      ) : (
+                        <HardDrive className="h-4 w-4 text-muted-foreground" aria-label="Local" />
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
