@@ -43,3 +43,12 @@ export const FLEET_METRICS_SET: ReadonlySet<string> = new Set(FLEET_METRIC_VALUE
 export function isFleetMetric(metric: string): boolean {
   return FLEET_METRICS_SET.has(metric);
 }
+
+/**
+ * Classify an alert metric into a display category.
+ * Informational = event-based metrics (fires inline, not threshold).
+ * Actionable = everything else (threshold + fleet metrics).
+ */
+export function getAlertCategory(metric: string): "actionable" | "informational" {
+  return isEventMetric(metric) ? "informational" : "actionable";
+}
