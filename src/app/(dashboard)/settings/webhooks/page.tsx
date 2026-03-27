@@ -47,7 +47,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { QueryError } from "@/components/query-error";
 import {
@@ -316,10 +315,6 @@ function EndpointRow({
   testPending: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-
-  const eventLabels = endpoint.eventTypes
-    .map((et) => WEBHOOK_EVENT_TYPES.find((e) => e.value === et)?.label ?? et)
-    .join(", ");
 
   return (
     <>
