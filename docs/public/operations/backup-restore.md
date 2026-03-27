@@ -18,6 +18,19 @@ Backups are full PostgreSQL dumps in compressed custom format (`pg_dump --format
 Backups do **not** include the Vector data directory (`/var/lib/vector/`) on agent nodes. Vector's internal state (e.g., file checkpoints, disk buffers) is managed by each agent independently.
 {% endhint %}
 
+## Integrity verification
+
+Every backup includes a SHA256 checksum computed after the database dump completes. Checksums are stored in the VectorFlow database alongside backup metadata.
+
+When you restore a backup, VectorFlow automatically verifies the checksum before applying it:
+
+- **Checksum matches** -- Restore proceeds normally
+- **Checksum mismatch** -- Restore is blocked with an error message indicating the file may be corrupt
+
+{% hint style="info" %}
+Backups created before this feature was added (legacy backups) do not have stored checksums. VectorFlow skips checksum verification for these backups and proceeds with the restore.
+{% endhint %}
+
 ## Automatic backups
 
 VectorFlow can run backups on a cron schedule with automatic retention cleanup.
@@ -157,3 +170,4 @@ VectorFlow tracks the number of database migrations in each backup's metadata. W
 3. **Test restores periodically** in a staging environment to verify your backups are valid.
 4. **Create a manual backup** before upgrading VectorFlow or making major configuration changes.
 5. **Monitor backup status** on the Settings page. Failed backups are logged with error details.
+6. **Check server logs for disk space warnings.** Before each backup, VectorFlow checks available disk space in `VF_BACKUP_DIR` and logs a warning if it drops below the configured threshold (default: 500 MB). Configure the threshold with the `VF_BACKUP_DISK_WARN_MB` environment variable.
