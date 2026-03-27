@@ -1,9 +1,9 @@
 /**
  * Shared badge color utilities. Single source of truth for all
- * classification, status, and data-display badge styling.
+ * compliance, status, and data-display badge styling.
  */
 
-/** Classification tag colors (PII, PHI, etc.) */
+/** Compliance tag colors (PII, PHI, etc.) */
 export function tagBadgeClass(tag: string): string {
   const upper = tag.toUpperCase();
   if (upper === "PII") return "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30";
