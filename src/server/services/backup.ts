@@ -8,6 +8,12 @@ import path from "path";
 import { prisma } from "@/lib/prisma";
 import { debugLog } from "@/lib/logger";
 import type { BackupRecord } from "@/generated/prisma";
+import {
+  getActiveBackend,
+  buildS3Key,
+  buildS3StorageLocation,
+  parseS3StorageLocation,
+} from "@/server/services/storage-backend";
 
 const execFileAsync = promisify(execFile);
 
@@ -253,6 +259,24 @@ export async function createBackup(
     // Write companion .meta.json (preserved for backward compat until Phase 13)
     await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2));
 
+    // Upload to active storage backend (S3 or local)
+    const storageSettings = await prisma.systemSettings.findUnique({
+      where: { id: "singleton" },
+      select: { backupStorageBackend: true, s3Bucket: true, s3Prefix: true },
+    });
+    const useS3 = storageSettings?.backupStorageBackend === "s3";
+    let storageLocation = dumpPath;
+
+    if (useS3) {
+      const backend = await getActiveBackend();
+      const s3Key = buildS3Key(storageSettings?.s3Prefix ?? "", dumpFilename);
+      await backend.upload(dumpPath, s3Key);
+      storageLocation = buildS3StorageLocation(storageSettings!.s3Bucket!, s3Key);
+      // Delete local copy after successful S3 upload to prevent disk exhaustion
+      await fs.unlink(dumpPath).catch(() => {});
+      await fs.unlink(metaPath).catch(() => {});
+    }
+
     // Update BackupRecord to success
     await prisma.backupRecord.update({
       where: { id: record.id },
@@ -265,6 +289,7 @@ export async function createBackup(
         lastMigration: migrationInfo.lastMigration,
         pgVersion,
         completedAt: new Date(),
+        storageLocation,
       },
     });
 
@@ -344,16 +369,29 @@ export async function deleteBackup(filename: string): Promise<void> {
     throw new Error("Invalid backup filename: must end with .dump");
   }
 
-  const dumpPath = path.join(BACKUP_DIR, safe);
-  const metaPath = path.join(
-    BACKUP_DIR,
-    safe.replace(/\.dump$/, ".meta.json"),
-  );
+  // Look up BackupRecord to determine storage location
+  const record = await prisma.backupRecord.findFirst({
+    where: { filename: safe },
+    select: { storageLocation: true },
+  });
 
-  await Promise.all([
-    fs.unlink(dumpPath).catch(() => {}),
-    fs.unlink(metaPath).catch(() => {}),
-  ]);
+  if (record?.storageLocation?.startsWith("s3://")) {
+    // S3 backup: delete from S3 via the active backend
+    const backend = await getActiveBackend();
+    const { key } = parseS3StorageLocation(record.storageLocation);
+    await backend.delete(key);
+  } else {
+    // Local backup: delete .dump and .meta.json files
+    const dumpPath = path.join(BACKUP_DIR, safe);
+    const metaPath = path.join(
+      BACKUP_DIR,
+      safe.replace(/\.dump$/, ".meta.json"),
+    );
+    await Promise.all([
+      fs.unlink(dumpPath).catch(() => {}),
+      fs.unlink(metaPath).catch(() => {}),
+    ]);
+  }
 
   // Delete the DB record (idempotent — deleteMany won't throw if missing)
   await prisma.backupRecord.deleteMany({ where: { filename: safe } });
@@ -449,81 +487,100 @@ export async function restoreFromBackup(filename: string): Promise<void> {
     throw new Error("Invalid backup filename: must end with .dump");
   }
 
-  const dumpPath = path.join(BACKUP_DIR, safe);
   const metaPath = path.join(
     BACKUP_DIR,
     safe.replace(/\.dump$/, ".meta.json"),
   );
-
-  // Verify the dump file exists
-  await fs.access(dumpPath);
 
   // Look up BackupRecord for checksum verification and metadata fallback
   const backupRecord = await prisma.backupRecord.findFirst({
     where: { filename: safe, status: "success" },
   });
 
-  // Read and validate metadata — fall back to BackupRecord if .meta.json is missing
-  let backupMeta: BackupMetadata | null = null;
+  // Determine if the backup is stored in S3 and download to temp if so
+  let dumpPath = path.join(BACKUP_DIR, safe);
+  let tempPath: string | null = null;
+
+  if (backupRecord?.storageLocation?.startsWith("s3://")) {
+    const backend = await getActiveBackend();
+    const { key } = parseS3StorageLocation(backupRecord.storageLocation);
+    tempPath = path.join(BACKUP_DIR, `s3-restore-${Date.now()}-${safe}`);
+    await ensureBackupDir();
+    await backend.download(key, tempPath);
+    dumpPath = tempPath;
+  } else {
+    // Verify the local dump file exists
+    await fs.access(dumpPath);
+  }
+
   try {
-    const raw = await fs.readFile(metaPath, "utf-8");
-    backupMeta = JSON.parse(raw) as BackupMetadata;
-  } catch {
-    // Fallback: read metadata from BackupRecord (Phase-12+ backups may not need .meta.json)
-    if (backupRecord) {
-      backupMeta = {
-        version: backupRecord.vfVersion ?? "unknown",
-        timestamp: backupRecord.startedAt.toISOString(),
-        migrationCount: backupRecord.migrationCount ?? 0,
-        lastMigration: backupRecord.lastMigration ?? "",
-        sizeBytes: Number(backupRecord.sizeBytes ?? 0),
-        pgVersion: backupRecord.pgVersion ?? "unknown",
-      };
-    } else {
+    // Read and validate metadata — fall back to BackupRecord if .meta.json is missing
+    let backupMeta: BackupMetadata | null = null;
+    try {
+      const raw = await fs.readFile(metaPath, "utf-8");
+      backupMeta = JSON.parse(raw) as BackupMetadata;
+    } catch {
+      // Fallback: read metadata from BackupRecord (Phase-12+ backups may not need .meta.json)
+      if (backupRecord) {
+        backupMeta = {
+          version: backupRecord.vfVersion ?? "unknown",
+          timestamp: backupRecord.startedAt.toISOString(),
+          migrationCount: backupRecord.migrationCount ?? 0,
+          lastMigration: backupRecord.lastMigration ?? "",
+          sizeBytes: Number(backupRecord.sizeBytes ?? 0),
+          pgVersion: backupRecord.pgVersion ?? "unknown",
+        };
+      } else {
+        throw new Error(
+          "Backup metadata file not found or unreadable and no BackupRecord exists"
+        );
+      }
+    }
+
+    // Version compatibility check: block if backup has more migrations than current
+    const currentMigrations = await getMigrationInfo();
+    if (backupMeta.migrationCount > currentMigrations.count) {
       throw new Error(
-        "Backup metadata file not found or unreadable and no BackupRecord exists"
+        `Backup has ${backupMeta.migrationCount} migrations but current version only has ${currentMigrations.count}. ` +
+          `Upgrade VectorFlow before restoring this backup.`,
       );
     }
-  }
 
-  // Version compatibility check: block if backup has more migrations than current
-  const currentMigrations = await getMigrationInfo();
-  if (backupMeta.migrationCount > currentMigrations.count) {
-    throw new Error(
-      `Backup has ${backupMeta.migrationCount} migrations but current version only has ${currentMigrations.count}. ` +
-        `Upgrade VectorFlow before restoring this backup.`,
+    // Verify checksum against BackupRecord if one exists (RELY-03)
+    if (backupRecord?.checksum) {
+      const currentChecksum = await computeChecksum(dumpPath);
+      if (currentChecksum !== backupRecord.checksum) {
+        throw new Error(
+          "Backup file checksum mismatch -- file may be corrupt. " +
+          `Expected: ${backupRecord.checksum.slice(0, 16)}..., Got: ${currentChecksum.slice(0, 16)}...`
+        );
+      }
+    }
+    // If no BackupRecord exists (legacy backup created before Phase 12), skip checksum verification
+
+    // Create a safety backup before restoring
+    await createBackup("pre_restore");
+
+    // Run pg_restore
+    const db = parseDatabaseUrl();
+    await execFileAsync(
+      "pg_restore",
+      ["--clean", "--if-exists", ...pgConnectionArgs(db), dumpPath],
+      {
+        env: { ...process.env, PGPASSWORD: db.password },
+        timeout: PG_RESTORE_TIMEOUT_MS,
+      },
     );
-  }
 
-  // Verify checksum against BackupRecord if one exists (RELY-03)
-  if (backupRecord?.checksum) {
-    const currentChecksum = await computeChecksum(dumpPath);
-    if (currentChecksum !== backupRecord.checksum) {
-      throw new Error(
-        "Backup file checksum mismatch -- file may be corrupt. " +
-        `Expected: ${backupRecord.checksum.slice(0, 16)}..., Got: ${currentChecksum.slice(0, 16)}...`
-      );
+    // Exit the process so Docker restarts the container
+    console.log("[backup] Restore complete — exiting for container restart.");
+    process.exit(0);
+  } finally {
+    // Always delete the S3 temp file after restore (success or failure)
+    if (tempPath) {
+      await fs.unlink(tempPath).catch(() => {});
     }
   }
-  // If no BackupRecord exists (legacy backup created before Phase 12), skip checksum verification
-
-  // Create a safety backup before restoring
-  await createBackup("pre_restore");
-
-  // Run pg_restore
-  const db = parseDatabaseUrl();
-  await execFileAsync(
-    "pg_restore",
-    ["--clean", "--if-exists", ...pgConnectionArgs(db), dumpPath],
-    {
-      env: { ...process.env, PGPASSWORD: db.password },
-      timeout: PG_RESTORE_TIMEOUT_MS,
-    },
-  );
-
-  // Exit the process so Docker restarts the container
-  console.log("[backup] Restore complete — exiting for container restart.");
-  process.exit(0);
 }
 
 // ---------------------------------------------------------------------------
