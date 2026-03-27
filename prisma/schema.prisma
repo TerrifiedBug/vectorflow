@@ -70,6 +70,7 @@ model Team {
   vrlSnippets          VrlSnippet[]
   alertRules           AlertRule[]
   availableTags        Json?         @default("[]")   // string[] of admin-defined classification tags
+  webhookEndpoints     WebhookEndpoint[]
 
   // AI-powered suggestions configuration
   aiProvider           String?       // "openai" | "anthropic" | "custom"
@@ -748,6 +749,8 @@ enum AlertMetric {
   certificate_expiring
   node_joined
   node_left
+  // Phase 5 event — enum value added early so subscriptions can be created
+  promotion_completed
 }
 
 enum AlertCondition {
@@ -798,6 +801,41 @@ model AlertWebhook {
   updatedAt     DateTime    @updatedAt
 
   @@index([environmentId])
+}
+
+model WebhookEndpoint {
+  id              String            @id @default(cuid())
+  teamId          String
+  team            Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name            String
+  url             String
+  eventTypes      AlertMetric[]
+  encryptedSecret String?
+  enabled         Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deliveries      WebhookDelivery[]
+
+  @@index([teamId])
+}
+
+model WebhookDelivery {
+  id                String          @id @default(cuid())
+  webhookEndpointId String
+  webhookEndpoint   WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
+  eventType         AlertMetric
+  msgId             String
+  payload           Json
+  status            String          // 'pending' | 'success' | 'failed' | 'dead_letter'
+  statusCode        Int?
+  errorMessage      String?
+  attemptNumber     Int             @default(1)
+  nextRetryAt       DateTime?
+  requestedAt       DateTime        @default(now())
+  completedAt       DateTime?
+
+  @@index([webhookEndpointId, requestedAt])
+  @@index([status, nextRetryAt])
 }
 
 model AlertEvent {
