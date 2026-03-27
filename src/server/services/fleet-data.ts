@@ -47,10 +47,9 @@ export interface NodeCapacity {
 export interface PipelineDataLoss {
   pipelineId: string;
   pipelineName: string;
-  nodeId: string | null;
-  nodeName: string | null;
   eventsIn: number;
   eventsOut: number;
+  eventsDiscarded: number;
   lossRate: number;
 }
 
@@ -292,43 +291,41 @@ export async function getDataLoss(
     {
       pipeline_id: string;
       pipeline_name: string;
-      node_id: string | null;
-      node_name: string | null;
       events_in: bigint | null;
       events_out: bigint | null;
+      events_discarded: bigint | null;
     }[]
   >(Prisma.sql`
     SELECT
-      p."id"              AS pipeline_id,
-      p."name"            AS pipeline_name,
-      n."id"              AS node_id,
-      n."name"            AS node_name,
-      SUM(pm."eventsIn")  AS events_in,
-      SUM(pm."eventsOut") AS events_out
+      p."id"                      AS pipeline_id,
+      p."name"                    AS pipeline_name,
+      SUM(pm."eventsIn")          AS events_in,
+      SUM(pm."eventsOut")         AS events_out,
+      SUM(pm."eventsDiscarded")   AS events_discarded
     FROM "PipelineMetric" pm
     JOIN "Pipeline" p ON p."id" = pm."pipelineId"
-    LEFT JOIN "VectorNode" n ON n."id" = pm."nodeId"
     WHERE pm."componentId" IS NULL
       AND pm."timestamp" >= ${since}
       AND p."environmentId" = ${environmentId}
-    GROUP BY p."id", p."name", n."id", n."name"
-    ORDER BY p."name", n."name"
+    GROUP BY p."id", p."name"
+    ORDER BY p."name"
   `);
 
   const results: PipelineDataLoss[] = [];
   for (const r of rows) {
     const eventsIn = Number(r.events_in ?? 0);
     const eventsOut = Number(r.events_out ?? 0);
+    const eventsDiscarded = Number(r.events_discarded ?? 0);
     if (eventsIn === 0) continue;
-    const lossRate = (eventsIn - eventsOut) / eventsIn;
+    const actualLoss = eventsIn - eventsOut - eventsDiscarded;
+    const lossRate = actualLoss > 0 ? actualLoss / eventsIn : 0;
     if (lossRate <= threshold) continue;
     results.push({
       pipelineId: r.pipeline_id,
       pipelineName: r.pipeline_name,
-      nodeId: r.node_id,
-      nodeName: r.node_name,
       eventsIn,
       eventsOut,
+      eventsDiscarded,
       lossRate: Math.round(lossRate * 10000) / 10000,
     });
   }
