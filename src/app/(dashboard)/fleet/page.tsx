@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
+import { useMatrixFilters } from "@/hooks/use-matrix-filters";
+import { DeploymentMatrixToolbar } from "@/components/fleet/DeploymentMatrixToolbar";
+import { aggregateProcessStatus } from "@/lib/pipeline-status";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,6 +66,76 @@ export default function FleetPage() {
 
   // Pick the first environment if none is selected yet
   const activeEnvId = selectedEnvironmentId || environments[0]?.id || "";
+
+  const router = useRouter();
+
+  // --- Matrix filter state (URL-synced) ---
+  const {
+    search: matrixSearch,
+    statusFilter: matrixStatusFilter,
+    tagFilter: matrixTagFilter,
+    hasActiveFilters: matrixHasActiveFilters,
+    setSearch: setMatrixSearch,
+    setStatusFilter: setMatrixStatusFilter,
+    setTagFilter: setMatrixTagFilter,
+  } = useMatrixFilters();
+
+  // Same query as DeploymentMatrix — React Query deduplicates by key
+  const matrixQuery = useQuery({
+    ...trpc.fleet.listWithPipelineStatus.queryOptions({ environmentId: activeEnvId }),
+    enabled: !!activeEnvId,
+  });
+
+  // Derive available tags from all deployed pipelines
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    for (const p of matrixQuery.data?.deployedPipelines ?? []) {
+      for (const t of (p.tags as string[]) ?? []) {
+        tagSet.add(t);
+      }
+    }
+    return [...tagSet].sort();
+  }, [matrixQuery.data?.deployedPipelines]);
+
+  // Compute filtered pipelines with AND logic across search, status, and tag filters
+  const filteredDeployedPipelines = useMemo(() => {
+    let result = matrixQuery.data?.deployedPipelines ?? [];
+    const nodes = matrixQuery.data?.nodes ?? [];
+
+    if (matrixSearch) {
+      const lc = matrixSearch.toLowerCase();
+      result = result.filter((p) => p.name.toLowerCase().includes(lc));
+    }
+
+    if (matrixStatusFilter.length > 0) {
+      result = result.filter((p) => {
+        const nodeStatuses = nodes.flatMap((n) =>
+          n.pipelineStatuses.filter((s) => s.pipelineId === p.id),
+        );
+        const agg = aggregateProcessStatus(nodeStatuses);
+        // statusFilter values are PascalCase ("Running"), agg is SCREAMING_SNAKE ("RUNNING")
+        return agg !== null && matrixStatusFilter.map((s) => s.toUpperCase()).includes(agg);
+      });
+    }
+
+    if (matrixTagFilter.length > 0) {
+      result = result.filter((p) => {
+        const pTags = (p.tags as string[]) ?? [];
+        return matrixTagFilter.some((t) => pTags.includes(t));
+      });
+    }
+
+    return result;
+  }, [matrixQuery.data, matrixSearch, matrixStatusFilter, matrixTagFilter]);
+
+  // Clear all matrix filters when environment changes (D-07)
+  const prevEnvRef = useRef(activeEnvId);
+  useEffect(() => {
+    if (prevEnvRef.current !== activeEnvId) {
+      prevEnvRef.current = activeEnvId;
+      router.replace("/fleet", { scroll: false });
+    }
+  }, [activeEnvId, router]);
 
   // --- Filter state ---
   const [search, setSearch] = useState("");
@@ -464,7 +538,22 @@ export default function FleetPage() {
       {activeEnvId && (
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">Pipeline Deployment Matrix</h3>
-          <DeploymentMatrix environmentId={activeEnvId} />
+          {matrixQuery.data && (
+            <DeploymentMatrixToolbar
+              search={matrixSearch}
+              onSearchChange={setMatrixSearch}
+              statusFilter={matrixStatusFilter}
+              onStatusFilterChange={setMatrixStatusFilter}
+              tagFilter={matrixTagFilter}
+              onTagFilterChange={setMatrixTagFilter}
+              availableTags={availableTags}
+            />
+          )}
+          <DeploymentMatrix
+            environmentId={activeEnvId}
+            filteredPipelines={matrixQuery.data ? filteredDeployedPipelines : undefined}
+            hasActiveFilters={matrixHasActiveFilters}
+          />
         </div>
       )}
 

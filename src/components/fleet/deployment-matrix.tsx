@@ -25,12 +25,16 @@ interface DeploymentMatrixProps {
   range?: TimeRange;
   lossThreshold?: number;
   throughputData?: MatrixCellThroughput[];
+  filteredPipelines?: Array<{ id: string; name: string; latestVersion: number; tags: string[] }>;
+  hasActiveFilters?: boolean;
 }
 
 export function DeploymentMatrix({
   environmentId,
   lossThreshold = 0.05,
   throughputData,
+  filteredPipelines,
+  hasActiveFilters = false,
 }: DeploymentMatrixProps) {
   const trpc = useTRPC();
   const polling = usePollingInterval(15_000);
@@ -52,7 +56,7 @@ export function DeploymentMatrix({
 
   const data = matrixQuery.data;
 
-  if (!data || data.deployedPipelines.length === 0) {
+  if (!data || (data.deployedPipelines.length === 0 && !hasActiveFilters)) {
     return (
       <div className="flex items-center justify-center rounded-lg border border-dashed p-8 text-center">
         <p className="text-sm text-muted-foreground">No pipelines deployed</p>
@@ -60,7 +64,8 @@ export function DeploymentMatrix({
     );
   }
 
-  const { nodes, deployedPipelines } = data;
+  const { nodes } = data;
+  const displayPipelines = filteredPipelines ?? data.deployedPipelines;
 
   if (nodes.length === 0) {
     return null;
@@ -101,8 +106,18 @@ export function DeploymentMatrix({
             ))}
           </tr>
         </thead>
+        {displayPipelines.length === 0 && hasActiveFilters ? (
+          <tbody>
+            <tr>
+              <td colSpan={nodes.length + 1} className="px-3 py-8 text-center">
+                <p className="text-sm font-medium text-muted-foreground">No matching pipelines</p>
+                <p className="text-xs text-muted-foreground mt-1">Try adjusting your search or filters.</p>
+              </td>
+            </tr>
+          </tbody>
+        ) : (
         <tbody className="divide-y">
-          {deployedPipelines.map((pipeline) => (
+          {displayPipelines.map((pipeline) => (
             <tr key={pipeline.id} className="transition-colors hover:bg-muted/50">
               <td className="px-3 py-2 font-medium">
                 <div className="flex items-center gap-2">
@@ -198,6 +213,7 @@ export function DeploymentMatrix({
             </tr>
           ))}
         </tbody>
+        )}
       </table>
     </div>
   );
