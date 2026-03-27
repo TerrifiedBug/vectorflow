@@ -358,9 +358,6 @@ describe("restoreFromBackup - checksum verification", () => {
     mockCreateReadStream.mockImplementation(() =>
       makeReadableStream(Buffer.from("hello world")) as never
     );
-
-    // Mock process.exit to prevent actual test process exit
-    vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
   });
 
   it("verifies checksum before pg_restore", async () => {
@@ -370,7 +367,8 @@ describe("restoreFromBackup - checksum verification", () => {
     } as never);
 
     // Should not throw checksum error — proceeds to safety backup + pg_restore
-    await expect(backupModule.restoreFromBackup(testFilename)).resolves.toBeUndefined();
+    const result = await backupModule.restoreFromBackup(testFilename);
+    expect(result).toEqual({ success: true });
 
     // Safety backup was created (BackupRecord.create called with pre_restore type)
     expect(prismaMock.backupRecord.create).toHaveBeenCalledWith(
@@ -399,7 +397,8 @@ describe("restoreFromBackup - checksum verification", () => {
     prismaMock.backupRecord.findFirst.mockResolvedValue(null);
 
     // Should not throw a checksum error — proceeds to safety backup + pg_restore
-    await expect(backupModule.restoreFromBackup(testFilename)).resolves.toBeUndefined();
+    const result = await backupModule.restoreFromBackup(testFilename);
+    expect(result).toEqual({ success: true });
 
     // Safety backup was created (BackupRecord.create called with pre_restore type)
     expect(prismaMock.backupRecord.create).toHaveBeenCalledWith(
@@ -758,8 +757,6 @@ describe("restoreFromBackup with S3 backend", () => {
       s3Bucket: null,
       s3Prefix: null,
     } as never);
-
-    vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
   });
 
   it("downloads from S3 before pg_restore for S3 backups", async () => {
@@ -785,9 +782,10 @@ describe("restoreFromBackup with S3 backend", () => {
       exists: vi.fn(),
     });
 
-    await backupModule.restoreFromBackup("backup.dump");
+    const result = await backupModule.restoreFromBackup("backup.dump");
 
     expect(mockDownload).toHaveBeenCalled();
+    expect(result).toEqual({ success: true });
   });
 });
 
@@ -823,6 +821,406 @@ describe("runRetentionCleanup (DB-backed)", () => {
     });
     // File should also be unlinked
     expect(fsMock.unlink).toHaveBeenCalled();
+  });
+});
+
+// ─── previewBackup ────────────────────────────────────────────────────────────
+
+describe("previewBackup", () => {
+  const testFilename = "vectorflow-2025-01-01T02-00-00-000Z.dump";
+
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+
+    process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/testdb";
+
+    fsMock.access = vi.fn().mockResolvedValue(undefined);
+    fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+
+    // Default: pg_restore --list returns table listing
+    mockExecFile.mockImplementation(
+      (_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
+        const stdout = [
+          "2084; 0 0 COMMENT - EXTENSION plpgsql",
+          "270; 1259 16384 TABLE public User postgres",
+          "1259; 0 32768 TABLE DATA public User postgres",
+          "1260; 0 32769 TABLE DATA public Team postgres",
+          "1261; 0 32770 TABLE DATA public Pipeline postgres",
+        ].join("\n");
+        (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+          null,
+          { stdout, stderr: "" }
+        );
+      }
+    );
+  });
+
+  it("returns preview with tables from pg_restore --list for local backup", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      id: "rec-1",
+      filename: testFilename,
+      status: "success",
+      storageLocation: "/backups/" + testFilename,
+      vfVersion: "1.2.0",
+      migrationCount: 5,
+      lastMigration: "20250101_add_thing",
+      sizeBytes: BigInt(10240),
+      pgVersion: "16.1",
+      startedAt: new Date("2025-01-01T02:00:00Z"),
+    } as never);
+
+    const result = await backupModule.previewBackup(testFilename);
+
+    expect(result.filename).toBe(testFilename);
+    expect(result.vfVersion).toBe("1.2.0");
+    expect(result.migrationCount).toBe(5);
+    expect(result.lastMigration).toBe("20250101_add_thing");
+    expect(result.sizeBytes).toBe(10240);
+    expect(result.pgVersion).toBe("16.1");
+    expect(result.startedAt).toEqual(new Date("2025-01-01T02:00:00Z"));
+    expect(result.tablesPresent).toContain("User");
+    expect(result.tablesPresent).toContain("Team");
+    expect(result.tablesPresent).toContain("Pipeline");
+  });
+
+  it("throws when record not found", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue(null);
+
+    await expect(backupModule.previewBackup(testFilename)).rejects.toThrow(
+      "Backup record not found or not successful"
+    );
+  });
+
+  it("throws when record is not status=success", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue(null);
+
+    await expect(backupModule.previewBackup(testFilename)).rejects.toThrow(
+      "Backup record not found or not successful"
+    );
+  });
+
+  it("downloads S3 backup to temp and cleans up in finally block", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      id: "rec-s3",
+      filename: testFilename,
+      status: "success",
+      storageLocation: "s3://my-bucket/backups/" + testFilename,
+      vfVersion: "1.2.0",
+      migrationCount: 3,
+      lastMigration: "20250101_init",
+      sizeBytes: BigInt(8192),
+      pgVersion: "16.1",
+      startedAt: new Date("2025-01-01T02:00:00Z"),
+    } as never);
+
+    fsMock.mkdir = vi.fn().mockResolvedValue(undefined);
+
+    const mockDownload = vi.fn().mockResolvedValue(undefined);
+    mockGetActiveBackend.mockResolvedValue({
+      upload: vi.fn(),
+      download: mockDownload,
+      delete: vi.fn(),
+      exists: vi.fn(),
+    });
+
+    await backupModule.previewBackup(testFilename);
+
+    expect(mockDownload).toHaveBeenCalled();
+    // temp file should be cleaned up
+    expect(fsMock.unlink).toHaveBeenCalled();
+  });
+
+  it("deduplicates table names from pg_restore --list output", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      id: "rec-1",
+      filename: testFilename,
+      status: "success",
+      storageLocation: "/backups/" + testFilename,
+      vfVersion: "1.0.0",
+      migrationCount: 1,
+      lastMigration: "20250101_init",
+      sizeBytes: BigInt(1024),
+      pgVersion: "16.1",
+      startedAt: new Date("2025-01-01T02:00:00Z"),
+    } as never);
+
+    // pg_restore --list with duplicate TABLE DATA entries
+    mockExecFile.mockImplementation(
+      (_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
+        const stdout = [
+          "1259; 0 32768 TABLE DATA public User postgres",
+          "1260; 0 32769 TABLE DATA public User postgres", // duplicate
+        ].join("\n");
+        (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+          null,
+          { stdout, stderr: "" }
+        );
+      }
+    );
+
+    const result = await backupModule.previewBackup(testFilename);
+
+    // Deduplicated
+    expect(result.tablesPresent.filter((t) => t === "User")).toHaveLength(1);
+  });
+});
+
+// ─── restoreFromBackup - graceful ────────────────────────────────────────────
+
+describe("restoreFromBackup - graceful", () => {
+  const testFilename = "vectorflow-2025-01-01T02-00-00-000Z.dump";
+
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+
+    process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/testdb";
+
+    fsMock.access = vi.fn().mockResolvedValue(undefined);
+    fsMock.readFile = vi.fn().mockRejectedValue(new Error("ENOENT"));
+    fsMock.readdir = vi.fn().mockResolvedValue(["20240101000000_init"]);
+    fsMock.mkdir = vi.fn().mockResolvedValue(undefined);
+    fsMock.statfs = vi.fn().mockResolvedValue({ bavail: BigInt(200000), bsize: BigInt(4096) });
+    fsMock.stat = vi.fn().mockResolvedValue({ size: 1024 });
+    fsMock.writeFile = vi.fn().mockResolvedValue(undefined);
+    fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+
+    mockExecFile.mockImplementation(
+      (_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
+        (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+          null,
+          { stdout: "16.1", stderr: "" }
+        );
+      }
+    );
+
+    prismaMock.backupRecord.create.mockResolvedValue({
+      id: "rec-safety",
+      filename: "vectorflow-safety.dump",
+      status: "in_progress",
+      type: "pre_restore",
+      storageLocation: "/backups/vectorflow-safety.dump",
+      vfVersion: "dev",
+      sizeBytes: null,
+      durationMs: null,
+      checksum: null,
+      migrationCount: null,
+      lastMigration: null,
+      pgVersion: null,
+      error: null,
+      startedAt: new Date(),
+      completedAt: null,
+    } as never);
+    prismaMock.backupRecord.update.mockResolvedValue({} as never);
+    prismaMock.systemSettings.update.mockResolvedValue({} as never);
+    prismaMock.systemSettings.findUnique.mockResolvedValue({
+      backupStorageBackend: "local",
+      s3Bucket: null,
+      s3Prefix: null,
+    } as never);
+
+    mockCreateReadStream.mockImplementation(() =>
+      makeReadableStream(Buffer.from("hello world")) as never
+    );
+  });
+
+  it("returns { success: true } instead of calling process.exit", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
+
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      id: "rec-1",
+      filename: testFilename,
+      status: "success",
+      checksum: null,
+      migrationCount: 1,
+      lastMigration: "20240101000000_init",
+      vfVersion: "1.0.0",
+      pgVersion: "16.1",
+      sizeBytes: BigInt(1024),
+      startedAt: new Date("2025-01-01T02:00:00Z"),
+      storageLocation: "/backups/" + testFilename,
+    } as never);
+
+    const result = await backupModule.restoreFromBackup(testFilename);
+
+    expect(result).toEqual({ success: true });
+    // process.exit should NOT be called
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("throws if restoreInProgress is true (concurrent restore)", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      id: "rec-1",
+      filename: testFilename,
+      status: "success",
+      checksum: null,
+      migrationCount: 1,
+      lastMigration: "20240101000000_init",
+      vfVersion: "1.0.0",
+      pgVersion: "16.1",
+      sizeBytes: BigInt(1024),
+      startedAt: new Date("2025-01-01T02:00:00Z"),
+      storageLocation: "/backups/" + testFilename,
+    } as never);
+
+    // Simulate a restore already in progress by starting one and not letting it finish
+    let firstResolve!: () => void;
+    const blockPromise = new Promise<void>((resolve) => {
+      firstResolve = resolve;
+    });
+
+    // Make pg_restore block until we resolve manually
+    let callCount = 0;
+    mockExecFile.mockImplementation(
+      (_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
+        callCount++;
+        if (callCount === 1) {
+          // pg_dump for safety backup — succeed immediately
+          (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+            null,
+            { stdout: "16.1", stderr: "" }
+          );
+        } else if (callCount === 2) {
+          // psql for getPgVersion in safety backup
+          (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+            null,
+            { stdout: "16.1", stderr: "" }
+          );
+        } else {
+          // pg_restore — block until we're done testing
+          blockPromise.then(() => {
+            (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+              null,
+              { stdout: "", stderr: "" }
+            );
+          });
+        }
+      }
+    );
+
+    // Start first restore (will block at pg_restore)
+    const firstRestore = backupModule.restoreFromBackup(testFilename);
+
+    // Give it a tick to start executing and set restoreInProgress = true
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Second restore attempt should throw
+    await expect(backupModule.restoreFromBackup(testFilename)).rejects.toThrow(
+      "A restore is already in progress"
+    );
+
+    // Clean up: unblock the first restore
+    firstResolve();
+    await firstRestore.catch(() => {});
+  });
+});
+
+// ─── runOrphanCleanup ─────────────────────────────────────────────────────────
+
+describe("runOrphanCleanup", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+
+    fsMock.readdir = vi.fn().mockResolvedValue([]);
+    fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+    fsMock.access = vi.fn().mockResolvedValue(undefined);
+
+    prismaMock.backupRecord.findFirst.mockResolvedValue(null);
+    prismaMock.backupRecord.findMany.mockResolvedValue([]);
+    prismaMock.backupRecord.update.mockResolvedValue({} as never);
+  });
+
+  it("deletes .dump files in BACKUP_DIR without matching BackupRecord", async () => {
+    fsMock.readdir = vi.fn().mockResolvedValue(["orphan.dump", "orphan2.dump"]);
+    prismaMock.backupRecord.findFirst.mockResolvedValue(null); // no record for either
+
+    const result = await backupModule.runOrphanCleanup();
+
+    expect(fsMock.unlink).toHaveBeenCalledTimes(2);
+    expect(result.filesDeleted).toBe(2);
+  });
+
+  it("ignores non-.dump files in BACKUP_DIR", async () => {
+    fsMock.readdir = vi.fn().mockResolvedValue(["orphan.meta.json", "orphan.dump"]);
+    prismaMock.backupRecord.findFirst
+      .mockResolvedValueOnce(null) // for orphan.dump — no record
+      .mockResolvedValueOnce(null);
+
+    const result = await backupModule.runOrphanCleanup();
+
+    // Only orphan.dump should be deleted (not .meta.json)
+    expect(result.filesDeleted).toBe(1);
+  });
+
+  it("marks records as orphaned when local file is missing", async () => {
+    prismaMock.backupRecord.findMany.mockResolvedValue([
+      {
+        id: "rec-1",
+        filename: "vectorflow-missing.dump",
+        storageLocation: "/backups/vectorflow-missing.dump",
+      },
+    ] as never);
+
+    // Local file does NOT exist
+    fsMock.access = vi.fn().mockRejectedValue(new Error("ENOENT"));
+
+    const result = await backupModule.runOrphanCleanup();
+
+    expect(prismaMock.backupRecord.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "rec-1" },
+        data: { status: "orphaned" },
+      })
+    );
+    expect(result.recordsOrphaned).toBe(1);
+  });
+
+  it("uses backend.exists for S3 records and marks as orphaned when S3 object missing", async () => {
+    prismaMock.backupRecord.findMany.mockResolvedValue([
+      {
+        id: "rec-s3",
+        filename: "vectorflow-s3-missing.dump",
+        storageLocation: "s3://my-bucket/backups/vectorflow-s3-missing.dump",
+      },
+    ] as never);
+
+    const mockExists = vi.fn().mockResolvedValue(false); // S3 object missing
+    mockGetActiveBackend.mockResolvedValue({
+      upload: vi.fn(),
+      download: vi.fn(),
+      delete: vi.fn(),
+      exists: mockExists,
+    });
+
+    const result = await backupModule.runOrphanCleanup();
+
+    expect(mockExists).toHaveBeenCalledWith("backups/vectorflow-s3-missing.dump");
+    expect(prismaMock.backupRecord.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "rec-s3" },
+        data: { status: "orphaned" },
+      })
+    );
+    expect(result.recordsOrphaned).toBe(1);
+  });
+
+  it("returns { filesDeleted: 0, recordsOrphaned: 0 } when nothing to clean", async () => {
+    fsMock.readdir = vi.fn().mockResolvedValue(["existing.dump"]);
+    prismaMock.backupRecord.findFirst.mockResolvedValue({ id: "rec-1" } as never);
+    prismaMock.backupRecord.findMany.mockResolvedValue([
+      {
+        id: "rec-1",
+        filename: "existing.dump",
+        storageLocation: "/backups/existing.dump",
+      },
+    ] as never);
+    fsMock.access = vi.fn().mockResolvedValue(undefined); // file exists
+
+    const result = await backupModule.runOrphanCleanup();
+
+    expect(result).toEqual({ filesDeleted: 0, recordsOrphaned: 0 });
   });
 });
 
@@ -884,8 +1282,6 @@ describe("restoreFromBackup - BackupRecord fallback", () => {
     mockCreateReadStream.mockImplementation(() =>
       makeReadableStream(Buffer.from("hello world")) as never
     );
-
-    vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
   });
 
   it("falls back to BackupRecord when .meta.json is missing", async () => {
@@ -904,6 +1300,7 @@ describe("restoreFromBackup - BackupRecord fallback", () => {
     } as never);
 
     // Should NOT throw "Backup metadata file not found" — should fall back to BackupRecord
-    await expect(backupModule.restoreFromBackup(testFilename)).resolves.toBeUndefined();
+    const result = await backupModule.restoreFromBackup(testFilename);
+    expect(result).toEqual({ success: true });
   });
 });
