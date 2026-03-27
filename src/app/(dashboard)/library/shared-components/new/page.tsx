@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
-import { VECTOR_CATALOG } from "@/lib/vector/catalog";
+import { getVectorCatalog } from "@/lib/vector/catalog";
 import { toast } from "sonner";
 import Link from "next/link";
 import { ArrowLeft, ChevronDown, Loader2, Plus, Search } from "lucide-react";
@@ -84,9 +84,9 @@ export default function NewSharedComponentPage() {
   const [config, setConfig] = useState<Record<string, unknown>>({});
 
   const filteredCatalog = useMemo(() => {
-    if (!search) return VECTOR_CATALOG;
+    if (!search) return getVectorCatalog();
     const q = search.toLowerCase();
-    return VECTOR_CATALOG.filter(
+    return getVectorCatalog().filter(
       (c) =>
         c.displayName.toLowerCase().includes(q) ||
         c.type.toLowerCase().includes(q) ||

@@ -193,6 +193,7 @@ describe("SSERegistry", () => {
     expect(text).toBe(": keepalive\n\n");
   });
 
+  // PERF-02: Ghost connections detected and evicted within one keepalive interval (30s)
   it("keepalive removes dead connections", () => {
     const registry = new SSERegistry();
     const ctrl = mockController();

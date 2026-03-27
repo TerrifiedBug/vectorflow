@@ -479,6 +479,50 @@ Common error codes:
 
 ---
 
+## OpenAPI Specification
+
+VectorFlow provides a machine-readable [OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.0) specification covering all REST v1 endpoints and key tRPC procedures.
+
+### Fetching the spec
+
+```bash
+curl -s https://vectorflow.example.com/api/v1/openapi.json | jq .info
+```
+
+The spec is served at `/api/v1/openapi.json` with CORS enabled — you can fetch it from any origin without credentials.
+
+### Importing into tools
+
+**Postman:** File > Import > paste URL `https://vectorflow.example.com/api/v1/openapi.json`
+
+**Swagger UI / Stoplight:** Point to the spec URL or paste the JSON content.
+
+### Client generation
+
+Generate a typed API client in any language using [openapi-generator](https://openapi-generator.tech/):
+
+```bash
+npx @openapitools/openapi-generator-cli generate \
+  -i https://vectorflow.example.com/api/v1/openapi.json \
+  -g python \
+  -o ./vectorflow-client
+```
+
+### What's included
+
+The spec documents two API surfaces:
+
+| Surface | Auth | Endpoints |
+|---------|------|-----------|
+| REST v1 (`/api/v1/*`) | Service account Bearer token | Pipeline CRUD, deploy, rollback, nodes, secrets, alerts, audit |
+| tRPC (`/api/trpc/*`) | Session cookie | Pipeline management, fleet, environments, secrets, deploy, alerts, service accounts |
+
+{% hint style="info" %}
+**tRPC encoding note:** tRPC endpoints use [SuperJSON](https://github.com/blitz-js/superjson) encoding. For queries, input is URL-encoded JSON in `?input=` (wrap as `{"json": <input>}`). For mutations, the body is `{"json": <input>}`. Using a tRPC client is recommended for full type safety; the OpenAPI spec is provided for discoverability and non-TypeScript integrations.
+{% endhint %}
+
+---
+
 ## REST API (v1)
 
 The REST API provides a standard HTTP interface for automation and CI/CD. All endpoints require a [Service Account](../operations/service-accounts.md) API key.

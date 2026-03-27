@@ -93,7 +93,7 @@ export function GitSyncSection({
         gitRepoUrl: repoUrl || null,
         gitBranch: branch || null,
         gitToken: token || undefined, // Only send if user entered a new token
-        gitOpsMode: selectedGitOpsMode as "off" | "push" | "bidirectional",
+        gitOpsMode: selectedGitOpsMode as "off" | "push" | "bidirectional" | "promotion",
       },
       {
         onSuccess: () => {
@@ -230,12 +230,14 @@ export function GitSyncSection({
               <SelectItem value="off">Off</SelectItem>
               <SelectItem value="push">Push Only (deploy commits YAML to repo)</SelectItem>
               <SelectItem value="bidirectional">Bi-directional (push + git webhooks import changes)</SelectItem>
+              <SelectItem value="promotion">Promotion (PR-based promotion via GitHub)</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
             {selectedGitOpsMode === "off" && "Git sync is disabled."}
             {selectedGitOpsMode === "push" && "Pipeline YAML is committed to the repo on deploy. Changes in git are not pulled back."}
             {selectedGitOpsMode === "bidirectional" && "Pipeline YAML is committed on deploy AND pushes to the repo trigger pipeline imports via webhook."}
+            {selectedGitOpsMode === "promotion" && "Promoting a pipeline creates a GitHub pull request. Merging the PR automatically deploys the promoted config to the target environment."}
           </p>
         </div>
 
@@ -301,6 +303,104 @@ export function GitSyncSection({
             {!webhookSecretFromMutation && !hasWebhookSecret && (
               <p className="text-xs text-muted-foreground">
                 Save settings to generate a webhook secret.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Webhook configuration for promotion (PR-based) mode */}
+        {selectedGitOpsMode === "promotion" && (
+          <div className="space-y-4 rounded-md border bg-muted/30 p-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Info className="h-4 w-4 text-blue-500" />
+              GitOps Promotion Setup
+            </div>
+            <p className="text-xs text-muted-foreground">
+              When a user promotes a pipeline, VectorFlow will create a pull request in your GitHub repository.
+              Merging the PR automatically deploys the promoted config to this environment.
+              Complete the steps below to finish the setup.
+            </p>
+
+            <ol className="space-y-3 text-xs text-muted-foreground list-none">
+              <li className="flex gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium">1</span>
+                <span>Save this configuration (Repository URL, Branch, and Access Token) using the Save button below. A webhook secret will be generated.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium">2</span>
+                <span>
+                  In GitHub, go to your repository{" "}
+                  <strong>Settings &rarr; Webhooks &rarr; Add webhook</strong>.
+                </span>
+              </li>
+              <li className="flex gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium">3</span>
+                <span>
+                  Set <strong>Payload URL</strong> to the webhook URL below, set{" "}
+                  <strong>Content type</strong> to{" "}
+                  <code className="rounded bg-muted px-1">application/json</code>, and paste the
+                  webhook secret.
+                </span>
+              </li>
+              <li className="flex gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium">4</span>
+                <span>
+                  Under <strong>Which events would you like to trigger this webhook?</strong>, select{" "}
+                  <strong>Let me select individual events</strong> and check{" "}
+                  <strong>Pull requests</strong>. Uncheck push events.
+                </span>
+              </li>
+            </ol>
+
+            <div className="space-y-2">
+              <Label>Webhook URL</Label>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={webhookUrl} className="font-mono text-xs" />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Copy webhook URL"
+                  onClick={async () => {
+                    await copyToClipboard(webhookUrl);
+                    toast.success("Webhook URL copied");
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {webhookSecretFromMutation && (
+              <div className="space-y-2">
+                <Label>Webhook Secret</Label>
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={webhookSecretFromMutation} className="font-mono text-xs" />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Copy webhook secret"
+                    onClick={async () => {
+                      await copyToClipboard(webhookSecretFromMutation);
+                      toast.success("Webhook secret copied");
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Save this secret — it is only shown once. Paste it into your GitHub webhook settings.
+                </p>
+              </div>
+            )}
+            {!webhookSecretFromMutation && hasWebhookSecret && (
+              <p className="text-xs text-muted-foreground">
+                Webhook secret is configured. For security, the secret is only shown once when first generated.
+                To rotate the secret, switch GitOps mode to Off and back to Promotion.
+              </p>
+            )}
+            {!webhookSecretFromMutation && !hasWebhookSecret && (
+              <p className="text-xs text-muted-foreground">
+                Save settings above to generate a webhook secret.
               </p>
             )}
           </div>

@@ -18,12 +18,15 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
+import { NodeGroupManagement } from "@/components/fleet/node-group-management";
+import { useEnvironmentStore } from "@/stores/environment-store";
 
 // ─── Fleet Tab ─────────────────────────────────────────────────────────────────
 
 export function FleetSettings() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const environmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
 
   const settingsQuery = useQuery(trpc.settings.get.queryOptions());
   const settings = settingsQuery.data;
@@ -76,6 +79,7 @@ export function FleetSettings() {
   }
 
   return (
+    <div className="space-y-6">
     <Card>
       <CardHeader>
         <CardTitle>Fleet Polling Configuration</CardTitle>
@@ -148,5 +152,10 @@ export function FleetSettings() {
         </form>
       </CardContent>
     </Card>
+
+    {environmentId && (
+      <NodeGroupManagement environmentId={environmentId} />
+    )}
+    </div>
   );
 }
