@@ -1,6 +1,7 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { prisma } from "@/lib/prisma";
-import { createBackup, runRetentionCleanup } from "./backup";
+import { debugLog } from "@/lib/logger";
+import { createBackup, runRetentionCleanup, runOrphanCleanup } from "./backup";
 import { fireEventAlert } from "./event-alerts";
 
 let scheduledTask: ScheduledTask | null = null;
@@ -46,6 +47,12 @@ function scheduleJob(cronExpression: string): void {
       const metadata = await createBackup("scheduled");
       console.log(`[backup] Scheduled backup complete: ${metadata.sizeBytes} bytes`);
       await runRetentionCleanup();
+      try {
+        const orphanResult = await runOrphanCleanup();
+        debugLog("backup", "Orphan cleanup complete", orphanResult);
+      } catch (orphanErr) {
+        console.error("[backup] Orphan cleanup failed:", orphanErr);
+      }
     } catch (error) {
       console.error("[backup] Scheduled backup failed:", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
