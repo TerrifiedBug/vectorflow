@@ -69,11 +69,16 @@ vi.mock("@/server/services/event-alerts", () => ({
   fireEventAlert: vi.fn(),
 }));
 
+vi.mock("@/server/services/gitops-promotion", () => ({
+  createPromotionPR: vi.fn(),
+}));
+
 // ─── Import SUT + mocks ─────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
 import { promotionRouter } from "@/server/routers/promotion";
 import * as promotionService from "@/server/services/promotion-service";
+import * as gitopsPromotion from "@/server/services/gitops-promotion";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(promotionRouter)({
@@ -93,7 +98,7 @@ function makePipeline(overrides: Record<string, unknown> = {}) {
     isSystem: false,
     nodes: [],
     edges: [],
-    environment: { teamId: "team-1", id: "env-source" },
+    environment: { teamId: "team-1", id: "env-source", name: "Development" },
     ...overrides,
   };
 }
@@ -104,6 +109,10 @@ function makeEnvironment(overrides: Record<string, unknown> = {}) {
     name: "Production",
     teamId: "team-1",
     requireDeployApproval: true,
+    gitOpsMode: "off",
+    gitRepoUrl: null,
+    gitToken: null,
+    gitBranch: "main",
     ...overrides,
   };
 }
@@ -567,6 +576,148 @@ describe("promotion router", () => {
       expect(result.sourceYaml).toContain("SECRET[api_key]");
       // Target YAML uses env var placeholder format
       expect(result.targetYaml).toContain("VF_SECRET_API_KEY");
+    });
+  });
+
+  // ─── GitOps initiation path ───────────────────────────────────────────────
+
+  describe("GitOps initiation", () => {
+    it("returns AWAITING_PR_MERGE and prUrl when gitOpsMode is 'promotion'", async () => {
+      prismaMock.pipeline.findUnique.mockResolvedValue(makePipeline() as never);
+      prismaMock.environment.findUnique.mockResolvedValue(
+        makeEnvironment({
+          gitOpsMode: "promotion",
+          gitRepoUrl: "https://github.com/myorg/myrepo",
+          gitToken: "encrypted-token",
+          gitBranch: "main",
+          requireDeployApproval: false,
+        }) as never,
+      );
+      prismaMock.pipeline.findFirst.mockResolvedValue(null);
+      vi.mocked(promotionService.preflightSecrets).mockResolvedValue({
+        missing: [],
+        present: [],
+        canProceed: true,
+      });
+      prismaMock.promotionRequest.create.mockResolvedValue({
+        ...makePromotionRequest({ promotedById: "user-1" }),
+      } as never);
+      vi.mocked(gitopsPromotion.createPromotionPR).mockResolvedValue({
+        prNumber: 42,
+        prUrl: "https://github.com/myorg/myrepo/pull/42",
+        prBranch: "vf-promote/production-my-pipeline-req1",
+      });
+      prismaMock.promotionRequest.update.mockResolvedValue({} as never);
+
+      const result = await caller.initiate({
+        pipelineId: "pipeline-1",
+        targetEnvironmentId: "env-target",
+      });
+
+      expect(result.status).toBe("AWAITING_PR_MERGE");
+      expect(result.prUrl).toBe("https://github.com/myorg/myrepo/pull/42");
+      expect(result.pendingApproval).toBe(false);
+      expect(gitopsPromotion.createPromotionPR).toHaveBeenCalledOnce();
+      expect(promotionService.executePromotion).not.toHaveBeenCalled();
+    });
+
+    it("updates PromotionRequest with prUrl and prNumber after PR creation", async () => {
+      prismaMock.pipeline.findUnique.mockResolvedValue(makePipeline() as never);
+      prismaMock.environment.findUnique.mockResolvedValue(
+        makeEnvironment({
+          gitOpsMode: "promotion",
+          gitRepoUrl: "https://github.com/myorg/myrepo",
+          gitToken: "encrypted-token",
+          gitBranch: "main",
+        }) as never,
+      );
+      prismaMock.pipeline.findFirst.mockResolvedValue(null);
+      vi.mocked(promotionService.preflightSecrets).mockResolvedValue({
+        missing: [],
+        present: [],
+        canProceed: true,
+      });
+      prismaMock.promotionRequest.create.mockResolvedValue({
+        ...makePromotionRequest({ id: "req-gitops-1", promotedById: "user-1" }),
+      } as never);
+      vi.mocked(gitopsPromotion.createPromotionPR).mockResolvedValue({
+        prNumber: 7,
+        prUrl: "https://github.com/myorg/myrepo/pull/7",
+        prBranch: "vf-promote/production-my-pipeline-req-gito",
+      });
+      prismaMock.promotionRequest.update.mockResolvedValue({} as never);
+
+      await caller.initiate({
+        pipelineId: "pipeline-1",
+        targetEnvironmentId: "env-target",
+      });
+
+      expect(prismaMock.promotionRequest.update).toHaveBeenCalledWith({
+        where: { id: "req-gitops-1" },
+        data: {
+          prUrl: "https://github.com/myorg/myrepo/pull/7",
+          prNumber: 7,
+          status: "AWAITING_PR_MERGE",
+        },
+      });
+    });
+
+    it("falls through to UI path when gitOpsMode is 'off'", async () => {
+      prismaMock.pipeline.findUnique.mockResolvedValue(makePipeline() as never);
+      prismaMock.environment.findUnique.mockResolvedValue(
+        makeEnvironment({ gitOpsMode: "off", requireDeployApproval: true }) as never,
+      );
+      prismaMock.pipeline.findFirst.mockResolvedValue(null);
+      vi.mocked(promotionService.preflightSecrets).mockResolvedValue({
+        missing: [],
+        present: [],
+        canProceed: true,
+      });
+      prismaMock.promotionRequest.create.mockResolvedValue({
+        ...makePromotionRequest({ promotedById: "user-1" }),
+      } as never);
+
+      const result = await caller.initiate({
+        pipelineId: "pipeline-1",
+        targetEnvironmentId: "env-target",
+      });
+
+      expect(result.status).toBe("PENDING");
+      expect(gitopsPromotion.createPromotionPR).not.toHaveBeenCalled();
+    });
+
+    it("falls through to UI path when gitOpsMode is 'push'", async () => {
+      prismaMock.pipeline.findUnique.mockResolvedValue(makePipeline() as never);
+      prismaMock.environment.findUnique.mockResolvedValue(
+        makeEnvironment({
+          gitOpsMode: "push",
+          gitRepoUrl: "https://github.com/myorg/myrepo",
+          gitToken: "encrypted-token",
+          requireDeployApproval: false,
+        }) as never,
+      );
+      prismaMock.pipeline.findFirst.mockResolvedValue(null);
+      vi.mocked(promotionService.preflightSecrets).mockResolvedValue({
+        missing: [],
+        present: [],
+        canProceed: true,
+      });
+      prismaMock.promotionRequest.create.mockResolvedValue({
+        ...makePromotionRequest({ promotedById: "user-1" }),
+      } as never);
+      vi.mocked(promotionService.executePromotion).mockResolvedValue({
+        pipelineId: "new-pipeline-1",
+        pipelineName: "My Pipeline",
+      });
+
+      const result = await caller.initiate({
+        pipelineId: "pipeline-1",
+        targetEnvironmentId: "env-target",
+      });
+
+      // push mode should execute directly (no PR)
+      expect(result.status).toBe("DEPLOYED");
+      expect(gitopsPromotion.createPromotionPR).not.toHaveBeenCalled();
     });
   });
 });

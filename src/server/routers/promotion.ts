@@ -8,6 +8,9 @@ import {
   executePromotion,
   generateDiffPreview,
 } from "@/server/services/promotion-service";
+import { createPromotionPR } from "@/server/services/gitops-promotion";
+import { generateVectorYaml } from "@/lib/config-generator";
+import { decryptNodeConfig } from "@/server/services/config-crypto";
 
 export const promotionRouter = router({
   /**
@@ -95,7 +98,7 @@ export const promotionRouter = router({
           nodes: true,
           edges: true,
           environment: {
-            select: { teamId: true, id: true },
+            select: { teamId: true, id: true, name: true },
           },
         },
       });
@@ -103,10 +106,18 @@ export const promotionRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
       }
 
-      // Load target environment
+      // Load target environment (including GitOps fields for PR-based promotion)
       const targetEnv = await prisma.environment.findUnique({
         where: { id: input.targetEnvironmentId },
-        select: { teamId: true, name: true, requireDeployApproval: true },
+        select: {
+          teamId: true,
+          name: true,
+          requireDeployApproval: true,
+          gitOpsMode: true,
+          gitRepoUrl: true,
+          gitToken: true,
+          gitBranch: true,
+        },
       });
       if (!targetEnv) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Target environment not found" });
@@ -187,7 +198,63 @@ export const promotionRouter = router({
         },
       });
 
-      // If no approval required: auto-execute the promotion
+      // GitOps path: if target env has gitOpsMode="promotion" and a configured repo,
+      // create a GitHub PR instead of directly executing. The PR merge will trigger deployment.
+      if (targetEnv.gitOpsMode === "promotion" && targetEnv.gitRepoUrl && targetEnv.gitToken) {
+        // Build YAML from source pipeline nodes (preserve SECRET[name] refs as-is)
+        const flowEdges = sourcePipeline.edges.map((e) => ({
+          id: e.id,
+          source: e.sourceNodeId,
+          target: e.targetNodeId,
+          ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
+        }));
+        const flowNodes = sourcePipeline.nodes.map((n) => ({
+          id: n.id,
+          type: n.kind.toLowerCase(),
+          position: { x: n.positionX, y: n.positionY },
+          data: {
+            componentDef: { type: n.componentType, kind: n.kind.toLowerCase() },
+            componentKey: n.componentKey,
+            config: decryptNodeConfig(n.componentType, (n.config as Record<string, unknown>) ?? {}),
+            disabled: n.disabled,
+          },
+        }));
+        const configYaml = generateVectorYaml(
+          flowNodes as Parameters<typeof generateVectorYaml>[0],
+          flowEdges as Parameters<typeof generateVectorYaml>[1],
+          sourcePipeline.globalConfig as Record<string, unknown> | null,
+          null,
+        );
+
+        const pr = await createPromotionPR({
+          encryptedToken: targetEnv.gitToken,
+          repoUrl: targetEnv.gitRepoUrl,
+          baseBranch: targetEnv.gitBranch ?? "main",
+          requestId: promotionRequest.id,
+          pipelineName: sourcePipeline.name,
+          sourceEnvironmentName: sourcePipeline.environment.name,
+          targetEnvironmentName: targetEnv.name,
+          configYaml,
+        });
+
+        await prisma.promotionRequest.update({
+          where: { id: promotionRequest.id },
+          data: {
+            prUrl: pr.prUrl,
+            prNumber: pr.prNumber,
+            status: "AWAITING_PR_MERGE",
+          },
+        });
+
+        return {
+          requestId: promotionRequest.id,
+          status: "AWAITING_PR_MERGE",
+          prUrl: pr.prUrl,
+          pendingApproval: false,
+        };
+      }
+
+      // UI path (Phase 5): if no approval required, auto-execute
       if (!targetEnv.requireDeployApproval) {
         await executePromotion(promotionRequest.id, userId);
         return { requestId: promotionRequest.id, status: "DEPLOYED", pendingApproval: false };
