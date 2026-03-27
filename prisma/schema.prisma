@@ -680,7 +680,7 @@ model SystemSettings {
 model BackupRecord {
   id              String    @id @default(cuid())
   filename        String
-  status          String    // "success" | "failed" | "in_progress"
+  status          String    // "success" | "failed" | "in_progress" | "orphaned"
   type            String    // "scheduled" | "manual" | "pre_restore"
   sizeBytes       BigInt?
   durationMs      Int?

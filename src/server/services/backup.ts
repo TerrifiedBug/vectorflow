@@ -30,8 +30,9 @@ const BACKUP_DISK_WARN_THRESHOLD_MB = Number(
   process.env.VF_BACKUP_DISK_WARN_MB ?? "500"
 );
 
-// In-memory lock to prevent concurrent backups
+// In-memory locks to prevent concurrent backups/restores
 let backupInProgress = false;
+let restoreInProgress = false;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,6 +45,17 @@ export interface BackupMetadata {
   lastMigration: string;
   sizeBytes: number;
   pgVersion: string;
+}
+
+export interface BackupPreview {
+  filename: string;
+  vfVersion: string;
+  migrationCount: number;
+  lastMigration: string;
+  sizeBytes: number;
+  pgVersion: string;
+  startedAt: Date;
+  tablesPresent: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -480,12 +492,21 @@ export async function importLegacyBackups(): Promise<{
  * 4. Runs pg_restore --clean --if-exists.
  * 5. Exits the process so Docker restarts the container.
  */
-export async function restoreFromBackup(filename: string): Promise<void> {
+export async function restoreFromBackup(filename: string): Promise<{ success: true }> {
+  if (restoreInProgress) {
+    throw new Error("A restore is already in progress");
+  }
+  if (backupInProgress) {
+    throw new Error("A backup is already in progress");
+  }
+
   const safe = sanitizeFilename(filename);
 
   if (!safe.endsWith(".dump")) {
     throw new Error("Invalid backup filename: must end with .dump");
   }
+
+  restoreInProgress = true;
 
   const metaPath = path.join(
     BACKUP_DIR,
@@ -572,10 +593,10 @@ export async function restoreFromBackup(filename: string): Promise<void> {
       },
     );
 
-    // Exit the process so Docker restarts the container
-    console.log("[backup] Restore complete — exiting for container restart.");
-    process.exit(0);
+    debugLog("backup", "Restore complete — application restart required.");
+    return { success: true } as const;
   } finally {
+    restoreInProgress = false;
     // Always delete the S3 temp file after restore (success or failure)
     if (tempPath) {
       await fs.unlink(tempPath).catch(() => {});
@@ -616,4 +637,139 @@ export async function runRetentionCleanup(): Promise<number> {
   }
 
   return deletedCount;
+}
+
+// ---------------------------------------------------------------------------
+// previewBackup
+// ---------------------------------------------------------------------------
+
+/**
+ * Preview a backup file by reading its metadata from BackupRecord and
+ * running pg_restore --list to extract the list of tables present.
+ * For S3 backups, downloads to a temp file first, then cleans up in finally.
+ */
+export async function previewBackup(filename: string): Promise<BackupPreview> {
+  const safe = sanitizeFilename(filename);
+
+  if (!safe.endsWith(".dump")) {
+    throw new Error("Invalid backup filename: must end with .dump");
+  }
+
+  const record = await prisma.backupRecord.findFirst({
+    where: { filename: safe, status: "success" },
+  });
+
+  if (!record) {
+    throw new Error("Backup record not found or not successful");
+  }
+
+  let dumpPath = path.join(BACKUP_DIR, safe);
+  let tempPath: string | null = null;
+
+  try {
+    if (record.storageLocation?.startsWith("s3://")) {
+      const backend = await getActiveBackend();
+      const { key } = parseS3StorageLocation(record.storageLocation);
+      tempPath = path.join(BACKUP_DIR, `s3-preview-${Date.now()}-${safe}`);
+      await ensureBackupDir();
+      await backend.download(key, tempPath);
+      dumpPath = tempPath;
+    } else {
+      await fs.access(dumpPath);
+    }
+
+    // Run pg_restore --list to get table inventory (read-only, no DB connection needed)
+    const { stdout } = await execFileAsync("pg_restore", ["--list", dumpPath], {
+      timeout: 30_000,
+    });
+
+    // Parse TABLE DATA entries to extract table names (deduplicated)
+    const tableSet = new Set<string>();
+    for (const line of stdout.split("\n")) {
+      const match = /TABLE DATA\s+\S+\s+(\S+)/.exec(line);
+      if (match) {
+        tableSet.add(match[1]);
+      }
+    }
+
+    return {
+      filename: safe,
+      vfVersion: record.vfVersion ?? "unknown",
+      migrationCount: record.migrationCount ?? 0,
+      lastMigration: record.lastMigration ?? "",
+      sizeBytes: Number(record.sizeBytes ?? 0),
+      pgVersion: record.pgVersion ?? "unknown",
+      startedAt: record.startedAt,
+      tablesPresent: Array.from(tableSet),
+    };
+  } finally {
+    if (tempPath) {
+      await fs.unlink(tempPath).catch(() => {});
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// runOrphanCleanup
+// ---------------------------------------------------------------------------
+
+/**
+ * Clean up orphaned backup artifacts in both directions:
+ * 1. Delete .dump files in BACKUP_DIR without a matching BackupRecord.
+ * 2. Mark BackupRecord rows as "orphaned" when the backing file/S3 object is missing.
+ *
+ * Returns counts of files deleted and records marked orphaned.
+ */
+export async function runOrphanCleanup(): Promise<{
+  filesDeleted: number;
+  recordsOrphaned: number;
+}> {
+  let filesDeleted = 0;
+  let recordsOrphaned = 0;
+
+  // Direction 1: files in BACKUP_DIR without a BackupRecord
+  const dirEntries = await fs.readdir(BACKUP_DIR).catch(() => [] as string[]);
+  const dumpFiles = dirEntries.filter((f) => f.endsWith(".dump"));
+
+  for (const filename of dumpFiles) {
+    const existing = await prisma.backupRecord.findFirst({ where: { filename } });
+    if (!existing) {
+      await fs.unlink(path.join(BACKUP_DIR, filename)).catch(() => {});
+      filesDeleted++;
+    }
+  }
+
+  // Direction 2: BackupRecord rows where the file/S3 object is missing
+  const records = await prisma.backupRecord.findMany({
+    where: { status: "success" },
+    select: { id: true, filename: true, storageLocation: true },
+  });
+
+  for (const record of records) {
+    let fileExists = false;
+    try {
+      if (record.storageLocation?.startsWith("s3://")) {
+        const backend = await getActiveBackend();
+        const { key } = parseS3StorageLocation(record.storageLocation);
+        fileExists = await backend.exists(key);
+      } else {
+        await fs.access(path.join(BACKUP_DIR, record.filename));
+        fileExists = true;
+      }
+    } catch {
+      fileExists = false;
+    }
+
+    if (!fileExists) {
+      await prisma.backupRecord.update({
+        where: { id: record.id },
+        data: { status: "orphaned" },
+      });
+      recordsOrphaned++;
+    }
+  }
+
+  const result = { filesDeleted, recordsOrphaned };
+  debugLog("backup", "Orphan cleanup complete", result);
+  return result;
 }
