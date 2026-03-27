@@ -294,7 +294,11 @@ export const auditRouter = router({
             ? String(metaInput.newVersion)
             : metaInput?.sourceVersionId
               ? String(metaInput.sourceVersionId)
-              : null,
+              : metaInput?.version
+                ? String(metaInput.version)
+                : metaInput?.versionNumber
+                  ? String(metaInput.versionNumber)
+                  : null,
           changelog: typeof metaInput?.changelog === "string" ? metaInput.changelog : null,
           pushedNodeNames,
         };
@@ -500,7 +504,11 @@ export const auditRouter = router({
             ? String(metaInput.newVersion)
             : metaInput?.sourceVersionId
               ? String(metaInput.sourceVersionId)
-              : null,
+              : metaInput?.version
+                ? String(metaInput.version)
+                : metaInput?.versionNumber
+                  ? String(metaInput.versionNumber)
+                  : null,
           changelog: typeof metaInput?.changelog === "string" ? metaInput.changelog : null,
           pushedNodeNames,
         };
