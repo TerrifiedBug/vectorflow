@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 06-openapi-specification 06-02-PLAN.md
-last_updated: "2026-03-27T02:44:23.994Z"
+status: executing
+stopped_at: Completed 07-cross-environment-promotion-gitops 07-03-PLAN.md
+last_updated: "2026-03-27T03:29:07.087Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 7
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 3
+  completed_phases: 4
+  total_plans: 13
+  completed_plans: 16
   percent: 43
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** A corporate platform team can manage their entire Vector pipeline fleet at scale — organizing, promoting, and operating hundreds of pipelines across environments — without outgrowing VectorFlow.
-**Current focus:** Phase 05 — cross-environment-promotion-ui
+**Current focus:** Phase 07 — cross-environment-promotion-gitops
 
 ## Current Position
 
-Phase: 05 (cross-environment-promotion-ui) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
+Phase: 07 (cross-environment-promotion-gitops) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-03-27
 
 Progress: [████░░░░░░] 43%
@@ -65,6 +65,7 @@ Progress: [████░░░░░░] 43%
 | Phase 05-cross-environment-promotion-ui P01 | 6 | 2 tasks | 7 files |
 | Phase 05-cross-environment-promotion-ui P02 | 8 | 2 tasks | 3 files |
 | Phase 06-openapi-specification P02 | 5 | 2 tasks | 4 files |
+| Phase 07-cross-environment-promotion-gitops P07-03 | 3 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,8 @@ Recent decisions affecting current work:
 - [Phase 05-cross-environment-promotion-ui]: diffPreview only takes pipelineId (not targetEnvironmentId) — shows SECRET[name] vs env-var substitution format, not per-target diff
 - [Phase 06-openapi-specification]: Manual tRPC schema registration (not @trpc/openapi) — avoids tRPC upgrade risk with 28 routers
 - [Phase 06-openapi-specification]: CookieAuth scheme uses type:apiKey/in:cookie — correct OpenAPI 3.1 encoding for session cookie auth applied to tRPC operations
+- [Phase 07-cross-environment-promotion-gitops]: Promotion mode reuses gitWebhookSecret field — single /api/webhooks/git endpoint handles both bidirectional and promotion modes
+- [Phase 07-cross-environment-promotion-gitops]: GitOps setup wizard is inline in environment settings card — consistent with existing bidirectional webhook info pattern
 
 ### Pending Todos
 
@@ -120,6 +123,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T02:44:23.992Z
-Stopped at: Completed 06-openapi-specification 06-02-PLAN.md
+Last session: 2026-03-27T03:29:07.085Z
+Stopped at: Completed 07-cross-environment-promotion-gitops 07-03-PLAN.md
 Resume file: None

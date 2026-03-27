@@ -116,7 +116,11 @@ Plans:
   2. When a user promotes a pipeline, VectorFlow creates a pull request in the configured GitHub repository with the target environment folder updated to the promoted config
   3. Merging the PR in GitHub triggers VectorFlow's webhook handler to automatically deploy the promoted config to the target environment
   4. Teams without GitOps configured can still promote via the UI (Phase 5) — GitOps setup is never required for UI promotion to work
-**Plans**: TBD
+**Plans**: 1/3 plans executed
+Plans:
+- [x] 07-01-PLAN.md — Backend: gitops-promotion service (@octokit/rest PR creation), promotion.initiate GitOps branch, git webhook PR merge handler + unit tests
+- [ ] 07-02-PLAN.md — Frontend: GitOps setup wizard in environment settings (connect GitHub, configure webhook, validate)
+- [x] 07-03-PLAN.md — Human verification of complete GitOps promotion flow
 
 ## Progress
 
@@ -133,4 +137,4 @@ Note: Phase 3 depends on Phase 2. Phases 4 and 6 only depend on Phase 1 and can 
 | 4. Outbound Webhooks | 3/3 | Complete | 2026-03-27 |
 | 5. Cross-Environment Promotion (UI) | 1/3 | In Progress|  |
 | 6. OpenAPI Specification | 0/? | Not started | - |
-| 7. Cross-Environment Promotion (GitOps) | 0/? | Not started | - |
+| 7. Cross-Environment Promotion (GitOps) | 1/3 | In Progress | - |
