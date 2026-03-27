@@ -71,7 +71,7 @@ model Team {
   templates            Template[]
   vrlSnippets          VrlSnippet[]
   alertRules           AlertRule[]
-  availableTags        Json?         @default("[]")   // string[] of admin-defined classification tags
+  availableTags        Json?         @default("[]")   // string[] of admin-defined compliance tags
   webhookEndpoints     WebhookEndpoint[]
 
   // AI-powered suggestions configuration
@@ -336,7 +336,7 @@ model Pipeline {
   eventSamples    EventSample[]
   slis            PipelineSli[]
   enrichMetadata    Boolean              @default(false)
-  tags              Json?                @default("[]")   // string[] of classification tags like ["PII", "PCI-DSS"]
+  tags              Json?                @default("[]")   // string[] of compliance tags like ["PII", "PCI-DSS"]
   autoRollbackEnabled        Boolean  @default(false)
   autoRollbackThreshold      Float    @default(5.0)
   autoRollbackWindowMinutes  Int      @default(5)
