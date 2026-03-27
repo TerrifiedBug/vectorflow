@@ -175,6 +175,7 @@ export const webhookEndpointRouter = router({
   testDelivery: protectedProcedure
     .input(z.object({ id: z.string(), teamId: z.string() }))
     .use(withTeamAccess("ADMIN"))
+    .use(withAudit("webhookEndpoint.testDelivery", "WebhookEndpoint"))
     .mutation(async ({ input }) => {
       const endpoint = await prisma.webhookEndpoint.findFirst({
         where: { id: input.id, teamId: input.teamId },

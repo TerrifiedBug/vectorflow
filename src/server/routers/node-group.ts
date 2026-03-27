@@ -273,9 +273,9 @@ export const nodeGroupRouter = router({
         return sortAndMapNodes(ungroupedNodes, []);
       }
 
-      // Normal group lookup
-      const group = await prisma.nodeGroup.findUnique({
-        where: { id: groupId },
+      // Normal group lookup — scoped to input.environmentId to prevent cross-team data exposure
+      const group = await prisma.nodeGroup.findFirst({
+        where: { id: groupId, environmentId },
       });
       if (!group) {
         throw new TRPCError({
@@ -288,7 +288,7 @@ export const nodeGroupRouter = router({
       requiredLabels = group.requiredLabels as string[];
 
       const allNodes = await prisma.vectorNode.findMany({
-        where: { environmentId: group.environmentId },
+        where: { environmentId },
         select: {
           id: true,
           name: true,

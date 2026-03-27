@@ -54,6 +54,7 @@ export function isPermanentFailure(result: OutboundResult): boolean {
 export async function deliverOutboundWebhook(
   endpoint: EndpointLike,
   payload: OutboundPayload,
+  msgId = crypto.randomUUID(),
 ): Promise<OutboundResult> {
   // SSRF protection
   try {
@@ -62,7 +63,6 @@ export async function deliverOutboundWebhook(
     return { success: false, error: "SSRF: private IP", isPermanent: true };
   }
 
-  const msgId = crypto.randomUUID();
   const timestamp = Math.floor(Date.now() / 1000); // integer seconds
 
   // Serialize body ONCE — same string used for signing AND as request body
@@ -136,7 +136,7 @@ async function dispatchWithTracking(
     },
   });
 
-  const result = await deliverOutboundWebhook(endpoint, payload);
+  const result = await deliverOutboundWebhook(endpoint, payload, msgId);
 
   if (result.success) {
     await prisma.webhookDelivery.update({
