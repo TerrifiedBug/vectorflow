@@ -137,7 +137,7 @@ export class RetryService {
   async processOutboundRetries(): Promise<void> {
     let dueRetries;
     try {
-      dueRetries = await prisma.webhookDelivery.findMany({
+      dueRetries = await prisma.webhookDelivery?.findMany({
         where: {
           status: "failed",
           nextRetryAt: { lte: new Date() },
@@ -154,7 +154,7 @@ export class RetryService {
       return;
     }
 
-    if (dueRetries.length === 0) return;
+    if (!dueRetries || dueRetries.length === 0) return;
 
     console.log(
       `[retry-service] Found ${dueRetries.length} outbound webhook retr${dueRetries.length === 1 ? "y" : "ies"}`,
