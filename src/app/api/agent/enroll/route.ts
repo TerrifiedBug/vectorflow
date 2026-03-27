@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyEnrollmentToken, generateNodeToken } from "@/server/services/agent-token";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { debugLog } from "@/lib/logger";
+import { nodeMatchesGroup } from "@/lib/node-group-utils";
 
 const enrollSchema = z.object({
   token: z.string().min(1),
@@ -81,6 +82,37 @@ export async function POST(request: Request) {
         metadata: { enrolledVia: "agent" },
       },
     });
+    // NODE-03: Auto-apply matching NodeGroup label templates
+    try {
+      const nodeGroups = await prisma.nodeGroup.findMany({
+        where: { environmentId: matchedEnv.id },
+      });
+
+      const mergedLabels: Record<string, string> = {};
+      for (const group of nodeGroups) {
+        const criteria = group.criteria as Record<string, string>;
+        const nodeLabels = (node.labels as Record<string, string>) ?? {};
+        if (nodeMatchesGroup(nodeLabels, criteria)) {
+          Object.assign(mergedLabels, group.labelTemplate as Record<string, string>);
+        }
+      }
+
+      if (Object.keys(mergedLabels).length > 0) {
+        await prisma.vectorNode.update({
+          where: { id: node.id },
+          data: {
+            labels: {
+              ...((node.labels as Record<string, string>) ?? {}),
+              ...mergedLabels,
+            },
+          },
+        });
+      }
+    } catch (err) {
+      // Non-fatal: enrollment still succeeds even if label template application fails
+      console.error("[enroll] label template application failed:", err);
+    }
+
     debugLog("enroll", `SUCCESS -- node ${node.id} enrolled in "${matchedEnv.name}"`);
 
     await prisma.nodeStatusEvent.create({

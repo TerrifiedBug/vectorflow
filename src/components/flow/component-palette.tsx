@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, Search, PackageOpen, Link2 as LinkIcon } fro
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { VECTOR_CATALOG } from "@/lib/vector/catalog";
+import { getVectorCatalog } from "@/lib/vector/catalog";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import { getIcon } from "./node-icon";
 import { useQuery } from "@tanstack/react-query";
@@ -190,10 +190,10 @@ export function ComponentPalette() {
     )
   );
   const filtered = useMemo(() => {
-    if (!search.trim()) return VECTOR_CATALOG;
+    if (!search.trim()) return getVectorCatalog();
 
     const term = search.toLowerCase().trim();
-    return VECTOR_CATALOG.filter(
+    return getVectorCatalog().filter(
       (def) =>
         def.displayName.toLowerCase().includes(term) ||
         def.type.toLowerCase().includes(term) ||
@@ -324,7 +324,7 @@ export function ComponentPalette() {
                 const kindKey = sc.kind.toLowerCase() as VectorComponentDef["kind"];
                 const meta = kindMeta[kindKey] ?? kindMeta.transform;
                 const Icon = getIcon(
-                  VECTOR_CATALOG.find((d) => d.type === sc.componentType)?.icon
+                  getVectorCatalog().find((d) => d.type === sc.componentType)?.icon
                 );
                 return (
                   <div

@@ -10,12 +10,8 @@ import { cleanupOldMetrics } from "@/server/services/metrics-cleanup";
 import { metricStore } from "@/server/services/metric-store";
 import { broadcastSSE, broadcastMetrics } from "@/server/services/sse-broadcast";
 import type { FleetStatusEvent, LogEntryEvent, StatusChangeEvent } from "@/lib/sse/types";
-import { evaluateAlerts } from "@/server/services/alert-evaluator";
 import { isLeader } from "@/server/services/leader-election";
 import { batchUpsertPipelineStatuses } from "@/server/services/heartbeat-batch";
-import { deliverSingleWebhook } from "@/server/services/webhook-delivery";
-import { deliverToChannels } from "@/server/services/channels";
-import { trackWebhookDelivery } from "@/server/services/delivery-tracking";
 import { DeploymentMode } from "@/generated/prisma";
 import { isVersionOlder } from "@/lib/version";
 
@@ -179,74 +175,6 @@ async function processSampleResults(results: SampleResult[], nodeId: string): Pr
         });
       }
       console.error("EventSample write error:", err);
-    }
-  }
-}
-
-async function evaluateAndDeliverAlerts(nodeId: string, environmentId: string): Promise<void> {
-  const firedAlerts = await evaluateAlerts(nodeId, environmentId);
-
-  if (firedAlerts.length > 0) {
-    const [nodeInfo, envInfo] = await Promise.all([
-      prisma.vectorNode.findUnique({
-        where: { id: nodeId },
-        select: { host: true },
-      }),
-      prisma.environment.findUnique({
-        where: { id: environmentId },
-        select: { name: true, team: { select: { name: true } } },
-      }),
-    ]);
-
-    for (const alert of firedAlerts) {
-      const pipeline = alert.rule.pipelineId
-        ? await prisma.pipeline.findUnique({
-            where: { id: alert.rule.pipelineId },
-            select: { name: true },
-          })
-        : null;
-
-      const channelPayload = {
-        alertId: alert.event.id,
-        status: alert.event.status as "firing" | "resolved",
-        ruleName: alert.rule.name,
-        severity: "warning",
-        environment: envInfo?.name ?? "Unknown",
-        team: envInfo?.team?.name,
-        node: nodeInfo?.host ?? nodeId,
-        pipeline: pipeline?.name,
-        metric: alert.rule.metric,
-        value: alert.event.value,
-        threshold: alert.rule.threshold ?? 0,
-        message: alert.event.message ?? "",
-        timestamp: alert.event.firedAt.toISOString(),
-        dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/alerts`,
-      };
-
-      // Deliver to legacy webhooks with delivery tracking
-      const webhooks = await prisma.alertWebhook.findMany({
-        where: { environmentId: alert.rule.environmentId, enabled: true },
-      });
-      for (const webhook of webhooks) {
-        trackWebhookDelivery(
-          alert.event.id,
-          webhook.id,
-          webhook.url,
-          () => deliverSingleWebhook(webhook, channelPayload),
-        ).catch((err) =>
-          console.error(`Tracked webhook delivery error for ${webhook.url}:`, err),
-        );
-      }
-
-      // Deliver to notification channels with delivery tracking
-      deliverToChannels(
-        alert.rule.environmentId,
-        alert.rule.id,
-        channelPayload,
-        alert.event.id,
-      ).catch((err) =>
-        console.error("Channel delivery error:", err),
-      );
     }
   }
 }
@@ -591,14 +519,6 @@ export async function POST(request: Request) {
     checkNodeHealth().catch((err) =>
       console.error("Node health check error:", err),
     );
-
-    // Evaluate alert rules and deliver webhooks for any fired/resolved alerts (fire-and-forget).
-    // Only the leader instance evaluates alerts — followers skip since the leader handles it from DB state.
-    if (isLeader()) {
-      evaluateAndDeliverAlerts(agent.nodeId, agent.environmentId).catch((err) =>
-        console.error("Alert evaluation failed:", err),
-      );
-    }
 
     // Throttle cleanup to once per hour. Only leader runs cleanup.
     const ONE_HOUR = 60 * 60 * 1000;

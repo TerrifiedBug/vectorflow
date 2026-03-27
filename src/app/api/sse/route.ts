@@ -4,6 +4,11 @@ import { sseRegistry } from "@/server/services/sse-registry";
 
 export const dynamic = "force-dynamic";
 
+const MAX_SSE_CONNECTIONS = parseInt(
+  process.env.SSE_MAX_CONNECTIONS ?? "1000",
+  10,
+);
+
 export async function GET(request: Request): Promise<Response> {
   const session = await auth();
   if (!session?.user?.id) {
@@ -38,6 +43,20 @@ export async function GET(request: Request): Promise<Response> {
       select: { id: true },
     });
     environmentIds = environments.map((e) => e.id);
+  }
+
+  // PERF-03: Enforce per-instance SSE connection limit
+  if (sseRegistry.size >= MAX_SSE_CONNECTIONS) {
+    return new Response(
+      JSON.stringify({ error: "SSE connection limit reached" }),
+      {
+        status: 503,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": "30",
+        },
+      },
+    );
   }
 
   const connectionId = crypto.randomUUID();

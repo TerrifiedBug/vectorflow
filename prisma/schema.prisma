@@ -34,6 +34,8 @@ model User {
   deployRequestsMade     DeployRequest[]  @relation("deployRequester")
   deployRequestsReviewed DeployRequest[]  @relation("deployReviewer")
   deployRequestsExecuted DeployRequest[]  @relation("deployExecutor")
+  promotionRequests      PromotionRequest[] @relation("PromotionRequester")
+  promotionApprovals     PromotionRequest[] @relation("PromotionApprover")
   preferences            UserPreference[]
   aiConversationsCreated AiConversation[] @relation("AiConversationCreatedBy")
   aiMessagesCreated      AiMessage[]      @relation("AiMessageCreatedBy")
@@ -70,6 +72,7 @@ model Team {
   vrlSnippets          VrlSnippet[]
   alertRules           AlertRule[]
   availableTags        Json?         @default("[]")   // string[] of admin-defined classification tags
+  webhookEndpoints     WebhookEndpoint[]
 
   // AI-powered suggestions configuration
   aiProvider           String?       // "openai" | "anthropic" | "custom"
@@ -136,7 +139,7 @@ model Environment {
   gitRepoUrl          String?
   gitBranch           String?       @default("main")
   gitToken            String?       // Stored encrypted via crypto.ts
-  gitOpsMode          String        @default("off")   // "off" | "push" | "bidirectional"
+  gitOpsMode          String        @default("off")   // "off" | "push" | "bidirectional" | "promotion"
   gitWebhookSecret    String?       // HMAC secret for validating incoming git webhooks
   requireDeployApproval   Boolean       @default(false)
   alertRules              AlertRule[]
@@ -147,7 +150,10 @@ model Environment {
   teamDefaults            Team[]            @relation("teamDefault")
   sharedComponents        SharedComponent[]
   pipelineGroups          PipelineGroup[]
+  nodeGroups              NodeGroup[]
   stagedRollouts          StagedRollout[]
+  promotionSources        PromotionRequest[] @relation("PromotionSourceEnv")
+  promotionTargets        PromotionRequest[] @relation("PromotionTargetEnv")
   createdAt               DateTime      @default(now())
 }
 
@@ -271,12 +277,30 @@ enum ProcessStatus {
 }
 
 model PipelineGroup {
-  id            String      @id @default(cuid())
+  id            String          @id @default(cuid())
   name          String
   color         String?
   environmentId String
-  environment   Environment @relation(fields: [environmentId], references: [id])
+  environment   Environment     @relation(fields: [environmentId], references: [id])
+  parentId      String?
+  parent        PipelineGroup?  @relation("GroupChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children      PipelineGroup[] @relation("GroupChildren")
   pipelines     Pipeline[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([environmentId])
+  @@index([parentId])
+}
+
+model NodeGroup {
+  id            String      @id @default(cuid())
+  name          String
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id])
+  criteria      Json        @default("{}")
+  labelTemplate Json        @default("{}")
+  requiredLabels Json       @default("[]")
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -321,6 +345,8 @@ model Pipeline {
   stagedRollouts  StagedRollout[]
   upstreamDeps    PipelineDependency[] @relation("PipelineDownstream")
   downstreamDeps  PipelineDependency[] @relation("PipelineUpstream")
+  promotionSources    PromotionRequest[] @relation("PromotionSource")
+  promotionTargets    PromotionRequest[] @relation("PromotionTarget")
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 }
@@ -702,6 +728,37 @@ model DeployRequest {
   @@index([environmentId, status])
 }
 
+model PromotionRequest {
+  id                    String      @id @default(cuid())
+  sourcePipelineId      String
+  sourcePipeline        Pipeline    @relation("PromotionSource", fields: [sourcePipelineId], references: [id], onDelete: Cascade)
+  targetPipelineId      String?
+  targetPipeline        Pipeline?   @relation("PromotionTarget", fields: [targetPipelineId], references: [id], onDelete: SetNull)
+  sourceEnvironmentId   String
+  sourceEnvironment     Environment @relation("PromotionSourceEnv", fields: [sourceEnvironmentId], references: [id], onDelete: Cascade)
+  targetEnvironmentId   String
+  targetEnvironment     Environment @relation("PromotionTargetEnv", fields: [targetEnvironmentId], references: [id], onDelete: Cascade)
+  status                String      @default("PENDING") // PENDING | APPROVED | DEPLOYED | REJECTED | CANCELLED | AWAITING_PR_MERGE | DEPLOYING
+  promotedById          String?
+  promotedBy            User?       @relation("PromotionRequester", fields: [promotedById], references: [id], onDelete: SetNull)
+  approvedById          String?
+  approvedBy            User?       @relation("PromotionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  nodesSnapshot         Json?
+  edgesSnapshot         Json?
+  globalConfigSnapshot  Json?
+  targetPipelineName    String?
+  reviewNote            String?
+  prUrl                 String?     // GitHub PR HTML URL (GitOps promotion only)
+  prNumber              Int?        // GitHub PR number (GitOps promotion only)
+  createdAt             DateTime    @default(now())
+  reviewedAt            DateTime?
+  deployedAt            DateTime?
+
+  @@index([sourcePipelineId, status])
+  @@index([sourceEnvironmentId])
+  @@index([targetEnvironmentId])
+}
+
 enum AlertMetric {
   // Infrastructure (threshold-based, per-node)
   node_unreachable
@@ -729,6 +786,8 @@ enum AlertMetric {
   certificate_expiring
   node_joined
   node_left
+  // Phase 5 event — enum value added early so subscriptions can be created
+  promotion_completed
 }
 
 enum AlertCondition {
@@ -779,6 +838,41 @@ model AlertWebhook {
   updatedAt     DateTime    @updatedAt
 
   @@index([environmentId])
+}
+
+model WebhookEndpoint {
+  id              String            @id @default(cuid())
+  teamId          String
+  team            Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name            String
+  url             String
+  eventTypes      AlertMetric[]
+  encryptedSecret String?
+  enabled         Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deliveries      WebhookDelivery[]
+
+  @@index([teamId])
+}
+
+model WebhookDelivery {
+  id                String          @id @default(cuid())
+  webhookEndpointId String
+  webhookEndpoint   WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
+  eventType         AlertMetric
+  msgId             String
+  payload           Json
+  status            String          // 'pending' | 'success' | 'failed' | 'dead_letter'
+  statusCode        Int?
+  errorMessage      String?
+  attemptNumber     Int             @default(1)
+  nextRetryAt       DateTime?
+  requestedAt       DateTime        @default(now())
+  completedAt       DateTime?
+
+  @@index([webhookEndpointId, requestedAt])
+  @@index([status, nextRetryAt])
 }
 
 model AlertEvent {
