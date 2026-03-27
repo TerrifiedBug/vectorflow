@@ -668,6 +668,27 @@ model SystemSettings {
   updatedAt DateTime @updatedAt
 }
 
+model BackupRecord {
+  id              String    @id @default(cuid())
+  filename        String
+  status          String    // "success" | "failed" | "in_progress"
+  type            String    // "scheduled" | "manual" | "pre_restore"
+  sizeBytes       BigInt?
+  durationMs      Int?
+  storageLocation String
+  checksum        String?
+  vfVersion       String?
+  migrationCount  Int?
+  lastMigration   String?
+  pgVersion       String?
+  error           String?
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+
+  @@index([startedAt])
+  @@index([status])
+}
+
 model Account {
   id                String  @id @default(cuid())
   userId            String
