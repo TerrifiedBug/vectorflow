@@ -45,6 +45,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { QueryError } from "@/components/query-error";
+import { RestoreDialog } from "./RestoreDialog";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ function formatDuration(ms: number | null | undefined): string {
 function StatusBadge({ status }: { status: string }) {
   if (status === "success") return <Badge variant="secondary">Success</Badge>;
   if (status === "failed") return <Badge variant="destructive">Failed</Badge>;
+  if (status === "orphaned") return <Badge variant="outline" className="text-muted-foreground">Orphaned</Badge>;
   return <Badge variant="outline">In progress</Badge>;
 }
 
@@ -149,18 +151,6 @@ export function BackupSettings() {
       },
       onError: (error) => {
         toast.error(error.message || "Failed to delete backup");
-      },
-    }),
-  );
-
-  const restoreBackupMutation = useMutation(
-    trpc.settings.restoreBackup.mutationOptions({
-      onSuccess: () => {
-        setRestoreTarget(null);
-        toast.success("Backup restored successfully. Please restart the application.");
-      },
-      onError: (error) => {
-        toast.error(error.message || "Failed to restore backup");
       },
     }),
   );
@@ -584,22 +574,13 @@ export function BackupSettings() {
         </CardContent>
       </Card>
 
-      {/* Restore Confirmation Dialog */}
-      <ConfirmDialog
+      {/* Restore Dialog */}
+      <RestoreDialog
         open={!!restoreTarget}
         onOpenChange={(open) => {
           if (!open) setRestoreTarget(null);
         }}
-        title="Restore from backup?"
-        description="This will overwrite the current database with the selected backup. This action cannot be undone. The application should be restarted after restoring."
-        confirmLabel="Restore"
-        variant="destructive"
-        isPending={restoreBackupMutation.isPending}
-        onConfirm={() => {
-          if (restoreTarget) {
-            restoreBackupMutation.mutate({ filename: restoreTarget });
-          }
-        }}
+        filename={restoreTarget ?? ""}
       />
 
       {/* Delete Confirmation Dialog */}
