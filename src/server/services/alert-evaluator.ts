@@ -375,6 +375,7 @@ const METRIC_LABELS: Record<AlertMetric, string> = {
   certificate_expiring: "Certificate expiring",
   node_joined: "Node joined",
   node_left: "Node left",
+  promotion_completed: "Promotion completed",
 };
 
 const CONDITION_LABELS: Record<AlertCondition, string> = {

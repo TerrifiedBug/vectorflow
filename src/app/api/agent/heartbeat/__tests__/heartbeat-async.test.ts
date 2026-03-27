@@ -166,10 +166,8 @@ describe("heartbeat async decomposition", () => {
     setupBaseMocks();
   });
 
-  it("returns 200 while evaluateAlerts is still pending (fire-and-forget)", async () => {
-    // evaluateAlerts returns a forever-pending promise
-    evaluateAlertsMock.mockReturnValue(new Promise(() => {}));
-
+  // PERF-01: Heartbeat no longer triggers per-request alert evaluation
+  it("returns 200 and does NOT call evaluateAlerts (PERF-01)", async () => {
     // Sample processing — make findUnique for sample request never resolve too
     prismaMock.eventSampleRequest.findUnique.mockReturnValue(
       new Promise(() => {}) as never,
@@ -183,8 +181,8 @@ describe("heartbeat async decomposition", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
 
-    // Proves evaluateAlerts was invoked (but not awaited)
-    expect(evaluateAlertsMock).toHaveBeenCalledWith("node-1", "env-1");
+    // Proves evaluateAlerts is NOT called from heartbeat (PERF-01)
+    expect(evaluateAlertsMock).not.toHaveBeenCalled();
   });
 
   it("returns 200 while sample processing is still pending (fire-and-forget)", async () => {
@@ -236,8 +234,7 @@ describe("heartbeat async decomposition", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
-    // All three fire-and-forget operations reject
-    evaluateAlertsMock.mockRejectedValue(new Error("alert eval boom"));
+    // Fire-and-forget operations reject
     prismaMock.eventSampleRequest.findUnique.mockRejectedValue(
       new Error("sample boom") as never,
     );
@@ -253,7 +250,6 @@ describe("heartbeat async decomposition", () => {
 
     // Verify errors are logged, not swallowed
     const errorMessages = consoleErrorSpy.mock.calls.map((c) => c[0]);
-    expect(errorMessages).toContain("Alert evaluation failed:");
     expect(errorMessages).toContain("Sample processing error:");
     expect(errorMessages).toContain("Per-component latency upsert error:");
 
