@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
@@ -12,11 +11,11 @@ import { FleetThroughputChart } from "@/components/fleet/fleet-throughput-chart"
 import { FleetCapacityChart } from "@/components/fleet/fleet-capacity-chart";
 import { DataLossTable } from "@/components/fleet/data-loss-table";
 import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
+import { FleetTabs } from "@/components/fleet/fleet-tabs";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { ArrowLeft } from "lucide-react";
 
 type TimeRange = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -104,16 +103,7 @@ export default function FleetOverviewPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/fleet"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Fleet
-          </Link>
-          <h1 className="text-2xl font-bold">Fleet Overview</h1>
-        </div>
+        <FleetTabs active="overview" />
         <div className="flex items-center gap-1">
           {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (
             <button
