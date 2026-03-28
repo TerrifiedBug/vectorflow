@@ -76,6 +76,8 @@ import {
   type GroupNode,
 } from "@/components/pipeline/pipeline-group-tree";
 import { usePipelineSidebarStore } from "@/stores/pipeline-sidebar-store";
+import { FilterPresetBar } from "@/components/filter-preset/FilterPresetBar";
+import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
 
 // --- Helpers ---
 
@@ -247,6 +249,7 @@ export default function PipelinesPage() {
   const [selectedPipelineIds, setSelectedPipelineIds] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [saveFilterOpen, setSaveFilterOpen] = useState(false);
 
   const handleSort = useCallback(
     (field: SortField) => {
@@ -581,6 +584,35 @@ export default function PipelinesPage() {
               tagFilter={tagFilter}
               onTagFilterChange={setTagFilter}
               availableTags={availableTags}
+              presetBar={
+                effectiveEnvId ? (
+                  <FilterPresetBar
+                    environmentId={effectiveEnvId}
+                    scope="pipeline_list"
+                    currentFilters={{
+                      search,
+                      status: statusFilter,
+                      tags: tagFilter,
+                      groupId: groupId ?? undefined,
+                    }}
+                    onApplyPreset={(filters) => {
+                      const f = filters as {
+                        search?: string;
+                        status?: string[];
+                        tags?: string[];
+                        groupId?: string;
+                      };
+                      setSearch(f.search ?? "");
+                      setStatusFilter(f.status ?? []);
+                      setTagFilter(f.tags ?? []);
+                      if (f.groupId) {
+                        usePipelineSidebarStore.getState().setSelectedGroupId(f.groupId);
+                      }
+                    }}
+                    onSaveClick={() => setSaveFilterOpen(true)}
+                  />
+                ) : undefined
+              }
             />
           )}
 
@@ -1072,6 +1104,21 @@ export default function PipelinesPage() {
           open={manageGroupsOpen}
           onOpenChange={setManageGroupsOpen}
           environmentId={effectiveEnvId}
+        />
+      )}
+
+      {effectiveEnvId && (
+        <SaveFilterDialog
+          open={saveFilterOpen}
+          onOpenChange={setSaveFilterOpen}
+          environmentId={effectiveEnvId}
+          scope="pipeline_list"
+          filters={{
+            search,
+            status: statusFilter,
+            tags: tagFilter,
+            groupId: groupId ?? undefined,
+          }}
         />
       )}
     </div>

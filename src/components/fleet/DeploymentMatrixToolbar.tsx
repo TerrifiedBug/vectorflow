@@ -31,6 +31,8 @@ export interface DeploymentMatrixToolbarProps {
   tagFilter: string[];
   onTagFilterChange: (tags: string[]) => void;
   availableTags: string[];
+  /** Optional preset bar slot — rendered on the right side */
+  presetBar?: React.ReactNode;
 }
 
 // --- Status chips — only Running/Stopped/Crashed (matrix has deployed pipelines only, no Draft) ---
@@ -130,6 +132,7 @@ export function DeploymentMatrixToolbar({
   tagFilter,
   onTagFilterChange,
   availableTags,
+  presetBar,
 }: DeploymentMatrixToolbarProps) {
   // Debounced search — local input state + 300ms debounce to parent
   const [localSearch, setLocalSearch] = useState(search);
@@ -233,6 +236,14 @@ export function DeploymentMatrixToolbar({
           <X className="mr-1 h-3 w-3" />
           Clear filters
         </Button>
+      )}
+
+      {/* Preset bar — rendered on right side when provided */}
+      {presetBar && (
+        <>
+          <div className="flex-1" />
+          {presetBar}
+        </>
       )}
     </div>
   );

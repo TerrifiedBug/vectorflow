@@ -38,6 +38,8 @@ export interface PipelineListToolbarProps {
   tagFilter: string[];
   onTagFilterChange: (tags: string[]) => void;
   availableTags: string[];
+  /** Optional preset bar slot — rendered below filters when provided */
+  presetBar?: React.ReactNode;
 }
 
 // --- Status chips ---
@@ -133,6 +135,7 @@ export function PipelineListToolbar({
   tagFilter,
   onTagFilterChange,
   availableTags,
+  presetBar,
 }: PipelineListToolbarProps) {
   // Debounced search — local input state + 300ms debounce to parent
   const [localSearch, setLocalSearch] = useState(search);
@@ -234,6 +237,14 @@ export function PipelineListToolbar({
           <X className="mr-1 h-3 w-3" />
           Clear filters
         </Button>
+      )}
+
+      {/* Preset bar — rendered on right side when provided */}
+      {presetBar && (
+        <>
+          <div className="flex-1" />
+          {presetBar}
+        </>
       )}
     </div>
   );
