@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import {
   Dialog,
@@ -180,7 +181,7 @@ export function ServiceAccountsSettings() {
         toast.success("Service account created");
       },
       onError: (err) => {
-        toast.error(err.message || "Failed to create service account");
+        toast.error(err.message || "Failed to create service account", { duration: 6000 });
       },
     }),
   );
@@ -195,7 +196,7 @@ export function ServiceAccountsSettings() {
         toast.success("Service account revoked");
       },
       onError: (err) => {
-        toast.error(err.message || "Failed to revoke service account");
+        toast.error(err.message || "Failed to revoke service account", { duration: 6000 });
       },
     }),
   );
@@ -210,7 +211,7 @@ export function ServiceAccountsSettings() {
         toast.success("Service account deleted");
       },
       onError: (err) => {
-        toast.error(err.message || "Failed to delete service account");
+        toast.error(err.message || "Failed to delete service account", { duration: 6000 });
       },
     }),
   );
@@ -236,7 +237,7 @@ export function ServiceAccountsSettings() {
 
   function handleCreate() {
     if (!name.trim() || !selectedEnvId || selectedPermissions.size === 0) {
-      toast.error("Please fill in all required fields and select at least one permission");
+      toast.error("Please fill in all required fields and select at least one permission", { duration: 6000 });
       return;
     }
 
@@ -309,13 +310,7 @@ export function ServiceAccountsSettings() {
               ))}
             </div>
           ) : serviceAccounts.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <KeyRound className="mx-auto h-12 w-12 mb-4 opacity-50" />
-              <p className="text-lg font-medium">No service accounts</p>
-              <p className="text-sm">
-                Create a service account to start using the REST API
-              </p>
-            </div>
+            <EmptyState icon={KeyRound} title="No service accounts" description="Create a service account to authenticate external systems." />
           ) : (
             <Table>
               <TableHeader>

@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
 import { toast } from "sonner";
-import { Loader2, Trash2, Plus } from "lucide-react";
+import { Loader2, Trash2, Plus, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import {
   Dialog,
@@ -53,7 +54,7 @@ export function TeamsManagement() {
         setNewTeamName("");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to create team");
+        toast.error(error.message || "Failed to create team", { duration: 6000 });
       },
     })
   );
@@ -70,7 +71,7 @@ export function TeamsManagement() {
         setDeleteTeam(null);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to delete team");
+        toast.error(error.message || "Failed to delete team", { duration: 6000 });
       },
     })
   );
@@ -80,15 +81,6 @@ export function TeamsManagement() {
   const [deleteTeam, setDeleteTeam] = useState<{ id: string; name: string } | null>(null);
 
   if (teamsQuery.isError) return <QueryError message="Failed to load teams" onRetry={() => teamsQuery.refetch()} />;
-
-  if (teamsQuery.isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
 
   const teams = teamsQuery.data ?? [];
 
@@ -110,6 +102,15 @@ export function TeamsManagement() {
           </div>
         </CardHeader>
         <CardContent>
+          {teamsQuery.isLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : teams.length === 0 ? (
+            <EmptyState icon={Users} title="No teams yet" description="Create a team to get started." />
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -152,6 +153,7 @@ export function TeamsManagement() {
               ))}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
 
