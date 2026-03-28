@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { Shield, Copy, CheckCircle2 } from "lucide-react";
+import { Shield, Copy, CheckCircle2, AlertTriangle, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import QRCode from "qrcode";
 
+import { cn } from "@/lib/utils";
 import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,6 +111,19 @@ export default function Setup2FAPage() {
     toast.success("Backup codes copied to clipboard");
   }
 
+  function handleDownloadBackupCodes() {
+    const content = backupCodes.join("\n");
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "vectorflow-backup-codes.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   if (status === "loading" || meQuery.isLoading) {
     return (
       <Card className="w-full hover:translate-y-0 hover:shadow-none">
@@ -123,6 +137,36 @@ export default function Setup2FAPage() {
 
   return (
     <Card className="w-full">
+      <div className="flex items-center gap-2 px-6 pt-6">
+        <div
+          className={cn(
+            "h-2 w-2 rounded-full",
+            step === "qr" || step === "verify" || step === "done"
+              ? "bg-primary"
+              : "bg-muted-foreground/30"
+          )}
+        />
+        <p className="text-xs text-muted-foreground">Scan QR Code</p>
+        <div className="h-px flex-1 bg-border" />
+        <div
+          className={cn(
+            "h-2 w-2 rounded-full",
+            step === "verify" || step === "done"
+              ? "bg-primary"
+              : "bg-muted-foreground/30"
+          )}
+        />
+        <p className="text-xs text-muted-foreground">Verify Code</p>
+        <div className="h-px flex-1 bg-border" />
+        <div
+          className={cn(
+            "h-2 w-2 rounded-full",
+            step === "done" ? "bg-primary" : "bg-muted-foreground/30"
+          )}
+        />
+        <p className="text-xs text-muted-foreground">Complete</p>
+      </div>
+
       <CardHeader className="text-center">
         <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
           <Shield className="h-6 w-6 text-primary" />
@@ -135,7 +179,7 @@ export default function Setup2FAPage() {
             ? "Your account is now protected with two-factor authentication."
             : step === "verify"
               ? "Enter the 6-digit code from your authenticator app to complete setup."
-              : "Your organization requires two-factor authentication. Scan the QR code with your authenticator app (Google Authenticator, Authy, etc.)"}
+              : "Your organization requires two-factor authentication. Scan the QR code with an authenticator app such as Google Authenticator or Authy."}
         </CardDescription>
       </CardHeader>
 
@@ -192,6 +236,23 @@ export default function Setup2FAPage() {
                   <Copy className="h-3.5 w-3.5" />
                 </Button>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={handleDownloadBackupCodes}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download backup codes
+              </Button>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <p>
+                Save these backup codes before continuing. Each code can be used once if you lose
+                access to your authenticator app. They cannot be shown again.
+              </p>
             </div>
 
             <Button className="w-full" onClick={() => setStep("verify")}>
@@ -230,7 +291,14 @@ export default function Setup2FAPage() {
                 Back
               </Button>
               <Button type="submit" className="flex-1" disabled={verifyMutation.isPending || verifyCode.length !== 6}>
-                {verifyMutation.isPending ? "Verifying..." : "Verify & Enable"}
+                {verifyMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  "Verify & Enable"
+                )}
               </Button>
             </div>
           </form>
