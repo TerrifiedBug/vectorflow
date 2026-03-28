@@ -8,7 +8,6 @@ import { toast } from "sonner";
 import {
   Loader2,
   CheckCircle2,
-  XCircle,
   KeyRound,
   Copy,
   AlertTriangle,
@@ -27,6 +26,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -109,26 +109,9 @@ export function ScimSettings() {
                 from your identity provider (Okta, Entra ID, etc.).
               </CardDescription>
             </div>
-            <Badge
-              variant="outline"
-              className={
-                settings?.scimEnabled
-                  ? "text-xs text-green-600 border-green-600"
-                  : "text-xs text-muted-foreground"
-              }
-            >
-              {settings?.scimEnabled ? (
-                <>
-                  <CheckCircle2 className="mr-1 h-3 w-3" />
-                  Enabled
-                </>
-              ) : (
-                <>
-                  <XCircle className="mr-1 h-3 w-3" />
-                  Disabled
-                </>
-              )}
-            </Badge>
+            <StatusBadge variant={settings?.scimEnabled ? "healthy" : "neutral"}>
+              {settings?.scimEnabled ? "Enabled" : "Disabled"}
+            </StatusBadge>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
