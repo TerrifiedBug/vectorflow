@@ -141,6 +141,7 @@ model Environment {
   gitBranch           String?       @default("main")
   gitToken            String?       // Stored encrypted via crypto.ts
   gitOpsMode          String        @default("off")   // "off" | "push" | "bidirectional" | "promotion"
+  gitProvider         String?       // "github" | "gitlab" | "bitbucket" — auto-detected from gitRepoUrl if null
   gitWebhookSecret    String?       // HMAC secret for validating incoming git webhooks
   requireDeployApproval   Boolean       @default(false)
   alertRules              AlertRule[]
@@ -156,6 +157,7 @@ model Environment {
   promotionSources        PromotionRequest[] @relation("PromotionSourceEnv")
   promotionTargets        PromotionRequest[] @relation("PromotionTargetEnv")
   filterPresets           FilterPreset[]
+  gitSyncJobs             GitSyncJob[]
   createdAt               DateTime      @default(now())
 }
 
@@ -323,6 +325,7 @@ model Pipeline {
   versions      PipelineVersion[]
   globalConfig  Json?
   nodeSelector  Json?
+  gitPath       String?              // Stable git file path, e.g. "production/my-pipeline.yaml"
   isDraft       Boolean              @default(true)
   isSystem      Boolean              @default(false)
   deployedAt    DateTime?
@@ -349,6 +352,7 @@ model Pipeline {
   downstreamDeps  PipelineDependency[] @relation("PipelineUpstream")
   promotionSources    PromotionRequest[] @relation("PromotionSource")
   promotionTargets    PromotionRequest[] @relation("PromotionTarget")
+  gitSyncJobs     GitSyncJob[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 }
@@ -792,6 +796,30 @@ model PromotionRequest {
   @@index([targetEnvironmentId])
 }
 
+model GitSyncJob {
+  id              String    @id @default(cuid())
+  environmentId   String
+  environment     Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  pipelineId      String
+  pipeline        Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  action          String      // "commit" | "delete"
+  configYaml      String?     // The YAML content for commit actions
+  commitMessage   String?
+  authorName      String?
+  authorEmail     String?
+  attempts        Int         @default(0)
+  maxAttempts     Int         @default(3)
+  lastError       String?
+  status          String      @default("pending") // "pending" | "completed" | "failed"
+  nextRetryAt     DateTime?
+  createdAt       DateTime    @default(now())
+  completedAt     DateTime?
+
+  @@index([status, nextRetryAt])
+  @@index([environmentId])
+  @@index([pipelineId])
+}
+
 enum AlertMetric {
   // Infrastructure (threshold-based, per-node)
   node_unreachable
@@ -825,6 +853,7 @@ enum AlertMetric {
   node_left
   // Phase 5 event — enum value added early so subscriptions can be created
   promotion_completed
+  git_sync_failed
 }
 
 enum AlertCondition {

@@ -5,7 +5,7 @@ import { validateConfig } from "@/server/services/validator";
 import { createVersion } from "@/server/services/pipeline-version";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { startSystemVector, stopSystemVector } from "@/server/services/system-vector";
-import { gitSyncCommitPipeline } from "@/server/services/git-sync";
+import { gitSyncCommitPipeline, toFilenameSlug } from "@/server/services/git-sync";
 import { relayPush } from "@/server/services/push-broadcast";
 
 export interface AgentDeployResult {
@@ -155,9 +155,36 @@ export async function deployAgent(
       version.configYaml,
       { name: user?.name ?? (isServiceAccount ? "VectorFlow Service Account" : "VectorFlow User"), email: user?.email ?? "noreply@vectorflow" },
       changelog ?? `Deploy pipeline: ${pipeline.name}`,
+      pipeline.gitPath,
     );
     if (!result.success) {
       gitSyncError = result.error;
+    }
+
+    // Queue for retry if git sync failed
+    if (!result.success && result.error) {
+      const { createGitSyncJob } = await import("@/server/services/git-sync-retry");
+      await createGitSyncJob({
+        environmentId: pipeline.environmentId,
+        pipelineId: pipeline.id,
+        action: "commit",
+        configYaml: version.configYaml,
+        commitMessage: changelog ?? `Deploy pipeline: ${pipeline.name}`,
+        authorName: user?.name ?? (isServiceAccount ? "VectorFlow Service Account" : "VectorFlow User"),
+        authorEmail: user?.email ?? "noreply@vectorflow",
+        error: result.error,
+      }).catch((err) => {
+        console.error("[deploy-agent] Failed to create git sync retry job:", err);
+      });
+    }
+
+    // Set gitPath on first successful sync
+    if (result.success && !pipeline.gitPath) {
+      const derivedPath = `${toFilenameSlug(environment.name)}/${toFilenameSlug(pipeline.name)}.yaml`;
+      await prisma.pipeline.update({
+        where: { id: pipeline.id },
+        data: { gitPath: derivedPath },
+      }).catch(() => {}); // Non-blocking
     }
   }
 

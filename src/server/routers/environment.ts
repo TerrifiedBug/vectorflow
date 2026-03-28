@@ -19,7 +19,14 @@ export const environmentRouter = router({
           name: true,
           teamId: true,
           createdAt: true,
-          _count: { select: { nodes: true, pipelines: true } },
+          gitOpsMode: true,
+          _count: {
+            select: {
+              nodes: true,
+              pipelines: true,
+              gitSyncJobs: { where: { status: "failed" } },
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
       });
@@ -104,13 +111,14 @@ export const environmentRouter = router({
         gitBranch: z.string().min(1).max(100).optional().nullable(),
         gitToken: z.string().optional().nullable(),
         gitOpsMode: z.enum(["off", "push", "bidirectional", "promotion"]).optional(),
+        gitProvider: z.enum(["github", "gitlab", "bitbucket"]).nullable().optional(),
         requireDeployApproval: z.boolean().optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("environment.updated", "Environment"))
     .mutation(async ({ input, ctx }) => {
-      const { id, gitToken, requireDeployApproval, ...rest } = input;
+      const { id, gitToken, gitProvider, requireDeployApproval, ...rest } = input;
 
       // Only ADMINs can toggle the approval requirement
       const userRole = (ctx as Record<string, unknown>).userRole as string;
@@ -145,6 +153,9 @@ export const environmentRouter = router({
       }
       if (gitToken !== undefined) {
         data.gitToken = gitToken ? encrypt(gitToken) : null;
+      }
+      if (gitProvider !== undefined) {
+        data.gitProvider = gitProvider;
       }
 
       // Handle gitOpsMode — auto-generate webhook secret when switching to bidirectional or promotion
