@@ -109,6 +109,7 @@ function AlertEventContent({
 
       {/* ── Table view ── */}
       <TabsContent value="table">
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -218,6 +219,7 @@ function AlertEventContent({
             })}
           </TableBody>
         </Table>
+        </div>
 
         {nextCursor && (
           <div className="flex justify-center pt-2">

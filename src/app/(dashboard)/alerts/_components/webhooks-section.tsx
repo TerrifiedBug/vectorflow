@@ -268,6 +268,7 @@ export function WebhooksSection({ environmentId }: { environmentId: string }) {
           ))}
         </div>
       ) : (
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -338,6 +339,7 @@ export function WebhooksSection({ environmentId }: { environmentId: string }) {
             ))}
           </TableBody>
         </Table>
+        </div>
       )}
 
       {/* Create / Edit Dialog */}
