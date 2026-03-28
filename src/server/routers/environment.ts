@@ -19,7 +19,14 @@ export const environmentRouter = router({
           name: true,
           teamId: true,
           createdAt: true,
-          _count: { select: { nodes: true, pipelines: true } },
+          gitOpsMode: true,
+          _count: {
+            select: {
+              nodes: true,
+              pipelines: true,
+              gitSyncJobs: { where: { status: "failed" } },
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
       });
