@@ -556,6 +556,11 @@ export default function FleetPage() {
             environmentId={activeEnvId}
             filteredPipelines={matrixQuery.data ? filteredDeployedPipelines : undefined}
             hasActiveFilters={matrixHasActiveFilters}
+            onClearFilters={() => {
+              setMatrixSearch("");
+              setMatrixStatusFilter([]);
+              setMatrixTagFilter([]);
+            }}
           />
         </div>
       )}
