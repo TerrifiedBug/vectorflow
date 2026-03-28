@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,48 @@ interface RestoreDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   filename: string;
+}
+
+// ─── Step sequence ────────────────────────────────────────────────────────────
+
+const STEP_SEQUENCE: Step[] = ["preview", "confirm", "executing", "done"];
+const STEP_LABELS: Record<string, string> = {
+  preview: "Preview",
+  confirm: "Confirm",
+  executing: "Restoring",
+  done: "Done",
+};
+
+function StepIndicator({ currentStep }: { currentStep: Step }) {
+  const currentIndex = currentStep === "error" ? 2 : STEP_SEQUENCE.indexOf(currentStep);
+  return (
+    <div className="flex items-center justify-center gap-2 py-3">
+      {STEP_SEQUENCE.map((s, i) => {
+        const isComplete = i < currentIndex;
+        const isCurrent = i === currentIndex;
+        return (
+          <div key={s} className="flex items-center gap-2">
+            {i > 0 && (
+              <div className={cn("h-px w-6", i <= currentIndex ? "bg-primary" : "bg-muted")} />
+            )}
+            <div
+              className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium",
+                isComplete || isCurrent
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
+              {isComplete ? <CheckCircle className="h-3.5 w-3.5" /> : i + 1}
+            </div>
+            <span className={cn("text-xs", isCurrent ? "font-medium text-foreground" : "text-muted-foreground")}>
+              {STEP_LABELS[s]}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -90,6 +133,7 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
             <DialogTitle>Restore Preview</DialogTitle>
             <DialogDescription>Review the backup contents before restoring.</DialogDescription>
           </DialogHeader>
+          <StepIndicator currentStep={step} />
 
           <div className="space-y-3">
             {previewQuery.isLoading ? (
@@ -192,6 +236,7 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
               This action will permanently replace the current database.
             </DialogDescription>
           </DialogHeader>
+          <StepIndicator currentStep={step} />
 
           <div className="space-y-4">
             <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
@@ -247,13 +292,14 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Restoring Database...</DialogTitle>
-            <DialogDescription>
-              Creating safety backup and applying restore. Do not close this window.
-            </DialogDescription>
           </DialogHeader>
+          <StepIndicator currentStep={step} />
 
-          <div className="flex justify-center py-8">
+          <div className="flex flex-col items-center gap-4 py-6">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground text-center">
+              Step 3 of 4 — Creating safety backup and applying restore. Do not close this window.
+            </p>
           </div>
         </DialogContent>
       </Dialog>
@@ -269,6 +315,7 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
           <DialogHeader>
             <DialogTitle>Restore Complete</DialogTitle>
           </DialogHeader>
+          <StepIndicator currentStep={step} />
 
           <div className="rounded-md border border-green-500/30 bg-green-500/10 p-4">
             <div className="flex items-start gap-3">
@@ -298,6 +345,7 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
         <DialogHeader>
           <DialogTitle>Restore Failed</DialogTitle>
         </DialogHeader>
+        <StepIndicator currentStep="error" />
 
         <div className="space-y-3">
           <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4">
@@ -317,6 +365,15 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
         </div>
 
         <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setStep("executing");
+              restoreMutation.mutate({ filename });
+            }}
+          >
+            Try Again
+          </Button>
           <Button onClick={() => handleClose(false)}>Close</Button>
         </DialogFooter>
       </DialogContent>
