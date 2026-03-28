@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { Fragment, useState, useCallback } from "react";
 import {
   useQuery,
   useMutation,
@@ -16,6 +16,8 @@ import {
   Send,
   Webhook,
   BellRing,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import {
@@ -56,6 +59,102 @@ import {
   CHANNEL_TYPE_LABELS,
   CHANNEL_TYPE_ICONS,
 } from "./constants";
+
+// ─── Channel Delivery History sub-component ──────────────────────────────────
+
+function ChannelDeliveryHistory({
+  channelName,
+  channelType,
+}: {
+  channelName: string;
+  channelType: string;
+}) {
+  const trpc = useTRPC();
+  const deliveriesQuery = useQuery(
+    trpc.alert.listChannelDeliveries.queryOptions({
+      channelName,
+      channelType,
+      limit: 10,
+    }),
+  );
+
+  if (deliveriesQuery.isLoading) {
+    return (
+      <div className="space-y-2 p-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-8 w-full" />
+        ))}
+      </div>
+    );
+  }
+
+  if (deliveriesQuery.isError) {
+    return (
+      <div className="p-3 text-sm text-destructive">
+        Failed to load delivery history.
+      </div>
+    );
+  }
+
+  const deliveries = deliveriesQuery.data ?? [];
+  if (deliveries.length === 0) {
+    return (
+      <div className="p-3 text-sm text-muted-foreground">
+        No delivery attempts recorded.
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-3">
+      <p className="text-xs font-medium text-muted-foreground mb-2">
+        Recent Delivery Attempts
+      </p>
+      <div className="divide-y divide-border rounded-md border">
+        {deliveries.map((d) => (
+          <div
+            key={d.id}
+            className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm"
+          >
+            <StatusBadge
+              variant={
+                d.status === "success"
+                  ? "healthy"
+                  : d.status === "failed"
+                    ? "error"
+                    : "neutral"
+              }
+            >
+              {d.status === "success"
+                ? "Delivered"
+                : d.status === "failed"
+                  ? "Failed"
+                  : d.status}
+            </StatusBadge>
+            {d.statusCode != null && (
+              <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                HTTP {d.statusCode}
+              </span>
+            )}
+            {d.errorMessage && (
+              <span className="text-xs text-destructive truncate max-w-[200px]">
+                {d.errorMessage}
+              </span>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {d.attemptNumber != null && d.attemptNumber > 1
+                ? `${d.attemptNumber - 1} retries`
+                : "No retries"}
+            </span>
+            <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+              {d.requestedAt ? new Date(d.requestedAt).toLocaleString() : ""}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ─── Notification Channels Section ───────────────────────────────────────────────
 
@@ -178,6 +277,7 @@ export function NotificationChannelsSection({
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
+  const [expandedChannelId, setExpandedChannelId] = useState<string | null>(null);
   const [form, setForm] = useState<ChannelFormState>(EMPTY_CHANNEL_FORM);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
@@ -381,6 +481,7 @@ export function NotificationChannelsSection({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[30px]" />
               <TableHead>Name</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Enabled</TableHead>
@@ -389,73 +490,103 @@ export function NotificationChannelsSection({
           </TableHeader>
           <TableBody>
             {channels.map((channel) => {
-              const Icon =
-                CHANNEL_TYPE_ICONS[channel.type] ?? Webhook;
+              const Icon = CHANNEL_TYPE_ICONS[channel.type] ?? Webhook;
+              const isExpanded = expandedChannelId === channel.id;
               return (
-                <TableRow key={channel.id}>
-                  <TableCell className="font-medium">{channel.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="gap-1">
-                      <Icon className="h-3 w-3" />
-                      {CHANNEL_TYPE_LABELS[channel.type] ?? channel.type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Switch
-                      checked={channel.enabled}
-                      disabled={toggleMutation.isPending}
-                      onCheckedChange={(checked) =>
-                        toggleMutation.mutate({
-                          id: channel.id,
-                          enabled: checked,
-                        })
-                      }
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        aria-label="Test channel"
+                <Fragment key={channel.id}>
+                  <TableRow>
+                    <TableCell className="w-[30px] px-2">
+                      <button
+                        type="button"
                         onClick={() =>
-                          testMutation.mutate({ id: channel.id })
+                          setExpandedChannelId(isExpanded ? null : channel.id)
                         }
-                        disabled={testMutation.isPending}
+                        aria-label={
+                          isExpanded
+                            ? `Hide delivery history for ${channel.name}`
+                            : `Show delivery history for ${channel.name}`
+                        }
+                        className="p-0.5"
                       >
-                        {testMutation.isPending ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
                         ) : (
-                          <Send className="h-4 w-4" />
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        aria-label="Edit channel"
-                        onClick={() => openEdit(channel)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        aria-label="Delete channel"
-                        onClick={() =>
-                          setDeleteTarget({
+                      </button>
+                    </TableCell>
+                    <TableCell className="font-medium">{channel.name}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="gap-1">
+                        <Icon className="h-3 w-3" />
+                        {CHANNEL_TYPE_LABELS[channel.type] ?? channel.type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Switch
+                        checked={channel.enabled}
+                        disabled={toggleMutation.isPending}
+                        onCheckedChange={(checked) =>
+                          toggleMutation.mutate({
                             id: channel.id,
-                            name: channel.name,
+                            enabled: checked,
                           })
                         }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          aria-label="Test channel"
+                          onClick={() => testMutation.mutate({ id: channel.id })}
+                          disabled={testMutation.isPending}
+                        >
+                          {testMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          aria-label="Edit channel"
+                          onClick={() => openEdit(channel)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          aria-label="Delete channel"
+                          onClick={() =>
+                            setDeleteTarget({
+                              id: channel.id,
+                              name: channel.name,
+                            })
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {isExpanded && (
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableCell colSpan={99} className="p-0">
+                        <ChannelDeliveryHistory
+                          channelName={channel.name}
+                          channelType={channel.type}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
               );
             })}
           </TableBody>

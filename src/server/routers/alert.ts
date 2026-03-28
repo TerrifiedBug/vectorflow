@@ -769,6 +769,37 @@ export const alertRouter = router({
       });
     }),
 
+  listChannelDeliveries: protectedProcedure
+    .input(
+      z.object({
+        channelName: z.string(),
+        channelType: z.string(),
+        limit: z.number().min(1).max(50).default(10),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return prisma.deliveryAttempt.findMany({
+        where: {
+          channelName: input.channelName,
+          channelType: input.channelType,
+        },
+        select: {
+          id: true,
+          channelType: true,
+          channelName: true,
+          status: true,
+          statusCode: true,
+          errorMessage: true,
+          requestedAt: true,
+          completedAt: true,
+          attemptNumber: true,
+        },
+        orderBy: { requestedAt: "desc" },
+        take: input.limit,
+      });
+    }),
+
   // ─── Alert Events ──────────────────────────────────────────────────
 
   listEvents: protectedProcedure
