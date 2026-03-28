@@ -61,7 +61,7 @@ function AiSettingsForm({ config, teamId }: { config: AiConfig; teamId: string }
         toast.success("AI configuration saved");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to save AI config");
+        toast.error(error.message || "Failed to save AI config", { duration: 6000 });
       },
     }),
   );
@@ -73,12 +73,12 @@ function AiSettingsForm({ config, teamId }: { config: AiConfig; teamId: string }
         if (result.ok) {
           toast.success("AI connection successful!");
         } else {
-          toast.error("Connection failed", { description: result.error });
+          toast.error("Connection failed", { description: result.error , duration: 6000 });
         }
       },
       onError: (error) => {
         setTestResult({ ok: false, error: error.message });
-        toast.error("Connection test failed", { description: error.message });
+        toast.error("Connection test failed", { description: error.message , duration: 6000 });
       },
     }),
   );

@@ -89,7 +89,7 @@ export function WebhooksSection({ environmentId }: { environmentId: string }) {
         setDialogOpen(false);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to create webhook");
+        toast.error(error.message || "Failed to create webhook", { duration: 6000 });
       },
     }),
   );
@@ -103,7 +103,7 @@ export function WebhooksSection({ environmentId }: { environmentId: string }) {
         setEditingWebhookId(null);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update webhook");
+        toast.error(error.message || "Failed to update webhook", { duration: 6000 });
       },
     }),
   );
@@ -114,7 +114,7 @@ export function WebhooksSection({ environmentId }: { environmentId: string }) {
         invalidateWebhooks();
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to toggle webhook");
+        toast.error(error.message || "Failed to toggle webhook", { duration: 6000 });
       },
     }),
   );
@@ -127,7 +127,7 @@ export function WebhooksSection({ environmentId }: { environmentId: string }) {
         setDeleteTarget(null);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to delete webhook");
+        toast.error(error.message || "Failed to delete webhook", { duration: 6000 });
       },
     }),
   );
@@ -142,11 +142,12 @@ export function WebhooksSection({ environmentId }: { environmentId: string }) {
         } else {
           toast.error(
             `Webhook test failed: ${result.statusCode} ${result.statusText}`,
+            { duration: 6000 },
           );
         }
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to test webhook");
+        toast.error(error.message || "Failed to test webhook", { duration: 6000 });
       },
     }),
   );
@@ -179,19 +180,19 @@ export function WebhooksSection({ environmentId }: { environmentId: string }) {
     try {
       const parsed = JSON.parse(raw);
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        toast.error("Headers must be a JSON object");
+        toast.error("Headers must be a JSON object", { duration: 6000 });
         return undefined;
       }
       return parsed as Record<string, string>;
     } catch {
-      toast.error("Invalid JSON in headers field");
+      toast.error("Invalid JSON in headers field", { duration: 6000 });
       return undefined;
     }
   };
 
   const handleSubmit = () => {
     if (!form.url) {
-      toast.error("URL is required");
+      toast.error("URL is required", { duration: 6000 });
       return;
     }
 

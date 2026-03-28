@@ -277,7 +277,7 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
         invalidateEvents();
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to acknowledge alert");
+        toast.error(error.message || "Failed to acknowledge alert", { duration: 6000 });
       },
     }),
   );

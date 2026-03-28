@@ -45,14 +45,14 @@ export function SaveTemplateDialog({ open, onOpenChange }: SaveTemplateDialogPro
         setCategory("Custom");
       },
       onError: (err) => {
-        toast.error("Failed to save template", { description: err.message });
+        toast.error("Failed to save template", { description: err.message , duration: 6000 });
       },
     })
   );
 
   function handleSave() {
     if (!teamId) {
-      toast.error("No team found");
+      toast.error("No team found", { duration: 6000 });
       return;
     }
 

@@ -318,7 +318,7 @@ export function NodeGroupManagement({ environmentId }: NodeGroupManagementProps)
         setCreateForm(emptyForm());
         queryClient.invalidateQueries({ queryKey: trpc.nodeGroup.list.queryKey() });
       },
-      onError: (err) => toast.error(err.message),
+      onError: (err) => toast.error(err.message, { duration: 6000 }),
     }),
   );
 
@@ -344,7 +344,7 @@ export function NodeGroupManagement({ environmentId }: NodeGroupManagementProps)
         setEditingId(null);
         queryClient.invalidateQueries({ queryKey: trpc.nodeGroup.list.queryKey() });
       },
-      onError: (err) => toast.error(err.message),
+      onError: (err) => toast.error(err.message, { duration: 6000 }),
     }),
   );
 
@@ -387,7 +387,7 @@ export function NodeGroupManagement({ environmentId }: NodeGroupManagementProps)
         setDeleteTarget(null);
         queryClient.invalidateQueries({ queryKey: trpc.nodeGroup.list.queryKey() });
       },
-      onError: (err) => toast.error(err.message),
+      onError: (err) => toast.error(err.message, { duration: 6000 }),
     }),
   );
 
