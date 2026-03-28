@@ -338,7 +338,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         toast.success("Pipeline saved");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to save pipeline");
+        toast.error(error.message || "Failed to save pipeline", { duration: 6000 });
       },
     })
   );
@@ -351,11 +351,11 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
           toast.success("Pipeline undeployed");
           queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
         } else {
-          toast.error(result.error || "Undeploy failed");
+          toast.error(result.error || "Undeploy failed", { duration: 6000 });
         }
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to undeploy");
+        toast.error(error.message || "Failed to undeploy", { duration: 6000 });
       },
     })
   );
@@ -368,7 +368,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         router.push("/pipelines");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to delete pipeline");
+        toast.error(error.message || "Failed to delete pipeline", { duration: 6000 });
       },
     })
   );
@@ -383,7 +383,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         setDiscardOpen(false);
       },
       onError: (err) => {
-        toast.error("Failed to discard changes", { description: err.message });
+        toast.error("Failed to discard changes", { description: err.message , duration: 6000 });
       },
     })
   );
@@ -400,7 +400,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         toast.success("Pipeline renamed");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to rename pipeline");
+        toast.error(error.message || "Failed to rename pipeline", { duration: 6000 });
       },
     })
   );

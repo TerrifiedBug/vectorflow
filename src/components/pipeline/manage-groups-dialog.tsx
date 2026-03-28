@@ -83,7 +83,7 @@ export function ManageGroupsDialog({
         setNewParentId("__root__");
         queryClient.invalidateQueries({ queryKey: trpc.pipelineGroup.list.queryKey() });
       },
-      onError: (err) => toast.error(err.message),
+      onError: (err) => toast.error(err.message, { duration: 6000 }),
     }),
   );
 
@@ -99,7 +99,7 @@ export function ManageGroupsDialog({
         setEditingId(null);
         queryClient.invalidateQueries({ queryKey: trpc.pipelineGroup.list.queryKey() });
       },
-      onError: (err) => toast.error(err.message),
+      onError: (err) => toast.error(err.message, { duration: 6000 }),
     }),
   );
 
@@ -114,7 +114,7 @@ export function ManageGroupsDialog({
         queryClient.invalidateQueries({ queryKey: trpc.pipelineGroup.list.queryKey() });
         queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
       },
-      onError: (err) => toast.error(err.message),
+      onError: (err) => toast.error(err.message, { duration: 6000 }),
     }),
   );
 

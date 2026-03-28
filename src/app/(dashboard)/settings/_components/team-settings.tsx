@@ -86,7 +86,7 @@ export function TeamSettings() {
         toast.success("Member role updated");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update role");
+        toast.error(error.message || "Failed to update role", { duration: 6000 });
       },
     })
   );
@@ -98,7 +98,7 @@ export function TeamSettings() {
         toast.success("Member removed");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to remove member");
+        toast.error(error.message || "Failed to remove member", { duration: 6000 });
       },
     })
   );
@@ -112,7 +112,7 @@ export function TeamSettings() {
         setInviteRole("VIEWER");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to add member");
+        toast.error(error.message || "Failed to add member", { duration: 6000 });
       },
     })
   );
@@ -139,7 +139,7 @@ export function TeamSettings() {
         toast.success("User linked to SSO");
         setLinkToOidcConfirm(null);
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
     })
   );
 
@@ -149,7 +149,7 @@ export function TeamSettings() {
         queryClient.invalidateQueries({ queryKey: trpc.team.get.queryKey({ id: selectedTeamId! }) });
         toast.success("User locked");
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
     })
   );
 
@@ -159,7 +159,7 @@ export function TeamSettings() {
         queryClient.invalidateQueries({ queryKey: trpc.team.get.queryKey({ id: selectedTeamId! }) });
         toast.success("User unlocked");
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
     })
   );
 
@@ -169,7 +169,7 @@ export function TeamSettings() {
         setTempPassword(data.temporaryPassword);
         setResetPasswordOpen(true);
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
     })
   );
 
@@ -181,7 +181,7 @@ export function TeamSettings() {
         toast.success("Team renamed");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to rename team");
+        toast.error(error.message || "Failed to rename team", { duration: 6000 });
       },
     })
   );
@@ -193,7 +193,7 @@ export function TeamSettings() {
         toast.success("2FA requirement updated");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update 2FA requirement");
+        toast.error(error.message || "Failed to update 2FA requirement", { duration: 6000 });
       },
     })
   );
@@ -214,7 +214,7 @@ export function TeamSettings() {
         toast.success("Default environment updated");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update default environment");
+        toast.error(error.message || "Failed to update default environment", { duration: 6000 });
       },
     })
   );
@@ -246,7 +246,7 @@ export function TeamSettings() {
         if (context?.previousInput !== undefined) {
           setNewTag(context.previousInput);
         }
-        toast.error(error.message || "Failed to update tags");
+        toast.error(error.message || "Failed to update tags", { duration: 6000 });
       },
       onSettled: () => {
         queryClient.invalidateQueries({ queryKey: tagsQueryKey });
@@ -262,7 +262,7 @@ export function TeamSettings() {
     const trimmed = newTag.trim();
     if (!selectedTeamId || !trimmed) return;
     if (availableTags.includes(trimmed)) {
-      toast.error("Tag already exists");
+      toast.error("Tag already exists", { duration: 6000 });
       return;
     }
     updateTagsMutation.mutate({

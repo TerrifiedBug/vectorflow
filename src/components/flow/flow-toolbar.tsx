@@ -145,7 +145,7 @@ export function FlowToolbar({
         toast.success("Deploy request cancelled");
       },
       onError: (err) => {
-        toast.error("Failed to cancel request", { description: err.message });
+        toast.error("Failed to cancel request", { description: err.message , duration: 6000 });
       },
     })
   );
@@ -156,11 +156,11 @@ export function FlowToolbar({
         toast.success("Pipeline is valid!");
       } else {
         const errorMsg = result.errors.map((e: { message: string }) => e.message).join("\n");
-        toast.error("Validation failed", { description: errorMsg });
+        toast.error("Validation failed", { description: errorMsg , duration: 6000 });
       }
     },
     onError: (err) => {
-      toast.error("Validation error", { description: err.message });
+      toast.error("Validation error", { description: err.message , duration: 6000 });
     },
   }));
 
@@ -193,7 +193,7 @@ export function FlowToolbar({
         loadGraph(newNodes, newEdges, importedGlobalConfig);
         toast.success(`Imported ${newNodes.length} components from ${file.name}`);
       } catch (err) {
-        toast.error("Import failed", { description: String(err) });
+        toast.error("Import failed", { description: String(err) , duration: 6000 });
       }
     };
     reader.readAsText(file);

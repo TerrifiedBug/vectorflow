@@ -81,21 +81,21 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
   const bulkDeployMutation = useMutation(
     trpc.pipeline.bulkDeploy.mutationOptions({
       onSuccess: (data) => handleResult("Deploy", data),
-      onError: (err) => toast.error(err.message || "Bulk deploy failed"),
+      onError: (err) => toast.error(err.message || "Bulk deploy failed", { duration: 6000 }),
     }),
   );
 
   const bulkUndeployMutation = useMutation(
     trpc.pipeline.bulkUndeploy.mutationOptions({
       onSuccess: (data) => handleResult("Undeploy", data),
-      onError: (err) => toast.error(err.message || "Bulk undeploy failed"),
+      onError: (err) => toast.error(err.message || "Bulk undeploy failed", { duration: 6000 }),
     }),
   );
 
   const bulkDeleteMutation = useMutation(
     trpc.pipeline.bulkDelete.mutationOptions({
       onSuccess: (data) => handleResult("Delete", data),
-      onError: (err) => toast.error(err.message || "Bulk delete failed"),
+      onError: (err) => toast.error(err.message || "Bulk delete failed", { duration: 6000 }),
     }),
   );
 
@@ -107,7 +107,7 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
         setSelectedTags([]);
         setCustomTagInput("");
       },
-      onError: (err) => toast.error(`Failed to add tags: ${err.message}`),
+      onError: (err) => toast.error(`Failed to add tags: ${err.message}`, { duration: 6000 }),
     }),
   );
 
@@ -119,7 +119,7 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
         setSelectedTags([]);
         setCustomTagInput("");
       },
-      onError: (err) => toast.error(`Failed to remove tags: ${err.message}`),
+      onError: (err) => toast.error(`Failed to remove tags: ${err.message}`, { duration: 6000 }),
     }),
   );
 

@@ -118,7 +118,7 @@ export default function SharedComponentDetailPage() {
         });
       },
       onError: (err) => {
-        toast.error(err.message);
+        toast.error(err.message, { duration: 6000 });
       },
     }),
   );
@@ -130,7 +130,7 @@ export default function SharedComponentDetailPage() {
         router.push("/library/shared-components");
       },
       onError: (err) => {
-        toast.error(err.message);
+        toast.error(err.message, { duration: 6000 });
       },
     }),
   );

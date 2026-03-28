@@ -162,7 +162,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
         setDialogOpen(false);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to create alert rule");
+        toast.error(error.message || "Failed to create alert rule", { duration: 6000 });
       },
     }),
   );
@@ -176,7 +176,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
         setEditingRuleId(null);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update alert rule");
+        toast.error(error.message || "Failed to update alert rule", { duration: 6000 });
       },
     }),
   );
@@ -187,7 +187,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
         invalidateRules();
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to toggle alert rule");
+        toast.error(error.message || "Failed to toggle alert rule", { duration: 6000 });
       },
     }),
   );
@@ -200,7 +200,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
         setDeleteTarget(null);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to delete alert rule");
+        toast.error(error.message || "Failed to delete alert rule", { duration: 6000 });
       },
     }),
   );
@@ -213,7 +213,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
         invalidateRules();
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to snooze alert rule");
+        toast.error(error.message || "Failed to snooze alert rule", { duration: 6000 });
       },
     }),
   );
@@ -225,7 +225,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
         invalidateRules();
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to unsnooze alert rule");
+        toast.error(error.message || "Failed to unsnooze alert rule", { duration: 6000 });
       },
     }),
   );
@@ -268,7 +268,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
     const isBinary = BINARY_METRICS.has(form.metric);
     const isEvent = isEventMetric(form.metric);
     if (!form.name || !form.metric || (!isBinary && !isEvent && !form.threshold)) {
-      toast.error("Please fill in all required fields");
+      toast.error("Please fill in all required fields", { duration: 6000 });
       return;
     }
 
