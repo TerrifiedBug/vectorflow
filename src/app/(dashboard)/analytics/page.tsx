@@ -400,35 +400,55 @@ export default function AnalyticsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead
-                    className="cursor-pointer select-none"
-                    onClick={() => toggleSort("pipelineName")}
-                  >
-                    Pipeline Name{sortIndicator("pipelineName")}
+                  <TableHead className="select-none">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("pipelineName")}
+                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
+                      aria-label={`Sort by pipeline name${sortKey === "pipelineName" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
+                    >
+                      Pipeline Name{sortIndicator("pipelineName")}
+                    </button>
                   </TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none text-right"
-                    onClick={() => toggleSort("bytesIn")}
-                  >
-                    Bytes In{sortIndicator("bytesIn")}
+                  <TableHead className="select-none text-right">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("bytesIn")}
+                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer ml-auto"
+                      aria-label={`Sort by bytes in${sortKey === "bytesIn" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
+                    >
+                      Bytes In{sortIndicator("bytesIn")}
+                    </button>
                   </TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none text-right"
-                    onClick={() => toggleSort("bytesOut")}
-                  >
-                    Bytes Out{sortIndicator("bytesOut")}
+                  <TableHead className="select-none text-right">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("bytesOut")}
+                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer ml-auto"
+                      aria-label={`Sort by bytes out${sortKey === "bytesOut" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
+                    >
+                      Bytes Out{sortIndicator("bytesOut")}
+                    </button>
                   </TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none text-right"
-                    onClick={() => toggleSort("eventsReduced")}
-                  >
-                    Events Reduced{sortIndicator("eventsReduced")}
+                  <TableHead className="select-none text-right">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("eventsReduced")}
+                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer ml-auto"
+                      aria-label={`Sort by events reduced${sortKey === "eventsReduced" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
+                    >
+                      Events Reduced{sortIndicator("eventsReduced")}
+                    </button>
                   </TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none text-right"
-                    onClick={() => toggleSort("reduction")}
-                  >
-                    Bytes Saved{sortIndicator("reduction")}
+                  <TableHead className="select-none text-right">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort("reduction")}
+                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer ml-auto"
+                      aria-label={`Sort by bytes saved${sortKey === "reduction" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
+                    >
+                      Bytes Saved{sortIndicator("reduction")}
+                    </button>
                   </TableHead>
                 </TableRow>
               </TableHeader>
