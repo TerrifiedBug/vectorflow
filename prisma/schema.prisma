@@ -382,6 +382,7 @@ model NodePipelineStatus {
   bytesIn         BigInt        @default(0)
   bytesOut        BigInt        @default(0)
   utilization     Float         @default(0)
+  configChecksum  String?
   recentLogs    Json?
   lastUpdated   DateTime      @default(now())
 
@@ -804,6 +805,10 @@ enum AlertMetric {
   fleet_throughput_drop
   fleet_event_volume
   node_load_imbalance
+
+  // Drift detection (threshold-based)
+  version_drift
+  config_drift
 
   // Events (fire on occurrence)
   deploy_requested
