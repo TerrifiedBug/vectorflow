@@ -13,6 +13,7 @@ import {
   UserPlus,
   Crown,
   Plus,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -42,6 +43,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { QueryError } from "@/components/query-error";
 import {
@@ -79,7 +81,7 @@ export function UsersSettings() {
         setAssignRole("VIEWER");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to assign user to team");
+        toast.error(error.message || "Failed to assign user to team", { duration: 6000 });
       },
     })
   );
@@ -94,7 +96,7 @@ export function UsersSettings() {
         setToggleSuperAdminConfirm(null);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to toggle super admin status");
+        toast.error(error.message || "Failed to toggle super admin status", { duration: 6000 });
       },
     })
   );
@@ -107,7 +109,7 @@ export function UsersSettings() {
         setDeleteDialog(null);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to delete user");
+        toast.error(error.message || "Failed to delete user", { duration: 6000 });
       },
     })
   );
@@ -121,7 +123,7 @@ export function UsersSettings() {
         setShowCreatedPassword(true);
         setCreateUserOpen(false);
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
     })
   );
 
@@ -132,7 +134,7 @@ export function UsersSettings() {
         toast.success("User removed from team");
         setRemoveFromTeamConfirm(null);
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
     })
   );
 
@@ -142,7 +144,7 @@ export function UsersSettings() {
         queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
         toast.success("User locked");
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
     })
   );
 
@@ -152,7 +154,7 @@ export function UsersSettings() {
         queryClient.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
         toast.success("User unlocked");
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
     })
   );
 
@@ -165,20 +167,11 @@ export function UsersSettings() {
       onSuccess: (data) => {
         setResetPasswordResult(data.temporaryPassword);
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
     })
   );
 
   if (usersQuery.isError) return <QueryError message="Failed to load users" onRetry={() => usersQuery.refetch()} />;
-
-  if (usersQuery.isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
 
   const users = usersQuery.data ?? [];
 
@@ -196,6 +189,15 @@ export function UsersSettings() {
           </Button>
         </CardHeader>
         <CardContent>
+          {usersQuery.isLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : users.length === 0 ? (
+            <EmptyState icon={Users} title="No users" description="Users will appear here once created." />
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -404,6 +406,7 @@ export function UsersSettings() {
               ))}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
 
