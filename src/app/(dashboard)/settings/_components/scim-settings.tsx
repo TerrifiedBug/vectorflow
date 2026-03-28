@@ -57,7 +57,7 @@ export function ScimSettings() {
         toast.success("SCIM settings updated");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update SCIM settings");
+        toast.error(error.message || "Failed to update SCIM settings", { duration: 6000 });
       },
     })
   );
@@ -71,7 +71,7 @@ export function ScimSettings() {
         queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to generate SCIM token");
+        toast.error(error.message || "Failed to generate SCIM token", { duration: 6000 });
       },
     })
   );

@@ -278,6 +278,7 @@ export function AiPipelineDialog({
     } catch (err) {
       toast.error("Failed to parse YAML", {
         description: err instanceof Error ? err.message : "Invalid YAML output",
+        duration: 6000,
       });
     }
   };
@@ -333,6 +334,7 @@ export function AiPipelineDialog({
       if (errors.length > 0) {
         toast.error(`${errors.length} suggestion${errors.length > 1 ? "s" : ""} failed`, {
           description: errors[0].error,
+          duration: 6000,
         });
       }
 

@@ -57,7 +57,7 @@ export default function NewPipelinePage() {
   const createMutation = useMutation(
     trpc.pipeline.create.mutationOptions({
       onError: (error) => {
-        toast.error(error.message || "Failed to create pipeline");
+        toast.error(error.message || "Failed to create pipeline", { duration: 6000 });
       },
     })
   );
@@ -70,7 +70,7 @@ export default function NewPipelinePage() {
     e.preventDefault();
 
     if (!effectiveEnvId) {
-      toast.error("Please select an environment");
+      toast.error("Please select an environment", { duration: 6000 });
       return;
     }
 

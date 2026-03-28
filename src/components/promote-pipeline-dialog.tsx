@@ -104,7 +104,7 @@ export function PromotePipelineDialog({
         });
       },
       onError: (err) => {
-        toast.error(err.message || "Failed to initiate promotion");
+        toast.error(err.message || "Failed to initiate promotion", { duration: 6000 });
         setStep("diff");
       },
     })

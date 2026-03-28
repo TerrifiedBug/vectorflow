@@ -59,7 +59,7 @@ export function SecretPickerInput({ value, onChange }: SecretPickerInputProps) {
         resetCreateForm();
         toast.success(`Secret "${created.name}" created`);
       },
-      onError: (err) => toast.error(err.message),
+      onError: (err) => toast.error(err.message, { duration: 6000 }),
     })
   );
 

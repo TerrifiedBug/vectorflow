@@ -63,7 +63,7 @@ export default function Setup2FAPage() {
         setStep("qr");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to start 2FA setup");
+        toast.error(error.message || "Failed to start 2FA setup", { duration: 6000 });
       },
     })
   );
@@ -76,7 +76,7 @@ export default function Setup2FAPage() {
         toast.success("Two-factor authentication enabled");
       },
       onError: (error) => {
-        toast.error(error.message || "Verification failed");
+        toast.error(error.message || "Verification failed", { duration: 6000 });
         setVerifyCode("");
       },
     })

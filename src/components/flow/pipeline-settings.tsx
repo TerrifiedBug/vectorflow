@@ -91,7 +91,7 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
         if (context?.previous) {
           queryClient.setQueryData(pipelineQueryKey, context.previous);
         }
-        toast.error(error.message || "Failed to update tags");
+        toast.error(error.message || "Failed to update tags", { duration: 6000 });
       },
       onSettled: () => {
         queryClient.invalidateQueries({ queryKey: pipelineQueryKey });
@@ -110,7 +110,7 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
         toast.success("Metadata enrichment updated");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update enrichment setting");
+        toast.error(error.message || "Failed to update enrichment setting", { duration: 6000 });
       },
     }),
   );
@@ -370,7 +370,7 @@ function AutoRollbackSettings({
         toast.success("Auto-rollback settings updated");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update auto-rollback settings");
+        toast.error(error.message || "Failed to update auto-rollback settings", { duration: 6000 });
       },
     }),
   );
@@ -385,7 +385,7 @@ function AutoRollbackSettings({
   const handleSaveThreshold = () => {
     const parsed = parseFloat(threshold);
     if (isNaN(parsed) || parsed <= 0 || parsed > 100) {
-      toast.error("Threshold must be a number between 0 and 100");
+      toast.error("Threshold must be a number between 0 and 100", { duration: 6000 });
       return;
     }
     updateRollbackMutation.mutate({
@@ -397,7 +397,7 @@ function AutoRollbackSettings({
   const handleSaveWindow = () => {
     const parsed = parseInt(windowMinutes, 10);
     if (isNaN(parsed) || parsed <= 0 || parsed > 60) {
-      toast.error("Window must be an integer between 1 and 60");
+      toast.error("Window must be an integer between 1 and 60", { duration: 6000 });
       return;
     }
     updateRollbackMutation.mutate({
@@ -542,7 +542,7 @@ function DependenciesSettings({
         toast.success("Dependency removed");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to remove dependency");
+        toast.error(error.message || "Failed to remove dependency", { duration: 6000 });
       },
     }),
   );
@@ -702,7 +702,7 @@ function SliSettings({ pipelineId }: { pipelineId: string }) {
           queryKey: trpc.pipeline.health.queryKey(),
         });
       },
-      onError: (err) => toast.error(err.message || "Failed to save SLI"),
+      onError: (err) => toast.error(err.message || "Failed to save SLI", { duration: 6000 }),
     }),
   );
 
@@ -717,7 +717,7 @@ function SliSettings({ pipelineId }: { pipelineId: string }) {
           queryKey: trpc.pipeline.health.queryKey(),
         });
       },
-      onError: (err) => toast.error(err.message || "Failed to delete SLI"),
+      onError: (err) => toast.error(err.message || "Failed to delete SLI", { duration: 6000 }),
     }),
   );
 
@@ -725,11 +725,11 @@ function SliSettings({ pipelineId }: { pipelineId: string }) {
     const threshold = parseFloat(newThreshold);
     const windowMinutes = parseInt(newWindow, 10);
     if (isNaN(threshold) || threshold < 0) {
-      toast.error("Threshold must be a non-negative number");
+      toast.error("Threshold must be a non-negative number", { duration: 6000 });
       return;
     }
     if (isNaN(windowMinutes) || windowMinutes < 1) {
-      toast.error("Window must be at least 1 minute");
+      toast.error("Window must be at least 1 minute", { duration: 6000 });
       return;
     }
     upsertMutation.mutate({

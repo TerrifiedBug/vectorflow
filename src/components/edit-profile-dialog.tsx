@@ -46,7 +46,7 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
         router.refresh();
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update profile");
+        toast.error(error.message || "Failed to update profile", { duration: 6000 });
       },
     })
   );

@@ -205,7 +205,7 @@ export function NotificationChannelsSection({
         setDialogOpen(false);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to create channel");
+        toast.error(error.message || "Failed to create channel", { duration: 6000 });
       },
     }),
   );
@@ -219,7 +219,7 @@ export function NotificationChannelsSection({
         setEditingChannelId(null);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update channel");
+        toast.error(error.message || "Failed to update channel", { duration: 6000 });
       },
     }),
   );
@@ -230,7 +230,7 @@ export function NotificationChannelsSection({
         invalidateChannels();
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to toggle channel");
+        toast.error(error.message || "Failed to toggle channel", { duration: 6000 });
       },
     }),
   );
@@ -243,7 +243,7 @@ export function NotificationChannelsSection({
         setDeleteTarget(null);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to delete channel");
+        toast.error(error.message || "Failed to delete channel", { duration: 6000 });
       },
     }),
   );
@@ -254,11 +254,11 @@ export function NotificationChannelsSection({
         if (result.success) {
           toast.success("Channel test successful");
         } else {
-          toast.error(`Channel test failed: ${result.error ?? "Unknown error"}`);
+          toast.error(`Channel test failed: ${result.error ?? "Unknown error"}`, { duration: 6000 });
         }
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to test channel");
+        toast.error(error.message || "Failed to test channel", { duration: 6000 });
       },
     }),
   );
@@ -285,43 +285,43 @@ export function NotificationChannelsSection({
 
   const validateForm = (): boolean => {
     if (!form.name.trim()) {
-      toast.error("Name is required");
+      toast.error("Name is required", { duration: 6000 });
       return false;
     }
 
     switch (form.type) {
       case "slack":
         if (!form.webhookUrl.trim()) {
-          toast.error("Webhook URL is required");
+          toast.error("Webhook URL is required", { duration: 6000 });
           return false;
         }
         break;
       case "email":
         if (!form.smtpHost.trim() || !form.emailFrom.trim() || !form.recipients.trim()) {
-          toast.error("SMTP host, from address, and recipients are required");
+          toast.error("SMTP host, from address, and recipients are required", { duration: 6000 });
           return false;
         }
         break;
       case "pagerduty":
         if (!editingChannelId && !form.integrationKey.trim()) {
-          toast.error("Integration key is required");
+          toast.error("Integration key is required", { duration: 6000 });
           return false;
         }
         break;
       case "webhook":
         if (!form.url.trim()) {
-          toast.error("URL is required");
+          toast.error("URL is required", { duration: 6000 });
           return false;
         }
         if (form.headers.trim()) {
           try {
             const parsed = JSON.parse(form.headers);
             if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-              toast.error("Headers must be a JSON object");
+              toast.error("Headers must be a JSON object", { duration: 6000 });
               return false;
             }
           } catch {
-            toast.error("Invalid JSON in headers field");
+            toast.error("Invalid JSON in headers field", { duration: 6000 });
             return false;
           }
         }

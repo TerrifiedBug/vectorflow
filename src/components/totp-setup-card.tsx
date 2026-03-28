@@ -58,7 +58,7 @@ export function TotpSetupCard({ totpEnabled, authMethod }: TotpSetupCardProps) {
         setSetupOpen(true);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to start 2FA setup");
+        toast.error(error.message || "Failed to start 2FA setup", { duration: 6000 });
       },
     })
   );
@@ -71,7 +71,7 @@ export function TotpSetupCard({ totpEnabled, authMethod }: TotpSetupCardProps) {
         toast.success("Two-factor authentication enabled");
       },
       onError: (error) => {
-        toast.error(error.message || "Verification failed");
+        toast.error(error.message || "Verification failed", { duration: 6000 });
         setVerifyCode("");
       },
     })
@@ -86,7 +86,7 @@ export function TotpSetupCard({ totpEnabled, authMethod }: TotpSetupCardProps) {
         toast.success("Two-factor authentication disabled");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to disable 2FA");
+        toast.error(error.message || "Failed to disable 2FA", { duration: 6000 });
         setDisableCode("");
       },
     })

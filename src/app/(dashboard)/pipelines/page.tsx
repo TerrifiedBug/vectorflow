@@ -389,7 +389,7 @@ export default function PipelinesPage() {
         queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
         queryClient.invalidateQueries({ queryKey: trpc.pipelineGroup.list.queryKey() });
       },
-      onError: (err) => toast.error(err.message || "Failed to update group"),
+      onError: (err) => toast.error(err.message || "Failed to update group", { duration: 6000 }),
     }),
   );
 
@@ -468,7 +468,7 @@ export default function PipelinesPage() {
         router.push(`/pipelines/${data.id}`);
       },
       onError: (err) =>
-        toast.error(err.message || "Failed to clone pipeline"),
+        toast.error(err.message || "Failed to clone pipeline", { duration: 6000 }),
     }),
   );
 
@@ -481,7 +481,7 @@ export default function PipelinesPage() {
         });
       },
       onError: (err) =>
-        toast.error(err.message || "Failed to delete pipeline"),
+        toast.error(err.message || "Failed to delete pipeline", { duration: 6000 }),
     }),
   );
 
