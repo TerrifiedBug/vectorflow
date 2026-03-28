@@ -79,6 +79,7 @@ import {
 import { usePipelineSidebarStore } from "@/stores/pipeline-sidebar-store";
 import { FilterPresetBar } from "@/components/filter-preset/FilterPresetBar";
 import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
+import { usePipelineListFilters } from "@/hooks/use-pipeline-list-filters";
 
 // --- Helpers ---
 
@@ -240,11 +241,23 @@ export default function PipelinesPage() {
   );
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
-  // --- Filter / sort state ---
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [tagFilter, setTagFilter] = useState<string[]>([]);
-  const groupId = usePipelineSidebarStore((s) => s.selectedGroupId);
+  // --- Filter / sort state (URL-synced) ---
+  const {
+    search,
+    statusFilter,
+    tagFilter,
+    groupId,
+    sortBy: serverSortBy,
+    sortOrder: serverSortOrder,
+    hasActiveFilters,
+    setSearch,
+    setStatusFilter,
+    setTagFilter,
+    setGroupId,
+    setSortBy: setServerSortBy,
+    setSortOrder: setServerSortOrder,
+    clearFilters,
+  } = usePipelineListFilters();
   const manageGroupsOpen = usePipelineSidebarStore((s) => s.manageGroupsOpen);
   const setManageGroupsOpen = usePipelineSidebarStore((s) => s.setManageGroupsOpen);
   const [selectedPipelineIds, setSelectedPipelineIds] = useState<Set<string>>(new Set());
@@ -276,16 +289,33 @@ export default function PipelinesPage() {
     }
   }, [focusedIndex]);
 
+  // Map toolbar sort fields to server-side or client-side sort
+  const SORT_FIELD_TO_SERVER: Record<string, "name" | "updatedAt" | "deployedAt" | null> = {
+    name: "name",
+    updated: "updatedAt",
+    status: null,      // client-only
+    throughput: null,   // client-only
+  };
+
   const handleSort = useCallback(
     (field: SortField) => {
       if (field === sortField) {
-        setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+        const newDir = sortDirection === "asc" ? "desc" : "asc";
+        setSortDirection(newDir);
+        const serverField = SORT_FIELD_TO_SERVER[field];
+        if (serverField) setServerSortOrder(newDir);
       } else {
         setSortField(field);
         setSortDirection("asc");
+        const serverField = SORT_FIELD_TO_SERVER[field];
+        if (serverField) {
+          setServerSortBy(serverField);
+          setServerSortOrder("asc");
+        }
       }
     },
-    [sortField],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sortField, sortDirection, setServerSortBy, setServerSortOrder],
   );
 
   const toggleSelect = useCallback((id: string) => {
@@ -321,12 +351,27 @@ export default function PipelinesPage() {
   const effectiveEnvId = selectedEnvironmentId || environments[0]?.id || "";
 
   const pipelinesQuery = useInfiniteQuery({
-    queryKey: ["pipeline.list", effectiveEnvId],
+    queryKey: [
+      "pipeline.list",
+      effectiveEnvId,
+      search,
+      statusFilter,
+      tagFilter,
+      groupId,
+      serverSortBy,
+      serverSortOrder,
+    ],
     queryFn: ({ pageParam }) =>
       trpc.pipeline.list.query({
         environmentId: effectiveEnvId,
         cursor: pageParam,
         limit: 50,
+        ...(search ? { search } : {}),
+        ...(statusFilter.length > 0 ? { status: statusFilter } : {}),
+        ...(tagFilter.length > 0 ? { tags: tagFilter } : {}),
+        ...(groupId ? { groupId } : {}),
+        sortBy: serverSortBy,
+        sortOrder: serverSortOrder,
       }),
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,
@@ -357,12 +402,6 @@ export default function PipelinesPage() {
     ),
   );
 
-  const hasActiveFilters =
-    search.length > 0 ||
-    statusFilter.length > 0 ||
-    tagFilter.length > 0 ||
-    groupId !== null;
-
   useEffect(() => {
     if (!hasActiveFilters && defaultPresetQuery.data) {
       const defaultPreset = defaultPresetQuery.data.find((p) => p.isDefault);
@@ -372,7 +411,7 @@ export default function PipelinesPage() {
         if (Array.isArray(f.status) && f.status.length > 0) setStatusFilter(f.status as string[]);
         if (Array.isArray(f.tags) && f.tags.length > 0) setTagFilter(f.tags as string[]);
         if (f.groupId && typeof f.groupId === "string") {
-          usePipelineSidebarStore.getState().setSelectedGroupId(f.groupId);
+          setGroupId(f.groupId);
         }
       }
     }
@@ -463,44 +502,17 @@ export default function PipelinesPage() {
     }),
   );
 
-  // --- Filtered + sorted pipelines ---
+  // --- Client-side sort for columns the server cannot sort ---
+  // Server handles: search, status, tags, groupId, sortBy (name/updatedAt/deployedAt), sortOrder.
+  // Client handles: sort by derived status and live throughput (not in DB).
   const filteredPipelines = useMemo(() => {
-    let result = pipelines;
+    // Only apply client-side sort for fields the server can't handle
+    if (sortField !== "status" && sortField !== "throughput") return pipelines;
 
-    // Group filter
-    if (groupId) {
-      result = result.filter((p) => p.groupId === groupId);
-    }
-
-    // Search by name (case-insensitive)
-    if (search) {
-      const lc = search.toLowerCase();
-      result = result.filter((p) => p.name.toLowerCase().includes(lc));
-    }
-
-    // Status filter
-    if (statusFilter.length > 0) {
-      result = result.filter((p) =>
-        statusFilter.includes(derivePipelineStatus(p)),
-      );
-    }
-
-    // Tag filter
-    if (tagFilter.length > 0) {
-      result = result.filter((p) => {
-        const tags = (p.tags as string[]) ?? [];
-        return tagFilter.some((t) => tags.includes(t));
-      });
-    }
-
-    // Sort
-    const sorted = [...result];
+    const sorted = [...pipelines];
     sorted.sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
-        case "name":
-          cmp = a.name.localeCompare(b.name);
-          break;
         case "status": {
           const sa = derivePipelineStatus(a);
           const sb = derivePipelineStatus(b);
@@ -513,16 +525,12 @@ export default function PipelinesPage() {
           cmp = ra - rb;
           break;
         }
-        case "updated":
-          cmp =
-            new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
-          break;
       }
       return sortDirection === "asc" ? cmp : -cmp;
     });
 
     return sorted;
-  }, [pipelines, search, statusFilter, tagFilter, groupId, sortField, sortDirection, liveRates]);
+  }, [pipelines, sortField, sortDirection, liveRates]);
 
   // --- Mutations ---
 
@@ -606,10 +614,7 @@ export default function PipelinesPage() {
   }
 
   const clearAllFilters = () => {
-    setSearch("");
-    setStatusFilter([]);
-    setTagFilter([]);
-    usePipelineSidebarStore.getState().setSelectedGroupId(null);
+    clearFilters();
   };
 
   // Recursive renderer for nested "Move to group" dropdown items
@@ -687,9 +692,7 @@ export default function PipelinesPage() {
                       setSearch(f.search ?? "");
                       setStatusFilter(f.status ?? []);
                       setTagFilter(f.tags ?? []);
-                      if (f.groupId) {
-                        usePipelineSidebarStore.getState().setSelectedGroupId(f.groupId);
-                      }
+                      setGroupId(f.groupId ?? null);
                     }}
                     onSaveClick={() => setSaveFilterOpen(true)}
                   />

@@ -135,6 +135,7 @@ export const filterPresetRouter = router({
       })
     )
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("filterPreset.setDefault", "FilterPreset"))
     .mutation(async ({ input }) => {
       const existing = await prisma.filterPreset.findUnique({
         where: { id: input.id },
@@ -144,19 +145,22 @@ export const filterPresetRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Filter preset not found" });
       }
 
-      // Clear existing default for this scope
-      await prisma.filterPreset.updateMany({
-        where: {
-          environmentId: input.environmentId,
-          scope: input.scope,
-          isDefault: true,
-        },
-        data: { isDefault: false },
-      });
+      // Wrap in transaction to prevent race conditions with concurrent default-setting
+      return prisma.$transaction(async (tx) => {
+        // Clear existing default for this scope
+        await tx.filterPreset.updateMany({
+          where: {
+            environmentId: input.environmentId,
+            scope: input.scope,
+            isDefault: true,
+          },
+          data: { isDefault: false },
+        });
 
-      return prisma.filterPreset.update({
-        where: { id: input.id },
-        data: { isDefault: true },
+        return tx.filterPreset.update({
+          where: { id: input.id },
+          data: { isDefault: true },
+        });
       });
     }),
 
@@ -168,6 +172,7 @@ export const filterPresetRouter = router({
       })
     )
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("filterPreset.clearDefault", "FilterPreset"))
     .mutation(async ({ input }) => {
       await prisma.filterPreset.updateMany({
         where: {

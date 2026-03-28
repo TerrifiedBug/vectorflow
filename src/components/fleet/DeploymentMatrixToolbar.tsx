@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, Check, ChevronsUpDown, X } from "lucide-react";
+import { Search, Check, ChevronsUpDown, X, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,9 @@ export interface DeploymentMatrixToolbarProps {
   tagFilter: string[];
   onTagFilterChange: (tags: string[]) => void;
   availableTags: string[];
+  /** When true, only pipelines with exceptions (version mismatch, crashed, missing) are shown */
+  exceptionsOnly?: boolean;
+  onExceptionsOnlyChange?: (value: boolean) => void;
   /** Optional preset bar slot — rendered on the right side */
   presetBar?: React.ReactNode;
 }
@@ -132,6 +135,8 @@ export function DeploymentMatrixToolbar({
   tagFilter,
   onTagFilterChange,
   availableTags,
+  exceptionsOnly = false,
+  onExceptionsOnlyChange,
   presetBar,
 }: DeploymentMatrixToolbarProps) {
   // Debounced search — local input state + 300ms debounce to parent
@@ -223,6 +228,22 @@ export function DeploymentMatrixToolbar({
           selected={tagFilter}
           onChange={onTagFilterChange}
         />
+      )}
+
+      {/* Separator */}
+      {onExceptionsOnlyChange && <div className="h-6 w-px bg-border" />}
+
+      {/* Show exceptions only toggle */}
+      {onExceptionsOnlyChange && (
+        <Button
+          variant={exceptionsOnly ? "default" : "outline"}
+          size="sm"
+          className="h-8 gap-1.5 text-xs"
+          onClick={() => onExceptionsOnlyChange(!exceptionsOnly)}
+        >
+          <AlertTriangle className="h-3.5 w-3.5" />
+          Show exceptions only
+        </Button>
       )}
 
       {/* Clear all filters — only visible when any filter is active */}

@@ -153,8 +153,14 @@ describe("filterPreset router", () => {
   });
 
   describe("setDefault", () => {
-    it("clears existing default and sets new one", async () => {
+    it("clears existing default and sets new one inside a transaction", async () => {
       prismaMock.filterPreset.findUnique.mockResolvedValueOnce(makePreset() as never);
+
+      // $transaction receives a callback — execute it with the same mock so
+      // tx.filterPreset.updateMany / tx.filterPreset.update resolve correctly.
+      prismaMock.$transaction.mockImplementationOnce(async (fn: (tx: typeof prismaMock) => Promise<unknown>) => {
+        return fn(prismaMock);
+      });
       prismaMock.filterPreset.updateMany.mockResolvedValueOnce({ count: 1 } as never);
       prismaMock.filterPreset.update.mockResolvedValueOnce(
         makePreset({ isDefault: true }) as never
@@ -167,6 +173,7 @@ describe("filterPreset router", () => {
       });
 
       expect(result.isDefault).toBe(true);
+      expect(prismaMock.$transaction).toHaveBeenCalledOnce();
       expect(prismaMock.filterPreset.updateMany).toHaveBeenCalledWith({
         where: { environmentId: "env-1", scope: "pipeline_list", isDefault: true },
         data: { isDefault: false },

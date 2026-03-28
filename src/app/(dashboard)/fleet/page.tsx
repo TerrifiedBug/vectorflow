@@ -85,6 +85,7 @@ export default function FleetPage() {
   } = useMatrixFilters();
 
   const [saveFilterOpen, setSaveFilterOpen] = useState(false);
+  const [exceptionsOnly, setExceptionsOnly] = useState(false);
 
   // --- Auto-apply default filter preset on page load ---
   const defaultPresetQuery = useQuery(
@@ -125,7 +126,7 @@ export default function FleetPage() {
     return [...tagSet].sort();
   }, [matrixQuery.data?.deployedPipelines]);
 
-  // Compute filtered pipelines with AND logic across search, status, and tag filters
+  // Compute filtered pipelines with AND logic across search, status, tag, and exceptions filters
   const filteredDeployedPipelines = useMemo(() => {
     let result = matrixQuery.data?.deployedPipelines ?? [];
     const nodes = matrixQuery.data?.nodes ?? [];
@@ -153,8 +154,23 @@ export default function FleetPage() {
       });
     }
 
+    // Show only pipelines with exceptions: version mismatch, crashed, or missing on some nodes
+    if (exceptionsOnly) {
+      result = result.filter((p) => {
+        const nodeStatuses = nodes.flatMap((n) =>
+          n.pipelineStatuses.filter((s) => s.pipelineId === p.id),
+        );
+        const hasCrashed = nodeStatuses.some((s) => s.status === "CRASHED");
+        const hasVersionMismatch = nodeStatuses.some(
+          (s) => s.version < p.latestVersion,
+        );
+        const deployedOnAllNodes = nodeStatuses.length >= nodes.length;
+        return hasCrashed || hasVersionMismatch || !deployedOnAllNodes;
+      });
+    }
+
     return result;
-  }, [matrixQuery.data, matrixSearch, matrixStatusFilter, matrixTagFilter]);
+  }, [matrixQuery.data, matrixSearch, matrixStatusFilter, matrixTagFilter, exceptionsOnly]);
 
   // Clear all matrix filters when environment changes (D-07)
   const prevEnvRef = useRef(activeEnvId);
@@ -629,6 +645,8 @@ export default function FleetPage() {
                 tagFilter={matrixTagFilter}
                 onTagFilterChange={setMatrixTagFilter}
                 availableTags={availableTags}
+                exceptionsOnly={exceptionsOnly}
+                onExceptionsOnlyChange={setExceptionsOnly}
                 presetBar={
                   <FilterPresetBar
                     environmentId={activeEnvId}
@@ -653,16 +671,24 @@ export default function FleetPage() {
                 }
               />
             )}
-            <DeploymentMatrix
-              environmentId={activeEnvId}
-              filteredPipelines={matrixQuery.data ? filteredDeployedPipelines : undefined}
-              hasActiveFilters={matrixHasActiveFilters}
-              onClearFilters={() => {
-                setMatrixSearch("");
-                setMatrixStatusFilter([]);
-                setMatrixTagFilter([]);
-              }}
-            />
+            {matrixHasActiveFilters ? (
+              <DeploymentMatrix
+                environmentId={activeEnvId}
+                filteredPipelines={matrixQuery.data ? filteredDeployedPipelines : undefined}
+                hasActiveFilters={matrixHasActiveFilters}
+                onClearFilters={() => {
+                  setMatrixSearch("");
+                  setMatrixStatusFilter([]);
+                  setMatrixTagFilter([]);
+                }}
+              />
+            ) : (
+              <div className="flex items-center justify-center rounded-lg border border-dashed p-12 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Filter by group, tag, or status to load the deployment matrix.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
