@@ -80,7 +80,7 @@ export function SaveSharedComponentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Save as Shared Component</DialogTitle>
           <DialogDescription>
