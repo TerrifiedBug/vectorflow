@@ -654,4 +654,68 @@ export const fleetRouter = router({
     .query(async ({ input }) => {
       return getMatrixThroughput(input.environmentId, input.range);
     }),
+
+  matrixSummary: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      // Fetch all nodes with their pipeline statuses
+      const nodes = await prisma.vectorNode.findMany({
+        where: { environmentId: input.environmentId },
+        include: {
+          pipelineStatuses: {
+            include: {
+              pipeline: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { name: "asc" },
+      });
+
+      // Fetch latest version for each deployed pipeline in this environment
+      const deployedPipelines = await prisma.pipeline.findMany({
+        where: {
+          environmentId: input.environmentId,
+          isDraft: false,
+          deployedAt: { not: null },
+        },
+        select: {
+          id: true,
+          versions: {
+            orderBy: { version: "desc" },
+            take: 1,
+            select: { version: true },
+          },
+        },
+      });
+
+      const latestVersionMap = new Map<string, number>();
+      for (const p of deployedPipelines) {
+        latestVersionMap.set(p.id, p.versions[0]?.version ?? 1);
+      }
+
+      return nodes.map((node) => {
+        const pipelineCount = node.pipelineStatuses.length;
+
+        const errorCount = node.pipelineStatuses.filter(
+          (ps) => ps.status === "CRASHED" || ps.status === "STOPPED"
+        ).length;
+
+        const versionDriftCount = node.pipelineStatuses.filter((ps) => {
+          const latest = latestVersionMap.get(ps.pipelineId);
+          return latest != null && ps.version < latest;
+        }).length;
+
+        return {
+          nodeId: node.id,
+          nodeName: node.name,
+          host: node.host,
+          status: node.status,
+          maintenanceMode: node.maintenanceMode,
+          pipelineCount,
+          errorCount,
+          versionDriftCount,
+        };
+      });
+    }),
 });
