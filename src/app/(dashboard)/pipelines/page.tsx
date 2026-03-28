@@ -67,6 +67,7 @@ import {
   PipelineListToolbar,
   type SortField,
   type SortDirection,
+  type Density,
 } from "@/components/pipeline/pipeline-list-toolbar";
 import { ManageGroupsDialog } from "@/components/pipeline/manage-groups-dialog";
 import { BulkActionBar } from "@/components/pipeline/bulk-action-bar";
@@ -250,6 +251,17 @@ export default function PipelinesPage() {
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [saveFilterOpen, setSaveFilterOpen] = useState(false);
+  const [density, setDensity] = useState<Density>(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("pipeline-list-density") as Density) ?? "comfortable";
+    }
+    return "comfortable";
+  });
+
+  const handleDensityChange = useCallback((d: Density) => {
+    setDensity(d);
+    localStorage.setItem("pipeline-list-density", d);
+  }, []);
 
   const handleSort = useCallback(
     (field: SortField) => {
@@ -584,6 +596,8 @@ export default function PipelinesPage() {
               tagFilter={tagFilter}
               onTagFilterChange={setTagFilter}
               availableTags={availableTags}
+              density={density}
+              onDensityChange={handleDensityChange}
               presetBar={
                 effectiveEnvId ? (
                   <FilterPresetBar
@@ -713,7 +727,10 @@ export default function PipelinesPage() {
                 <StaggerItem
                   as="tr"
                   key={pipeline.id}
-                  className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors cursor-pointer"
+                  className={cn(
+                    "hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors cursor-pointer",
+                    density === "compact" && "h-10"
+                  )}
                 >
                   <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
@@ -722,13 +739,18 @@ export default function PipelinesPage() {
                       aria-label={`Select ${pipeline.name}`}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">
+                  <TableCell className={cn("font-medium", density === "compact" ? "py-1" : "py-2")}>
                     <Link
                       href={`/pipelines/${pipeline.id}`}
                       className="hover:underline"
                     >
                       {pipeline.name}
                     </Link>
+                    {density === "comfortable" && pipeline.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                        {pipeline.description}
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell>
                     {(() => {

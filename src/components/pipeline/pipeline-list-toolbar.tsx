@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, Check, ChevronsUpDown, X } from "lucide-react";
+import { Search, Check, ChevronsUpDown, X, LayoutList, List } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +30,8 @@ interface FilterOption {
   name: string;
 }
 
+export type Density = "comfortable" | "compact";
+
 export interface PipelineListToolbarProps {
   search: string;
   onSearchChange: (value: string) => void;
@@ -40,6 +42,9 @@ export interface PipelineListToolbarProps {
   availableTags: string[];
   /** Optional preset bar slot — rendered below filters when provided */
   presetBar?: React.ReactNode;
+  /** Row density preference */
+  density?: Density;
+  onDensityChange?: (density: Density) => void;
 }
 
 // --- Status chips ---
@@ -136,6 +141,8 @@ export function PipelineListToolbar({
   onTagFilterChange,
   availableTags,
   presetBar,
+  density,
+  onDensityChange,
 }: PipelineListToolbarProps) {
   // Debounced search — local input state + 300ms debounce to parent
   const [localSearch, setLocalSearch] = useState(search);
@@ -237,6 +244,31 @@ export function PipelineListToolbar({
           <X className="mr-1 h-3 w-3" />
           Clear filters
         </Button>
+      )}
+
+      {/* Density toggle */}
+      {density && onDensityChange && (
+        <>
+          <div className="h-6 w-px bg-border" />
+          <div className="flex items-center border rounded-md">
+            <Button
+              variant={density === "comfortable" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => onDensityChange("comfortable")}
+            >
+              <LayoutList className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant={density === "compact" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => onDensityChange("compact")}
+            >
+              <List className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </>
       )}
 
       {/* Preset bar — rendered on right side when provided */}
