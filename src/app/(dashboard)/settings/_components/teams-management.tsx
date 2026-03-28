@@ -159,7 +159,7 @@ export function TeamsManagement() {
 
       {/* Create Team Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Create Team</DialogTitle>
             <DialogDescription>
@@ -200,7 +200,7 @@ export function TeamsManagement() {
 
       {/* Delete Team Confirmation Dialog */}
       <Dialog open={!!deleteTeam} onOpenChange={(open) => !open && setDeleteTeam(null)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Delete team?</DialogTitle>
             <DialogDescription>
