@@ -158,7 +158,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
           const errorMsg = ("validationErrors" in result && result.validationErrors)
             ? result.validationErrors.map((e: { message: string }) => e.message).join("; ")
             : ("error" in result ? result.error : "Unknown error");
-          toast.error("Deploy failed", { description: errorMsg as string });
+          toast.error("Deploy failed", { description: errorMsg as string , duration: 6000 });
           return;
         }
 
@@ -175,7 +175,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
       },
       onError: (err) => {
         setDeploying(false);
-        toast.error("Deploy failed", { description: err.message });
+        toast.error("Deploy failed", { description: err.message , duration: 6000 });
       },
     })
   );
@@ -190,7 +190,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
         onOpenChange(false);
       },
       onError: (err) => {
-        toast.error("Approval failed", { description: err.message });
+        toast.error("Approval failed", { description: err.message , duration: 6000 });
       },
     })
   );
@@ -204,7 +204,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
         onOpenChange(false);
       },
       onError: (err) => {
-        toast.error("Rejection failed", { description: err.message });
+        toast.error("Rejection failed", { description: err.message , duration: 6000 });
       },
     })
   );
@@ -217,7 +217,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
           const errorMsg = ("validationErrors" in result && result.validationErrors)
             ? result.validationErrors.map((e: { message: string }) => e.message).join("; ")
             : ("error" in result ? result.error : "Unknown error");
-          toast.error("Deploy failed", { description: errorMsg as string });
+          toast.error("Deploy failed", { description: errorMsg as string , duration: 6000 });
           return;
         }
         toast.success("Pipeline published to agents", {
@@ -226,7 +226,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
         onOpenChange(false);
       },
       onError: (err) => {
-        toast.error("Deploy failed", { description: err.message });
+        toast.error("Deploy failed", { description: err.message , duration: 6000 });
       },
     })
   );
@@ -239,7 +239,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
         onOpenChange(false);
       },
       onError: (err) => {
-        toast.error("Cancel failed", { description: err.message });
+        toast.error("Cancel failed", { description: err.message , duration: 6000 });
       },
     })
   );
@@ -256,7 +256,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
       },
       onError: (err) => {
         setDeploying(false);
-        toast.error("Canary deploy failed", { description: err.message });
+        toast.error("Canary deploy failed", { description: err.message , duration: 6000 });
       },
     })
   );

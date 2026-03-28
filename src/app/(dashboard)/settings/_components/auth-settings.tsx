@@ -90,7 +90,7 @@ export function AuthSettings() {
         setClientSecret("");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to save OIDC settings");
+        toast.error(error.message || "Failed to save OIDC settings", { duration: 6000 });
       },
     })
   );
@@ -101,7 +101,7 @@ export function AuthSettings() {
         toast.success(`OIDC connection successful. Issuer: ${data.issuer}`);
       },
       onError: (error) => {
-        toast.error(error.message || "OIDC connection test failed");
+        toast.error(error.message || "OIDC connection test failed", { duration: 6000 });
       },
     })
   );
@@ -109,7 +109,7 @@ export function AuthSettings() {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientSecret && !settings?.oidcClientSecret) {
-      toast.error("Client secret is required");
+      toast.error("Client secret is required", { duration: 6000 });
       return;
     }
     updateOidcMutation.mutate({
@@ -123,7 +123,7 @@ export function AuthSettings() {
 
   const handleTest = () => {
     if (!issuer) {
-      toast.error("Please enter an issuer URL first");
+      toast.error("Please enter an issuer URL first", { duration: 6000 });
       return;
     }
     testOidcMutation.mutate({ issuer });
@@ -186,7 +186,7 @@ export function AuthSettings() {
         toast.success("OIDC team mapping saved");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to save team mapping");
+        toast.error(error.message || "Failed to save team mapping", { duration: 6000 });
       },
     })
   );

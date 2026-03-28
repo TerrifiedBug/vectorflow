@@ -78,7 +78,7 @@ export function CertificatesSection({ environmentId }: CertificatesSectionProps)
         resetUploadForm();
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to upload certificate");
+        toast.error(error.message || "Failed to upload certificate", { duration: 6000 });
       },
     })
   );
@@ -91,7 +91,7 @@ export function CertificatesSection({ environmentId }: CertificatesSectionProps)
         setDeleteTarget(null);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to delete certificate");
+        toast.error(error.message || "Failed to delete certificate", { duration: 6000 });
       },
     })
   );

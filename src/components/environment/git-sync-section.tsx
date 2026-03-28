@@ -65,7 +65,7 @@ export function GitSyncSection({
           setWebhookSecretFromMutation(null);
         }
       },
-      onError: (err) => toast.error(err.message || "Failed to save Git settings"),
+      onError: (err) => toast.error(err.message || "Failed to save Git settings", { duration: 6000 }),
     })
   );
 
@@ -75,12 +75,12 @@ export function GitSyncSection({
         if (result.success) {
           toast.success("Git connection successful");
         } else {
-          toast.error("Git connection failed", { description: result.error });
+          toast.error("Git connection failed", { description: result.error , duration: 6000 });
         }
         setIsTesting(false);
       },
       onError: (err) => {
-        toast.error("Connection test failed", { description: err.message });
+        toast.error("Connection test failed", { description: err.message , duration: 6000 });
         setIsTesting(false);
       },
     })
@@ -106,11 +106,11 @@ export function GitSyncSection({
 
   function handleTest() {
     if (!repoUrl) {
-      toast.error("Enter a repository URL first");
+      toast.error("Enter a repository URL first", { duration: 6000 });
       return;
     }
     if (!token && !hasGitToken) {
-      toast.error("Enter an access token first");
+      toast.error("Enter an access token first", { duration: 6000 });
       return;
     }
     setIsTesting(true);

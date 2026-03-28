@@ -112,7 +112,7 @@ export default function EnvironmentDetailPage({
         toast.success("Enrollment token generated");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to generate token");
+        toast.error(error.message || "Failed to generate token", { duration: 6000 });
       },
     })
   );
@@ -125,7 +125,7 @@ export default function EnvironmentDetailPage({
         toast.success("Enrollment token revoked");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to revoke token");
+        toast.error(error.message || "Failed to revoke token", { duration: 6000 });
       },
     })
   );
@@ -319,7 +319,7 @@ export default function EnvironmentDetailPage({
               onCheckedChange={(checked) => {
                 updateMutation.mutate({ id, requireDeployApproval: checked }, {
                   onSuccess: () => toast.success(checked ? "Deploy approval enabled" : "Deploy approval disabled"),
-                  onError: (err) => toast.error(err.message),
+                  onError: (err) => toast.error(err.message, { duration: 6000 }),
                 });
               }}
             />

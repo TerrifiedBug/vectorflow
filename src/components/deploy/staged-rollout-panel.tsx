@@ -67,7 +67,7 @@ export function StagedRolloutPanel({ pipelineId }: StagedRolloutPanelProps) {
         toast.success("Canary broadened to all nodes");
       },
       onError: (err) => {
-        toast.error("Broaden failed", { description: err.message });
+        toast.error("Broaden failed", { description: err.message , duration: 6000 });
       },
     })
   );
@@ -79,7 +79,7 @@ export function StagedRolloutPanel({ pipelineId }: StagedRolloutPanelProps) {
         toast.success("Canary deploy rolled back");
       },
       onError: (err) => {
-        toast.error("Rollback failed", { description: err.message });
+        toast.error("Rollback failed", { description: err.message , duration: 6000 });
       },
     })
   );

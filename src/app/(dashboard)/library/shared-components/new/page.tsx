@@ -112,7 +112,7 @@ export default function NewSharedComponentPage() {
         router.push(`/library/shared-components/${sc.id}`);
       },
       onError: (err) => {
-        toast.error(err.message);
+        toast.error(err.message, { duration: 6000 });
       },
     }),
   );

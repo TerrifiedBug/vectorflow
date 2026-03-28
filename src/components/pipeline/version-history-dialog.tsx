@@ -113,7 +113,7 @@ export function VersionHistoryDialog({
         });
       },
       onError: (err) => {
-        toast.error(err.message || "Rollback failed");
+        toast.error(err.message || "Rollback failed", { duration: 6000 });
       },
     }),
   );
@@ -131,7 +131,7 @@ export function VersionHistoryDialog({
         });
       },
       onError: (err) => {
-        toast.error(err.message || "Deploy failed");
+        toast.error(err.message || "Deploy failed", { duration: 6000 });
       },
     }),
   );
@@ -153,7 +153,7 @@ export function VersionHistoryDialog({
         latestVersion ? fetchVersionConfig(latestVersion.id) : null,
       ]);
       if (!currentVersion || !latestVersion) {
-        toast.error("Cannot determine current version for comparison");
+        toast.error("Cannot determine current version for comparison", { duration: 6000 });
         return;
       }
       setDeployTarget({
@@ -168,7 +168,7 @@ export function VersionHistoryDialog({
         currentEdgesSnapshot: currentVersion.edgesSnapshot,
       });
     } catch {
-      toast.error("Failed to load version config");
+      toast.error("Failed to load version config", { duration: 6000 });
     } finally {
       setFetchingVersionId(null);
     }
@@ -239,7 +239,7 @@ export function VersionHistoryDialog({
         });
       }
     } catch {
-      toast.error("Failed to load version config");
+      toast.error("Failed to load version config", { duration: 6000 });
     } finally {
       setFetchingVersionId(null);
     }
@@ -256,7 +256,7 @@ export function VersionHistoryDialog({
         yaml: targetVersion.configYaml,
       });
     } catch {
-      toast.error("Failed to load version config");
+      toast.error("Failed to load version config", { duration: 6000 });
     } finally {
       setFetchingVersionId(null);
     }
@@ -285,7 +285,7 @@ export function VersionHistoryDialog({
       ]);
       setComparingVersions({ versionA, versionB });
     } catch {
-      toast.error("Failed to load versions for comparison");
+      toast.error("Failed to load versions for comparison", { duration: 6000 });
     } finally {
       setIsFetchingCompare(false);
     }

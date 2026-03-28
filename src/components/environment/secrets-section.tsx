@@ -66,7 +66,7 @@ export function SecretsSection({ environmentId }: SecretsSectionProps) {
         setAddValue("");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to create secret");
+        toast.error(error.message || "Failed to create secret", { duration: 6000 });
       },
     })
   );
@@ -80,7 +80,7 @@ export function SecretsSection({ environmentId }: SecretsSectionProps) {
         setUpdateValue("");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update secret");
+        toast.error(error.message || "Failed to update secret", { duration: 6000 });
       },
     })
   );
@@ -93,7 +93,7 @@ export function SecretsSection({ environmentId }: SecretsSectionProps) {
         setDeleteTarget(null);
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to delete secret");
+        toast.error(error.message || "Failed to delete secret", { duration: 6000 });
       },
     })
   );

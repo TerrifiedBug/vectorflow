@@ -61,7 +61,7 @@ export function VersionCheckSection() {
         queryKey: trpc.settings.checkVersion.queryKey(),
       });
     } catch {
-      toast.error("Failed to check for updates");
+      toast.error("Failed to check for updates", { duration: 6000 });
     } finally {
       setIsChecking(false);
     }
