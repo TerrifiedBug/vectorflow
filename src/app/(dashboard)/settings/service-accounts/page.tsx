@@ -274,9 +274,9 @@ export function ServiceAccountsSettings() {
       {/* Environment Selector */}
       {environments.length > 1 && (
         <div className="flex items-center gap-3">
-          <Label>Environment</Label>
+          <Label htmlFor="sa-list-env">Environment</Label>
           <Select value={listEnvId} onValueChange={setSelectedEnvId}>
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger id="sa-list-env" className="w-[200px]">
               <SelectValue placeholder="Select environment" />
             </SelectTrigger>
             <SelectContent>
@@ -469,9 +469,9 @@ export function ServiceAccountsSettings() {
 
             {/* Environment */}
             <div className="grid gap-2">
-              <Label>Environment *</Label>
+              <Label htmlFor="sa-create-env">Environment *</Label>
               <Select value={selectedEnvId} onValueChange={setSelectedEnvId}>
-                <SelectTrigger>
+                <SelectTrigger id="sa-create-env">
                   <SelectValue placeholder="Select environment" />
                 </SelectTrigger>
                 <SelectContent>
@@ -486,9 +486,9 @@ export function ServiceAccountsSettings() {
 
             {/* Expiration */}
             <div className="grid gap-2">
-              <Label>Expiration</Label>
+              <Label htmlFor="sa-create-expiration">Expiration</Label>
               <Select value={expiration} onValueChange={setExpiration}>
-                <SelectTrigger>
+                <SelectTrigger id="sa-create-expiration">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -502,7 +502,7 @@ export function ServiceAccountsSettings() {
 
             {/* Permissions */}
             <div className="grid gap-2">
-              <Label>Permissions *</Label>
+              <Label id="sa-create-permissions-label">Permissions *</Label>
               <div className="border rounded-md p-3 space-y-3">
                 {PERMISSION_GROUPS.map((group) => (
                   <div key={group.label}>
