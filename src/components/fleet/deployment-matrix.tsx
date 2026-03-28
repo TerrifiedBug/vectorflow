@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Minus, Wrench } from "lucide-react";
 import Link from "next/link";
@@ -27,6 +28,7 @@ interface DeploymentMatrixProps {
   throughputData?: MatrixCellThroughput[];
   filteredPipelines?: Array<{ id: string; name: string; latestVersion: number; tags: string[] }>;
   hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
 }
 
 export function DeploymentMatrix({
@@ -35,6 +37,7 @@ export function DeploymentMatrix({
   throughputData,
   filteredPipelines,
   hasActiveFilters = false,
+  onClearFilters,
 }: DeploymentMatrixProps) {
   const trpc = useTRPC();
   const polling = usePollingInterval(15_000);
@@ -111,7 +114,12 @@ export function DeploymentMatrix({
             <tr>
               <td colSpan={nodes.length + 1} className="px-3 py-8 text-center">
                 <p className="text-sm font-medium text-muted-foreground">No matching pipelines</p>
-                <p className="text-xs text-muted-foreground mt-1">Try adjusting your search or filters.</p>
+                <p className="text-xs text-muted-foreground mt-1">No pipelines match the current filters.</p>
+                {onClearFilters && (
+                  <Button variant="outline" size="sm" className="mt-2" onClick={onClearFilters}>
+                    Clear filters
+                  </Button>
+                )}
               </td>
             </tr>
           </tbody>
