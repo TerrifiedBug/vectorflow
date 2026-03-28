@@ -396,6 +396,7 @@ export default function AnalyticsPage() {
               No pipeline data for selected time range
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -485,6 +486,7 @@ export default function AnalyticsPage() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
