@@ -51,7 +51,7 @@ function getActionColor(action: string): string {
     return "bg-red-500/15 text-red-700 dark:text-red-400";
   if (action.includes("deployed") || action.includes("deploy"))
     return "bg-purple-500/15 text-purple-700 dark:text-purple-400";
-  return "bg-gray-500/15 text-gray-700 dark:text-gray-400";
+  return "bg-muted/50 text-muted-foreground";
 }
 
 export default function AuditPage() {

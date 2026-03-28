@@ -771,7 +771,7 @@ function SliSettings({ pipelineId }: { pipelineId: string }) {
                     <span className={`h-2 w-2 shrink-0 rounded-full ${
                       sliStatuses.get(sli.metric) === "met" ? "bg-green-500" :
                       sliStatuses.get(sli.metric) === "breached" ? "bg-red-500" :
-                      "bg-gray-400"
+                      "bg-muted-foreground/50"
                     }`} />
                   )}
                   <div>
