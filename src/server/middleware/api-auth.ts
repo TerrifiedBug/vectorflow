@@ -6,6 +6,7 @@ export interface ServiceAccountContext {
   serviceAccountName: string;
   environmentId: string;
   permissions: string[];
+  rateLimit: number | null;
 }
 
 export async function authenticateApiKey(
@@ -33,6 +34,7 @@ export async function authenticateApiKey(
     serviceAccountName: sa.name,
     environmentId: sa.environmentId,
     permissions: sa.permissions as string[],
+    rateLimit: sa.rateLimit ?? null,
   };
 }
 
@@ -42,3 +44,27 @@ export function hasPermission(
 ): boolean {
   return ctx.permissions.includes(permission);
 }
+
+/** All valid service account permission strings. */
+export const VALID_PERMISSIONS = [
+  // Existing
+  "pipelines.read",
+  "pipelines.deploy",
+  "nodes.read",
+  "nodes.manage",
+  "secrets.read",
+  "secrets.manage",
+  "alerts.read",
+  "alerts.manage",
+  "audit.read",
+  // New (API v1 completeness)
+  "pipelines.write",
+  "pipelines.promote",
+  "metrics.read",
+  "deploy-requests.manage",
+  "node-groups.read",
+  "node-groups.manage",
+  "environments.read",
+] as const;
+
+export type Permission = (typeof VALID_PERMISSIONS)[number];

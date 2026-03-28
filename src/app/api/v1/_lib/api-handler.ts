@@ -5,6 +5,7 @@ import {
   hasPermission,
   type ServiceAccountContext,
 } from "@/server/middleware/api-auth";
+import { rateLimiter, type RateLimitTier } from "./rate-limiter";
 
 /** BigInt-safe NextResponse.json() — converts BigInts to numbers before serialization. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,6 +36,7 @@ export function apiRoute(
     ctx: ServiceAccountContext,
     params?: Record<string, string>,
   ) => Promise<NextResponse>,
+  tier: RateLimitTier = "default",
 ) {
   return async (
     req: NextRequest,
@@ -44,11 +46,30 @@ export function apiRoute(
     const ctx = await authenticateApiKey(auth);
     if (!ctx)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    // Rate limiting (after auth, before permission check)
+    const rateResult = rateLimiter.check(ctx.serviceAccountId, tier, ctx.rateLimit);
+    if (!rateResult.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests" },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(rateResult.retryAfter),
+            "X-RateLimit-Remaining": "0",
+          },
+        },
+      );
+    }
+
     if (!hasPermission(ctx, permission))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     try {
       const resolvedParams = params ? await params : undefined;
-      return await handler(req, ctx, resolvedParams);
+      const response = await handler(req, ctx, resolvedParams);
+      // Add rate limit headers to successful responses
+      response.headers.set("X-RateLimit-Remaining", String(rateResult.remaining));
+      return response;
     } catch (err) {
       if (err instanceof TRPCError) {
         const status = TRPC_TO_HTTP[err.code] ?? 500;

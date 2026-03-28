@@ -1007,6 +1007,7 @@ model ServiceAccount {
   lastUsedAt      DateTime?
   expiresAt       DateTime?
   enabled         Boolean  @default(true)
+  rateLimit       Int?     // Custom requests/minute override (null = use defaults)
   createdAt       DateTime @default(now())
 
   @@index([hashedKey])
