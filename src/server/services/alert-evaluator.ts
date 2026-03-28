@@ -15,6 +15,7 @@ export const FLEET_METRICS = new Set<AlertMetric>([
   "fleet_throughput_drop",
   "fleet_event_volume",
   "node_load_imbalance",
+  "version_drift",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -365,6 +366,8 @@ const METRIC_LABELS: Record<AlertMetric, string> = {
   fleet_throughput_drop: "Fleet throughput drop",
   fleet_event_volume: "Fleet event volume",
   node_load_imbalance: "Node load imbalance",
+  version_drift: "Version drift",
+  config_drift: "Config drift",
   deploy_requested: "Deploy requested",
   deploy_completed: "Deploy completed",
   deploy_rejected: "Deploy rejected",
