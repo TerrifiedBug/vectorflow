@@ -141,7 +141,7 @@ export const nodeGroupRouter = router({
     .query(async ({ input }) => {
       const { environmentId } = input;
 
-      const [nodes, groups, firingAlerts] = await Promise.all([
+      const [nodes, groups, firingAlerts, pipelineStatuses, pipelines] = await Promise.all([
         prisma.vectorNode.findMany({
           where: { environmentId },
           select: { id: true, status: true, labels: true },
@@ -154,7 +154,47 @@ export const nodeGroupRouter = router({
           where: { status: "firing", node: { environmentId } },
           select: { nodeId: true },
         }),
+        prisma.nodePipelineStatus.findMany({
+          where: {
+            node: { environmentId },
+          },
+          select: {
+            nodeId: true,
+            pipelineId: true,
+            version: true,
+            configChecksum: true,
+          },
+        }),
+        prisma.pipeline.findMany({
+          where: {
+            environmentId,
+            isDraft: false,
+            deployedAt: { not: null },
+          },
+          select: {
+            id: true,
+            versions: {
+              orderBy: { version: "desc" as const },
+              take: 1,
+              select: { version: true },
+            },
+          },
+        }),
       ]);
+
+      // Build latest version map for drift detection
+      const latestVersionMap = new Map<string, number>();
+      for (const p of pipelines) {
+        latestVersionMap.set(p.id, p.versions[0]?.version ?? 1);
+      }
+
+      // Index pipeline statuses by nodeId
+      const statusesByNode = new Map<string, typeof pipelineStatuses>();
+      for (const s of pipelineStatuses) {
+        const existing = statusesByNode.get(s.nodeId) ?? [];
+        existing.push(s);
+        statusesByNode.set(s.nodeId, existing);
+      }
 
       const firingNodeIds = new Set(
         firingAlerts.map((a) => a.nodeId).filter(Boolean) as string[],
@@ -190,12 +230,41 @@ export const nodeGroupRouter = router({
           complianceRate = Math.round((compliantCount / totalNodes) * 100);
         }
 
+        // Version drift: count pipelines where this group's nodes run a non-latest version
+        let versionDriftCount = 0;
+        let configDriftCount = 0;
+        let totalPipelineSlots = 0;
+
+        for (const n of matchedNodes) {
+          const nodeStatuses = statusesByNode.get(n.id) ?? [];
+          totalPipelineSlots += nodeStatuses.length;
+          for (const ps of nodeStatuses) {
+            const latest = latestVersionMap.get(ps.pipelineId);
+            if (latest !== undefined && ps.version !== latest) {
+              versionDriftCount++;
+            }
+            // Config drift is tracked separately via alert evaluator;
+            // configDriftCount stays 0 here since we can't compare without
+            // the expected checksum cache in this context.
+          }
+        }
+
+        const versionCompliance = totalPipelineSlots > 0
+          ? Math.round(((totalPipelineSlots - versionDriftCount) / totalPipelineSlots) * 100)
+          : 100;
+
+        // Combined: average of label compliance and version compliance
+        const overallCompliance = Math.round((complianceRate + versionCompliance) / 2);
+
         return {
           ...group,
           totalNodes,
           onlineCount,
           alertCount,
           complianceRate,
+          versionDriftCount,
+          configDriftCount,
+          overallCompliance,
         };
       });
 
@@ -217,6 +286,9 @@ export const nodeGroupRouter = router({
           onlineCount: ungroupedOnlineCount,
           alertCount: ungroupedAlertCount,
           complianceRate: 100,
+          versionDriftCount: 0,
+          configDriftCount: 0,
+          overallCompliance: 100,
         });
       }
 
