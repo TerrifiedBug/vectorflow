@@ -16,6 +16,7 @@ export const EVENT_METRIC_VALUES = [
   "certificate_expiring",
   "node_joined",
   "node_left",
+  "git_sync_failed",
 ] as const;
 
 export const EVENT_METRICS: ReadonlySet<string> = new Set(EVENT_METRIC_VALUES);
