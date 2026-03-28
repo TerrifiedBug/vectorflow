@@ -27,17 +27,17 @@ const ALL_LEVELS: LogLevel[] = ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"];
 const LEVEL_COLORS: Record<LogLevel, string> = {
   ERROR: "text-red-400",
   WARN: "text-yellow-400",
-  INFO: "text-gray-300",
-  DEBUG: "text-gray-500",
-  TRACE: "text-gray-600",
+  INFO: "text-muted-foreground",
+  DEBUG: "text-muted-foreground/70",
+  TRACE: "text-muted-foreground/50",
 };
 
 const LEVEL_BADGE_COLORS: Record<LogLevel, string> = {
   ERROR: "bg-red-500/20 text-red-400 transition-colors hover:bg-red-500/30",
   WARN: "bg-yellow-500/20 text-yellow-400 transition-colors hover:bg-yellow-500/30",
-  INFO: "bg-gray-500/20 text-gray-300 transition-colors hover:bg-gray-500/30",
-  DEBUG: "bg-gray-600/20 text-gray-500 transition-colors hover:bg-gray-600/30",
-  TRACE: "bg-gray-700/20 text-gray-600 transition-colors hover:bg-gray-700/30",
+  INFO: "bg-muted/30 text-muted-foreground transition-colors hover:bg-muted/50",
+  DEBUG: "bg-muted/20 text-muted-foreground/70 transition-colors hover:bg-muted/40",
+  TRACE: "bg-muted/15 text-muted-foreground/50 transition-colors hover:bg-muted/30",
 };
 
 interface PipelineOption {
@@ -165,7 +165,7 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
             className={`cursor-pointer rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${
               activeLevels.has(level)
                 ? LEVEL_BADGE_COLORS[level]
-                : "bg-transparent text-gray-700 hover:text-gray-500"
+                : "bg-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             {level}
@@ -246,7 +246,7 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
           const pipelineName = "pipeline" in log ? (log.pipeline as { name: string })?.name : undefined;
           return (
             <div key={log.id} className="whitespace-pre-wrap leading-5">
-              <span className="text-gray-600 tabular-nums">{formatTimeWithSeconds(ts)}</span>
+              <span className="text-muted-foreground tabular-nums">{formatTimeWithSeconds(ts)}</span>
               {"  "}
               <span className={`${LEVEL_COLORS[log.level as LogLevel]} inline-block w-12`}>
                 {log.level}
@@ -256,7 +256,7 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
                 <span className="text-blue-400/70">[{pipelineName}]</span>
               )}
               {"  "}
-              <span className="text-gray-300">
+              <span className="text-foreground/80">
                 {searchTerm ? highlightMatch(log.message, searchTerm) : log.message}
               </span>
             </div>
