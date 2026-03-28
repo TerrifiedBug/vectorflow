@@ -490,7 +490,7 @@ export async function importLegacyBackups(): Promise<{
  * 2. Verifies checksum against BackupRecord if one exists (skips for legacy backups).
  * 3. Creates a safety backup first.
  * 4. Runs pg_restore --clean --if-exists.
- * 5. Exits the process so Docker restarts the container.
+ * 5. Returns success status (operator restarts the application manually).
  */
 export async function restoreFromBackup(filename: string): Promise<{ success: true }> {
   if (restoreInProgress) {
