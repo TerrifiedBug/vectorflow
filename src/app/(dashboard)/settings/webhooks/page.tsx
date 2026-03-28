@@ -537,7 +537,7 @@ function EndpointDialog({
         onOpenChange(v);
       }}
     >
-      <DialogContent className="sm:max-w-[540px]">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Webhook Endpoint" : "Create Webhook Endpoint"}</DialogTitle>
           <DialogDescription>
@@ -643,7 +643,7 @@ function SecretModal({
 }) {
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-green-500" />
