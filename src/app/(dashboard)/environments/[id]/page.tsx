@@ -423,6 +423,74 @@ export default function EnvironmentDetailPage({
                   <Badge variant="secondary" className="ml-auto">Active</Badge>
                 </div>
               )}
+
+              {/* Quick Start snippets — shown when a token exists */}
+              {env.hasEnrollmentToken && (
+                <div className="space-y-3 rounded-md border p-4">
+                  <p className="text-sm font-medium">Quick Start</p>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Linux (installs agent + Vector)</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        aria-label="Copy Linux install command"
+                        onClick={async () => {
+                          const token = enrollmentToken || "<enrollment-token>";
+                          const cmd = `curl -sSfL https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/agent/install.sh | sudo bash -s -- --url ${window.location.origin} --token ${token}`;
+                          await copyToClipboard(cmd);
+                          toast.success("Command copied");
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <pre className="overflow-x-auto rounded bg-muted px-3 py-2 text-xs">
+{`curl -sSfL https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/agent/install.sh | \\
+  sudo bash -s -- --url ${typeof window !== "undefined" ? window.location.origin : "https://your-vectorflow-instance"} --token ${enrollmentToken || "<enrollment-token>"}`}
+                    </pre>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Docker</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        aria-label="Copy Docker run command"
+                        onClick={async () => {
+                          const token = enrollmentToken || "<enrollment-token>";
+                          const cmd = `docker run -d --name vf-agent --restart unless-stopped \\\n  -e VF_URL=${window.location.origin} \\\n  -e VF_TOKEN=${token} \\\n  -v /var/lib/vf-agent:/var/lib/vf-agent \\\n  ghcr.io/terrifiedbug/vectorflow-agent:latest`;
+                          await copyToClipboard(cmd);
+                          toast.success("Command copied");
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <pre className="overflow-x-auto rounded bg-muted px-3 py-2 text-xs">
+{`docker run -d --name vf-agent --restart unless-stopped \\
+  -e VF_URL=${typeof window !== "undefined" ? window.location.origin : "https://your-vectorflow-instance"} \\
+  -e VF_TOKEN=${enrollmentToken || "<enrollment-token>"} \\
+  -v /var/lib/vf-agent:/var/lib/vf-agent \\
+  ghcr.io/terrifiedbug/vectorflow-agent:latest`}
+                    </pre>
+                  </div>
+
+                  <a
+                    href="https://docs.vectorflow.io/user-guide/environments#agent-enrollment-tokens"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block text-xs text-muted-foreground underline hover:text-foreground"
+                  >
+                    View full setup guide
+                  </a>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <Button
                   onClick={() => generateTokenMutation.mutate({ environmentId: id })}

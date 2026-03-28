@@ -208,23 +208,31 @@ export function BackupSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="storage-backend-toggle">
-              {storageBackend === "s3" ? (
-                <span className="flex items-center gap-2">
-                  <Cloud className="h-4 w-4" /> S3 Storage
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <HardDrive className="h-4 w-4" /> Local Storage
-                </span>
-              )}
-            </Label>
-            <Switch
-              id="storage-backend-toggle"
-              checked={storageBackend === "s3"}
-              onCheckedChange={(checked) => setStorageBackend(checked ? "s3" : "local")}
-            />
+          <div className="inline-flex rounded-lg border p-1">
+            <button
+              type="button"
+              className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                storageBackend === "local"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setStorageBackend("local")}
+            >
+              <HardDrive className="h-4 w-4" />
+              Local
+            </button>
+            <button
+              type="button"
+              className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                storageBackend === "s3"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setStorageBackend("s3")}
+            >
+              <Cloud className="h-4 w-4" />
+              S3
+            </button>
           </div>
 
           {storageBackend === "s3" && (

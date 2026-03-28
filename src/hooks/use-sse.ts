@@ -124,7 +124,7 @@ export function useSSE() {
   useEffect(() => {
     // Guard: only one connection per tab
     if (activeConnectionCount > 0) {
-      console.warn(
+      console.debug(
         "[useSSE] Multiple mounts detected — skipping duplicate connection. " +
           "Call useSSE() once at the app root.",
       );
