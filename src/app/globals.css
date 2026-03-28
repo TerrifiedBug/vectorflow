@@ -205,6 +205,12 @@
   }
 }
 
+@keyframes flow-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
