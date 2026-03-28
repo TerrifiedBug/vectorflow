@@ -777,11 +777,14 @@ export const alertRouter = router({
         environmentId: z.string(),
         limit: z.number().min(1).max(200).default(50),
         cursor: z.string().optional(),
+        status: z.enum(["firing", "resolved", "acknowledged"]).optional(),
+        dateFrom: z.string().optional(),
+        dateTo: z.string().optional(),
       }),
     )
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      const { environmentId, limit, cursor } = input;
+      const { environmentId, limit, cursor, status, dateFrom, dateTo } = input;
 
       // Exclude informational event metrics (deploys, version checks) from history;
       // they still fire notifications but aren't surfaced in the alert table.
@@ -793,10 +796,21 @@ export const alertRouter = router({
         "new_version_available",
       ];
 
+      const where: Prisma.AlertEventWhereInput = {
+        alertRule: { environmentId, metric: { notIn: HIDDEN_METRICS } },
+        ...(status ? { status } : {}),
+        ...(dateFrom ?? dateTo
+          ? {
+              firedAt: {
+                ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+                ...(dateTo ? { lte: new Date(dateTo + "T23:59:59.999Z") } : {}),
+              },
+            }
+          : {}),
+      };
+
       const items = await prisma.alertEvent.findMany({
-        where: {
-          alertRule: { environmentId, metric: { notIn: HIDDEN_METRICS } },
-        },
+        where,
         include: {
           alertRule: {
             select: {
