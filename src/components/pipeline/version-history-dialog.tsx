@@ -305,7 +305,7 @@ export function VersionHistoryDialog({
           onOpenChange(next);
         }}
       >
-        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+        <DialogContent className="sm:max-w-4xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -397,7 +397,7 @@ export function VersionHistoryDialog({
           if (!next) setViewingConfig(null);
         }}
       >
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>
               Version {viewingConfig?.version}{" "}
@@ -442,7 +442,7 @@ export function VersionHistoryDialog({
           if (!next && !rollbackMutation.isPending) setRollbackTarget(null);
         }}
       >
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RotateCcw className="h-5 w-5" />
@@ -500,7 +500,7 @@ export function VersionHistoryDialog({
           if (!next && !deployFromVersionMutation.isPending) setDeployTarget(null);
         }}
       >
-        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+        <DialogContent className="sm:max-w-4xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Rocket className="h-5 w-5" />
@@ -581,7 +581,7 @@ export function VersionHistoryDialog({
           if (!next) setComparingVersions(null);
         }}
       >
-        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+        <DialogContent className="sm:max-w-4xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ArrowLeftRight className="h-5 w-5" />

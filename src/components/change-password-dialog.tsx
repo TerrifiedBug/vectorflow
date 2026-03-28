@@ -68,7 +68,7 @@ export function ChangePasswordDialog({ open, onOpenChange, forced }: ChangePassw
 
   return (
     <Dialog open={open} onOpenChange={forced ? undefined : handleOpenChange}>
-      <DialogContent className="sm:max-w-[425px]" onInteractOutside={forced ? (e) => e.preventDefault() : undefined}>
+      <DialogContent className="sm:max-w-md" onInteractOutside={forced ? (e) => e.preventDefault() : undefined}>
         <DialogHeader>
           <DialogTitle>{forced ? "Password Change Required" : "Change Password"}</DialogTitle>
           <DialogDescription>
