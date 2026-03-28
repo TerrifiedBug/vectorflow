@@ -16,10 +16,19 @@ import { DeliveryStatusPanel } from "./delivery-status-panel";
 import { AlertTimeline } from "./alert-timeline";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { isFleetMetric, getAlertCategory } from "@/lib/alert-metrics";
@@ -67,6 +76,7 @@ function AlertEventContent({
   expandedEventId,
   onToggleExpand,
   formatTimestamp,
+  hasFilters,
 }: {
   items: AlertEventItem[];
   nextCursor: string | undefined;
@@ -78,8 +88,17 @@ function AlertEventContent({
   expandedEventId: string | null;
   onToggleExpand: (id: string | null) => void;
   formatTimestamp: (date: Date | string) => string;
+  hasFilters: boolean;
 }) {
   if (items.length === 0) {
+    if (hasFilters) {
+      return (
+        <EmptyState
+          title="No matching events"
+          description="Try adjusting your filters or date range."
+        />
+      );
+    }
     return (
       <EmptyState
         title={
@@ -258,10 +277,40 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
   const queryClient = useQueryClient();
   const [allItems, setAllItems] = useState<AlertEventItem[]>([]);
   const [category, setCategory] = useState<"all" | "actionable" | "informational">("actionable");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const applyStatusFilter = (value: string) => {
+    setStatusFilter(value);
+    setCursor(undefined);
+    setAllItems([]);
+  };
+
+  const applyDateFrom = (value: string) => {
+    setDateFrom(value);
+    setCursor(undefined);
+    setAllItems([]);
+  };
+
+  const applyDateTo = (value: string) => {
+    setDateTo(value);
+    setCursor(undefined);
+    setAllItems([]);
+  };
 
   const eventsQuery = useQuery(
     trpc.alert.listEvents.queryOptions(
-      { environmentId, limit: 50, cursor },
+      {
+        environmentId,
+        limit: 50,
+        cursor,
+        ...(statusFilter !== "all"
+          ? { status: statusFilter as "firing" | "resolved" | "acknowledged" }
+          : {}),
+        ...(dateFrom ? { dateFrom } : {}),
+        ...(dateTo ? { dateTo } : {}),
+      },
       { enabled: !!environmentId },
     ),
   );
@@ -346,6 +395,8 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
     [visibleItems],
   );
 
+  const hasFilters = statusFilter !== "all" || !!dateFrom || !!dateTo;
+
   const handleAcknowledge = useCallback(
     (alertEventId: string) => {
       acknowledgeMutation.mutate({ alertEventId });
@@ -371,73 +422,131 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
       ) : visibleItems.length === 0 && items.length === 0 ? (
         <EmptyState title="No alert events yet" description="Alert events will appear here when rules are triggered." />
       ) : (
-        <Tabs
-          value={category}
-          onValueChange={(v) => setCategory(v as "all" | "actionable" | "informational")}
-        >
-          <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="actionable">
-              Actionable
-              {actionableCount > 0 && (
-                <Badge variant="secondary" size="sm" className="ml-1.5 tabular-nums">
-                  {actionableCount}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="informational">
-              Informational
-              {informationalCount > 0 && (
-                <Badge variant="secondary" size="sm" className="ml-1.5 tabular-nums">
-                  {informationalCount}
-                </Badge>
-              )}
-            </TabsTrigger>
-          </TabsList>
+        <>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Status</Label>
+              <Select value={statusFilter} onValueChange={applyStatusFilter}>
+                <SelectTrigger className="w-36 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="firing">Firing</SelectItem>
+                  <SelectItem value="resolved">Resolved</SelectItem>
+                  <SelectItem value="acknowledged">Acknowledged</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">From</Label>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => applyDateFrom(e.target.value)}
+                className="w-36 h-9"
+                aria-label="From date"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">To</Label>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => applyDateTo(e.target.value)}
+                className="w-36 h-9"
+                aria-label="To date"
+              />
+            </div>
+            {hasFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9"
+                onClick={() => {
+                  setStatusFilter("all");
+                  setDateFrom("");
+                  setDateTo("");
+                  setCursor(undefined);
+                  setAllItems([]);
+                }}
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
 
-          <TabsContent value="all">
-            <AlertEventContent
-              items={filteredItems}
-              nextCursor={nextCursor}
-              isFetchingMore={isFetchingMore}
-              onLoadMore={loadMore}
-              onAcknowledge={handleAcknowledge}
-              isPending={acknowledgeMutation.isPending}
-              category="all"
-              expandedEventId={expandedEventId}
-              onToggleExpand={setExpandedEventId}
-              formatTimestamp={formatTimestamp}
-            />
-          </TabsContent>
-          <TabsContent value="actionable">
-            <AlertEventContent
-              items={filteredItems}
-              nextCursor={nextCursor}
-              isFetchingMore={isFetchingMore}
-              onLoadMore={loadMore}
-              onAcknowledge={handleAcknowledge}
-              isPending={acknowledgeMutation.isPending}
-              category="actionable"
-              expandedEventId={expandedEventId}
-              onToggleExpand={setExpandedEventId}
-              formatTimestamp={formatTimestamp}
-            />
-          </TabsContent>
-          <TabsContent value="informational">
-            <AlertEventContent
-              items={filteredItems}
-              nextCursor={nextCursor}
-              isFetchingMore={isFetchingMore}
-              onLoadMore={loadMore}
-              onAcknowledge={handleAcknowledge}
-              isPending={acknowledgeMutation.isPending}
-              category="informational"
-              expandedEventId={expandedEventId}
-              onToggleExpand={setExpandedEventId}
-              formatTimestamp={formatTimestamp}
-            />
-          </TabsContent>
-        </Tabs>
+          <Tabs
+            value={category}
+            onValueChange={(v) => setCategory(v as "all" | "actionable" | "informational")}
+          >
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="actionable">
+                Actionable
+                {actionableCount > 0 && (
+                  <Badge variant="secondary" size="sm" className="ml-1.5 tabular-nums">
+                    {actionableCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="informational">
+                Informational
+                {informationalCount > 0 && (
+                  <Badge variant="secondary" size="sm" className="ml-1.5 tabular-nums">
+                    {informationalCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="all">
+              <AlertEventContent
+                items={filteredItems}
+                nextCursor={nextCursor}
+                isFetchingMore={isFetchingMore}
+                onLoadMore={loadMore}
+                onAcknowledge={handleAcknowledge}
+                isPending={acknowledgeMutation.isPending}
+                category="all"
+                expandedEventId={expandedEventId}
+                onToggleExpand={setExpandedEventId}
+                formatTimestamp={formatTimestamp}
+                hasFilters={hasFilters}
+              />
+            </TabsContent>
+            <TabsContent value="actionable">
+              <AlertEventContent
+                items={filteredItems}
+                nextCursor={nextCursor}
+                isFetchingMore={isFetchingMore}
+                onLoadMore={loadMore}
+                onAcknowledge={handleAcknowledge}
+                isPending={acknowledgeMutation.isPending}
+                category="actionable"
+                expandedEventId={expandedEventId}
+                onToggleExpand={setExpandedEventId}
+                formatTimestamp={formatTimestamp}
+                hasFilters={hasFilters}
+              />
+            </TabsContent>
+            <TabsContent value="informational">
+              <AlertEventContent
+                items={filteredItems}
+                nextCursor={nextCursor}
+                isFetchingMore={isFetchingMore}
+                onLoadMore={loadMore}
+                onAcknowledge={handleAcknowledge}
+                isPending={acknowledgeMutation.isPending}
+                category="informational"
+                expandedEventId={expandedEventId}
+                onToggleExpand={setExpandedEventId}
+                formatTimestamp={formatTimestamp}
+                hasFilters={hasFilters}
+              />
+            </TabsContent>
+          </Tabs>
+        </>
       )}
     </div>
   );
