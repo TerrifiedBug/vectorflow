@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
+import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import {
   Dialog,
@@ -471,7 +472,7 @@ function EndpointDialog({
         toast.success("Webhook endpoint created");
       },
       onError: (err) => {
-        toast.error(err.message || "Failed to create webhook endpoint");
+        toast.error(err.message || "Failed to create webhook endpoint", { duration: 6000 });
       },
     }),
   );
@@ -486,7 +487,7 @@ function EndpointDialog({
         toast.success("Webhook endpoint updated");
       },
       onError: (err) => {
-        toast.error(err.message || "Failed to update webhook endpoint");
+        toast.error(err.message || "Failed to update webhook endpoint", { duration: 6000 });
       },
     }),
   );
@@ -502,7 +503,7 @@ function EndpointDialog({
 
   function handleSubmit() {
     if (!name.trim() || !url.trim() || selectedEvents.size === 0) {
-      toast.error("Name, URL, and at least one event type are required");
+      toast.error("Name, URL, and at least one event type are required", { duration: 6000 });
       return;
     }
     const eventTypes = Array.from(selectedEvents) as AlertMetric[];
@@ -707,7 +708,7 @@ function WebhookEndpointsSettings() {
         });
       },
       onError: (err) => {
-        toast.error(err.message || "Failed to toggle endpoint");
+        toast.error(err.message || "Failed to toggle endpoint", { duration: 6000 });
       },
     }),
   );
@@ -722,7 +723,7 @@ function WebhookEndpointsSettings() {
         toast.success("Webhook endpoint deleted");
       },
       onError: (err) => {
-        toast.error(err.message || "Failed to delete endpoint");
+        toast.error(err.message || "Failed to delete endpoint", { duration: 6000 });
       },
     }),
   );
@@ -734,12 +735,12 @@ function WebhookEndpointsSettings() {
         if ((result as { success?: boolean }).success) {
           toast.success("Test delivery sent successfully");
         } else {
-          toast.error(`Test delivery failed: ${(result as { error?: string }).error ?? "unknown error"}`);
+          toast.error(`Test delivery failed: ${(result as { error?: string }).error ?? "unknown error"}`, { duration: 6000 });
         }
       },
       onError: (err) => {
         setTestingId(null);
-        toast.error(err.message || "Test delivery failed");
+        toast.error(err.message || "Test delivery failed", { duration: 6000 });
       },
     }),
   );
@@ -799,11 +800,7 @@ function WebhookEndpointsSettings() {
               ))}
             </div>
           ) : endpoints.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Webhook className="mx-auto h-12 w-12 mb-4 opacity-50" />
-              <p className="text-lg font-medium">No webhook endpoints</p>
-              <p className="text-sm">Create an endpoint to start receiving event notifications</p>
-            </div>
+            <EmptyState icon={Webhook} title="No webhook endpoints" description="Add a webhook endpoint to start receiving events." />
           ) : (
             <Table>
               <TableHeader>
