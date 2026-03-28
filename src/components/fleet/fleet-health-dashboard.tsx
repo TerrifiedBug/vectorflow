@@ -6,8 +6,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { FleetHealthToolbar } from "@/components/fleet/fleet-health-toolbar";
 import { NodeGroupHealthCard } from "@/components/fleet/node-group-health-card";
+import { cn } from "@/lib/utils";
 
 interface FleetHealthDashboardProps {
   environmentId: string;
@@ -125,6 +127,15 @@ function FleetHealthDashboardInner({ environmentId }: FleetHealthDashboardProps)
 
   const labelFilterActive = Object.keys(labelFilter).length > 0;
 
+  // Aggregate fleet-wide stats for the summary bar
+  const { totalNodes, totalAlerts, healthyPct } = useMemo(() => {
+    const total = allGroups.reduce((sum, g) => sum + g.totalNodes, 0);
+    const healthy = allGroups.reduce((sum, g) => sum + g.onlineCount, 0);
+    const alerts = allGroups.reduce((sum, g) => sum + g.alertCount, 0);
+    const pct = total > 0 ? Math.round((healthy / total) * 100) : 100;
+    return { totalNodes: total, totalAlerts: alerts, healthyPct: pct };
+  }, [allGroups]);
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -138,6 +149,16 @@ function FleetHealthDashboardInner({ environmentId }: FleetHealthDashboardProps)
 
   return (
     <div className="space-y-4">
+      {allGroups.length > 0 && (
+        <div className="flex items-center gap-4 rounded-lg bg-muted/50 px-4 py-3 text-sm">
+          <span className="font-semibold tabular-nums">{totalNodes} nodes total</span>
+          <span className="text-muted-foreground">·</span>
+          <span className="font-semibold tabular-nums">{healthyPct}% healthy</span>
+          <span className="text-muted-foreground">·</span>
+          <span className={cn("font-semibold tabular-nums", totalAlerts > 0 ? "text-destructive" : "text-muted-foreground")}>{totalAlerts} active alerts</span>
+        </div>
+      )}
+
       <FleetHealthToolbar
         groupFilter={groupFilter}
         onGroupFilterChange={(id) => updateFilter({ group: id })}
@@ -161,6 +182,14 @@ function FleetHealthDashboardInner({ environmentId }: FleetHealthDashboardProps)
       ) : filteredGroups.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
           <p className="text-muted-foreground">No groups match your filters</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => updateFilter({ group: null, label: {}, compliance: "all" })}
+          >
+            Clear filters
+          </Button>
         </div>
       ) : (
         <div className="space-y-3">
