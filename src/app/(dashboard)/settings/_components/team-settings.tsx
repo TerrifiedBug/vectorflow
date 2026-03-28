@@ -54,6 +54,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { QueryError } from "@/components/query-error";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 // ─── Team Tab ──────────────────────────────────────────────────────────────────
 
@@ -334,7 +335,7 @@ export function TeamSettings() {
         <CardContent>
           <form onSubmit={handleRename} className="flex items-end gap-3">
             <div className="flex-1 space-y-2">
-              <Label htmlFor="team-name">Team Name</Label>
+              <Label htmlFor="team-name">Team Name <span className="text-destructive">*</span></Label>
               <Input
                 id="team-name"
                 value={teamName}
@@ -390,6 +391,11 @@ export function TeamSettings() {
           <CardDescription>
             Security settings for {team.name}.
           </CardDescription>
+          <div className="mt-2">
+            <StatusBadge variant={team.requireTwoFactor ? "healthy" : "neutral"}>
+              {team.requireTwoFactor ? "Required" : "Optional"}
+            </StatusBadge>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between">
