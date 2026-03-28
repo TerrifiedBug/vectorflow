@@ -61,7 +61,7 @@ function getDeployActionColor(action: string): string {
     return "bg-blue-500/15 text-blue-700 dark:text-blue-400";
   if (action.includes("deploy"))
     return "bg-purple-500/15 text-purple-700 dark:text-purple-400";
-  return "bg-gray-500/15 text-gray-700 dark:text-gray-400";
+  return "bg-muted/50 text-muted-foreground";
 }
 
 /** Human-friendly label for deployment actions */
