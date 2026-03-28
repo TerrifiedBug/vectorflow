@@ -16,8 +16,14 @@ import {
   Pencil,
   Trash2,
   Timer,
+  Bell,
+  Workflow,
+  Settings,
+  LayoutDashboard,
 } from "lucide-react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StaggerList, StaggerItem } from "@/components/motion/stagger-list";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -131,6 +137,50 @@ export default function DashboardPage() {
     return <EmptyState title="Select an environment to view the dashboard" />;
   }
 
+  if (!stats.isPending && stats.data && stats.data.nodes === 0 && stats.data.pipelines === 0) {
+    return (
+      <div className="space-y-6">
+        <EmptyState
+          icon={LayoutDashboard}
+          title="Welcome to VectorFlow"
+          description="Get started by creating your first pipeline, registering fleet nodes, and reviewing your configuration."
+        />
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardContent className="p-4 flex flex-col items-start gap-2">
+              <Workflow className="h-8 w-8 text-muted-foreground" />
+              <p className="text-sm font-semibold">Create a pipeline</p>
+              <p className="text-xs text-muted-foreground">Build your first observability pipeline with the visual editor.</p>
+              <Button variant="outline" size="sm" asChild className="mt-auto">
+                <Link href="/pipelines">Get started</Link>
+              </Button>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 flex flex-col items-start gap-2">
+              <Server className="h-8 w-8 text-muted-foreground" />
+              <p className="text-sm font-semibold">Register a node</p>
+              <p className="text-xs text-muted-foreground">Add fleet nodes to deploy and run your pipelines.</p>
+              <Button variant="outline" size="sm" asChild className="mt-auto">
+                <Link href="/fleet">Get started</Link>
+              </Button>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 flex flex-col items-start gap-2">
+              <Settings className="h-8 w-8 text-muted-foreground" />
+              <p className="text-sm font-semibold">Open settings</p>
+              <p className="text-xs text-muted-foreground">Configure teams, environments, and integrations.</p>
+              <Button variant="outline" size="sm" asChild className="mt-auto">
+                <Link href="/settings">Get started</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   if (stats.isError) {
     return <QueryError message="Failed to load dashboard data" onRetry={() => stats.refetch()} />;
   }
@@ -223,8 +273,8 @@ export default function DashboardPage() {
         <>
           {/* KPI Summary Cards */}
           {stats.isPending ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-              {Array.from({ length: 5 }).map((_, i) => (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+              {Array.from({ length: 6 }).map((_, i) => (
                 <Card key={i}>
                   <CardContent className="p-4">
                     <Skeleton className="h-4 w-24 mb-2" />
@@ -234,7 +284,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-          <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+          <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
             {/* Total Nodes */}
             <StaggerItem>
             <Card>
@@ -243,7 +293,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-muted-foreground">Total Nodes</p>
                   <Server className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className="mt-1 text-2xl font-bold tabular-nums">{stats.data?.nodes ?? 0}</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">{stats.data?.nodes ?? 0}</p>
               </CardContent>
             </Card>
             </StaggerItem>
@@ -282,7 +332,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-muted-foreground">Pipelines</p>
                   <GitBranch className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className="mt-1 text-2xl font-bold tabular-nums">{stats.data?.pipelines ?? 0}</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">{stats.data?.pipelines ?? 0}</p>
               </CardContent>
             </Card>
             </StaggerItem>
@@ -323,7 +373,7 @@ export default function DashboardPage() {
                 {stats.data?.reduction?.percent != null ? (
                   <>
                     <p className={cn(
-                      "mt-1 text-2xl font-bold tabular-nums",
+                      "mt-1 text-2xl font-semibold tabular-nums",
                       stats.data.reduction.percent > 50 ? "text-green-600 dark:text-green-400" :
                       stats.data.reduction.percent > 10 ? "text-amber-600 dark:text-amber-400" :
                       "text-muted-foreground"
@@ -339,6 +389,28 @@ export default function DashboardPage() {
                     <p className="mt-1 text-2xl font-bold text-muted-foreground">—</p>
                     <p className="text-xs text-muted-foreground">No traffic data</p>
                   </>
+                )}
+              </CardContent>
+            </Card>
+            </StaggerItem>
+
+            {/* Active Alerts */}
+            <StaggerItem>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">Active Alerts</p>
+                  <Bell className="h-4 w-4 text-muted-foreground" />
+                </div>
+                {(stats.data?.alerts ?? 0) > 0 ? (
+                  <>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums">{stats.data?.alerts ?? 0}</p>
+                    <Link href="/alerts" className="text-sm text-muted-foreground hover:text-foreground">
+                      View alerts
+                    </Link>
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">No active alerts</p>
                 )}
               </CardContent>
             </Card>
