@@ -27,6 +27,7 @@ import { stagedRolloutRouter } from "@/server/routers/staged-rollout";
 import { pipelineDependencyRouter } from "@/server/routers/pipeline-dependency";
 import { webhookEndpointRouter } from "@/server/routers/webhook-endpoint";
 import { promotionRouter } from "@/server/routers/promotion";
+import { filterPresetRouter } from "@/server/routers/filter-preset";
 
 export const appRouter = router({
   team: teamRouter,
@@ -57,6 +58,7 @@ export const appRouter = router({
   pipelineDependency: pipelineDependencyRouter,
   webhookEndpoint: webhookEndpointRouter,
   promotion: promotionRouter,
+  filterPreset: filterPresetRouter,
 });
 
 export type AppRouter = typeof appRouter;
