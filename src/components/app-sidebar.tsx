@@ -140,6 +140,7 @@ export function AppSidebar() {
           )}
         >
           <SidebarGroup>
+            <SidebarGroupLabel>Navigation</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {visibleItems.map((item) => {
@@ -162,6 +163,7 @@ export function AppSidebar() {
                         asChild
                         isActive={isActive}
                         tooltip={item.title}
+                        className="data-[active=true]:font-semibold data-[active=true]:border-l-2 data-[active=true]:border-primary data-[active=true]:bg-sidebar-accent/60"
                       >
                         <Link href={item.href}>
                           <item.icon />
@@ -200,6 +202,7 @@ export function AppSidebar() {
                           asChild
                           isActive={pathname === item.href || pathname.startsWith(item.href + "/")}
                           tooltip={item.title}
+                          className="data-[active=true]:font-semibold data-[active=true]:border-l-2 data-[active=true]:border-primary data-[active=true]:bg-sidebar-accent/60"
                         >
                           <Link href={item.href}>
                             <item.icon />
@@ -232,6 +235,7 @@ export function AppSidebar() {
                       asChild
                       isActive={pathname === item.href || pathname.startsWith(item.href + "/")}
                       tooltip={item.title}
+                      className="data-[active=true]:font-semibold data-[active=true]:border-l-2 data-[active=true]:border-primary data-[active=true]:bg-sidebar-accent/60"
                     >
                       <Link href={item.href}>
                         <item.icon />
