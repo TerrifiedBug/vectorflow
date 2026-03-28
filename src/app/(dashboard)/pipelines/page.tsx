@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, Fragment } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -263,6 +263,19 @@ export default function PipelinesPage() {
     localStorage.setItem("pipeline-list-density", d);
   }, []);
 
+  // Keyboard navigation
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const rowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
+
+  useEffect(() => {
+    if (focusedIndex >= 0) {
+      rowRefs.current.get(focusedIndex)?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    }
+  }, [focusedIndex]);
+
   const handleSort = useCallback(
     (field: SortField) => {
       if (field === sortField) {
@@ -484,6 +497,30 @@ export default function PipelinesPage() {
 
   const router = useRouter();
 
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const items = filteredPipelines;
+      if (!items.length) return;
+
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          setFocusedIndex((prev) => Math.min(prev + 1, items.length - 1));
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setFocusedIndex((prev) => Math.max(prev - 1, 0));
+          break;
+        case "Enter":
+          if (focusedIndex >= 0 && focusedIndex < items.length) {
+            router.push(`/pipelines/${items[focusedIndex].id}`);
+          }
+          break;
+      }
+    },
+    [filteredPipelines, focusedIndex, router],
+  );
+
   const cloneMutation = useMutation(
     trpc.pipeline.clone.mutationOptions({
       onSuccess: (data) => {
@@ -663,6 +700,7 @@ export default function PipelinesPage() {
               </Button>
             </div>
           ) : (
+        <div onKeyDown={handleKeyDown} tabIndex={0} className="outline-none">
         <Table>
           <TableHeader>
             <TableRow>
@@ -717,7 +755,7 @@ export default function PipelinesPage() {
             </TableRow>
           </TableHeader>
           <StaggerList as="tbody" className="[&_tr:last-child]:border-0">
-            {filteredPipelines.map((pipeline) => {
+            {filteredPipelines.map((pipeline, index) => {
               const hasStats = pipeline.nodeStatuses.length > 0;
               const totals = hasStats
                 ? sumNodeStatuses(pipeline.nodeStatuses)
@@ -727,9 +765,14 @@ export default function PipelinesPage() {
                 <StaggerItem
                   as="tr"
                   key={pipeline.id}
+                  ref={(el: HTMLTableRowElement | null) => {
+                    if (el) rowRefs.current.set(index, el);
+                    else rowRefs.current.delete(index);
+                  }}
                   className={cn(
                     "hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors cursor-pointer",
-                    density === "compact" && "h-10"
+                    density === "compact" && "h-10",
+                    index === focusedIndex && "bg-muted/50 ring-1 ring-ring ring-inset"
                   )}
                 >
                   <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
@@ -1068,6 +1111,7 @@ export default function PipelinesPage() {
             })}
           </StaggerList>
         </Table>
+        </div>
           )}
 
           {/* Load More button for paginated results */}
