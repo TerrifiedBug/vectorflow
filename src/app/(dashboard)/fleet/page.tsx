@@ -45,6 +45,7 @@ import { QueryError } from "@/components/query-error";
 import { FleetListToolbar } from "@/components/fleet/fleet-list-toolbar";
 import { FleetTabs } from "@/components/fleet/fleet-tabs";
 import { ArrowUp, ArrowDown } from "lucide-react";
+import { useFleetListFilters } from "@/hooks/use-fleet-list-filters";
 
 const AGENT_REPO = "TerrifiedBug/vectorflow";
 
@@ -137,10 +138,20 @@ export default function FleetPage() {
     }
   }, [activeEnvId, router]);
 
-  // --- Filter state ---
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [labelFilter, setLabelFilter] = useState<Record<string, string>>({});
+  // --- Fleet list filter state (URL-synced) ---
+  const {
+    search,
+    statusFilter,
+    labelFilter,
+    page,
+    hasActiveFilters: nodeListHasActiveFilters,
+    setSearch,
+    setStatusFilter,
+    setLabelFilter,
+    setPage,
+    clearFilters: clearNodeFilters,
+  } = useFleetListFilters();
+
   type SortField = "name" | "status" | "lastSeen";
   type SortDirection = "asc" | "desc";
   const [sortField, setSortField] = useState<SortField>("name");
@@ -206,6 +217,10 @@ export default function FleetPage() {
     return sorted;
   }, [rawNodes, sortField, sortDirection]);
 
+  const PAGE_SIZE = 25;
+  const totalPages = Math.ceil(nodes.length / PAGE_SIZE);
+  const paginatedNodes = nodes.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
   const versionQuery = useQuery(
     trpc.settings.checkVersion.queryOptions(undefined, {
       refetchInterval: false,
@@ -263,7 +278,7 @@ export default function FleetPage() {
       <FleetTabs active="nodes" />
 
       {/* Toolbar — shown when not loading and nodes exist or filters active */}
-      {!isLoading && (rawNodes.length > 0 || search || statusFilter.length > 0 || Object.keys(labelFilter).length > 0) && (
+      {!isLoading && (rawNodes.length > 0 || nodeListHasActiveFilters) && (
         <FleetListToolbar
           search={search}
           onSearchChange={setSearch}
@@ -281,7 +296,7 @@ export default function FleetPage() {
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
-      ) : rawNodes.length === 0 && !search && statusFilter.length === 0 && Object.keys(labelFilter).length === 0 ? (
+      ) : rawNodes.length === 0 && !nodeListHasActiveFilters ? (
         <EmptyState
           title="No agents enrolled yet"
           description="Generate an enrollment token in the environment settings to connect agents."
@@ -292,16 +307,13 @@ export default function FleetPage() {
           <Button
             variant="outline"
             className="mt-4"
-            onClick={() => {
-              setSearch("");
-              setStatusFilter([]);
-              setLabelFilter({});
-            }}
+            onClick={clearNodeFilters}
           >
             Clear filters
           </Button>
         </div>
       ) : (
+        <div>
         <Table>
           <TableHeader>
             <TableRow>
@@ -347,7 +359,7 @@ export default function FleetPage() {
             </TableRow>
           </TableHeader>
           <StaggerList as="tbody" className="[&_tr:last-child]:border-0">
-            {nodes.map((node) => (
+            {paginatedNodes.map((node) => (
               <StaggerItem as="tr" key={node.id} className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors cursor-pointer">
                 <TableCell className="font-medium">
                   <Link
@@ -536,6 +548,35 @@ export default function FleetPage() {
             ))}
           </StaggerList>
         </Table>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
+            <span className="text-muted-foreground">
+              Showing {page * PAGE_SIZE + 1}&ndash;{Math.min((page + 1) * PAGE_SIZE, nodes.length)} of {nodes.length} nodes
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page === 0}
+                onClick={() => setPage(page - 1)}
+              >
+                Previous
+              </Button>
+              <span className="text-muted-foreground tabular-nums">
+                Page {page + 1} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+        </div>
       )}
 
       {activeEnvId && (
