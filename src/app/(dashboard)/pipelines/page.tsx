@@ -299,7 +299,7 @@ export default function PipelinesPage() {
     ),
   );
 
-  const pipelines = useMemo(() => pipelinesQuery.data ?? [], [pipelinesQuery.data]);
+  const pipelines = useMemo(() => pipelinesQuery.data?.pipelines ?? [], [pipelinesQuery.data]);
 
   // Poll live rates from MetricStore for the pipelines table
   const liveRatesQuery = useQuery(
