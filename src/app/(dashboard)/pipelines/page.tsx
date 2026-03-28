@@ -349,6 +349,37 @@ export default function PipelinesPage() {
   );
   const liveRates = useMemo(() => liveRatesQuery.data?.rates ?? {}, [liveRatesQuery.data]);
 
+  // --- Auto-apply default filter preset on page load ---
+  const defaultPresetQuery = useQuery(
+    trpc.filterPreset.list.queryOptions(
+      { environmentId: effectiveEnvId, scope: "pipeline_list" as const },
+      { enabled: !!effectiveEnvId },
+    ),
+  );
+
+  const hasActiveFilters =
+    search.length > 0 ||
+    statusFilter.length > 0 ||
+    tagFilter.length > 0 ||
+    groupId !== null;
+
+  useEffect(() => {
+    if (!hasActiveFilters && defaultPresetQuery.data) {
+      const defaultPreset = defaultPresetQuery.data.find((p) => p.isDefault);
+      if (defaultPreset) {
+        const f = defaultPreset.filters as Record<string, unknown>;
+        if (f.search && typeof f.search === "string") setSearch(f.search);
+        if (Array.isArray(f.status) && f.status.length > 0) setStatusFilter(f.status as string[]);
+        if (Array.isArray(f.tags) && f.tags.length > 0) setTagFilter(f.tags as string[]);
+        if (f.groupId && typeof f.groupId === "string") {
+          usePipelineSidebarStore.getState().setSelectedGroupId(f.groupId);
+        }
+      }
+    }
+    // Only run on initial data load, not on every filter change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultPresetQuery.data]);
+
   // Fetch pending deploy requests for the current environment
   const pendingRequestsQuery = useQuery(
     trpc.deploy.listPendingRequests.queryOptions(

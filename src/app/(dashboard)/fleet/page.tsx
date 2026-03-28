@@ -86,6 +86,28 @@ export default function FleetPage() {
 
   const [saveFilterOpen, setSaveFilterOpen] = useState(false);
 
+  // --- Auto-apply default filter preset on page load ---
+  const defaultPresetQuery = useQuery(
+    trpc.filterPreset.list.queryOptions(
+      { environmentId: activeEnvId, scope: "fleet_matrix" as const },
+      { enabled: !!activeEnvId },
+    ),
+  );
+
+  useEffect(() => {
+    if (!matrixHasActiveFilters && defaultPresetQuery.data) {
+      const defaultPreset = defaultPresetQuery.data.find((p) => p.isDefault);
+      if (defaultPreset) {
+        const f = defaultPreset.filters as Record<string, unknown>;
+        if (f.search && typeof f.search === "string") setMatrixSearch(f.search);
+        if (Array.isArray(f.status) && f.status.length > 0) setMatrixStatusFilter(f.status as string[]);
+        if (Array.isArray(f.tags) && f.tags.length > 0) setMatrixTagFilter(f.tags as string[]);
+      }
+    }
+    // Only run on initial data load, not on every filter change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultPresetQuery.data]);
+
   // Same query as DeploymentMatrix — React Query deduplicates by key
   const matrixQuery = useQuery({
     ...trpc.fleet.listWithPipelineStatus.queryOptions({ environmentId: activeEnvId }),
