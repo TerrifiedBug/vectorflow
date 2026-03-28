@@ -15,6 +15,7 @@ import {
 } from "@xyflow/react";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import { findComponentDef } from "@/lib/vector/catalog";
+import { validateNodeConfig } from "@/lib/vector/validate-node-config";
 
 /** Shape of node.data used throughout the flow editor */
 interface FlowNodeData {
@@ -89,7 +90,7 @@ export interface FlowState {
   ) => void;
   removeNode: (id: string) => void;
   removeEdge: (id: string) => void;
-  updateNodeConfig: (id: string, config: Record<string, unknown>) => void;
+  updateNodeConfig: (id: string, config: Record<string, unknown>, configSchema?: object) => void;
   updateDisplayName: (id: string, displayName: string) => void;
   toggleNodeDisabled: (id: string) => void;
   patchNodeSharedData: (id: string, data: {
@@ -376,17 +377,28 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     });
   },
 
-  updateNodeConfig: (id, config) => {
+  updateNodeConfig: (id, config, configSchema) => {
     set((state) => {
       // Prevent editing system-locked nodes
       const node = state.nodes.find((n) => n.id === id);
       if (node?.data?.isSystemLocked) return {};
 
+      // Compute validation state from schema if provided
+      let hasError: boolean | undefined;
+      let firstErrorMessage: string | undefined;
+      if (configSchema) {
+        const result = validateNodeConfig(config, configSchema);
+        hasError = result.hasError || undefined; // undefined when no error (cleans field from data)
+        firstErrorMessage = result.firstErrorMessage;
+      }
+
       const history = pushSnapshot(state);
       return {
         ...history,
         nodes: state.nodes.map((n) =>
-          n.id === id ? { ...n, data: { ...n.data, config } } : n,
+          n.id === id
+            ? { ...n, data: { ...n.data, config, hasError, firstErrorMessage } }
+            : n,
         ),
         isDirty: true,
       };

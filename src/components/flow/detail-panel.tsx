@@ -189,11 +189,12 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
 
   const handleConfigChange = useCallback(
     (values: Record<string, unknown>) => {
-      if (selectedNodeId) {
-        updateNodeConfig(selectedNodeId, values);
+      if (selectedNodeId && selectedNode?.data) {
+        const nodeData = selectedNode.data as { componentDef?: VectorComponentDef };
+        updateNodeConfig(selectedNodeId, values, nodeData.componentDef?.configSchema);
       }
     },
-    [selectedNodeId, updateNodeConfig],
+    [selectedNodeId, selectedNode, updateNodeConfig],
   );
 
   const handleNameChange = useCallback(
