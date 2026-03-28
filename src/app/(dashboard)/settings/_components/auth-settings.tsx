@@ -43,6 +43,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { QueryError } from "@/components/query-error";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Popover,
   PopoverContent,
@@ -67,6 +68,13 @@ export function AuthSettings() {
   const [clientSecret, setClientSecret] = useState("");
   const [displayName, setDisplayName] = useState("SSO");
   const [tokenAuthMethod, setTokenAuthMethod] = useState<"client_secret_post" | "client_secret_basic">("client_secret_post");
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const markFieldTouched = (field: string) => setTouched((t) => ({ ...t, [field]: true }));
+
+  const fieldErrors = {
+    issuer: !issuer.trim() ? "Issuer URL is required." : null,
+    clientId: !clientId.trim() ? "Client ID is required." : null,
+  };
 
   useEffect(() => {
     if (!settings) return;
@@ -243,37 +251,52 @@ export function AuthSettings() {
           Configure an OpenID Connect provider to enable single sign-on for your
           team.
         </CardDescription>
+        <div className="mt-2">
+          <StatusBadge variant={settings?.oidcIssuer && settings?.oidcClientId ? "healthy" : "neutral"}>
+            {settings?.oidcIssuer && settings?.oidcClientId ? "Enabled" : "Disabled"}
+          </StatusBadge>
+        </div>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSave} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="oidc-issuer">Issuer URL</Label>
+            <Label htmlFor="oidc-issuer">Issuer URL <span className="text-destructive">*</span></Label>
             <Input
               id="oidc-issuer"
               type="url"
               placeholder="https://accounts.google.com"
               value={issuer}
               onChange={(e) => { markDirty(); setIssuer(e.target.value); }}
+              onBlur={() => markFieldTouched("issuer")}
               required
             />
             <p className="text-xs text-muted-foreground">
               The OIDC issuer URL (must support .well-known/openid-configuration)
             </p>
+            {touched.issuer && fieldErrors.issuer && (
+              <p className="text-xs text-destructive mt-1">{fieldErrors.issuer}</p>
+            )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="oidc-client-id">Client ID</Label>
+            <Label htmlFor="oidc-client-id">Client ID <span className="text-destructive">*</span></Label>
             <Input
               id="oidc-client-id"
               placeholder="your-client-id"
               value={clientId}
               onChange={(e) => { markDirty(); setClientId(e.target.value); }}
+              onBlur={() => markFieldTouched("clientId")}
               required
             />
+            {touched.clientId && fieldErrors.clientId && (
+              <p className="text-xs text-destructive mt-1">{fieldErrors.clientId}</p>
+            )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="oidc-client-secret">Client Secret</Label>
+            <Label htmlFor="oidc-client-secret">
+              Client Secret {!settings?.oidcClientSecret && <span className="text-destructive">*</span>}
+            </Label>
             <Input
               id="oidc-client-secret"
               type="password"
@@ -294,7 +317,7 @@ export function AuthSettings() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="oidc-display-name">Display Name</Label>
+            <Label htmlFor="oidc-display-name">Display Name <span className="text-destructive">*</span></Label>
             <Input
               id="oidc-display-name"
               placeholder="SSO"
@@ -333,7 +356,7 @@ export function AuthSettings() {
             <Button
               type="submit"
               disabled={
-                updateOidcMutation.isPending || !issuer || !clientId
+                updateOidcMutation.isPending || !!fieldErrors.issuer || !!fieldErrors.clientId
               }
             >
               {updateOidcMutation.isPending ? (
