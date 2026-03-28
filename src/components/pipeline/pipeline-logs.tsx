@@ -134,6 +134,13 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
     ? filteredItems.reduce((sum, log) => sum + countMatches(log.message, searchTerm), 0)
     : 0;
 
+  const virtualizer = useVirtualizer({
+    count: filteredItems.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 20,
+    overscan: 30,
+  });
+
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
     if (autoScrollRef.current) {
@@ -161,13 +168,6 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
       });
     }
   }, [logsQuery]);
-
-  const virtualizer = useVirtualizer({
-    count: filteredItems.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => 20,
-    overscan: 30,
-  });
 
   const handleExportLogs = useCallback(() => {
     const lines = filteredItems.map((log) => {

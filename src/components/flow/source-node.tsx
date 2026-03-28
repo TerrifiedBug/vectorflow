@@ -5,6 +5,7 @@ import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Lock, Link2 as LinkIcon, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { VectorComponentDef } from "@/lib/vector/types";
+import { useFlowStore } from "@/stores/flow-store";
 import type { NodeMetricsData } from "@/stores/flow-store";
 import { getIcon } from "./node-icon";
 import { NodeSparkline } from "./node-sparkline";
@@ -32,15 +33,19 @@ type SourceNodeData = {
 
 type SourceNodeType = Node<SourceNodeData, "source">;
 
-function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
+function SourceNodeComponent({ id, data, selected }: NodeProps<SourceNodeType>) {
   const { componentDef, displayName, metrics, disabled, isSystemLocked } = data;
   const isShared = !!data.sharedComponentId;
   const isStale = isShared && data.sharedComponentLatestVersion != null &&
     (data.sharedComponentVersion ?? 0) < data.sharedComponentLatestVersion;
   const Icon = useMemo(() => getIcon(componentDef.icon), [componentDef.icon]);
+  const canvasSearchTerm = useFlowStore((s) => s.canvasSearchTerm);
+  const canvasSearchMatchIds = useFlowStore((s) => s.canvasSearchMatchIds);
+  const isSearching = canvasSearchTerm.length > 0;
+  const isSearchMatch = isSearching && canvasSearchMatchIds.includes(id);
 
   return (
-    <div className="relative">
+    <div className={cn("relative", isSearching && !isSearchMatch && "opacity-40")}>
       {data.hasError && (
         <TooltipProvider delayDuration={200}>
           <Tooltip>
@@ -65,7 +70,8 @@ function SourceNodeComponent({ data, selected }: NodeProps<SourceNodeType>) {
           isShared && !selected && "border-purple-400/50 shadow-[0_0_8px_rgba(167,139,250,0.15)]",
           isSystemLocked && "ring-blue-400 shadow-md",
           disabled && "opacity-40",
-          data.hasError && "ring-destructive shadow-md"
+          data.hasError && "ring-destructive shadow-md",
+          isSearchMatch && "ring-2 ring-yellow-400"
         )}
       >
         {/* Header bar */}
