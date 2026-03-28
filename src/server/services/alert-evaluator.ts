@@ -5,6 +5,7 @@ import type {
   AlertRule,
   AlertEvent,
 } from "@/generated/prisma";
+import { getConfigDrift } from "@/server/services/drift-metrics";
 
 // ---------------------------------------------------------------------------
 // Fleet-scoped metrics — handled by FleetAlertService, not per-node heartbeat.
@@ -204,6 +205,12 @@ async function readMetricValue(
 
     case "pipeline_crashed":
       return getPipelineCrashed(nodeId, pipelineId);
+
+    case "config_drift": {
+      const drift = await getConfigDrift(nodeId, pipelineId);
+      if (drift === null) return null;
+      return drift.value;
+    }
 
     default:
       return null;
