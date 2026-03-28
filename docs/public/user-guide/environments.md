@@ -72,12 +72,25 @@ Deleting an environment permanently removes all of its pipelines, nodes, and sec
 
 ## Agent enrollment tokens
 
-Before an agent can connect to an environment, you must generate an **enrollment token** on the environment detail page. The token is displayed once -- copy it immediately and provide it to the agent at startup:
+Before an agent can connect to an environment, you must generate an **enrollment token** on the environment detail page. The token is displayed once -- copy it immediately.
+
+### Linux (binary)
+
+The install script downloads the agent binary, verifies its checksum, installs [Vector](https://vector.dev) if it is not already present, and creates a systemd service:
 
 ```bash
-VF_URL=https://your-vectorflow-instance:3000
-VF_TOKEN=<enrollment-token>
-./vf-agent
+curl -sSfL https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/agent/install.sh | \
+  sudo bash -s -- --url https://your-vectorflow-instance --token <enrollment-token>
+```
+
+### Docker
+
+```bash
+docker run -d --name vf-agent --restart unless-stopped \
+  -e VF_URL=https://your-vectorflow-instance \
+  -e VF_TOKEN=<enrollment-token> \
+  -v /var/lib/vf-agent:/var/lib/vf-agent \
+  ghcr.io/terrifiedbug/vectorflow-agent:latest
 ```
 
 You can regenerate or revoke the token at any time. Revoking a token prevents new agents from enrolling, but already-connected agents continue operating until their individual node tokens are revoked from the Fleet page.
