@@ -123,6 +123,7 @@ export class GitSyncRetryService {
             job.configYaml,
             { name: job.authorName ?? "VectorFlow", email: job.authorEmail ?? "noreply@vectorflow" },
             job.commitMessage ?? `Retry: sync pipeline ${pipelineNameForSync}`,
+            job.pipeline.gitPath ?? undefined,
           );
         } else if (job.action === "delete") {
           result = await gitSyncDeletePipeline(
@@ -130,6 +131,7 @@ export class GitSyncRetryService {
             env.name,
             pipelineNameForSync,
             { name: job.authorName ?? "VectorFlow", email: job.authorEmail ?? "noreply@vectorflow" },
+            job.pipeline.gitPath ?? undefined,
           );
         } else {
           await this.markFailed(job.id, job.environmentId, `Unknown action: ${job.action}`);
@@ -148,7 +150,7 @@ export class GitSyncRetryService {
             environmentId: job.environmentId,
             status: "completed",
             jobId: job.id,
-          } as never, job.environmentId);
+          }, job.environmentId);
         } else {
           // Check if max attempts reached
           if (newAttempts >= job.maxAttempts) {
@@ -199,7 +201,7 @@ export class GitSyncRetryService {
       environmentId,
       status: "failed",
       jobId,
-    } as never, environmentId);
+    }, environmentId);
   }
 }
 

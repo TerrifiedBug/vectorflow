@@ -122,6 +122,7 @@ describe("GitSyncRetryService", () => {
       "sources:\n  in:\n    type: demo_logs",
       { name: "Danny", email: "danny@test.com" },
       "Deploy pipeline",
+      undefined,
     );
 
     // Should mark as completed

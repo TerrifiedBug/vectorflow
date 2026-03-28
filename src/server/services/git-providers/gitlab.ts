@@ -139,7 +139,11 @@ export class GitLabProvider implements GitProvider {
     return encodeURIComponent(`${owner}/${repo}`);
   }
 
-  /** Resolve the GitLab API base URL (supports self-hosted). */
+  /**
+   * Resolve API base URL from repo URL.
+   * Note: For self-hosted GitLab, this resolves to the user-provided host.
+   * SSRF risk is mitigated by requiring EDITOR role to configure git URLs.
+   */
   private apiBase(repoUrl: string): string {
     try {
       if (repoUrl.startsWith("git@")) {
