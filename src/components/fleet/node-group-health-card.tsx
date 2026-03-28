@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, AlertTriangle, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -36,9 +36,34 @@ export function NodeGroupHealthCard({
   const hasAlerts = group.alertCount > 0;
   const fullyCompliant = group.complianceRate === 100;
 
+  // Derive border class and status icon based on severity priority
+  const borderClass = hasAlerts
+    ? "border-l-4 border-l-destructive"
+    : !fullyCompliant
+      ? "border-l-4 border-l-amber-500"
+      : "border-l-4 border-l-green-500";
+
+  const StatusIcon = hasAlerts
+    ? AlertTriangle
+    : !fullyCompliant
+      ? AlertCircle
+      : CheckCircle2;
+
+  const statusIconClass = hasAlerts
+    ? "text-destructive"
+    : !fullyCompliant
+      ? "text-amber-500"
+      : "text-green-500";
+
+  const statusAriaLabel = hasAlerts
+    ? `Critical: ${group.alertCount} active alerts`
+    : !fullyCompliant
+      ? "Degraded: partial compliance"
+      : "Healthy: all nodes online";
+
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggle}>
-      <Card className="overflow-hidden">
+      <Card className={cn("overflow-hidden", borderClass)}>
         <CollapsibleTrigger asChild>
           <button
             type="button"
@@ -47,6 +72,10 @@ export function NodeGroupHealthCard({
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
+                  <StatusIcon
+                    className={cn("h-4 w-4 shrink-0", statusIconClass)}
+                    aria-label={statusAriaLabel}
+                  />
                   <CardTitle className="text-base">{group.name}</CardTitle>
                   <Badge variant="secondary" className="text-xs">
                     {group.totalNodes}{" "}
