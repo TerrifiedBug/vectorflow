@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Card,
@@ -70,9 +70,10 @@ export default function SetupPage() {
   // Step 2 fields
   const [teamName, setTeamName] = useState("");
 
-  function handleNext(data: SetupStep1Values) {
-    // data is validated by zodResolver — no manual checks needed
-    void data;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  function handleNext(_data: SetupStep1Values) {
+    // _data is validated by zodResolver before handleNext is called
+    // Step 1 values are read via form.getValues() in handleSubmit
     setError(null);
     setStep(2);
   }
