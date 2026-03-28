@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, Fragment } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
 import {
@@ -292,14 +292,25 @@ export default function PipelinesPage() {
   const environments = environmentsQuery.data ?? [];
   const effectiveEnvId = selectedEnvironmentId || environments[0]?.id || "";
 
-  const pipelinesQuery = useQuery(
-    trpc.pipeline.list.queryOptions(
-      { environmentId: effectiveEnvId },
-      { enabled: !!effectiveEnvId, refetchInterval: 30_000 },
-    ),
-  );
+  const pipelinesQuery = useInfiniteQuery({
+    queryKey: ["pipeline.list", effectiveEnvId],
+    queryFn: ({ pageParam }) =>
+      trpc.pipeline.list.query({
+        environmentId: effectiveEnvId,
+        cursor: pageParam,
+        limit: 50,
+      }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: undefined as string | undefined,
+    enabled: !!effectiveEnvId,
+    refetchInterval: 30_000,
+  });
 
-  const pipelines = useMemo(() => pipelinesQuery.data?.pipelines ?? [], [pipelinesQuery.data]);
+  const pipelines = useMemo(
+    () => pipelinesQuery.data?.pages.flatMap((p) => p.pipelines) ?? [],
+    [pipelinesQuery.data],
+  );
+  const totalCount = pipelinesQuery.data?.pages[0]?.totalCount ?? 0;
 
   // Poll live rates from MetricStore for the pipelines table
   const liveRatesQuery = useQuery(
@@ -386,7 +397,7 @@ export default function PipelinesPage() {
     trpc.pipeline.update.mutationOptions({
       onSuccess: () => {
         toast.success("Pipeline group updated");
-        queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
+        queryClient.invalidateQueries({ queryKey: ["pipeline.list"] });
         queryClient.invalidateQueries({ queryKey: trpc.pipelineGroup.list.queryKey() });
       },
       onError: (err) => toast.error(err.message || "Failed to update group", { duration: 6000 }),
@@ -1003,6 +1014,22 @@ export default function PipelinesPage() {
             })}
           </StaggerList>
         </Table>
+          )}
+
+          {/* Load More button for paginated results */}
+          {pipelinesQuery.hasNextPage && (
+            <div className="flex justify-center pt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => pipelinesQuery.fetchNextPage()}
+                disabled={pipelinesQuery.isFetchingNextPage}
+              >
+                {pipelinesQuery.isFetchingNextPage
+                  ? "Loading..."
+                  : `Load more (${pipelines.length} of ${totalCount})`}
+              </Button>
+            </div>
           )}
       </div>
 
