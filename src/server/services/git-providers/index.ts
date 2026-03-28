@@ -1,12 +1,14 @@
 import type { GitProvider } from "./types";
 import { GitHubProvider } from "./github";
 import { GitLabProvider } from "./gitlab";
+import { BitbucketProvider } from "./bitbucket";
 
 export type { GitProvider, GitWebhookEvent, CreatePROptions, RepoCoordinates } from "./types";
 
 const providers: Record<string, GitProvider> = {
   github: new GitHubProvider(),
   gitlab: new GitLabProvider(),
+  bitbucket: new BitbucketProvider(),
 };
 
 /**
