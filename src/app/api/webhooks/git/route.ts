@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { importVectorConfig } from "@/lib/config-generator";
 import { decrypt } from "@/server/services/crypto";
@@ -7,23 +6,14 @@ import { encryptNodeConfig } from "@/server/services/config-crypto";
 import { writeAuditLog } from "@/server/services/audit";
 import { ComponentKind, Prisma } from "@/generated/prisma";
 import { executePromotion } from "@/server/services/promotion-service";
+import { getProvider } from "@/server/services/git-providers";
+import type { GitWebhookEvent } from "@/server/services/git-providers";
+import { toFilenameSlug } from "@/server/services/git-sync";
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
-  const signature = req.headers.get("x-hub-signature-256");
-  const eventType = req.headers.get("x-github-event") ?? "push";
-
-  // Handle GitHub ping (sent when webhook is first registered)
-  if (eventType === "ping") {
-    return NextResponse.json({ message: "pong" }, { status: 200 });
-  }
-
-  if (!signature) {
-    return NextResponse.json({ error: "Missing signature" }, { status: 401 });
-  }
 
   // 1. Find environments with gitOps webhook configured.
-  //    Includes both bidirectional (push) and promotion (PR-based) modes.
   const environments = await prisma.environment.findMany({
     where: {
       gitOpsMode: { in: ["bidirectional", "promotion"] },
@@ -31,22 +21,16 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // 2. Verify HMAC signature against each environment's webhook secret
+  // 2. Verify webhook signature against each environment using the correct provider
   let matchedEnv = null;
   for (const env of environments) {
     if (!env.gitWebhookSecret) continue;
-    const webhookSecret = decrypt(env.gitWebhookSecret);
-    const expected =
-      "sha256=" +
-      crypto
-        .createHmac("sha256", webhookSecret)
-        .update(body)
-        .digest("hex");
 
-    // timingSafeEqual requires equal-length buffers
-    const sigBuf = Buffer.from(signature);
-    const expBuf = Buffer.from(expected);
-    if (sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf)) {
+    const provider = getProvider(env);
+    if (!provider) continue;
+
+    const webhookSecret = decrypt(env.gitWebhookSecret);
+    if (provider.verifyWebhookSignature(req.headers, body, webhookSecret)) {
       matchedEnv = env;
       break;
     }
@@ -56,7 +40,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  // 3. Parse payload
+  // 3. Resolve the provider for the matched environment
+  const provider = getProvider(matchedEnv);
+  if (!provider) {
+    return NextResponse.json(
+      { error: "Cannot determine git provider for environment" },
+      { status: 422 },
+    );
+  }
+
+  // 4. Parse the webhook payload using the provider
   let payload: Record<string, unknown>;
   try {
     payload = JSON.parse(body);
@@ -67,19 +60,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ─── pull_request event: GitOps promotion merge trigger ──────────────────
-  if (eventType === "pull_request") {
-    // Only handle closed+merged — reject closed-without-merge
-    if (payload.action !== "closed") {
-      return NextResponse.json({ message: "Not a closed event, ignored" }, { status: 200 });
-    }
-    const pr = payload.pull_request as Record<string, unknown> | undefined;
-    if (!pr?.merged) {
-      return NextResponse.json({ message: "PR closed without merge, ignored" }, { status: 200 });
-    }
+  const event: GitWebhookEvent = provider.parseWebhookEvent(req.headers, payload);
 
-    // Extract VF promotion request ID from PR body
-    const prBody = (pr.body as string) ?? "";
+  // Handle ping events
+  if (event.type === "ping") {
+    return NextResponse.json({ message: "pong" }, { status: 200 });
+  }
+
+  // --- Pull request merged: GitOps promotion trigger ---
+  if (event.type === "pull_request_merged") {
+    const prBody = event.prBody ?? "";
     const match = prBody.match(/<!-- vf-promotion-request-id: ([a-z0-9]+) -->/);
     if (!match) {
       return NextResponse.json(
@@ -89,38 +79,47 @@ export async function POST(req: NextRequest) {
     }
     const promotionRequestId = match[1];
 
-    // Atomic idempotency guard — prevents double-deploy on GitHub retry
+    // Atomic idempotency guard
     const updated = await prisma.promotionRequest.updateMany({
       where: { id: promotionRequestId, status: "AWAITING_PR_MERGE" },
       data: { status: "DEPLOYING" },
     });
 
     if (updated.count === 0) {
-      // Already deployed, not found, or not in the right state — safe to ignore
       return NextResponse.json(
         { message: "Promotion already processed or not found" },
         { status: 200 },
       );
     }
 
-    // Load the original promoter for audit attribution
     const promotionRequest = await prisma.promotionRequest.findUnique({
       where: { id: promotionRequestId },
       select: { promotedById: true },
     });
 
-    // Execute the promotion (the promoter is the logical actor)
     const executorId = promotionRequest?.promotedById ?? "system";
     await executePromotion(promotionRequestId, executorId);
 
     return NextResponse.json({ deployed: true, promotionRequestId });
   }
 
-  // ─── push event: Bidirectional GitOps config import ──────────────────────
-  const ref: string | undefined = payload.ref as string | undefined; // "refs/heads/main"
-  const branch = ref?.replace("refs/heads/", "");
+  // --- Pull request closed without merge ---
+  if (event.type === "pull_request_closed") {
+    return NextResponse.json(
+      { message: "PR closed without merge, ignored" },
+      { status: 200 },
+    );
+  }
 
-  // Sanitize branch — only allow alphanumeric, slashes, dashes, dots, underscores
+  // --- Push event: Bidirectional GitOps config import ---
+  if (event.type !== "push") {
+    return NextResponse.json(
+      { message: `Event type "${event.type}" not handled` },
+      { status: 200 },
+    );
+  }
+
+  const branch = event.branch;
   const BRANCH_RE = /^[a-zA-Z0-9\/_.-]+$/;
   if (!branch || !BRANCH_RE.test(branch)) {
     return NextResponse.json(
@@ -136,15 +135,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 4. Find changed YAML files scoped to this environment's directory prefix
-  const envSlug = matchedEnv.name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-  const commits = (payload.commits ?? []) as Array<{
-    added?: string[];
-    modified?: string[];
-  }>;
+  // Find changed YAML files scoped to this environment's directory prefix
+  const envSlug = toFilenameSlug(matchedEnv.name);
   const changedFiles = new Set<string>();
-  for (const commit of commits) {
-    for (const f of [...(commit.added ?? []), ...(commit.modified ?? [])]) {
+  for (const commit of event.commits) {
+    for (const f of [...commit.added, ...commit.modified]) {
       if (
         (f.endsWith(".yaml") || f.endsWith(".yml")) &&
         f.startsWith(`${envSlug}/`)
@@ -154,120 +149,121 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // For Bitbucket: push events may not include file-level changes.
+  // If we got commits but no changed files, fetch the diffstat.
+  if (changedFiles.size === 0 && event.commits.length > 0 && provider.name === "bitbucket" && event.afterSha) {
+    const { BitbucketProvider } = await import("@/server/services/git-providers/bitbucket");
+    const bbProvider = provider as InstanceType<typeof BitbucketProvider>;
+    const token = matchedEnv.gitToken ? decrypt(matchedEnv.gitToken) : null;
+    if (token && matchedEnv.gitRepoUrl) {
+      const diffFiles = await bbProvider.fetchCommitDiffstat(matchedEnv.gitRepoUrl, token, event.afterSha);
+      for (const f of diffFiles) {
+        if (
+          (f.path.endsWith(".yaml") || f.path.endsWith(".yml")) &&
+          f.path.startsWith(`${envSlug}/`) &&
+          f.status !== "removed"
+        ) {
+          changedFiles.add(f.path);
+        }
+      }
+    }
+  }
+
   if (changedFiles.size === 0) {
     return NextResponse.json({ message: "No YAML changes", processed: 0 });
   }
 
-  // 5. Extract owner/repo and decrypt token once (invariant across files)
-  const repoUrl = matchedEnv.gitRepoUrl ?? "";
-  const repoMatch = repoUrl.match(/github\.com[:/](.+?)(?:\.git)?$/);
-  if (!repoMatch) {
-    return NextResponse.json(
-      { error: "Cannot parse repo URL" },
-      { status: 422 },
-    );
-  }
-  const repoPath = repoMatch[1];
-
-  // Validate repoPath is a safe owner/repo format (no path traversal or encoded chars)
-  const REPO_PATH_RE = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
-  if (!REPO_PATH_RE.test(repoPath)) {
-    return NextResponse.json(
-      { error: "Invalid repository path" },
-      { status: 422 },
-    );
-  }
-
+  // Decrypt token once for file fetching
   const token = matchedEnv.gitToken ? decrypt(matchedEnv.gitToken) : null;
-  if (!token) {
+  if (!token || !matchedEnv.gitRepoUrl) {
     return NextResponse.json(
-      { error: "No git token configured" },
+      { error: "No git token or repo URL configured" },
       { status: 422 },
     );
   }
 
-  // 6. For each changed file, fetch content and import
+  // Check if approval is required for bidirectional imports
+  const requiresApproval = matchedEnv.requireDeployApproval;
+
+  // For each changed file, fetch content and import
   const results: Array<{ file: string; status: string; error?: string }> = [];
 
   for (const file of changedFiles) {
     try {
-      // Sanitize file path — reject traversal sequences and non-printable chars
+      // Sanitize file path
       if (file.includes("..") || file.startsWith("/") || /[^\x20-\x7E]/.test(file)) {
         results.push({ file, status: "skipped", error: "Invalid file path" });
         continue;
       }
 
-      // Build the URL safely with encoded path components
-      const encodedFile = file.split("/").map(encodeURIComponent).join("/");
-      const contentRes = await fetch(
-        `https://api.github.com/repos/${repoPath}/contents/${encodedFile}?ref=${encodeURIComponent(branch)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/vnd.github.raw",
-          },
-        },
+      const content = await provider.fetchFileContent(
+        matchedEnv.gitRepoUrl,
+        token,
+        branch,
+        file,
       );
-      if (!contentRes.ok) {
-        results.push({
-          file,
-          status: "error",
-          error: `GitHub API ${contentRes.status}`,
-        });
-        continue;
-      }
-      const content = await contentRes.text();
 
-      // Derive pipeline name from filename (strip directory prefix and extension)
-      // Use only the basename (last path segment) to avoid slashes in the name
+      // Derive pipeline name from filename
       const basename = file.split("/").pop() ?? file;
       const pipelineName = basename.replace(/\.(yaml|yml)$/, "");
 
-      // Validate the pipeline name matches the schema used by the tRPC router
       const PIPELINE_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9 _-]*$/;
       if (!pipelineName || pipelineName.length > 100 || !PIPELINE_NAME_RE.test(pipelineName)) {
         results.push({
           file,
           status: "skipped",
-          error: `Invalid pipeline name "${pipelineName}" — must start with alphanumeric and contain only letters, numbers, spaces, hyphens, underscores`,
+          error: `Invalid pipeline name "${pipelineName}"`,
         });
         continue;
       }
 
-      // Find or create pipeline by name in this environment (atomic)
-      // Use a serializable transaction to prevent concurrent webhooks from
-      // racing and creating duplicate pipelines with the same name.
+      // Match by gitPath first, then by name
       const pipeline = await prisma.$transaction(async (tx) => {
+        // Try matching by gitPath
+        const byPath = await tx.pipeline.findFirst({
+          where: { environmentId: matchedEnv.id, gitPath: file },
+        });
+        if (byPath) return byPath;
+
+        // Fallback: match by name
         const existing = await tx.pipeline.findFirst({
           where: { environmentId: matchedEnv.id, name: pipelineName },
         });
-        if (existing) return existing;
+        if (existing) {
+          // Set gitPath if not already set
+          if (!existing.gitPath) {
+            await tx.pipeline.update({
+              where: { id: existing.id },
+              data: { gitPath: file },
+            });
+          }
+          return existing;
+        }
+
+        // Create new pipeline with gitPath
         return tx.pipeline.create({
-          data: { name: pipelineName, environmentId: matchedEnv.id },
+          data: {
+            name: pipelineName,
+            environmentId: matchedEnv.id,
+            gitPath: file,
+            isDraft: requiresApproval ? true : undefined,
+          },
         });
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
-      // Import config into pipeline graph nodes/edges
-      // Only YAML files are collected (see filter above), so format is always "yaml"
+      // Import config into pipeline graph
       const { nodes, edges, globalConfig } = importVectorConfig(content, "yaml");
 
-      // Map the component kind strings to the Prisma enum
       const kindMap: Record<string, ComponentKind> = {
         source: ComponentKind.SOURCE,
         transform: ComponentKind.TRANSFORM,
         sink: ComponentKind.SINK,
       };
 
-      // Save graph within a transaction (same pattern as pipeline.saveGraph)
       await prisma.$transaction(async (tx) => {
-        await tx.pipelineEdge.deleteMany({
-          where: { pipelineId: pipeline!.id },
-        });
-        await tx.pipelineNode.deleteMany({
-          where: { pipelineId: pipeline!.id },
-        });
+        await tx.pipelineEdge.deleteMany({ where: { pipelineId: pipeline!.id } });
+        await tx.pipelineNode.deleteMany({ where: { pipelineId: pipeline!.id } });
 
-        // Create nodes
         for (const node of nodes) {
           const data = node.data as {
             componentDef: { type: string; kind: string };
@@ -294,7 +290,6 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        // Create edges
         for (const edge of edges) {
           await tx.pipelineEdge.create({
             data: {
@@ -307,7 +302,6 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        // Update pipeline globalConfig
         await tx.pipeline.update({
           where: { id: pipeline!.id },
           data: {
@@ -316,7 +310,45 @@ export async function POST(req: NextRequest) {
         });
       });
 
-      // Write audit log for the import — failures must not mask a successful transaction
+      // If approval is required, create a DeployRequest instead of deploying immediately
+      if (requiresApproval) {
+        const { generateVectorYaml } = await import("@/lib/config-generator");
+        const flowNodes = nodes.map((n) => ({
+          id: n.id,
+          type: (n.data as { componentDef: { kind: string } }).componentDef.kind,
+          position: n.position,
+          data: n.data,
+        }));
+        const flowEdges = edges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          ...(("sourceHandle" in e && e.sourceHandle) ? { sourceHandle: e.sourceHandle as string } : {}),
+        }));
+
+        const configYaml = generateVectorYaml(
+          flowNodes as Parameters<typeof generateVectorYaml>[0],
+          flowEdges as Parameters<typeof generateVectorYaml>[1],
+          globalConfig as Record<string, unknown> | null,
+          null,
+        );
+
+        await prisma.deployRequest.create({
+          data: {
+            pipelineId: pipeline.id,
+            environmentId: matchedEnv.id,
+            requestedById: null,
+            configYaml,
+            changelog: `GitOps import from ${file} (commit: ${event.afterSha?.slice(0, 8) ?? "unknown"})`,
+          },
+        });
+
+        results.push({ file, status: "imported_pending_approval" });
+      } else {
+        results.push({ file, status: "imported" });
+      }
+
+      // Audit log
       try {
         await writeAuditLog({
           userId: null,
@@ -328,16 +360,36 @@ export async function POST(req: NextRequest) {
           metadata: {
             file,
             branch,
-            commitRef: (payload.after as string) ?? null,
-            pusher: (payload.pusher as { name?: string } | undefined)?.name ?? null,
+            commitRef: event.afterSha ?? null,
+            pusher: event.pusherName ?? null,
+            provider: provider.name,
+            requiresApproval,
           },
         });
       } catch (auditErr) {
         console.error("Failed to write audit log for gitops import:", auditErr);
       }
-
-      results.push({ file, status: "imported" });
     } catch (err) {
+      // Write YAML import error to audit log for visibility
+      try {
+        await writeAuditLog({
+          userId: null,
+          action: "gitops.pipeline.import_failed",
+          entityType: "Environment",
+          entityId: matchedEnv.id,
+          environmentId: matchedEnv.id,
+          teamId: matchedEnv.teamId,
+          metadata: {
+            file,
+            branch,
+            commitRef: event.afterSha ?? null,
+            error: String(err),
+            provider: provider.name,
+          },
+        });
+      } catch {
+        // Don't mask the original error
+      }
       results.push({ file, status: "error", error: String(err) });
     }
   }
