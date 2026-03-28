@@ -317,7 +317,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
   return (
     <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) { setChangelog(""); setSelectedLabels([]); setRejectNote(""); setStagedDeploy(false); setHealthCheckWindow(5); } onOpenChange(val); }}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {isReviewMode ? (
