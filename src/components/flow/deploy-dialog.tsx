@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
@@ -7,6 +8,7 @@ import { useTeamStore } from "@/stores/team-store";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import { Rocket, CheckCircle, CheckCircle2, XCircle, Loader2, Radio, ChevronsUpDown, Check, X, ShieldCheck, ShieldX, Clock, AlertTriangle } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -53,6 +55,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   const [rejectNote, setRejectNote] = useState("");
   const [stagedDeploy, setStagedDeploy] = useState(false);
   const [healthCheckWindow, setHealthCheckWindow] = useState(5);
+  const [deployStep, setDeployStep] = useState<"idle" | "prepare" | "deploy" | "confirm">("idle");
 
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
@@ -95,6 +98,15 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
       Object.entries(existing).map(([k, v]) => `${k}=${v}`),
     );
   }, [open, previewQuery.data?.nodeSelector]);
+
+  // Drive step transitions based on loading states
+  useEffect(() => {
+    if (!open) return;
+    if (roleQuery.isLoading || previewQuery.isLoading || envQuery.isLoading) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDeployStep("prepare");
+    }
+  }, [open, roleQuery.isLoading, previewQuery.isLoading, envQuery.isLoading]);
 
   // Build flat list of "key=value" options from the label map
   const availableLabelOptions = useMemo(() => {
@@ -171,7 +183,10 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
             duration: 8000,
           });
         }
-        onOpenChange(false);
+        setDeployStep("confirm");
+        setTimeout(() => {
+          onOpenChange(false);
+        }, 3000);
       },
       onError: (err) => {
         setDeploying(false);
@@ -299,6 +314,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
   function handleDeploy() {
     setDeploying(true);
+    setDeployStep("deploy");
     if (stagedDeploy) {
       stagedDeployMutation.mutate({
         pipelineId,
@@ -316,7 +332,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
   }
 
   return (
-    <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) { setChangelog(""); setSelectedLabels([]); setRejectNote(""); setStagedDeploy(false); setHealthCheckWindow(5); } onOpenChange(val); }}>
+    <Dialog open={open} onOpenChange={(val) => { if (deploying) return; if (!val) { setChangelog(""); setSelectedLabels([]); setRejectNote(""); setStagedDeploy(false); setHealthCheckWindow(5); setDeployStep("idle"); } onOpenChange(val); }}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -348,6 +364,36 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
             }
           </DialogDescription>
         </DialogHeader>
+
+        {!isReviewMode && !approvedRequest && deployStep !== "idle" && (
+          <div className="flex items-center gap-2 px-1 py-2">
+            {(["Prepare", "Deploy", "Confirm"] as const).map((step, i) => {
+              const currentIndex = deployStep === "prepare" ? 0 : deployStep === "deploy" ? 1 : deployStep === "confirm" ? 2 : -1;
+              const isComplete = i < currentIndex;
+              const isCurrent = i === currentIndex;
+              return (
+                <React.Fragment key={step}>
+                  <div className={cn(
+                    "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium shrink-0",
+                    isComplete || isCurrent
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  )}>
+                    {isComplete ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                  </div>
+                  <span className={cn(
+                    "text-xs shrink-0",
+                    (isComplete || isCurrent) ? "text-foreground font-medium" : "text-muted-foreground"
+                  )}>{step}</span>
+                  {i < 2 && <div className={cn(
+                    "h-px flex-1",
+                    i < currentIndex ? "bg-primary" : "bg-border"
+                  )} />}
+                </React.Fragment>
+              );
+            })}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto min-h-0">
         {isLoading ? (
@@ -465,6 +511,12 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 </Button>
               </div>
             </div>
+          </div>
+        ) : deployStep === "confirm" ? (
+          /* Confirm step — waiting for agent */
+          <div className="flex flex-col items-center justify-center gap-3 py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Waiting for agent...</p>
           </div>
         ) : (
           /* Normal deploy / request mode */
