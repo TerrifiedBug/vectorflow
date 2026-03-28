@@ -36,6 +36,9 @@ import { Tag, Wrench } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
+import { NodeSummaryCards } from "@/components/fleet/NodeSummaryCards";
+import { FilterPresetBar } from "@/components/filter-preset/FilterPresetBar";
+import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
 import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { isVersionOlder } from "@/lib/version";
@@ -80,6 +83,8 @@ export default function FleetPage() {
     setStatusFilter: setMatrixStatusFilter,
     setTagFilter: setMatrixTagFilter,
   } = useMatrixFilters();
+
+  const [saveFilterOpen, setSaveFilterOpen] = useState(false);
 
   // Same query as DeploymentMatrix — React Query deduplicates by key
   const matrixQuery = useQuery({
@@ -581,29 +586,77 @@ export default function FleetPage() {
 
       {activeEnvId && (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Pipeline Deployment Matrix</h3>
-          {matrixQuery.data && (
-            <DeploymentMatrixToolbar
-              search={matrixSearch}
-              onSearchChange={setMatrixSearch}
-              statusFilter={matrixStatusFilter}
-              onStatusFilterChange={setMatrixStatusFilter}
-              tagFilter={matrixTagFilter}
-              onTagFilterChange={setMatrixTagFilter}
-              availableTags={availableTags}
-            />
-          )}
-          <DeploymentMatrix
+          <h3 className="text-lg font-semibold">Fleet Overview</h3>
+
+          {/* Top section: Node summary cards */}
+          <NodeSummaryCards
             environmentId={activeEnvId}
-            filteredPipelines={matrixQuery.data ? filteredDeployedPipelines : undefined}
-            hasActiveFilters={matrixHasActiveFilters}
-            onClearFilters={() => {
-              setMatrixSearch("");
-              setMatrixStatusFilter([]);
-              setMatrixTagFilter([]);
-            }}
           />
+
+          {/* Bottom section: Filtered deployment matrix */}
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium text-muted-foreground">
+              Deployment Matrix
+            </h4>
+            {matrixQuery.data && (
+              <DeploymentMatrixToolbar
+                search={matrixSearch}
+                onSearchChange={setMatrixSearch}
+                statusFilter={matrixStatusFilter}
+                onStatusFilterChange={setMatrixStatusFilter}
+                tagFilter={matrixTagFilter}
+                onTagFilterChange={setMatrixTagFilter}
+                availableTags={availableTags}
+                presetBar={
+                  <FilterPresetBar
+                    environmentId={activeEnvId}
+                    scope="fleet_matrix"
+                    currentFilters={{
+                      search: matrixSearch,
+                      status: matrixStatusFilter,
+                      tags: matrixTagFilter,
+                    }}
+                    onApplyPreset={(filters) => {
+                      const f = filters as {
+                        search?: string;
+                        status?: string[];
+                        tags?: string[];
+                      };
+                      setMatrixSearch(f.search ?? "");
+                      setMatrixStatusFilter(f.status ?? []);
+                      setMatrixTagFilter(f.tags ?? []);
+                    }}
+                    onSaveClick={() => setSaveFilterOpen(true)}
+                  />
+                }
+              />
+            )}
+            <DeploymentMatrix
+              environmentId={activeEnvId}
+              filteredPipelines={matrixQuery.data ? filteredDeployedPipelines : undefined}
+              hasActiveFilters={matrixHasActiveFilters}
+              onClearFilters={() => {
+                setMatrixSearch("");
+                setMatrixStatusFilter([]);
+                setMatrixTagFilter([]);
+              }}
+            />
+          </div>
         </div>
+      )}
+
+      {activeEnvId && (
+        <SaveFilterDialog
+          open={saveFilterOpen}
+          onOpenChange={setSaveFilterOpen}
+          environmentId={activeEnvId}
+          scope="fleet_matrix"
+          filters={{
+            search: matrixSearch,
+            status: matrixStatusFilter,
+            tags: matrixTagFilter,
+          }}
+        />
       )}
 
       <ConfirmDialog
