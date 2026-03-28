@@ -1,13 +1,30 @@
 "use client";
 import { BaseEdge, getBezierPath, type EdgeProps } from "@xyflow/react";
+import { cn } from "@/lib/utils";
 
 export function MetricEdge({ data, ...props }: EdgeProps) {
   const [edgePath, labelX, labelY] = getBezierPath(props);
   const throughput = data?.throughput as number | undefined;
+  const isActive = throughput !== undefined && throughput > 0;
 
   return (
     <>
-      <BaseEdge path={edgePath} {...props} />
+      {/* Invisible wide path for click/hover hit area — React Flow needs this for interaction */}
+      <BaseEdge path={edgePath} {...props} style={{ stroke: "transparent", strokeWidth: 20 }} />
+      {/* Visible animated path */}
+      <path
+        d={edgePath}
+        fill="none"
+        className={cn(
+          "stroke-muted-foreground",
+          isActive && "stroke-foreground/60"
+        )}
+        strokeWidth={2}
+        strokeDasharray={isActive ? "8 4" : undefined}
+        style={isActive ? { animation: "flow-dash 1.2s linear infinite" } : undefined}
+        markerEnd={props.markerEnd}
+      />
+      {/* Throughput label at edge midpoint */}
       {throughput !== undefined && (
         <foreignObject
           width={80}
