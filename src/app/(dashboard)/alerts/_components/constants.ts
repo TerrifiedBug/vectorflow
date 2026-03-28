@@ -32,6 +32,9 @@ export const METRIC_LABELS: Record<string, string> = {
   fleet_throughput_drop: "Fleet Throughput Drop",
   fleet_event_volume: "Fleet Event Volume",
   node_load_imbalance: "Node Load Imbalance",
+  // Drift detection
+  version_drift: "Version Drift",
+  config_drift: "Config Drift",
 };
 
 export const CONDITION_LABELS: Record<string, string> = {
@@ -56,6 +59,7 @@ export const GLOBAL_METRICS = new Set([
   "fleet_throughput_drop",
   "fleet_event_volume",
   "node_load_imbalance",
+  "version_drift",
 ]);
 
 export const CHANNEL_TYPE_LABELS: Record<string, string> = {
