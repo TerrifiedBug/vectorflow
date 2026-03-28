@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, Fragment } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
 import {
@@ -67,6 +67,7 @@ import {
   PipelineListToolbar,
   type SortField,
   type SortDirection,
+  type Density,
 } from "@/components/pipeline/pipeline-list-toolbar";
 import { ManageGroupsDialog } from "@/components/pipeline/manage-groups-dialog";
 import { BulkActionBar } from "@/components/pipeline/bulk-action-bar";
@@ -76,6 +77,9 @@ import {
   type GroupNode,
 } from "@/components/pipeline/pipeline-group-tree";
 import { usePipelineSidebarStore } from "@/stores/pipeline-sidebar-store";
+import { FilterPresetBar } from "@/components/filter-preset/FilterPresetBar";
+import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
+import { usePipelineListFilters } from "@/hooks/use-pipeline-list-filters";
 
 // --- Helpers ---
 
@@ -237,27 +241,81 @@ export default function PipelinesPage() {
   );
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
 
-  // --- Filter / sort state ---
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [tagFilter, setTagFilter] = useState<string[]>([]);
-  const groupId = usePipelineSidebarStore((s) => s.selectedGroupId);
+  // --- Filter / sort state (URL-synced) ---
+  const {
+    search,
+    statusFilter,
+    tagFilter,
+    groupId,
+    sortBy: serverSortBy,
+    sortOrder: serverSortOrder,
+    hasActiveFilters,
+    setSearch,
+    setStatusFilter,
+    setTagFilter,
+    setGroupId,
+    setSortBy: setServerSortBy,
+    setSortOrder: setServerSortOrder,
+    clearFilters,
+  } = usePipelineListFilters();
   const manageGroupsOpen = usePipelineSidebarStore((s) => s.manageGroupsOpen);
   const setManageGroupsOpen = usePipelineSidebarStore((s) => s.setManageGroupsOpen);
   const [selectedPipelineIds, setSelectedPipelineIds] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [saveFilterOpen, setSaveFilterOpen] = useState(false);
+  const [density, setDensity] = useState<Density>(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("pipeline-list-density") as Density) ?? "comfortable";
+    }
+    return "comfortable";
+  });
+
+  const handleDensityChange = useCallback((d: Density) => {
+    setDensity(d);
+    localStorage.setItem("pipeline-list-density", d);
+  }, []);
+
+  // Keyboard navigation
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const rowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
+
+  useEffect(() => {
+    if (focusedIndex >= 0) {
+      rowRefs.current.get(focusedIndex)?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    }
+  }, [focusedIndex]);
+
+  // Map toolbar sort fields to server-side or client-side sort
+  const SORT_FIELD_TO_SERVER: Record<string, "name" | "updatedAt" | "deployedAt" | null> = {
+    name: "name",
+    updated: "updatedAt",
+    status: null,      // client-only
+    throughput: null,   // client-only
+  };
 
   const handleSort = useCallback(
     (field: SortField) => {
       if (field === sortField) {
-        setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+        const newDir = sortDirection === "asc" ? "desc" : "asc";
+        setSortDirection(newDir);
+        const serverField = SORT_FIELD_TO_SERVER[field];
+        if (serverField) setServerSortOrder(newDir);
       } else {
         setSortField(field);
         setSortDirection("asc");
+        const serverField = SORT_FIELD_TO_SERVER[field];
+        if (serverField) {
+          setServerSortBy(serverField);
+          setServerSortOrder("asc");
+        }
       }
     },
-    [sortField],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sortField, sortDirection, setServerSortBy, setServerSortOrder],
   );
 
   const toggleSelect = useCallback((id: string) => {
@@ -292,14 +350,40 @@ export default function PipelinesPage() {
   const environments = environmentsQuery.data ?? [];
   const effectiveEnvId = selectedEnvironmentId || environments[0]?.id || "";
 
-  const pipelinesQuery = useQuery(
-    trpc.pipeline.list.queryOptions(
-      { environmentId: effectiveEnvId },
-      { enabled: !!effectiveEnvId, refetchInterval: 30_000 },
-    ),
-  );
+  const pipelinesQuery = useInfiniteQuery({
+    queryKey: [
+      "pipeline.list",
+      effectiveEnvId,
+      search,
+      statusFilter,
+      tagFilter,
+      groupId,
+      serverSortBy,
+      serverSortOrder,
+    ],
+    queryFn: ({ pageParam }) =>
+      trpc.pipeline.list.query({
+        environmentId: effectiveEnvId,
+        cursor: pageParam,
+        limit: 50,
+        ...(search ? { search } : {}),
+        ...(statusFilter.length > 0 ? { status: statusFilter } : {}),
+        ...(tagFilter.length > 0 ? { tags: tagFilter } : {}),
+        ...(groupId ? { groupId } : {}),
+        sortBy: serverSortBy,
+        sortOrder: serverSortOrder,
+      }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: undefined as string | undefined,
+    enabled: !!effectiveEnvId,
+    refetchInterval: 30_000,
+  });
 
-  const pipelines = useMemo(() => pipelinesQuery.data ?? [], [pipelinesQuery.data]);
+  const pipelines = useMemo(
+    () => pipelinesQuery.data?.pages.flatMap((p) => p.pipelines) ?? [],
+    [pipelinesQuery.data],
+  );
+  const totalCount = pipelinesQuery.data?.pages[0]?.totalCount ?? 0;
 
   // Poll live rates from MetricStore for the pipelines table
   const liveRatesQuery = useQuery(
@@ -309,6 +393,31 @@ export default function PipelinesPage() {
     ),
   );
   const liveRates = useMemo(() => liveRatesQuery.data?.rates ?? {}, [liveRatesQuery.data]);
+
+  // --- Auto-apply default filter preset on page load ---
+  const defaultPresetQuery = useQuery(
+    trpc.filterPreset.list.queryOptions(
+      { environmentId: effectiveEnvId, scope: "pipeline_list" as const },
+      { enabled: !!effectiveEnvId },
+    ),
+  );
+
+  useEffect(() => {
+    if (!hasActiveFilters && defaultPresetQuery.data) {
+      const defaultPreset = defaultPresetQuery.data.find((p) => p.isDefault);
+      if (defaultPreset) {
+        const f = defaultPreset.filters as Record<string, unknown>;
+        if (f.search && typeof f.search === "string") setSearch(f.search);
+        if (Array.isArray(f.status) && f.status.length > 0) setStatusFilter(f.status as string[]);
+        if (Array.isArray(f.tags) && f.tags.length > 0) setTagFilter(f.tags as string[]);
+        if (f.groupId && typeof f.groupId === "string") {
+          setGroupId(f.groupId);
+        }
+      }
+    }
+    // Only run on initial data load, not on every filter change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultPresetQuery.data]);
 
   // Fetch pending deploy requests for the current environment
   const pendingRequestsQuery = useQuery(
@@ -386,51 +495,24 @@ export default function PipelinesPage() {
     trpc.pipeline.update.mutationOptions({
       onSuccess: () => {
         toast.success("Pipeline group updated");
-        queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
+        queryClient.invalidateQueries({ queryKey: ["pipeline.list"] });
         queryClient.invalidateQueries({ queryKey: trpc.pipelineGroup.list.queryKey() });
       },
       onError: (err) => toast.error(err.message || "Failed to update group", { duration: 6000 }),
     }),
   );
 
-  // --- Filtered + sorted pipelines ---
+  // --- Client-side sort for columns the server cannot sort ---
+  // Server handles: search, status, tags, groupId, sortBy (name/updatedAt/deployedAt), sortOrder.
+  // Client handles: sort by derived status and live throughput (not in DB).
   const filteredPipelines = useMemo(() => {
-    let result = pipelines;
+    // Only apply client-side sort for fields the server can't handle
+    if (sortField !== "status" && sortField !== "throughput") return pipelines;
 
-    // Group filter
-    if (groupId) {
-      result = result.filter((p) => p.groupId === groupId);
-    }
-
-    // Search by name (case-insensitive)
-    if (search) {
-      const lc = search.toLowerCase();
-      result = result.filter((p) => p.name.toLowerCase().includes(lc));
-    }
-
-    // Status filter
-    if (statusFilter.length > 0) {
-      result = result.filter((p) =>
-        statusFilter.includes(derivePipelineStatus(p)),
-      );
-    }
-
-    // Tag filter
-    if (tagFilter.length > 0) {
-      result = result.filter((p) => {
-        const tags = (p.tags as string[]) ?? [];
-        return tagFilter.some((t) => tags.includes(t));
-      });
-    }
-
-    // Sort
-    const sorted = [...result];
+    const sorted = [...pipelines];
     sorted.sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
-        case "name":
-          cmp = a.name.localeCompare(b.name);
-          break;
         case "status": {
           const sa = derivePipelineStatus(a);
           const sb = derivePipelineStatus(b);
@@ -443,20 +525,40 @@ export default function PipelinesPage() {
           cmp = ra - rb;
           break;
         }
-        case "updated":
-          cmp =
-            new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
-          break;
       }
       return sortDirection === "asc" ? cmp : -cmp;
     });
 
     return sorted;
-  }, [pipelines, search, statusFilter, tagFilter, groupId, sortField, sortDirection, liveRates]);
+  }, [pipelines, sortField, sortDirection, liveRates]);
 
   // --- Mutations ---
 
   const router = useRouter();
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const items = filteredPipelines;
+      if (!items.length) return;
+
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          setFocusedIndex((prev) => Math.min(prev + 1, items.length - 1));
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setFocusedIndex((prev) => Math.max(prev - 1, 0));
+          break;
+        case "Enter":
+          if (focusedIndex >= 0 && focusedIndex < items.length) {
+            router.push(`/pipelines/${items[focusedIndex].id}`);
+          }
+          break;
+      }
+    },
+    [filteredPipelines, focusedIndex, router],
+  );
 
   const cloneMutation = useMutation(
     trpc.pipeline.clone.mutationOptions({
@@ -512,10 +614,7 @@ export default function PipelinesPage() {
   }
 
   const clearAllFilters = () => {
-    setSearch("");
-    setStatusFilter([]);
-    setTagFilter([]);
-    usePipelineSidebarStore.getState().setSelectedGroupId(null);
+    clearFilters();
   };
 
   // Recursive renderer for nested "Move to group" dropdown items
@@ -570,6 +669,35 @@ export default function PipelinesPage() {
               tagFilter={tagFilter}
               onTagFilterChange={setTagFilter}
               availableTags={availableTags}
+              density={density}
+              onDensityChange={handleDensityChange}
+              presetBar={
+                effectiveEnvId ? (
+                  <FilterPresetBar
+                    environmentId={effectiveEnvId}
+                    scope="pipeline_list"
+                    currentFilters={{
+                      search,
+                      status: statusFilter,
+                      tags: tagFilter,
+                      groupId: groupId ?? undefined,
+                    }}
+                    onApplyPreset={(filters) => {
+                      const f = filters as {
+                        search?: string;
+                        status?: string[];
+                        tags?: string[];
+                        groupId?: string;
+                      };
+                      setSearch(f.search ?? "");
+                      setStatusFilter(f.status ?? []);
+                      setTagFilter(f.tags ?? []);
+                      setGroupId(f.groupId ?? null);
+                    }}
+                    onSaveClick={() => setSaveFilterOpen(true)}
+                  />
+                ) : undefined
+              }
             />
           )}
 
@@ -606,6 +734,7 @@ export default function PipelinesPage() {
               </Button>
             </div>
           ) : (
+        <div onKeyDown={handleKeyDown} tabIndex={0} className="outline-none">
         <Table>
           <TableHeader>
             <TableRow>
@@ -660,7 +789,7 @@ export default function PipelinesPage() {
             </TableRow>
           </TableHeader>
           <StaggerList as="tbody" className="[&_tr:last-child]:border-0">
-            {filteredPipelines.map((pipeline) => {
+            {filteredPipelines.map((pipeline, index) => {
               const hasStats = pipeline.nodeStatuses.length > 0;
               const totals = hasStats
                 ? sumNodeStatuses(pipeline.nodeStatuses)
@@ -670,7 +799,15 @@ export default function PipelinesPage() {
                 <StaggerItem
                   as="tr"
                   key={pipeline.id}
-                  className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors cursor-pointer"
+                  ref={(el: HTMLTableRowElement | null) => {
+                    if (el) rowRefs.current.set(index, el);
+                    else rowRefs.current.delete(index);
+                  }}
+                  className={cn(
+                    "hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors cursor-pointer",
+                    density === "compact" && "h-10",
+                    index === focusedIndex && "bg-muted/50 ring-1 ring-ring ring-inset"
+                  )}
                 >
                   <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
@@ -679,13 +816,18 @@ export default function PipelinesPage() {
                       aria-label={`Select ${pipeline.name}`}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">
+                  <TableCell className={cn("font-medium", density === "compact" ? "py-1" : "py-2")}>
                     <Link
                       href={`/pipelines/${pipeline.id}`}
                       className="hover:underline"
                     >
                       {pipeline.name}
                     </Link>
+                    {density === "comfortable" && pipeline.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                        {pipeline.description}
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell>
                     {(() => {
@@ -1003,6 +1145,23 @@ export default function PipelinesPage() {
             })}
           </StaggerList>
         </Table>
+        </div>
+          )}
+
+          {/* Load More button for paginated results */}
+          {pipelinesQuery.hasNextPage && (
+            <div className="flex justify-center pt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => pipelinesQuery.fetchNextPage()}
+                disabled={pipelinesQuery.isFetchingNextPage}
+              >
+                {pipelinesQuery.isFetchingNextPage
+                  ? "Loading..."
+                  : `Load more (${pipelines.length} of ${totalCount})`}
+              </Button>
+            </div>
           )}
       </div>
 
@@ -1045,6 +1204,21 @@ export default function PipelinesPage() {
           open={manageGroupsOpen}
           onOpenChange={setManageGroupsOpen}
           environmentId={effectiveEnvId}
+        />
+      )}
+
+      {effectiveEnvId && (
+        <SaveFilterDialog
+          open={saveFilterOpen}
+          onOpenChange={setSaveFilterOpen}
+          environmentId={effectiveEnvId}
+          scope="pipeline_list"
+          filters={{
+            search,
+            status: statusFilter,
+            tags: tagFilter,
+            groupId: groupId ?? undefined,
+          }}
         />
       )}
     </div>

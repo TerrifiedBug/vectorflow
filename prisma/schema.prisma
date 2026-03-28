@@ -41,6 +41,7 @@ model User {
   aiMessagesCreated      AiMessage[]      @relation("AiMessageCreatedBy")
   pipelineVersionsCreated PipelineVersion[] @relation("PipelineVersionCreatedBy")
   stagedRolloutsCreated  StagedRollout[]  @relation("StagedRolloutCreatedBy")
+  filterPresets          FilterPreset[]
   createdAt              DateTime         @default(now())
 }
 
@@ -154,6 +155,7 @@ model Environment {
   stagedRollouts          StagedRollout[]
   promotionSources        PromotionRequest[] @relation("PromotionSourceEnv")
   promotionTargets        PromotionRequest[] @relation("PromotionTargetEnv")
+  filterPresets           FilterPreset[]
   createdAt               DateTime      @default(now())
 }
 
@@ -1040,4 +1042,21 @@ model AiMessage {
   createdAt       DateTime        @default(now())
 
   @@index([conversationId, createdAt])
+}
+
+model FilterPreset {
+  id            String      @id @default(cuid())
+  name          String
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  scope         String      // "pipeline_list" | "fleet_matrix"
+  filters       Json        // serialized filter state
+  isDefault     Boolean     @default(false)
+  createdById   String
+  createdBy     User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([environmentId, scope])
+  @@index([createdById])
 }
