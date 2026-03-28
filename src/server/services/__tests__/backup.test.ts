@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { vi, describe, it, expect, beforeEach, type Mock } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
 import { Readable } from "stream";
 import type { PrismaClient } from "@/generated/prisma";
@@ -68,7 +68,8 @@ const mockGetActiveBackend = vi.mocked(getActiveBackend);
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
 // Typed references to the mocked functions
-const mockExecFile = vi.mocked(childProcess.execFile);
+// execFile has complex overloads; use generic Mock to avoid ChildProcess return mismatch
+const mockExecFile = childProcess.execFile as unknown as Mock;
 // fs/promises is mocked with a default export object
 const fsMock = (fsPromises as unknown as { default: Record<string, ReturnType<typeof vi.fn>> }).default;
 const mockCreateReadStream = vi.mocked(fsSync.createReadStream);
@@ -1251,12 +1252,12 @@ describe("restoreFromBackup - BackupRecord fallback", () => {
     fsMock.writeFile.mockResolvedValue(undefined);
 
     mockExecFile.mockImplementation(
-      ((_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
+      (_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
         (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
           null,
           { stdout: "16.1", stderr: "" }
         );
-      }) as never
+      }
     );
 
     prismaMock.backupRecord.create.mockResolvedValue({
