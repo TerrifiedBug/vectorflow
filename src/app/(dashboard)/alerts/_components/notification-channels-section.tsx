@@ -470,7 +470,7 @@ export function NotificationChannelsSection({
           if (!open) setEditingChannelId(null);
         }}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
               {editingChannelId

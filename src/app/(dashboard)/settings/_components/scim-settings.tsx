@@ -236,7 +236,7 @@ export function ScimSettings() {
         }
         setTokenDialogOpen(open);
       }}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>SCIM Bearer Token Generated</DialogTitle>
             <DialogDescription>

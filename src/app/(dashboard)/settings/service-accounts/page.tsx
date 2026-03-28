@@ -434,7 +434,7 @@ export function ServiceAccountsSettings() {
           setCreateOpen(open);
         }}
       >
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Create Service Account</DialogTitle>
             <DialogDescription>
@@ -561,7 +561,7 @@ export function ServiceAccountsSettings() {
           setKeyModalOpen(open);
         }}
       >
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-green-500" />
