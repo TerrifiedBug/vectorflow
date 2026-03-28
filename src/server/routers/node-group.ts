@@ -232,7 +232,7 @@ export const nodeGroupRouter = router({
 
         // Version drift: count pipelines where this group's nodes run a non-latest version
         let versionDriftCount = 0;
-        let configDriftCount = 0;
+        const configDriftCount = 0;
         let totalPipelineSlots = 0;
 
         for (const n of matchedNodes) {
