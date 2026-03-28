@@ -22,6 +22,7 @@ import {
   Clock,
   X,
   Sparkles,
+  Keyboard,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ import { useTRPC } from "@/trpc/client";
 import { useSession } from "next-auth/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { VersionHistoryDialog } from "@/components/pipeline/version-history-dialog";
+import { KeyboardShortcutsDialog } from "@/components/flow/keyboard-shortcuts-dialog";
 
 type ProcessStatusValue = "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING";
 
@@ -125,6 +127,7 @@ export function FlowToolbar({
   const loadGraph = useFlowStore((s) => s.loadGraph);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -287,7 +290,7 @@ export function FlowToolbar({
               <Upload className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Import config</TooltipContent>
+          <TooltipContent>Import config (Cmd+I)</TooltipContent>
         </Tooltip>
 
         <input
@@ -307,7 +310,7 @@ export function FlowToolbar({
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
-            <TooltipContent>Export config</TooltipContent>
+            <TooltipContent>Export config (Cmd+E)</TooltipContent>
           </Tooltip>
           <DropdownMenuContent>
             <DropdownMenuItem onClick={handleExportYaml}>
@@ -424,6 +427,25 @@ export function FlowToolbar({
             <PipelineSettings pipelineId={pipelineId} />
           </PopoverContent>
         </Popover>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShortcutsOpen(true)}
+              className="h-7 w-7 p-0"
+              aria-label="Keyboard shortcuts"
+            >
+              <Keyboard className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Keyboard shortcuts</TooltipContent>
+        </Tooltip>
+        <KeyboardShortcutsDialog
+          open={shortcutsOpen}
+          onOpenChange={setShortcutsOpen}
+        />
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 
