@@ -122,10 +122,14 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [form, setForm] = useState<RuleFormState>(EMPTY_RULE_FORM);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     name: string;
   } | null>(null);
+
+  const markTouched = (field: string) =>
+    setTouched((t) => ({ ...t, [field]: true }));
 
   const rulesQuery = useQuery(
     trpc.alert.listRules.queryOptions(
@@ -237,6 +241,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
   const openCreate = () => {
     setEditingRuleId(null);
     setForm(EMPTY_RULE_FORM);
+    setTouched({});
     setDialogOpen(true);
   };
 
@@ -252,6 +257,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
       durationSeconds: skipThreshold ? "" : String(rule.durationSeconds ?? ""),
       channelIds: rule.channels?.map((c) => c.channelId) ?? [],
     });
+    setTouched({});
     setDialogOpen(true);
   };
 
@@ -264,7 +270,16 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
     }));
   };
 
+  const isBinaryOrEvent = BINARY_METRICS.has(form.metric) || isEventMetric(form.metric);
+  const formErrors = {
+    name: !form.name.trim() ? "Name is required." : null,
+    metric: !form.metric ? "Select a metric." : null,
+    threshold: !isBinaryOrEvent && !form.threshold ? "Enter a numeric threshold value." : null,
+  };
+  const isFormValid = !formErrors.name && !formErrors.metric && !formErrors.threshold;
+
   const handleSubmit = () => {
+    setTouched({ name: true, metric: true, threshold: true });
     const isBinary = BINARY_METRICS.has(form.metric);
     const isEvent = isEventMetric(form.metric);
     if (!form.name || !form.metric || (!isBinary && !isEvent && !form.threshold)) {
@@ -503,7 +518,9 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
 
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="rule-name">Name</Label>
+              <Label htmlFor="rule-name">
+                Name <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="rule-name"
                 placeholder="High CPU usage"
@@ -511,16 +528,23 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                 onChange={(e) =>
                   setForm((f) => ({ ...f, name: e.target.value }))
                 }
+                onBlur={() => markTouched("name")}
               />
+              {touched.name && formErrors.name && (
+                <p className="text-xs text-destructive mt-1">{formErrors.name}</p>
+              )}
             </div>
 
             {!editingRuleId && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="rule-metric">Metric</Label>
+                  <Label htmlFor="rule-metric">
+                    Metric <span className="text-destructive">*</span>
+                  </Label>
                   <Select
                     value={form.metric}
-                    onValueChange={(v) =>
+                    onValueChange={(v) => {
+                      markTouched("metric");
                       setForm((f) => ({
                         ...f,
                         metric: v,
@@ -531,8 +555,8 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                             ? { threshold: "", durationSeconds: "" }
                             : {}),
                         ...(GLOBAL_METRICS.has(v) ? { pipelineId: "" } : {}),
-                      }))
-                    }
+                      }));
+                    }}
                   >
                     <SelectTrigger id="rule-metric">
                       <SelectValue placeholder="Select metric" />
@@ -570,6 +594,9 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                       </SelectGroup>
                     </SelectContent>
                   </Select>
+                  {touched.metric && formErrors.metric && (
+                    <p className="text-xs text-destructive mt-1">{formErrors.metric}</p>
+                  )}
                 </div>
 
                 {!GLOBAL_METRICS.has(form.metric) && (
@@ -608,7 +635,9 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
             ) : (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="rule-threshold">Threshold</Label>
+                  <Label htmlFor="rule-threshold">
+                    Threshold <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="rule-threshold"
                     type="number"
@@ -617,7 +646,11 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                     onChange={(e) =>
                       setForm((f) => ({ ...f, threshold: e.target.value }))
                     }
+                    onBlur={() => markTouched("threshold")}
                   />
+                  {touched.threshold && formErrors.threshold && (
+                    <p className="text-xs text-destructive mt-1">{formErrors.threshold}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -669,7 +702,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
             >
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={isSaving}>
+            <Button onClick={handleSubmit} disabled={isSaving || !isFormValid}>
               {isSaving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
