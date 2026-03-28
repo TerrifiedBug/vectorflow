@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shield, KeyRound, Loader2, AlertCircle } from "lucide-react";
@@ -18,6 +21,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import {
+  Form,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormMessage,
+} from "@/components/ui/form";
 
 const SSO_ERROR_MESSAGES: Record<string, string> = {
   local_account: "This email is registered as a local account. Ask an admin to link it to SSO before signing in.",
@@ -25,6 +36,12 @@ const SSO_ERROR_MESSAGES: Record<string, string> = {
   OAuthCallback: "SSO sign-in failed. Please try again or contact your administrator.",
   AccessDenied: "Access denied. You may not have permission to sign in via SSO.",
 };
+
+const loginSchema = z.object({
+  email: z.string().email("Enter a valid email address."),
+  password: z.string().min(1, "Enter your password."),
+});
+type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   return (
@@ -46,20 +63,29 @@ function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefersReducedMotion = useReducedMotion();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [totpRequired, setTotpRequired] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [totpError, setTotpError] = useState<string | null>(null);
 
+  // Derive initial error from URL search params (e.g. SSO callback errors)
+  const errorParam = searchParams.get("error");
+  const initialError = errorParam
+    ? (SSO_ERROR_MESSAGES[errorParam] ?? "An error occurred during sign-in. Please try again.")
+    : null;
+  const [error, setError] = useState<string | null>(initialError);
+
+  const form = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+    mode: "onBlur",
+  });
+
+  // Clear the error query param from the URL after reading it
   useEffect(() => {
-    const errorParam = searchParams.get("error");
     if (errorParam) {
-      setError(SSO_ERROR_MESSAGES[errorParam] ?? "An error occurred during sign-in. Please try again.");
       window.history.replaceState({}, "", "/login");
     }
-  }, [searchParams]);
+  }, [errorParam]);
   const [oidcStatus, setOidcStatus] = useState<{
     enabled: boolean;
     displayName: string;
@@ -85,15 +111,14 @@ function LoginPageContent() {
     });
   }, [router]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function onSubmit(data: LoginFormValues) {
+    form.clearErrors("root");
     setError(null);
-    setLoading(true);
 
     try {
       const result = await signIn("credentials", {
-        email,
-        password,
+        email: data.email,
+        password: data.password,
         ...(totpRequired && totpCode ? { totpCode } : {}),
         redirect: false,
       });
@@ -102,7 +127,6 @@ function LoginPageContent() {
       if (result?.error) {
         if (resultWithCode.code === "TOTP_REQUIRED") {
           setTotpRequired(true);
-          setError(null);
         } else if (resultWithCode.code === "INVALID_TOTP") {
           setError("Invalid verification code. Please try again.");
           setTotpCode("");
@@ -115,8 +139,6 @@ function LoginPageContent() {
       }
     } catch {
       setError("An unexpected error occurred. Please try again.");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -127,6 +149,7 @@ function LoginPageContent() {
   function handleBackToLogin() {
     setTotpRequired(false);
     setTotpCode("");
+    setTotpError(null);
     setError(null);
   }
 
@@ -194,106 +217,135 @@ function LoginPageContent() {
             : "Enter your credentials to access your account."}
         </CardDescription>
       </CardHeader>
-      <form onSubmit={handleSubmit}>
-        <CardContent className="flex flex-col gap-4">
-          {error && (
-            <div className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
-            </div>
-          )}
-
-          {totpRequired ? (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-center py-2">
-                <KeyRound className="h-10 w-10 text-muted-foreground" />
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <CardContent className="flex flex-col gap-4">
+            {error && (
+              <div className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {error}
               </div>
-              <Label htmlFor="totp-code">Verification Code</Label>
-              <Input
-                id="totp-code"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9A-Za-z]*"
-                placeholder="Enter 6-digit code or backup code"
-                value={totpCode}
-                onChange={(e) => setTotpCode(e.target.value)}
-                required
-                autoFocus
-                autoComplete="one-time-code"
-                className="text-center text-lg tracking-widest"
-              />
-            </div>
-          ) : (
-            <>
+            )}
+
+            {totpRequired ? (
               <div className="flex flex-col gap-2">
-                <Label htmlFor="email">Email</Label>
+                <div className="flex items-center justify-center py-2">
+                  <KeyRound className="h-10 w-10 text-muted-foreground" />
+                </div>
+                <Label htmlFor="totp-code">Verification Code</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="admin@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="totp-code"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9A-Za-z]*"
+                  placeholder="Enter 6-digit code or backup code"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                  onBlur={() => {
+                    if (totpCode.length === 0) {
+                      setTotpError("Enter your 6-digit verification code.");
+                    } else {
+                      setTotpError(null);
+                    }
+                  }}
                   required
-                  autoComplete="email"
                   autoFocus
+                  autoComplete="one-time-code"
+                  className="text-center text-lg tracking-widest"
                 />
+                {totpError && (
+                  <p className="text-destructive text-sm">{totpError}</p>
+                )}
               </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
+            ) : (
+              <>
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="email"
+                          placeholder="admin@example.com"
+                          autoComplete="email"
+                          autoFocus
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-            </>
-          )}
-        </CardContent>
-        <CardFooter className="flex flex-col gap-3 pt-6">
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading
-              ? "Verifying..."
-              : totpRequired
-                ? "Verify"
-                : "Sign in"}
-          </Button>
-
-          {totpRequired && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground"
-              onClick={handleBackToLogin}
-            >
-              Back to login
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder="Enter your password"
+                          autoComplete="current-password"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
+          </CardContent>
+          <CardFooter className="flex flex-col gap-3 pt-6">
+            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Signing in...
+                </>
+              ) : totpRequired ? (
+                "Verify"
+              ) : (
+                "Sign in"
+              )}
             </Button>
-          )}
 
-          {!totpRequired && oidcStatus?.enabled && (
-            <>
-              <div className="flex w-full items-center gap-3">
-                <Separator className="flex-1" />
-                <span className="text-xs text-muted-foreground">or</span>
-                <Separator className="flex-1" />
-              </div>
+            {totpRequired && (
               <Button
                 type="button"
-                variant="outline"
-                className="w-full"
-                onClick={handleSsoLogin}
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={handleBackToLogin}
               >
-                <Shield className="mr-2 h-4 w-4" />
-                Sign in with {oidcStatus.displayName}
+                Back to login
               </Button>
-            </>
-          )}
-        </CardFooter>
-      </form>
+            )}
+
+            {!totpRequired && oidcStatus?.enabled && (
+              <>
+                <div className="flex w-full items-center gap-3">
+                  <Separator className="flex-1" />
+                  <span className="text-xs text-muted-foreground">or</span>
+                  <Separator className="flex-1" />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleSsoLogin}
+                >
+                  <Shield className="mr-2 h-4 w-4" />
+                  Sign in with {oidcStatus.displayName}
+                </Button>
+              </>
+            )}
+          </CardFooter>
+        </form>
+      </Form>
     </Card>
   );
 
