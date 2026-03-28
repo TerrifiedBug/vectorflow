@@ -152,11 +152,12 @@ export async function POST(req: NextRequest) {
   // For Bitbucket: push events may not include file-level changes.
   // If we got commits but no changed files, fetch the diffstat.
   if (changedFiles.size === 0 && event.commits.length > 0 && provider.name === "bitbucket" && event.afterSha) {
-    const { BitbucketProvider } = await import("@/server/services/git-providers/bitbucket");
-    const bbProvider = provider as InstanceType<typeof BitbucketProvider>;
-    const token = matchedEnv.gitToken ? decrypt(matchedEnv.gitToken) : null;
-    if (token && matchedEnv.gitRepoUrl) {
-      const diffFiles = await bbProvider.fetchCommitDiffstat(matchedEnv.gitRepoUrl, token, event.afterSha);
+    // Bitbucket push events don't include file-level changes — fetch via diffstat API
+    const bbToken = matchedEnv.gitToken ? decrypt(matchedEnv.gitToken) : null;
+    if (bbToken && matchedEnv.gitRepoUrl) {
+      const { BitbucketProvider } = await import("@/server/services/git-providers/bitbucket");
+      const bbProvider = new BitbucketProvider();
+      const diffFiles = await bbProvider.fetchCommitDiffstat(matchedEnv.gitRepoUrl, bbToken, event.afterSha);
       for (const f of diffFiles) {
         if (
           (f.path.endsWith(".yaml") || f.path.endsWith(".yml")) &&

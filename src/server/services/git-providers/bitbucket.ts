@@ -92,9 +92,9 @@ export class BitbucketProvider implements GitProvider {
         // Bitbucket push events don't include file-level changes in the webhook payload.
         // We need to handle this in the webhook handler by fetching the diff.
         const rawCommits = (change.commits ?? []) as Array<Record<string, unknown>>;
-        for (const _commit of rawCommits) {
-          // Bitbucket webhook push payloads don't include per-file changes.
-          // The webhook handler will need to fetch changed files via the API.
+        // Bitbucket webhook push payloads don't include per-file changes.
+        // The webhook handler will need to fetch changed files via the API.
+        for (let i = 0; i < rawCommits.length; i++) {
           commits.push({ added: [], modified: [], removed: [] });
         }
       }
