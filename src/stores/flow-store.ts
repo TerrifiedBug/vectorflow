@@ -25,6 +25,8 @@ interface FlowNodeData {
   disabled?: boolean;
   metrics?: NodeMetricsData;
   isSystemLocked?: boolean;
+  hasError?: boolean;
+  firstErrorMessage?: string;
   sharedComponentId?: string | null;
   sharedComponentVersion?: number | null;
   sharedComponentName?: string | null;
