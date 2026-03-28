@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { HelpCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -11,6 +13,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { SecretPickerInput } from "./secret-picker-input";
 import { CertPickerInput, isCertFileField } from "./cert-picker-input";
 
@@ -21,6 +30,7 @@ import { CertPickerInput, isCertFileField } from "./cert-picker-input";
 interface FieldSchema {
   type?: string;
   description?: string;
+  format?: string; // e.g., "uri", "email"
   enum?: string[];
   items?: { type?: string };
   properties?: Record<string, FieldSchema>;
@@ -58,6 +68,40 @@ function isMultilineName(name: string): boolean {
   return lower.includes("source") || lower.includes("program") || lower.includes("condition");
 }
 
+/** Validate a field value against schema constraints */
+function validateField(
+  value: unknown,
+  schema: FieldSchema,
+  label: string,
+  required?: boolean
+): string | null {
+  if (required && (value === undefined || value === null || value === "")) {
+    return `${label} is required`;
+  }
+  if (typeof value === "string" && value && schema.format === "uri") {
+    try { new URL(value); } catch { return "Must be a valid URL (e.g. https://...)"; }
+  }
+  if (typeof value === "string" && value && schema.format === "email") {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      return "Must be a valid email address";
+    }
+  }
+  return null;
+}
+
+/** Determine if a field is "complex" and deserves a HelpCircle tooltip */
+function isComplexField(name: string, schema: FieldSchema): boolean {
+  const lower = name.toLowerCase();
+  return (
+    schema.type === "object" ||
+    lower.includes("auth") ||
+    lower.includes("tls") ||
+    lower.includes("strategy") ||
+    lower.includes("codec") ||
+    (typeof schema.description === "string" && schema.description.length > 80)
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -72,6 +116,14 @@ export function FieldRenderer({
 }: FieldRendererProps) {
   const label = toTitleCase(name);
 
+  const [touched, setTouched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleBlur = () => {
+    setTouched(true);
+    setError(validateField(value, schema, label, required));
+  };
+
   // Check conditional visibility
   if (schema.dependsOn && parentValues) {
     const depValue = parentValues[schema.dependsOn.field];
@@ -83,17 +135,43 @@ export function FieldRenderer({
     }
   }
 
+  const showHelpIcon = isComplexField(name, schema);
+
+  const labelRow = (
+    <div className="flex items-center gap-1">
+      <Label>
+        {label}
+        {required && <span className="text-destructive ml-0.5">*</span>}
+      </Label>
+      {showHelpIcon && schema.description && (
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-xs">{schema.description}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+    </div>
+  );
+
+  const errorMessage = touched && error ? (
+    <p className="text-xs text-destructive mt-1">{error}</p>
+  ) : null;
+
   // ---- Enum select ----
   if (schema.enum && schema.enum.length > 0) {
     return (
       <div className="space-y-2">
-        <Label>
-          {label}
-          {required && <span className="text-destructive ml-0.5">*</span>}
-        </Label>
+        {labelRow}
         <Select
           value={(value as string) ?? ""}
-          onValueChange={(v) => onChange(v)}
+          onValueChange={(v) => {
+            onChange(v);
+            if (touched) setError(validateField(v, schema, label, required));
+          }}
+          onOpenChange={(open) => { if (!open) handleBlur(); }}
         >
           <SelectTrigger className="w-full">
             <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
@@ -109,6 +187,7 @@ export function FieldRenderer({
         {schema.description && (
           <p className="text-xs text-muted-foreground">{schema.description}</p>
         )}
+        {errorMessage}
       </div>
     );
   }
@@ -118,10 +197,7 @@ export function FieldRenderer({
     return (
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-0.5">
-          <Label>
-            {label}
-            {required && <span className="text-destructive ml-0.5">*</span>}
-          </Label>
+          {labelRow}
           {schema.description && (
             <p className="text-xs text-muted-foreground">
               {schema.description}
@@ -140,10 +216,7 @@ export function FieldRenderer({
   if (schema.type === "number" || schema.type === "integer") {
     return (
       <div className="space-y-2">
-        <Label>
-          {label}
-          {required && <span className="text-destructive ml-0.5">*</span>}
-        </Label>
+        {labelRow}
         <Input
           type="number"
           value={value !== undefined && value !== null ? String(value) : ""}
@@ -159,13 +232,16 @@ export function FieldRenderer({
                 : parseFloat(raw);
             if (!isNaN(parsed)) onChange(parsed);
           }}
+          onBlur={handleBlur}
           placeholder={
             schema.default !== undefined ? String(schema.default) : undefined
           }
+          className={cn("w-full", touched && error && "border-destructive focus-visible:ring-destructive")}
         />
         {schema.description && (
           <p className="text-xs text-muted-foreground">{schema.description}</p>
         )}
+        {errorMessage}
       </div>
     );
   }
@@ -175,10 +251,7 @@ export function FieldRenderer({
     const arr = Array.isArray(value) ? (value as string[]) : [];
     return (
       <div className="space-y-2">
-        <Label>
-          {label}
-          {required && <span className="text-destructive ml-0.5">*</span>}
-        </Label>
+        {labelRow}
         <Input
           value={arr.join(", ")}
           onChange={(e) => {
@@ -189,11 +262,14 @@ export function FieldRenderer({
             }
             onChange(raw.split(",").map((s) => s.trim()));
           }}
+          onBlur={handleBlur}
           placeholder="value1, value2, value3"
+          className={cn("w-full", touched && error && "border-destructive focus-visible:ring-destructive")}
         />
         {schema.description && (
           <p className="text-xs text-muted-foreground">{schema.description}</p>
         )}
+        {errorMessage}
       </div>
     );
   }
@@ -209,10 +285,7 @@ export function FieldRenderer({
     );
     return (
       <div className="space-y-2">
-        <Label>
-          {label}
-          {required && <span className="text-destructive ml-0.5">*</span>}
-        </Label>
+        {labelRow}
         {schema.description && (
           <p className="text-xs text-muted-foreground">
             {schema.description}
@@ -280,10 +353,7 @@ export function FieldRenderer({
     const requiredFields = schema.required ?? [];
     return (
       <div className="space-y-3">
-        <Label>
-          {label}
-          {required && <span className="text-destructive ml-0.5">*</span>}
-        </Label>
+        {labelRow}
         {schema.description && (
           <p className="text-xs text-muted-foreground">{schema.description}</p>
         )}
@@ -314,16 +384,15 @@ export function FieldRenderer({
 
   return (
     <div className="space-y-2">
-      <Label>
-        {label}
-        {required && <span className="text-destructive ml-0.5">*</span>}
-      </Label>
+      {labelRow}
       {isMultiline ? (
         <Textarea
           value={(value as string) ?? ""}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={handleBlur}
           placeholder={placeholder}
           rows={4}
+          className={cn(touched && error && "border-destructive focus-visible:ring-destructive")}
         />
       ) : isSensitive ? (
         <SecretPickerInput
@@ -341,12 +410,15 @@ export function FieldRenderer({
           type="text"
           value={(value as string) ?? ""}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={handleBlur}
           placeholder={placeholder}
+          className={cn("w-full", touched && error && "border-destructive focus-visible:ring-destructive")}
         />
       )}
       {schema.description && (
         <p className="text-xs text-muted-foreground">{schema.description}</p>
       )}
+      {errorMessage}
     </div>
   );
 }
