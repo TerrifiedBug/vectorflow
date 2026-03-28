@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, Check, ChevronsUpDown, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -130,7 +131,7 @@ export function DeploymentMatrixToolbar({
   onTagFilterChange,
   availableTags,
 }: DeploymentMatrixToolbarProps) {
-  // Debounced search — local input state + 200ms debounce to parent (D-02)
+  // Debounced search — local input state + 300ms debounce to parent
   const [localSearch, setLocalSearch] = useState(search);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -138,7 +139,7 @@ export function DeploymentMatrixToolbar({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       onSearchChange(localSearch);
-    }, 200);
+    }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -175,8 +176,10 @@ export function DeploymentMatrixToolbar({
     <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card px-4 py-2.5">
       {/* Search */}
       <div className="relative w-64">
+        <Label htmlFor="matrix-search" className="sr-only">Search pipelines</Label>
         <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input
+          id="matrix-search"
           value={localSearch}
           onChange={(e) => setLocalSearch(e.target.value)}
           placeholder="Search pipelines..."
@@ -188,7 +191,8 @@ export function DeploymentMatrixToolbar({
       <div className="h-6 w-px bg-border" />
 
       {/* Status filter chips */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">Status</span>
         {MATRIX_STATUS_OPTIONS.map((opt) => (
           <button
             key={opt.id}
