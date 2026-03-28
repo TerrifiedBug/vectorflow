@@ -39,7 +39,7 @@ export function ChangePasswordDialog({ open, onOpenChange, forced }: ChangePassw
         setConfirmPassword("");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to change password");
+        toast.error(error.message || "Failed to change password", { duration: 6000 });
       },
     })
   );
@@ -47,11 +47,11 @@ export function ChangePasswordDialog({ open, onOpenChange, forced }: ChangePassw
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword.length < 8) {
-      toast.error("New password must be at least 8 characters");
+      toast.error("New password must be at least 8 characters", { duration: 6000 });
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast.error("Passwords do not match");
+      toast.error("Passwords do not match", { duration: 6000 });
       return;
     }
     changeMutation.mutate({ currentPassword, newPassword });

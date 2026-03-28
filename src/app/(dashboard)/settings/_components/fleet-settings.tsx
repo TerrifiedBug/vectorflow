@@ -53,7 +53,7 @@ export function FleetSettings() {
         toast.success("Fleet settings saved successfully");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to save fleet settings");
+        toast.error(error.message || "Failed to save fleet settings", { duration: 6000 });
       },
     })
   );

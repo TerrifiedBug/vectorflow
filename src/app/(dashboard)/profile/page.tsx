@@ -56,7 +56,7 @@ export default function ProfilePage() {
         hasLoadedRef.current = false;
         router.refresh();
       },
-      onError: (error) => toast.error(error.message || "Failed to update profile"),
+      onError: (error) => toast.error(error.message || "Failed to update profile", { duration: 6000 }),
     })
   );
 
@@ -73,18 +73,18 @@ export default function ProfilePage() {
         setNewPassword("");
         setConfirmPassword("");
       },
-      onError: (error) => toast.error(error.message || "Failed to change password"),
+      onError: (error) => toast.error(error.message || "Failed to change password", { duration: 6000 }),
     })
   );
 
   function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (newPassword.length < 8) {
-      toast.error("New password must be at least 8 characters");
+      toast.error("New password must be at least 8 characters", { duration: 6000 });
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast.error("Passwords do not match");
+      toast.error("Passwords do not match", { duration: 6000 });
       return;
     }
     changePasswordMutation.mutate({ currentPassword, newPassword });

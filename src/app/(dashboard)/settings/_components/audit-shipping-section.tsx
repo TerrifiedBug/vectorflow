@@ -43,7 +43,7 @@ export function AuditLogShippingSection() {
             queryKey: trpc.pipeline.getSystemPipeline.queryKey(),
           });
         } else {
-          toast.error(error.message || "Failed to create system pipeline");
+          toast.error(error.message || "Failed to create system pipeline", { duration: 6000 });
         }
       },
     }),
@@ -58,7 +58,7 @@ export function AuditLogShippingSection() {
         toast.success("Audit log shipping disabled");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to disable audit log shipping");
+        toast.error(error.message || "Failed to disable audit log shipping", { duration: 6000 });
       },
     }),
   );
@@ -72,7 +72,7 @@ export function AuditLogShippingSection() {
         toast.success("Audit log shipping enabled");
       },
       onError: (error: { message?: string }) => {
-        toast.error(error.message || "Failed to enable audit log shipping");
+        toast.error(error.message || "Failed to enable audit log shipping", { duration: 6000 });
       },
     }),
   );

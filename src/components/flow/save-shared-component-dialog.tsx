@@ -62,7 +62,7 @@ export function SaveSharedComponentDialog({
         onOpenChange(false);
       },
       onError: (error) => {
-        toast.error(error.message);
+        toast.error(error.message, { duration: 6000 });
       },
     })
   );

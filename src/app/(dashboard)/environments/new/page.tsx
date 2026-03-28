@@ -34,7 +34,7 @@ export default function NewEnvironmentPage() {
         router.push("/environments");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to create environment");
+        toast.error(error.message || "Failed to create environment", { duration: 6000 });
       },
     })
   );
@@ -43,7 +43,7 @@ export default function NewEnvironmentPage() {
     e.preventDefault();
 
     if (!selectedTeamId) {
-      toast.error("Please select a team");
+      toast.error("Please select a team", { duration: 6000 });
       return;
     }
 

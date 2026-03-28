@@ -231,7 +231,7 @@ export default function FleetPage() {
         toast.success("Update triggered");
       },
       onError: (error) => {
-        toast.error("Failed to trigger update: " + error.message);
+        toast.error("Failed to trigger update: " + error.message, { duration: 6000 });
       },
     }),
   );
