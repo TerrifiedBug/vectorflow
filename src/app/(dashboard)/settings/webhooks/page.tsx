@@ -802,6 +802,7 @@ function WebhookEndpointsSettings() {
           ) : endpoints.length === 0 ? (
             <EmptyState icon={Webhook} title="No webhook endpoints" description="Add a webhook endpoint to start receiving events." />
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -827,6 +828,7 @@ function WebhookEndpointsSettings() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>

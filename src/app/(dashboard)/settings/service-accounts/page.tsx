@@ -312,6 +312,7 @@ export function ServiceAccountsSettings() {
           ) : serviceAccounts.length === 0 ? (
             <EmptyState icon={KeyRound} title="No service accounts" description="Create a service account to authenticate external systems." />
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -420,6 +421,7 @@ export function ServiceAccountsSettings() {
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
