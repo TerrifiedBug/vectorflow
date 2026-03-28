@@ -202,7 +202,7 @@ export function AppSidebar() {
                           asChild
                           isActive={pathname === item.href || pathname.startsWith(item.href + "/")}
                           tooltip={item.title}
-                          className="data-[active=true]:font-semibold data-[active=true]:border-l-2 data-[active=true]:border-primary data-[active=true]:bg-sidebar-accent/60"
+                          className="data-[active=true]:bg-accent data-[active=true]:text-accent-foreground data-[active=true]:font-medium data-[active=true]:border-l-2 data-[active=true]:border-primary"
                         >
                           <Link href={item.href}>
                             <item.icon />
