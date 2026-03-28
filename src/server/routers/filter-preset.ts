@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { withAudit } from "@/server/middleware/audit";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma";
 
 const MAX_PRESETS_PER_SCOPE = 20;
 
@@ -73,7 +74,7 @@ export const filterPresetRouter = router({
           name: input.name,
           environmentId: input.environmentId,
           scope: input.scope,
-          filters: input.filters,
+          filters: input.filters as Prisma.InputJsonValue,
           isDefault: input.isDefault,
           createdById: userId,
         },
@@ -100,7 +101,11 @@ export const filterPresetRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Filter preset not found" });
       }
 
-      const { id, environmentId: _envId, ...data } = input;
+      const { id, environmentId: _envId, filters, ...rest } = input;
+      const data = {
+        ...rest,
+        ...(filters !== undefined ? { filters: filters as Prisma.InputJsonValue } : {}),
+      };
       return prisma.filterPreset.update({ where: { id }, data });
     }),
 

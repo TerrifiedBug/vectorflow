@@ -386,6 +386,7 @@ const METRIC_LABELS: Record<AlertMetric, string> = {
   node_joined: "Node joined",
   node_left: "Node left",
   promotion_completed: "Promotion completed",
+  git_sync_failed: "Git sync failed",
 };
 
 const CONDITION_LABELS: Record<AlertCondition, string> = {

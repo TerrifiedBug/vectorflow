@@ -87,8 +87,8 @@ describe("POST /api/v1/pipelines/import", () => {
         create: vi.fn().mockResolvedValue({}),
       },
     };
-    prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
-      return fn(mockTx);
+    prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+      if (typeof fn === "function") return fn(mockTx);
     });
 
     const req = new NextRequest("http://localhost/api/v1/pipelines/import", {

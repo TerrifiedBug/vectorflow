@@ -249,9 +249,9 @@ export function GitSyncStatus({ environmentId }: GitSyncStatusProps) {
                     <p className="text-destructive text-xs">
                       {(meta?.error as string) ?? "Unknown error"}
                     </p>
-                    {meta?.commitRef && (
+                    {Boolean(meta?.commitRef) && (
                       <p className="text-xs text-muted-foreground">
-                        Commit: {String(meta.commitRef).slice(0, 8)}
+                        Commit: {String(meta?.commitRef).slice(0, 8)}
                       </p>
                     )}
                   </div>

@@ -115,8 +115,9 @@ const CATEGORIES: SettingsCategory[] = [
 
 export function SettingsOverview() {
   const { data: session } = useSession();
-  const isSuperAdmin = session?.user?.isSuperAdmin === true;
-  const userRole = session?.user?.role;
+  const user = session?.user as ({ isSuperAdmin?: boolean; role?: string } & NonNullable<typeof session>["user"]) | undefined;
+  const isSuperAdmin = user?.isSuperAdmin === true;
+  const userRole = user?.role;
   const isAdmin = isSuperAdmin || userRole === "ADMIN";
 
   const visibleCategories = CATEGORIES.filter((cat) => {

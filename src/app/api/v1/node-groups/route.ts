@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma";
 import { apiRoute, jsonResponse } from "../_lib/api-handler";
 
 export const GET = apiRoute(
@@ -41,7 +42,7 @@ export const POST = apiRoute(
       data: {
         name: body.name.trim(),
         environmentId: ctx.environmentId,
-        criteria: body.criteria ?? {},
+        criteria: (body.criteria ?? {}) as Prisma.InputJsonValue,
         labelTemplate: body.labelTemplate ?? {},
         requiredLabels: body.requiredLabels ?? [],
       },

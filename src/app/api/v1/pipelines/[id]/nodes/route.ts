@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
 import { encryptNodeConfig } from "@/server/services/config-crypto";
 import { apiRoute, jsonResponse } from "../../../_lib/api-handler";
-import type { ComponentKind } from "@/generated/prisma";
+import type { ComponentKind, Prisma } from "@/generated/prisma";
 
 export const POST = apiRoute(
   "pipelines.write",
@@ -66,7 +66,7 @@ export const POST = apiRoute(
         displayName: body.displayName ?? null,
         componentType: body.componentType,
         kind: normalizedKind as ComponentKind,
-        config: encryptedConfig,
+        config: encryptedConfig as Prisma.InputJsonValue,
         positionX: body.positionX ?? 0,
         positionY: body.positionY ?? 0,
         disabled: body.disabled ?? false,

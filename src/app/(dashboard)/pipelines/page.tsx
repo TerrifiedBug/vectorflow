@@ -350,21 +350,10 @@ export default function PipelinesPage() {
   const environments = environmentsQuery.data ?? [];
   const effectiveEnvId = selectedEnvironmentId || environments[0]?.id || "";
 
-  const pipelinesQuery = useInfiniteQuery({
-    queryKey: [
-      "pipeline.list",
-      effectiveEnvId,
-      search,
-      statusFilter,
-      tagFilter,
-      groupId,
-      serverSortBy,
-      serverSortOrder,
-    ],
-    queryFn: ({ pageParam }) =>
-      trpc.pipeline.list.query({
+  const pipelinesQuery = useInfiniteQuery(
+    trpc.pipeline.list.infiniteQueryOptions(
+      {
         environmentId: effectiveEnvId,
-        cursor: pageParam,
         limit: 50,
         ...(search ? { search } : {}),
         ...(statusFilter.length > 0 ? { status: statusFilter } : {}),
@@ -372,12 +361,14 @@ export default function PipelinesPage() {
         ...(groupId ? { groupId } : {}),
         sortBy: serverSortBy,
         sortOrder: serverSortOrder,
-      }),
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
-    initialPageParam: undefined as string | undefined,
-    enabled: !!effectiveEnvId,
-    refetchInterval: 30_000,
-  });
+      },
+      {
+        getNextPageParam: (lastPage) => lastPage.nextCursor,
+        enabled: !!effectiveEnvId,
+        refetchInterval: 30_000,
+      },
+    ),
+  );
 
   const pipelines = useMemo(
     () => pipelinesQuery.data?.pages.flatMap((p) => p.pipelines) ?? [],
