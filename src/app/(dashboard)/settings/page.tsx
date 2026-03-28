@@ -1,12 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { SettingsOverview } from "./_components/settings-overview";
 
 export default function SettingsPage() {
-  const router = useRouter();
-  useEffect(() => {
-    router.replace("/settings/version");
-  }, [router]);
-  return null;
+  return <SettingsOverview />;
 }

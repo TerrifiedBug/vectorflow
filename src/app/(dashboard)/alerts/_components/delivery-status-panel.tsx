@@ -1,8 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
+import { toast } from "sonner";
+import { RotateCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Tooltip,
@@ -61,6 +64,21 @@ interface DeliveryStatusPanelProps {
 
 export function DeliveryStatusPanel({ alertEventId, isOpen }: DeliveryStatusPanelProps) {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const retryMutation = useMutation(
+    trpc.alert.retryDelivery.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: trpc.alert.listDeliveries.queryKey({ alertEventId }),
+        });
+        toast.success("Retry initiated");
+      },
+      onError: (err) => {
+        toast.error("Retry failed", { description: err.message, duration: 6000 });
+      },
+    }),
+  );
 
   const deliveriesQuery = useQuery(
     trpc.alert.listDeliveries.queryOptions(
@@ -169,6 +187,20 @@ export function DeliveryStatusPanel({ alertEventId, isOpen }: DeliveryStatusPane
                 ? ` → ${formatTimestamp(delivery.completedAt)}`
                 : " → Pending…"}
             </span>
+
+            {/* Retry button for failed deliveries */}
+            {delivery.status === "failed" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs ml-2"
+                onClick={() => retryMutation.mutate({ deliveryAttemptId: delivery.id })}
+                disabled={retryMutation.isPending}
+              >
+                <RotateCw className="h-3 w-3 mr-1" />
+                Retry
+              </Button>
+            )}
           </div>
         ))}
       </div>

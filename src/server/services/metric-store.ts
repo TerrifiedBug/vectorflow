@@ -28,11 +28,24 @@ interface PrevTotals {
 export type MetricStoreSubscriber = (events: MetricUpdateEvent[]) => void;
 
 const MAX_SAMPLES = 720; // 1 hour at 5s intervals
+const METRIC_STORE_MAX_KEYS = parseInt(process.env.METRIC_STORE_MAX_KEYS ?? "5000", 10);
+const BYTES_PER_SAMPLE = 160; // estimated: 9 numeric fields x ~17 bytes + overhead
+
+interface MetricStoreOptions {
+  maxKeys?: number;
+}
 
 export class MetricStore {
   private samples = new Map<string, MetricSample[]>();
   private prevTotals = new Map<string, PrevTotals>();
   private subscribers = new Map<string, MetricStoreSubscriber>();
+  private lastUpdated = new Map<string, number>(); // LRU tracking
+  private readonly maxKeys: number;
+  private hasWarnedCapacity = false;
+
+  constructor(options?: MetricStoreOptions) {
+    this.maxKeys = options?.maxKeys ?? METRIC_STORE_MAX_KEYS;
+  }
 
   /** Number of active pub/sub subscribers. */
   get subscriberCount(): number {
@@ -49,6 +62,41 @@ export class MetricStore {
   /** Remove a subscriber by ID. */
   unsubscribe(id: string): void {
     this.subscribers.delete(id);
+  }
+
+  /** Number of active metric streams. */
+  getStreamCount(): number {
+    return this.samples.size;
+  }
+
+  /** Estimated memory usage in bytes. */
+  getEstimatedMemoryBytes(): number {
+    let totalSamples = 0;
+    for (const arr of this.samples.values()) {
+      totalSamples += arr.length;
+    }
+    return totalSamples * BYTES_PER_SAMPLE;
+  }
+
+  private evictIfNeeded(): void {
+    while (this.samples.size >= this.maxKeys) {
+      // Find least-recently-updated key
+      let oldestKey: string | null = null;
+      let oldestTime = Infinity;
+      for (const [key, time] of this.lastUpdated) {
+        if (time < oldestTime) {
+          oldestTime = time;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey) {
+        this.samples.delete(oldestKey);
+        this.prevTotals.delete(oldestKey);
+        this.lastUpdated.delete(oldestKey);
+      } else {
+        break; // Safety: avoid infinite loop
+      }
+    }
   }
 
   /**
@@ -131,10 +179,23 @@ export class MetricStore {
       latencyMeanMs: totals.latencyMeanSeconds != null ? totals.latencyMeanSeconds * 1000 : null,
     };
 
+    const isNewKey = !this.samples.has(key);
+    if (isNewKey) {
+      this.evictIfNeeded();
+    }
     const arr = this.samples.get(key) ?? [];
     arr.push(sample);
     if (arr.length > MAX_SAMPLES) arr.shift();
     this.samples.set(key, arr);
+    this.lastUpdated.set(key, now);
+
+    // Check capacity warning after insertion
+    if (isNewKey && !this.hasWarnedCapacity && this.samples.size >= this.maxKeys * 0.8) {
+      this.hasWarnedCapacity = true;
+      console.warn(
+        `[metric-store] Approaching 80% capacity (${this.samples.size}/${this.maxKeys} streams)`,
+      );
+    }
 
     return sample;
   }
@@ -146,10 +207,14 @@ export class MetricStore {
    */
   mergeSample(nodeId: string, pipelineId: string, componentId: string, sample: MetricSample): void {
     const key = `${nodeId}:${pipelineId}:${componentId}`;
+    if (!this.samples.has(key)) {
+      this.evictIfNeeded();
+    }
     const arr = this.samples.get(key) ?? [];
     arr.push(sample);
     if (arr.length > MAX_SAMPLES) arr.shift();
     this.samples.set(key, arr);
+    this.lastUpdated.set(key, sample.timestamp);
   }
 
   getSamples(nodeId: string, pipelineId: string, componentId: string, minutes = 60): MetricSample[] {
