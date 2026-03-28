@@ -51,6 +51,7 @@ export const POST = apiRoute(
       entityType: "DeployRequest",
       entityId: requestId,
       userId: null,
+      userEmail: null,
       userName: ctx.serviceAccountName ?? "service-account",
       teamId: null,
       environmentId: ctx.environmentId,

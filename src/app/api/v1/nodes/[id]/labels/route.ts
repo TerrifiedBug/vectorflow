@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute, jsonResponse } from "../../../_lib/api-handler";
 
 export const PUT = apiRoute(
@@ -12,7 +13,7 @@ export const PUT = apiRoute(
 
     const node = await prisma.vectorNode.findUnique({
       where: { id, environmentId: ctx.environmentId },
-      select: { id: true },
+      select: { id: true, name: true, labels: true },
     });
     if (!node) {
       return NextResponse.json({ error: "Node not found" }, { status: 404 });
@@ -37,6 +38,19 @@ export const PUT = apiRoute(
       data: { labels: body.labels },
       select: { id: true, name: true, labels: true },
     });
+
+    writeAuditLog({
+      action: "api.node_labels_updated",
+      entityType: "VectorNode",
+      entityId: id,
+      userId: null,
+      userEmail: null,
+      userName: ctx.serviceAccountName ?? "service-account",
+      teamId: null,
+      environmentId: ctx.environmentId,
+      ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0] ?? null,
+      metadata: { name: node.name, oldLabels: node.labels, newLabels: body.labels },
+    }).catch(() => {});
 
     return jsonResponse({ node: updated });
   },

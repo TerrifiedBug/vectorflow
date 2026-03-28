@@ -34,6 +34,7 @@ export const DELETE = apiRoute(
       entityType: "PipelineEdge",
       entityId: edgeId,
       userId: null,
+      userEmail: null,
       userName: ctx.serviceAccountName ?? "service-account",
       teamId: null,
       environmentId: ctx.environmentId,

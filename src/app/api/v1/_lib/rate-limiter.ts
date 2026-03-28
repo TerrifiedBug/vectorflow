@@ -73,3 +73,8 @@ export class RateLimiter {
 
 /** Singleton in-memory rate limiter. */
 export const rateLimiter = new RateLimiter();
+
+// Periodically clean up stale sliding windows to prevent memory leaks
+if (typeof setInterval !== "undefined") {
+  setInterval(() => rateLimiter.cleanup(), 120_000);
+}

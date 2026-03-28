@@ -121,6 +121,7 @@ export const POST = apiRoute(
       entityType: "Pipeline",
       entityId: pipeline.id,
       userId: null,
+      userEmail: null,
       userName: ctx.serviceAccountName ?? "service-account",
       teamId: env?.teamId ?? null,
       environmentId: ctx.environmentId,

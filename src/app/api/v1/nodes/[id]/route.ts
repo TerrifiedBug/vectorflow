@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute, jsonResponse } from "../../_lib/api-handler";
 
 export const GET = apiRoute("nodes.read", async (_req, ctx, params) => {
@@ -46,7 +47,7 @@ export const GET = apiRoute("nodes.read", async (_req, ctx, params) => {
 
 export const DELETE = apiRoute(
   "nodes.manage",
-  async (_req: NextRequest, ctx, params) => {
+  async (req: NextRequest, ctx, params) => {
     const id = params?.id;
     if (!id) {
       return NextResponse.json({ error: "Missing node id" }, { status: 400 });
@@ -62,6 +63,19 @@ export const DELETE = apiRoute(
     }
 
     await prisma.vectorNode.delete({ where: { id } });
+
+    writeAuditLog({
+      action: "api.node_deleted",
+      entityType: "VectorNode",
+      entityId: id,
+      userId: null,
+      userEmail: null,
+      userName: ctx.serviceAccountName ?? "service-account",
+      teamId: null,
+      environmentId: ctx.environmentId,
+      ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0] ?? null,
+      metadata: { name: node.name },
+    }).catch(() => {});
 
     return NextResponse.json({ deleted: true });
   },

@@ -88,6 +88,19 @@ export const POST = apiRoute(
       },
     });
 
+    writeAuditLog({
+      action: "api.node_created",
+      entityType: "VectorNode",
+      entityId: node.id,
+      userId: null,
+      userEmail: null,
+      userName: ctx.serviceAccountName ?? "service-account",
+      teamId: null,
+      environmentId: ctx.environmentId,
+      ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0] ?? null,
+      metadata: { name: node.name, host: node.host },
+    }).catch(() => {});
+
     return NextResponse.json({ node }, { status: 201 });
   },
 );

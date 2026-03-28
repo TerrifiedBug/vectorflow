@@ -24,7 +24,11 @@ export const GET = apiRoute(
 
     const where: Record<string, unknown> = { pipelineId: id };
     if (since) {
-      where.timestamp = { gte: new Date(since) };
+      const sinceDate = new Date(since);
+      if (isNaN(sinceDate.getTime())) {
+        return NextResponse.json({ error: "Invalid since parameter" }, { status: 400 });
+      }
+      where.timestamp = { gte: sinceDate };
     }
 
     const metrics = await prisma.pipelineMetric.findMany({

@@ -87,7 +87,7 @@ export const POST = apiRoute(
       teamId: env?.teamId ?? null,
       environmentId: ctx.environmentId,
       ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0] ?? null,
-      metadata: { name: body.name },
+      metadata: { name: body.name.trim() },
     }).catch(() => {});
 
     return NextResponse.json({ pipeline }, { status: 201 });
