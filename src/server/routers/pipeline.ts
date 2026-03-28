@@ -703,11 +703,12 @@ export const pipelineRouter = router({
         levels: z.array(z.nativeEnum(LogLevel)).optional(),
         nodeId: z.string().optional(),
         since: z.date().optional(),
+        search: z.string().max(200).optional(),
       }),
     )
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      const { pipelineId, cursor, limit, levels, nodeId, since } = input;
+      const { pipelineId, cursor, limit, levels, nodeId, since, search } = input;
       const take = limit;
 
       const where: Record<string, unknown> = { pipelineId };
@@ -719,6 +720,9 @@ export const pipelineRouter = router({
       }
       if (since) {
         where.timestamp = { gte: since };
+      }
+      if (search) {
+        where.message = { contains: search, mode: "insensitive" };
       }
 
       const items = await prisma.pipelineLog.findMany({

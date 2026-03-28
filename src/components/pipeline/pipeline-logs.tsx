@@ -2,11 +2,20 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { Search, Clock, Download, Copy } from "lucide-react";
+import { toast } from "sonner";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { highlightMatch } from "@/components/log-search-utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { highlightAllMatches, countMatches } from "@/components/log-search-utils";
 import { formatTimeWithSeconds } from "@/lib/format";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
 import {
@@ -16,6 +25,15 @@ import {
 import type { LogLevel } from "@/generated/prisma";
 
 const ALL_LEVELS: LogLevel[] = ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"];
+
+const TIME_RANGES = [
+  { label: "15m", value: "15", ms: 15 * 60 * 1000 },
+  { label: "1h", value: "60", ms: 60 * 60 * 1000 },
+  { label: "6h", value: "360", ms: 6 * 60 * 60 * 1000 },
+  { label: "1d", value: "1440", ms: 24 * 60 * 60 * 1000 },
+  { label: "7d", value: "10080", ms: 7 * 24 * 60 * 60 * 1000 },
+  { label: "All", value: "all", ms: 0 },
+] as const;
 
 const LEVEL_COLORS: Record<LogLevel, string> = {
   ERROR: "text-red-400",
@@ -46,11 +64,16 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
     new Set(ALL_LEVELS),
   );
   const [searchTerm, setSearchTerm] = useState("");
+  const [timeRange, setTimeRange] = useState<string>("60");
 
   const pollingInterval = usePollingInterval(5000);
   const { streamedEntries } = useStreamingLogs({
     pipelineId,
   });
+
+  const sinceDate = timeRange !== "all"
+    ? new Date(Date.now() - (TIME_RANGES.find((t) => t.value === timeRange)?.ms ?? 60 * 60 * 1000))
+    : undefined;
 
   const queryInput = {
     pipelineId,
@@ -58,6 +81,8 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
       ? { levels: [...activeLevels] as LogLevel[] }
       : {}),
     ...(nodeId ? { nodeId } : {}),
+    ...(searchTerm.length >= 3 ? { search: searchTerm } : {}),
+    ...(sinceDate ? { since: sinceDate } : {}),
   };
 
   const logsQuery = useInfiniteQuery(
@@ -105,12 +130,16 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
     return items;
   })();
 
+  const matchCount = searchTerm
+    ? filteredItems.reduce((sum, log) => sum + countMatches(log.message, searchTerm), 0)
+    : 0;
+
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
-    if (autoScrollRef.current && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (autoScrollRef.current) {
+      virtualizer.scrollToIndex(filteredItems.length - 1, { align: "end" });
     }
-  }, [mergedItems.length]);
+  }, [filteredItems.length, virtualizer]);
 
   const handleScroll = useCallback(() => {
     if (!scrollRef.current) return;
@@ -132,6 +161,54 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
       });
     }
   }, [logsQuery]);
+
+  const virtualizer = useVirtualizer({
+    count: filteredItems.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 20,
+    overscan: 30,
+  });
+
+  const handleExportLogs = useCallback(() => {
+    const lines = filteredItems.map((log) => {
+      const ts = log.timestamp instanceof Date ? log.timestamp : new Date(log.timestamp);
+      const nodeName = "node" in log ? (log.node as { name: string } | undefined)?.name : undefined;
+      const prefix = nodeName ? `[${nodeName}] ` : "";
+      return `${ts.toISOString()} ${log.level} ${prefix}${log.message}`;
+    });
+    const content = lines.join("\n");
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pipeline-logs-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.log`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filteredItems]);
+
+  const handleCopyLine = useCallback((log: typeof filteredItems[number]) => {
+    const ts = log.timestamp instanceof Date ? log.timestamp : new Date(log.timestamp);
+    const nodeName = "node" in log ? (log.node as { name: string } | undefined)?.name : undefined;
+    const prefix = nodeName ? `[${nodeName}] ` : "";
+    const text = `${ts.toISOString()} ${log.level} ${prefix}${log.message}`;
+    navigator.clipboard.writeText(text).then(
+      () => toast.success("Copied to clipboard"),
+      () => toast.error("Failed to copy"),
+    );
+  }, []);
+
+  const handleCopyAll = useCallback(() => {
+    const lines = filteredItems.map((log) => {
+      const ts = log.timestamp instanceof Date ? log.timestamp : new Date(log.timestamp);
+      const nodeName = "node" in log ? (log.node as { name: string } | undefined)?.name : undefined;
+      const prefix = nodeName ? `[${nodeName}] ` : "";
+      return `${ts.toISOString()} ${log.level} ${prefix}${log.message}`;
+    });
+    navigator.clipboard.writeText(lines.join("\n")).then(
+      () => toast.success(`Copied ${lines.length} lines`),
+      () => toast.error("Failed to copy"),
+    );
+  }, [filteredItems]);
 
   function toggleLevel(level: LogLevel) {
     setActiveLevels((prev) => {
@@ -175,10 +252,43 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
             className="h-6 w-[180px] pl-7 text-xs bg-transparent border-border/40"
           />
         </div>
+        <Select value={timeRange} onValueChange={setTimeRange}>
+          <SelectTrigger className="h-6 w-[70px] text-xs bg-transparent border-border/40">
+            <Clock className="h-3 w-3 mr-1 text-muted-foreground" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TIME_RANGES.map((range) => (
+              <SelectItem key={range.value} value={range.value} className="text-xs">
+                {range.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0"
+          onClick={handleExportLogs}
+          disabled={filteredItems.length === 0}
+          aria-label="Download logs"
+        >
+          <Download className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0"
+          onClick={handleCopyAll}
+          disabled={filteredItems.length === 0}
+          aria-label="Copy all visible logs"
+        >
+          <Copy className="h-3 w-3" />
+        </Button>
         <div className="flex-1" />
         <span className="text-xs text-muted-foreground">
           {searchTerm
-            ? `${filteredItems.length}/${mergedItems.length} lines`
+            ? `${filteredItems.length}/${mergedItems.length} lines · ${matchCount} matches`
             : `${mergedItems.length} lines`}
         </span>
         {logsQuery.hasNextPage && (
@@ -210,31 +320,51 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
             No logs yet. Logs are collected from agent heartbeats every 5 seconds.
           </p>
         )}
-        {filteredItems.map((log) => {
-          const ts = log.timestamp instanceof Date
-            ? log.timestamp
-            : new Date(log.timestamp);
-          const nodeName = "node" in log ? (log.node as { name: string } | undefined)?.name : undefined;
-          return (
-            <div key={log.id} className="whitespace-pre-wrap leading-5">
-              <span className="text-muted-foreground tabular-nums">{formatTimeWithSeconds(ts)}</span>
-              {"  "}
-              <span className={`${LEVEL_COLORS[log.level as LogLevel]} inline-block w-12`}>
-                {log.level}
-              </span>
-              {"  "}
-              {nodeName && (
-                <>
-                  <span className="text-blue-400/70">[{nodeName}]</span>
+        {filteredItems.length > 0 && (
+          <div
+            style={{ height: `${virtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const log = filteredItems[virtualRow.index];
+              const ts = log.timestamp instanceof Date
+                ? log.timestamp
+                : new Date(log.timestamp);
+              const nodeName = "node" in log ? (log.node as { name: string } | undefined)?.name : undefined;
+              return (
+                <div
+                  key={log.id}
+                  data-index={virtualRow.index}
+                  ref={virtualizer.measureElement}
+                  className="group absolute left-0 top-0 w-full whitespace-pre-wrap leading-5"
+                  style={{ transform: `translateY(${virtualRow.start}px)` }}
+                >
+                  <button
+                    className="invisible group-hover:visible absolute right-2 top-0.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                    onClick={() => handleCopyLine(log)}
+                    aria-label="Copy log line"
+                  >
+                    <Copy className="h-3 w-3" />
+                  </button>
+                  <span className="text-muted-foreground tabular-nums">{formatTimeWithSeconds(ts)}</span>
                   {"  "}
-                </>
-              )}
-              <span className="text-foreground/80">
-                {searchTerm ? highlightMatch(log.message, searchTerm) : log.message}
-              </span>
-            </div>
-          );
-        })}
+                  <span className={`${LEVEL_COLORS[log.level as LogLevel]} inline-block w-12`}>
+                    {log.level}
+                  </span>
+                  {"  "}
+                  {nodeName && (
+                    <>
+                      <span className="text-blue-400/70">[{nodeName}]</span>
+                      {"  "}
+                    </>
+                  )}
+                  <span className="text-foreground/80">
+                    {searchTerm ? highlightAllMatches(log.message, searchTerm) : log.message}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
