@@ -310,6 +310,7 @@ export default function FleetPage() {
                   type="button"
                   onClick={() => handleSort("name")}
                   className="inline-flex items-center gap-1 hover:text-foreground transition-colors -ml-1 px-1 rounded"
+                  aria-label={`Sort by name${sortField === "name" ? `, currently ${sortDirection === "asc" ? "ascending" : "descending"}` : ""}`}
                 >
                   Name
                   {sortField === "name" && (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
@@ -325,6 +326,7 @@ export default function FleetPage() {
                   type="button"
                   onClick={() => handleSort("status")}
                   className="inline-flex items-center gap-1 hover:text-foreground transition-colors -ml-1 px-1 rounded"
+                  aria-label={`Sort by status${sortField === "status" ? `, currently ${sortDirection === "asc" ? "ascending" : "descending"}` : ""}`}
                 >
                   Status
                   {sortField === "status" && (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
@@ -335,6 +337,7 @@ export default function FleetPage() {
                   type="button"
                   onClick={() => handleSort("lastSeen")}
                   className="inline-flex items-center gap-1 hover:text-foreground transition-colors -ml-1 px-1 rounded"
+                  aria-label={`Sort by last seen${sortField === "lastSeen" ? `, currently ${sortDirection === "asc" ? "ascending" : "descending"}` : ""}`}
                 >
                   Last Seen
                   {sortField === "lastSeen" && (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}

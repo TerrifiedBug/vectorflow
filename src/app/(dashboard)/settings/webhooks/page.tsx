@@ -586,7 +586,7 @@ function EndpointDialog({
 
           {/* Event Types */}
           <div className="grid gap-2">
-            <Label>Event Types *</Label>
+            <Label id="wh-events-label">Event Types *</Label>
             <div className="border rounded-md p-3 space-y-2">
               {WEBHOOK_EVENT_TYPES.map((evt) => (
                 <label
