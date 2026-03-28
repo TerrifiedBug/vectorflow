@@ -180,7 +180,7 @@ export function TotpSetupCard({ totpEnabled, authMethod }: TotpSetupCardProps) {
 
       {/* Setup Dialog */}
       <Dialog open={setupOpen} onOpenChange={(open) => { if (!open) handleCloseSetup(); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {setupStep === "done"
