@@ -17,8 +17,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -189,27 +201,20 @@ function recordToKVPairs(record: Record<string, string>): KVPair[] {
   return Object.entries(record).map(([key, value]) => ({ key, value }));
 }
 
-// ─── Group Form ──────────────────────────────────────────────────────────────
+// ─── Group Form Fields ────────────────────────────────────────────────────────
 
-function GroupForm({
+/** Renders only the form fields for a node group — no action buttons. */
+function GroupFormFields({
   form,
   onChange,
-  onSubmit,
-  onCancel,
-  isPending,
-  submitLabel,
 }: {
   form: NodeGroupFormState;
   onChange: (form: NodeGroupFormState) => void;
-  onSubmit: () => void;
-  onCancel: () => void;
-  isPending: boolean;
-  submitLabel: string;
 }) {
   const criteriaEmpty = form.criteria.length === 0 || form.criteria.every((p) => !p.key.trim());
 
   return (
-    <div className="rounded-md border bg-muted/30 p-4 space-y-4">
+    <div className="space-y-4">
       {/* Name */}
       <div className="space-y-1.5">
         <Label className="text-xs font-medium">Name *</Label>
@@ -264,28 +269,6 @@ function GroupForm({
           onTagsChange={(tags) => onChange({ ...form, requiredLabels: tags })}
           onInputChange={(val) => onChange({ ...form, requiredLabelInput: val })}
         />
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          size="sm"
-          onClick={onSubmit}
-          disabled={!form.name.trim() || isPending}
-        >
-          {isPending ? (
-            <>
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            submitLabel
-          )}
-        </Button>
-        <Button type="button" size="sm" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
       </div>
     </div>
   );
@@ -380,6 +363,13 @@ export function NodeGroupManagement({ environmentId }: NodeGroupManagementProps)
   // --- Delete ---
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
+  const affectedNodesQuery = useQuery(
+    trpc.nodeGroup.nodesInGroup.queryOptions(
+      { groupId: deleteTarget?.id ?? "", environmentId },
+      { enabled: !!deleteTarget },
+    ),
+  );
+
   const deleteMutation = useMutation(
     trpc.nodeGroup.delete.mutationOptions({
       onSuccess: () => {
@@ -405,11 +395,7 @@ export function NodeGroupManagement({ environmentId }: NodeGroupManagementProps)
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                setShowCreate(true);
-                setEditingId(null);
-              }}
-              disabled={showCreate}
+              onClick={() => setShowCreate(true)}
             >
               <Plus className="h-3.5 w-3.5 mr-1.5" />
               Add Group
@@ -417,18 +403,6 @@ export function NodeGroupManagement({ environmentId }: NodeGroupManagementProps)
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Create form */}
-          {showCreate && (
-            <GroupForm
-              form={createForm}
-              onChange={setCreateForm}
-              onSubmit={handleCreate}
-              onCancel={() => { setShowCreate(false); setCreateForm(emptyForm()); }}
-              isPending={createMutation.isPending}
-              submitLabel="Create Group"
-            />
-          )}
-
           {/* Loading skeleton */}
           {groupsQuery.isLoading && (
             <div className="space-y-2">
@@ -438,7 +412,7 @@ export function NodeGroupManagement({ environmentId }: NodeGroupManagementProps)
           )}
 
           {/* Empty state */}
-          {!groupsQuery.isLoading && groups.length === 0 && !showCreate && (
+          {!groupsQuery.isLoading && groups.length === 0 && (
             <p className="text-sm text-muted-foreground py-2">
               No node groups yet. Click &quot;Add Group&quot; to create one.
             </p>
@@ -446,118 +420,247 @@ export function NodeGroupManagement({ environmentId }: NodeGroupManagementProps)
 
           {/* Group list */}
           <div className="space-y-3">
-            {groups.map((group) =>
-              editingId === group.id ? (
-                <GroupForm
-                  key={group.id}
-                  form={editForm}
-                  onChange={setEditForm}
-                  onSubmit={handleUpdate}
-                  onCancel={() => setEditingId(null)}
-                  isPending={updateMutation.isPending}
-                  submitLabel="Save Changes"
-                />
-              ) : (
-                <div
-                  key={group.id}
-                  className="flex items-start gap-3 rounded-md border px-3 py-2.5"
-                >
-                  <div className="flex-1 min-w-0 space-y-1.5">
-                    <span className="font-medium text-sm">{group.name}</span>
+            {groups.map((group) => (
+              <div
+                key={group.id}
+                className="flex items-start gap-3 rounded-md border px-3 py-2.5"
+              >
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <span className="font-medium text-sm">{group.name}</span>
 
-                    {/* Criteria */}
-                    {Object.keys((group.criteria as Record<string, string>) ?? {}).length > 0 ? (
-                      <div className="flex flex-wrap gap-1 items-center">
-                        <span className="text-[11px] text-muted-foreground shrink-0">Criteria:</span>
-                        {Object.entries((group.criteria as Record<string, string>) ?? {}).map(([k, v]) => (
-                          <Badge key={k} variant="outline" className="text-[10px] px-1.5 py-0">
-                            {k}={v}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 text-[11px]">
-                        <AlertTriangle className="h-3 w-3 shrink-0" />
-                        Matches all enrolling nodes
-                      </div>
-                    )}
+                  {/* Criteria */}
+                  {Object.keys((group.criteria as Record<string, string>) ?? {}).length > 0 ? (
+                    <div className="flex flex-wrap gap-1 items-center">
+                      <span className="text-[11px] text-muted-foreground shrink-0">Criteria:</span>
+                      {Object.entries((group.criteria as Record<string, string>) ?? {}).map(([k, v]) => (
+                        <Badge key={k} variant="outline" className="text-[10px] px-1.5 py-0">
+                          {k}={v}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 text-[11px]">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      Matches all enrolling nodes
+                    </div>
+                  )}
 
-                    {/* Label Template */}
-                    {Object.keys((group.labelTemplate as Record<string, string>) ?? {}).length > 0 && (
-                      <div className="flex flex-wrap gap-1 items-center">
-                        <span className="text-[11px] text-muted-foreground shrink-0">Template:</span>
-                        {Object.entries((group.labelTemplate as Record<string, string>) ?? {}).map(([k, v]) => (
-                          <Badge key={k} variant="secondary" className="text-[10px] px-1.5 py-0">
-                            {k}={v}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
+                  {/* Label Template */}
+                  {Object.keys((group.labelTemplate as Record<string, string>) ?? {}).length > 0 && (
+                    <div className="flex flex-wrap gap-1 items-center">
+                      <span className="text-[11px] text-muted-foreground shrink-0">Template:</span>
+                      {Object.entries((group.labelTemplate as Record<string, string>) ?? {}).map(([k, v]) => (
+                        <Badge key={k} variant="secondary" className="text-[10px] px-1.5 py-0">
+                          {k}={v}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
 
-                    {/* Required Labels */}
-                    {((group.requiredLabels as string[]) ?? []).length > 0 && (
-                      <div className="flex flex-wrap gap-1 items-center">
-                        <span className="text-[11px] text-muted-foreground shrink-0">Required:</span>
-                        {((group.requiredLabels as string[]) ?? []).map((label: string) => (
-                          <Badge key={label} variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-700 dark:text-amber-400">
-                            {label}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0 pt-0.5">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() =>
-                        startEdit({
-                          id: group.id,
-                          name: group.name,
-                          criteria: group.criteria as Record<string, string>,
-                          labelTemplate: group.labelTemplate as Record<string, string>,
-                          requiredLabels: (group.requiredLabels as string[]) ?? [],
-                        })
-                      }
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive"
-                      onClick={() => setDeleteTarget({ id: group.id, name: group.name })}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
+                  {/* Required Labels */}
+                  {((group.requiredLabels as string[]) ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 items-center">
+                      <span className="text-[11px] text-muted-foreground shrink-0">Required:</span>
+                      {((group.requiredLabels as string[]) ?? []).map((label: string) => (
+                        <Badge key={label} variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-700 dark:text-amber-400">
+                          {label}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ),
-            )}
+
+                <div className="flex items-center gap-1 shrink-0 pt-0.5">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() =>
+                          startEdit({
+                            id: group.id,
+                            name: group.name,
+                            criteria: group.criteria as Record<string, string>,
+                            labelTemplate: group.labelTemplate as Record<string, string>,
+                            requiredLabels: (group.requiredLabels as string[]) ?? [],
+                          })
+                        }
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Edit group</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive"
+                        onClick={() => setDeleteTarget({ id: group.id, name: group.name })}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Delete group</TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
 
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
-        title="Delete node group?"
-        description={
-          <>
-            Deleting &quot;{deleteTarget?.name}&quot; will not affect existing nodes, but nodes will
-            no longer be auto-labeled or compliance-checked against this group.
-          </>
-        }
-        confirmLabel="Delete"
-        variant="destructive"
-        isPending={deleteMutation.isPending}
-        pendingLabel="Deleting..."
-        onConfirm={() => {
-          if (deleteTarget) deleteMutation.mutate({ id: deleteTarget.id });
+      {/* Create Dialog */}
+      <Dialog
+        open={showCreate}
+        onOpenChange={(val) => {
+          if (!createMutation.isPending) {
+            if (!val) {
+              setShowCreate(false);
+              setCreateForm(emptyForm());
+            } else {
+              setShowCreate(val);
+            }
+          }
         }}
-      />
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Node Group</DialogTitle>
+            <DialogDescription>
+              Define criteria and label policies for a fleet segment.
+            </DialogDescription>
+          </DialogHeader>
+          <GroupFormFields form={createForm} onChange={setCreateForm} />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowCreate(false);
+                setCreateForm(emptyForm());
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={!createForm.name.trim() || createMutation.isPending}
+            >
+              {createMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Group"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog
+        open={editingId !== null}
+        onOpenChange={(val) => {
+          if (!updateMutation.isPending) {
+            if (!val) setEditingId(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Node Group</DialogTitle>
+            <DialogDescription>
+              Update criteria and label policies for this fleet segment.
+            </DialogDescription>
+          </DialogHeader>
+          <GroupFormFields form={editForm} onChange={setEditForm} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingId(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdate}
+              disabled={!editForm.name.trim() || updateMutation.isPending}
+            >
+              {updateMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(val) => {
+          if (!deleteMutation.isPending) {
+            if (!val) setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete node group?</DialogTitle>
+            <DialogDescription asChild>
+              <div>
+                {affectedNodesQuery.isLoading ? (
+                  <div className="space-y-2 py-1">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </div>
+                ) : (() => {
+                  const affected = affectedNodesQuery.data ?? [];
+                  const names = affected.slice(0, 5).map((n) => n.name);
+                  const more = affected.length > 5 ? affected.length - 5 : 0;
+                  if (affected.length === 0) {
+                    return (
+                      <span>
+                        Deleting &quot;{deleteTarget?.name}&quot; will remove the group. No nodes are currently in this group.
+                      </span>
+                    );
+                  }
+                  return (
+                    <span>
+                      Deleting &quot;{deleteTarget?.name}&quot; will remove the group. {affected.length} node(s) are currently in this group: {names.join(", ")}{more > 0 ? `, and ${more} more` : ""}. Nodes will no longer be auto-labeled or compliance-checked against this group.
+                    </span>
+                  );
+                })()}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() => {
+                if (deleteTarget) deleteMutation.mutate({ id: deleteTarget.id });
+              }}
+            >
+              {deleteMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Group"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
