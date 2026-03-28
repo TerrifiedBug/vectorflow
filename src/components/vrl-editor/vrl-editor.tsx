@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -52,6 +53,40 @@ const Editor = dynamic(() => import("@monaco-editor/react").then((m) => m.defaul
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
+interface VrlParsedError {
+  line: number;
+  column: number;
+  message: string;
+}
+
+function parseVrlErrors(errorText: string): VrlParsedError[] {
+  const errors: VrlParsedError[] = [];
+  const lineColRegex = /(?:line\s+|:)(\d+)(?:[:,]\s*(?:col(?:umn)?\s+)?(\d+))?/gi;
+  const lines = errorText.split("\n").filter(Boolean);
+  for (const line of lines) {
+    lineColRegex.lastIndex = 0;
+    const lineMatch = lineColRegex.exec(line);
+    if (lineMatch) {
+      errors.push({
+        line: parseInt(lineMatch[1], 10),
+        column: lineMatch[2] ? parseInt(lineMatch[2], 10) : 1,
+        message: line.trim(),
+      });
+    }
+  }
+  if (errors.length === 0 && errorText.trim()) {
+    errors.push({ line: 0, column: 0, message: errorText.trim() });
+  }
+  return errors;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Constants                                                          */
+/* ------------------------------------------------------------------ */
+
+const MIN_PANEL_WIDTH = 320;
+const MAX_PANEL_WIDTH = 600;
+
 interface VrlEditorProps {
   value: string;
   onChange: (value: string) => void;
@@ -87,6 +122,10 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
   const [sampleEvents, setSampleEvents] = useState<unknown[]>([]);
   const [sampleIndex, setSampleIndex] = useState(0);
   const [liveSchemaFields, setLiveSchemaFields] = useState<Array<{ path: string; type: string; sample: string }>>([]);
+  const [rightPanelWidth, setRightPanelWidth] = useState(380);
+  const isDraggingPanel = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(380);
 
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   const teamQuery = useQuery(
@@ -564,6 +603,36 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     testMutation.mutate({ source: value, input: sampleInput });
   }, [value, sampleInput, testMutation]);
 
+  const parsedErrors = useMemo(
+    () => (testError ? parseVrlErrors(testError) : []),
+    [testError],
+  );
+
+  const handlePanelDragStart = useCallback((e: React.MouseEvent) => {
+    isDraggingPanel.current = true;
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = rightPanelWidth;
+    e.preventDefault();
+  }, [rightPanelWidth]);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingPanel.current) return;
+      const delta = dragStartX.current - e.clientX;
+      const newWidth = Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, dragStartWidth.current + delta));
+      setRightPanelWidth(newWidth);
+    };
+    const onMouseUp = () => {
+      isDraggingPanel.current = false;
+    };
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, []);
+
   return (
     <div className="space-y-2">
       {/* Inline: just a button + VRL preview */}
@@ -644,31 +713,69 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
           </div>
 
           <div className="flex flex-1 gap-4 min-h-0">
-            {/* Left: Monaco editor at full height */}
-            <div className="flex-1 overflow-hidden rounded border">
-              <Editor
-                height="100%"
-                language="vrl"
-                value={value}
-                onChange={(v) => onChange(v ?? "")}
-                beforeMount={handleEditorWillMount}
-                onMount={handleEditorMount}
-                theme="vrl-theme"
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 14,
-                  lineNumbers: "on",
-                  scrollBeyondLastLine: false,
-                  wordWrap: "on",
-                  tabSize: 2,
-                  automaticLayout: true,
-                }}
-              />
+            {/* Left: Monaco editor + error summary panel */}
+            <div className="flex-1 flex flex-col gap-2 min-h-0">
+              <div className="flex-1 overflow-hidden rounded border">
+                <Editor
+                  height="100%"
+                  language="vrl"
+                  value={value}
+                  onChange={(v) => onChange(v ?? "")}
+                  beforeMount={handleEditorWillMount}
+                  onMount={handleEditorMount}
+                  theme="vrl-theme"
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 14,
+                    lineNumbers: "on",
+                    scrollBeyondLastLine: false,
+                    wordWrap: "on",
+                    tabSize: 2,
+                    automaticLayout: true,
+                  }}
+                />
+              </div>
+
+              {parsedErrors.length > 0 && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 shrink-0">
+                  <p className="text-xs font-semibold text-destructive mb-1.5">
+                    {parsedErrors.length} error{parsedErrors.length !== 1 ? "s" : ""} — click {parsedErrors.length === 1 ? "" : "any "}to jump to line
+                  </p>
+                  <ul className="space-y-1">
+                    {parsedErrors.map((err, i) => (
+                      <li key={i} className="flex gap-2 text-xs">
+                        {err.line > 0 ? (
+                          <button
+                            type="button"
+                            className="font-mono text-destructive underline-offset-2 hover:underline shrink-0 cursor-pointer"
+                            onClick={() => {
+                              editorRef.current?.setPosition({ lineNumber: err.line, column: err.column });
+                              editorRef.current?.revealLineInCenter(err.line);
+                              editorRef.current?.focus();
+                            }}
+                          >
+                            {err.line}:{err.column}
+                          </button>
+                        ) : null}
+                        <span className="text-muted-foreground truncate">{err.message}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             {/* Right panel: single slot for tools OR AI */}
             {rightPanel && (
-              <div className="w-[380px] shrink-0 flex flex-col gap-3 min-h-0 overflow-hidden">
+              <>
+                <div
+                  className="w-1 cursor-col-resize bg-border hover:bg-primary/30 active:bg-primary/30 transition-colors shrink-0 rounded"
+                  onMouseDown={handlePanelDragStart}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize panel"
+                />
+                <div style={{ width: rightPanelWidth }} className="shrink-0 flex flex-col gap-3 min-h-0 overflow-hidden">
                 {/* Tools content (fields, snippets, test panel) */}
                 {(rightPanel === "fields" || rightPanel === "snippets") && (
                   <div className="flex flex-col gap-3 overflow-y-auto flex-1">
@@ -786,6 +893,7 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
                   />
                 )}
               </div>
+            </>
             )}
           </div>
         </DialogContent>
