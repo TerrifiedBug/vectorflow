@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { EmptyState } from "@/components/empty-state";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { QueryError } from "@/components/query-error";
 import { RestoreDialog } from "./RestoreDialog";
@@ -137,7 +138,7 @@ export function BackupSettings() {
         toast.success("Backup created successfully");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to create backup");
+        toast.error(error.message || "Failed to create backup", { duration: 6000 });
       },
     }),
   );
@@ -150,7 +151,7 @@ export function BackupSettings() {
         toast.success("Backup deleted");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to delete backup");
+        toast.error(error.message || "Failed to delete backup", { duration: 6000 });
       },
     }),
   );
@@ -162,7 +163,7 @@ export function BackupSettings() {
         toast.success("Backup schedule updated");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update backup schedule");
+        toast.error(error.message || "Failed to update backup schedule", { duration: 6000 });
       },
     }),
   );
@@ -173,7 +174,7 @@ export function BackupSettings() {
         toast.success("S3 connection successful");
       },
       onError: (error) => {
-        toast.error(error.message || "S3 connection test failed");
+        toast.error(error.message || "S3 connection test failed", { duration: 6000 });
       },
     }),
   );
@@ -185,12 +186,13 @@ export function BackupSettings() {
         toast.success("Storage backend updated");
       },
       onError: (error) => {
-        toast.error(error.message || "Failed to update storage backend");
+        toast.error(error.message || "Failed to update storage backend", { duration: 6000 });
       },
     }),
   );
 
   if (settingsQuery.isError) return <QueryError message="Failed to load backup settings" onRetry={() => settingsQuery.refetch()} />;
+  if (backupsQuery.isError) return <QueryError message="Failed to load backup history" onRetry={() => backupsQuery.refetch()} />;
 
   return (
     <div className="space-y-6">
@@ -473,12 +475,13 @@ export function BackupSettings() {
         </CardHeader>
         <CardContent>
           {backupsQuery.isLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-full" />
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
             </div>
           ) : !backupsQuery.data?.length ? (
-            <p className="text-sm text-muted-foreground">No backups found.</p>
+            <EmptyState icon={HardDrive} title="No backups yet" description="Create a backup to get started." />
           ) : (
             <Table>
               <TableHeader>
