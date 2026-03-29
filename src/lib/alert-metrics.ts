@@ -16,6 +16,7 @@ export const EVENT_METRIC_VALUES = [
   "certificate_expiring",
   "node_joined",
   "node_left",
+  "git_sync_failed",
 ] as const;
 
 export const EVENT_METRICS: ReadonlySet<string> = new Set(EVENT_METRIC_VALUES);
@@ -35,6 +36,7 @@ export const FLEET_METRIC_VALUES = [
   "fleet_throughput_drop",
   "fleet_event_volume",
   "node_load_imbalance",
+  "version_drift",
 ] as const;
 
 export const FLEET_METRICS_SET: ReadonlySet<string> = new Set(FLEET_METRIC_VALUES);

@@ -191,6 +191,51 @@ describe("batchUpsertPipelineStatuses", () => {
       batchUpsertPipelineStatuses(NODE_ID, pipelines, NOW),
     ).rejects.toThrow("connection timeout");
   });
+
+  // ── configChecksum is included in upsert when provided ──────────────────
+
+  it("includes configChecksum in upsert when provided", async () => {
+    prismaMock.$executeRaw.mockResolvedValue(1 as never);
+
+    await batchUpsertPipelineStatuses(
+      "node-1",
+      [
+        {
+          pipelineId: "pipe-1",
+          version: 3,
+          status: "RUNNING",
+          configChecksum: "abc123def456",
+        },
+      ],
+      new Date("2026-01-01T00:00:00Z"),
+    );
+
+    expect(prismaMock.$executeRaw).toHaveBeenCalledTimes(1);
+    // The raw SQL template should contain the configChecksum column
+    const call = prismaMock.$executeRaw.mock.calls[0]!;
+    const outerStrings = call[0] as unknown as string[];
+    const outerSql = outerStrings.join("$1");
+    expect(outerSql).toContain("configChecksum");
+  });
+
+  it("passes null configChecksum when agent omits it", async () => {
+    prismaMock.$executeRaw.mockResolvedValue(1 as never);
+
+    await batchUpsertPipelineStatuses(
+      "node-1",
+      [
+        {
+          pipelineId: "pipe-1",
+          version: 3,
+          status: "RUNNING",
+          // no configChecksum
+        },
+      ],
+      new Date("2026-01-01T00:00:00Z"),
+    );
+
+    expect(prismaMock.$executeRaw).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ─── Orchestration test: 100-pipeline payload end-to-end ────────────────────
@@ -225,14 +270,15 @@ describe("100-pipeline orchestration", () => {
     expect(prismaMock.$executeRaw).toHaveBeenCalledOnce();
 
     // Verify the inner Prisma.Sql object has values for all 100 pipelines.
-    // Each pipeline contributes 16 fields to the VALUES clause (id, nodeId,
+    // Each pipeline contributes 17 fields to the VALUES clause (id, nodeId,
     // pipelineId, version, status, pid, uptimeSeconds, eventsIn, eventsOut,
-    // errorsTotal, eventsDiscarded, bytesIn, bytesOut, utilization, recentLogs, lastUpdated).
+    // errorsTotal, eventsDiscarded, bytesIn, bytesOut, utilization, configChecksum,
+    // recentLogs, lastUpdated).
     const call = prismaMock.$executeRaw.mock.calls[0]!;
     const innerSql = call[1] as { values: unknown[] };
     // Prisma.join produces a single Sql object whose .values is a flat array
-    // of all row values concatenated. With 16 fields per row × 100 rows = 1600 values.
-    expect(innerSql.values).toHaveLength(100 * 16);
+    // of all row values concatenated. With 17 fields per row × 100 rows = 1700 values.
+    expect(innerSql.values).toHaveLength(100 * 17);
   });
 
   it("preserves ordering invariant: $executeRaw resolves before downstream code runs", async () => {
