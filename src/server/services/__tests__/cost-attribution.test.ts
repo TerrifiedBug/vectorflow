@@ -107,6 +107,7 @@ describe("getCostByPipeline", () => {
   });
 
   it("returns per-pipeline breakdown with cost estimates", async () => {
+    // @ts-expect-error - groupBy mock typing is complex
     prismaMock.pipelineMetric.groupBy.mockResolvedValue([
       {
         pipelineId: "p1",
@@ -151,6 +152,7 @@ describe("getCostByPipeline", () => {
   });
 
   it("returns empty array when no metrics exist", async () => {
+    // @ts-expect-error - groupBy mock typing is complex
     prismaMock.pipelineMetric.groupBy.mockResolvedValue([] as never);
     prismaMock.pipeline.findMany.mockResolvedValue([] as never);
 
@@ -170,6 +172,7 @@ describe("getCostByTeam", () => {
   });
 
   it("aggregates pipeline costs by team", async () => {
+    // @ts-expect-error - groupBy mock typing is complex
     prismaMock.pipelineMetric.groupBy.mockResolvedValue([
       {
         pipelineId: "p1",

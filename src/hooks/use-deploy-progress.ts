@@ -20,7 +20,7 @@ export function useDeployProgress() {
   const { startDeploy, finishDeploy, setToastId, dismiss } = useDeployProgressStore();
 
   const bulkDeployMutation = useMutation(
-    trpc.pipeline.bulkDeploy.mutationOptions({
+    trpc.pipeline.deployBatch.mutationOptions({
       onSuccess: (data) => {
         // Build a name map from the stored results in the progress store
         const store = useDeployProgressStore.getState();

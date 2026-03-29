@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { AnalysisResult } from "@/server/services/cost-optimizer-types";
 import { debugLog } from "@/lib/logger";
+import { Prisma } from "@/generated/prisma";
 import type { RecommendationStatus, CostRecommendation } from "@/generated/prisma";
 
 const TAG = "cost-recommendations";
@@ -43,9 +44,9 @@ export async function storeRecommendations(
         type: result.type,
         title: result.title,
         description: result.description,
-        analysisData: result.analysisData as Record<string, unknown>,
+        analysisData: result.analysisData as unknown as Prisma.InputJsonValue,
         estimatedSavingsBytes: result.estimatedSavingsBytes,
-        suggestedAction: result.suggestedAction as Record<string, unknown> | null,
+        suggestedAction: result.suggestedAction != null ? result.suggestedAction as unknown as Prisma.InputJsonValue : Prisma.JsonNull,
         expiresAt,
       },
     });

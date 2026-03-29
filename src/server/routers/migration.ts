@@ -8,7 +8,7 @@ import { computeReadiness } from "@/server/services/migration/readiness";
 import { translateBlocks } from "@/server/services/migration/ai-translator";
 import { generatePipeline } from "@/server/services/migration/pipeline-generator";
 import type { ParsedConfig, TranslationResult } from "@/server/services/migration/types";
-import type { Prisma } from "@/generated/prisma";
+import { Prisma } from "@/generated/prisma";
 
 export const migrationRouter = router({
   /** List all migration projects for a team */
@@ -275,7 +275,7 @@ export const migrationRouter = router({
           where: { id: input.id },
           data: {
             translatedBlocks: translationResult as unknown as Prisma.InputJsonValue,
-            validationResult: null,
+            validationResult: Prisma.JsonNull,
             status: "READY",
           },
         });

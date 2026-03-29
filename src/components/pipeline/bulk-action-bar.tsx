@@ -123,7 +123,7 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
   );
 
   const isPending =
-    deployBatchMutation.isPending ||
+    bulkDeployMutation.isPending ||
     bulkUndeployMutation.isPending ||
     bulkDeleteMutation.isPending ||
     bulkAddTagsMutation.isPending ||
@@ -178,7 +178,7 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
             setDeployOpen(true);
           }}
         >
-          {deployBatchMutation.isPending ? (
+          {bulkDeployMutation.isPending ? (
             <Loader2 className="h-3 w-3 animate-spin" />
           ) : (
             <Play className="h-3 w-3" />

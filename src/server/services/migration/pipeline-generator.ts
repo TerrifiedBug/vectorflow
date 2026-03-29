@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma";
 import { nanoid } from "nanoid";
 import type { TranslationResult, TranslatedBlock } from "./types";
 
@@ -140,7 +141,7 @@ export async function generatePipeline(
           componentKey: n.componentKey,
           componentType: n.componentType,
           kind: n.kind,
-          config: n.config,
+          config: n.config as unknown as Prisma.InputJsonValue,
           positionX: n.positionX,
           positionY: n.positionY,
         })),

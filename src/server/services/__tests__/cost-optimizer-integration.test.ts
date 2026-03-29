@@ -19,6 +19,7 @@ beforeEach(() => {
 describe("runCostAnalysis (integration)", () => {
   it("aggregates metrics and returns recommendations across all detectors", async () => {
     // Mock aggregated pipeline metrics
+    // @ts-expect-error - groupBy mock typing is complex
     prismaMock.pipelineMetric.groupBy.mockResolvedValue([
       {
         pipelineId: "pipe-low-reduction",
@@ -74,6 +75,7 @@ describe("runCostAnalysis (integration)", () => {
   });
 
   it("returns empty array when no pipelines have metrics", async () => {
+    // @ts-expect-error - groupBy mock typing is complex
     prismaMock.pipelineMetric.groupBy.mockResolvedValue([]);
     prismaMock.pipeline.findMany.mockResolvedValue([]);
     prismaMock.pipelineNode.findMany.mockResolvedValue([]);

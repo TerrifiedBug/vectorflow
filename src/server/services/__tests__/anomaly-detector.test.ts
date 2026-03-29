@@ -54,9 +54,9 @@ describe("computeBaseline", () => {
     const points = makeMetricPoints([100, 100, 100, 100, 100]);
     const baseline = computeBaseline(points);
 
-    expect(baseline.mean).toBe(100);
-    expect(baseline.stddev).toBe(0);
-    expect(baseline.sampleCount).toBe(5);
+    expect(baseline!.mean).toBe(100);
+    expect(baseline!.stddev).toBe(0);
+    expect(baseline!.sampleCount).toBe(5);
   });
 
   it("computes correct mean and stddev for variable dataset", () => {
@@ -64,18 +64,18 @@ describe("computeBaseline", () => {
     const points = makeMetricPoints([10, 20, 30, 40, 50]);
     const baseline = computeBaseline(points);
 
-    expect(baseline.mean).toBeCloseTo(30, 1);
-    expect(baseline.stddev).toBeCloseTo(14.14, 1);
-    expect(baseline.sampleCount).toBe(5);
+    expect(baseline!.mean).toBeCloseTo(30, 1);
+    expect(baseline!.stddev).toBeCloseTo(14.14, 1);
+    expect(baseline!.sampleCount).toBe(5);
   });
 
   it("returns zero stddev for single data point", () => {
     const points = makeMetricPoints([42]);
     const baseline = computeBaseline(points);
 
-    expect(baseline.mean).toBe(42);
-    expect(baseline.stddev).toBe(0);
-    expect(baseline.sampleCount).toBe(1);
+    expect(baseline!.mean).toBe(42);
+    expect(baseline!.stddev).toBe(0);
+    expect(baseline!.sampleCount).toBe(1);
   });
 
   it("returns null for empty dataset", () => {

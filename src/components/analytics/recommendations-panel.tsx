@@ -19,7 +19,7 @@ interface RecommendationsPanelProps {
 export function RecommendationsPanel({ environmentId }: RecommendationsPanelProps) {
   const trpc = useTRPC();
   const router = useRouter();
-  const pollingInterval = usePollingInterval();
+  const pollingInterval = usePollingInterval(60_000);
 
   const summaryQuery = useQuery(
     trpc.costRecommendation.summary.queryOptions(
@@ -108,7 +108,8 @@ export function RecommendationsPanel({ environmentId }: RecommendationsPanelProp
             {(listQuery.data ?? []).map((rec) => (
               <RecommendationCard
                 key={rec.id}
-                recommendation={rec}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                recommendation={rec as any}
                 environmentId={environmentId}
                 onApply={handleApply}
               />

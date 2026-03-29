@@ -41,6 +41,7 @@ function makeRule(
     threshold: overrides.threshold ?? 80,
     durationSeconds: overrides.durationSeconds ?? 0,
     snoozedUntil: overrides.snoozedUntil ?? null,
+    cooldownMinutes: overrides.cooldownMinutes ?? null,
     createdAt: overrides.createdAt ?? NOW,
     updatedAt: overrides.updatedAt ?? NOW,
     pipeline: overrides.pipeline ?? null,

@@ -51,6 +51,6 @@ export function useRecommendationContext(environmentId: string) {
   return {
     recommendation: query.data ?? null,
     isLoading: query.isLoading,
-    suggestedAction: (query.data?.suggestedAction as SuggestedAction) ?? null,
+    suggestedAction: (query.data?.suggestedAction as unknown as SuggestedAction) ?? null,
   };
 }

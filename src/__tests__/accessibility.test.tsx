@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
 import { axe } from "vitest-axe";
 import * as matchers from "vitest-axe/matchers";
+import "vitest-axe/extend-expect";
 
 // Extend Vitest expect with axe matchers
 expect.extend(matchers);
@@ -74,6 +75,7 @@ describe("Accessibility: WCAG 2.1 AA compliance", () => {
         region: { enabled: true },
       },
     });
+    // @ts-expect-error -- toHaveNoViolations is added by vitest-axe at runtime
     expect(results).toHaveNoViolations();
   });
 
@@ -102,6 +104,7 @@ describe("Accessibility: WCAG 2.1 AA compliance", () => {
     const results = await axe(container, {
       runOnly: ["wcag2a", "wcag2aa"],
     });
+    // @ts-expect-error -- toHaveNoViolations is added by vitest-axe at runtime
     expect(results).toHaveNoViolations();
   });
 
@@ -121,6 +124,7 @@ describe("Accessibility: WCAG 2.1 AA compliance", () => {
     );
 
     const results = await axe(container);
+    // @ts-expect-error -- toHaveNoViolations is added by vitest-axe at runtime
     expect(results).toHaveNoViolations();
   });
 
@@ -153,6 +157,7 @@ describe("Accessibility: WCAG 2.1 AA compliance", () => {
     const results = await axe(container, {
       runOnly: ["wcag2a", "wcag2aa"],
     });
+    // @ts-expect-error -- toHaveNoViolations is added by vitest-axe at runtime
     expect(results).toHaveNoViolations();
   });
 
@@ -170,6 +175,7 @@ describe("Accessibility: WCAG 2.1 AA compliance", () => {
     );
 
     const results = await axe(container);
+    // @ts-expect-error -- toHaveNoViolations is added by vitest-axe at runtime
     expect(results).toHaveNoViolations();
   });
 
@@ -195,6 +201,7 @@ describe("Accessibility: WCAG 2.1 AA compliance", () => {
     const results = await axe(container, {
       runOnly: ["wcag2a", "wcag2aa"],
     });
+    // @ts-expect-error -- toHaveNoViolations is added by vitest-axe at runtime
     expect(results).toHaveNoViolations();
   });
 

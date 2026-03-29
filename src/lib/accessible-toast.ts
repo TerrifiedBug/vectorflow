@@ -10,50 +10,51 @@
 import { toast as sonnerToast, type ExternalToast } from "sonner";
 
 type ToastMessage = string | React.ReactNode;
+type AccessibleToastOptions = ExternalToast & { role?: string; ariaLive?: string };
 
-function success(message: ToastMessage, options?: ExternalToast) {
+function success(message: ToastMessage, options?: AccessibleToastOptions) {
   return sonnerToast.success(message, {
     ...options,
     role: "status",
     ariaLive: "polite",
-  });
+  } as ExternalToast);
 }
 
-function error(message: ToastMessage, options?: ExternalToast) {
+function error(message: ToastMessage, options?: AccessibleToastOptions) {
   return sonnerToast.error(message, {
     ...options,
     role: "alert",
     ariaLive: "assertive",
-  });
+  } as ExternalToast);
 }
 
-function warning(message: ToastMessage, options?: ExternalToast) {
+function warning(message: ToastMessage, options?: AccessibleToastOptions) {
   return sonnerToast.warning(message, {
     ...options,
     role: "alert",
     ariaLive: "assertive",
-  });
+  } as ExternalToast);
 }
 
-function info(message: ToastMessage, options?: ExternalToast) {
+function info(message: ToastMessage, options?: AccessibleToastOptions) {
   return sonnerToast.info(message, {
     ...options,
     role: "status",
     ariaLive: "polite",
-  });
+  } as ExternalToast);
 }
 
-function loading(message: ToastMessage, options?: ExternalToast) {
+function loading(message: ToastMessage, options?: AccessibleToastOptions) {
   return sonnerToast.loading(message, {
     ...options,
     role: "status",
     ariaLive: "polite",
-  });
+  } as ExternalToast);
 }
 
 /** Drop-in replacement for sonner's toast with accessible defaults */
 export const accessibleToast = Object.assign(
-  (message: ToastMessage, options?: ExternalToast) =>
-    sonnerToast(message, { ...options, role: "status", ariaLive: "polite" }),
+  (message: ToastMessage, options?: AccessibleToastOptions) =>
+    sonnerToast(message, { ...options, role: "status", ariaLive: "polite" } as ExternalToast),
   { success, error, warning, info, loading, dismiss: sonnerToast.dismiss, promise: sonnerToast.promise }
 );

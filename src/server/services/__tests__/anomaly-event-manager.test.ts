@@ -174,6 +174,7 @@ describe("countOpenAnomalies", () => {
   });
 
   it("returns counts grouped by pipelineId", async () => {
+    // @ts-expect-error - groupBy mock typing is complex
     prismaMock.anomalyEvent.groupBy.mockResolvedValue([
       { pipelineId: "pipe-1", _count: { id: 3 } },
       { pipelineId: "pipe-2", _count: { id: 1 } },
@@ -188,6 +189,7 @@ describe("countOpenAnomalies", () => {
   });
 
   it("returns empty map when no open anomalies", async () => {
+    // @ts-expect-error - groupBy mock typing is complex
     prismaMock.anomalyEvent.groupBy.mockResolvedValue([] as never);
 
     const result = await countOpenAnomalies("env-1");
