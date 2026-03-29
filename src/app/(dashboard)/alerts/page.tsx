@@ -8,6 +8,7 @@ import { AlertRulesSection } from "./_components/alert-rules-section";
 import { NotificationChannelsSection } from "./_components/notification-channels-section";
 import { WebhooksSection } from "./_components/webhooks-section";
 import { AlertHistorySection } from "./_components/alert-history-section";
+import { FailedDeliveriesSection } from "./_components/failed-deliveries-section";
 
 // ─── Alerts Page ────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,10 @@ export default function AlertsPage() {
       <Separator />
 
       <AlertHistorySection environmentId={selectedEnvironmentId} />
+
+      <Separator />
+
+      <FailedDeliveriesSection environmentId={selectedEnvironmentId} />
     </div>
   );
 }

@@ -59,6 +59,7 @@ type PipelineAction struct {
 	ConfigPath string
 	LogLevel   string
 	Secrets    map[string]string
+	Checksum   string
 }
 
 // Poll fetches config from VectorFlow and returns actions to take.
@@ -117,6 +118,7 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 				ConfigPath: configPath,
 				LogLevel:   pc.LogLevel,
 				Secrets:    pc.Secrets,
+				Checksum:   pc.Checksum,
 			})
 		} else if prev.checksum != pc.Checksum {
 			// Config changed — rewrite and restart
@@ -132,6 +134,7 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 				ConfigPath: configPath,
 				LogLevel:   pc.LogLevel,
 				Secrets:    pc.Secrets,
+				Checksum:   pc.Checksum,
 			})
 		} else if prev.version != pc.Version {
 			// Version bumped but config unchanged — update version without restart

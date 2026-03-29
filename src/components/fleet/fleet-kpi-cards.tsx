@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatBytes, formatCount, formatPercent } from "@/lib/format";
-import { ArrowDownToLine, ArrowUpFromLine, Activity, Gauge } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Activity, Gauge, GitCompareArrows } from "lucide-react";
 
 interface FleetKpiCardsProps {
   data:
@@ -14,6 +14,8 @@ interface FleetKpiCardsProps {
         eventsOut: number;
         errorRate: number;
         nodeCount: number;
+        versionDriftCount: number;
+        configDriftCount: number;
       }
     | undefined;
   isLoading: boolean;
@@ -22,8 +24,8 @@ interface FleetKpiCardsProps {
 export function FleetKpiCards({ data, isLoading }: FleetKpiCardsProps) {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton key={i} className="h-28 w-full" />
         ))}
       </div>
@@ -31,7 +33,7 @@ export function FleetKpiCards({ data, isLoading }: FleetKpiCardsProps) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
       <Card>
         <CardContent className="p-4">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -84,6 +86,24 @@ export function FleetKpiCards({ data, isLoading }: FleetKpiCardsProps) {
           </p>
           <p className="text-xs text-muted-foreground">
             {formatPercent((data?.errorRate ?? 0) * 100)} error rate
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <GitCompareArrows className="h-4 w-4" />
+            Drift
+          </div>
+          <p className="mt-2 text-2xl font-bold tabular-nums">
+            {data?.versionDriftCount ?? 0}
+            <span className="text-base font-normal text-muted-foreground">
+              {" "}version
+            </span>
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {data?.configDriftCount ?? 0} config
           </p>
         </CardContent>
       </Card>

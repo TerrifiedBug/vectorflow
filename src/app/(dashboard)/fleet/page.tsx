@@ -36,6 +36,9 @@ import { Tag, Wrench } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DeploymentMatrix } from "@/components/fleet/deployment-matrix";
+import { NodeSummaryCards } from "@/components/fleet/NodeSummaryCards";
+import { FilterPresetBar } from "@/components/filter-preset/FilterPresetBar";
+import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
 import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { isVersionOlder } from "@/lib/version";
@@ -81,6 +84,31 @@ export default function FleetPage() {
     setTagFilter: setMatrixTagFilter,
   } = useMatrixFilters();
 
+  const [saveFilterOpen, setSaveFilterOpen] = useState(false);
+  const [exceptionsOnly, setExceptionsOnly] = useState(false);
+
+  // --- Auto-apply default filter preset on page load ---
+  const defaultPresetQuery = useQuery(
+    trpc.filterPreset.list.queryOptions(
+      { environmentId: activeEnvId, scope: "fleet_matrix" as const },
+      { enabled: !!activeEnvId },
+    ),
+  );
+
+  useEffect(() => {
+    if (!matrixHasActiveFilters && defaultPresetQuery.data) {
+      const defaultPreset = defaultPresetQuery.data.find((p) => p.isDefault);
+      if (defaultPreset) {
+        const f = defaultPreset.filters as Record<string, unknown>;
+        if (f.search && typeof f.search === "string") setMatrixSearch(f.search);
+        if (Array.isArray(f.status) && f.status.length > 0) setMatrixStatusFilter(f.status as string[]);
+        if (Array.isArray(f.tags) && f.tags.length > 0) setMatrixTagFilter(f.tags as string[]);
+      }
+    }
+    // Only run on initial data load, not on every filter change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultPresetQuery.data]);
+
   // Same query as DeploymentMatrix — React Query deduplicates by key
   const matrixQuery = useQuery({
     ...trpc.fleet.listWithPipelineStatus.queryOptions({ environmentId: activeEnvId }),
@@ -98,7 +126,7 @@ export default function FleetPage() {
     return [...tagSet].sort();
   }, [matrixQuery.data?.deployedPipelines]);
 
-  // Compute filtered pipelines with AND logic across search, status, and tag filters
+  // Compute filtered pipelines with AND logic across search, status, tag, and exceptions filters
   const filteredDeployedPipelines = useMemo(() => {
     let result = matrixQuery.data?.deployedPipelines ?? [];
     const nodes = matrixQuery.data?.nodes ?? [];
@@ -126,8 +154,23 @@ export default function FleetPage() {
       });
     }
 
+    // Show only pipelines with exceptions: version mismatch, crashed, or missing on some nodes
+    if (exceptionsOnly) {
+      result = result.filter((p) => {
+        const nodeStatuses = nodes.flatMap((n) =>
+          n.pipelineStatuses.filter((s) => s.pipelineId === p.id),
+        );
+        const hasCrashed = nodeStatuses.some((s) => s.status === "CRASHED");
+        const hasVersionMismatch = nodeStatuses.some(
+          (s) => s.version < p.latestVersion,
+        );
+        const deployedOnAllNodes = nodeStatuses.length >= nodes.length;
+        return hasCrashed || hasVersionMismatch || !deployedOnAllNodes;
+      });
+    }
+
     return result;
-  }, [matrixQuery.data, matrixSearch, matrixStatusFilter, matrixTagFilter]);
+  }, [matrixQuery.data, matrixSearch, matrixStatusFilter, matrixTagFilter, exceptionsOnly]);
 
   // Clear all matrix filters when environment changes (D-07)
   const prevEnvRef = useRef(activeEnvId);
@@ -581,29 +624,87 @@ export default function FleetPage() {
 
       {activeEnvId && (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Pipeline Deployment Matrix</h3>
-          {matrixQuery.data && (
-            <DeploymentMatrixToolbar
-              search={matrixSearch}
-              onSearchChange={setMatrixSearch}
-              statusFilter={matrixStatusFilter}
-              onStatusFilterChange={setMatrixStatusFilter}
-              tagFilter={matrixTagFilter}
-              onTagFilterChange={setMatrixTagFilter}
-              availableTags={availableTags}
-            />
-          )}
-          <DeploymentMatrix
+          <h3 className="text-lg font-semibold">Fleet Overview</h3>
+
+          {/* Top section: Node summary cards */}
+          <NodeSummaryCards
             environmentId={activeEnvId}
-            filteredPipelines={matrixQuery.data ? filteredDeployedPipelines : undefined}
-            hasActiveFilters={matrixHasActiveFilters}
-            onClearFilters={() => {
-              setMatrixSearch("");
-              setMatrixStatusFilter([]);
-              setMatrixTagFilter([]);
-            }}
           />
+
+          {/* Bottom section: Filtered deployment matrix */}
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium text-muted-foreground">
+              Deployment Matrix
+            </h4>
+            {matrixQuery.data && (
+              <DeploymentMatrixToolbar
+                search={matrixSearch}
+                onSearchChange={setMatrixSearch}
+                statusFilter={matrixStatusFilter}
+                onStatusFilterChange={setMatrixStatusFilter}
+                tagFilter={matrixTagFilter}
+                onTagFilterChange={setMatrixTagFilter}
+                availableTags={availableTags}
+                exceptionsOnly={exceptionsOnly}
+                onExceptionsOnlyChange={setExceptionsOnly}
+                presetBar={
+                  <FilterPresetBar
+                    environmentId={activeEnvId}
+                    scope="fleet_matrix"
+                    currentFilters={{
+                      search: matrixSearch,
+                      status: matrixStatusFilter,
+                      tags: matrixTagFilter,
+                    }}
+                    onApplyPreset={(filters) => {
+                      const f = filters as {
+                        search?: string;
+                        status?: string[];
+                        tags?: string[];
+                      };
+                      setMatrixSearch(f.search ?? "");
+                      setMatrixStatusFilter(f.status ?? []);
+                      setMatrixTagFilter(f.tags ?? []);
+                    }}
+                    onSaveClick={() => setSaveFilterOpen(true)}
+                  />
+                }
+              />
+            )}
+            {matrixHasActiveFilters ? (
+              <DeploymentMatrix
+                environmentId={activeEnvId}
+                filteredPipelines={matrixQuery.data ? filteredDeployedPipelines : undefined}
+                hasActiveFilters={matrixHasActiveFilters}
+                onClearFilters={() => {
+                  setMatrixSearch("");
+                  setMatrixStatusFilter([]);
+                  setMatrixTagFilter([]);
+                }}
+              />
+            ) : (
+              <div className="flex items-center justify-center rounded-lg border border-dashed p-12 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Filter by group, tag, or status to load the deployment matrix.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
+      )}
+
+      {activeEnvId && (
+        <SaveFilterDialog
+          open={saveFilterOpen}
+          onOpenChange={setSaveFilterOpen}
+          environmentId={activeEnvId}
+          scope="fleet_matrix"
+          filters={{
+            search: matrixSearch,
+            status: matrixStatusFilter,
+            tags: matrixTagFilter,
+          }}
+        />
       )}
 
       <ConfirmDialog

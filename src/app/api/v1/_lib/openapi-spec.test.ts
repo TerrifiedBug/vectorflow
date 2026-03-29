@@ -10,38 +10,61 @@ describe("generateOpenAPISpec", () => {
   it("has correct info.title and info.version", () => {
     const spec = generateOpenAPISpec();
     expect(spec.info.title).toBe("VectorFlow REST API");
-    expect(spec.info.version).toBe("1.0.0");
+    expect(spec.info.version).toBe("2.0.0");
   });
 
-  it("spec.paths contains all 16 REST v1 operations", () => {
+  it("spec.paths contains all REST v1 operations (original 16 + new endpoints)", () => {
     const spec = generateOpenAPISpec();
     const paths = spec.paths as Record<string, Record<string, unknown>>;
 
-    // Pipeline operations
+    // Original 16
     expect(paths["/api/v1/pipelines"]?.get).toBeDefined();
     expect(paths["/api/v1/pipelines/{id}"]?.get).toBeDefined();
     expect(paths["/api/v1/pipelines/{id}/deploy"]?.post).toBeDefined();
     expect(paths["/api/v1/pipelines/{id}/rollback"]?.post).toBeDefined();
     expect(paths["/api/v1/pipelines/{id}/undeploy"]?.post).toBeDefined();
     expect(paths["/api/v1/pipelines/{id}/versions"]?.get).toBeDefined();
-
-    // Node operations
     expect(paths["/api/v1/nodes"]?.get).toBeDefined();
     expect(paths["/api/v1/nodes/{id}"]?.get).toBeDefined();
     expect(paths["/api/v1/nodes/{id}/maintenance"]?.post).toBeDefined();
-
-    // Secret operations
     expect(paths["/api/v1/secrets"]?.get).toBeDefined();
     expect(paths["/api/v1/secrets"]?.post).toBeDefined();
     expect(paths["/api/v1/secrets"]?.put).toBeDefined();
     expect(paths["/api/v1/secrets"]?.delete).toBeDefined();
-
-    // Alert operations
     expect(paths["/api/v1/alerts/rules"]?.get).toBeDefined();
     expect(paths["/api/v1/alerts/rules"]?.post).toBeDefined();
-
-    // Audit operations
     expect(paths["/api/v1/audit"]?.get).toBeDefined();
+
+    // New — Tier 1: Pipeline lifecycle
+    expect(paths["/api/v1/pipelines"]?.post).toBeDefined();
+    expect(paths["/api/v1/pipelines/{id}"]?.put).toBeDefined();
+    expect(paths["/api/v1/pipelines/{id}"]?.delete).toBeDefined();
+    expect(paths["/api/v1/pipelines/{id}/config"]?.get).toBeDefined();
+    expect(paths["/api/v1/pipelines/{id}/nodes"]?.post).toBeDefined();
+    expect(paths["/api/v1/pipelines/{id}/nodes/{nodeId}"]?.put).toBeDefined();
+    expect(paths["/api/v1/pipelines/{id}/nodes/{nodeId}"]?.delete).toBeDefined();
+    expect(paths["/api/v1/pipelines/{id}/edges"]?.post).toBeDefined();
+    expect(paths["/api/v1/pipelines/{id}/edges/{edgeId}"]?.delete).toBeDefined();
+    expect(paths["/api/v1/pipelines/import"]?.post).toBeDefined();
+
+    // New — Tier 2: Fleet & monitoring
+    expect(paths["/api/v1/nodes"]?.post).toBeDefined();
+    expect(paths["/api/v1/nodes/{id}"]?.delete).toBeDefined();
+    expect(paths["/api/v1/nodes/{id}/labels"]?.put).toBeDefined();
+    expect(paths["/api/v1/nodes/{id}/metrics"]?.get).toBeDefined();
+    expect(paths["/api/v1/pipelines/{id}/metrics"]?.get).toBeDefined();
+    expect(paths["/api/v1/pipelines/{id}/logs"]?.get).toBeDefined();
+    expect(paths["/api/v1/pipelines/{id}/health"]?.get).toBeDefined();
+    expect(paths["/api/v1/fleet/overview"]?.get).toBeDefined();
+
+    // New — Tier 3: Advanced operations
+    expect(paths["/api/v1/pipelines/{id}/promote"]?.post).toBeDefined();
+    expect(paths["/api/v1/deploy-requests"]?.get).toBeDefined();
+    expect(paths["/api/v1/deploy-requests/{id}/approve"]?.post).toBeDefined();
+    expect(paths["/api/v1/deploy-requests/{id}/reject"]?.post).toBeDefined();
+    expect(paths["/api/v1/node-groups"]?.get).toBeDefined();
+    expect(paths["/api/v1/node-groups"]?.post).toBeDefined();
+    expect(paths["/api/v1/environments"]?.get).toBeDefined();
   });
 
   it("every REST v1 operation has a security requirement referencing BearerAuth", () => {

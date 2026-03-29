@@ -65,6 +65,7 @@ export async function gitSyncCommitPipeline(
   configYaml: string,
   author: GitAuthor,
   commitMessage: string,
+  gitPath?: string | null,
 ): Promise<GitSyncResult> {
   let workdir: string | null = null;
 
@@ -78,11 +79,12 @@ export async function gitSyncCommitPipeline(
     await git.clone(url, repoDir, ["--branch", config.branch, "--depth", "1", "--single-branch"]);
     const repoGit: SimpleGit = simpleGit(repoDir);
 
-    // Write the pipeline YAML file
-    const envDir = toFilenameSlug(environmentName);
-    const filename = `${toFilenameSlug(pipelineName)}.yaml`;
-    const filePath = join(envDir, filename);
+    // Use gitPath if provided, otherwise derive from name
+    const filePath = gitPath ?? join(toFilenameSlug(environmentName), `${toFilenameSlug(pipelineName)}.yaml`);
     const fullPath = join(repoDir, filePath);
+
+    // Ensure directory exists
+    const envDir = filePath.includes("/") ? filePath.substring(0, filePath.lastIndexOf("/")) : toFilenameSlug(environmentName);
 
     await mkdir(join(repoDir, envDir), { recursive: true });
     await writeFile(fullPath, configYaml, "utf-8");
@@ -124,6 +126,7 @@ export async function gitSyncDeletePipeline(
   environmentName: string,
   pipelineName: string,
   author: GitAuthor,
+  gitPath?: string | null,
 ): Promise<GitSyncResult> {
   let workdir: string | null = null;
 
@@ -137,9 +140,7 @@ export async function gitSyncDeletePipeline(
     await git.clone(url, repoDir, ["--branch", config.branch, "--depth", "1", "--single-branch"]);
     const repoGit: SimpleGit = simpleGit(repoDir);
 
-    const envDir = toFilenameSlug(environmentName);
-    const filename = `${toFilenameSlug(pipelineName)}.yaml`;
-    const filePath = join(envDir, filename);
+    const filePath = gitPath ?? join(toFilenameSlug(environmentName), `${toFilenameSlug(pipelineName)}.yaml`);
 
     try {
       await repoGit.rm(filePath);

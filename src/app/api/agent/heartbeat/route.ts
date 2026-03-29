@@ -60,6 +60,7 @@ const heartbeatSchema = z.object({
       latencyMeanSeconds: z.number().optional(), // NEW
     })).optional(),
     utilization: z.number().optional(),
+    configChecksum: z.string().max(128).optional(),
     recentLogs: z.array(z.string()).optional(),
   })),
   hostMetrics: z.object({
@@ -116,6 +117,7 @@ interface PipelineStatus {
     latencyMeanSeconds?: number; // NEW
   }>;
   utilization?: number;
+  configChecksum?: string;
   recentLogs?: string[];
 }
 

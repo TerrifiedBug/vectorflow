@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
+import type { PrismaClient } from "@/generated/prisma";
 
 vi.mock("@/lib/prisma", () => ({
-  prisma: { $queryRaw: vi.fn() },
+  prisma: mockDeep<PrismaClient>(),
+}));
+
+vi.mock("@/server/services/drift-metrics", () => ({
+  getExpectedChecksums: vi.fn().mockReturnValue(new Map()),
 }));
 
 import { prisma } from "@/lib/prisma";
@@ -15,13 +21,20 @@ import {
   type TimeRange,
 } from "@/server/services/fleet-data";
 
-const mockQueryRaw = prisma.$queryRaw as ReturnType<typeof vi.fn>;
+const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
+const mockQueryRaw = prismaMock.$queryRaw as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mockReset(prismaMock);
 });
 
 describe("getFleetOverview", () => {
+  /** Mock the additional drift queries that getFleetOverview now runs. */
+  function mockDriftQueries() {
+    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([]);
+    prismaMock.pipeline.findMany.mockResolvedValue([]);
+  }
+
   it("returns computed KPIs from aggregated metrics", async () => {
     mockQueryRaw
       .mockResolvedValueOnce([
@@ -34,6 +47,7 @@ describe("getFleetOverview", () => {
         },
       ])
       .mockResolvedValueOnce([{ count: BigInt(3) }]);
+    mockDriftQueries();
 
     const result = await getFleetOverview("env-1", "7d");
 
@@ -44,6 +58,8 @@ describe("getFleetOverview", () => {
       eventsOut: 490,
       errorRate: 10 / 500,
       nodeCount: 3,
+      versionDriftCount: 0,
+      configDriftCount: 0,
     });
   });
 
@@ -59,6 +75,7 @@ describe("getFleetOverview", () => {
         },
       ])
       .mockResolvedValueOnce([{ count: BigInt(0) }]);
+    mockDriftQueries();
 
     const result = await getFleetOverview("env-1", "1d");
 
@@ -69,6 +86,8 @@ describe("getFleetOverview", () => {
       eventsOut: 0,
       errorRate: 0,
       nodeCount: 0,
+      versionDriftCount: 0,
+      configDriftCount: 0,
     });
   });
 
@@ -84,10 +103,37 @@ describe("getFleetOverview", () => {
         },
       ])
       .mockResolvedValueOnce([{ count: BigInt(1) }]);
+    mockDriftQueries();
 
     const result = await getFleetOverview("env-1", "1h");
 
     expect(result.errorRate).toBe(0.1);
+  });
+
+  it("returns versionDriftCount when nodes run non-latest versions", async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([
+        {
+          bytes_in: BigInt(1000),
+          bytes_out: BigInt(800),
+          events_in: BigInt(100),
+          events_out: BigInt(90),
+          errors_total: BigInt(0),
+        },
+      ])
+      .mockResolvedValueOnce([{ count: BigInt(3) }]);
+
+    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+      { nodeId: "node-1", pipelineId: "pipe-1", version: 4, configChecksum: null },
+      { nodeId: "node-2", pipelineId: "pipe-1", version: 5, configChecksum: null },
+    ] as never);
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "pipe-1", versions: [{ version: 5 }] },
+    ] as never);
+
+    const result = await getFleetOverview("env-1", "1d");
+    expect(result.versionDriftCount).toBe(1);
+    expect(result.configDriftCount).toBe(0);
   });
 });
 

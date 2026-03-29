@@ -23,6 +23,8 @@ import {
   X,
   Sparkles,
   Keyboard,
+  Search,
+  LayoutGrid,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -53,6 +55,8 @@ import { useSession } from "next-auth/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { VersionHistoryDialog } from "@/components/pipeline/version-history-dialog";
 import { KeyboardShortcutsDialog } from "@/components/flow/keyboard-shortcuts-dialog";
+import { Input } from "@/components/ui/input";
+import { useCanvasSearch } from "@/hooks/use-canvas-search";
 
 type ProcessStatusValue = "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING";
 
@@ -125,6 +129,15 @@ export function FlowToolbar({
   const removeNode = useFlowStore((s) => s.removeNode);
   const removeEdge = useFlowStore((s) => s.removeEdge);
   const loadGraph = useFlowStore((s) => s.loadGraph);
+  const autoLayout = useFlowStore((s) => s.autoLayout);
+  const selectedNodeIds = useFlowStore((s) => s.selectedNodeIds);
+  const canvasSearchTerm = useFlowStore((s) => s.canvasSearchTerm);
+  const canvasSearchMatchIds = useFlowStore((s) => s.canvasSearchMatchIds);
+  const canvasSearchActiveIndex = useFlowStore((s) => s.canvasSearchActiveIndex);
+  const setCanvasSearchTerm = useFlowStore((s) => s.setCanvasSearchTerm);
+  const cycleCanvasSearchMatch = useFlowStore((s) => s.cycleCanvasSearchMatch);
+  const clearCanvasSearch = useFlowStore((s) => s.clearCanvasSearch);
+  useCanvasSearch();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -427,6 +440,54 @@ export function FlowToolbar({
             <PipelineSettings pipelineId={pipelineId} />
           </PopoverContent>
         </Popover>
+
+        <div className="relative flex items-center gap-1">
+          <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={canvasSearchTerm}
+            onChange={(e) => setCanvasSearchTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                cycleCanvasSearchMatch(e.shiftKey ? "prev" : "next");
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                clearCanvasSearch();
+              }
+            }}
+            placeholder="Search nodes..."
+            className="h-7 w-[140px] pl-7 text-xs"
+          />
+          {canvasSearchTerm && canvasSearchMatchIds.length > 0 && (
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {canvasSearchActiveIndex + 1}/{canvasSearchMatchIds.length}
+            </span>
+          )}
+          {canvasSearchTerm && canvasSearchMatchIds.length === 0 && (
+            <span className="text-xs text-destructive whitespace-nowrap">
+              No matches
+            </span>
+          )}
+        </div>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => autoLayout(selectedNodeIds.size > 1)}
+              disabled={nodes.length === 0}
+              className="h-7 w-7 p-0"
+              aria-label="Auto-layout"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {selectedNodeIds.size > 1 ? "Auto-layout selected" : "Auto-layout all"}
+          </TooltipContent>
+        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
