@@ -158,6 +158,8 @@ model Environment {
   promotionTargets        PromotionRequest[] @relation("PromotionTargetEnv")
   filterPresets           FilterPreset[]
   gitSyncJobs             GitSyncJob[]
+  costPerGbCents          Int           @default(0)       // cents per GB processed (0 = volume-only)
+  costBudgetCents         Int?                            // monthly budget in cents (null = no budget)
   createdAt               DateTime      @default(now())
 }
 
@@ -854,6 +856,7 @@ enum AlertMetric {
   // Phase 5 event — enum value added early so subscriptions can be created
   promotion_completed
   git_sync_failed
+  cost_threshold_exceeded   // fires when monthly cost exceeds costBudgetCents
 }
 
 enum AlertCondition {
