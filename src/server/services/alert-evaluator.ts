@@ -17,6 +17,7 @@ export const FLEET_METRICS = new Set<AlertMetric>([
   "fleet_event_volume",
   "node_load_imbalance",
   "version_drift",
+  "cost_threshold_exceeded",
 ]);
 
 // ---------------------------------------------------------------------------

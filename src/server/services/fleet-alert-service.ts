@@ -13,6 +13,7 @@ import {
 } from "@/server/services/fleet-metrics";
 import type { LoadImbalanceResult } from "@/server/services/fleet-metrics";
 import { getVersionDrift } from "@/server/services/drift-metrics";
+import { evaluateCostAlerts } from "@/server/services/cost-alert";
 
 // Re-export the constant for downstream use (e.g. T03 validation)
 export { FLEET_METRICS } from "@/server/services/alert-evaluator";
@@ -106,6 +107,15 @@ export class FleetAlertService {
 
       // Deliver notifications for all fired/resolved events
       await this.deliverAlerts(results);
+
+      // Evaluate cost budget alerts
+      try {
+        await evaluateCostAlerts();
+        // Cost alerts don't need to be added to FiredFleetAlertEvent results
+        // since they have their own delivery path
+      } catch (err) {
+        console.error("[fleet-alert-service] Cost alert evaluation failed:", err);
+      }
     } catch (err) {
       console.error("[fleet-alert-service] Poll loop error:", err);
     }
