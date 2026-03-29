@@ -1,5 +1,5 @@
 import { PrometheusMetricsService } from "@/server/services/prometheus-metrics";
-import { authenticateApiKey } from "@/server/middleware/api-auth";
+import { authenticateApiKey, hasPermission } from "@/server/middleware/api-auth";
 
 const service = new PrometheusMetricsService();
 
@@ -12,7 +12,7 @@ const service = new PrometheusMetricsService();
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   const ctx = await authenticateApiKey(authHeader);
-  if (!ctx) {
+  if (!ctx || !hasPermission(ctx, "metrics.read")) {
     return new Response("Unauthorized\n", {
       status: 401,
       headers: { "Content-Type": "text/plain; charset=utf-8" },

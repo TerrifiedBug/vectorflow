@@ -13,6 +13,8 @@ vi.mock("@/server/services/prometheus-metrics", () => ({
 
 vi.mock("@/server/middleware/api-auth", () => ({
   authenticateApiKey: (...args: unknown[]) => mockAuthenticateApiKey(...args),
+  hasPermission: (ctx: { permissions: string[] }, perm: string) =>
+    ctx.permissions.includes(perm),
 }));
 
 import { GET } from "@/app/api/metrics/route";
@@ -47,6 +49,21 @@ describe("GET /api/metrics", () => {
 
     expect(response.status).toBe(401);
     expect(mockAuthenticateApiKey).toHaveBeenCalledWith("Bearer invalid_token");
+  });
+
+  it("returns 401 when token lacks metrics.read permission", async () => {
+    mockAuthenticateApiKey.mockResolvedValue({
+      serviceAccountId: "sa-1",
+      serviceAccountName: "deploy-bot",
+      environmentId: "env-1",
+      permissions: ["pipelines.deploy"],
+    });
+
+    const response = await GET(
+      makeRequest({ Authorization: "Bearer vf_deploy_token" }),
+    );
+
+    expect(response.status).toBe(401);
   });
 
   it("returns metrics when valid token provided", async () => {
