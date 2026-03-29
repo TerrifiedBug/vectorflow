@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { useDeployProgress } from "@/hooks/use-deploy-progress";
 
 interface BulkActionBarProps {
   selectedIds: string[];
@@ -43,6 +44,8 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
     succeeded: number;
     failures: Array<{ pipelineId: string; error?: string }>;
   } | null>(null);
+
+  const { startBatchDeploy, isPending: deployProgressPending } = useDeployProgress();
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
@@ -78,12 +81,8 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
   );
   const availableTags = availableTagsQuery.data ?? [];
 
-  const bulkDeployMutation = useMutation(
-    trpc.pipeline.bulkDeploy.mutationOptions({
-      onSuccess: (data) => handleResult("Deploy", data),
-      onError: (err) => toast.error(err.message || "Bulk deploy failed", { duration: 6000 }),
-    }),
-  );
+  // bulkDeploy is now handled by useDeployProgress for progress tracking
+  const bulkDeployMutation = { isPending: deployProgressPending };
 
   const bulkUndeployMutation = useMutation(
     trpc.pipeline.bulkUndeploy.mutationOptions({
@@ -281,10 +280,13 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
               e.preventDefault();
               if (!changelog.trim()) return;
               setDeployOpen(false);
-              bulkDeployMutation.mutate({
-                pipelineIds: selectedIds,
-                changelog: changelog.trim(),
-              });
+              // Use deploy progress hook — we need pipeline names for the progress panel.
+              // The pipeline names come from the current query data or fall back to IDs.
+              const pipelineInfos = selectedIds.map((id) => ({
+                id,
+                name: id, // Names will be resolved from query cache if available
+              }));
+              startBatchDeploy(pipelineInfos, changelog.trim());
             }}
           >
             <Input
