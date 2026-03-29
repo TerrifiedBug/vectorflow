@@ -41,3 +41,11 @@ function createPrismaClient() {
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+// Seed DLP templates on startup (idempotent via upsert)
+import { seedDlpTemplates } from "@/server/services/dlp-template-seed";
+import { debugLog } from "@/lib/logger";
+
+seedDlpTemplates()
+  .then(() => debugLog("startup", "DLP templates seeded"))
+  .catch((err) => console.error("[startup] Failed to seed DLP templates", err));
