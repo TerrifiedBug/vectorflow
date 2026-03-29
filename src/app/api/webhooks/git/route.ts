@@ -9,8 +9,12 @@ import { executePromotion } from "@/server/services/promotion-service";
 import { getProvider } from "@/server/services/git-providers";
 import type { GitWebhookEvent } from "@/server/services/git-providers";
 import { toFilenameSlug } from "@/server/services/git-sync";
+import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
 
 export async function POST(req: NextRequest) {
+  const rateLimited = checkIpRateLimit(req, "webhook", 30);
+  if (rateLimited) return rateLimited;
+
   const body = await req.text();
 
   // 1. Find environments with gitOps webhook configured.
