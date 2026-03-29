@@ -147,6 +147,16 @@ export async function register() {
     } catch (error) {
       console.error("Failed to initialize git sync retry service:", error);
     }
+
+    // Start anomaly detection service.
+    try {
+      const { initAnomalyDetectionService } = await import(
+        "@/server/services/anomaly-detection-job"
+      );
+      initAnomalyDetectionService();
+    } catch (error) {
+      console.error("Failed to initialize anomaly detection service:", error);
+    }
   }
 
   if (leaderIsLeader()) {
