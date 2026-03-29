@@ -317,7 +317,7 @@ export default function FleetPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" role="region" aria-label="Fleet management">
       <FleetTabs active="nodes" />
 
       {/* Toolbar — shown when not loading and nodes exist or filters active */}
@@ -623,7 +623,7 @@ export default function FleetPage() {
       )}
 
       {activeEnvId && (
-        <div className="space-y-4">
+        <div className="space-y-4" role="region" aria-label="Fleet overview">
           <h3 className="text-lg font-semibold">Fleet Overview</h3>
 
           {/* Top section: Node summary cards */}

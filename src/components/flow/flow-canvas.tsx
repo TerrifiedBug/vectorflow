@@ -164,7 +164,7 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   );
 
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full" role="region" aria-label="Pipeline editor canvas">
       <ReactFlow
         nodes={nodes}
         edges={edges}
