@@ -116,7 +116,7 @@ export function AppSidebar() {
   const effectiveEnvId = selectedEnvironmentId || environments[0]?.id || "";
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" aria-label="Main navigation">
       <SidebarHeader className="p-0">
         <div className="flex h-14 items-center px-4 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
           {isSubMode ? (
@@ -150,6 +150,7 @@ export function AppSidebar() {
             "absolute inset-0 transition-transform duration-200 ease-out motion-reduce:transition-none",
             isSubMode ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100",
           )}
+          aria-hidden={isSubMode}
         >
           <SidebarGroup>
             <SidebarGroupLabel>Navigation</SidebarGroupLabel>
@@ -196,6 +197,7 @@ export function AppSidebar() {
             "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
             isSettingsMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
           )}
+          aria-hidden={!isSettingsMode}
         >
           {settingsNavGroups.map((group) => {
             const visibleGroupItems = group.items.filter((item) => {
@@ -236,6 +238,7 @@ export function AppSidebar() {
             "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
             isLibraryMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
           )}
+          aria-hidden={!isLibraryMode}
         >
           <SidebarGroup>
             <SidebarGroupLabel>Browse</SidebarGroupLabel>
@@ -267,6 +270,7 @@ export function AppSidebar() {
             "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
             isPipelinesMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
           )}
+          aria-hidden={!isPipelinesMode}
         >
           <SidebarGroup>
             <SidebarGroupLabel className="flex items-center justify-between">
@@ -301,7 +305,12 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={toggleSidebar} tooltip={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+            <SidebarMenuButton
+              onClick={toggleSidebar}
+              tooltip={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-expanded={!isCollapsed}
+              aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
               {isCollapsed ? <ChevronsRight /> : <ChevronsLeft />}
               <span>Collapse</span>
             </SidebarMenuButton>

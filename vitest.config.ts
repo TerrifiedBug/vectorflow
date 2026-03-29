@@ -11,5 +11,8 @@ export default defineConfig({
     globals: false,
     exclude: ["src/generated/**", "node_modules/**"],
     include: ["src/**/*.test.ts", "src/**/*.test.tsx", "docker/**/*.test.ts"],
+    environmentMatchGlobs: [
+      ["src/__tests__/accessibility*.test.tsx", "jsdom"],
+    ],
   },
 });

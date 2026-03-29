@@ -86,6 +86,12 @@ export default function DashboardLayout({
   if (isTeamless) {
     return (
       <div className="flex min-h-screen flex-col">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          Skip to main content
+        </a>
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <div className="ml-auto flex items-center gap-2">
             <Button variant="ghost" size="icon" asChild aria-label="Documentation">
@@ -121,7 +127,7 @@ export default function DashboardLayout({
             </DropdownMenu>
           </div>
         </header>
-        <div className="flex flex-1 items-center justify-center">
+        <main id="main-content" className="flex flex-1 items-center justify-center" tabIndex={-1}>
           <div className="mx-auto max-w-md text-center space-y-4">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
               <ShieldAlert className="h-8 w-8 text-muted-foreground" />
@@ -140,7 +146,7 @@ export default function DashboardLayout({
               Sign Out
             </Button>
           </div>
-        </div>
+        </main>
         <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
       </div>
     );
@@ -148,9 +154,15 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+      >
+        Skip to main content
+      </a>
       <AppSidebar />
       <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4" aria-label="Dashboard header">
           <TeamSelector />
           <Separator orientation="vertical" className="!h-5" />
           <EnvironmentSelector />
@@ -199,11 +211,11 @@ export default function DashboardLayout({
         <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
         <UpdateBanner />
         <LazyMotionProvider>
-          <div className="flex-1 py-2 px-6">
+          <main id="main-content" className="flex-1 py-2 px-6" tabIndex={-1}>
             <ErrorBoundary>
               {children}
             </ErrorBoundary>
-          </div>
+          </main>
         </LazyMotionProvider>
       </SidebarInset>
     </SidebarProvider>

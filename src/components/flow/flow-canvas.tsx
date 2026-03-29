@@ -164,7 +164,7 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   );
 
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full" role="region" aria-label="Pipeline editor canvas">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -180,9 +180,13 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
         isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}
         proOptions={{ hideAttribution: true }}
+        deleteKeyCode={null}
+        selectionKeyCode="Shift"
+        multiSelectionKeyCode="Meta"
+        aria-roledescription="Pipeline editor canvas. Use arrow keys to navigate between nodes, Enter to select, Escape to deselect."
       >
         <Background gap={16} size={1} />
-        <Controls className="!bg-card !border-border !shadow-md [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-accent" />
+        <Controls className="!bg-card !border-border !shadow-md [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-accent [&>button:focus-visible]:!ring-2 [&>button:focus-visible]:!ring-ring [&>button:focus-visible]:!outline-none" />
         <MiniMap
           nodeColor={minimapNodeColor}
           maskColor="rgba(0, 0, 0, 0.6)"

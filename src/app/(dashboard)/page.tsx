@@ -186,7 +186,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" role="region" aria-label="Dashboard overview">
       {/* ── Tab Bar ────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 border-b px-1 overflow-x-auto">
         <button
@@ -284,7 +284,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-          <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+          <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-6" aria-live="polite" aria-atomic="false" aria-relevant="text">
             {/* Total Nodes */}
             <StaggerItem>
             <Card>
@@ -293,7 +293,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-muted-foreground">Total Nodes</p>
                   <Server className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">{stats.data?.nodes ?? 0}</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums" role="status">{stats.data?.nodes ?? 0}</p>
               </CardContent>
             </Card>
             </StaggerItem>
@@ -332,7 +332,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-muted-foreground">Pipelines</p>
                   <GitBranch className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">{stats.data?.pipelines ?? 0}</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums" role="status">{stats.data?.pipelines ?? 0}</p>
               </CardContent>
             </Card>
             </StaggerItem>
@@ -404,7 +404,7 @@ export default function DashboardPage() {
                 </div>
                 {(stats.data?.alerts ?? 0) > 0 ? (
                   <>
-                    <p className="mt-1 text-2xl font-semibold tabular-nums">{stats.data?.alerts ?? 0}</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums" role="status">{stats.data?.alerts ?? 0}</p>
                     <Link href="/alerts" className="text-sm text-muted-foreground hover:text-foreground">
                       View alerts
                     </Link>
