@@ -31,6 +31,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { LazyMotionProvider } from "@/components/motion/lazy-motion-provider";
 import { UpdateBanner } from "@/components/update-banner";
+import { CommandPalette } from "@/components/command-palette";
 
 export default function DashboardLayout({
   children,
@@ -198,6 +199,7 @@ export default function DashboardLayout({
         </header>
         <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
         <UpdateBanner />
+        <CommandPalette />
         <LazyMotionProvider>
           <div className="flex-1 py-2 px-6">
             <ErrorBoundary>
