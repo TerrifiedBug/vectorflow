@@ -2,6 +2,15 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { generateOpenAPISpec } from "@/app/api/v1/_lib/openapi-spec";
 
+function getCorsHeaders(): Record<string, string> {
+  const origin = process.env.NEXTAUTH_URL?.replace(/\/+$/, "") ?? "*";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+}
+
 // Cache the serialized spec at module level so repeated requests are cheap
 let _specJson: string | null = null;
 
@@ -29,6 +38,16 @@ export async function GET() {
 
   return new NextResponse(getSpecJson(), {
     status: 200,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...getCorsHeaders(),
+    },
+  });
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: getCorsHeaders(),
   });
 }
