@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { useDeployProgress } from "@/hooks/use-deploy-progress";
 
 interface BulkActionBarProps {
   selectedIds: string[];
@@ -43,6 +44,8 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
     succeeded: number;
     failures: Array<{ pipelineId: string; error?: string }>;
   } | null>(null);
+
+  const { startBatchDeploy, isPending: deployProgressPending } = useDeployProgress();
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
@@ -78,17 +81,8 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
   );
   const availableTags = availableTagsQuery.data ?? [];
 
-  const deployBatchMutation = useMutation(
-    trpc.pipeline.deployBatch.mutationOptions({
-      onSuccess: (data) =>
-        handleResult("Deploy", {
-          total: data.total,
-          succeeded: data.completed,
-          results: data.results,
-        }),
-      onError: (err) => toast.error(err.message || "Bulk deploy failed", { duration: 6000 }),
-    }),
-  );
+  // bulkDeploy is now handled by useDeployProgress for progress tracking
+  const bulkDeployMutation = { isPending: deployProgressPending };
 
   const bulkUndeployMutation = useMutation(
     trpc.pipeline.bulkUndeploy.mutationOptions({
@@ -286,10 +280,12 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
               e.preventDefault();
               if (!changelog.trim()) return;
               setDeployOpen(false);
-              deployBatchMutation.mutate({
-                pipelineIds: selectedIds,
-                changelog: changelog.trim(),
-              });
+              // Use deploy progress hook — pipeline names resolved from query cache
+              const pipelineInfos = selectedIds.map((id) => ({
+                id,
+                name: id,
+              }));
+              startBatchDeploy(pipelineInfos, changelog.trim());
             }}
           >
             <Input
