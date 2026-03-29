@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StaggerList, StaggerItem } from "@/components/motion/stagger-list";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useEnvironmentStore } from "@/stores/environment-store";
+import { AnomalyBadge } from "@/components/anomaly-badge";
 import {
   MetricsFilterBar,
   type TimeRange,
@@ -106,6 +107,35 @@ export default function DashboardPage() {
     }
     return { running, stopped, crashed };
   }, [pipelineCards.data]);
+
+  // ── Anomaly counts for dashboard summary ─────────────────────
+  const anomalyCountsQuery = useQuery(
+    trpc.anomaly.countByPipeline.queryOptions(
+      { environmentId: selectedEnvironmentId ?? "" },
+      { enabled: !!selectedEnvironmentId && activeView === null },
+    ),
+  );
+  const anomalySeveritiesQuery = useQuery(
+    trpc.anomaly.maxSeverityByPipeline.queryOptions(
+      { environmentId: selectedEnvironmentId ?? "" },
+      { enabled: !!selectedEnvironmentId && activeView === null },
+    ),
+  );
+
+  const totalAnomalies = useMemo(
+    () => Object.values(anomalyCountsQuery.data ?? {}).reduce(
+      (sum, count) => sum + count,
+      0,
+    ),
+    [anomalyCountsQuery.data],
+  );
+  const maxEnvSeverity = useMemo(() => {
+    const severities = Object.values(anomalySeveritiesQuery.data ?? {});
+    if (severities.includes("critical")) return "critical";
+    if (severities.includes("warning")) return "warning";
+    if (severities.includes("info")) return "info";
+    return "info";
+  }, [anomalySeveritiesQuery.data]);
 
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedPipelineIds, setSelectedPipelineIds] = useState<string[]>([]);
@@ -402,12 +432,21 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-muted-foreground">Active Alerts</p>
                   <Bell className="h-4 w-4 text-muted-foreground" />
                 </div>
-                {(stats.data?.alerts ?? 0) > 0 ? (
+                {(stats.data?.alerts ?? 0) > 0 || totalAnomalies > 0 ? (
                   <>
                     <p className="mt-1 text-2xl font-semibold tabular-nums" role="status">{stats.data?.alerts ?? 0}</p>
                     <Link href="/alerts" className="text-sm text-muted-foreground hover:text-foreground">
                       View alerts
                     </Link>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums">{(stats.data?.alerts ?? 0) + totalAnomalies}</p>
+                    <div className="flex items-center gap-2">
+                      <Link href="/alerts" className="text-sm text-muted-foreground hover:text-foreground">
+                        View alerts
+                      </Link>
+                      {totalAnomalies > 0 && (
+                        <AnomalyBadge count={totalAnomalies} severity={maxEnvSeverity} />
+                      )}
+                    </div>
                   </>
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground">No active alerts</p>
