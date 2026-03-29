@@ -33,7 +33,7 @@ describe("checkIpRateLimit", () => {
     expect(result!.status).toBe(429);
   });
 
-  it("includes Retry-After header on 429", async () => {
+  it("includes Retry-After header on 429", () => {
     for (let i = 0; i < 5; i++) {
       checkIpRateLimit(makeRequest("9.0.1.2"), "setup", 5);
     }
@@ -49,15 +49,16 @@ describe("checkIpRateLimit", () => {
     expect(checkIpRateLimit(makeRequest("10.0.0.2"), "enroll", 10)).toBeNull();
   });
 
-  it("extracts IP from x-forwarded-for (first entry)", () => {
+  it("extracts IP from x-forwarded-for (rightmost entry)", () => {
     const req = makeRequest(undefined, {
       "x-forwarded-for": "203.0.113.50, 70.41.3.18, 150.172.238.178",
     });
     for (let i = 0; i < 10; i++) {
       checkIpRateLimit(req, "enroll", 10);
     }
+    // Rightmost entry is the proxy-appended IP
     const blocked = checkIpRateLimit(
-      makeRequest("203.0.113.50"),
+      makeRequest("150.172.238.178"),
       "enroll",
       10,
     );
