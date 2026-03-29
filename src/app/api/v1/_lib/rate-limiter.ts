@@ -59,6 +59,37 @@ export class RateLimiter {
     };
   }
 
+  /** Rate-limit by an explicit key (no tier suffix appended). */
+  checkKey(key: string, limit: number): RateLimitResult {
+    const now = Date.now();
+    const cutoff = now - WINDOW_MS;
+
+    let window = this.windows.get(key);
+    if (!window) {
+      window = { timestamps: [] };
+      this.windows.set(key, window);
+    }
+
+    window.timestamps = window.timestamps.filter((t) => t > cutoff);
+
+    if (window.timestamps.length >= limit) {
+      const oldestInWindow = window.timestamps[0];
+      const retryAfter = Math.ceil((oldestInWindow + WINDOW_MS - now) / 1000);
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfter: Math.max(retryAfter, 1),
+      };
+    }
+
+    window.timestamps.push(now);
+    return {
+      allowed: true,
+      remaining: limit - window.timestamps.length,
+      retryAfter: 0,
+    };
+  }
+
   /** Periodic cleanup of stale windows (call from a setInterval). */
   cleanup(): void {
     const cutoff = Date.now() - WINDOW_MS;

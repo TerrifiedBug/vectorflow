@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { generateOpenAPISpec } from "@/app/api/v1/_lib/openapi-spec";
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
 
 // Cache the serialized spec at module level so repeated requests are cheap
 let _specJson: string | null = null;
@@ -20,28 +15,20 @@ function getSpecJson(): string {
 /**
  * GET /api/v1/openapi.json
  *
- * Public endpoint (no auth required) — returns the VectorFlow OpenAPI 3.1
- * specification as JSON. CORS headers allow external tooling (Swagger UI,
- * Postman, etc.) to fetch the spec without credentials.
+ * Returns the VectorFlow OpenAPI 3.1 specification as JSON.
+ * Requires a valid NextAuth session (logged-in users only).
  */
-export function GET() {
+export async function GET() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   return new NextResponse(getSpecJson(), {
     status: 200,
-    headers: {
-      "Content-Type": "application/json",
-      ...CORS_HEADERS,
-    },
-  });
-}
-
-/**
- * OPTIONS /api/v1/openapi.json
- *
- * CORS preflight handler.
- */
-export function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: CORS_HEADERS,
+    headers: { "Content-Type": "application/json" },
   });
 }
