@@ -156,6 +156,8 @@ export async function register() {
       await initCostOptimizerScheduler();
     } catch (error) {
       console.error("Failed to initialize cost optimizer scheduler:", error);
+    }
+
     // Start anomaly detection service.
     try {
       const { initAnomalyDetectionService } = await import(
