@@ -39,6 +39,11 @@ vi.mock("@/server/services/fleet-alert-service", () => ({
   initFleetAlertService: () => mockInitFleetAlertService(),
 }));
 
+const mockInitGitSyncRetryService = vi.fn();
+vi.mock("@/server/services/git-sync-retry", () => ({
+  initGitSyncRetryService: () => mockInitGitSyncRetryService(),
+}));
+
 // Mock prisma and other dependencies used by register()
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -62,6 +67,7 @@ const allSingletonInits = () => [
   mockInitAutoRollbackService,
   mockInitStagedRolloutService,
   mockInitFleetAlertService,
+  mockInitGitSyncRetryService,
 ];
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -88,7 +94,7 @@ describe("Leader guard — instrumentation.ts", () => {
     process.env.NEXT_RUNTIME = originalRuntime;
   });
 
-  it("leader starts all 5 singleton services", async () => {
+  it("leader starts all singleton services", async () => {
     mockIsLeader.mockReturnValue(true);
 
     const { register } = await import("@/instrumentation");
@@ -99,7 +105,7 @@ describe("Leader guard — instrumentation.ts", () => {
     }
   });
 
-  it("non-leader skips all 5 singleton services", async () => {
+  it("non-leader skips all singleton services", async () => {
     mockIsLeader.mockReturnValue(false);
 
     const { register } = await import("@/instrumentation");
@@ -154,6 +160,8 @@ describe("Leader guard — instrumentation.ts", () => {
 
     // Advance timer to trigger the failover polling interval
     await vi.advanceTimersByTimeAsync(mockLeaderElection.renewIntervalMs);
+    // Extra flush for all sequential async imports in startSingletonServices
+    await vi.advanceTimersByTimeAsync(0);
 
     // Now services should have started
     for (const init of allSingletonInits()) {

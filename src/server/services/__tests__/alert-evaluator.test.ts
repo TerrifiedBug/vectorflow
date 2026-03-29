@@ -12,8 +12,19 @@ vi.mock("@/lib/prisma", () => ({
   prisma: mockDeep<PrismaClient>(),
 }));
 
+vi.mock("@/server/services/drift-metrics", () => ({
+  getConfigDrift: vi.fn(),
+  getVersionDrift: vi.fn(),
+  setExpectedChecksum: vi.fn(),
+  clearExpectedChecksumCache: vi.fn(),
+  getExpectedChecksums: vi.fn(),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { evaluateAlerts } from "@/server/services/alert-evaluator";
+import { getConfigDrift } from "@/server/services/drift-metrics";
+
+const mockGetConfigDrift = getConfigDrift as ReturnType<typeof vi.fn>;
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -629,6 +640,40 @@ describe("evaluateAlerts", () => {
         }),
       }),
     );
+  });
+
+  // ── config_drift metric ──────────────────────────────────────────────
+
+  describe("config_drift metric", () => {
+    it("fires alert when config drift detected on a node", async () => {
+      mockRunningNode("HEALTHY");
+
+      prismaMock.alertRule.findMany.mockResolvedValue([
+        makeAlertRule({
+          id: "rule-config-drift",
+          metric: "config_drift",
+          condition: "gt",
+          threshold: 0,
+          durationSeconds: 0,
+        }),
+      ] as never);
+
+      // Mock getConfigDrift to return 1 drifted pipeline
+      mockGetConfigDrift.mockResolvedValue({ value: 1 });
+
+      prismaMock.alertEvent.findFirst.mockResolvedValue(null);
+      prismaMock.alertEvent.create.mockResolvedValue(
+        makeAlertEvent({
+          id: "event-config-drift",
+          alertRuleId: "rule-config-drift",
+          message: "Config drift at 1.00 (threshold: > 0)",
+        }),
+      );
+
+      const results = await evaluateAlerts(NODE_ID, ENV_ID);
+      expect(results).toHaveLength(1);
+      expect(results[0].event.status).toBe("firing");
+    });
   });
 
   afterEach(() => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, Check, ChevronsUpDown, X } from "lucide-react";
+import { Search, Check, ChevronsUpDown, X, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,11 @@ export interface DeploymentMatrixToolbarProps {
   tagFilter: string[];
   onTagFilterChange: (tags: string[]) => void;
   availableTags: string[];
+  /** When true, only pipelines with exceptions (version mismatch, crashed, missing) are shown */
+  exceptionsOnly?: boolean;
+  onExceptionsOnlyChange?: (value: boolean) => void;
+  /** Optional preset bar slot — rendered on the right side */
+  presetBar?: React.ReactNode;
 }
 
 // --- Status chips — only Running/Stopped/Crashed (matrix has deployed pipelines only, no Draft) ---
@@ -130,6 +135,9 @@ export function DeploymentMatrixToolbar({
   tagFilter,
   onTagFilterChange,
   availableTags,
+  exceptionsOnly = false,
+  onExceptionsOnlyChange,
+  presetBar,
 }: DeploymentMatrixToolbarProps) {
   // Debounced search — local input state + 300ms debounce to parent
   const [localSearch, setLocalSearch] = useState(search);
@@ -222,6 +230,22 @@ export function DeploymentMatrixToolbar({
         />
       )}
 
+      {/* Separator */}
+      {onExceptionsOnlyChange && <div className="h-6 w-px bg-border" />}
+
+      {/* Show exceptions only toggle */}
+      {onExceptionsOnlyChange && (
+        <Button
+          variant={exceptionsOnly ? "default" : "outline"}
+          size="sm"
+          className="h-8 gap-1.5 text-xs"
+          onClick={() => onExceptionsOnlyChange(!exceptionsOnly)}
+        >
+          <AlertTriangle className="h-3.5 w-3.5" />
+          Show exceptions only
+        </Button>
+      )}
+
       {/* Clear all filters — only visible when any filter is active */}
       {hasActiveFilters && (
         <Button
@@ -233,6 +257,14 @@ export function DeploymentMatrixToolbar({
           <X className="mr-1 h-3 w-3" />
           Clear filters
         </Button>
+      )}
+
+      {/* Preset bar — rendered on right side when provided */}
+      {presetBar && (
+        <>
+          <div className="flex-1" />
+          {presetBar}
+        </>
       )}
     </div>
   );

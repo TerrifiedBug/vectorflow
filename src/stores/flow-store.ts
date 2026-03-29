@@ -16,6 +16,7 @@ import {
 import type { VectorComponentDef } from "@/lib/vector/types";
 import { findComponentDef } from "@/lib/vector/catalog";
 import { validateNodeConfig } from "@/lib/vector/validate-node-config";
+import { applyAutoLayout } from "@/lib/auto-layout";
 
 /** Shape of node.data used throughout the flow editor */
 interface FlowNodeData {
@@ -127,6 +128,21 @@ export interface FlowState {
   loadGraph: (nodes: Node[], edges: Edge[], globalConfig?: Record<string, unknown> | null, options?: { isSystem?: boolean }) => void;
   clearGraph: () => void;
 
+  // Canvas search
+  canvasSearchTerm: string;
+  canvasSearchMatchIds: string[];
+  canvasSearchActiveIndex: number;
+  setCanvasSearchTerm: (term: string) => void;
+  cycleCanvasSearchMatch: (direction: "next" | "prev") => void;
+  clearCanvasSearch: () => void;
+
+  // Detail panel collapse
+  detailPanelCollapsed: boolean;
+  toggleDetailPanel: () => void;
+
+  // Auto-layout
+  autoLayout: (selectedOnly?: boolean) => void;
+
   // Undo / Redo
   undo: () => void;
   redo: () => void;
@@ -206,6 +222,16 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   _savedSnapshot: null,
   canUndo: false,
   canRedo: false,
+
+  // Canvas search
+  canvasSearchTerm: "",
+  canvasSearchMatchIds: [],
+  canvasSearchActiveIndex: -1,
+
+  // Detail panel collapse
+  detailPanelCollapsed: typeof window !== "undefined"
+    ? localStorage.getItem("vf-detail-panel-collapsed") === "true"
+    : false,
 
   /* ---- React Flow callbacks ---- */
 
@@ -909,6 +935,68 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       _future: [],
       canUndo: false,
       canRedo: false,
+    });
+  },
+
+  /* ---- Canvas Search ---- */
+
+  setCanvasSearchTerm: (term) => {
+    if (!term) {
+      set({ canvasSearchTerm: "", canvasSearchMatchIds: [], canvasSearchActiveIndex: -1 });
+      return;
+    }
+    const lowerTerm = term.toLowerCase();
+    const matches = get().nodes
+      .filter((n) => {
+        const data = n.data as { displayName?: string; componentDef?: { type: string; displayName: string } };
+        const displayName = data.displayName ?? data.componentDef?.displayName ?? "";
+        const compType = data.componentDef?.type ?? "";
+        return displayName.toLowerCase().includes(lowerTerm) || compType.toLowerCase().includes(lowerTerm);
+      })
+      .map((n) => n.id);
+    set({
+      canvasSearchTerm: term,
+      canvasSearchMatchIds: matches,
+      canvasSearchActiveIndex: matches.length > 0 ? 0 : -1,
+    });
+  },
+
+  cycleCanvasSearchMatch: (direction) => {
+    const { canvasSearchMatchIds, canvasSearchActiveIndex } = get();
+    if (canvasSearchMatchIds.length === 0) return;
+    const len = canvasSearchMatchIds.length;
+    const next = direction === "next"
+      ? (canvasSearchActiveIndex + 1) % len
+      : (canvasSearchActiveIndex - 1 + len) % len;
+    set({ canvasSearchActiveIndex: next });
+  },
+
+  clearCanvasSearch: () => {
+    set({ canvasSearchTerm: "", canvasSearchMatchIds: [], canvasSearchActiveIndex: -1 });
+  },
+
+  /* ---- Detail Panel Collapse ---- */
+
+  toggleDetailPanel: () => {
+    const collapsed = !get().detailPanelCollapsed;
+    set({ detailPanelCollapsed: collapsed });
+    if (typeof window !== "undefined") {
+      localStorage.setItem("vf-detail-panel-collapsed", String(collapsed));
+    }
+  },
+
+  /* ---- Auto-Layout ---- */
+
+  autoLayout: (selectedOnly) => {
+    const state = get();
+    const history = pushSnapshot(state as InternalState);
+    const nodeIds = selectedOnly && state.selectedNodeIds.size > 1
+      ? state.selectedNodeIds
+      : undefined;
+    const layoutedNodes = applyAutoLayout(state.nodes, state.edges, { nodeIds });
+    set({
+      ...history,
+      nodes: layoutedNodes,
     });
   },
 

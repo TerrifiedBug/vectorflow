@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 
@@ -77,12 +78,19 @@ export default function EnvironmentsPage() {
             {environments.map((env) => (
               <TableRow key={env.id}>
                 <TableCell className="font-medium">
-                  <Link
-                    href={`/environments/${env.id}`}
-                    className="hover:underline"
-                  >
-                    {env.name}
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/environments/${env.id}`}
+                      className="hover:underline"
+                    >
+                      {env.name}
+                    </Link>
+                    {env._count.gitSyncJobs > 0 && (
+                      <Badge variant="destructive" className="text-xs">
+                        {env._count.gitSyncJobs} sync {env._count.gitSyncJobs === 1 ? "failure" : "failures"}
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>{env._count.nodes}</TableCell>
                 <TableCell>

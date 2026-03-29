@@ -1,5 +1,6 @@
 import { Registry, Gauge } from "prom-client";
 import { prisma } from "@/lib/prisma";
+import { metricStore } from "@/server/services/metric-store";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,6 +35,10 @@ export class PrometheusMetricsService {
 
   // PipelineMetric-level gauges (latest snapshot)
   private pipelineLatencyMean: Gauge;
+
+  // MetricStore gauges
+  private metricStoreStreams: Gauge;
+  private metricStoreMemoryBytes: Gauge;
 
   constructor(registry?: Registry) {
     this.registry = registry ?? new Registry();
@@ -105,6 +110,18 @@ export class PrometheusMetricsService {
       name: "vectorflow_pipeline_latency_mean_ms",
       help: "Mean pipeline latency in milliseconds (from latest PipelineMetric snapshot)",
       labelNames: ["pipeline_id", "node_id"],
+      registers: [this.registry],
+    });
+
+    this.metricStoreStreams = new Gauge({
+      name: "vectorflow_metric_store_streams",
+      help: "Number of active metric streams in the in-memory MetricStore",
+      registers: [this.registry],
+    });
+
+    this.metricStoreMemoryBytes = new Gauge({
+      name: "vectorflow_metric_store_memory_bytes",
+      help: "Estimated memory usage of the in-memory MetricStore in bytes",
       registers: [this.registry],
     });
   }
@@ -225,6 +242,10 @@ export class PrometheusMetricsService {
           );
         }
       }
+
+      // MetricStore gauges
+      this.metricStoreStreams.set(metricStore.getStreamCount());
+      this.metricStoreMemoryBytes.set(metricStore.getEstimatedMemoryBytes());
 
       return await this.registry.metrics();
     } catch (error) {

@@ -167,6 +167,7 @@ type PipelineStatus struct {
 	ComponentMetrics []ComponentMetric `json:"componentMetrics,omitempty"`
 	Utilization      float64           `json:"utilization,omitempty"`
 	RecentLogs       []string          `json:"recentLogs,omitempty"`
+	ConfigChecksum   string            `json:"configChecksum,omitempty"`
 }
 
 // ComponentMetric holds per-component metrics for editor node overlays.

@@ -117,6 +117,7 @@ export const promotionRouter = router({
           gitRepoUrl: true,
           gitToken: true,
           gitBranch: true,
+          gitProvider: true,
         },
       });
       if (!targetEnv) {
@@ -235,6 +236,8 @@ export const promotionRouter = router({
           sourceEnvironmentName: sourcePipeline.environment.name,
           targetEnvironmentName: targetEnv.name,
           configYaml,
+          gitProvider: targetEnv.gitProvider ?? null,
+          gitPath: sourcePipeline.gitPath ?? null,
         });
 
         await prisma.promotionRequest.update({

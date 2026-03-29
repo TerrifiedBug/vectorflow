@@ -23,7 +23,11 @@ export function TRPCClientProvider({
     () =>
       new QueryClient({
         defaultOptions: {
-          queries: { staleTime: 5 * 1000, refetchOnWindowFocus: false },
+          queries: {
+            staleTime: 30_000,    // 30s — prevent redundant refetches on remount
+            gcTime: 300_000,       // 5min — explicit for maintenance clarity
+            refetchOnWindowFocus: false,
+          },
         },
       })
   );

@@ -32,6 +32,7 @@ interface GitSyncSectionProps {
   hasGitToken: boolean;
   gitOpsMode?: string;
   hasWebhookSecret?: boolean;
+  gitProvider?: string | null;
 }
 
 export function GitSyncSection({
@@ -41,6 +42,7 @@ export function GitSyncSection({
   hasGitToken,
   gitOpsMode = "off",
   hasWebhookSecret = false,
+  gitProvider = null,
 }: GitSyncSectionProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -51,6 +53,7 @@ export function GitSyncSection({
   const [showToken, setShowToken] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [selectedGitOpsMode, setSelectedGitOpsMode] = useState(gitOpsMode);
+  const [selectedGitProvider, setSelectedGitProvider] = useState<string | null>(gitProvider);
   // The actual webhook secret is only available from the update mutation response
   const [webhookSecretFromMutation, setWebhookSecretFromMutation] = useState<string | null>(null);
 
@@ -94,6 +97,7 @@ export function GitSyncSection({
         gitBranch: branch || null,
         gitToken: token || undefined, // Only send if user entered a new token
         gitOpsMode: selectedGitOpsMode as "off" | "push" | "bidirectional" | "promotion",
+        gitProvider: selectedGitProvider as "github" | "gitlab" | "bitbucket" | null,
       },
       {
         onSuccess: () => {
@@ -147,7 +151,8 @@ export function GitSyncSection({
     repoUrl !== (gitRepoUrl ?? "") ||
     branch !== (gitBranch ?? "main") ||
     token !== "" ||
-    selectedGitOpsMode !== gitOpsMode;
+    selectedGitOpsMode !== gitOpsMode ||
+    selectedGitProvider !== gitProvider;
   const isConfigured = !!gitRepoUrl;
 
   const webhookUrl =
@@ -230,14 +235,36 @@ export function GitSyncSection({
               <SelectItem value="off">Off</SelectItem>
               <SelectItem value="push">Push Only (deploy commits YAML to repo)</SelectItem>
               <SelectItem value="bidirectional">Bi-directional (push + git webhooks import changes)</SelectItem>
-              <SelectItem value="promotion">Promotion (PR-based promotion via GitHub)</SelectItem>
+              <SelectItem value="promotion">Promotion (PR/MR-based promotion via git provider)</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
             {selectedGitOpsMode === "off" && "Git sync is disabled."}
             {selectedGitOpsMode === "push" && "Pipeline YAML is committed to the repo on deploy. Changes in git are not pulled back."}
             {selectedGitOpsMode === "bidirectional" && "Pipeline YAML is committed on deploy AND pushes to the repo trigger pipeline imports via webhook."}
-            {selectedGitOpsMode === "promotion" && "Promoting a pipeline creates a GitHub pull request. Merging the PR automatically deploys the promoted config to the target environment."}
+            {selectedGitOpsMode === "promotion" && "Promoting a pipeline creates a pull request (or merge request). Merging it automatically deploys the promoted config to the target environment."}
+          </p>
+        </div>
+
+        {/* Git Provider (optional override for self-hosted instances) */}
+        <div className="space-y-2">
+          <Label htmlFor="git-provider">Git Provider (optional)</Label>
+          <Select
+            value={selectedGitProvider ?? "auto"}
+            onValueChange={(v) => setSelectedGitProvider(v === "auto" ? null : v)}
+          >
+            <SelectTrigger id="git-provider" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">Auto-detect from URL</SelectItem>
+              <SelectItem value="github">GitHub</SelectItem>
+              <SelectItem value="gitlab">GitLab</SelectItem>
+              <SelectItem value="bitbucket">Bitbucket</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Provider is auto-detected from the repository URL domain. Override for self-hosted Git instances.
           </p>
         </div>
 
@@ -249,7 +276,7 @@ export function GitSyncSection({
               Webhook Configuration
             </div>
             <p className="text-xs text-muted-foreground">
-              Configure a webhook in your GitHub repository settings to enable bi-directional sync.
+              Configure a webhook in your Git repository settings to enable bi-directional sync.
               Set the content type to <code className="rounded bg-muted px-1">application/json</code> and
               select the <strong>push</strong> event.
             </p>

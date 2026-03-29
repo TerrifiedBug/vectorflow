@@ -115,19 +115,15 @@ describe("Git webhook — PR merge handler", () => {
     vi.clearAllMocks();
   });
 
-  it("responds pong to ping event without checking signature", async () => {
-    const req = new Request("http://localhost/api/webhooks/git", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-GitHub-Event": "ping" },
-      body: JSON.stringify({ zen: "Testing is good." }),
-    });
+  it("responds pong to ping event after signature verification", async () => {
+    prismaMock.environment.findMany.mockResolvedValue([makeEnvironment()] as never);
 
+    const req = makeRequest({ zen: "Testing is good." }, "ping");
     const res = await POST(req as never);
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.message).toBe("pong");
-    expect(prismaMock.environment.findMany).not.toHaveBeenCalled();
   });
 
   it("returns 401 when signature is missing", async () => {
@@ -231,7 +227,7 @@ describe("Git webhook — PR merge handler", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.message).toContain("Not a closed event");
+    expect(json.message).toContain("unknown");
     expect(executePromotion).not.toHaveBeenCalled();
   });
 

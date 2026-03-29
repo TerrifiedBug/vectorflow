@@ -20,6 +20,9 @@ interface NodeGroupHealthCardProps {
     onlineCount: number;
     alertCount: number;
     complianceRate: number;
+    versionDriftCount: number;
+    configDriftCount: number;
+    overallCompliance: number;
   };
   isExpanded: boolean;
   onToggle: () => void;
@@ -34,12 +37,13 @@ export function NodeGroupHealthCard({
 }: NodeGroupHealthCardProps) {
   const allOnline = group.onlineCount === group.totalNodes;
   const hasAlerts = group.alertCount > 0;
-  const fullyCompliant = group.complianceRate === 100;
+  const hasDrift = group.versionDriftCount > 0 || group.configDriftCount > 0;
+  const fullyCompliant = group.overallCompliance === 100;
 
   // Derive border class and status icon based on severity priority
   const borderClass = hasAlerts
     ? "border-l-4 border-l-destructive"
-    : !fullyCompliant
+    : hasDrift || !fullyCompliant
       ? "border-l-4 border-l-amber-500"
       : "border-l-4 border-l-green-500";
 
@@ -131,10 +135,48 @@ export function NodeGroupHealthCard({
 
                 <div className="h-8 w-px bg-border" />
 
-                {/* Compliance metric */}
+                {/* Label Compliance metric */}
                 <div className="flex flex-col gap-0.5">
                   <span className="text-xs text-muted-foreground">
                     Compliance
+                  </span>
+                  <span
+                    className={cn(
+                      "font-semibold tabular-nums",
+                      group.complianceRate === 100
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-amber-600 dark:text-amber-400",
+                    )}
+                  >
+                    {group.complianceRate}%
+                  </span>
+                </div>
+
+                <div className="h-8 w-px bg-border" />
+
+                {/* Version Drift metric */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">
+                    Version Drift
+                  </span>
+                  <span
+                    className={cn(
+                      "font-semibold tabular-nums",
+                      group.versionDriftCount > 0
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {group.versionDriftCount}
+                  </span>
+                </div>
+
+                <div className="h-8 w-px bg-border" />
+
+                {/* Overall Compliance */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">
+                    Overall
                   </span>
                   <span
                     className={cn(
@@ -144,7 +186,7 @@ export function NodeGroupHealthCard({
                         : "text-amber-600 dark:text-amber-400",
                     )}
                   >
-                    {group.complianceRate}%
+                    {group.overallCompliance}%
                   </span>
                 </div>
               </div>
