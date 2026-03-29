@@ -53,3 +53,11 @@ if (typeof globalThis !== "undefined" && !globalForPrisma._tsdbDetected) {
     // Swallowed — detectTimescaleDb already logs the warning
   });
 }
+
+// Seed DLP templates on startup (idempotent via upsert)
+import { seedDlpTemplates } from "@/server/services/dlp-template-seed";
+import { debugLog } from "@/lib/logger";
+
+seedDlpTemplates()
+  .then(() => debugLog("startup", "DLP templates seeded"))
+  .catch((err) => console.error("[startup] Failed to seed DLP templates", err));
