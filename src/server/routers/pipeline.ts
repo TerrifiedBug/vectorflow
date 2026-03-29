@@ -105,6 +105,11 @@ export const pipelineRouter = router({
           nodeStatuses: {
             select: { status: true, uptimeSeconds: true },
           },
+          versions: {
+            orderBy: { version: "desc" as const },
+            take: 1,
+            select: { configYaml: true, logLevel: true, version: true },
+          },
         },
       });
       if (!pipeline) {
@@ -122,15 +127,11 @@ export const pipelineRouter = router({
         ),
       }));
 
-      // Compare current config against the deployed version
+      // Compare current config against the deployed version (no extra query)
       let hasConfigChanges = false;
       let deployedVersionNumber: number | null = null;
       if (!pipeline.isDraft && pipeline.deployedAt) {
-        const latestVersion = await prisma.pipelineVersion.findFirst({
-          where: { pipelineId: input.id },
-          orderBy: { version: "desc" },
-          select: { configYaml: true, logLevel: true, version: true },
-        });
+        const latestVersion = pipeline.versions[0] ?? null;
 
         deployedVersionNumber = latestVersion?.version ?? null;
 
