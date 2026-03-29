@@ -58,8 +58,8 @@ export async function GET(request: Request) {
     });
   }
 
-  const url = new URL(request.url);
-  const specUrl = `${url.protocol}//${url.host}/api/v1/openapi.json`;
+  const baseUrl = (process.env.NEXTAUTH_URL ?? new URL(request.url).origin).replace(/\/+$/, "");
+  const specUrl = `${baseUrl}/api/v1/openapi.json`;
 
   return new NextResponse(buildSwaggerHtml(specUrl), {
     status: 200,
