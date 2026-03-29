@@ -14,6 +14,7 @@ import {
 import type { LoadImbalanceResult } from "@/server/services/fleet-metrics";
 import { getVersionDrift } from "@/server/services/drift-metrics";
 import { checkCertificateExpiry } from "@/server/services/cert-expiry-checker";
+import { evaluateCostAlerts } from "@/server/services/cost-alert";
 
 // Re-export the constant for downstream use (e.g. T03 validation)
 export { FLEET_METRICS } from "@/server/services/alert-evaluator";
@@ -108,11 +109,18 @@ export class FleetAlertService {
       // Deliver notifications for all fired/resolved events
       await this.deliverAlerts(results);
 
-      // ── Certificate expiry checks (runs on same interval as fleet alerts) ──
+      // ── Certificate expiry checks ──
       try {
         await checkCertificateExpiry();
       } catch (certErr) {
         console.error("[fleet-alert-service] Certificate expiry check failed:", certErr);
+      }
+
+      // ── Cost budget alerts ──
+      try {
+        await evaluateCostAlerts();
+      } catch (err) {
+        console.error("[fleet-alert-service] Cost alert evaluation failed:", err);
       }
     } catch (err) {
       console.error("[fleet-alert-service] Poll loop error:", err);
