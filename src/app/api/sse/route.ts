@@ -5,7 +5,7 @@ import { sseRegistry } from "@/server/services/sse-registry";
 export const dynamic = "force-dynamic";
 
 const MAX_SSE_CONNECTIONS = parseInt(
-  process.env.SSE_MAX_CONNECTIONS ?? "1000",
+  process.env.SSE_MAX_CONNECTIONS ?? "5000",
   10,
 );
 
