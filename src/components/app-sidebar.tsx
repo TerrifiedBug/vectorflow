@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -61,6 +61,7 @@ const SYSTEM_ENV_ALLOWED_HREFS = new Set(["/", "/pipelines"]);
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const trpc = useTRPC();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   const isSystemEnvironment = useEnvironmentStore((s) => s.isSystemEnvironment);
@@ -90,6 +91,14 @@ export function AppSidebar() {
   const isPipelinesMode = pathname.startsWith("/pipelines");
   const isSubMode = isSettingsMode || isLibraryMode || isPipelinesMode;
 
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/");
+    }
+  };
+
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
 
@@ -111,12 +120,15 @@ export function AppSidebar() {
       <SidebarHeader className="p-0">
         <div className="flex h-14 items-center px-4 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
           {isSubMode ? (
-            <Link href="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <button
+              onClick={handleBack}
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
               <ArrowLeft className="h-4 w-4" />
               <span className="group-data-[collapsible=icon]:hidden">
                 {isSettingsMode ? "Settings" : isLibraryMode ? "Library" : "Pipelines"}
               </span>
-            </Link>
+            </button>
           ) : (
             <Link href="/" className="flex items-center gap-2">
               <span className="text-xl tracking-tight group-data-[collapsible=icon]:hidden">

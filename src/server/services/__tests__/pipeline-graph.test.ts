@@ -339,9 +339,11 @@ describe("listPipelinesForEnvironment", () => {
 
   it("returns empty array for environment with no pipelines", async () => {
     prismaMock.pipeline.findMany.mockResolvedValue([]);
+    prismaMock.pipeline.count.mockResolvedValue(0);
 
     const result = await listPipelinesForEnvironment("empty-env");
-    expect(result).toEqual([]);
+    expect(result.pipelines).toEqual([]);
+    expect(result.totalCount).toBe(0);
   });
 
   it("returns mapped pipelines with computed fields", async () => {
@@ -386,16 +388,17 @@ describe("listPipelinesForEnvironment", () => {
         _count: { upstreamDeps: 0, downstreamDeps: 0 },
       },
     ] as never);
+    prismaMock.pipeline.count.mockResolvedValue(1);
 
     const result = await listPipelinesForEnvironment("env-1");
 
-    expect(result).toHaveLength(1);
-    expect(result[0]!.id).toBe("pipeline-1");
-    expect(result[0]!.name).toBe("Test Pipeline");
-    expect(result[0]!.hasUndeployedChanges).toBe(false);
-    expect(result[0]!.hasStaleComponents).toBe(false);
-    expect(result[0]!.staleComponentNames).toEqual([]);
-    expect(result[0]!.tags).toEqual(["tag1"]);
+    expect(result.pipelines).toHaveLength(1);
+    expect(result.pipelines[0]!.id).toBe("pipeline-1");
+    expect(result.pipelines[0]!.name).toBe("Test Pipeline");
+    expect(result.pipelines[0]!.hasUndeployedChanges).toBe(false);
+    expect(result.pipelines[0]!.hasStaleComponents).toBe(false);
+    expect(result.pipelines[0]!.staleComponentNames).toEqual([]);
+    expect(result.pipelines[0]!.tags).toEqual(["tag1"]);
   });
 
   it("detects stale shared components", async () => {
@@ -439,12 +442,13 @@ describe("listPipelinesForEnvironment", () => {
         _count: { upstreamDeps: 0, downstreamDeps: 0 },
       },
     ] as never);
+    prismaMock.pipeline.count.mockResolvedValue(1);
 
     const result = await listPipelinesForEnvironment("env-1");
 
-    expect(result).toHaveLength(1);
-    expect(result[0]!.hasStaleComponents).toBe(true);
-    expect(result[0]!.staleComponentNames).toEqual(["Shared HTTP Source"]);
+    expect(result.pipelines).toHaveLength(1);
+    expect(result.pipelines[0]!.hasStaleComponents).toBe(true);
+    expect(result.pipelines[0]!.staleComponentNames).toEqual(["Shared HTTP Source"]);
   });
 
   it("marks draft pipelines as not having undeployed changes", async () => {
@@ -472,10 +476,11 @@ describe("listPipelinesForEnvironment", () => {
         _count: { upstreamDeps: 0, downstreamDeps: 0 },
       },
     ] as never);
+    prismaMock.pipeline.count.mockResolvedValue(1);
 
     const result = await listPipelinesForEnvironment("env-2");
 
-    expect(result).toHaveLength(1);
-    expect(result[0]!.hasUndeployedChanges).toBe(false);
+    expect(result.pipelines).toHaveLength(1);
+    expect(result.pipelines[0]!.hasUndeployedChanges).toBe(false);
   });
 });

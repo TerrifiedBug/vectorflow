@@ -12,6 +12,7 @@ import {
   getNodeLoadImbalance,
 } from "@/server/services/fleet-metrics";
 import type { LoadImbalanceResult } from "@/server/services/fleet-metrics";
+import { getVersionDrift } from "@/server/services/drift-metrics";
 
 // Re-export the constant for downstream use (e.g. T03 validation)
 export { FLEET_METRICS } from "@/server/services/alert-evaluator";
@@ -247,6 +248,11 @@ export class FleetAlertService {
         return getFleetThroughputDrop(environmentId);
       case "node_load_imbalance":
         return getNodeLoadImbalance(environmentId);
+      case "version_drift": {
+        const drift = await getVersionDrift(environmentId);
+        if (drift === null) return null;
+        return drift.value;
+      }
       default:
         return null;
     }
@@ -261,6 +267,7 @@ export class FleetAlertService {
       fleet_throughput_drop: "Fleet throughput drop",
       fleet_event_volume: "Fleet event volume",
       node_load_imbalance: "Node load imbalance",
+      version_drift: "Version drift",
     };
 
     const CONDITION_LABELS: Record<string, string> = {

@@ -5,6 +5,7 @@ import type {
   AlertRule,
   AlertEvent,
 } from "@/generated/prisma";
+import { getConfigDrift } from "@/server/services/drift-metrics";
 
 // ---------------------------------------------------------------------------
 // Fleet-scoped metrics — handled by FleetAlertService, not per-node heartbeat.
@@ -15,6 +16,7 @@ export const FLEET_METRICS = new Set<AlertMetric>([
   "fleet_throughput_drop",
   "fleet_event_volume",
   "node_load_imbalance",
+  "version_drift",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -204,6 +206,12 @@ async function readMetricValue(
     case "pipeline_crashed":
       return getPipelineCrashed(nodeId, pipelineId);
 
+    case "config_drift": {
+      const drift = await getConfigDrift(nodeId, pipelineId);
+      if (drift === null) return null;
+      return drift.value;
+    }
+
     default:
       return null;
   }
@@ -365,6 +373,8 @@ const METRIC_LABELS: Record<AlertMetric, string> = {
   fleet_throughput_drop: "Fleet throughput drop",
   fleet_event_volume: "Fleet event volume",
   node_load_imbalance: "Node load imbalance",
+  version_drift: "Version drift",
+  config_drift: "Config drift",
   deploy_requested: "Deploy requested",
   deploy_completed: "Deploy completed",
   deploy_rejected: "Deploy rejected",
@@ -376,6 +386,7 @@ const METRIC_LABELS: Record<AlertMetric, string> = {
   node_joined: "Node joined",
   node_left: "Node left",
   promotion_completed: "Promotion completed",
+  git_sync_failed: "Git sync failed",
 };
 
 const CONDITION_LABELS: Record<AlertCondition, string> = {

@@ -14,20 +14,21 @@ import (
 )
 
 type ProcessInfo struct {
-	PipelineID  string
-	Version     int
-	PID         int
-	Status      string // RUNNING, STARTING, STOPPED, CRASHED
-	StartedAt   time.Time
-	MetricsPort int
-	APIPort     int
-	LogLevel    string
-	Secrets     map[string]string
-	cmd         *exec.Cmd
-	configPath  string
-	restarts    int
-	done        chan struct{}
-	logBuf      *logbuf.RingBuffer
+	PipelineID     string
+	Version        int
+	PID            int
+	Status         string // RUNNING, STARTING, STOPPED, CRASHED
+	StartedAt      time.Time
+	MetricsPort    int
+	APIPort        int
+	LogLevel       string
+	Secrets        map[string]string
+	ConfigChecksum string
+	cmd            *exec.Cmd
+	configPath     string
+	restarts       int
+	done           chan struct{}
+	logBuf         *logbuf.RingBuffer
 }
 
 type Supervisor struct {
@@ -239,16 +240,26 @@ func (s *Supervisor) Statuses() []ProcessInfo {
 	var result []ProcessInfo
 	for _, info := range s.processes {
 		result = append(result, ProcessInfo{
-			PipelineID:  info.PipelineID,
-			Version:     info.Version,
-			PID:         info.PID,
-			Status:      info.Status,
-			StartedAt:   info.StartedAt,
-			MetricsPort: info.MetricsPort,
-			APIPort:     info.APIPort,
+			PipelineID:     info.PipelineID,
+			Version:        info.Version,
+			PID:            info.PID,
+			Status:         info.Status,
+			StartedAt:      info.StartedAt,
+			MetricsPort:    info.MetricsPort,
+			APIPort:        info.APIPort,
+			ConfigChecksum: info.ConfigChecksum,
 		})
 	}
 	return result
+}
+
+// SetConfigChecksum stores the config checksum applied for a pipeline.
+func (s *Supervisor) SetConfigChecksum(pipelineID, checksum string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if info, ok := s.processes[pipelineID]; ok {
+		info.ConfigChecksum = checksum
+	}
 }
 
 // GetRecentLogs returns and clears the recent log lines for a pipeline.

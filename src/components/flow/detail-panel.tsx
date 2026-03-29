@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { Copy, Trash2, Lock, Info, MousePointerClick, Book, Link2 as LinkIcon, Unlink, AlertTriangle, ExternalLink } from "lucide-react";
+import { Copy, Trash2, Lock, Info, MousePointerClick, Book, Link2 as LinkIcon, Unlink, AlertTriangle, ExternalLink, ChevronsLeft, ChevronsRight } from "lucide-react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
@@ -127,6 +127,8 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
   const removeNode = useFlowStore((s) => s.removeNode);
   const acceptNodeSharedUpdate = useFlowStore((s) => s.acceptNodeSharedUpdate);
   const unlinkNodeStore = useFlowStore((s) => s.unlinkNode);
+  const detailPanelCollapsed = useFlowStore((s) => s.detailPanelCollapsed);
+  const toggleDetailPanel = useFlowStore((s) => s.toggleDetailPanel);
 
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -214,14 +216,63 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
   }, [selectedNodeId, removeNode]);
 
   if (!selectedNode) {
+    if (detailPanelCollapsed) {
+      return (
+        <div className="flex w-10 shrink-0 flex-col items-center border-l bg-muted/30 py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0"
+            onClick={toggleDetailPanel}
+            aria-label="Expand detail panel"
+          >
+            <ChevronsLeft className="h-4 w-4" />
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="flex h-full w-80 shrink-0 flex-col border-l bg-muted/30">
-        <div className="flex flex-col items-center justify-center h-full text-center p-6">
+        <div className="flex items-center justify-end px-2 py-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0"
+            onClick={toggleDetailPanel}
+            aria-label="Collapse detail panel"
+          >
+            <ChevronsRight className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex flex-col items-center justify-center flex-1 text-center p-6">
           <MousePointerClick className="h-8 w-8 text-muted-foreground/50 mb-3" />
           <p className="text-sm text-muted-foreground">
             Select a node to configure it
           </p>
         </div>
+      </div>
+    );
+  }
+
+  // ---- Collapsed with node selected ----
+  if (detailPanelCollapsed) {
+    const displayName = (selectedNode.data as { displayName?: string })?.displayName
+      ?? (selectedNode.data as { componentDef?: { displayName: string } })?.componentDef?.displayName
+      ?? "Node";
+    return (
+      <div className="flex w-10 shrink-0 flex-col items-center border-l bg-background py-2 gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          onClick={toggleDetailPanel}
+          aria-label="Expand detail panel"
+        >
+          <ChevronsLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-xs text-muted-foreground [writing-mode:vertical-lr] rotate-180 truncate max-h-40">
+          {displayName}
+        </span>
       </div>
     );
   }
@@ -281,6 +332,17 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
 
   return (
     <div className="flex h-full w-80 shrink-0 flex-col border-l bg-background">
+      <div className="flex items-center justify-end px-2 py-0.5 border-b border-border/40">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0"
+          onClick={toggleDetailPanel}
+          aria-label="Collapse detail panel"
+        >
+          <ChevronsRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
       <Tabs defaultValue="config" className="flex min-h-0 flex-1 flex-col">
         <TabsList variant="line" className="w-full shrink-0 justify-start border-b px-2">
           <TabsTrigger value="config" className="text-xs">Config</TabsTrigger>

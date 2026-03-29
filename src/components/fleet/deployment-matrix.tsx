@@ -5,7 +5,7 @@ import { useTRPC } from "@/trpc/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Minus, Wrench } from "lucide-react";
+import { AlertTriangle as DriftIcon, Minus, Wrench } from "lucide-react";
 import Link from "next/link";
 import { StatusDot } from "@/components/ui/status-dot";
 import { pipelineStatusVariant, pipelineStatusLabel } from "@/lib/status";
@@ -184,6 +184,10 @@ export function DeploymentMatrix({
                           >
                             v{ps.version}
                           </Badge>
+                          <DriftIcon
+                            className="h-3 w-3 text-yellow-500"
+                            aria-label={`Version drift: running v${ps.version}, expected v${pipeline.latestVersion}`}
+                          />
                         </div>
                       ) : (
                         <div

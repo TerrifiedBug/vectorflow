@@ -267,6 +267,12 @@ describe("nodeGroupRouter", () => {
   // ── groupHealthStats ─────────────────────────────────────────────────────
 
   describe("groupHealthStats", () => {
+    beforeEach(() => {
+      // Mock the drift-related queries added for version/config drift detection
+      prismaMock.nodePipelineStatus.findMany.mockResolvedValue([]);
+      prismaMock.pipeline.findMany.mockResolvedValue([]);
+    });
+
     it("Test 1: Returns per-group stats (onlineCount, alertCount, complianceRate, totalNodes) for two groups", async () => {
       const groups = [
         makeNodeGroup({ id: "ng-1", name: "US East", criteria: { region: "us-east" }, requiredLabels: ["region"] }),

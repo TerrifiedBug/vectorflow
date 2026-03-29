@@ -5,6 +5,7 @@ import { authenticateAgent } from "@/server/services/agent-auth";
 import { collectSecretRefs, convertSecretRefsToEnvVars, resolveCertRefs, secretNameToEnvVar } from "@/server/services/secret-resolver";
 import { decrypt } from "@/server/services/crypto";
 import { createHash } from "crypto";
+import { setExpectedChecksum } from "@/server/services/drift-metrics";
 
 export async function GET(request: Request) {
   const agent = await authenticateAgent(request);
@@ -158,6 +159,7 @@ export async function GET(request: Request) {
           ? configYaml + JSON.stringify(secrets, Object.keys(secrets).sort())
           : configYaml;
         const checksum = createHash("sha256").update(checksumInput).digest("hex");
+        setExpectedChecksum(pipeline.id, checksum);
 
         pipelineConfigs.push({
           pipelineId: pipeline.id,
