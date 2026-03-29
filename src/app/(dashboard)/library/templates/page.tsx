@@ -17,6 +17,7 @@ import {
   Cpu,
   Terminal,
   Play,
+  Shield,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
   Archival: <Cloud className="h-4 w-4" />,
   Streaming: <Radio className="h-4 w-4" />,
   Metrics: <Cpu className="h-4 w-4" />,
+  "Data Protection": <Shield className="h-4 w-4" />,
 };
 
 const categoryColors: Record<string, string> = {
@@ -57,6 +59,14 @@ const categoryColors: Record<string, string> = {
     "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
   Metrics:
     "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300",
+  "Data Protection":
+    "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+};
+
+const complianceTagColors: Record<string, string> = {
+  "PCI-DSS": "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  HIPAA: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+  GDPR: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
 };
 
 /* ------------------------------------------------------------------ */

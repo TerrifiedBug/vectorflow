@@ -22,6 +22,7 @@ import { EdgeContextMenu } from "./edge-context-menu";
 import { SaveSharedComponentDialog } from "./save-shared-component-dialog";
 import { findComponentDef } from "@/lib/vector/catalog";
 import type { VectorComponentDef, DataType } from "@/lib/vector/types";
+import { DLP_VRL_SOURCES } from "@/lib/vector/dlp-vrl-sources";
 
 interface FlowCanvasProps {
   onSave?: () => void;
@@ -130,6 +131,21 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
       });
 
       addNode(componentDef, position);
+
+      // If this is a DLP transform, pre-fill the VRL source from the template
+      if (componentType.startsWith("dlp_")) {
+        const dlpVrlSource = DLP_VRL_SOURCES[componentType];
+        if (dlpVrlSource) {
+          const allNodes = useFlowStore.getState().nodes;
+          const newNode = allNodes[allNodes.length - 1];
+          if (newNode) {
+            useFlowStore.getState().updateNodeConfig(newNode.id, {
+              ...(newNode.data.config as Record<string, unknown>),
+              source: dlpVrlSource,
+            });
+          }
+        }
+      }
 
       // If this is a shared component drop, patch the newly added node's data
       const sharedComponentData = event.dataTransfer.getData(
