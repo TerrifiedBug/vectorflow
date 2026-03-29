@@ -3,6 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  _tsdbDetected?: boolean;
 };
 
 function createPrismaClient() {
@@ -41,3 +42,14 @@ function createPrismaClient() {
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+import { detectTimescaleDb } from "@/server/services/timescaledb";
+
+// Detect TimescaleDB availability on first import.
+// Non-blocking — logs result and caches for runtime queries.
+if (typeof globalThis !== "undefined" && !globalForPrisma._tsdbDetected) {
+  globalForPrisma._tsdbDetected = true;
+  detectTimescaleDb().catch(() => {
+    // Swallowed — detectTimescaleDb already logs the warning
+  });
+}
