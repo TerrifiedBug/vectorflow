@@ -105,6 +105,11 @@ export const pipelineRouter = router({
           nodeStatuses: {
             select: { status: true, uptimeSeconds: true },
           },
+          versions: {
+            orderBy: { version: "desc" as const },
+            take: 1,
+            select: { configYaml: true, logLevel: true, version: true },
+          },
         },
       });
       if (!pipeline) {
@@ -122,15 +127,11 @@ export const pipelineRouter = router({
         ),
       }));
 
-      // Compare current config against the deployed version
+      // Compare current config against the deployed version (no extra query)
       let hasConfigChanges = false;
       let deployedVersionNumber: number | null = null;
       if (!pipeline.isDraft && pipeline.deployedAt) {
-        const latestVersion = await prisma.pipelineVersion.findFirst({
-          where: { pipelineId: input.id },
-          orderBy: { version: "desc" },
-          select: { configYaml: true, logLevel: true, version: true },
-        });
+        const latestVersion = pipeline.versions[0] ?? null;
 
         deployedVersionNumber = latestVersion?.version ?? null;
 
@@ -955,34 +956,23 @@ export const pipelineRouter = router({
 
   // ── Bulk operations ─────────────────────────────────────────────────────
 
-  bulkDeploy: protectedProcedure
+  deployBatch: protectedProcedure
     .input(
       z.object({
-        pipelineIds: z.array(z.string()).min(1).max(50),
+        pipelineIds: z.array(z.string()).min(1).max(200),
         changelog: z.string().min(1),
       }),
     )
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.batch_deployed", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
 
-      const results: Array<{ pipelineId: string; success: boolean; error?: string }> = [];
-
-      for (const pipelineId of input.pipelineIds) {
-        try {
-          const result = await deployAgent(pipelineId, userId, input.changelog);
-          results.push({ pipelineId, success: result.success, error: result.error });
-        } catch (err) {
-          results.push({
-            pipelineId,
-            success: false,
-            error: err instanceof Error ? err.message : "Unknown error",
-          });
-        }
-      }
-
-      return { results, total: results.length, succeeded: results.filter((r) => r.success).length };
+      const { deployBatch: deployBatchFn } = await import(
+        "@/server/services/deploy-agent"
+      );
+      return deployBatchFn(input.pipelineIds, userId, input.changelog);
     }),
 
   bulkUndeploy: protectedProcedure

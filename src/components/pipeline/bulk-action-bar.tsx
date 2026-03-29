@@ -78,9 +78,14 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
   );
   const availableTags = availableTagsQuery.data ?? [];
 
-  const bulkDeployMutation = useMutation(
-    trpc.pipeline.bulkDeploy.mutationOptions({
-      onSuccess: (data) => handleResult("Deploy", data),
+  const deployBatchMutation = useMutation(
+    trpc.pipeline.deployBatch.mutationOptions({
+      onSuccess: (data) =>
+        handleResult("Deploy", {
+          total: data.total,
+          succeeded: data.completed,
+          results: data.results,
+        }),
       onError: (err) => toast.error(err.message || "Bulk deploy failed", { duration: 6000 }),
     }),
   );
@@ -124,7 +129,7 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
   );
 
   const isPending =
-    bulkDeployMutation.isPending ||
+    deployBatchMutation.isPending ||
     bulkUndeployMutation.isPending ||
     bulkDeleteMutation.isPending ||
     bulkAddTagsMutation.isPending ||
@@ -179,7 +184,7 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
             setDeployOpen(true);
           }}
         >
-          {bulkDeployMutation.isPending ? (
+          {deployBatchMutation.isPending ? (
             <Loader2 className="h-3 w-3 animate-spin" />
           ) : (
             <Play className="h-3 w-3" />
@@ -281,7 +286,7 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
               e.preventDefault();
               if (!changelog.trim()) return;
               setDeployOpen(false);
-              bulkDeployMutation.mutate({
+              deployBatchMutation.mutate({
                 pipelineIds: selectedIds,
                 changelog: changelog.trim(),
               });

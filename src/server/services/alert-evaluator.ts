@@ -426,3 +426,435 @@ function buildMessage(
   const prefix = pipelineName ? `${pipelineName} — ` : "";
   return `${prefix}${metricLabel} at ${value.toFixed(2)} (threshold: ${condLabel} ${rule.threshold})`;
 }
+
+// ---------------------------------------------------------------------------
+// Batch evaluation — pre-fetch all metrics, evaluate all rules against cache
+// ---------------------------------------------------------------------------
+
+/** In-memory cache of metric values for an entire environment. */
+export interface MetricCache {
+  /** nodeId → node status string */
+  nodeStatuses: Map<string, string>;
+  /** Ordered list of node IDs in this environment */
+  nodeIds: string[];
+  /**
+   * nodeId → { cpuUsage, memoryUsage, diskUsage }
+   * Derived from the 2 most recent NodeMetric rows per node.
+   */
+  nodeMetrics: Map<
+    string,
+    { cpuUsage: number | null; memoryUsage: number | null; diskUsage: number | null }
+  >;
+  /**
+   * "nodeId:pipelineId" → { errorRate, discardedRate, crashed }
+   * Derived from NodePipelineStatus rows.
+   */
+  pipelineMetrics: Map<
+    string,
+    { errorRate: number; discardedRate: number; crashed: boolean }
+  >;
+  /**
+   * nodeId → aggregated { errorRate, discardedRate, crashed }
+   * Aggregated across all pipelines on a node.
+   */
+  nodeAggPipelineMetrics: Map<
+    string,
+    { errorRate: number; discardedRate: number; crashed: boolean }
+  >;
+}
+
+/**
+ * Pre-fetch all metrics for an environment in 3 bulk queries.
+ * Returns an in-memory cache that `evaluateAlertsBatch` uses.
+ */
+export async function buildMetricCache(
+  environmentId: string,
+): Promise<MetricCache> {
+  // 1. Get all nodes in this environment
+  const nodes = await prisma.vectorNode.findMany({
+    where: { environmentId },
+    select: { id: true, status: true },
+  });
+
+  const nodeIds = nodes.map((n) => n.id);
+  const nodeStatuses = new Map(nodes.map((n) => [n.id, n.status]));
+
+  if (nodeIds.length === 0) {
+    return {
+      nodeStatuses,
+      nodeIds,
+      nodeMetrics: new Map(),
+      pipelineMetrics: new Map(),
+      nodeAggPipelineMetrics: new Map(),
+    };
+  }
+
+  // 2. Bulk fetch the 2 most recent NodeMetric rows per node
+  //    We fetch last N*2 rows ordered by nodeId+timestamp desc, then
+  //    take the first 2 per node in JS (Prisma doesn't support per-group LIMIT).
+  const recentNodeMetrics = await prisma.nodeMetric.findMany({
+    where: { nodeId: { in: nodeIds } },
+    orderBy: [{ nodeId: "asc" }, { timestamp: "desc" }],
+    take: nodeIds.length * 2,
+    select: {
+      nodeId: true,
+      timestamp: true,
+      cpuSecondsTotal: true,
+      cpuSecondsIdle: true,
+      memoryUsedBytes: true,
+      memoryTotalBytes: true,
+      fsUsedBytes: true,
+      fsTotalBytes: true,
+    },
+  });
+
+  // 3. Bulk fetch all NodePipelineStatus rows for these nodes
+  const allPipelineStatuses = await prisma.nodePipelineStatus.findMany({
+    where: { nodeId: { in: nodeIds } },
+    select: {
+      nodeId: true,
+      pipelineId: true,
+      status: true,
+      eventsIn: true,
+      errorsTotal: true,
+      eventsDiscarded: true,
+    },
+  });
+
+  // Build node metrics cache (CPU, memory, disk per node)
+  const nodeMetricsByNode = new Map<string, typeof recentNodeMetrics>();
+  for (const row of recentNodeMetrics) {
+    const existing = nodeMetricsByNode.get(row.nodeId) ?? [];
+    if (existing.length < 2) {
+      existing.push(row);
+      nodeMetricsByNode.set(row.nodeId, existing);
+    }
+  }
+
+  const nodeMetrics = new Map<
+    string,
+    { cpuUsage: number | null; memoryUsage: number | null; diskUsage: number | null }
+  >();
+
+  for (const [nodeId, rows] of nodeMetricsByNode) {
+    let cpuUsage: number | null = null;
+    let memoryUsage: number | null = null;
+    let diskUsage: number | null = null;
+
+    if (rows.length >= 2) {
+      const [newer, older] = rows;
+      const totalDelta = newer.cpuSecondsTotal - older.cpuSecondsTotal;
+      if (totalDelta > 0) {
+        const idleDelta = newer.cpuSecondsIdle - older.cpuSecondsIdle;
+        cpuUsage = Math.max(
+          0,
+          Math.min(100, ((totalDelta - idleDelta) / totalDelta) * 100),
+        );
+      }
+    }
+
+    if (rows.length >= 1) {
+      const latest = rows[0];
+      const memTotal = Number(latest.memoryTotalBytes);
+      if (memTotal > 0) {
+        memoryUsage = (Number(latest.memoryUsedBytes) / memTotal) * 100;
+      }
+      const fsTotal = Number(latest.fsTotalBytes);
+      if (fsTotal > 0) {
+        diskUsage = (Number(latest.fsUsedBytes) / fsTotal) * 100;
+      }
+    }
+
+    nodeMetrics.set(nodeId, { cpuUsage, memoryUsage, diskUsage });
+  }
+
+  // Build pipeline metrics cache
+  const pipelineMetrics = new Map<
+    string,
+    { errorRate: number; discardedRate: number; crashed: boolean }
+  >();
+
+  // Also build per-node aggregates
+  const nodeAggData = new Map<
+    string,
+    { totalIn: bigint; totalErr: bigint; totalDiscarded: bigint; anyCrashed: boolean }
+  >();
+
+  for (const ps of allPipelineStatuses) {
+    const key = `${ps.nodeId}:${ps.pipelineId}`;
+    const evIn = ps.eventsIn;
+    const evErr = ps.errorsTotal;
+    const evDisc = ps.eventsDiscarded;
+
+    const errorRate = evIn === BigInt(0) ? 0 : (Number(evErr) / Number(evIn)) * 100;
+    const discardedRate = evIn === BigInt(0) ? 0 : (Number(evDisc) / Number(evIn)) * 100;
+    const crashed = ps.status === "CRASHED";
+
+    pipelineMetrics.set(key, { errorRate, discardedRate, crashed });
+
+    // Aggregate per node
+    const agg = nodeAggData.get(ps.nodeId) ?? {
+      totalIn: BigInt(0),
+      totalErr: BigInt(0),
+      totalDiscarded: BigInt(0),
+      anyCrashed: false,
+    };
+    agg.totalIn += evIn;
+    agg.totalErr += evErr;
+    agg.totalDiscarded += evDisc;
+    if (crashed) agg.anyCrashed = true;
+    nodeAggData.set(ps.nodeId, agg);
+  }
+
+  const nodeAggPipelineMetrics = new Map<
+    string,
+    { errorRate: number; discardedRate: number; crashed: boolean }
+  >();
+
+  for (const [nodeId, agg] of nodeAggData) {
+    const errorRate =
+      agg.totalIn === BigInt(0)
+        ? 0
+        : (Number(agg.totalErr) / Number(agg.totalIn)) * 100;
+    const discardedRate =
+      agg.totalIn === BigInt(0)
+        ? 0
+        : (Number(agg.totalDiscarded) / Number(agg.totalIn)) * 100;
+    nodeAggPipelineMetrics.set(nodeId, {
+      errorRate,
+      discardedRate,
+      crashed: agg.anyCrashed,
+    });
+  }
+
+  return {
+    nodeStatuses,
+    nodeIds,
+    nodeMetrics,
+    pipelineMetrics,
+    nodeAggPipelineMetrics,
+  };
+}
+
+/**
+ * Read a metric value from the pre-built cache (no database queries).
+ * Returns null if the metric cannot be determined from cached data.
+ */
+function readMetricFromCache(
+  metric: AlertMetric,
+  nodeId: string,
+  cache: MetricCache,
+  pipelineId: string | null,
+): number | null {
+  switch (metric) {
+    case "node_unreachable": {
+      const status = cache.nodeStatuses.get(nodeId);
+      return status === "UNREACHABLE" ? 1 : 0;
+    }
+
+    case "cpu_usage":
+      return cache.nodeMetrics.get(nodeId)?.cpuUsage ?? null;
+
+    case "memory_usage":
+      return cache.nodeMetrics.get(nodeId)?.memoryUsage ?? null;
+
+    case "disk_usage":
+      return cache.nodeMetrics.get(nodeId)?.diskUsage ?? null;
+
+    case "error_rate": {
+      if (pipelineId) {
+        const key = `${nodeId}:${pipelineId}`;
+        return cache.pipelineMetrics.get(key)?.errorRate ?? null;
+      }
+      return cache.nodeAggPipelineMetrics.get(nodeId)?.errorRate ?? null;
+    }
+
+    case "discarded_rate": {
+      if (pipelineId) {
+        const key = `${nodeId}:${pipelineId}`;
+        return cache.pipelineMetrics.get(key)?.discardedRate ?? null;
+      }
+      return cache.nodeAggPipelineMetrics.get(nodeId)?.discardedRate ?? null;
+    }
+
+    case "pipeline_crashed": {
+      if (pipelineId) {
+        const key = `${nodeId}:${pipelineId}`;
+        return cache.pipelineMetrics.get(key)?.crashed ? 1 : 0;
+      }
+      return cache.nodeAggPipelineMetrics.get(nodeId)?.crashed ? 1 : 0;
+    }
+
+    // config_drift requires a per-node query that cannot be efficiently
+    // batch-cached (it compares YAML checksums). We return null here;
+    // the caller should fall back to per-rule evaluation for drift rules.
+    case "config_drift":
+      return null;
+
+    default:
+      return null;
+  }
+}
+
+/**
+ * Evaluate all enabled alert rules for an entire environment in batch.
+ *
+ * Unlike `evaluateAlerts()` (called per-node during heartbeat), this function
+ * pre-fetches all metrics in 3 bulk queries, builds an in-memory cache, then
+ * evaluates every rule against every node using the cache.
+ *
+ * Intended to run as a background job every 60s.
+ *
+ * Returns all alert events that were created or resolved.
+ */
+export async function evaluateAlertsBatch(
+  environmentId: string,
+): Promise<FiredAlertEvent[]> {
+  // 1. Build the metric cache (3 bulk queries)
+  const cache = await buildMetricCache(environmentId);
+
+  if (cache.nodeIds.length === 0) return [];
+
+  // 2. Load all enabled, non-snoozed rules for this environment
+  const rules = await prisma.alertRule.findMany({
+    where: {
+      environmentId,
+      enabled: true,
+      AND: [
+        {
+          OR: [
+            { snoozedUntil: null },
+            { snoozedUntil: { lt: new Date() } },
+          ],
+        },
+      ],
+    },
+    include: {
+      pipeline: { select: { name: true } },
+    },
+  });
+
+  const results: FiredAlertEvent[] = [];
+
+  // 3. Evaluate each rule against each node using cached data
+  for (const rule of rules) {
+    // Skip event-based rules
+    if (!rule.condition || rule.threshold == null) continue;
+
+    // Skip fleet-scoped metrics
+    if (FLEET_METRICS.has(rule.metric)) continue;
+
+    for (const nodeId of cache.nodeIds) {
+      const value = readMetricFromCache(
+        rule.metric,
+        nodeId,
+        cache,
+        rule.pipelineId,
+      );
+
+      // If we can't read the metric from cache (e.g., config_drift),
+      // fall back to the per-rule query approach
+      if (value === null) {
+        const nodeStatus = cache.nodeStatuses.get(nodeId) ?? "UNKNOWN";
+        const fallbackValue = await readMetricValue(
+          rule.metric,
+          nodeId,
+          nodeStatus,
+          rule.pipelineId,
+        );
+        if (fallbackValue === null) {
+          conditionFirstSeen.delete(`${rule.id}:${nodeId}`);
+          continue;
+        }
+        // Process the fallback value (same logic as below)
+        const fallbackResults = await processRuleForNode(
+          rule,
+          nodeId,
+          fallbackValue,
+        );
+        results.push(...fallbackResults);
+        continue;
+      }
+
+      const ruleResults = await processRuleForNode(rule, nodeId, value);
+      results.push(...ruleResults);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Process a single rule evaluation for a single node.
+ * Extracted to avoid duplication between cached and fallback paths.
+ */
+async function processRuleForNode(
+  rule: AlertRule & { pipeline: { name: string } | null },
+  nodeId: string,
+  value: number,
+): Promise<FiredAlertEvent[]> {
+  const results: FiredAlertEvent[] = [];
+  const conditionMet = checkCondition(value, rule.condition!, rule.threshold!);
+  const now = new Date();
+
+  if (conditionMet) {
+    const durationKey = `${rule.id}:${nodeId}`;
+    if (!conditionFirstSeen.has(durationKey)) {
+      conditionFirstSeen.set(durationKey, now);
+    }
+
+    const firstSeen = conditionFirstSeen.get(durationKey)!;
+    const elapsedSeconds = (now.getTime() - firstSeen.getTime()) / 1000;
+
+    if (elapsedSeconds >= (rule.durationSeconds ?? 0)) {
+      const existingEvent = await prisma.alertEvent.findFirst({
+        where: {
+          alertRuleId: rule.id,
+          nodeId,
+          status: { in: ["firing", "acknowledged"] },
+          resolvedAt: null,
+        },
+        orderBy: { firedAt: "desc" },
+      });
+
+      if (!existingEvent) {
+        const message = buildMessage(rule, value, rule.pipeline?.name);
+        const event = await prisma.alertEvent.create({
+          data: {
+            alertRuleId: rule.id,
+            nodeId,
+            status: "firing",
+            value,
+            message,
+          },
+        });
+        results.push({ event, rule });
+      }
+    }
+  } else {
+    conditionFirstSeen.delete(`${rule.id}:${nodeId}`);
+
+    const openEvent = await prisma.alertEvent.findFirst({
+      where: {
+        alertRuleId: rule.id,
+        nodeId,
+        status: { in: ["firing", "acknowledged"] },
+        resolvedAt: null,
+      },
+      orderBy: { firedAt: "desc" },
+    });
+
+    if (openEvent) {
+      const resolved = await prisma.alertEvent.update({
+        where: { id: openEvent.id },
+        data: {
+          status: "resolved",
+          resolvedAt: now,
+        },
+      });
+      results.push({ event: resolved, rule });
+    }
+  }
+
+  return results;
+}
