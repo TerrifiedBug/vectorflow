@@ -12,6 +12,8 @@ export interface FleetOverview {
   eventsOut: number;
   errorRate: number;
   nodeCount: number;
+  versionDriftCount: number;
+  configDriftCount: number;
 }
 
 export interface VolumeBucket {
@@ -130,7 +132,85 @@ export async function getFleetOverview(
   const nodeCount = Number(nodeRows[0]?.count ?? 0);
   const errorRate = eventsIn > 0 ? errorsTotal / eventsIn : 0;
 
-  return { bytesIn, bytesOut, eventsIn, eventsOut, errorRate, nodeCount };
+  // Compute drift stats
+  const [pipelineStatuses, deployedPipelines] = await Promise.all([
+    prisma.nodePipelineStatus.findMany({
+      where: {
+        node: { environmentId },
+      },
+      select: {
+        nodeId: true,
+        pipelineId: true,
+        version: true,
+        configChecksum: true,
+      },
+    }),
+    prisma.pipeline.findMany({
+      where: {
+        environmentId,
+        isDraft: false,
+        deployedAt: { not: null },
+      },
+      select: {
+        id: true,
+        versions: {
+          orderBy: { version: "desc" as const },
+          take: 1,
+          select: { version: true },
+        },
+      },
+    }),
+  ]);
+
+  // Build latest version map
+  const latestVersionMap = new Map<string, number>();
+  for (const p of deployedPipelines) {
+    latestVersionMap.set(p.id, p.versions[0]?.version ?? 1);
+  }
+
+  // Count pipelines with version drift (any node running non-latest version)
+  const pipelineVersions = new Map<string, Set<number>>();
+  for (const s of pipelineStatuses) {
+    const versions = pipelineVersions.get(s.pipelineId) ?? new Set();
+    versions.add(s.version);
+    pipelineVersions.set(s.pipelineId, versions);
+  }
+
+  let versionDriftCount = 0;
+  for (const [pipelineId, versions] of pipelineVersions.entries()) {
+    const latest = latestVersionMap.get(pipelineId);
+    if (latest === undefined) continue;
+    const hasNonLatest = [...versions].some((v) => v !== latest);
+    if (hasNonLatest) versionDriftCount++;
+  }
+
+  // Config drift: count pipelines where any node's reported checksum differs
+  // from the expected checksum in the drift-metrics cache.
+  const { getExpectedChecksums } = await import("@/server/services/drift-metrics");
+  const pipelineIdsWithChecksum = pipelineStatuses
+    .filter((s) => s.configChecksum != null)
+    .map((s) => s.pipelineId);
+  const expectedChecksums = getExpectedChecksums([...new Set(pipelineIdsWithChecksum)]);
+  const configDriftPipelines = new Set<string>();
+  for (const s of pipelineStatuses) {
+    if (s.configChecksum == null) continue;
+    const expected = expectedChecksums.get(s.pipelineId);
+    if (expected && s.configChecksum !== expected) {
+      configDriftPipelines.add(s.pipelineId);
+    }
+  }
+  const configDriftCount = configDriftPipelines.size;
+
+  return {
+    bytesIn,
+    bytesOut,
+    eventsIn,
+    eventsOut,
+    errorRate,
+    nodeCount,
+    versionDriftCount,
+    configDriftCount,
+  };
 }
 
 // ─── Volume Trend ───────────────────────────────────────────────────────────

@@ -76,6 +76,9 @@ func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string, deployment
 			}
 		}
 
+		// Include config checksum from last applied config
+		ps.ConfigChecksum = s.ConfigChecksum
+
 		// Include recent stdout/stderr lines (max 100 per heartbeat)
 		logs := sup.GetRecentLogs(s.PipelineID)
 		if len(logs) > 100 {

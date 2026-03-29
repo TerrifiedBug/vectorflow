@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { SSEEvent } from "@/lib/sse/types";
 import { generateId } from "@/lib/utils";
 import { useSSEStore } from "@/stores/sse-store";
+import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -51,6 +52,9 @@ export function useSSE() {
   const setStatus = useSSEStore((s) => s.setStatus);
   const setLastConnectedAt = useSSEStore((s) => s.setLastConnectedAt);
 
+  const visible = useDocumentVisibility();
+  const eventBufferRef = useRef<SSEEvent[]>([]);
+  const visibleRef = useRef(visible);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backoffRef = useRef(INITIAL_BACKOFF_MS);
@@ -69,6 +73,22 @@ export function useSSE() {
       }
     }
   }, []);
+
+  // Keep visibility ref in sync
+  useEffect(() => {
+    visibleRef.current = visible;
+  }, [visible]);
+
+  // Flush buffered events when tab becomes visible
+  useEffect(() => {
+    if (visible && eventBufferRef.current.length > 0) {
+      const buffered = eventBufferRef.current;
+      eventBufferRef.current = [];
+      for (const event of buffered) {
+        dispatch(event);
+      }
+    }
+  }, [visible, dispatch]);
 
   // ── Connect / reconnect ──────────────────────────────────────────
 
@@ -111,7 +131,11 @@ export function useSSE() {
       es.addEventListener(eventType, ((e: MessageEvent) => {
         try {
           const parsed = JSON.parse(e.data) as SSEEvent;
-          dispatch(parsed);
+          if (visibleRef.current) {
+            dispatch(parsed);
+          } else {
+            eventBufferRef.current.push(parsed);
+          }
         } catch {
           // malformed event — drop silently
         }

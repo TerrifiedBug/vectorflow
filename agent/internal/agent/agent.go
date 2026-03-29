@@ -165,11 +165,15 @@ func (a *Agent) pollAndApply() {
 			slog.Info("starting pipeline", "name", action.Name, "version", action.Version)
 			if err := a.supervisor.Start(action.PipelineID, action.ConfigPath, action.Version, action.LogLevel, action.Secrets); err != nil {
 				slog.Error("failed to start pipeline", "pipeline", action.PipelineID, "error", err)
+			} else if action.Checksum != "" {
+				a.supervisor.SetConfigChecksum(action.PipelineID, action.Checksum)
 			}
 		case ActionRestart:
 			slog.Info("restarting pipeline", "name", action.Name, "version", action.Version, "reason", "config changed")
 			if err := a.supervisor.Restart(action.PipelineID, action.ConfigPath, action.Version, action.LogLevel, action.Secrets); err != nil {
 				slog.Error("failed to restart pipeline", "pipeline", action.PipelineID, "error", err)
+			} else if action.Checksum != "" {
+				a.supervisor.SetConfigChecksum(action.PipelineID, action.Checksum)
 			}
 		case ActionStop:
 			slog.Info("stopping pipeline", "pipeline", action.PipelineID, "reason", "removed from config")

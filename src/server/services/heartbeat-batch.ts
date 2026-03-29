@@ -15,6 +15,7 @@ export interface PipelineStatusInput {
   bytesOut?: number;
   utilization?: number;
   recentLogs?: string[];
+  configChecksum?: string | null;
 }
 
 /**
@@ -46,6 +47,7 @@ export async function batchUpsertPipelineStatuses(
     ${ps.bytesIn ?? 0},
     ${ps.bytesOut ?? 0},
     ${ps.utilization ?? 0},
+    ${ps.configChecksum ?? null},
     ${ps.recentLogs ? JSON.stringify(ps.recentLogs) : null}::jsonb,
     ${now}
   )`);
@@ -55,7 +57,7 @@ export async function batchUpsertPipelineStatuses(
       ("id", "nodeId", "pipelineId", "version", "status", "pid",
        "uptimeSeconds", "eventsIn", "eventsOut", "errorsTotal",
        "eventsDiscarded", "bytesIn", "bytesOut", "utilization",
-       "recentLogs", "lastUpdated")
+       "configChecksum", "recentLogs", "lastUpdated")
     VALUES ${Prisma.join(values)}
     ON CONFLICT ("nodeId", "pipelineId") DO UPDATE SET
       "version" = EXCLUDED."version",
@@ -69,6 +71,7 @@ export async function batchUpsertPipelineStatuses(
       "bytesIn" = EXCLUDED."bytesIn",
       "bytesOut" = EXCLUDED."bytesOut",
       "utilization" = EXCLUDED."utilization",
+      "configChecksum" = EXCLUDED."configChecksum",
       "recentLogs" = EXCLUDED."recentLogs",
       "lastUpdated" = EXCLUDED."lastUpdated"
   `;

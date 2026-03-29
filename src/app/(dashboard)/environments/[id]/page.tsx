@@ -51,6 +51,7 @@ import { PageHeader } from "@/components/page-header";
 import { SecretsSection } from "@/components/environment/secrets-section";
 import { CertificatesSection } from "@/components/environment/certificates-section";
 import { GitSyncSection } from "@/components/environment/git-sync-section";
+import { GitSyncStatus } from "@/components/environment/git-sync-status";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { useTeamStore } from "@/stores/team-store";
 import { EmptyState } from "@/components/empty-state";
@@ -634,7 +635,12 @@ export default function EnvironmentDetailPage({
         hasGitToken={env.hasGitToken}
         gitOpsMode={env.gitOpsMode}
         hasWebhookSecret={env.hasWebhookSecret}
+        gitProvider={env.gitProvider ?? null}
       />
+
+      {env.gitOpsMode !== "off" && (
+        <GitSyncStatus environmentId={id} />
+      )}
 
       {/* Created info */}
       <p className="text-xs text-muted-foreground">

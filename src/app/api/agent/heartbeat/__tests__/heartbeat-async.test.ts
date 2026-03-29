@@ -361,4 +361,35 @@ describe("heartbeat async decomposition", () => {
       ["line 1", "line 2"],
     );
   });
+
+  it("persists configChecksum from heartbeat payload", async () => {
+    setupBaseMocks();
+
+    const req = makeRequest({
+      pipelines: [
+        {
+          pipelineId: "pipe-1",
+          version: 3,
+          status: "RUNNING",
+          configChecksum: "abc123def456",
+        },
+      ],
+      sampleResults: [],
+    });
+
+    const response = await POST(req);
+    expect(response.status).toBe(200);
+
+    // Verify batchUpsert was called with the configChecksum
+    expect(batchUpsertMock).toHaveBeenCalledWith(
+      expect.any(String), // nodeId
+      expect.arrayContaining([
+        expect.objectContaining({
+          pipelineId: "pipe-1",
+          configChecksum: "abc123def456",
+        }),
+      ]),
+      expect.any(Date),
+    );
+  });
 });

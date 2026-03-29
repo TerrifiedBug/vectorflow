@@ -18,6 +18,8 @@ import {
   TrendingDown,
   Activity,
   Scale,
+  GitCompareArrows,
+  FileWarning,
 } from "lucide-react";
 
 export interface AlertRuleTemplate {
@@ -173,6 +175,32 @@ export const ALERT_RULE_TEMPLATES: AlertRuleTemplate[] = [
       condition: "gt",
       threshold: "30",
       durationSeconds: "120",
+    },
+  },
+  {
+    id: "version-drift",
+    name: "Version Drift",
+    description:
+      "Alert when any pipeline has nodes running different versions from the latest deployed version.",
+    icon: GitCompareArrows,
+    defaults: {
+      metric: "version_drift",
+      condition: "gt",
+      threshold: "0",
+      durationSeconds: "0",
+    },
+  },
+  {
+    id: "config-drift",
+    name: "Config Drift",
+    description:
+      "Alert when a node's running config doesn't match the server's expected config for 60 seconds.",
+    icon: FileWarning,
+    defaults: {
+      metric: "config_drift",
+      condition: "gt",
+      threshold: "0",
+      durationSeconds: "60",
     },
   },
 ];

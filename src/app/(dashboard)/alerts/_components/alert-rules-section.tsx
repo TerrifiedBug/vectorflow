@@ -235,7 +235,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
   );
 
   const rules = rulesQuery.data ?? [];
-  const pipelines = pipelinesQuery.data ?? [];
+  const pipelines = pipelinesQuery.data?.pipelines ?? [];
   const channels = channelsQuery.data ?? [];
 
   const openCreate = () => {

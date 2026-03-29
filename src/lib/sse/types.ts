@@ -49,10 +49,19 @@ export interface PipelineStatusEvent {
   timestamp: number;
 }
 
+/** Git sync status update for retry jobs. */
+export interface GitSyncStatusEvent {
+  type: "git_sync_status";
+  environmentId: string;
+  status: "completed" | "failed";
+  jobId: string;
+}
+
 /** All SSE event types the browser can receive. */
 export type SSEEvent =
   | MetricUpdateEvent
   | FleetStatusEvent
   | LogEntryEvent
   | StatusChangeEvent
-  | PipelineStatusEvent;
+  | PipelineStatusEvent
+  | GitSyncStatusEvent;

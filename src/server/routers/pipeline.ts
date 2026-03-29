@@ -67,10 +67,23 @@ export const pipelineRouter = router({
     }),
 
   list: protectedProcedure
-    .input(z.object({ environmentId: z.string() }))
+    .input(
+      z.object({
+        environmentId: z.string(),
+        cursor: z.string().optional(),
+        limit: z.number().int().min(1).max(200).default(50).optional(),
+        search: z.string().optional(),
+        status: z.array(z.string()).optional(),
+        tags: z.array(z.string()).optional(),
+        groupId: z.string().optional(),
+        sortBy: z.enum(["name", "updatedAt", "deployedAt"]).optional(),
+        sortOrder: z.enum(["asc", "desc"]).optional(),
+      })
+    )
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      return listPipelinesForEnvironment(input.environmentId);
+      const { environmentId, ...options } = input;
+      return listPipelinesForEnvironment(environmentId, options);
     }),
 
   get: protectedProcedure
@@ -703,11 +716,12 @@ export const pipelineRouter = router({
         levels: z.array(z.nativeEnum(LogLevel)).optional(),
         nodeId: z.string().optional(),
         since: z.date().optional(),
+        search: z.string().max(200).optional(),
       }),
     )
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      const { pipelineId, cursor, limit, levels, nodeId, since } = input;
+      const { pipelineId, cursor, limit, levels, nodeId, since, search } = input;
       const take = limit;
 
       const where: Record<string, unknown> = { pipelineId };
@@ -719,6 +733,9 @@ export const pipelineRouter = router({
       }
       if (since) {
         where.timestamp = { gte: since };
+      }
+      if (search) {
+        where.message = { contains: search, mode: "insensitive" };
       }
 
       const items = await prisma.pipelineLog.findMany({

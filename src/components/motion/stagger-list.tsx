@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import type { JSX, ComponentPropsWithoutRef } from "react";
+import type { JSX, ComponentPropsWithoutRef, Ref } from "react";
 import * as m from "motion/react-m";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 
@@ -82,6 +82,7 @@ type StaggerItemProps<T extends ValidTag = "div"> = {
   as?: T;
   className?: string;
   children?: React.ReactNode;
+  ref?: Ref<HTMLElement>;
 } & Omit<ComponentPropsWithoutRef<T>, "className" | "children">;
 
 const staggerItemVariants = {

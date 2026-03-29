@@ -9,6 +9,21 @@ import { stripEnvRefs, type StrippedRef } from "@/server/services/strip-env-refs
 type Tx = Prisma.TransactionClient;
 
 /* ------------------------------------------------------------------ */
+/*  ListPipelinesOptions — filter/sort/pagination for pipeline list   */
+/* ------------------------------------------------------------------ */
+
+export interface ListPipelinesOptions {
+  cursor?: string;
+  limit?: number;
+  search?: string;
+  status?: string[];      // "deployed" | "draft" | "error"
+  tags?: string[];
+  groupId?: string;
+  sortBy?: "name" | "updatedAt" | "deployedAt";
+  sortOrder?: "asc" | "desc";
+}
+
+/* ------------------------------------------------------------------ */
 /*  saveGraph — component validation + node/edge transaction body     */
 /* ------------------------------------------------------------------ */
 
@@ -512,75 +527,148 @@ export function detectConfigChanges(params: {
  *
  * This is the data assembly behind the `pipeline.list` tRPC endpoint.
  */
-export async function listPipelinesForEnvironment(environmentId: string) {
-  const pipelines = await prisma.pipeline.findMany({
-    where: { environmentId },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      isDraft: true,
-      deployedAt: true,
-      createdAt: true,
-      updatedAt: true,
-      globalConfig: true,
-      tags: true,
-      enrichMetadata: true,
-      groupId: true,
-      group: { select: { id: true, name: true, color: true } },
-      environment: { select: { name: true } },
-      createdBy: { select: { name: true, email: true, image: true } },
-      updatedBy: { select: { name: true, email: true, image: true } },
-      nodeStatuses: {
-        select: {
-          status: true,
-          eventsIn: true,
-          eventsOut: true,
-          errorsTotal: true,
-          eventsDiscarded: true,
-          bytesIn: true,
-          bytesOut: true,
-          uptimeSeconds: true,
-        },
-      },
-      nodes: {
-        select: {
-          id: true,
-          componentType: true,
-          componentKey: true,
-          kind: true,
-          config: true,
-          positionX: true,
-          positionY: true,
-          disabled: true,
-          sharedComponentId: true,
-          sharedComponentVersion: true,
-          sharedComponent: {
-            select: { version: true, name: true },
-          },
-        },
-      },
-      edges: {
-        select: {
-          id: true,
-          sourceNodeId: true,
-          targetNodeId: true,
-          sourcePort: true,
-        },
-      },
-      _count: {
-        select: { upstreamDeps: true, downstreamDeps: true },
-      },
-      versions: {
-        orderBy: { version: "desc" as const },
-        take: 1,
-        select: { version: true, configYaml: true, logLevel: true },
+export async function listPipelinesForEnvironment(
+  environmentId: string,
+  options: ListPipelinesOptions = {},
+) {
+  const {
+    cursor,
+    limit: rawLimit,
+    search,
+    status,
+    tags,
+    groupId,
+    sortBy,
+    sortOrder,
+  } = options;
+
+  const limit = Math.min(rawLimit ?? 50, 200);
+
+  // Build filter conditions (like audit.list pattern)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const conditions: any[] = [{ environmentId }];
+
+  if (search) {
+    conditions.push({ name: { contains: search, mode: "insensitive" } });
+  }
+
+  if (status && status.length > 0) {
+    if (status.includes("deployed")) {
+      conditions.push({ isDraft: false, deployedAt: { not: null } });
+    }
+    if (status.includes("draft")) {
+      conditions.push({ isDraft: true });
+    }
+  }
+
+  if (tags && tags.length > 0) {
+    conditions.push({
+      tags: { array_contains: tags },
+    });
+  }
+
+  if (groupId) {
+    conditions.push({ groupId });
+  }
+
+  const where = { AND: conditions };
+
+  // Determine orderBy from sortBy/sortOrder
+  let orderBy: Record<string, string>;
+  switch (sortBy) {
+    case "name":
+      orderBy = { name: sortOrder ?? "asc" };
+      break;
+    case "deployedAt":
+      orderBy = { deployedAt: sortOrder ?? "desc" };
+      break;
+    default:
+      orderBy = { updatedAt: sortOrder ?? "desc" };
+      break;
+  }
+
+  const pipelineSelect = {
+    id: true,
+    name: true,
+    description: true,
+    isDraft: true,
+    deployedAt: true,
+    createdAt: true,
+    updatedAt: true,
+    globalConfig: true,
+    tags: true,
+    enrichMetadata: true,
+    groupId: true,
+    group: { select: { id: true, name: true, color: true } },
+    environment: { select: { name: true } },
+    createdBy: { select: { name: true, email: true, image: true } },
+    updatedBy: { select: { name: true, email: true, image: true } },
+    nodeStatuses: {
+      select: {
+        status: true,
+        eventsIn: true,
+        eventsOut: true,
+        errorsTotal: true,
+        eventsDiscarded: true,
+        bytesIn: true,
+        bytesOut: true,
+        uptimeSeconds: true,
       },
     },
-    orderBy: { updatedAt: "desc" },
-  });
+    nodes: {
+      select: {
+        id: true,
+        componentType: true,
+        componentKey: true,
+        kind: true,
+        config: true,
+        positionX: true,
+        positionY: true,
+        disabled: true,
+        sharedComponentId: true,
+        sharedComponentVersion: true,
+        sharedComponent: {
+          select: { version: true, name: true },
+        },
+      },
+    },
+    edges: {
+      select: {
+        id: true,
+        sourceNodeId: true,
+        targetNodeId: true,
+        sourcePort: true,
+      },
+    },
+    _count: {
+      select: { upstreamDeps: true, downstreamDeps: true },
+    },
+    versions: {
+      orderBy: { version: "desc" as const },
+      take: 1,
+      select: { version: true, configYaml: true, logLevel: true },
+    },
+  };
 
-  return Promise.all(pipelines.map(async (p) => {
+  const [rawPipelines, totalCount] = await Promise.all([
+    prisma.pipeline.findMany({
+      where,
+      select: pipelineSelect,
+      orderBy,
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    }),
+    prisma.pipeline.count({ where }),
+  ]);
+
+  // Detect next cursor via overfetch
+  let nextCursor: string | undefined;
+  if (rawPipelines.length > limit) {
+    rawPipelines.pop();
+    nextCursor = rawPipelines[rawPipelines.length - 1]?.id;
+  }
+
+  const pipelines = await Promise.all(rawPipelines.map(async (p) => {
     let hasUndeployedChanges = false;
     if (!p.isDraft && p.deployedAt) {
       const latestVersion = p.versions[0];
@@ -634,4 +722,6 @@ export async function listPipelinesForEnvironment(environmentId: string) {
       })(),
     };
   }));
+
+  return { pipelines, nextCursor, totalCount };
 }

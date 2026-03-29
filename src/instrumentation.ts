@@ -137,6 +137,16 @@ export async function register() {
     } catch (error) {
       console.error("Failed to initialize fleet alert service:", error);
     }
+
+    // Start git sync retry service.
+    try {
+      const { initGitSyncRetryService } = await import(
+        "@/server/services/git-sync-retry"
+      );
+      initGitSyncRetryService();
+    } catch (error) {
+      console.error("Failed to initialize git sync retry service:", error);
+    }
   }
 
   if (leaderIsLeader()) {

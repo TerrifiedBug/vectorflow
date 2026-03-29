@@ -30,6 +30,10 @@ vi.mock("@/server/services/delivery-tracking", () => ({
   trackWebhookDelivery: vi.fn().mockResolvedValue({ success: true }),
 }));
 
+vi.mock("@/server/services/drift-metrics", () => ({
+  getVersionDrift: vi.fn(),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { FleetAlertService } from "@/server/services/fleet-alert-service";
 import {
@@ -40,6 +44,7 @@ import {
 } from "@/server/services/fleet-metrics";
 import { deliverToChannels } from "@/server/services/channels";
 import { trackWebhookDelivery } from "@/server/services/delivery-tracking";
+import { getVersionDrift } from "@/server/services/drift-metrics";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -47,6 +52,7 @@ const mockGetFleetErrorRate = getFleetErrorRate as ReturnType<typeof vi.fn>;
 const mockGetFleetEventVolume = getFleetEventVolume as ReturnType<typeof vi.fn>;
 const mockGetFleetThroughputDrop = getFleetThroughputDrop as ReturnType<typeof vi.fn>;
 const mockGetNodeLoadImbalance = getNodeLoadImbalance as ReturnType<typeof vi.fn>;
+const mockGetVersionDrift = getVersionDrift as ReturnType<typeof vi.fn>;
 
 // ─── Fixture helpers ────────────────────────────────────────────────────────
 
@@ -506,5 +512,87 @@ describe("FleetAlertService", () => {
     service.stop();
     // Second stop is safe
     service.stop();
+  });
+
+  // ── version_drift evaluation ────────────────────────────────────────────
+
+  describe("version_drift evaluation", () => {
+    it("fires alert when version drift is detected", async () => {
+      const rule = makeRule({
+        id: "rule-vd-1",
+        metric: "version_drift",
+        condition: "gt",
+        threshold: 0,
+        durationSeconds: 0,
+      });
+
+      prismaMock.alertRule.findMany.mockResolvedValue([rule]);
+      mockGetVersionDrift.mockResolvedValue({ value: 2, driftedPipelines: [] });
+      prismaMock.alertEvent.findFirst.mockResolvedValue(null);
+      prismaMock.alertEvent.create.mockResolvedValue({
+        id: "event-vd-1",
+        alertRuleId: "rule-vd-1",
+        nodeId: null,
+        status: "firing",
+        value: 2,
+        message: "Version drift at 2.00 (threshold: > 0)",
+        firedAt: NOW,
+        resolvedAt: null,
+        notifiedAt: null,
+        acknowledgedAt: null,
+        acknowledgedBy: null,
+      });
+      prismaMock.alertWebhook.findMany.mockResolvedValue([]);
+
+      const results = await service.evaluateFleetAlerts();
+
+      expect(results).toHaveLength(1);
+      expect(results[0].event.status).toBe("firing");
+      expect(mockGetVersionDrift).toHaveBeenCalledWith(rule.environmentId);
+    });
+
+    it("resolves alert when version drift drops to zero", async () => {
+      const rule = makeRule({
+        id: "rule-vd-2",
+        metric: "version_drift",
+        condition: "gt",
+        threshold: 0,
+        durationSeconds: 0,
+      });
+
+      prismaMock.alertRule.findMany.mockResolvedValue([rule]);
+      mockGetVersionDrift.mockResolvedValue({ value: 0, driftedPipelines: [] });
+      prismaMock.alertEvent.findFirst.mockResolvedValue({
+        id: "event-vd-2",
+        alertRuleId: "rule-vd-2",
+        status: "firing",
+        resolvedAt: null,
+        firedAt: NOW,
+        nodeId: null,
+        value: 2,
+        message: "Version drift at 2.00 (threshold: > 0)",
+        notifiedAt: null,
+        acknowledgedAt: null,
+        acknowledgedBy: null,
+      });
+      prismaMock.alertEvent.update.mockResolvedValue({
+        id: "event-vd-2",
+        alertRuleId: "rule-vd-2",
+        status: "resolved",
+        resolvedAt: NOW,
+        firedAt: NOW,
+        nodeId: null,
+        value: 0,
+        message: "Version drift at 2.00 (threshold: > 0)",
+        notifiedAt: null,
+        acknowledgedAt: null,
+        acknowledgedBy: null,
+      });
+
+      const results = await service.evaluateFleetAlerts();
+
+      expect(results).toHaveLength(1);
+      expect(results[0].event.status).toBe("resolved");
+    });
   });
 });
