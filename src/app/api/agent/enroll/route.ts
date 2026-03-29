@@ -5,6 +5,7 @@ import { verifyEnrollmentToken, generateNodeToken } from "@/server/services/agen
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { debugLog } from "@/lib/logger";
 import { nodeMatchesGroup } from "@/lib/node-group-utils";
+import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
 
 const enrollSchema = z.object({
   token: z.string().min(1),
@@ -15,6 +16,9 @@ const enrollSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const rateLimited = checkIpRateLimit(request, "enroll", 10);
+  if (rateLimited) return rateLimited;
+
   try {
     const body = await request.json();
     const parsed = enrollSchema.safeParse(body);

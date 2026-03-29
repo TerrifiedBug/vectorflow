@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { isSetupRequired, completeSetup } from "@/server/services/setup";
+import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const rateLimited = checkIpRateLimit(request, "setup", 5);
+  if (rateLimited) return rateLimited;
+
   try {
     const setupRequired = await isSetupRequired();
     return NextResponse.json({ setupRequired });
@@ -11,6 +15,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const rateLimited = checkIpRateLimit(request, "setup", 5);
+  if (rateLimited) return rateLimited;
+
   try {
     // CSRF protection: verify origin matches host
     const origin = request.headers.get("origin");

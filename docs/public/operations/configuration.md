@@ -145,6 +145,22 @@ For more details, see [Backup & Restore](backup-restore.md).
 
 OIDC is configured in the Settings page under the **Authentication** tab. See [Authentication](authentication.md) for full setup instructions.
 
+## Prometheus metrics
+
+The `/api/metrics` endpoint exposes metrics in Prometheus exposition format. It requires a service account API token with the `metrics.read` permission.
+
+Create a service account in **Settings > Service Accounts** with `metrics.read` permission, then configure your Prometheus scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: vectorflow
+    scheme: https
+    metrics_path: /api/metrics
+    bearer_token: "vf_your_service_account_key"
+    static_configs:
+      - targets: ["vectorflow.example.com"]
+```
+
 ## Ports reference
 
 | Service | Default Port | Description |
