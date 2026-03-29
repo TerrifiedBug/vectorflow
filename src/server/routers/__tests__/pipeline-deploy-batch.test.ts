@@ -1,6 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
+import { mockDeep } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
+import { z } from "zod";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockDeep<PrismaClient>(),
@@ -111,7 +112,6 @@ describe("pipeline.deployBatch tRPC procedure", () => {
   it("should enforce max 200 pipeline IDs", () => {
     // The tRPC procedure will use z.array(z.string()).min(1).max(200)
     // This test documents the constraint
-    const { z } = require("zod");
     const schema = z.array(z.string()).min(1).max(200);
 
     expect(() => schema.parse([])).toThrow();

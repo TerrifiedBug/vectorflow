@@ -18,7 +18,6 @@ vi.mock("@/server/services/drift-metrics", () => ({
 import { prisma } from "@/lib/prisma";
 import {
   evaluateAlertsBatch,
-  type MetricCache,
   buildMetricCache,
 } from "@/server/services/alert-evaluator";
 

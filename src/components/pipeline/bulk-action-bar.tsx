@@ -80,7 +80,12 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
 
   const deployBatchMutation = useMutation(
     trpc.pipeline.deployBatch.mutationOptions({
-      onSuccess: (data) => handleResult("Deploy", data),
+      onSuccess: (data) =>
+        handleResult("Deploy", {
+          total: data.total,
+          succeeded: data.completed,
+          results: data.results,
+        }),
       onError: (err) => toast.error(err.message || "Bulk deploy failed", { duration: 6000 }),
     }),
   );
