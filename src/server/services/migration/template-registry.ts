@@ -34,17 +34,17 @@ function ensureInitialized(): void {
   if (initialized) return;
   initialized = true;
 
-  // Dynamic imports to avoid circular reference
-  require("./templates/01-tail-elasticsearch");
-  require("./templates/02-tail-kafka");
-  require("./templates/03-tail-s3");
-  require("./templates/04-syslog-elasticsearch");
-  require("./templates/05-forward-bridge");
-  require("./templates/06-http-datadog");
-  require("./templates/07-kubernetes-loki");
-  require("./templates/08-multi-output-fanout");
-  require("./templates/09-log-parsing-enrichment");
-  require("./templates/10-grep-routing");
+  // Side-effect imports register templates via registerTemplate()
+  import("./templates/01-tail-elasticsearch");
+  import("./templates/02-tail-kafka");
+  import("./templates/03-tail-s3");
+  import("./templates/04-syslog-elasticsearch");
+  import("./templates/05-forward-bridge");
+  import("./templates/06-http-datadog");
+  import("./templates/07-kubernetes-loki");
+  import("./templates/08-multi-output-fanout");
+  import("./templates/09-log-parsing-enrichment");
+  import("./templates/10-grep-routing");
 }
 
 export function getAllMigrationTemplates(): MigrationTemplate[] {

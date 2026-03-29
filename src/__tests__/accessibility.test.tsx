@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-html-link-for-pages */
 /**
  * Automated accessibility scanning using axe-core.
  *
