@@ -42,6 +42,7 @@ model User {
   pipelineVersionsCreated PipelineVersion[] @relation("PipelineVersionCreatedBy")
   stagedRolloutsCreated  StagedRollout[]  @relation("StagedRolloutCreatedBy")
   filterPresets          FilterPreset[]
+  migrationProjectsCreated MigrationProject[] @relation("MigrationProjectCreatedBy")
   createdAt              DateTime         @default(now())
 }
 
@@ -74,6 +75,7 @@ model Team {
   alertRules           AlertRule[]
   availableTags        Json?         @default("[]")   // string[] of admin-defined compliance tags
   webhookEndpoints     WebhookEndpoint[]
+  migrationProjects    MigrationProject[]
 
   // AI-powered suggestions configuration
   aiProvider           String?       // "openai" | "anthropic" | "custom"
@@ -353,6 +355,7 @@ model Pipeline {
   promotionSources    PromotionRequest[] @relation("PromotionSource")
   promotionTargets    PromotionRequest[] @relation("PromotionTarget")
   gitSyncJobs     GitSyncJob[]
+  migrationProject MigrationProject?
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 }
@@ -485,6 +488,49 @@ enum ComponentKind {
   SOURCE
   TRANSFORM
   SINK
+}
+
+enum MigrationPlatform {
+  FLUENTD
+  // FLUENT_BIT  — future
+  // LOGSTASH    — future
+}
+
+enum MigrationStatus {
+  DRAFT
+  PARSING
+  TRANSLATING
+  VALIDATING
+  READY
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
+model MigrationProject {
+  id                  String            @id @default(cuid())
+  teamId              String
+  team                Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name                String
+  platform            MigrationPlatform
+  originalConfig      String            @db.Text
+  parsedTopology      Json?
+  pluginInventory     Json?
+  readinessScore      Int?              // 0-100
+  readinessReport     Json?
+  translatedBlocks    Json?             // per-block AI translation results with confidence scores
+  validationResult    Json?             // vector validate output
+  generatedPipelineId String?           @unique
+  generatedPipeline   Pipeline?         @relation(fields: [generatedPipelineId], references: [id], onDelete: SetNull)
+  status              MigrationStatus   @default(DRAFT)
+  errorMessage        String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  createdById         String
+  createdBy           User              @relation("MigrationProjectCreatedBy", fields: [createdById], references: [id])
+
+  @@index([teamId])
+  @@index([createdById])
 }
 
 model PipelineEdge {
