@@ -127,15 +127,7 @@ async function deliverCostAlertNotifications(
   };
 
   // Deliver to notification channels
-  const channelLinks = await prisma.alertRuleChannel.findMany({
-    where: { alertRuleId: rule.id },
-    include: { channel: true },
-  });
-
-  if (channelLinks.length > 0) {
-    const channels = channelLinks.map((cl) => cl.channel);
-    await deliverToChannels(event.id, channels, payload);
-  }
+  await deliverToChannels(rule.environmentId, rule.id, payload, event.id);
 
   // Deliver to webhooks
   const webhooks = await prisma.alertWebhook.findMany({
