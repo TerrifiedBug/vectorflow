@@ -6,6 +6,8 @@ import type {
   AlertEvent,
 } from "@/generated/prisma";
 import { getConfigDrift } from "@/server/services/drift-metrics";
+import { shouldSuppressDuplicate } from "@/server/services/alert-deduplication";
+import { correlateEvent, suggestRootCause, closeResolvedGroups } from "@/server/services/alert-correlator";
 
 // ---------------------------------------------------------------------------
 // Fleet-scoped metrics — handled by FleetAlertService, not per-node heartbeat.
@@ -313,6 +315,10 @@ export async function evaluateAlerts(
         });
 
         if (!existingEvent) {
+          // ── Deduplication: skip if recently resolved within cooldown ──
+          const suppressed = await shouldSuppressDuplicate(rule, nodeId, now);
+          if (suppressed) continue;
+
           // Create a new firing event
           const message = buildMessage(rule, value, rule.pipeline?.name);
           const event = await prisma.alertEvent.create({
@@ -324,6 +330,13 @@ export async function evaluateAlerts(
               message,
             },
           });
+
+          // ── Correlation: assign to a group ──
+          const group = await correlateEvent(event, rule);
+          if (group.eventCount > 1) {
+            await suggestRootCause(group.id);
+          }
+
           results.push({ event, rule });
         }
       }
@@ -349,6 +362,10 @@ export async function evaluateAlerts(
             resolvedAt: now,
           },
         });
+
+        // ── Close correlation groups with no remaining active events ──
+        await closeResolvedGroups(environmentId);
+
         results.push({ event: resolved, rule });
       }
     }
