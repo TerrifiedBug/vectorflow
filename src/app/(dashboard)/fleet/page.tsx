@@ -730,6 +730,12 @@ export default function FleetPage() {
           }
         }}
       />
+      {/* Screen reader announcements for real-time fleet status changes */}
+      <div className="sr-only" aria-live="assertive" aria-atomic="true" role="alert">
+        {nodesQuery.data && nodesQuery.data.some((n) => n.status === "UNREACHABLE")
+          ? `Warning: ${nodesQuery.data.filter((n) => n.status === "UNREACHABLE").length} node${nodesQuery.data.filter((n) => n.status === "UNREACHABLE").length === 1 ? " is" : "s are"} unreachable`
+          : null}
+      </div>
     </div>
   );
 }
