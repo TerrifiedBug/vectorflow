@@ -70,6 +70,20 @@ const complianceTagColors: Record<string, string> = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Compliance tag helper                                              */
+/* ------------------------------------------------------------------ */
+
+function getComplianceTags(nodes: unknown[] | undefined): string[] {
+  if (!Array.isArray(nodes)) return [];
+  for (const node of nodes as Array<{ metadata?: { complianceTags?: string[] } }>) {
+    if (node.metadata?.complianceTags?.length) {
+      return node.metadata.complianceTags;
+    }
+  }
+  return [];
+}
+
+/* ------------------------------------------------------------------ */
 /*  Page Component                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -241,6 +255,23 @@ export default function TemplatesPage() {
                       {template.edgeCount} edges
                     </span>
                   </div>
+                  {(() => {
+                    const tags = getComplianceTags(template.nodes);
+                    if (tags.length === 0) return null;
+                    return (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {tags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant="secondary"
+                            className={`px-1.5 py-0 text-[10px] ${complianceTagColors[tag] ?? ""}`}
+                          >
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </CardContent>
                 <CardFooter className="flex gap-2 pt-0">
                   <Button
@@ -251,15 +282,17 @@ export default function TemplatesPage() {
                   >
                     {isCreating ? "Creating..." : "Use Template"}
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteConfirm({ id: template.id, name: template.name })}
-                    disabled={deleteTemplateMutation.isPending}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {template.teamId !== null && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setDeleteConfirm({ id: template.id, name: template.name })}
+                      disabled={deleteTemplateMutation.isPending}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </CardFooter>
               </Card>
             ))}
