@@ -9,9 +9,9 @@ function createPrismaClient() {
   const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL,
 
-    // Pool size: 2× realistic peak concurrent connections.
-    // Override via DATABASE_POOL_MAX for workloads with higher parallelism.
-    max: parseInt(process.env.DATABASE_POOL_MAX ?? "20", 10),
+    // Pool size: sized for production fleet scale (100+ pipelines, 5+ nodes).
+    // Override via DATABASE_POOL_MAX for workloads with different parallelism needs.
+    max: parseInt(process.env.DATABASE_POOL_MAX ?? "50", 10),
 
     // Fail fast on pool exhaustion instead of waiting indefinitely (pg default: 0 = no timeout).
     // 5 s is long enough for a healthy pool to recycle a connection but short enough to
