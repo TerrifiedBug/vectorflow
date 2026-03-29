@@ -43,6 +43,7 @@ export const alertRouter = router({
         condition: z.nativeEnum(AlertCondition).nullable().optional(),
         threshold: z.number().nullable().optional(),
         durationSeconds: z.number().int().min(1).nullable().optional(),
+        cooldownMinutes: z.number().int().min(0).max(1440).nullable().optional(),
         teamId: z.string(),
         channelIds: z.array(z.string()).optional(),
       }),
@@ -120,6 +121,7 @@ export const alertRouter = router({
           condition: input.condition,
           threshold: input.threshold,
           durationSeconds: input.durationSeconds,
+          cooldownMinutes: input.cooldownMinutes,
         },
       });
 
@@ -144,6 +146,7 @@ export const alertRouter = router({
         enabled: z.boolean().optional(),
         threshold: z.number().optional(),
         durationSeconds: z.number().int().min(1).optional(),
+        cooldownMinutes: z.number().int().min(0).max(1440).nullable().optional(),
         channelIds: z.array(z.string()).optional(),
       }),
     )
@@ -1044,5 +1047,131 @@ export const alertRouter = router({
       }
 
       return { items, nextCursor };
+    }),
+
+  // ─── Correlation Groups ───────────────────────────────────────────
+
+  listCorrelationGroups: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        limit: z.number().min(1).max(200).default(50),
+        cursor: z.string().optional(),
+        status: z.enum(["firing", "resolved", "acknowledged"]).optional(),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const { environmentId, limit, cursor, status } = input;
+
+      const where: Prisma.AlertCorrelationGroupWhereInput = {
+        environmentId,
+        ...(status ? { status } : {}),
+      };
+
+      const items = await prisma.alertCorrelationGroup.findMany({
+        where,
+        include: {
+          events: {
+            include: {
+              alertRule: {
+                select: {
+                  id: true,
+                  name: true,
+                  metric: true,
+                  condition: true,
+                  threshold: true,
+                  pipeline: { select: { id: true, name: true } },
+                },
+              },
+              node: { select: { id: true, host: true } },
+            },
+            take: 3, // Preview: first 3 events for the summary row
+            orderBy: { firedAt: "asc" },
+          },
+        },
+        orderBy: { openedAt: "desc" },
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+
+      let nextCursor: string | undefined;
+      if (items.length > limit) {
+        const nextItem = items.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      return { items, nextCursor };
+    }),
+
+  getCorrelationGroup: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const group = await prisma.alertCorrelationGroup.findUnique({
+        where: { id: input.id },
+        include: {
+          events: {
+            include: {
+              alertRule: {
+                select: {
+                  id: true,
+                  name: true,
+                  metric: true,
+                  condition: true,
+                  threshold: true,
+                  pipeline: { select: { id: true, name: true } },
+                },
+              },
+              node: { select: { id: true, host: true } },
+            },
+            orderBy: { firedAt: "asc" },
+          },
+        },
+      });
+
+      if (!group) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Correlation group not found",
+        });
+      }
+
+      return group;
+    }),
+
+  acknowledgeGroup: protectedProcedure
+    .input(z.object({ groupId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("alertGroup.acknowledged", "AlertCorrelationGroup"))
+    .mutation(async ({ input, ctx }) => {
+      const group = await prisma.alertCorrelationGroup.findUnique({
+        where: { id: input.groupId },
+      });
+      if (!group) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Correlation group not found",
+        });
+      }
+
+      const user = ctx.session.user;
+      const acknowledgedBy =
+        user?.email || user?.name || user?.id || "unknown";
+
+      // Acknowledge all firing events in the group
+      await prisma.alertEvent.updateMany({
+        where: {
+          correlationGroupId: input.groupId,
+          status: "firing",
+        },
+        data: {
+          status: "acknowledged",
+          acknowledgedAt: new Date(),
+          acknowledgedBy,
+        },
+      });
+
+      return { success: true };
     }),
 });

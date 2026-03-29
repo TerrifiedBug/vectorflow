@@ -167,6 +167,7 @@ model Environment {
   costBudgetCents         Int?                            // monthly budget in cents (null = no budget)
   costRecommendations     CostRecommendation[]
   anomalyEvents       AnomalyEvent[]
+  correlationGroups       AlertCorrelationGroup[]
   createdAt               DateTime      @default(now())
 }
 
@@ -982,6 +983,7 @@ model AlertRule {
   threshold       Float?
   durationSeconds Int?
   snoozedUntil    DateTime?
+  cooldownMinutes Int?
   events          AlertEvent[]
   channels        AlertRuleChannel[]
   createdAt       DateTime       @default(now())
@@ -1054,11 +1056,30 @@ model AlertEvent {
   notifiedAt      DateTime?
   acknowledgedAt  DateTime?
   acknowledgedBy  String?
+  correlationGroupId  String?
+  correlationGroup    AlertCorrelationGroup? @relation(fields: [correlationGroupId], references: [id], onDelete: SetNull)
   deliveries      DeliveryAttempt[]
 
   @@index([alertRuleId])
   @@index([nodeId])
   @@index([firedAt])
+  @@index([correlationGroupId])
+}
+
+model AlertCorrelationGroup {
+  id                  String       @id @default(cuid())
+  environmentId       String
+  environment         Environment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  status              AlertStatus  @default(firing)
+  rootCauseEventId    String?
+  rootCauseSuggestion String?
+  eventCount          Int          @default(1)
+  openedAt            DateTime     @default(now())
+  closedAt            DateTime?
+  events              AlertEvent[]
+
+  @@index([environmentId, status])
+  @@index([openedAt])
 }
 
 model DeliveryAttempt {

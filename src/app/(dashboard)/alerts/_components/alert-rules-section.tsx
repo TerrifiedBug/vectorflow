@@ -78,6 +78,7 @@ interface RuleFormState {
   condition: string;
   threshold: string;
   durationSeconds: string;
+  cooldownMinutes: string;
   channelIds: string[];
 }
 
@@ -88,6 +89,7 @@ const EMPTY_RULE_FORM: RuleFormState = {
   condition: "",
   threshold: "",
   durationSeconds: "60",
+  cooldownMinutes: "",
   channelIds: [],
 };
 
@@ -255,6 +257,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
       condition: skipThreshold ? "" : (rule.condition ?? "gt"),
       threshold: skipThreshold ? "" : String(rule.threshold ?? ""),
       durationSeconds: skipThreshold ? "" : String(rule.durationSeconds ?? ""),
+      cooldownMinutes: rule.cooldownMinutes != null ? String(rule.cooldownMinutes) : "",
       channelIds: rule.channels?.map((c) => c.channelId) ?? [],
     });
     setTouched({});
@@ -299,6 +302,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
               threshold: parseFloat(form.threshold),
               durationSeconds: parseInt(form.durationSeconds, 10) || 60,
             }),
+        cooldownMinutes: form.cooldownMinutes ? parseInt(form.cooldownMinutes, 10) : null,
         channelIds: form.channelIds,
       });
     } else {
@@ -310,6 +314,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
         condition: skipThreshold ? null : (form.condition as AlertCondition),
         threshold: skipThreshold ? null : parseFloat(form.threshold),
         durationSeconds: skipThreshold ? null : (parseInt(form.durationSeconds, 10) || 60),
+        cooldownMinutes: form.cooldownMinutes ? parseInt(form.cooldownMinutes, 10) : null,
         teamId: selectedTeamId!,
         channelIds: form.channelIds.length > 0 ? form.channelIds : undefined,
       });
@@ -667,6 +672,30 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                 </div>
               </>
             )}
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">
+                Dedup Cooldown (minutes)
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                max={1440}
+                placeholder="15 (default)"
+                value={form.cooldownMinutes}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    cooldownMinutes: e.target.value,
+                  }))
+                }
+                className="w-36 h-9"
+                aria-label="Deduplication cooldown in minutes"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Suppress repeat alerts within this window after resolution
+              </p>
+            </div>
 
             {channels.length > 0 && (
               <div className="space-y-2">
