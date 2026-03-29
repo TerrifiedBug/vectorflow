@@ -267,7 +267,7 @@ describe("DLP VRL pattern validation", () => {
       expect(result).toBe("token: [REDACTED-KEY]");
     });
 
-    it("redacts Stripe live key", () => {
+    it("redacts Stripe-format key", () => {
       const result = redactKeys(
         "sk_" + "live_abcdefghijklmnopqrstuvwxyz12"
       );
