@@ -28,6 +28,7 @@ import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
+import { RecommendationsPanel } from "@/components/analytics/recommendations-panel";
 
 type VolumeRange = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -510,6 +511,10 @@ export default function AnalyticsPage() {
           )}
         </CardContent>
       </Card>
+
+      {selectedEnvironmentId && (
+        <RecommendationsPanel environmentId={selectedEnvironmentId} />
+      )}
     </div>
   );
 }

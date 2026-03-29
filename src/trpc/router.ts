@@ -31,6 +31,7 @@ import { filterPresetRouter } from "@/server/routers/filter-preset";
 import { gitSyncRouter } from "@/server/routers/git-sync";
 import { migrationRouter } from "@/server/routers/migration";
 import { analyticsRouter } from "@/server/routers/analytics";
+import { costRecommendationRouter } from "@/server/routers/cost-recommendation";
 
 export const appRouter = router({
   team: teamRouter,
@@ -63,9 +64,9 @@ export const appRouter = router({
   promotion: promotionRouter,
   filterPreset: filterPresetRouter,
   gitSync: gitSyncRouter,
-<<<<<<< HEAD
   migration: migrationRouter,
   analytics: analyticsRouter,
+  costRecommendation: costRecommendationRouter,
 });
 
 export type AppRouter = typeof appRouter;

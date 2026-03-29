@@ -147,6 +147,16 @@ export async function register() {
     } catch (error) {
       console.error("Failed to initialize git sync retry service:", error);
     }
+
+    // Start cost optimizer scheduler.
+    try {
+      const { initCostOptimizerScheduler } = await import(
+        "@/server/services/cost-optimizer-scheduler"
+      );
+      await initCostOptimizerScheduler();
+    } catch (error) {
+      console.error("Failed to initialize cost optimizer scheduler:", error);
+    }
   }
 
   if (leaderIsLeader()) {

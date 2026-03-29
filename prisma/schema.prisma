@@ -43,6 +43,7 @@ model User {
   stagedRolloutsCreated  StagedRollout[]  @relation("StagedRolloutCreatedBy")
   filterPresets          FilterPreset[]
   migrationProjectsCreated MigrationProject[] @relation("MigrationProjectCreatedBy")
+  dismissedRecommendations CostRecommendation[] @relation("CostRecommendationDismissedBy")
   createdAt              DateTime         @default(now())
 }
 
@@ -84,6 +85,7 @@ model Team {
   aiModel              String?       // e.g. "gpt-4o", "claude-sonnet-4-20250514"
   aiEnabled            Boolean       @default(false)
 
+  costRecommendations  CostRecommendation[]
   createdAt            DateTime      @default(now())
 }
 
@@ -162,6 +164,7 @@ model Environment {
   gitSyncJobs             GitSyncJob[]
   costPerGbCents          Int           @default(0)       // cents per GB processed (0 = volume-only)
   costBudgetCents         Int?                            // monthly budget in cents (null = no budget)
+  costRecommendations     CostRecommendation[]
   createdAt               DateTime      @default(now())
 }
 
@@ -358,6 +361,7 @@ model Pipeline {
   promotionTargets    PromotionRequest[] @relation("PromotionTarget")
   gitSyncJobs     GitSyncJob[]
   migrationProject MigrationProject?
+  costRecommendations  CostRecommendation[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 }
@@ -434,6 +438,49 @@ model PipelineSli {
 
   @@unique([pipelineId, metric])
   @@index([pipelineId])
+}
+
+enum RecommendationType {
+  LOW_REDUCTION
+  HIGH_ERROR_RATE
+  DUPLICATE_SINK
+  STALE_PIPELINE
+}
+
+enum RecommendationStatus {
+  PENDING
+  DISMISSED
+  APPLIED
+}
+
+model CostRecommendation {
+  id              String               @id @default(cuid())
+  teamId          String
+  team            Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  environmentId   String
+  environment     Environment          @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  pipelineId      String
+  pipeline        Pipeline             @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  type            RecommendationType
+  status          RecommendationStatus @default(PENDING)
+  title           String
+  description     String               @db.Text
+  aiSummary       String?              @db.Text
+  suggestedAction Json?                // { type: "add_filter" | "add_sampling" | "remove_sink" | ..., config: {...} }
+  analysisData    Json                 // raw metrics that triggered the recommendation
+  estimatedSavingsBytes BigInt?        // estimated bytes/day reduction
+  dismissedById   String?
+  dismissedBy     User?                @relation("CostRecommendationDismissedBy", fields: [dismissedById], references: [id], onDelete: SetNull)
+  dismissedAt     DateTime?
+  appliedAt       DateTime?
+  expiresAt       DateTime             // recommendations expire after 7 days; re-generated if still relevant
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([teamId, status])
+  @@index([pipelineId])
+  @@index([environmentId, status])
+  @@index([expiresAt])
 }
 
 model EventSampleRequest {
