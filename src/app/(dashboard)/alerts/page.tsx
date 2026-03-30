@@ -1,13 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { Separator } from "@/components/ui/separator";
 import { EmptyState } from "@/components/empty-state";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Layers, List } from "lucide-react";
 
 import { AlertRulesSection } from "./_components/alert-rules-section";
 import { NotificationChannelsSection } from "./_components/notification-channels-section";
 import { WebhooksSection } from "./_components/webhooks-section";
 import { AlertHistorySection } from "./_components/alert-history-section";
+import { CorrelatedAlertHistory } from "./_components/correlated-alert-history";
 import { FailedDeliveriesSection } from "./_components/failed-deliveries-section";
 
 // ─── Alerts Page ────────────────────────────────────────────────────────────────
@@ -16,6 +20,7 @@ export default function AlertsPage() {
   const selectedEnvironmentId = useEnvironmentStore(
     (s) => s.selectedEnvironmentId,
   );
+  const [alertView, setAlertView] = useState<"grouped" | "flat">("grouped");
 
   if (!selectedEnvironmentId) {
     return (
@@ -37,7 +42,30 @@ export default function AlertsPage() {
 
       <Separator />
 
-      <AlertHistorySection environmentId={selectedEnvironmentId} />
+      {/* Alert History: Grouped vs Flat toggle */}
+      <Tabs
+        value={alertView}
+        onValueChange={(v) => setAlertView(v as "grouped" | "flat")}
+      >
+        <TabsList>
+          <TabsTrigger value="grouped" className="gap-1.5">
+            <Layers className="h-4 w-4" />
+            Grouped
+          </TabsTrigger>
+          <TabsTrigger value="flat" className="gap-1.5">
+            <List className="h-4 w-4" />
+            All Events
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="grouped">
+          <CorrelatedAlertHistory environmentId={selectedEnvironmentId} />
+        </TabsContent>
+
+        <TabsContent value="flat">
+          <AlertHistorySection environmentId={selectedEnvironmentId} />
+        </TabsContent>
+      </Tabs>
 
       <Separator />
 

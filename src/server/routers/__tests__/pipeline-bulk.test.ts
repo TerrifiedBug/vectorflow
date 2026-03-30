@@ -13,6 +13,7 @@ const { t } = vi.hoisted(() => {
 
 const mockDeployAgent = vi.fn();
 const mockUndeployAgent = vi.fn();
+const mockDeployBatch = vi.fn();
 
 vi.mock("@/trpc/init", () => {
   const passthrough = () =>
@@ -38,6 +39,7 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/server/services/deploy-agent", () => ({
   deployAgent: (...args: unknown[]) => mockDeployAgent(...args),
   undeployAgent: (...args: unknown[]) => mockUndeployAgent(...args),
+  deployBatch: (...args: unknown[]) => mockDeployBatch(...args),
 }));
 
 vi.mock("@/server/services/pipeline-graph", () => ({
@@ -109,49 +111,56 @@ describe("bulk operations", () => {
     mockReset(prismaMock);
     mockDeployAgent.mockReset();
     mockUndeployAgent.mockReset();
+    mockDeployBatch.mockReset();
   });
 
-  describe("bulkDeploy", () => {
-    it("deploys multiple pipelines and returns summary", async () => {
-      mockDeployAgent
-        .mockResolvedValueOnce({ success: true })
-        .mockResolvedValueOnce({ success: true });
+  describe("deployBatch", () => {
+    it("deploys multiple pipelines via deployBatch service and returns summary", async () => {
+      mockDeployBatch.mockResolvedValue({
+        total: 2,
+        completed: 2,
+        failed: 0,
+        results: [
+          { pipelineId: "p1", success: true, versionId: "v1", versionNumber: 1 },
+          { pipelineId: "p2", success: true, versionId: "v2", versionNumber: 1 },
+        ],
+      });
 
-      const result = await caller.bulkDeploy({
+      const result = await caller.deployBatch({
         pipelineIds: ["p1", "p2"],
         changelog: "Bulk deploy",
       });
 
       expect(result.total).toBe(2);
-      expect(result.succeeded).toBe(2);
-      expect(mockDeployAgent).toHaveBeenCalledTimes(2);
-      expect(mockDeployAgent).toHaveBeenCalledWith("p1", "user-1", "Bulk deploy");
-      expect(mockDeployAgent).toHaveBeenCalledWith("p2", "user-1", "Bulk deploy");
+      expect(result.completed).toBe(2);
+      expect(mockDeployBatch).toHaveBeenCalledWith(["p1", "p2"], "user-1", "Bulk deploy");
     });
 
-    it("continues on partial failure", async () => {
-      mockDeployAgent
-        .mockResolvedValueOnce({ success: true })
-        .mockRejectedValueOnce(new Error("Validation failed"))
-        .mockResolvedValueOnce({ success: false, error: "No nodes" });
+    it("reports partial failures from deployBatch service", async () => {
+      mockDeployBatch.mockResolvedValue({
+        total: 3,
+        completed: 1,
+        failed: 2,
+        results: [
+          { pipelineId: "p1", success: true, versionId: "v1", versionNumber: 1 },
+          { pipelineId: "p2", success: false, error: "Validation failed" },
+          { pipelineId: "p3", success: false, error: "Deployment failed" },
+        ],
+      });
 
-      const result = await caller.bulkDeploy({
+      const result = await caller.deployBatch({
         pipelineIds: ["p1", "p2", "p3"],
         changelog: "Deploy all",
       });
 
       expect(result.total).toBe(3);
-      expect(result.succeeded).toBe(1);
+      expect(result.completed).toBe(1);
+      expect(result.failed).toBe(2);
       expect(result.results[0]).toMatchObject({ pipelineId: "p1", success: true });
       expect(result.results[1]).toMatchObject({
         pipelineId: "p2",
         success: false,
         error: "Validation failed",
-      });
-      expect(result.results[2]).toMatchObject({
-        pipelineId: "p3",
-        success: false,
-        error: "No nodes",
       });
     });
   });

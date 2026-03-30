@@ -1,4 +1,5 @@
 import type { VectorComponentDef } from "../types";
+import { DLP_TRANSFORMS } from "./transforms/dlp";
 
 export const ALL_TRANSFORMS: VectorComponentDef[] = [
   {
@@ -596,4 +597,5 @@ export const ALL_TRANSFORMS: VectorComponentDef[] = [
       required: ["threshold", "window_secs"],
     },
   },
+  ...DLP_TRANSFORMS,
 ];

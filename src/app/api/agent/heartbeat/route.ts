@@ -14,6 +14,7 @@ import { isLeader } from "@/server/services/leader-election";
 import { batchUpsertPipelineStatuses } from "@/server/services/heartbeat-batch";
 import { DeploymentMode } from "@/generated/prisma";
 import { isVersionOlder } from "@/lib/version";
+import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 
 /** Compute pipeline-level weighted mean latency (ms) from per-component metrics. */
 function computeWeightedLatency(
@@ -183,6 +184,9 @@ async function processSampleResults(results: SampleResult[], nodeId: string): Pr
 
 
 export async function POST(request: Request) {
+  const rateLimited = checkTokenRateLimit(request, "heartbeat", 30);
+  if (rateLimited) return rateLimited;
+
   const agent = await authenticateAgent(request);
   if (!agent) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -3,15 +3,16 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  _tsdbDetected?: boolean;
 };
 
 function createPrismaClient() {
   const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL,
 
-    // Pool size: 2× realistic peak concurrent connections.
-    // Override via DATABASE_POOL_MAX for workloads with higher parallelism.
-    max: parseInt(process.env.DATABASE_POOL_MAX ?? "20", 10),
+    // Pool size: sized for production fleet scale (100+ pipelines, 5+ nodes).
+    // Override via DATABASE_POOL_MAX for workloads with different parallelism needs.
+    max: parseInt(process.env.DATABASE_POOL_MAX ?? "50", 10),
 
     // Fail fast on pool exhaustion instead of waiting indefinitely (pg default: 0 = no timeout).
     // 5 s is long enough for a healthy pool to recycle a connection but short enough to
@@ -41,3 +42,22 @@ function createPrismaClient() {
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+import { detectTimescaleDb } from "@/server/services/timescaledb";
+
+// Detect TimescaleDB availability on first import.
+// Non-blocking — logs result and caches for runtime queries.
+if (typeof globalThis !== "undefined" && !globalForPrisma._tsdbDetected) {
+  globalForPrisma._tsdbDetected = true;
+  detectTimescaleDb().catch(() => {
+    // Swallowed — detectTimescaleDb already logs the warning
+  });
+}
+
+// Seed DLP templates on startup (idempotent via upsert)
+import { seedDlpTemplates } from "@/server/services/dlp-template-seed";
+import { debugLog } from "@/lib/logger";
+
+seedDlpTemplates()
+  .then(() => debugLog("startup", "DLP templates seeded"))
+  .catch((err) => console.error("[startup] Failed to seed DLP templates", err));

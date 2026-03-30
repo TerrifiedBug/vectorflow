@@ -9,6 +9,11 @@ import {
   assembleNodeCards,
   assemblePipelineCards,
 } from "@/server/services/dashboard-data";
+import {
+  queryVolumeTimeSeries,
+  queryNodeMetricsAggregated,
+  resolveMetricsSource,
+} from "@/server/services/metrics-query";
 
 export const dashboardRouter = router({
   stats: protectedProcedure
@@ -372,53 +377,102 @@ export const dashboardRouter = router({
         eventsOut: Number(p._sum.eventsOut ?? 0),
       }));
 
-      // Time series for volume chart — bucket raw metrics in JS for portability
-      const bucketMs =
-        hours <= 1 ? 60000 : hours <= 6 ? 300000 : hours <= 24 ? 900000 : hours <= 168 ? 3600000 : 14400000;
+      // Time series for volume chart — use continuous aggregates for longer ranges
+      const rangeMinutes = hours * 60;
+      const source = resolveMetricsSource(rangeMinutes);
 
-      // Cap at 50 000 rows to prevent OOM on large 30d windows. With desc
-      // ordering, the most recent data is preserved; older buckets at the
-      // start of the window are the ones dropped if the cap is hit.
-      const rawMetrics = await prisma.pipelineMetric.findMany({
-        where: {
-          pipeline: { environmentId: input.environmentId },
-          componentId: null,
-          timestamp: { gte: since },
-        },
-        select: {
-          timestamp: true,
-          bytesIn: true,
-          bytesOut: true,
-          eventsIn: true,
-          eventsOut: true,
-        },
-        orderBy: { timestamp: "desc" },
-        take: 50_000,
-      });
+      let timeSeries: Array<{
+        bucket: string;
+        bytesIn: number;
+        bytesOut: number;
+        eventsIn: number;
+        eventsOut: number;
+      }>;
 
-      const buckets = new Map<
-        number,
-        { bytesIn: number; bytesOut: number; eventsIn: number; eventsOut: number }
-      >();
-      for (const m of rawMetrics) {
-        const t = Math.floor(new Date(m.timestamp).getTime() / bucketMs) * bucketMs;
-        const b = buckets.get(t) ?? { bytesIn: 0, bytesOut: 0, eventsIn: 0, eventsOut: 0 };
-        b.bytesIn += Number(m.bytesIn ?? 0);
-        b.bytesOut += Number(m.bytesOut ?? 0);
-        b.eventsIn += Number(m.eventsIn ?? 0);
-        b.eventsOut += Number(m.eventsOut ?? 0);
-        buckets.set(t, b);
+      if (source !== "raw") {
+        // Use pre-computed continuous aggregate
+        const pipelineIds = await prisma.pipeline.findMany({
+          where: { environmentId: input.environmentId },
+          select: { id: true },
+        });
+        const envPipelineIds = pipelineIds.map((p) => p.id);
+
+        const aggRows = await queryVolumeTimeSeries({
+          environmentPipelineIds: envPipelineIds,
+          minutes: rangeMinutes,
+          since,
+        });
+
+        // Aggregate across pipelines per bucket
+        const buckets = new Map<
+          number,
+          { bytesIn: number; bytesOut: number; eventsIn: number; eventsOut: number }
+        >();
+        for (const row of aggRows) {
+          const t = new Date(row.bucket).getTime();
+          const b = buckets.get(t) ?? { bytesIn: 0, bytesOut: 0, eventsIn: 0, eventsOut: 0 };
+          b.bytesIn += Number(row.bytesIn ?? 0);
+          b.bytesOut += Number(row.bytesOut ?? 0);
+          b.eventsIn += Number(row.eventsIn ?? 0);
+          b.eventsOut += Number(row.eventsOut ?? 0);
+          buckets.set(t, b);
+        }
+
+        timeSeries = Array.from(buckets.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([t, b]) => ({
+            bucket: new Date(t).toISOString(),
+            bytesIn: b.bytesIn,
+            bytesOut: b.bytesOut,
+            eventsIn: b.eventsIn,
+            eventsOut: b.eventsOut,
+          }));
+      } else {
+        // Fallback: bucket raw metrics in JS (existing logic)
+        const bucketMs =
+          hours <= 1 ? 60000 : hours <= 6 ? 300000 : hours <= 24 ? 900000 : hours <= 168 ? 3600000 : 14400000;
+
+        const rawMetrics = await prisma.pipelineMetric.findMany({
+          where: {
+            pipeline: { environmentId: input.environmentId },
+            componentId: null,
+            timestamp: { gte: since },
+          },
+          select: {
+            timestamp: true,
+            bytesIn: true,
+            bytesOut: true,
+            eventsIn: true,
+            eventsOut: true,
+          },
+          orderBy: { timestamp: "desc" },
+          take: 50_000,
+        });
+
+        const buckets = new Map<
+          number,
+          { bytesIn: number; bytesOut: number; eventsIn: number; eventsOut: number }
+        >();
+        for (const m of rawMetrics) {
+          const t = Math.floor(new Date(m.timestamp).getTime() / bucketMs) * bucketMs;
+          const b = buckets.get(t) ?? { bytesIn: 0, bytesOut: 0, eventsIn: 0, eventsOut: 0 };
+          b.bytesIn += Number(m.bytesIn ?? 0);
+          b.bytesOut += Number(m.bytesOut ?? 0);
+          b.eventsIn += Number(m.eventsIn ?? 0);
+          b.eventsOut += Number(m.eventsOut ?? 0);
+          buckets.set(t, b);
+        }
+
+        timeSeries = Array.from(buckets.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([t, b]) => ({
+            bucket: new Date(t).toISOString(),
+            bytesIn: b.bytesIn,
+            bytesOut: b.bytesOut,
+            eventsIn: b.eventsIn,
+            eventsOut: b.eventsOut,
+          }));
       }
-
-      const timeSeries = Array.from(buckets.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map(([t, b]) => ({
-          bucket: new Date(t).toISOString(),
-          bytesIn: b.bytesIn,
-          bytesOut: b.bytesOut,
-          eventsIn: b.eventsIn,
-          eventsOut: b.eventsOut,
-        }));
 
       return { current, previous, perPipeline, timeSeries };
     }),
@@ -491,7 +545,9 @@ export const dashboardRouter = router({
         effectiveNodeIds = nodeStatuses.map((ns: { nodeId: string }) => ns.nodeId);
       }
 
-      const [pipelineRows, nodeRows] = await Promise.all([
+      const rangeMinutes = rangeMs[input.range] / 60000;
+
+      const [pipelineRows, nodeRowsResult] = await Promise.all([
         prisma.pipelineMetric.findMany({
           where: {
             pipelineId: { in: effectivePipelineIds },
@@ -516,27 +572,14 @@ export const dashboardRouter = router({
           },
         }),
         effectiveNodeIds.length > 0
-          ? prisma.nodeMetric.findMany({
-              where: {
-                nodeId: { in: effectiveNodeIds },
-                timestamp: { gte: since },
-              },
-              orderBy: { timestamp: "asc" },
-              select: {
-                nodeId: true,
-                timestamp: true,
-                cpuSecondsTotal: true,
-                cpuSecondsIdle: true,
-                memoryUsedBytes: true,
-                memoryTotalBytes: true,
-                diskReadBytes: true,
-                diskWrittenBytes: true,
-                netRxBytes: true,
-                netTxBytes: true,
-              },
+          ? queryNodeMetricsAggregated({
+              nodeIds: effectiveNodeIds,
+              minutes: rangeMinutes,
             })
-          : [],
+          : { rows: [] },
       ]);
+
+      const nodeRows = nodeRowsResult.rows;
 
       return computeChartMetrics({
         range: input.range,

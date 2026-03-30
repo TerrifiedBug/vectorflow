@@ -113,6 +113,8 @@ export const environmentRouter = router({
         gitOpsMode: z.enum(["off", "push", "bidirectional", "promotion"]).optional(),
         gitProvider: z.enum(["github", "gitlab", "bitbucket"]).nullable().optional(),
         requireDeployApproval: z.boolean().optional(),
+        costPerGbCents: z.number().int().min(0).max(100_000).optional(), // cents per GB, max $1000/GB
+        costBudgetCents: z.number().int().min(0).max(1_000_000_00).nullable().optional(), // monthly budget in cents, null to disable
       })
     )
     .use(withTeamAccess("EDITOR"))

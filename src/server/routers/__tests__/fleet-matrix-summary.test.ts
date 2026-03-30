@@ -74,21 +74,16 @@ describe("fleet.matrixSummary", () => {
             pipelineId: "pipe-1",
             status: "RUNNING",
             version: 2,
-            pipeline: { id: "pipe-1", name: "logs" },
+            pipeline: { id: "pipe-1", name: "logs", versions: [{ version: 2 }] },
           },
           {
             pipelineId: "pipe-2",
             status: "CRASHED",
             version: 1,
-            pipeline: { id: "pipe-2", name: "metrics" },
+            pipeline: { id: "pipe-2", name: "metrics", versions: [{ version: 3 }] },
           },
         ],
       },
-    ] as never);
-
-    prismaMock.pipeline.findMany.mockResolvedValueOnce([
-      { id: "pipe-1", versions: [{ version: 2 }] },
-      { id: "pipe-2", versions: [{ version: 3 }] },
     ] as never);
 
     const result = await caller.matrixSummary({
@@ -106,7 +101,6 @@ describe("fleet.matrixSummary", () => {
 
   it("returns empty array when no nodes", async () => {
     prismaMock.vectorNode.findMany.mockResolvedValueOnce([] as never);
-    prismaMock.pipeline.findMany.mockResolvedValueOnce([] as never);
 
     const result = await caller.matrixSummary({
       environmentId: "env-1",

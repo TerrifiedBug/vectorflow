@@ -44,6 +44,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StaggerList, StaggerItem } from "@/components/motion/stagger-list";
+import { AnomalyBadge } from "@/components/anomaly-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Popover,
@@ -443,6 +444,23 @@ export default function PipelinesPage() {
   );
   const healthData = batchHealthQuery.data ?? {};
 
+  // --- Anomaly counts per pipeline ---
+  const anomalyCountsQuery = useQuery(
+    trpc.anomaly.countByPipeline.queryOptions(
+      { environmentId: effectiveEnvId },
+      { enabled: !!effectiveEnvId },
+    ),
+  );
+  const anomalyCounts = anomalyCountsQuery.data ?? {};
+
+  const anomalySeveritiesQuery = useQuery(
+    trpc.anomaly.maxSeverityByPipeline.queryOptions(
+      { environmentId: effectiveEnvId },
+      { enabled: !!effectiveEnvId },
+    ),
+  );
+  const anomalySeverities = anomalySeveritiesQuery.data ?? {};
+
   // --- Available tags (for toolbar) ---
   const availableTags = useMemo(() => {
     const tagSet = new Set<string>();
@@ -808,12 +826,20 @@ export default function PipelinesPage() {
                     />
                   </TableCell>
                   <TableCell className={cn("font-medium", density === "compact" ? "py-1" : "py-2")}>
-                    <Link
-                      href={`/pipelines/${pipeline.id}`}
-                      className="hover:underline"
-                    >
-                      {pipeline.name}
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/pipelines/${pipeline.id}`}
+                        className="hover:underline"
+                      >
+                        {pipeline.name}
+                      </Link>
+                      {anomalyCounts[pipeline.id] ? (
+                        <AnomalyBadge
+                          count={anomalyCounts[pipeline.id]}
+                          severity={anomalySeverities[pipeline.id] ?? "info"}
+                        />
+                      ) : null}
+                    </div>
                     {density === "comfortable" && pipeline.description && (
                       <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
                         {pipeline.description}

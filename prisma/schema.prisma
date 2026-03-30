@@ -42,6 +42,8 @@ model User {
   pipelineVersionsCreated PipelineVersion[] @relation("PipelineVersionCreatedBy")
   stagedRolloutsCreated  StagedRollout[]  @relation("StagedRolloutCreatedBy")
   filterPresets          FilterPreset[]
+  migrationProjectsCreated MigrationProject[] @relation("MigrationProjectCreatedBy")
+  dismissedRecommendations CostRecommendation[] @relation("CostRecommendationDismissedBy")
   createdAt              DateTime         @default(now())
 }
 
@@ -74,6 +76,7 @@ model Team {
   alertRules           AlertRule[]
   availableTags        Json?         @default("[]")   // string[] of admin-defined compliance tags
   webhookEndpoints     WebhookEndpoint[]
+  migrationProjects    MigrationProject[]
 
   // AI-powered suggestions configuration
   aiProvider           String?       // "openai" | "anthropic" | "custom"
@@ -82,6 +85,8 @@ model Team {
   aiModel              String?       // e.g. "gpt-4o", "claude-sonnet-4-20250514"
   aiEnabled            Boolean       @default(false)
 
+  costRecommendations  CostRecommendation[]
+  anomalyEvents     AnomalyEvent[]
   createdAt            DateTime      @default(now())
 }
 
@@ -158,6 +163,11 @@ model Environment {
   promotionTargets        PromotionRequest[] @relation("PromotionTargetEnv")
   filterPresets           FilterPreset[]
   gitSyncJobs             GitSyncJob[]
+  costPerGbCents          Int           @default(0)       // cents per GB processed (0 = volume-only)
+  costBudgetCents         Int?                            // monthly budget in cents (null = no budget)
+  costRecommendations     CostRecommendation[]
+  anomalyEvents       AnomalyEvent[]
+  correlationGroups       AlertCorrelationGroup[]
   createdAt               DateTime      @default(now())
 }
 
@@ -353,6 +363,9 @@ model Pipeline {
   promotionSources    PromotionRequest[] @relation("PromotionSource")
   promotionTargets    PromotionRequest[] @relation("PromotionTarget")
   gitSyncJobs     GitSyncJob[]
+  migrationProject MigrationProject?
+  costRecommendations  CostRecommendation[]
+  anomalyEvents     AnomalyEvent[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 }
@@ -431,6 +444,49 @@ model PipelineSli {
   @@index([pipelineId])
 }
 
+enum RecommendationType {
+  LOW_REDUCTION
+  HIGH_ERROR_RATE
+  DUPLICATE_SINK
+  STALE_PIPELINE
+}
+
+enum RecommendationStatus {
+  PENDING
+  DISMISSED
+  APPLIED
+}
+
+model CostRecommendation {
+  id              String               @id @default(cuid())
+  teamId          String
+  team            Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  environmentId   String
+  environment     Environment          @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  pipelineId      String
+  pipeline        Pipeline             @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  type            RecommendationType
+  status          RecommendationStatus @default(PENDING)
+  title           String
+  description     String               @db.Text
+  aiSummary       String?              @db.Text
+  suggestedAction Json?                // { type: "add_filter" | "add_sampling" | "remove_sink" | ..., config: {...} }
+  analysisData    Json                 // raw metrics that triggered the recommendation
+  estimatedSavingsBytes BigInt?        // estimated bytes/day reduction
+  dismissedById   String?
+  dismissedBy     User?                @relation("CostRecommendationDismissedBy", fields: [dismissedById], references: [id], onDelete: SetNull)
+  dismissedAt     DateTime?
+  appliedAt       DateTime?
+  expiresAt       DateTime             // recommendations expire after 7 days; re-generated if still relevant
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([teamId, status])
+  @@index([pipelineId])
+  @@index([environmentId, status])
+  @@index([expiresAt])
+}
+
 model EventSampleRequest {
   id            String        @id @default(cuid())
   pipelineId    String
@@ -485,6 +541,49 @@ enum ComponentKind {
   SOURCE
   TRANSFORM
   SINK
+}
+
+enum MigrationPlatform {
+  FLUENTD
+  // FLUENT_BIT  — future
+  // LOGSTASH    — future
+}
+
+enum MigrationStatus {
+  DRAFT
+  PARSING
+  TRANSLATING
+  VALIDATING
+  READY
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
+model MigrationProject {
+  id                  String            @id @default(cuid())
+  teamId              String
+  team                Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name                String
+  platform            MigrationPlatform
+  originalConfig      String            @db.Text
+  parsedTopology      Json?
+  pluginInventory     Json?
+  readinessScore      Int?              // 0-100
+  readinessReport     Json?
+  translatedBlocks    Json?             // per-block AI translation results with confidence scores
+  validationResult    Json?             // vector validate output
+  generatedPipelineId String?           @unique
+  generatedPipeline   Pipeline?         @relation(fields: [generatedPipelineId], references: [id], onDelete: SetNull)
+  status              MigrationStatus   @default(DRAFT)
+  errorMessage        String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  createdById         String
+  createdBy           User              @relation("MigrationProjectCreatedBy", fields: [createdById], references: [id])
+
+  @@index([teamId])
+  @@index([createdById])
 }
 
 model PipelineEdge {
@@ -854,6 +953,7 @@ enum AlertMetric {
   // Phase 5 event — enum value added early so subscriptions can be created
   promotion_completed
   git_sync_failed
+  cost_threshold_exceeded   // fires when monthly cost exceeds costBudgetCents
 }
 
 enum AlertCondition {
@@ -883,6 +983,7 @@ model AlertRule {
   threshold       Float?
   durationSeconds Int?
   snoozedUntil    DateTime?
+  cooldownMinutes Int?
   events          AlertEvent[]
   channels        AlertRuleChannel[]
   createdAt       DateTime       @default(now())
@@ -955,11 +1056,30 @@ model AlertEvent {
   notifiedAt      DateTime?
   acknowledgedAt  DateTime?
   acknowledgedBy  String?
+  correlationGroupId  String?
+  correlationGroup    AlertCorrelationGroup? @relation(fields: [correlationGroupId], references: [id], onDelete: SetNull)
   deliveries      DeliveryAttempt[]
 
   @@index([alertRuleId])
   @@index([nodeId])
   @@index([firedAt])
+  @@index([correlationGroupId])
+}
+
+model AlertCorrelationGroup {
+  id                  String       @id @default(cuid())
+  environmentId       String
+  environment         Environment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  status              AlertStatus  @default(firing)
+  rootCauseEventId    String?
+  rootCauseSuggestion String?
+  eventCount          Int          @default(1)
+  openedAt            DateTime     @default(now())
+  closedAt            DateTime?
+  events              AlertEvent[]
+
+  @@index([environmentId, status])
+  @@index([openedAt])
 }
 
 model DeliveryAttempt {
@@ -1089,4 +1209,50 @@ model FilterPreset {
 
   @@index([environmentId, scope])
   @@index([createdById])
+}
+
+// ─── Anomaly Detection ─────────────────────────────────────────────────────
+
+enum AnomalyType {
+  throughput_drop
+  throughput_spike
+  error_rate_spike
+  latency_spike
+}
+
+enum AnomalySeverity {
+  info       // > 2 sigma
+  warning    // > 3 sigma
+  critical   // > 4 sigma
+}
+
+model AnomalyEvent {
+  id              String           @id @default(cuid())
+  pipelineId      String
+  pipeline        Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  environmentId   String
+  environment     Environment      @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  teamId          String
+  team            Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  anomalyType     AnomalyType
+  severity        AnomalySeverity
+  metricName      String           // "eventsIn" | "errorsTotal" | "latencyMeanMs"
+  currentValue    Float
+  baselineMean    Float
+  baselineStddev  Float
+  deviationFactor Float            // how many stddevs from baseline
+  message         String
+  status          String           @default("open")  // "open" | "acknowledged" | "dismissed"
+  detectedAt      DateTime         @default(now())
+  acknowledgedAt  DateTime?
+  acknowledgedBy  String?
+  dismissedAt     DateTime?
+  dismissedBy     String?
+  createdAt       DateTime         @default(now())
+
+  @@index([pipelineId])
+  @@index([environmentId])
+  @@index([teamId])
+  @@index([status])
+  @@index([detectedAt])
 }

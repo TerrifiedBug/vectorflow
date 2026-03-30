@@ -144,8 +144,7 @@ export async function fireEventAlert(
   }
 }
 
-// TODO: certificate_expiring — no existing certificate expiry check exists.
-// Certificates are stored as encrypted PEM blobs without parsed expiry metadata.
-// To implement: add a periodic job that parses the PEM notAfter date from each
-// Certificate record and fires fireEventAlert("certificate_expiring", ...) when
-// a certificate is within N days of expiration.
+// Certificate expiry alerting is handled by src/server/services/cert-expiry-checker.ts.
+// It runs on the FleetAlertService poll interval, decrypts each Certificate PEM,
+// parses the X.509 notAfter date, and fires fireEventAlert("certificate_expiring", ...)
+// when a certificate is within the configured threshold of expiration (default: 30 days).

@@ -203,6 +203,22 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /*
+   * WCAG 2.4.7 — Global focus-visible ring for interactive elements.
+   * shadcn/ui Button already has its own focus-visible styles, so we scope
+   * this to elements that don't carry a data-slot="button" attribute.
+   * The ring uses the theme's --ring color for consistency.
+   */
+  a:focus-visible,
+  button:not([data-slot="button"]):focus-visible,
+  [role="button"]:focus-visible,
+  select:focus-visible,
+  [tabindex]:not([tabindex="-1"]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
 }
 
 @keyframes flow-dash {

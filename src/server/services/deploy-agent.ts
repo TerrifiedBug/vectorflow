@@ -258,3 +258,93 @@ export async function undeployAgent(
 
   return { success: true };
 }
+
+// ---------------------------------------------------------------------------
+// Batch deployment
+// ---------------------------------------------------------------------------
+
+/** Default number of pipelines to deploy in parallel. */
+const DEFAULT_BATCH_CONCURRENCY = 10;
+
+export interface BatchDeployResult {
+  total: number;
+  completed: number;
+  failed: number;
+  results: Array<{
+    pipelineId: string;
+    success: boolean;
+    error?: string;
+    versionId?: string;
+    versionNumber?: number;
+  }>;
+}
+
+/**
+ * Deploy multiple pipelines in parallel batches.
+ *
+ * Pipelines are deployed in chunks of `concurrency` (default 10) to avoid
+ * overwhelming the database connection pool. Each pipeline within a chunk
+ * deploys in parallel; chunks run sequentially.
+ */
+export async function deployBatch(
+  pipelineIds: string[],
+  userId: string,
+  changelog: string,
+  concurrency: number = DEFAULT_BATCH_CONCURRENCY,
+): Promise<BatchDeployResult> {
+  if (pipelineIds.length === 0) {
+    return { total: 0, completed: 0, failed: 0, results: [] };
+  }
+
+  const allResults: BatchDeployResult["results"] = [];
+
+  // Process in chunks of `concurrency`
+  for (let i = 0; i < pipelineIds.length; i += concurrency) {
+    const chunk = pipelineIds.slice(i, i + concurrency);
+
+    const chunkResults = await Promise.allSettled(
+      chunk.map(async (pipelineId) => {
+        const result = await deployAgent(pipelineId, userId, changelog);
+        return { pipelineId, ...result };
+      }),
+    );
+
+    for (let j = 0; j < chunkResults.length; j++) {
+      const settled = chunkResults[j];
+      const pipelineId = chunk[j];
+
+      if (settled.status === "fulfilled") {
+        const { success, versionId, versionNumber, validationErrors } =
+          settled.value;
+        allResults.push({
+          pipelineId,
+          success,
+          versionId,
+          versionNumber,
+          error: success
+            ? undefined
+            : validationErrors?.map((e) => e.message).join("; ") ??
+              "Deployment failed",
+        });
+      } else {
+        allResults.push({
+          pipelineId,
+          success: false,
+          error:
+            settled.reason instanceof Error
+              ? settled.reason.message
+              : "Unknown error",
+        });
+      }
+    }
+  }
+
+  const completed = allResults.filter((r) => r.success).length;
+
+  return {
+    total: allResults.length,
+    completed,
+    failed: allResults.length - completed,
+    results: allResults,
+  };
+}
