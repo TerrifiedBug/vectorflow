@@ -553,6 +553,15 @@ export default function PipelinesPage() {
     return sorted;
   }, [pipelines, sortField, sortDirection, liveRates]);
 
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const pipeline of pipelines) {
+      const status = derivePipelineStatus(pipeline);
+      counts[status] = (counts[status] ?? 0) + 1;
+    }
+    return counts;
+  }, [pipelines]);
+
   // --- Mutations ---
 
   const router = useRouter();
@@ -694,6 +703,7 @@ export default function PipelinesPage() {
               availableTags={availableTags}
               density={density}
               onDensityChange={handleDensityChange}
+              statusCounts={statusCounts}
               presetBar={
                 effectiveEnvId ? (
                   <FilterPresetBar
