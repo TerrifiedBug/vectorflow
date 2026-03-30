@@ -94,7 +94,15 @@ export function AppSidebar() {
   const isSubMode = isSettingsMode || isLibraryMode || isPipelinesMode;
 
   const handleBack = () => {
-    router.push("/");
+    if (isSettingsMode) {
+      router.push("/settings");
+    } else if (isLibraryMode) {
+      router.push("/library");
+    } else if (isPipelinesMode) {
+      router.push("/pipelines");
+    } else {
+      router.push("/");
+    }
   };
 
   const { state, toggleSidebar } = useSidebar();
