@@ -150,9 +150,9 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isSubMode ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100",
+            isSubMode && !isCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100",
           )}
-          aria-hidden={isSubMode}
+          aria-hidden={isSubMode && !isCollapsed}
         >
           <SidebarGroup>
             <SidebarGroupLabel>Navigation</SidebarGroupLabel>
@@ -197,9 +197,9 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isSettingsMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
+            isSettingsMode && !isCollapsed ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
           )}
-          aria-hidden={!isSettingsMode}
+          aria-hidden={!isSettingsMode || isCollapsed}
         >
           {settingsNavGroups.map((group) => {
             const visibleGroupItems = group.items.filter((item) => {
@@ -238,9 +238,9 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isLibraryMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
+            isLibraryMode && !isCollapsed ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
           )}
-          aria-hidden={!isLibraryMode}
+          aria-hidden={!isLibraryMode || isCollapsed}
         >
           <SidebarGroup>
             <SidebarGroupLabel>Browse</SidebarGroupLabel>
@@ -270,9 +270,9 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isPipelinesMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
+            isPipelinesMode && !isCollapsed ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
           )}
-          aria-hidden={!isPipelinesMode}
+          aria-hidden={!isPipelinesMode || isCollapsed}
         >
           <SidebarGroup>
             <SidebarGroupLabel className="flex items-center justify-between">
