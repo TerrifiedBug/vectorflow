@@ -31,7 +31,9 @@ export function deriveMetrics(
   const eventsPerSec =
     kind === "transform"
       ? latest.sentEventsRate
-      : latest.receivedEventsRate;
+      : kind === "source"
+        ? (latest.receivedEventsRate || latest.sentEventsRate)
+        : latest.receivedEventsRate;
 
   const bytesPerSec =
     kind === "sink"

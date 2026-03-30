@@ -45,7 +45,7 @@ func TestPushMessageParsing(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := New(server.URL, "test-token", func(msg PushMessage) {
+			client := New(server.URL, "", "test-token", func(msg PushMessage) {
 				received = msg
 				wg.Done()
 			})
@@ -73,7 +73,7 @@ func TestClientSendsAuthHeader(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(server.URL, "my-secret-token", func(msg PushMessage) {})
+	client := New(server.URL, "", "my-secret-token", func(msg PushMessage) {})
 	go client.Connect()
 	time.Sleep(200 * time.Millisecond)
 	client.Close()
@@ -114,7 +114,7 @@ func TestClientReconnectsAfterDisconnect(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(server.URL, "test-token", func(msg PushMessage) {})
+	client := New(server.URL, "", "test-token", func(msg PushMessage) {})
 	go client.Connect()
 
 	// Wait for reconnect
@@ -156,7 +156,7 @@ func TestClientHandlesKeepalive(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(server.URL, "test-token", func(msg PushMessage) {
+	client := New(server.URL, "", "test-token", func(msg PushMessage) {
 		received = msg
 		wg.Done()
 	})
@@ -169,5 +169,44 @@ func TestClientHandlesKeepalive(t *testing.T) {
 	}
 	if received.Reason != "test" {
 		t.Errorf("got reason %q, want %q", received.Reason, "test")
+	}
+}
+
+func TestClientSwitchesToFallbackURL(t *testing.T) {
+	var mu sync.Mutex
+	fallbackHits := 0
+
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer primary.Close()
+
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		fallbackHits++
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("expected flusher")
+		}
+		fmt.Fprintf(w, ": connected\n\n")
+		flusher.Flush()
+		time.Sleep(2 * time.Second)
+	}))
+	defer fallback.Close()
+
+	client := New(primary.URL, fallback.URL, "test-token", func(msg PushMessage) {})
+	go client.Connect()
+
+	time.Sleep(8 * time.Second)
+	client.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if fallbackHits < 1 {
+		t.Errorf("expected fallback to be hit at least once, got %d", fallbackHits)
 	}
 }
