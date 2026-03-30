@@ -6,6 +6,11 @@ import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { relayPush } from "@/server/services/push-broadcast";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
+import { parseDeploymentStrategy } from "@/lib/deployment-strategy";
+import {
+  getAggregateErrorRate,
+  getRecentMeanLatency,
+} from "@/server/services/auto-rollback";
 import { TRPCError } from "@trpc/server";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -54,7 +59,7 @@ export class StagedRolloutService {
           healthCheckExpiresAt: { lte: now },
         },
         include: {
-          pipeline: { select: { name: true, environmentId: true } },
+          pipeline: { select: { name: true, environmentId: true, deploymentStrategy: true } },
         },
       });
 
@@ -85,6 +90,27 @@ export class StagedRolloutService {
           console.log(
             `[staged-rollout] Rollout ${rollout.id} transitioned to HEALTH_CHECK`,
           );
+
+          // Check if auto-broaden is enabled in pipeline's deployment strategy
+          const strategy = parseDeploymentStrategy(rollout.pipeline.deploymentStrategy);
+          if (strategy?.type === "canary" && strategy.autoBroaden) {
+            const shouldBroaden = await this.checkSuccessCriteria(
+              rollout.pipelineId,
+              strategy.successCriteria,
+              strategy.autoRollbackThreshold,
+            );
+
+            if (shouldBroaden) {
+              console.log(
+                `[staged-rollout] Auto-broadening rollout ${rollout.id} — success criteria met`,
+              );
+              await this.broadenRollout(rollout.id);
+              continue;
+            }
+            console.log(
+              `[staged-rollout] Auto-broaden criteria not met for rollout ${rollout.id}, leaving in HEALTH_CHECK for manual review`,
+            );
+          }
         } catch (err) {
           console.error(
             `[staged-rollout] Error transitioning rollout ${rollout.id}:`,
@@ -300,6 +326,46 @@ export class StagedRolloutService {
     );
 
     return { rolloutId: rollout.id };
+  }
+
+  /**
+   * Check if success criteria are met for auto-broadening.
+   * Returns false if no data available (errs on the side of caution).
+   */
+  private async checkSuccessCriteria(
+    pipelineId: string,
+    successCriteria?: { maxErrorRatePercent?: number; maxLatencyMs?: number | null },
+    autoRollbackThreshold?: number,
+  ): Promise<boolean> {
+    try {
+      const maxErrorRate = successCriteria?.maxErrorRatePercent ?? 5;
+
+      const errorRate = await getAggregateErrorRate(pipelineId);
+
+      // No data → don't auto-broaden (be cautious)
+      if (errorRate === null) return false;
+
+      if (errorRate > maxErrorRate) return false;
+
+      // Also check against auto-rollback threshold if set
+      if (autoRollbackThreshold !== undefined && errorRate > autoRollbackThreshold)
+        return false;
+
+      // Optional latency check
+      if (successCriteria?.maxLatencyMs != null) {
+        const latency = await getRecentMeanLatency(pipelineId);
+        if (latency === null) return false;
+        if (latency > successCriteria.maxLatencyMs) return false;
+      }
+
+      return true;
+    } catch (err) {
+      console.error(
+        `[staged-rollout] Error checking success criteria for pipeline=${pipelineId}:`,
+        err,
+      );
+      return false;
+    }
   }
 
   /**

@@ -37,6 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ConfigDiff } from "@/components/ui/config-diff";
+import { parseDeploymentStrategy } from "@/lib/deployment-strategy";
 
 interface DeployDialogProps {
   pipelineId: string;
@@ -278,6 +279,20 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
 
   const env = envQuery.data;
   const preview = previewQuery.data;
+  const strategy = parseDeploymentStrategy(preview?.deploymentStrategy);
+  const hasCanaryStrategy = strategy?.type === "canary";
+
+  // Auto-apply canary settings when dialog opens with a canary strategy
+  useEffect(() => {
+    if (!open) return;
+    if (hasCanaryStrategy) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStagedDeploy(true);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHealthCheckWindow(strategy?.healthCheckWindowMinutes ?? 5);
+    }
+  }, [open, hasCanaryStrategy, strategy?.healthCheckWindowMinutes]);
+
   const userRole = roleQuery.data?.role;
   const isLoading = previewQuery.isLoading || envQuery.isLoading || roleQuery.isLoading;
   const isValid = preview?.validation?.valid ?? false;
@@ -650,6 +665,12 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 {/* Staged canary deploy toggle */}
                 {selectedLabels.length > 0 && (
                   <div className="space-y-2 rounded-md border p-3">
+                    {hasCanaryStrategy && (
+                      <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        <span>Canary deploy is configured as this pipeline&apos;s deployment strategy.</span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between">
                       <label htmlFor="staged-deploy" className="text-xs font-medium">
                         Staged Canary Deploy
@@ -659,6 +680,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                         size="sm"
                         checked={stagedDeploy}
                         onCheckedChange={setStagedDeploy}
+                        disabled={hasCanaryStrategy}
                       />
                     </div>
                     {stagedDeploy && (
@@ -675,6 +697,7 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                             value={healthCheckWindow}
                             onChange={(e) => setHealthCheckWindow(Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
                             className="h-7 w-16 text-xs"
+                            disabled={hasCanaryStrategy}
                           />
                         </div>
                         <p className="text-xs text-muted-foreground">
