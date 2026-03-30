@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, LogOut, ShieldAlert, User } from "lucide-react";
+import { Bell, BookOpen, LogOut, Search, ShieldAlert, User } from "lucide-react";
 
 import { useTRPC } from "@/trpc/client";
 import { useSSE } from "@/hooks/use-sse";
@@ -29,9 +29,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { toast } from "sonner";
 import { LazyMotionProvider } from "@/components/motion/lazy-motion-provider";
 import { UpdateBanner } from "@/components/update-banner";
-import { CommandPalette } from "@/components/command-palette";
+import { CommandPalette, triggerCommandPalette } from "@/components/command-palette";
+import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts-modal";
+import { useEnvironmentStore } from "@/stores/environment-store";
 
 export default function DashboardLayout({
   children,
@@ -66,6 +69,16 @@ export default function DashboardLayout({
   const teamsQuery = useQuery(trpc.team.list.queryOptions());
   const teams = teamsQuery.data ?? [];
   const isTeamless = teamsQuery.isSuccess && teams.length === 0;
+
+  const { selectedEnvironmentId } = useEnvironmentStore();
+  const alertStats = useQuery({
+    ...trpc.dashboard.stats.queryOptions({
+      environmentId: selectedEnvironmentId ?? "",
+    }),
+    enabled: !!selectedEnvironmentId,
+    refetchInterval: 60_000,
+  });
+  const activeAlertCount = alertStats.data?.alerts ?? 0;
 
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   // Force password change dialog when mustChangePassword is set
@@ -142,10 +155,22 @@ export default function DashboardLayout({
                 Signed in as <span className="font-medium text-foreground">{userName || userEmail}</span>
               </p>
             )}
-            <Button variant="outline" onClick={() => signOut({ callbackUrl: "/login" })}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign Out
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={() => {
+                  toast.info(
+                    "Please contact your administrator to be added to a team.",
+                    { duration: 5000 },
+                  );
+                }}
+              >
+                Request Access
+              </Button>
+              <Button variant="outline" onClick={() => signOut({ callbackUrl: "/login" })}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign Out
+              </Button>
+            </div>
           </div>
         </main>
         <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
@@ -167,7 +192,33 @@ export default function DashboardLayout({
           <TeamSelector />
           <Separator orientation="vertical" className="!h-5" />
           <EnvironmentSelector />
-          <div className="ml-auto flex items-center gap-4">
+          <button
+            type="button"
+            onClick={triggerCommandPalette}
+            className="hidden md:flex items-center gap-2 rounded-md border border-input bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span>Search...</span>
+            <kbd className="pointer-events-none ml-2 inline-flex h-5 items-center gap-0.5 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+              <span className="text-xs">&#8984;</span>K
+            </kbd>
+          </button>
+          <div className="ml-auto md:ml-0 flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              asChild
+              aria-label={`Alerts${activeAlertCount > 0 ? ` (${activeAlertCount} active)` : ""}`}
+            >
+              <Link href="/alerts" className="relative">
+                <Bell className="h-5 w-5" />
+                {activeAlertCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground tabular-nums">
+                    {activeAlertCount > 99 ? "99+" : activeAlertCount}
+                  </span>
+                )}
+              </Link>
+            </Button>
             <Button variant="ghost" size="icon" asChild aria-label="Documentation">
               <a href="https://terrifiedbug.gitbook.io/vectorflow" target="_blank" rel="noopener noreferrer">
                 <BookOpen className="h-5 w-5" />
@@ -212,6 +263,7 @@ export default function DashboardLayout({
         <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
         <UpdateBanner />
         <CommandPalette />
+        <KeyboardShortcutsModal />
         <LazyMotionProvider>
           <main id="main-content" className="flex-1 py-2 px-6" tabIndex={-1}>
             <ErrorBoundary>

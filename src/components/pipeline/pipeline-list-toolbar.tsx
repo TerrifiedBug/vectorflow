@@ -45,6 +45,8 @@ export interface PipelineListToolbarProps {
   /** Row density preference */
   density?: Density;
   onDensityChange?: (density: Density) => void;
+  /** Count of pipelines per status for badge display */
+  statusCounts?: Record<string, number>;
 }
 
 // --- Status chips ---
@@ -143,6 +145,7 @@ export function PipelineListToolbar({
   presetBar,
   density,
   onDensityChange,
+  statusCounts,
 }: PipelineListToolbarProps) {
   // Debounced search — local input state + 300ms debounce to parent
   const [localSearch, setLocalSearch] = useState(search);
@@ -204,21 +207,36 @@ export function PipelineListToolbar({
 
       {/* Status filter chips */}
       <div className="flex items-center gap-1">
-        {STATUS_OPTIONS.map((opt) => (
-          <button
-            key={opt.id}
-            type="button"
-            onClick={() => toggleStatus(opt.id)}
-            className={cn(
-              "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
-              statusFilter.includes(opt.id)
-                ? "bg-accent text-accent-foreground border-transparent"
-                : "bg-transparent text-muted-foreground border-border hover:bg-muted",
-            )}
-          >
-            {opt.label}
-          </button>
-        ))}
+        {STATUS_OPTIONS.map((opt) => {
+          const count = statusCounts?.[opt.id];
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => toggleStatus(opt.id)}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full px-3 h-7 text-xs font-medium border transition-colors",
+                statusFilter.includes(opt.id)
+                  ? "bg-accent text-accent-foreground border-transparent"
+                  : "bg-transparent text-muted-foreground border-border hover:bg-muted",
+              )}
+            >
+              {opt.label}
+              {count != null && count > 0 && (
+                <span
+                  className={cn(
+                    "inline-flex items-center justify-center rounded-full px-1.5 min-w-[18px] h-4 text-[10px] font-semibold tabular-nums",
+                    statusFilter.includes(opt.id)
+                      ? "bg-accent-foreground/15"
+                      : "bg-muted-foreground/15",
+                  )}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Separator */}

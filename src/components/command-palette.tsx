@@ -54,14 +54,21 @@ const NAV_PAGES: NavPage[] = [
   { title: "Settings", href: "/settings", icon: Settings, keywords: ["config", "preferences"] },
   { title: "Authentication", href: "/settings/auth", icon: Settings, keywords: ["login", "sso", "oidc"] },
   { title: "Users", href: "/settings/users", icon: Settings, keywords: ["members", "accounts"] },
-  { title: "Teams", href: "/settings/teams", icon: Settings, keywords: ["organization"] },
-  { title: "Team Settings", href: "/settings/team", icon: Settings, keywords: ["team config"] },
+  { title: "All Teams", href: "/settings/teams", icon: Settings, keywords: ["organization"] },
+  { title: "My Team", href: "/settings/team", icon: Settings, keywords: ["team config"] },
   { title: "Service Accounts", href: "/settings/service-accounts", icon: Settings, keywords: ["api keys", "tokens"] },
   { title: "Outbound Webhooks", href: "/settings/webhooks", icon: Settings, keywords: ["hooks", "integrations"] },
   { title: "Backup", href: "/settings/backup", icon: Settings, keywords: ["restore", "export"] },
   { title: "Fleet Settings", href: "/settings/fleet", icon: Settings, keywords: ["agent config"] },
   { title: "AI", href: "/settings/ai", icon: Settings, keywords: ["assistant", "copilot"] },
 ];
+
+// ─── External trigger ──────────────────────────────────────────────────────
+let openCommandPalette: (() => void) | null = null;
+
+export function triggerCommandPalette() {
+  openCommandPalette?.();
+}
 
 // ─── Component ─────────────────────────────────────────────────────────────
 
@@ -72,6 +79,12 @@ export function CommandPalette() {
   const trpc = useTRPC();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
+
+  // Register external trigger
+  useEffect(() => {
+    openCommandPalette = () => setOpen(true);
+    return () => { openCommandPalette = null; };
+  }, []);
 
   // Keyboard shortcut: Cmd+K / Ctrl+K
   useEffect(() => {

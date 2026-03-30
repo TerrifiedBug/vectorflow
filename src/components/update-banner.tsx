@@ -1,15 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X, ExternalLink } from "lucide-react";
 
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 
+function isDismissedInStorage(version: string): boolean {
+  try {
+    return localStorage.getItem(`vf-update-dismissed-${version}`) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function persistDismissal(version: string): void {
+  try {
+    localStorage.setItem(`vf-update-dismissed-${version}`, "true");
+  } catch {
+    // localStorage may be unavailable in SSR or private browsing
+  }
+}
+
 export function UpdateBanner() {
   const trpc = useTRPC();
-  const [dismissed, setDismissed] = useState(false);
 
   const { data } = useQuery(
     trpc.settings.checkVersion.queryOptions(undefined, {
@@ -17,6 +32,24 @@ export function UpdateBanner() {
       staleTime: Infinity,
     }),
   );
+
+  const latestVersion = data?.server.latestVersion ?? "";
+
+  const persistedDismissal = useMemo(
+    () => (latestVersion ? isDismissedInStorage(latestVersion) : false),
+    [latestVersion],
+  );
+
+  const [sessionDismissed, setSessionDismissed] = useState(false);
+
+  const dismissed = persistedDismissal || sessionDismissed;
+
+  const handleDismiss = () => {
+    setSessionDismissed(true);
+    if (latestVersion) {
+      persistDismissal(latestVersion);
+    }
+  };
 
   if (dismissed || !data?.server.updateAvailable) {
     return null;
@@ -48,7 +81,7 @@ export function UpdateBanner() {
         variant="ghost"
         size="icon"
         className="relative h-6 w-6 shrink-0 text-status-info-foreground transition-colors hover:bg-status-info/30 focus-visible:ring-ring before:absolute before:-inset-2 before:content-['']"
-        onClick={() => setDismissed(true)}
+        onClick={handleDismiss}
         aria-label="Dismiss update notification"
       >
         <X className="h-4 w-4" />

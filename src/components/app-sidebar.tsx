@@ -10,10 +10,8 @@ import {
   Layers,
   FileText,
   ScrollText,
-  Rocket,
   Bell,
   BarChart3,
-  DollarSign,
   Settings,
   ChevronsLeft,
   ChevronsRight,
@@ -28,6 +26,7 @@ import { settingsNavGroups } from "@/components/settings-sidebar-nav";
 import { libraryNavItems } from "@/components/library-sidebar-nav";
 import { usePipelineSidebarStore } from "@/stores/pipeline-sidebar-store";
 import { PipelineGroupTree } from "@/components/pipeline/pipeline-group-tree";
+import { SidebarAlertBadge } from "@/components/sidebar-alert-badge";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -44,18 +43,30 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-const navItems = [
+const observeItems = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
   { title: "Pipelines", href: "/pipelines", icon: Workflow },
   { title: "Fleet", href: "/fleet", icon: Server },
-  { title: "Environments", href: "/environments", icon: Layers },
-  { title: "Library", href: "/library", icon: FileText },
-  { title: "Audit Log", href: "/audit", icon: ScrollText },
-  { title: "Deployments", href: "/audit/deployments", icon: Rocket },
+];
+
+const operateItems = [
   { title: "Alerts", href: "/alerts", icon: Bell },
   { title: "Analytics", href: "/analytics", icon: BarChart3 },
-  { title: "Costs", href: "/analytics/costs", icon: DollarSign },
+  { title: "Audit Log", href: "/audit", icon: ScrollText },
+];
+
+const configureItems = [
+  { title: "Environments", href: "/environments", icon: Layers },
+  { title: "Library", href: "/library", icon: FileText },
   { title: "Settings", href: "/settings", icon: Settings, requiredRole: "ADMIN" as const },
+];
+
+type NavItem = (typeof observeItems)[number] & { requiredRole?: "ADMIN" };
+
+const navGroups: { label: string; items: NavItem[] }[] = [
+  { label: "Observe", items: observeItems },
+  { label: "Operate", items: operateItems },
+  { label: "Configure", items: configureItems },
 ];
 
 /** Nav items visible when the system environment is selected */
@@ -76,8 +87,7 @@ export function AppSidebar() {
   const userRole = roleQuery.data?.role;
   const isSuperAdmin = roleQuery.data?.isSuperAdmin ?? false;
 
-  const visibleItems = navItems.filter((item) => {
-    // When system environment is selected, only show allowed nav items
+  const filterItem = (item: NavItem): boolean => {
     if (isSystemEnvironment && !SYSTEM_ENV_ALLOWED_HREFS.has(item.href)) {
       return false;
     }
@@ -86,7 +96,14 @@ export function AppSidebar() {
     if (!userRole) return false;
     const roleLevel: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
     return (roleLevel[userRole] ?? 0) >= (roleLevel[item.requiredRole] ?? 0);
-  });
+  };
+
+  const visibleGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(filterItem),
+    }))
+    .filter((group) => group.items.length > 0);
 
   const isSettingsMode = pathname.startsWith("/settings");
   const isLibraryMode = pathname.startsWith("/library");
@@ -94,7 +111,15 @@ export function AppSidebar() {
   const isSubMode = isSettingsMode || isLibraryMode || isPipelinesMode;
 
   const handleBack = () => {
-    router.push("/");
+    if (isSettingsMode) {
+      router.push("/settings");
+    } else if (isLibraryMode) {
+      router.push("/library");
+    } else if (isPipelinesMode) {
+      router.push("/pipelines");
+    } else {
+      router.push("/");
+    }
   };
 
   const { state, toggleSidebar } = useSidebar();
@@ -150,43 +175,46 @@ export function AppSidebar() {
           )}
           aria-hidden={isSubMode && !isCollapsed}
         >
-          <SidebarGroup>
-            <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {visibleItems.map((item) => {
-                  // Longest-prefix-wins: prefer the most specific match
-                  const matchesPath =
-                    item.href === "/"
-                      ? pathname === "/"
-                      : pathname === item.href || pathname.startsWith(item.href + "/");
-                  const moreSpecificMatch = matchesPath && visibleItems.some(
-                    (other) =>
-                      other.href !== item.href &&
-                      other.href.startsWith(item.href + "/") &&
-                      (pathname === other.href || pathname.startsWith(other.href + "/"))
-                  );
-                  const isActive = matchesPath && !moreSpecificMatch;
+          {visibleGroups.map((group) => (
+            <SidebarGroup key={group.label}>
+              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {group.items.map((item) => {
+                    const matchesPath =
+                      item.href === "/"
+                        ? pathname === "/"
+                        : pathname === item.href || pathname.startsWith(item.href + "/");
+                    const allItems = visibleGroups.flatMap((g) => g.items);
+                    const moreSpecificMatch = matchesPath && allItems.some(
+                      (other) =>
+                        other.href !== item.href &&
+                        other.href.startsWith(item.href + "/") &&
+                        (pathname === other.href || pathname.startsWith(other.href + "/"))
+                    );
+                    const isActive = matchesPath && !moreSpecificMatch;
 
-                  return (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={isActive}
-                        tooltip={item.title}
-                        className="data-[active=true]:font-semibold data-[active=true]:border-l-2 data-[active=true]:border-primary data-[active=true]:bg-sidebar-accent/60"
-                      >
-                        <Link href={item.href}>
-                          <item.icon />
-                          <span>{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+                    return (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={isActive}
+                          tooltip={item.title}
+                          className="data-[active=true]:font-semibold data-[active=true]:border-l-2 data-[active=true]:border-primary data-[active=true]:bg-sidebar-accent/60"
+                        >
+                          <Link href={item.href}>
+                            <item.icon />
+                            <span>{item.title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                        {item.href === "/alerts" && <SidebarAlertBadge />}
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ))}
         </div>
 
         {/* Settings nav panel */}

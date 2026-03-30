@@ -20,6 +20,7 @@ import {
   Workflow,
   Settings,
   LayoutDashboard,
+  Lightbulb,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
@@ -43,6 +44,7 @@ import { derivePipelineStatus } from "@/lib/pipeline-status";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { PageHeader } from "@/components/page-header";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
 
 export default function DashboardPage() {
@@ -117,6 +119,13 @@ export default function DashboardPage() {
   );
   const anomalySeveritiesQuery = useQuery(
     trpc.anomaly.maxSeverityByPipeline.queryOptions(
+      { environmentId: selectedEnvironmentId ?? "" },
+      { enabled: !!selectedEnvironmentId && activeView === null },
+    ),
+  );
+
+  const costSummaryQuery = useQuery(
+    trpc.costRecommendation.summary.queryOptions(
       { environmentId: selectedEnvironmentId ?? "" },
       { enabled: !!selectedEnvironmentId && activeView === null },
     ),
@@ -217,6 +226,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6" role="region" aria-label="Dashboard overview">
+      <PageHeader title="Dashboard" description="Real-time overview of your pipeline infrastructure." />
+
       {/* ── Tab Bar ────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 border-b px-1 overflow-x-auto">
         <button
@@ -434,11 +445,9 @@ export default function DashboardPage() {
                 </div>
                 {(stats.data?.alerts ?? 0) > 0 || totalAnomalies > 0 ? (
                   <>
-                    <p className="mt-1 text-2xl font-semibold tabular-nums" role="status">{stats.data?.alerts ?? 0}</p>
-                    <Link href="/alerts" className="text-sm text-muted-foreground hover:text-foreground">
-                      View alerts
-                    </Link>
-                    <p className="mt-1 text-2xl font-semibold tabular-nums">{(stats.data?.alerts ?? 0) + totalAnomalies}</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums" role="status">
+                      {(stats.data?.alerts ?? 0) + totalAnomalies}
+                    </p>
                     <div className="flex items-center gap-2">
                       <Link href="/alerts" className="text-sm text-muted-foreground hover:text-foreground">
                         View alerts
@@ -455,6 +464,32 @@ export default function DashboardPage() {
             </Card>
             </StaggerItem>
           </StaggerList>
+          )}
+
+          {/* Cost Recommendations Banner */}
+          {(costSummaryQuery.data?.pendingCount ?? 0) > 0 && (
+            <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900/50 dark:bg-amber-950/20">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40">
+                  <Lightbulb className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">
+                    {costSummaryQuery.data!.pendingCount} cost optimization{" "}
+                    {costSummaryQuery.data!.pendingCount === 1
+                      ? "recommendation"
+                      : "recommendations"}{" "}
+                    available
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Review recommendations to reduce data volume and optimize costs
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/analytics?tab=costs">View recommendations</Link>
+                </Button>
+              </CardContent>
+            </Card>
           )}
 
           {/* Metrics Filter Bar */}
