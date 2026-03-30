@@ -87,6 +87,7 @@ export function createUpdateTracker(onStageChange: (stage: UpdateStage) => void)
 export function useAgentUpdateTracker() {
   const { subscribe, unsubscribe } = useSSE();
   const [stage, setStage] = useState<UpdateStage>(null);
+  const [trackedNodeId, setTrackedNodeId] = useState<string | null>(null);
   const trackerRef = useRef(createUpdateTracker(setStage));
 
   useEffect(() => {
@@ -105,13 +106,14 @@ export function useAgentUpdateTracker() {
   const startTracking = useCallback(
     (nodeId: string, targetVersion: string) => {
       trackerRef.current.startTracking(nodeId, targetVersion);
+      setTrackedNodeId(nodeId);
     },
     [],
   );
 
   return {
     stage,
-    trackedNodeId: trackerRef.current.getNodeId(),
+    trackedNodeId,
     startTracking,
   };
 }
