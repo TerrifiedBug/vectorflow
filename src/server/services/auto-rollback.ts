@@ -47,6 +47,29 @@ export async function getAggregateErrorRate(
   }
 }
 
+/**
+ * Get the most recent mean latency for a pipeline from PipelineMetric rows.
+ * Returns the latency in ms, or null if no recent data is available.
+ */
+export async function getRecentMeanLatency(
+  pipelineId: string,
+): Promise<number | null> {
+  try {
+    const metric = await prisma.pipelineMetric.findFirst({
+      where: { pipelineId, latencyMeanMs: { not: null } },
+      orderBy: { timestamp: "desc" },
+      select: { latencyMeanMs: true },
+    });
+    return metric?.latencyMeanMs ?? null;
+  } catch (err) {
+    console.error(
+      `[auto-rollback] Error computing mean latency for pipeline=${pipelineId}:`,
+      err,
+    );
+    return null;
+  }
+}
+
 // ─── AutoRollbackService ────────────────────────────────────────────────────
 
 export class AutoRollbackService {
