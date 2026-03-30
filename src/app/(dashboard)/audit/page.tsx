@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, Fragment } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Rocket, ScrollText, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,11 +25,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTeamStore } from "@/stores/team-store";
 import { formatTimestamp } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { PageHeader } from "@/components/page-header";
+import { DeploymentHistory } from "./deployments/page";
+import { getAuditActionLabel } from "@/lib/audit-actions";
 
 const ALL_VALUE = "__all__";
 const SCIM_VALUE = "__SCIM__";
@@ -55,6 +60,10 @@ function getActionColor(action: string): string {
 }
 
 export default function AuditPage() {
+  const searchParams = useSearchParams();
+  const defaultTab = searchParams.get("tab") === "deployments" ? "deployments" : "activity";
+  const [activeTab, setActiveTab] = useState(defaultTab);
+
   const trpc = useTRPC();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   // Filter state
@@ -129,6 +138,9 @@ export default function AuditPage() {
     });
   }
 
+  // Show full-page skeleton on initial load (before filter options are ready)
+  const isInitialLoad = logsQuery.isLoading && actionsQuery.isLoading;
+
   if (logsQuery.isError) {
     return (
       <div className="space-y-6">
@@ -139,6 +151,21 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader title="Audit Log" description="Track all changes and actions across your VectorFlow instance." />
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="activity" className="gap-1.5">
+            <ScrollText className="h-4 w-4" />
+            Activity Log
+          </TabsTrigger>
+          <TabsTrigger value="deployments" className="gap-1.5">
+            <Rocket className="h-4 w-4" />
+            Deployments
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="activity" className="space-y-6">
+
       {/* Filter bar */}
       <Card>
         <CardHeader className="pb-3">
@@ -330,6 +357,7 @@ export default function AuditPage() {
       {/* Table */}
       {logsQuery.isLoading ? (
         <div className="space-y-3">
+          {isInitialLoad && <Skeleton className="h-40 w-full" />}
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
           ))}
@@ -351,7 +379,7 @@ export default function AuditPage() {
                 <TableHead className="hidden xl:table-cell">IP Address</TableHead>
                 <TableHead>Action</TableHead>
                 <TableHead>Entity Type</TableHead>
-                <TableHead className="max-w-[180px]">Entity ID</TableHead>
+                <TableHead className="hidden xl:table-cell max-w-[180px]">Entity ID</TableHead>
                 <TableHead className="hidden lg:table-cell">Details</TableHead>
               </TableRow>
             </TableHeader>
@@ -397,7 +425,7 @@ export default function AuditPage() {
                           className={`max-w-full truncate ${getActionColor(entry.action)}`}
                           title={entry.action}
                         >
-                          {entry.action}
+                          {getAuditActionLabel(entry.action)}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -405,7 +433,7 @@ export default function AuditPage() {
                           {entry.entityType}
                         </Badge>
                       </TableCell>
-                      <TableCell className="font-mono text-xs tabular-nums max-w-[180px] truncate" title={entry.entityId}>
+                      <TableCell className="hidden xl:table-cell font-mono text-xs tabular-nums max-w-[180px] truncate" title={entry.entityId}>
                         {entry.entityId}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell text-xs text-muted-foreground max-w-[300px] truncate">
@@ -424,6 +452,12 @@ export default function AuditPage() {
                               <div className="xl:hidden">
                                 <p className="text-xs font-medium text-muted-foreground mb-1">IP Address</p>
                                 <span className="text-xs font-mono tabular-nums">{entry.ipAddress}</span>
+                              </div>
+                            )}
+                            {entry.entityId && (
+                              <div className="xl:hidden">
+                                <p className="text-xs font-medium text-muted-foreground mb-1">Entity ID</p>
+                                <span className="text-xs font-mono tabular-nums break-all">{entry.entityId}</span>
                               </div>
                             )}
                             {hasMetadata && (
@@ -500,6 +534,12 @@ export default function AuditPage() {
         )}
         </>
       )}
+
+        </TabsContent>
+        <TabsContent value="deployments">
+          <DeploymentHistory />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

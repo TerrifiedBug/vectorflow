@@ -15,7 +15,7 @@ import { FleetTabs } from "@/components/fleet/fleet-tabs";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { TimeRangeSelector } from "@/components/time-range-selector";
 
 type TimeRange = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -104,23 +104,7 @@ export default function FleetOverviewPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <FleetTabs active="overview" />
-        <div className="flex items-center gap-1">
-          {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setRange(v)}
-              className={cn(
-                "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
-                range === v
-                  ? "bg-accent text-accent-foreground border-transparent"
-                  : "bg-transparent text-muted-foreground border-border hover:bg-muted",
-              )}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
+        <TimeRangeSelector value={range} onChange={setRange} />
       </div>
 
       <FleetKpiCards data={overview.data} isLoading={overview.isLoading} />

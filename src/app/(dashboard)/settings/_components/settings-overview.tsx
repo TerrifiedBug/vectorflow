@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { useQuery } from "@tanstack/react-query";
+import { useTRPC } from "@/trpc/client";
+import { useEnvironmentStore } from "@/stores/environment-store";
 import {
   RefreshCw,
   HardDrive,
@@ -18,6 +21,8 @@ import {
   Activity,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface SettingsCategory {
   title: string;
@@ -64,14 +69,14 @@ const CATEGORIES: SettingsCategory[] = [
     requiredSuperAdmin: true,
   },
   {
-    title: "Teams",
+    title: "All Teams",
     description: "Create and manage teams for multi-tenant workspace isolation.",
     href: "/settings/teams",
     icon: Building2,
     requiredSuperAdmin: true,
   },
   {
-    title: "Team Settings",
+    title: "My Team",
     description: "Configure your team's name, environments, and preferences.",
     href: "/settings/team",
     icon: Users,
@@ -128,6 +133,74 @@ export function SettingsOverview() {
   const userRole = user?.role;
   const isAdmin = isSuperAdmin || userRole === "ADMIN";
 
+  const trpc = useTRPC();
+  const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
+
+  // Version check — only for super admins
+  const versionQuery = useQuery({
+    ...trpc.settings.checkVersion.queryOptions(),
+    enabled: isSuperAdmin,
+    staleTime: 5 * 60 * 1000, // cache for 5 minutes
+  });
+
+  // Settings (includes backup info) — only for super admins
+  const settingsQuery = useQuery({
+    ...trpc.settings.get.queryOptions(),
+    enabled: isSuperAdmin,
+    retry: false,
+  });
+
+  // Fleet node count — only for super admins with an environment selected
+  const fleetQuery = useQuery({
+    ...trpc.fleet.list.queryOptions({ environmentId: selectedEnvironmentId ?? "" }),
+    enabled: isSuperAdmin && !!selectedEnvironmentId,
+  });
+
+  /** Inline status hints keyed by card title */
+  function getCardStatus(title: string): React.ReactNode {
+    switch (title) {
+      case "Version Check": {
+        if (!versionQuery.data) return versionQuery.isLoading ? <Skeleton className="h-4 w-24 mt-1.5" /> : null;
+        const { server } = versionQuery.data;
+        return (
+          <div className="mt-1.5 flex items-center gap-2">
+            <span className="text-xs text-muted-foreground font-mono">{server.currentVersion}</span>
+            {server.updateAvailable ? (
+              <Badge variant="default" className="text-[10px] px-1.5 py-0">Update available</Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-green-600 border-green-600">Up to date</Badge>
+            )}
+          </div>
+        );
+      }
+      case "Backup": {
+        if (!settingsQuery.data) return settingsQuery.isLoading ? <Skeleton className="h-4 w-20 mt-1.5" /> : null;
+        const lastBackup = settingsQuery.data.lastBackupAt;
+        return (
+          <div className="mt-1.5 flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {lastBackup ? `Last: ${new Date(lastBackup).toLocaleDateString()}` : "Never backed up"}
+            </span>
+            {settingsQuery.data.lastBackupStatus === "failed" && (
+              <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Failed</Badge>
+            )}
+          </div>
+        );
+      }
+      case "Fleet": {
+        if (!fleetQuery.data) return fleetQuery.isLoading ? <Skeleton className="h-4 w-16 mt-1.5" /> : null;
+        const nodeCount = fleetQuery.data.length;
+        return (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {nodeCount} {nodeCount === 1 ? "node" : "nodes"} registered
+          </p>
+        );
+      }
+      default:
+        return null;
+    }
+  }
+
   const visibleCategories = CATEGORIES.filter((cat) => {
     if (cat.requiredSuperAdmin) return isSuperAdmin;
     return isAdmin;
@@ -160,6 +233,7 @@ export function SettingsOverview() {
                   <CardDescription className="text-xs">
                     {cat.description}
                   </CardDescription>
+                  {getCardStatus(cat.title)}
                 </CardContent>
               </Card>
             </Link>
