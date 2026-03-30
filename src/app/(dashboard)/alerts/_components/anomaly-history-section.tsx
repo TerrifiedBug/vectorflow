@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState, useCallback, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
 import {
@@ -226,19 +226,27 @@ export function AnomalyHistorySection({
             }
           : {}),
       },
-      { enabled: !!environmentId },
+      { enabled: !!environmentId, placeholderData: keepPreviousData },
     ),
   );
 
   // ─── Derived data ─────────────────────────────────────────────────────────
 
   // The router returns a flat array (not { items, nextCursor })
-  const pageItems = (listQuery.data ?? []) as AnomalyItem[];
+  const pageItems = useMemo(
+    () => (listQuery.data ?? []) as AnomalyItem[],
+    [listQuery.data],
+  );
   const nextCursor =
     pageItems.length === 50 ? pageItems[pageItems.length - 1]?.id : undefined;
 
-  // First page shown directly from query; subsequent pages accumulated in allItems
-  const visibleItems = cursor ? allItems : pageItems;
+  // Merge accumulated pages with current page so new data appears immediately
+  const visibleItems = useMemo(() => {
+    if (!cursor) return pageItems;
+    const existing = new Set(allItems.map((i) => i.id));
+    const newItems = pageItems.filter((i) => !existing.has(i.id));
+    return [...allItems, ...newItems];
+  }, [allItems, pageItems, cursor]);
 
   // Pipeline options derived from all loaded items
   const pipelineOptions = useMemo(() => {
@@ -315,11 +323,7 @@ export function AnomalyHistorySection({
   // ─── Handlers ─────────────────────────────────────────────────────────────
   const handleLoadMore = () => {
     if (nextCursor) {
-      setAllItems((prev) => {
-        const existing = new Set(prev.map((i) => i.id));
-        const newItems = pageItems.filter((i) => !existing.has(i.id));
-        return [...prev, ...newItems];
-      });
+      setAllItems(visibleItems);
       setCursor(nextCursor);
     }
   };
