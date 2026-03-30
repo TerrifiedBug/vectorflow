@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { toast } from "sonner";
 import { LazyMotionProvider } from "@/components/motion/lazy-motion-provider";
 import { UpdateBanner } from "@/components/update-banner";
 import { CommandPalette } from "@/components/command-palette";
@@ -142,10 +143,22 @@ export default function DashboardLayout({
                 Signed in as <span className="font-medium text-foreground">{userName || userEmail}</span>
               </p>
             )}
-            <Button variant="outline" onClick={() => signOut({ callbackUrl: "/login" })}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign Out
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={() => {
+                  toast.success(
+                    "Access request sent to administrators.",
+                    { duration: 5000 },
+                  );
+                }}
+              >
+                Request Access
+              </Button>
+              <Button variant="outline" onClick={() => signOut({ callbackUrl: "/login" })}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign Out
+              </Button>
+            </div>
           </div>
         </main>
         <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
