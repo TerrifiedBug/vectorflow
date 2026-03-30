@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { PageHeader } from "@/components/page-header";
 
 export default function EnvironmentsPage() {
   const trpc = useTRPC();
@@ -45,14 +46,18 @@ export default function EnvironmentsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
-        <Button asChild size="sm">
-          <Link href="/environments/new">
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            New Environment
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Environments"
+        description="Manage deployment environments for your team."
+        actions={
+          <Button asChild size="sm">
+            <Link href="/environments/new">
+              <Plus className="mr-2 h-4 w-4" />
+              New Environment
+            </Link>
+          </Button>
+        }
+      />
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (

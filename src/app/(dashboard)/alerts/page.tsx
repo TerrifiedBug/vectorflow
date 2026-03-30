@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { StatusBadge } from "@/components/ui/status-badge";
 
+import { PageHeader } from "@/components/page-header";
 import { AlertRulesSection } from "./_components/alert-rules-section";
 import { NotificationChannelsSection } from "./_components/notification-channels-section";
 import { WebhooksSection } from "./_components/webhooks-section";
@@ -50,6 +51,8 @@ export default function AlertsPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader title="Alerts" description="Configure alert rules, notification channels, and review alert history." />
+
       <AlertRulesSection environmentId={selectedEnvironmentId} />
 
       <Separator />

@@ -29,6 +29,7 @@ import { QueryError } from "@/components/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
 import { RecommendationsPanel } from "@/components/analytics/recommendations-panel";
+import { PageHeader } from "@/components/page-header";
 
 type VolumeRange = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -186,6 +187,8 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader title="Analytics" description="Volume analytics and data reduction insights across your pipelines." />
+
       <div className="flex items-center justify-end">
         <div className="flex items-center gap-1">
           {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (

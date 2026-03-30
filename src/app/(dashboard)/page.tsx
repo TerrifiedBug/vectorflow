@@ -43,6 +43,7 @@ import { derivePipelineStatus } from "@/lib/pipeline-status";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { PageHeader } from "@/components/page-header";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
 
 export default function DashboardPage() {
@@ -217,6 +218,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6" role="region" aria-label="Dashboard overview">
+      <PageHeader title="Dashboard" description="Real-time overview of your pipeline infrastructure." />
+
       {/* ── Tab Bar ────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 border-b px-1 overflow-x-auto">
         <button

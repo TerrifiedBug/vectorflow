@@ -29,6 +29,7 @@ import { useTeamStore } from "@/stores/team-store";
 import { formatTimestamp } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { PageHeader } from "@/components/page-header";
 
 const ALL_VALUE = "__all__";
 const SCIM_VALUE = "__SCIM__";
@@ -139,6 +140,8 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader title="Audit Log" description="Track all changes and actions across your VectorFlow instance." />
+
       {/* Filter bar */}
       <Card>
         <CardHeader className="pb-3">
