@@ -355,6 +355,7 @@ model Pipeline {
   autoRollbackEnabled        Boolean  @default(false)
   autoRollbackThreshold      Float    @default(5.0)
   autoRollbackWindowMinutes  Int      @default(5)
+  deploymentStrategy    Json?                // DeploymentStrategy | null (null = direct deploy)
   aiConversations AiConversation[]
   deployRequests  DeployRequest[]
   stagedRollouts  StagedRollout[]

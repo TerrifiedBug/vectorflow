@@ -3,7 +3,8 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { ComponentKind, LogLevel } from "@/generated/prisma";
+import { ComponentKind, LogLevel, Prisma } from "@/generated/prisma";
+import { deploymentStrategySchema } from "@/lib/deployment-strategy";
 import { withAudit } from "@/server/middleware/audit";
 import {
   createVersion,
@@ -253,12 +254,13 @@ export const pipelineRouter = router({
         autoRollbackEnabled: z.boolean().optional(),
         autoRollbackThreshold: z.number().positive().max(100).optional(),
         autoRollbackWindowMinutes: z.number().int().positive().max(60).optional(),
+        deploymentStrategy: deploymentStrategySchema.nullable().optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.updated", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
-      const { id, tags, enrichMetadata, groupId, autoRollbackEnabled, autoRollbackThreshold, autoRollbackWindowMinutes, ...data } = input;
+      const { id, tags, enrichMetadata, groupId, autoRollbackEnabled, autoRollbackThreshold, autoRollbackWindowMinutes, deploymentStrategy, ...data } = input;
       const existing = await prisma.pipeline.findUnique({
         where: { id },
         select: { id: true, tags: true, environmentId: true, environment: { select: { teamId: true } } },
@@ -318,6 +320,9 @@ export const pipelineRouter = router({
           ...(autoRollbackEnabled !== undefined ? { autoRollbackEnabled } : {}),
           ...(autoRollbackThreshold !== undefined ? { autoRollbackThreshold } : {}),
           ...(autoRollbackWindowMinutes !== undefined ? { autoRollbackWindowMinutes } : {}),
+          ...(deploymentStrategy !== undefined
+            ? { deploymentStrategy: deploymentStrategy === null ? Prisma.DbNull : deploymentStrategy }
+            : {}),
           updatedById: ctx.session.user?.id,
         },
       });

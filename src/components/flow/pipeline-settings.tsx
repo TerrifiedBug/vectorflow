@@ -38,6 +38,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { tagBadgeClass } from "@/lib/badge-variants";
+import { parseDeploymentStrategy } from "@/lib/deployment-strategy";
 
 interface PipelineSettingsProps {
   pipelineId?: string;
@@ -274,6 +275,14 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
         </>
       )}
 
+      {/* Deployment Strategy */}
+      {pipelineId && (
+        <>
+          <Separator />
+          <DeploymentStrategySettings pipelineId={pipelineId} pipeline={pipeline} />
+        </>
+      )}
+
       {/* Dependencies */}
       {pipelineId && pipeline?.environmentId && (
         <>
@@ -466,6 +475,311 @@ function AutoRollbackSettings({
             </div>
           </div>
         </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Deployment strategy settings sub-component
+// ---------------------------------------------------------------------------
+
+function DeploymentStrategySettings({
+  pipelineId,
+  pipeline,
+}: {
+  pipelineId: string;
+  pipeline: { deploymentStrategy?: unknown } | null | undefined;
+}) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const [strategyOpen, setStrategyOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // Parse the existing strategy from pipeline data
+  const currentStrategy = parseDeploymentStrategy(pipeline?.deploymentStrategy);
+  const strategyType = currentStrategy?.type ?? "direct";
+
+  // Local state for canary fields
+  const [localHealthWindow, setLocalHealthWindow] = useState(
+    String(currentStrategy?.healthCheckWindowMinutes ?? 5),
+  );
+  const [localAutoBroaden, setLocalAutoBroaden] = useState(
+    currentStrategy?.autoBroaden ?? false,
+  );
+  const [localAutoRollback, setLocalAutoRollback] = useState(
+    currentStrategy?.autoRollback ?? false,
+  );
+  const [localThreshold, setLocalThreshold] = useState(
+    String(currentStrategy?.autoRollbackThreshold ?? 10),
+  );
+  const [localMaxErrorRate, setLocalMaxErrorRate] = useState(
+    String(currentStrategy?.successCriteria?.maxErrorRatePercent ?? 5),
+  );
+  const [localMaxLatency, setLocalMaxLatency] = useState(
+    currentStrategy?.successCriteria?.maxLatencyMs != null
+      ? String(currentStrategy.successCriteria.maxLatencyMs)
+      : "",
+  );
+
+  // Sync from pipeline data when it loads or changes
+  useEffect(() => {
+    if (!pipeline) return;
+    const s = parseDeploymentStrategy(pipeline.deploymentStrategy);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLocalHealthWindow(String(s?.healthCheckWindowMinutes ?? 5));
+    setLocalAutoBroaden(s?.autoBroaden ?? false);
+    setLocalAutoRollback(s?.autoRollback ?? false);
+    setLocalThreshold(String(s?.autoRollbackThreshold ?? 10));
+    setLocalMaxErrorRate(String(s?.successCriteria?.maxErrorRatePercent ?? 5));
+    setLocalMaxLatency(
+      s?.successCriteria?.maxLatencyMs != null ? String(s.successCriteria.maxLatencyMs) : "",
+    );
+  }, [pipeline]);
+
+  const pipelineQueryKey = trpc.pipeline.get.queryKey({ id: pipelineId });
+
+  const updateMutation = useMutation(
+    trpc.pipeline.update.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: pipelineQueryKey });
+        toast.success("Deployment strategy updated");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to update deployment strategy", {
+          duration: 6000,
+        });
+      },
+    }),
+  );
+
+  /** Build a full strategy object from current local state */
+  const buildStrategy = (overrides: Record<string, unknown> = {}) => {
+    const healthCheckWindowMinutes = parseInt(
+      (overrides.healthCheckWindowMinutes as string) ?? localHealthWindow,
+      10,
+    );
+    const autoBroaden =
+      (overrides.autoBroaden as boolean | undefined) ?? localAutoBroaden;
+    const autoRollback =
+      (overrides.autoRollback as boolean | undefined) ?? localAutoRollback;
+    const autoRollbackThreshold = parseFloat(
+      (overrides.autoRollbackThreshold as string) ?? localThreshold,
+    );
+    const maxErrorRatePercent = parseFloat(
+      (overrides.maxErrorRatePercent as string) ?? localMaxErrorRate,
+    );
+    const maxLatencyRaw =
+      (overrides.maxLatencyMs as string) ?? localMaxLatency;
+    const maxLatencyMs =
+      maxLatencyRaw.trim() === "" ? null : parseFloat(maxLatencyRaw);
+
+    return {
+      type: "canary" as const,
+      healthCheckWindowMinutes: isNaN(healthCheckWindowMinutes)
+        ? 5
+        : healthCheckWindowMinutes,
+      autoBroaden,
+      autoRollback,
+      autoRollbackThreshold: isNaN(autoRollbackThreshold)
+        ? 10
+        : autoRollbackThreshold,
+      successCriteria: {
+        maxErrorRatePercent: isNaN(maxErrorRatePercent)
+          ? 5
+          : maxErrorRatePercent,
+        ...(maxLatencyMs !== null && !isNaN(maxLatencyMs)
+          ? { maxLatencyMs }
+          : {}),
+      },
+    };
+  };
+
+  const handleStrategyChange = (type: string) => {
+    if (type === "direct") {
+      updateMutation.mutate({ id: pipelineId, deploymentStrategy: null });
+    } else {
+      updateMutation.mutate({
+        id: pipelineId,
+        deploymentStrategy: buildStrategy(),
+      });
+    }
+  };
+
+  const saveCanaryField = (overrides: Record<string, unknown>) => {
+    updateMutation.mutate({
+      id: pipelineId,
+      deploymentStrategy: buildStrategy(overrides),
+    });
+  };
+
+  return (
+    <Collapsible open={strategyOpen} onOpenChange={setStrategyOpen}>
+      <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2 text-sm font-medium transition-colors hover:text-foreground">
+        <ChevronRight
+          className={`h-4 w-4 shrink-0 transition-transform ${strategyOpen ? "rotate-90" : ""}`}
+        />
+        <span className="text-left">Deployment Strategy</span>
+        {strategyType === "canary" && (
+          <Badge variant="secondary" className="ml-auto shrink-0 text-xs">
+            canary
+          </Badge>
+        )}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-3 space-y-3">
+        <div className="space-y-1">
+          <Label className="text-xs">Strategy</Label>
+          <Select
+            value={strategyType}
+            onValueChange={handleStrategyChange}
+            disabled={updateMutation.isPending}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="direct">Direct Deploy</SelectItem>
+              <SelectItem value="canary">Canary Deploy</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          {strategyType === "direct"
+            ? "Deploy new versions directly to all matching nodes."
+            : "Deploy to canary nodes first, then broaden after health check."}
+        </p>
+
+        {strategyType === "canary" && (
+          <>
+            {/* Health check window */}
+            <div className="space-y-1">
+              <Label className="text-xs">Health Check Window</Label>
+              <Select
+                value={localHealthWindow}
+                onValueChange={(val) => {
+                  setLocalHealthWindow(val);
+                  saveCanaryField({ healthCheckWindowMinutes: val });
+                }}
+                disabled={updateMutation.isPending}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[5, 10, 15, 30, 60].map((v) => (
+                    <SelectItem key={v} value={String(v)}>
+                      {v} minutes
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Auto-broaden toggle */}
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Auto-broaden on success</Label>
+              <Switch
+                checked={localAutoBroaden}
+                onCheckedChange={(checked) => {
+                  setLocalAutoBroaden(checked);
+                  saveCanaryField({ autoBroaden: checked });
+                }}
+                disabled={updateMutation.isPending}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Automatically deploy to all nodes when health check window expires and success criteria are met.
+            </p>
+
+            {/* Auto-rollback toggle */}
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Auto-rollback on failure</Label>
+              <Switch
+                checked={localAutoRollback}
+                onCheckedChange={(checked) => {
+                  setLocalAutoRollback(checked);
+                  saveCanaryField({ autoRollback: checked });
+                }}
+                disabled={updateMutation.isPending}
+              />
+            </div>
+            {localAutoRollback && (
+              <div className="space-y-1">
+                <Label className="text-xs">Error Rate Threshold (%)</Label>
+                <Input
+                  type="number"
+                  step="any"
+                  min="0"
+                  max="100"
+                  value={localThreshold}
+                  onChange={(e) => setLocalThreshold(e.target.value)}
+                  onBlur={() => {
+                    const parsed = parseFloat(localThreshold);
+                    if (!isNaN(parsed) && parsed > 0 && parsed <= 100) {
+                      saveCanaryField({ autoRollbackThreshold: localThreshold });
+                    }
+                  }}
+                  className="h-8 text-xs"
+                  disabled={updateMutation.isPending}
+                />
+              </div>
+            )}
+
+            {/* Advanced success criteria (nested collapsible) */}
+            <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+              <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground">
+                <ChevronRight
+                  className={`h-3 w-3 shrink-0 transition-transform ${advancedOpen ? "rotate-90" : ""}`}
+                />
+                Advanced Success Criteria
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 space-y-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Max Error Rate (%)</Label>
+                  <Input
+                    type="number"
+                    step="any"
+                    min="0"
+                    max="100"
+                    value={localMaxErrorRate}
+                    onChange={(e) => setLocalMaxErrorRate(e.target.value)}
+                    onBlur={() => {
+                      const parsed = parseFloat(localMaxErrorRate);
+                      if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+                        saveCanaryField({ maxErrorRatePercent: localMaxErrorRate });
+                      }
+                    }}
+                    className="h-8 text-xs"
+                    disabled={updateMutation.isPending}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Maximum acceptable error rate during canary health check.
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Max Latency (ms)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={localMaxLatency}
+                    onChange={(e) => setLocalMaxLatency(e.target.value)}
+                    onBlur={() => {
+                      saveCanaryField({ maxLatencyMs: localMaxLatency });
+                    }}
+                    className="h-8 text-xs"
+                    placeholder="Optional"
+                    disabled={updateMutation.isPending}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Maximum acceptable mean latency. Leave empty to disable.
+                  </p>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </>
+        )}
       </CollapsibleContent>
     </Collapsible>
   );
