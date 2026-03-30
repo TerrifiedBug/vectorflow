@@ -261,6 +261,18 @@ export default function PipelinesPage() {
   } = usePipelineListFilters();
   const manageGroupsOpen = usePipelineSidebarStore((s) => s.manageGroupsOpen);
   const setManageGroupsOpen = usePipelineSidebarStore((s) => s.setManageGroupsOpen);
+  const sidebarGroupId = usePipelineSidebarStore((s) => s.selectedGroupId);
+  const setSidebarGroupId = usePipelineSidebarStore((s) => s.setSelectedGroupId);
+
+  // Sync sidebar folder selection → URL filter (drives the tRPC query)
+  const prevSidebarGroupRef = useRef(sidebarGroupId);
+  useEffect(() => {
+    if (prevSidebarGroupRef.current !== sidebarGroupId) {
+      prevSidebarGroupRef.current = sidebarGroupId;
+      setGroupId(sidebarGroupId);
+    }
+  }, [sidebarGroupId, setGroupId]);
+
   const [selectedPipelineIds, setSelectedPipelineIds] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -624,6 +636,8 @@ export default function PipelinesPage() {
 
   const clearAllFilters = () => {
     clearFilters();
+    setSidebarGroupId(null);
+    prevSidebarGroupRef.current = null;
   };
 
   // Recursive renderer for nested "Move to group" dropdown items
