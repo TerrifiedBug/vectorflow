@@ -434,11 +434,9 @@ export default function DashboardPage() {
                 </div>
                 {(stats.data?.alerts ?? 0) > 0 || totalAnomalies > 0 ? (
                   <>
-                    <p className="mt-1 text-2xl font-semibold tabular-nums" role="status">{stats.data?.alerts ?? 0}</p>
-                    <Link href="/alerts" className="text-sm text-muted-foreground hover:text-foreground">
-                      View alerts
-                    </Link>
-                    <p className="mt-1 text-2xl font-semibold tabular-nums">{(stats.data?.alerts ?? 0) + totalAnomalies}</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums" role="status">
+                      {(stats.data?.alerts ?? 0) + totalAnomalies}
+                    </p>
                     <div className="flex items-center gap-2">
                       <Link href="/alerts" className="text-sm text-muted-foreground hover:text-foreground">
                         View alerts
