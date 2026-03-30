@@ -16,7 +16,7 @@ import (
 const nodeTokenFile = "node-token"
 
 // loadOrEnroll returns the node token, either from disk or by enrolling.
-func loadOrEnroll(cfg *config.Config, c *client.Client) (string, error) {
+func loadOrEnroll(cfg *config.Config, c *client.Client, labels map[string]string) (string, error) {
 	tokenPath := filepath.Join(cfg.DataDir, nodeTokenFile)
 
 	// Try loading existing token
@@ -51,6 +51,7 @@ func loadOrEnroll(cfg *config.Config, c *client.Client) (string, error) {
 		OS:            runtime.GOOS + "/" + runtime.GOARCH,
 		AgentVersion:  Version,
 		VectorVersion: vectorVersion,
+		Labels:        labels,
 	})
 	if err != nil {
 		return "", fmt.Errorf("enrollment failed: %w", err)
