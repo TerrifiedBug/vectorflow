@@ -861,6 +861,7 @@ export default function PipelinesPage() {
                         <AnomalyBadge
                           count={anomalyCounts[pipeline.id]}
                           severity={anomalySeverities[pipeline.id] ?? "info"}
+                          href="/alerts?tab=anomalies"
                         />
                       ) : null}
                     </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,6 +17,8 @@ interface AnomalyBadgeProps {
   count: number;
   severity: string; // "info" | "warning" | "critical"
   className?: string;
+  /** When provided, the badge becomes a clickable link to this URL */
+  href?: string;
 }
 
 // ─── Severity styling ───────────────────────────────────────────────────────
@@ -43,36 +46,51 @@ const SEVERITY_LABELS: Record<string, string> = {
  * Usage:
  * ```tsx
  * <AnomalyBadge count={3} severity="warning" />
+ * <AnomalyBadge count={3} severity="warning" href="/alerts?tab=anomalies" />
  * ```
  */
-export function AnomalyBadge({ count, severity, className }: AnomalyBadgeProps) {
+export function AnomalyBadge({ count, severity, className, href }: AnomalyBadgeProps) {
   if (count === 0) return null;
 
   const style = SEVERITY_STYLES[severity] ?? SEVERITY_STYLES.info;
   const label = SEVERITY_LABELS[severity] ?? "Unknown";
 
+  const badge = (
+    <Badge
+      variant="outline"
+      className={cn(
+        "gap-1 border-transparent",
+        href ? "cursor-pointer hover:opacity-80 transition-opacity" : "cursor-default",
+        style,
+        className,
+      )}
+      aria-label={`${count} ${label.toLowerCase()} anomalies detected`}
+    >
+      <AlertTriangle className="size-3" />
+      {count}
+    </Badge>
+  );
+
+  const tooltipContent = (
+    <p>
+      {count} {label.toLowerCase()} anomal{count === 1 ? "y" : "ies"} detected
+      {href ? " — click to view" : ""}
+    </p>
+  );
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge
-            variant="outline"
-            className={cn(
-              "gap-1 border-transparent cursor-default",
-              style,
-              className,
-            )}
-            aria-label={`${count} ${label.toLowerCase()} anomalies detected`}
-          >
-            <AlertTriangle className="size-3" />
-            {count}
-          </Badge>
+          {href ? (
+            <Link href={href} onClick={(e) => e.stopPropagation()}>
+              {badge}
+            </Link>
+          ) : (
+            badge
+          )}
         </TooltipTrigger>
-        <TooltipContent>
-          <p>
-            {count} {label.toLowerCase()} anomal{count === 1 ? "y" : "ies"} detected
-          </p>
-        </TooltipContent>
+        <TooltipContent>{tooltipContent}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
