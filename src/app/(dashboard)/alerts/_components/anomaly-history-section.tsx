@@ -499,23 +499,26 @@ export function AnomalyHistorySection({
                               </StatusBadge>
                             </TableCell>
                             <TableCell>
-                              {anomaly.status === "open" && (
+                              {(anomaly.status === "open" ||
+                                anomaly.status === "acknowledged") && (
                                 <div
                                   className="flex items-center gap-1"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-6 gap-1 px-2 text-xs"
-                                    disabled={isMutating}
-                                    onClick={() =>
-                                      handleAcknowledge(anomaly.id)
-                                    }
-                                  >
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    Ack
-                                  </Button>
+                                  {anomaly.status === "open" && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-6 gap-1 px-2 text-xs"
+                                      disabled={isMutating}
+                                      onClick={() =>
+                                        handleAcknowledge(anomaly.id)
+                                      }
+                                    >
+                                      <CheckCircle2 className="h-3 w-3" />
+                                      Ack
+                                    </Button>
+                                  )}
                                   <Button
                                     variant="outline"
                                     size="sm"
