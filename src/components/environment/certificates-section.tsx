@@ -41,12 +41,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { certExpiryBadgeClass } from "@/lib/badge-variants";
 
 const FILE_TYPE_LABELS: Record<string, string> = {
   ca: "CA Certificate",
   cert: "Certificate",
   key: "Private Key",
 };
+
+function certStatusLabel(daysUntilExpiry: number | null): string {
+  if (daysUntilExpiry === null) return "N/A";
+  if (daysUntilExpiry <= 0) return "Expired";
+  if (daysUntilExpiry <= 7) return "Expiring";
+  if (daysUntilExpiry <= 30) return "Expiring Soon";
+  return "Valid";
+}
+
+function certDaysText(daysUntilExpiry: number | null): string | null {
+  if (daysUntilExpiry === null) return null;
+  if (daysUntilExpiry <= 0) return `${Math.abs(daysUntilExpiry)}d ago`;
+  return `${daysUntilExpiry}d remaining`;
+}
 
 interface CertificatesSectionProps {
   environmentId: string;
@@ -163,6 +178,8 @@ export function CertificatesSection({ environmentId }: CertificatesSectionProps)
                   <TableHead>Filename</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Created</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -182,6 +199,23 @@ export function CertificatesSection({ environmentId }: CertificatesSectionProps)
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {new Date(cert.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {cert.expiryDate
+                        ? new Date(cert.expiryDate).toLocaleDateString()
+                        : "\u2014"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-0.5">
+                        <Badge variant="outline" className={certExpiryBadgeClass(cert.daysUntilExpiry)}>
+                          {certStatusLabel(cert.daysUntilExpiry)}
+                        </Badge>
+                        {certDaysText(cert.daysUntilExpiry) && (
+                          <span className="text-xs text-muted-foreground">
+                            {certDaysText(cert.daysUntilExpiry)}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
