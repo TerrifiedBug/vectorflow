@@ -207,6 +207,8 @@ export function AnomalyHistorySection({
   // ─── Reset pagination when server-side filter changes ────────────────────
   const applyStatusFilter = (value: string) => {
     setStatusFilter(value);
+    setSeverityFilter("all");
+    setPipelineFilter("all");
     setCursor(undefined);
     setAllItems([]);
   };
