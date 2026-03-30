@@ -97,20 +97,24 @@ func (a *Agent) Run() error {
 	// Do first poll immediately
 	a.pollAndApply()
 
-	// Start SSE push client if the server provided a URL
+	// Start SSE push client — prefer server-provided URL, fall back to derived URL
 	a.pushCh = make(chan push.PushMessage, 16)
 	a.immediateHeartbeatCh = make(chan struct{}, 1)
-	if pushURL := a.poller.PushURL(); pushURL != "" {
-		a.pushClient = push.New(pushURL, a.client.NodeToken(), func(msg push.PushMessage) {
-			select {
-			case a.pushCh <- msg:
-			default:
-				slog.Warn("push: message channel full, dropping message", "type", msg.Type)
-			}
-		})
-		go a.pushClient.Connect()
-		slog.Info("push client started", "url", pushURL)
+	pushURL := a.poller.PushURL()
+	derivedURL := strings.TrimRight(a.cfg.URL, "/") + "/api/agent/push"
+	if pushURL == "" {
+		pushURL = derivedURL
+		derivedURL = "" // no fallback needed when already using derived
 	}
+	a.pushClient = push.New(pushURL, derivedURL, a.client.NodeToken(), func(msg push.PushMessage) {
+		select {
+		case a.pushCh <- msg:
+		default:
+			slog.Warn("push: message channel full, dropping message", "type", msg.Type)
+		}
+	})
+	go a.pushClient.Connect()
+	slog.Info("push client started", "url", pushURL, "fallback", derivedURL)
 
 	a.sendHeartbeat()
 	currentInterval = a.maybeResetTicker(ticker, currentInterval)
