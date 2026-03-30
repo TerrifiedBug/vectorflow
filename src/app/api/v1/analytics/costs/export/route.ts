@@ -7,13 +7,18 @@ import {
   formatCostCsv,
 } from "@/server/services/cost-attribution";
 
-export const GET = apiRoute("read", async (req: NextRequest) => {
+export const GET = apiRoute("read", async (req: NextRequest, ctx) => {
   const { searchParams } = new URL(req.url);
   const environmentId = searchParams.get("environmentId");
   const range = searchParams.get("range") ?? "30d";
 
   if (!environmentId) {
     return NextResponse.json({ error: "environmentId is required" }, { status: 400 });
+  }
+
+  // Verify the requested environment matches the service account's environment
+  if (environmentId !== ctx.environmentId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   const validRanges = ["1h", "6h", "1d", "7d", "30d"];
