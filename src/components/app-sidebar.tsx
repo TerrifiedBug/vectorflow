@@ -26,6 +26,7 @@ import { settingsNavGroups } from "@/components/settings-sidebar-nav";
 import { libraryNavItems } from "@/components/library-sidebar-nav";
 import { usePipelineSidebarStore } from "@/stores/pipeline-sidebar-store";
 import { PipelineGroupTree } from "@/components/pipeline/pipeline-group-tree";
+import { SidebarAlertBadge } from "@/components/sidebar-alert-badge";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -198,6 +199,7 @@ export function AppSidebar() {
                             <span>{item.title}</span>
                           </Link>
                         </SidebarMenuButton>
+                        {item.href === "/alerts" && <SidebarAlertBadge />}
                       </SidebarMenuItem>
                     );
                   })}
