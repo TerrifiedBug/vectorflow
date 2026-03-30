@@ -11,6 +11,7 @@ import {
   Bot,
   Sparkles,
   Webhook,
+  Activity,
 } from "lucide-react";
 
 export const settingsNavGroups = [
@@ -43,6 +44,7 @@ export const settingsNavGroups = [
     label: "Operations",
     items: [
       { title: "Fleet", href: "/settings/fleet", icon: Server, requiredSuperAdmin: true },
+      { title: "Anomaly Detection", href: "/settings/anomaly-detection", icon: Activity, requiredSuperAdmin: true },
       { title: "Audit Log Shipping", href: "/settings/audit-shipping", icon: Upload, requiredSuperAdmin: true },
     ],
   },
