@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, LogOut, ShieldAlert, User } from "lucide-react";
+import { Bell, BookOpen, LogOut, Search, ShieldAlert, User } from "lucide-react";
 
 import { useTRPC } from "@/trpc/client";
 import { useSSE } from "@/hooks/use-sse";
@@ -32,7 +32,9 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { LazyMotionProvider } from "@/components/motion/lazy-motion-provider";
 import { UpdateBanner } from "@/components/update-banner";
 import { CommandPalette, triggerCommandPalette } from "@/components/command-palette";
+import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts-modal";
 import { Search } from "lucide-react";
+import { useEnvironmentStore } from "@/stores/environment-store";
 
 export default function DashboardLayout({
   children,
@@ -67,6 +69,16 @@ export default function DashboardLayout({
   const teamsQuery = useQuery(trpc.team.list.queryOptions());
   const teams = teamsQuery.data ?? [];
   const isTeamless = teamsQuery.isSuccess && teams.length === 0;
+
+  const { selectedEnvironmentId } = useEnvironmentStore();
+  const alertStats = useQuery({
+    ...trpc.dashboard.stats.queryOptions({
+      environmentId: selectedEnvironmentId ?? "",
+    }),
+    enabled: !!selectedEnvironmentId,
+    refetchInterval: 60_000,
+  });
+  const activeAlertCount = alertStats.data?.alerts ?? 0;
 
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   // Force password change dialog when mustChangePassword is set
@@ -179,7 +191,22 @@ export default function DashboardLayout({
               <span className="text-xs">&#8984;</span>K
             </kbd>
           </button>
-          <div className="ml-auto flex items-center gap-4">
+          <div className="ml-auto md:ml-0 flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              asChild
+              aria-label={`Alerts${activeAlertCount > 0 ? ` (${activeAlertCount} active)` : ""}`}
+            >
+              <Link href="/alerts" className="relative">
+                <Bell className="h-5 w-5" />
+                {activeAlertCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground tabular-nums">
+                    {activeAlertCount > 99 ? "99+" : activeAlertCount}
+                  </span>
+                )}
+              </Link>
+            </Button>
             <Button variant="ghost" size="icon" asChild aria-label="Documentation">
               <a href="https://terrifiedbug.gitbook.io/vectorflow" target="_blank" rel="noopener noreferrer">
                 <BookOpen className="h-5 w-5" />
@@ -224,6 +251,7 @@ export default function DashboardLayout({
         <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
         <UpdateBanner />
         <CommandPalette />
+        <KeyboardShortcutsModal />
         <LazyMotionProvider>
           <main id="main-content" className="flex-1 py-2 px-6" tabIndex={-1}>
             <ErrorBoundary>
