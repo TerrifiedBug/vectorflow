@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { Badge } from "@/components/ui/badge";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { AlertRulesSection } from "./_components/alert-rules-section";
 import { NotificationChannelsSection } from "./_components/notification-channels-section";
 import { WebhooksSection } from "./_components/webhooks-section";
@@ -44,6 +45,36 @@ export default function AlertsPage() {
     return (
       <div className="space-y-6">
         <EmptyState title="Select an environment to manage alerts." />
+      </div>
+    );
+  }
+
+  if (anomalyCountQuery.isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-7 w-40" />
+            <Skeleton className="h-9 w-28" />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 w-full" />
+            ))}
+          </div>
+        </div>
+        <Skeleton className="h-px w-full" />
+        <div className="space-y-3">
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="h-20 w-full" />
+        </div>
+        <Skeleton className="h-px w-full" />
+        <Skeleton className="h-10 w-64" />
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full" />
+          ))}
+        </div>
       </div>
     );
   }

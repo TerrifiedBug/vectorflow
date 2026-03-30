@@ -129,6 +129,9 @@ export default function AuditPage() {
     });
   }
 
+  // Show full-page skeleton on initial load (before filter options are ready)
+  const isInitialLoad = logsQuery.isLoading && actionsQuery.isLoading;
+
   if (logsQuery.isError) {
     return (
       <div className="space-y-6">
@@ -330,6 +333,7 @@ export default function AuditPage() {
       {/* Table */}
       {logsQuery.isLoading ? (
         <div className="space-y-3">
+          {isInitialLoad && <Skeleton className="h-40 w-full" />}
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
           ))}
