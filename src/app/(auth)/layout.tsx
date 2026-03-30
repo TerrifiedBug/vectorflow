@@ -42,17 +42,21 @@ export default function AuthLayout({
       >
         <div className="w-full max-w-md space-y-6">
           <div className="flex flex-col items-center gap-2 text-center">
-            <h1 className="text-3xl tracking-tight text-balance">
-              <span className="font-bold">Vector</span>
-              <span className="font-light">Flow</span>
-              <span
-                className="ml-0.5 inline-block h-2 w-2 rounded-full align-super"
+            <div className="flex items-center gap-2.5">
+              <div
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-sm font-bold text-white"
                 style={{ background: "oklch(0.65 0.18 145)" }}
                 aria-hidden="true"
-              />
-            </h1>
+              >
+                Vf
+              </div>
+              <h1 className="text-4xl tracking-tight text-balance">
+                <span className="font-bold">Vector</span>
+                <span className="font-light">Flow</span>
+              </h1>
+            </div>
             <p className="text-sm text-muted-foreground text-pretty">
-              Visual pipeline builder for Vector
+              Enterprise control plane for Vector data pipelines
             </p>
           </div>
           <LazyMotionProvider>{children}</LazyMotionProvider>

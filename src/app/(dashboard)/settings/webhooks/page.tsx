@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
@@ -8,7 +7,6 @@ import { useTeamStore } from "@/stores/team-store";
 import { copyToClipboard } from "@/lib/utils";
 import { toast } from "sonner";
 import {
-  ArrowLeft,
   Plus,
   Loader2,
   Copy,
@@ -58,6 +56,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Breadcrumb } from "@/components/breadcrumb";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { AlertMetric } from "@/generated/prisma";
 
@@ -896,12 +895,11 @@ function WebhookEndpointsSettings() {
 export default function WebhooksPage() {
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center gap-4 mb-6">
-        <Link href="/settings">
-          <Button variant="ghost" size="icon">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+      <div className="space-y-2 mb-6">
+        <Breadcrumb items={[
+          { label: "Settings", href: "/settings" },
+          { label: "Outbound Webhooks" },
+        ]} />
         <h1 className="text-2xl font-semibold">Outbound Webhooks</h1>
       </div>
       <WebhookEndpointsSettings />

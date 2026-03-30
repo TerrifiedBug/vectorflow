@@ -1,7 +1,8 @@
 // src/app/(dashboard)/analytics/costs/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
@@ -16,11 +17,11 @@ import { CostChart } from "@/components/analytics/cost-chart";
 import { CostTeamRollup } from "@/components/analytics/cost-team-rollup";
 import { CostEnvironmentRollup } from "@/components/analytics/cost-environment-rollup";
 import { CostCsvExport } from "@/components/analytics/cost-csv-export";
-import { cn } from "@/lib/utils";
+import { TimeRangeSelector } from "@/components/time-range-selector";
 
 type CostRange = "1d" | "7d" | "30d";
 
-export default function CostDashboardPage() {
+export function CostDashboard() {
   const trpc = useTRPC();
   const { selectedEnvironmentId } = useEnvironmentStore();
   const [range, setRange] = useState<CostRange>("7d");
@@ -121,23 +122,11 @@ export default function CostDashboardPage() {
         <h2 className="text-lg font-semibold">Cost Attribution</h2>
         <div className="flex items-center gap-3">
           <CostCsvExport environmentId={selectedEnvironmentId} range={range} />
-          <div className="flex items-center gap-1">
-            {(["1d", "7d", "30d"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setRange(v)}
-                className={cn(
-                  "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
-                  range === v
-                    ? "bg-accent text-accent-foreground border-transparent"
-                    : "bg-transparent text-muted-foreground border-border hover:bg-muted"
-                )}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
+          <TimeRangeSelector
+            ranges={["1d", "7d", "30d"] as const}
+            value={range}
+            onChange={setRange}
+          />
         </div>
       </div>
 
@@ -186,4 +175,12 @@ export default function CostDashboardPage() {
       </Tabs>
     </div>
   );
+}
+
+export default function CostDashboardRedirect() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/analytics?tab=costs");
+  }, [router]);
+  return null;
 }
