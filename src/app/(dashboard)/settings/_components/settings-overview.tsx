@@ -15,6 +15,7 @@ import {
   Server,
   Upload,
   Webhook,
+  Activity,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 
@@ -102,6 +103,13 @@ const CATEGORIES: SettingsCategory[] = [
     description: "View and manage fleet nodes and their agent configuration.",
     href: "/settings/fleet",
     icon: Server,
+    requiredSuperAdmin: true,
+  },
+  {
+    title: "Anomaly Detection",
+    description: "Tune anomaly detection sensitivity, baseline windows, and monitored metrics.",
+    href: "/settings/anomaly-detection",
+    icon: Activity,
     requiredSuperAdmin: true,
   },
   {

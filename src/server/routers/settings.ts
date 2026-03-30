@@ -105,6 +105,11 @@ export const settingsRouter = router({
         s3Endpoint: settings.s3Endpoint,
         scimEnabled: settings.scimEnabled,
         scimTokenConfigured: !!settings.scimBearerToken,
+        anomalyBaselineWindowDays: settings.anomalyBaselineWindowDays,
+        anomalySigmaThreshold: settings.anomalySigmaThreshold,
+        anomalyMinStddevFloorPercent: settings.anomalyMinStddevFloorPercent,
+        anomalyDedupWindowHours: settings.anomalyDedupWindowHours,
+        anomalyEnabledMetrics: settings.anomalyEnabledMetrics,
         updatedAt: settings.updatedAt,
       };
     }),
@@ -274,6 +279,58 @@ export const settingsRouter = router({
           ...(input.logsRetentionDays !== undefined ? { logsRetentionDays: input.logsRetentionDays } : {}),
         },
       });
+    }),
+
+  updateAnomalyConfig: protectedProcedure
+    .use(requireSuperAdmin())
+    .input(
+      z.object({
+        baselineWindowDays: z.number().int().min(1).max(30),
+        sigmaThreshold: z.number().min(1.5).max(5),
+        minStddevFloorPercent: z.number().int().min(1).max(25),
+        dedupWindowHours: z.number().int().min(1).max(48),
+        enabledMetrics: z.string().min(1),
+      })
+    )
+    .use(withAudit("settings.anomaly_config_updated", "SystemSettings"))
+    .mutation(async ({ input }) => {
+      // Validate enabled metrics
+      const validMetrics = new Set(["eventsIn", "errorsTotal", "latencyMeanMs"]);
+      const metrics = input.enabledMetrics.split(",").map((s) => s.trim());
+      const invalid = metrics.filter((m) => !validMetrics.has(m));
+      if (invalid.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Invalid metrics: ${invalid.join(", ")}`,
+        });
+      }
+      if (metrics.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "At least one metric must be enabled",
+        });
+      }
+
+      await getOrCreateSettings();
+
+      const result = await prisma.systemSettings.update({
+        where: { id: SETTINGS_ID },
+        data: {
+          anomalyBaselineWindowDays: input.baselineWindowDays,
+          anomalySigmaThreshold: input.sigmaThreshold,
+          anomalyMinStddevFloorPercent: input.minStddevFloorPercent,
+          anomalyDedupWindowHours: input.dedupWindowHours,
+          anomalyEnabledMetrics: input.enabledMetrics,
+        },
+      });
+
+      // Bust the in-memory cache so the next poll picks up changes
+      const { invalidateAnomalyConfigCache } = await import(
+        "@/server/services/anomaly-detector"
+      );
+      invalidateAnomalyConfigCache();
+
+      return result;
     }),
 
   testOidc: protectedProcedure
