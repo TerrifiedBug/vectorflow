@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Breadcrumb } from "@/components/breadcrumb";
 import { PageHeader } from "@/components/page-header";
 import { SecretsSection } from "@/components/environment/secrets-section";
 import { CertificatesSection } from "@/components/environment/certificates-section";
@@ -188,14 +189,10 @@ export default function EnvironmentDetailPage({
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-1.5 text-sm">
-        <Link href="/environments" className="text-muted-foreground hover:text-foreground transition-colors">
-          Environments
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <span className="font-medium">{env.name}</span>
-      </div>
+      <Breadcrumb items={[
+        { label: "Environments", href: "/environments" },
+        { label: env.name },
+      ]} />
 
       {/* Header */}
       <PageHeader
