@@ -34,7 +34,6 @@ import { LazyMotionProvider } from "@/components/motion/lazy-motion-provider";
 import { UpdateBanner } from "@/components/update-banner";
 import { CommandPalette, triggerCommandPalette } from "@/components/command-palette";
 import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts-modal";
-import { Search } from "lucide-react";
 import { useEnvironmentStore } from "@/stores/environment-store";
 
 export default function DashboardLayout({
@@ -159,8 +158,8 @@ export default function DashboardLayout({
             <div className="flex items-center gap-3">
               <Button
                 onClick={() => {
-                  toast.success(
-                    "Access request sent to administrators.",
+                  toast.info(
+                    "Please contact your administrator to be added to a team.",
                     { duration: 5000 },
                   );
                 }}

@@ -161,12 +161,9 @@ export default function AlertsPage() {
                   <AlertTriangle className="h-4 w-4" />
                   Anomalies
                   {totalAnomalies > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="ml-1 border-transparent bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 tabular-nums"
-                    >
+                    <StatusBadge variant="error" className="ml-1">
                       {totalAnomalies}
-                    </Badge>
+                    </StatusBadge>
                   )}
                 </TabsTrigger>
               </TabsList>
