@@ -196,6 +196,19 @@ describe("deriveMetrics (pure function)", () => {
     expect(result.eventsPerSec).toBe(0);
     expect(result.status).toBe("degraded");
   });
+
+  it("source kind: falls back to sentEventsRate when receivedEventsRate is 0 (docker_logs sources)", () => {
+    const sample = makeSample({
+      receivedEventsRate: 0,
+      sentEventsRate: 250,
+      receivedBytesRate: 0,
+      sentBytesRate: 3000,
+    });
+    const result = deriveMetrics("source", sample, [sample]);
+
+    expect(result.eventsPerSec).toBe(250);
+    expect(result.status).toBe("healthy");
+  });
 });
 
 describe("useFlowMetrics integration (simulated hook logic)", () => {

@@ -5,7 +5,10 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import { Separator } from "@/components/ui/separator";
 import { EmptyState } from "@/components/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Layers, List } from "lucide-react";
+import { AlertTriangle, Layers, List } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useTRPC } from "@/trpc/client";
+import { Badge } from "@/components/ui/badge";
 
 import { AlertRulesSection } from "./_components/alert-rules-section";
 import { NotificationChannelsSection } from "./_components/notification-channels-section";
@@ -13,6 +16,7 @@ import { WebhooksSection } from "./_components/webhooks-section";
 import { AlertHistorySection } from "./_components/alert-history-section";
 import { CorrelatedAlertHistory } from "./_components/correlated-alert-history";
 import { FailedDeliveriesSection } from "./_components/failed-deliveries-section";
+import { AnomalyHistorySection } from "./_components/anomaly-history-section";
 
 // ─── Alerts Page ────────────────────────────────────────────────────────────────
 
@@ -20,7 +24,21 @@ export default function AlertsPage() {
   const selectedEnvironmentId = useEnvironmentStore(
     (s) => s.selectedEnvironmentId,
   );
-  const [alertView, setAlertView] = useState<"grouped" | "flat">("grouped");
+  const [alertView, setAlertView] = useState<"grouped" | "flat" | "anomalies">("grouped");
+
+  const trpc = useTRPC();
+
+  const anomalyCountQuery = useQuery(
+    trpc.anomaly.countByPipeline.queryOptions(
+      { environmentId: selectedEnvironmentId ?? "" },
+      { enabled: !!selectedEnvironmentId },
+    ),
+  );
+
+  const totalAnomalies = Object.values(anomalyCountQuery.data ?? {}).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
 
   if (!selectedEnvironmentId) {
     return (
@@ -45,7 +63,7 @@ export default function AlertsPage() {
       {/* Alert History: Grouped vs Flat toggle */}
       <Tabs
         value={alertView}
-        onValueChange={(v) => setAlertView(v as "grouped" | "flat")}
+        onValueChange={(v) => setAlertView(v as "grouped" | "flat" | "anomalies")}
       >
         <TabsList>
           <TabsTrigger value="grouped" className="gap-1.5">
@@ -56,6 +74,18 @@ export default function AlertsPage() {
             <List className="h-4 w-4" />
             All Events
           </TabsTrigger>
+          <TabsTrigger value="anomalies" className="gap-1.5">
+            <AlertTriangle className="h-4 w-4" />
+            Anomalies
+            {totalAnomalies > 0 && (
+              <Badge
+                variant="outline"
+                className="ml-1 border-transparent bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 tabular-nums"
+              >
+                {totalAnomalies}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="grouped">
@@ -64,6 +94,10 @@ export default function AlertsPage() {
 
         <TabsContent value="flat">
           <AlertHistorySection environmentId={selectedEnvironmentId} />
+        </TabsContent>
+
+        <TabsContent value="anomalies">
+          <AnomalyHistorySection environmentId={selectedEnvironmentId} />
         </TabsContent>
       </Tabs>
 

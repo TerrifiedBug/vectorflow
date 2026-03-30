@@ -6,7 +6,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   useReactFlow,
   type ReactFlowInstance,
   type Edge,
@@ -43,15 +42,6 @@ function hasOverlappingTypes(a: DataType[], b: DataType[]): boolean {
   return a.some((t) => b.includes(t));
 }
 
-function minimapNodeColor(node: { data: Record<string, unknown> }): string {
-  const kind = (node.data?.componentDef as { kind?: string })?.kind;
-  switch (kind) {
-    case "source": return "#10b981";   // emerald-500
-    case "transform": return "#0ea5e9"; // sky-500
-    case "sink": return "#f97316";      // orange-500
-    default: return "#6b7280";          // gray-500
-  }
-}
 
 export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   useKeyboardShortcuts({ onSave, onExport, onImport });
@@ -216,13 +206,6 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
       >
         <Background gap={16} size={1} />
         <Controls className="!bg-card !border-border !shadow-md [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-accent [&>button:focus-visible]:!ring-2 [&>button:focus-visible]:!ring-ring [&>button:focus-visible]:!outline-none" />
-        <MiniMap
-          nodeColor={minimapNodeColor}
-          maskColor="rgba(0, 0, 0, 0.6)"
-          className="!bg-card !border-border !shadow-md !rounded-lg"
-          pannable
-          zoomable
-        />
       </ReactFlow>
       {contextMenu && (
         <NodeContextMenu

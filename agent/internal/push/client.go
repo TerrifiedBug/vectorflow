@@ -26,22 +26,25 @@ var sseHTTPClient = &http.Client{
 
 // Client maintains a persistent SSE connection to the server push endpoint.
 type Client struct {
-	url       string
-	token     string
-	onMessage func(PushMessage)
+	url         string
+	fallbackURL string
+	token       string
+	onMessage   func(PushMessage)
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	done   chan struct{}
 }
 
-// New creates a new SSE push client.
-func New(url, token string, onMessage func(PushMessage)) *Client {
+// New creates a new SSE push client. fallbackURL is tried after 3 consecutive
+// short-lived connection failures on the primary URL.
+func New(url, fallbackURL, token string, onMessage func(PushMessage)) *Client {
 	return &Client{
-		url:       url,
-		token:     token,
-		onMessage: onMessage,
-		done:      make(chan struct{}),
+		url:         url,
+		fallbackURL: fallbackURL,
+		token:       token,
+		onMessage:   onMessage,
+		done:        make(chan struct{}),
 	}
 }
 
@@ -54,21 +57,33 @@ func (c *Client) Connect() {
 	c.mu.Unlock()
 
 	backoff := time.Second
+	consecutiveFailures := 0
+	const fallbackThreshold = 3
 
 	for {
 		start := time.Now()
 		err := c.stream(ctx)
 		if ctx.Err() != nil {
-			// Graceful shutdown
 			close(c.done)
 			return
 		}
-		// Reset backoff if connection was alive for a meaningful duration
+
 		if time.Since(start) > 5*time.Second {
 			backoff = time.Second
+			consecutiveFailures = 0
+		} else {
+			consecutiveFailures++
 		}
+
+		if consecutiveFailures >= fallbackThreshold && c.fallbackURL != "" && c.url != c.fallbackURL {
+			slog.Info("push: switching to fallback URL", "fallback", c.fallbackURL, "failures", consecutiveFailures)
+			c.url = c.fallbackURL
+			backoff = time.Second
+			consecutiveFailures = 0
+		}
+
 		slog.Warn("push: connection lost, reconnecting",
-			"error", err, "backoff", backoff)
+			"error", err, "url", c.url, "backoff", backoff)
 		select {
 		case <-ctx.Done():
 			close(c.done)
