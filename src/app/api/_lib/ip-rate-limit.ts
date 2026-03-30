@@ -39,3 +39,49 @@ export function checkIpRateLimit(
 
   return null;
 }
+
+/**
+ * Extract the raw bearer token from the Authorization header.
+ * Returns null if the header is missing or not in "Bearer <token>" format.
+ */
+function extractBearer(request: Request): string | null {
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return null;
+  }
+  return authHeader.slice(7);
+}
+
+/**
+ * Check a token-keyed rate limit for authenticated agent endpoints.
+ * Returns a 401 Response if no bearer token is present,
+ * a 429 Response if the limit is exceeded, or null if allowed.
+ */
+export function checkTokenRateLimit(
+  request: Request,
+  endpoint: string,
+  limit: number,
+): Response | null {
+  const token = extractBearer(request);
+  if (!token) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const key = `token:${endpoint}:${token}`;
+  const result = rateLimiter.checkKey(key, limit);
+
+  if (!result.allowed) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": String(result.retryAfter),
+      },
+    });
+  }
+
+  return null;
+}

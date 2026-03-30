@@ -538,35 +538,37 @@ export const fleetRouter = router({
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      const nodes = await prisma.vectorNode.findMany({
-        where: { environmentId: input.environmentId },
-        include: {
-          pipelineStatuses: {
-            include: {
-              pipeline: { select: { id: true, name: true } },
+      // Two queries in parallel (both needed, but no N+1 within each)
+      const [nodes, deployedPipelines] = await Promise.all([
+        prisma.vectorNode.findMany({
+          where: { environmentId: input.environmentId },
+          include: {
+            pipelineStatuses: {
+              include: {
+                pipeline: { select: { id: true, name: true } },
+              },
             },
           },
-        },
-        orderBy: { createdAt: "asc" },
-      });
-
-      const deployedPipelines = await prisma.pipeline.findMany({
-        where: {
-          environmentId: input.environmentId,
-          isDraft: false,
-          deployedAt: { not: null },
-        },
-        select: {
-          id: true,
-          name: true,
-          tags: true,
-          versions: {
-            orderBy: { version: "desc" },
-            take: 1,
-            select: { version: true },
+          orderBy: { createdAt: "asc" },
+        }),
+        prisma.pipeline.findMany({
+          where: {
+            environmentId: input.environmentId,
+            isDraft: false,
+            deployedAt: { not: null },
           },
-        },
-      });
+          select: {
+            id: true,
+            name: true,
+            tags: true,
+            versions: {
+              orderBy: { version: "desc" as const },
+              take: 1,
+              select: { version: true },
+            },
+          },
+        }),
+      ]);
 
       return {
         nodes: nodes.map((node) => ({
@@ -659,40 +661,28 @@ export const fleetRouter = router({
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      // Fetch all nodes with their pipeline statuses
+      // Single query: fetch nodes with pipeline statuses AND latest version per pipeline
       const nodes = await prisma.vectorNode.findMany({
         where: { environmentId: input.environmentId },
         include: {
           pipelineStatuses: {
             include: {
-              pipeline: { select: { id: true, name: true } },
+              pipeline: {
+                select: {
+                  id: true,
+                  name: true,
+                  versions: {
+                    orderBy: { version: "desc" as const },
+                    take: 1,
+                    select: { version: true },
+                  },
+                },
+              },
             },
           },
         },
         orderBy: { name: "asc" },
       });
-
-      // Fetch latest version for each deployed pipeline in this environment
-      const deployedPipelines = await prisma.pipeline.findMany({
-        where: {
-          environmentId: input.environmentId,
-          isDraft: false,
-          deployedAt: { not: null },
-        },
-        select: {
-          id: true,
-          versions: {
-            orderBy: { version: "desc" },
-            take: 1,
-            select: { version: true },
-          },
-        },
-      });
-
-      const latestVersionMap = new Map<string, number>();
-      for (const p of deployedPipelines) {
-        latestVersionMap.set(p.id, p.versions[0]?.version ?? 1);
-      }
 
       return nodes.map((node) => {
         const pipelineCount = node.pipelineStatuses.length;
@@ -702,8 +692,8 @@ export const fleetRouter = router({
         ).length;
 
         const versionDriftCount = node.pipelineStatuses.filter((ps) => {
-          const latest = latestVersionMap.get(ps.pipelineId);
-          return latest != null && ps.version < latest;
+          const latestVersion = ps.pipeline.versions[0]?.version;
+          return latestVersion != null && ps.version < latestVersion;
         }).length;
 
         return {

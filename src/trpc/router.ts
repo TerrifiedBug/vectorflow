@@ -29,6 +29,10 @@ import { webhookEndpointRouter } from "@/server/routers/webhook-endpoint";
 import { promotionRouter } from "@/server/routers/promotion";
 import { filterPresetRouter } from "@/server/routers/filter-preset";
 import { gitSyncRouter } from "@/server/routers/git-sync";
+import { migrationRouter } from "@/server/routers/migration";
+import { analyticsRouter } from "@/server/routers/analytics";
+import { costRecommendationRouter } from "@/server/routers/cost-recommendation";
+import { anomalyRouter } from "@/server/routers/anomaly";
 
 export const appRouter = router({
   team: teamRouter,
@@ -61,6 +65,10 @@ export const appRouter = router({
   promotion: promotionRouter,
   filterPreset: filterPresetRouter,
   gitSync: gitSyncRouter,
+  migration: migrationRouter,
+  analytics: analyticsRouter,
+  costRecommendation: costRecommendationRouter,
+  anomaly: anomalyRouter,
 });
 
 export type AppRouter = typeof appRouter;
