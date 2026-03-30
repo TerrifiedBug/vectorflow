@@ -42,7 +42,6 @@ import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
 import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { isVersionOlder } from "@/lib/version";
-import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { FleetListToolbar } from "@/components/fleet/fleet-list-toolbar";
@@ -50,8 +49,6 @@ import { FleetTabs } from "@/components/fleet/fleet-tabs";
 import { ArrowUp, ArrowDown } from "lucide-react";
 import { useFleetListFilters } from "@/hooks/use-fleet-list-filters";
 import { useAgentUpdateTracker } from "@/hooks/use-agent-update-tracker";
-
-const AGENT_REPO = "TerrifiedBug/vectorflow";
 
 export default function FleetPage() {
   const trpc = useTRPC();
@@ -285,18 +282,6 @@ export default function FleetPage() {
 
   const updateTracker = useAgentUpdateTracker();
 
-  const triggerUpdate = useMutation(
-    trpc.fleet.triggerAgentUpdate.mutationOptions({
-      onSuccess: (_data, variables) => {
-        queryClient.invalidateQueries({ queryKey: trpc.fleet.list.queryKey() });
-        updateTracker.startTracking(variables.nodeId, variables.targetVersion);
-      },
-      onError: (error) => {
-        toast.error("Failed to trigger update: " + error.message, { duration: 6000 });
-      },
-    }),
-  );
-
   const setMaintenance = useMutation(
     trpc.fleet.setMaintenanceMode.mutationOptions({
       onSuccess: () => {
@@ -401,7 +386,6 @@ export default function FleetPage() {
                   {sortField === "lastSeen" && (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
                 </button>
               </TableHead>
-              <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <StaggerList as="tbody" className="[&_tr:last-child]:border-0">
@@ -533,79 +517,6 @@ export default function FleetPage() {
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {formatLastSeen(node.lastSeen)}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant={node.maintenanceMode ? "default" : "outline"}
-                      size="sm"
-                      disabled={setMaintenance.isPending && setMaintenance.variables?.nodeId === node.id}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        if (!node.maintenanceMode) {
-                          setMaintenanceTarget({ id: node.id, name: node.name });
-                        } else {
-                          setMaintenance.mutate({
-                            nodeId: node.id,
-                            enabled: false,
-                          });
-                        }
-                      }}
-                    >
-                      <Wrench className="mr-1 h-3.5 w-3.5" />
-                      {node.maintenanceMode ? "Exit Maintenance" : "Maintenance"}
-                    </Button>
-                    {node.pendingAction ? (
-                      <Badge variant="outline" className="text-blue-600">
-                        Update pending...
-                      </Badge>
-                    ) : node.deploymentMode === "DOCKER" ? (
-                      getNodeLatest(node).version &&
-                      node.agentVersion &&
-                      isVersionOlder(node.agentVersion, getNodeLatest(node).version ?? "") ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span>
-                              <Button variant="outline" size="sm" disabled>
-                                Update
-                              </Button>
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>Update via Docker image pull</TooltipContent>
-                        </Tooltip>
-                      ) : null
-                    ) : getNodeLatest(node).version &&
-                      node.agentVersion &&
-                      isVersionOlder(node.agentVersion, getNodeLatest(node).version ?? "") ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={triggerUpdate.isPending}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          const latest = getNodeLatest(node);
-                          triggerUpdate.mutate({
-                            nodeId: node.id,
-                            targetVersion: latest.version!,
-                            downloadUrl: `https://github.com/${AGENT_REPO}/releases/download/${latest.tag}/vf-agent-linux-amd64`,
-                            checksum: `sha256:${latest.checksums["vf-agent-linux-amd64"] ?? ""}`,
-                          });
-                        }}
-                      >
-                        {triggerUpdate.isPending ? "Updating..." : "Update"}
-                      </Button>
-                    ) : null}
-                    {node.lastUpdateError && !node.pendingAction && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Badge variant="destructive" className="text-xs">
-                            Update failed
-                          </Badge>
-                        </TooltipTrigger>
-                        <TooltipContent>{node.lastUpdateError}</TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
                 </TableCell>
               </StaggerItem>
             ))}
