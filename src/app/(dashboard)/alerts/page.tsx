@@ -30,7 +30,7 @@ export default function AlertsPage() {
 
   const anomalyCountQuery = useQuery(
     trpc.anomaly.countByPipeline.queryOptions(
-      { environmentId: selectedEnvironmentId! },
+      { environmentId: selectedEnvironmentId ?? "" },
       { enabled: !!selectedEnvironmentId },
     ),
   );
