@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, Fragment } from "react";
+import { useState, useCallback, useMemo, Fragment, useEffect } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import {
@@ -14,6 +14,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -92,7 +93,15 @@ function csvEscape(value: string): string {
   return value;
 }
 
-export default function DeploymentHistoryPage() {
+export default function DeploymentHistoryRedirect() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/audit?tab=deployments");
+  }, [router]);
+  return null;
+}
+
+export function DeploymentHistory() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 

@@ -2,14 +2,13 @@
 
 import { useCallback, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { findComponentDef } from "@/lib/vector/catalog";
 import { toast } from "sonner";
-import Link from "next/link";
 import {
-  ArrowLeft,
   ExternalLink,
   Link2,
   Loader2,
@@ -30,6 +29,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Breadcrumb } from "@/components/breadcrumb";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SchemaForm } from "@/components/config-forms/schema-form";
 import { EmptyState } from "@/components/empty-state";
@@ -197,13 +197,11 @@ export default function SharedComponentDetailPage() {
     <div className="space-y-6 p-6">
       {/* Back + Header */}
       <div className="space-y-4">
-        <Link
-          href="/library/shared-components"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Shared Components
-        </Link>
+        <Breadcrumb items={[
+          { label: "Library", href: "/library" },
+          { label: "Shared Components", href: "/library/shared-components" },
+          { label: sc.name },
+        ]} />
 
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">

@@ -17,6 +17,10 @@ import {
   X,
   Link2,
   Info,
+  Users,
+  Settings2,
+  Tag,
+  DollarSign,
 } from "lucide-react";
 import {
   ResetPasswordDialog,
@@ -56,6 +60,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { QueryError } from "@/components/query-error";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // ─── Team Tab ──────────────────────────────────────────────────────────────────
 
@@ -326,434 +331,474 @@ export function TeamSettings() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Organization</CardTitle>
-          <CardDescription>
-            Manage your team name and settings.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleRename} className="flex items-end gap-3">
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="team-name">Team Name <span className="text-destructive">*</span></Label>
-              <Input
-                id="team-name"
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
-                placeholder="Team name"
-              />
-            </div>
-            <Button
-              type="submit"
-              disabled={renameMutation.isPending || teamName.trim() === team.name}
-            >
-              Save
-            </Button>
-          </form>
-          <Separator className="my-4" />
-          <div className="space-y-2">
-            <Label>Default Environment</Label>
-            <p className="text-sm text-muted-foreground">
-              Fallback environment for team members who haven&apos;t set a personal default.
-            </p>
-            <Select
-              value={team.defaultEnvironmentId ?? "__none__"}
-              onValueChange={(value) =>
-                updateDefaultEnvMutation.mutate({
-                  teamId: selectedTeamId!,
-                  defaultEnvironmentId: value === "__none__" ? null : value,
-                })
-              }
-              disabled={updateDefaultEnvMutation.isPending}
-            >
-              <SelectTrigger className="w-64">
-                <SelectValue placeholder="None (use first in list)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">None</SelectItem>
-                {environments.map((env) => (
-                  <SelectItem key={env.id} value={env.id}>
-                    {env.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Tabs defaultValue="general">
+        <TabsList>
+          <TabsTrigger value="general" className="gap-1.5">
+            <Settings2 className="h-4 w-4" />
+            General
+          </TabsTrigger>
+          <TabsTrigger value="members" className="gap-1.5">
+            <Users className="h-4 w-4" />
+            Members
+          </TabsTrigger>
+          <TabsTrigger value="security" className="gap-1.5">
             <Shield className="h-4 w-4" />
             Security
-          </CardTitle>
-          <CardDescription>
-            Security settings for {team.name}.
-          </CardDescription>
-          <div className="mt-2">
-            <StatusBadge variant={team.requireTwoFactor ? "healthy" : "neutral"}>
-              {team.requireTwoFactor ? "Required" : "Optional"}
-            </StatusBadge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>Require Two-Factor Authentication</Label>
-              <p className="text-xs text-muted-foreground">
-                Members without 2FA enabled will be prompted to set it up on login.
-              </p>
-            </div>
-            <Switch
-              checked={team.requireTwoFactor}
-              onCheckedChange={(checked) => {
-                if (selectedTeamId) {
-                  requireTwoFactorMutation.mutate({
-                    teamId: selectedTeamId,
-                    requireTwoFactor: checked,
-                  });
-                }
-              }}
-              disabled={requireTwoFactorMutation.isPending}
-            />
-          </div>
-        </CardContent>
-      </Card>
+          </TabsTrigger>
+          <TabsTrigger value="compliance" className="gap-1.5">
+            <Tag className="h-4 w-4" />
+            Compliance
+          </TabsTrigger>
+          <TabsTrigger value="costs" className="gap-1.5">
+            <DollarSign className="h-4 w-4" />
+            Costs
+          </TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Team Members</CardTitle>
-          <CardDescription>
-            Manage members and their roles for {team.name}.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>2FA</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-[150px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {team.members.map((member) => (
-                <TableRow key={member.id}>
-                  <TableCell className="font-medium">
-                    {member.user.name || "Unnamed"}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {member.user.email}
-                      {member.user.authMethod === "LOCAL" && (
-                        <Badge variant="outline">Local</Badge>
-                      )}
-                      {member.user.authMethod === "OIDC" && (
-                        <Badge variant="secondary">SSO</Badge>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {(member.user.authMethod === "OIDC" || member.user.scimExternalId) ? (
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="w-[120px] justify-center">
-                          {member.role}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground" title="Role managed by identity provider">
-                          <Lock className="h-3 w-3" />
-                        </span>
-                      </div>
-                    ) : (
-                      <Select
-                        value={member.role}
-                        disabled={updateRoleMutation.isPending}
-                        onValueChange={(role: "VIEWER" | "EDITOR" | "ADMIN") => {
-                          updateRoleMutation.mutate({
-                            teamId: team.id,
-                            userId: member.user.id,
-                            role,
-                          });
-                        }}
-                      >
-                        <SelectTrigger className="w-[120px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="VIEWER">Viewer</SelectItem>
-                          <SelectItem value="EDITOR">Editor</SelectItem>
-                          <SelectItem value="ADMIN">Admin</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {member.user.authMethod === "OIDC" ? (
-                      <span className="text-xs text-muted-foreground">N/A</span>
-                    ) : member.user.totpEnabled ? (
-                      <Badge variant="outline" className="text-xs text-green-600 border-green-600">
-                        <Shield className="mr-1 h-3 w-3" />
-                        Enabled
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {member.user.lockedAt ? (
-                      <Badge variant="destructive" className="text-xs">
-                        <Lock className="mr-1 h-3 w-3" />
-                        Locked
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs text-green-600 border-green-600">
-                        Active
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      {member.user.lockedAt ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Unlock user"
-                          aria-label="Unlock user"
-                          onClick={() => setLockConfirm({ userId: member.user.id, name: member.user.name || member.user.email, action: "unlock" })}
-                        >
-                          <Unlock className="h-4 w-4" />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Lock user"
-                          aria-label="Lock user"
-                          onClick={() => setLockConfirm({ userId: member.user.id, name: member.user.name || member.user.email, action: "lock" })}
-                        >
-                          <Lock className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {member.user.authMethod !== "OIDC" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Reset password"
-                          aria-label="Reset password"
-                          onClick={() => setResetPasswordConfirm({ userId: member.user.id, name: member.user.name || member.user.email })}
-                        >
-                          <KeyRound className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {member.user.authMethod === "LOCAL" && oidcConfigured && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Link to SSO"
-                          aria-label="Link to SSO"
-                          onClick={() => setLinkToOidcConfirm({ userId: member.user.id, name: member.user.name || member.user.email })}
-                        >
-                          <Link2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        aria-label="Remove member"
-                        onClick={() => setRemoveMember({ userId: member.user.id, name: member.user.name || member.user.email })}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Extracted dialog components */}
-      <ResetPasswordDialog
-        member={resetPasswordConfirm}
-        onClose={() => setResetPasswordConfirm(null)}
-        showTempPassword={resetPasswordOpen}
-        tempPassword={tempPassword}
-        isPending={resetPasswordMutation.isPending}
-        onConfirm={(userId) =>
-          resetPasswordMutation.mutate({ teamId: team.id, userId })
-        }
-        onDone={() => {
-          setResetPasswordConfirm(null);
-          setResetPasswordOpen(false);
-          setTempPassword("");
-        }}
-      />
-
-      <LockUnlockDialog
-        member={lockConfirm}
-        onClose={() => setLockConfirm(null)}
-        isPending={lockMutation.isPending || unlockMutation.isPending}
-        onConfirm={(userId, action) => {
-          if (action === "lock") {
-            lockMutation.mutate(
-              { teamId: team.id, userId },
-              { onSuccess: () => setLockConfirm(null) }
-            );
-          } else {
-            unlockMutation.mutate(
-              { teamId: team.id, userId },
-              { onSuccess: () => setLockConfirm(null) }
-            );
-          }
-        }}
-      />
-
-      <LinkToOidcDialog
-        member={linkToOidcConfirm}
-        onClose={() => setLinkToOidcConfirm(null)}
-        isPending={linkToOidcMutation.isPending}
-        onConfirm={(userId) =>
-          linkToOidcMutation.mutate({ teamId: team.id, userId })
-        }
-      />
-
-      <RemoveMemberDialog
-        member={removeMember}
-        onClose={() => setRemoveMember(null)}
-        isPending={removeMemberMutation.isPending}
-        onConfirm={(userId) =>
-          removeMemberMutation.mutate(
-            { teamId: team.id, userId },
-            { onSuccess: () => setRemoveMember(null) }
-          )
-        }
-      />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Add Member</CardTitle>
-          <CardDescription>
-            Add an existing user to the team by their email address.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {(settingsQuery.data?.scimEnabled || settingsQuery.data?.oidcGroupSyncEnabled) && (
-            <div className="flex items-start gap-2 rounded-md border border-status-info/30 bg-status-info-bg p-3 text-sm text-status-info-foreground">
-              <Info className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>SSO users are managed by your identity provider. Only local users can be added manually.</span>
-            </div>
-          )}
-          <form onSubmit={handleInvite} className="grid grid-cols-[1fr_120px_auto] items-end gap-3">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="invite-email">Email</Label>
-              <Input
-                id="invite-email"
-                type="email"
-                placeholder="user@example.com"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="invite-role">Role</Label>
-              <Select
-                value={inviteRole}
-                onValueChange={(val: "VIEWER" | "EDITOR" | "ADMIN") =>
-                  setInviteRole(val)
-                }
-              >
-                <SelectTrigger id="invite-role" className="h-9 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="VIEWER">Viewer</SelectItem>
-                  <SelectItem value="EDITOR">Editor</SelectItem>
-                  <SelectItem value="ADMIN">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button type="submit" className="h-9" disabled={addMemberMutation.isPending}>
-              {addMemberMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                "Add"
-              )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Compliance Tags</CardTitle>
-          <CardDescription>
-            Define compliance tags that can be applied to pipelines in this team (e.g., PII, PHI, PCI-DSS).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {availableTags.length === 0 && (
-              <span className="text-sm text-muted-foreground">No tags defined yet.</span>
-            )}
-            {availableTags.map((tag) => (
-              <Badge key={tag} variant="outline" className="text-sm gap-1.5">
-                {tag}
-                <button
-                  type="button"
-                  className="inline-flex cursor-pointer items-center rounded-full transition-colors hover:bg-black/10 dark:hover:bg-white/10"
-                  onClick={() => handleRemoveTag(tag)}
-                  disabled={updateTagsMutation.isPending}
-                  aria-label={`Remove ${tag} tag`}
+        {/* -- General Tab -- */}
+        <TabsContent value="general" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Organization</CardTitle>
+              <CardDescription>
+                Manage your team name and settings.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleRename} className="flex items-end gap-3">
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor="team-name">Team Name <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="team-name"
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    placeholder="Team name"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={renameMutation.isPending || teamName.trim() === team.name}
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-          <form onSubmit={handleAddTag} className="flex items-end gap-3">
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="new-tag">Add Tag</Label>
-              <Input
-                id="new-tag"
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
-                placeholder="e.g., PII, Internal, PCI-DSS"
-                maxLength={30}
-              />
-            </div>
-            <Button type="submit" className="h-9" disabled={updateTagsMutation.isPending || !newTag.trim()}>
-              {updateTagsMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                <>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add
-                </>
-              )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+                  Save
+                </Button>
+              </form>
+              <Separator className="my-4" />
+              <div className="space-y-2">
+                <Label>Default Environment</Label>
+                <p className="text-sm text-muted-foreground">
+                  Fallback environment for team members who haven&apos;t set a personal default.
+                </p>
+                <Select
+                  value={team.defaultEnvironmentId ?? "__none__"}
+                  onValueChange={(value) =>
+                    updateDefaultEnvMutation.mutate({
+                      teamId: selectedTeamId!,
+                      defaultEnvironmentId: value === "__none__" ? null : value,
+                    })
+                  }
+                  disabled={updateDefaultEnvMutation.isPending}
+                >
+                  <SelectTrigger className="w-64">
+                    <SelectValue placeholder="None (use first in list)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {environments.map((env) => (
+                      <SelectItem key={env.id} value={env.id}>
+                        {env.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      {/* Cost Attribution Settings */}
-      <CostSettings />
+        {/* -- Members Tab -- */}
+        <TabsContent value="members" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Team Members</CardTitle>
+              <CardDescription>
+                Manage members and their roles for {team.name}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>2FA</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-[150px]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {team.members.map((member) => (
+                    <TableRow key={member.id}>
+                      <TableCell className="font-medium">
+                        {member.user.name || "Unnamed"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {member.user.email}
+                          {member.user.authMethod === "LOCAL" && (
+                            <Badge variant="outline">Local</Badge>
+                          )}
+                          {member.user.authMethod === "OIDC" && (
+                            <Badge variant="secondary">SSO</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {(member.user.authMethod === "OIDC" || member.user.scimExternalId) ? (
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="w-[120px] justify-center">
+                              {member.role}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground" title="Role managed by identity provider">
+                              <Lock className="h-3 w-3" />
+                            </span>
+                          </div>
+                        ) : (
+                          <Select
+                            value={member.role}
+                            disabled={updateRoleMutation.isPending}
+                            onValueChange={(role: "VIEWER" | "EDITOR" | "ADMIN") => {
+                              updateRoleMutation.mutate({
+                                teamId: team.id,
+                                userId: member.user.id,
+                                role,
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="w-[120px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="VIEWER">Viewer</SelectItem>
+                              <SelectItem value="EDITOR">Editor</SelectItem>
+                              <SelectItem value="ADMIN">Admin</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {member.user.authMethod === "OIDC" ? (
+                          <span className="text-xs text-muted-foreground">N/A</span>
+                        ) : member.user.totpEnabled ? (
+                          <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+                            <Shield className="mr-1 h-3 w-3" />
+                            Enabled
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {member.user.lockedAt ? (
+                          <Badge variant="destructive" className="text-xs">
+                            <Lock className="mr-1 h-3 w-3" />
+                            Locked
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+                            Active
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {member.user.lockedAt ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="Unlock user"
+                              aria-label="Unlock user"
+                              onClick={() => setLockConfirm({ userId: member.user.id, name: member.user.name || member.user.email, action: "unlock" })}
+                            >
+                              <Unlock className="h-4 w-4" />
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="Lock user"
+                              aria-label="Lock user"
+                              onClick={() => setLockConfirm({ userId: member.user.id, name: member.user.name || member.user.email, action: "lock" })}
+                            >
+                              <Lock className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {member.user.authMethod !== "OIDC" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="Reset password"
+                              aria-label="Reset password"
+                              onClick={() => setResetPasswordConfirm({ userId: member.user.id, name: member.user.name || member.user.email })}
+                            >
+                              <KeyRound className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {member.user.authMethod === "LOCAL" && oidcConfigured && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="Link to SSO"
+                              aria-label="Link to SSO"
+                              onClick={() => setLinkToOidcConfirm({ userId: member.user.id, name: member.user.name || member.user.email })}
+                            >
+                              <Link2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="Remove member"
+                            onClick={() => setRemoveMember({ userId: member.user.id, name: member.user.name || member.user.email })}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          {/* Extracted dialog components */}
+          <ResetPasswordDialog
+            member={resetPasswordConfirm}
+            onClose={() => setResetPasswordConfirm(null)}
+            showTempPassword={resetPasswordOpen}
+            tempPassword={tempPassword}
+            isPending={resetPasswordMutation.isPending}
+            onConfirm={(userId) =>
+              resetPasswordMutation.mutate({ teamId: team.id, userId })
+            }
+            onDone={() => {
+              setResetPasswordConfirm(null);
+              setResetPasswordOpen(false);
+              setTempPassword("");
+            }}
+          />
+
+          <LockUnlockDialog
+            member={lockConfirm}
+            onClose={() => setLockConfirm(null)}
+            isPending={lockMutation.isPending || unlockMutation.isPending}
+            onConfirm={(userId, action) => {
+              if (action === "lock") {
+                lockMutation.mutate(
+                  { teamId: team.id, userId },
+                  { onSuccess: () => setLockConfirm(null) }
+                );
+              } else {
+                unlockMutation.mutate(
+                  { teamId: team.id, userId },
+                  { onSuccess: () => setLockConfirm(null) }
+                );
+              }
+            }}
+          />
+
+          <LinkToOidcDialog
+            member={linkToOidcConfirm}
+            onClose={() => setLinkToOidcConfirm(null)}
+            isPending={linkToOidcMutation.isPending}
+            onConfirm={(userId) =>
+              linkToOidcMutation.mutate({ teamId: team.id, userId })
+            }
+          />
+
+          <RemoveMemberDialog
+            member={removeMember}
+            onClose={() => setRemoveMember(null)}
+            isPending={removeMemberMutation.isPending}
+            onConfirm={(userId) =>
+              removeMemberMutation.mutate(
+                { teamId: team.id, userId },
+                { onSuccess: () => setRemoveMember(null) }
+              )
+            }
+          />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Add Member</CardTitle>
+              <CardDescription>
+                Add an existing user to the team by their email address.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {(settingsQuery.data?.scimEnabled || settingsQuery.data?.oidcGroupSyncEnabled) && (
+                <div className="flex items-start gap-2 rounded-md border border-status-info/30 bg-status-info-bg p-3 text-sm text-status-info-foreground">
+                  <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>SSO users are managed by your identity provider. Only local users can be added manually.</span>
+                </div>
+              )}
+              <form onSubmit={handleInvite} className="grid grid-cols-[1fr_120px_auto] items-end gap-3">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="invite-email">Email</Label>
+                  <Input
+                    id="invite-email"
+                    type="email"
+                    placeholder="user@example.com"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="invite-role">Role</Label>
+                  <Select
+                    value={inviteRole}
+                    onValueChange={(val: "VIEWER" | "EDITOR" | "ADMIN") =>
+                      setInviteRole(val)
+                    }
+                  >
+                    <SelectTrigger id="invite-role" className="h-9 w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="VIEWER">Viewer</SelectItem>
+                      <SelectItem value="EDITOR">Editor</SelectItem>
+                      <SelectItem value="ADMIN">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button type="submit" className="h-9" disabled={addMemberMutation.isPending}>
+                  {addMemberMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    "Add"
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* -- Security Tab -- */}
+        <TabsContent value="security" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Security
+              </CardTitle>
+              <CardDescription>
+                Security settings for {team.name}.
+              </CardDescription>
+              <div className="mt-2">
+                <StatusBadge variant={team.requireTwoFactor ? "healthy" : "neutral"}>
+                  {team.requireTwoFactor ? "Required" : "Optional"}
+                </StatusBadge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Require Two-Factor Authentication</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Members without 2FA enabled will be prompted to set it up on login.
+                  </p>
+                </div>
+                <Switch
+                  checked={team.requireTwoFactor}
+                  onCheckedChange={(checked) => {
+                    if (selectedTeamId) {
+                      requireTwoFactorMutation.mutate({
+                        teamId: selectedTeamId,
+                        requireTwoFactor: checked,
+                      });
+                    }
+                  }}
+                  disabled={requireTwoFactorMutation.isPending}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* -- Compliance Tab -- */}
+        <TabsContent value="compliance" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Compliance Tags</CardTitle>
+              <CardDescription>
+                Define compliance tags that can be applied to pipelines in this team (e.g., PII, PHI, PCI-DSS).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {availableTags.length === 0 && (
+                  <span className="text-sm text-muted-foreground">No tags defined yet.</span>
+                )}
+                {availableTags.map((tag) => (
+                  <Badge key={tag} variant="outline" className="text-sm gap-1.5">
+                    {tag}
+                    <button
+                      type="button"
+                      className="inline-flex cursor-pointer items-center rounded-full transition-colors hover:bg-black/10 dark:hover:bg-white/10"
+                      onClick={() => handleRemoveTag(tag)}
+                      disabled={updateTagsMutation.isPending}
+                      aria-label={`Remove ${tag} tag`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+              <form onSubmit={handleAddTag} className="flex items-end gap-3">
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor="new-tag">Add Tag</Label>
+                  <Input
+                    id="new-tag"
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    placeholder="e.g., PII, Internal, PCI-DSS"
+                    maxLength={30}
+                  />
+                </div>
+                <Button type="submit" className="h-9" disabled={updateTagsMutation.isPending || !newTag.trim()}>
+                  {updateTagsMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add
+                    </>
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* -- Costs Tab -- */}
+        <TabsContent value="costs" className="space-y-6">
+          {/* Cost Attribution Settings */}
+          <CostSettings />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
