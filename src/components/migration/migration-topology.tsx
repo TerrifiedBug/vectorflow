@@ -170,10 +170,12 @@ export function MigrationTopology({
 /** Simple glob-style tag matching for FluentD patterns */
 function tagMatches(tag: string, pattern: string): boolean {
   if (pattern === "**") return true;
+  // Escape all regex-special characters FIRST, then convert globs
   const regexStr = pattern
-    .replace(/\./g, "\\.")
-    .replace(/\*\*/g, ".*")
-    .replace(/(?<!\.)(\*)(?!\.)/g, "[^.]*");
+    .replace(/[\\^$+?{}()|[\]]/g, "\\$&")  // escape regex specials (incl. backslash)
+    .replace(/\./g, "\\.")                   // dots are literal separators
+    .replace(/\*\*/g, ".*")                  // ** matches everything
+    .replace(/(?<!\.)(\*)(?!\.)/g, "[^.]*"); // * matches within one segment
   try {
     return new RegExp(`^${regexStr}$`).test(tag);
   } catch {
