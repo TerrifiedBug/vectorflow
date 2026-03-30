@@ -32,6 +32,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { LazyMotionProvider } from "@/components/motion/lazy-motion-provider";
 import { UpdateBanner } from "@/components/update-banner";
 import { CommandPalette } from "@/components/command-palette";
+import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts-modal";
 
 export default function DashboardLayout({
   children,
@@ -212,6 +213,7 @@ export default function DashboardLayout({
         <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} forced={me?.mustChangePassword} />
         <UpdateBanner />
         <CommandPalette />
+        <KeyboardShortcutsModal />
         <LazyMotionProvider>
           <main id="main-content" className="flex-1 py-2 px-6" tabIndex={-1}>
             <ErrorBoundary>
