@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
-import { generateId } from "@/lib/utils";
+import { cn, generateId } from "@/lib/utils";
 import { useTeamStore } from "@/stores/team-store";
 import {
   FileText,
@@ -18,6 +18,8 @@ import {
   Terminal,
   Play,
   Shield,
+  Search,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -30,38 +32,32 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 
 /* ------------------------------------------------------------------ */
-/*  Category icon mapping                                              */
+/*  Category definitions                                               */
 /* ------------------------------------------------------------------ */
 
-const categoryIcons: Record<string, React.ReactNode> = {
-  "Getting Started": <Play className="h-4 w-4" />,
-  Logging: <FileText className="h-4 w-4" />,
-  Archival: <Cloud className="h-4 w-4" />,
-  Streaming: <Radio className="h-4 w-4" />,
-  Metrics: <Cpu className="h-4 w-4" />,
-  "Data Protection": <Shield className="h-4 w-4" />,
-};
+const CATEGORIES = [
+  { id: "Getting Started", icon: <Play className="h-3.5 w-3.5" />, color: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
+  { id: "Logging", icon: <FileText className="h-3.5 w-3.5" />, color: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
+  { id: "Archival", icon: <Cloud className="h-3.5 w-3.5" />, color: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300" },
+  { id: "Streaming", icon: <Radio className="h-3.5 w-3.5" />, color: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
+  { id: "Metrics", icon: <Cpu className="h-3.5 w-3.5" />, color: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300" },
+  { id: "Data Protection", icon: <Shield className="h-3.5 w-3.5" />, color: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+] as const;
 
-const categoryColors: Record<string, string> = {
-  "Getting Started":
-    "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-  Logging:
-    "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
-  Archival:
-    "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
-  Streaming:
-    "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
-  Metrics:
-    "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300",
-  "Data Protection":
-    "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
-};
+const categoryIcons: Record<string, React.ReactNode> = Object.fromEntries(
+  CATEGORIES.map((c) => [c.id, c.icon]),
+);
+
+const categoryColors: Record<string, string> = Object.fromEntries(
+  CATEGORIES.map((c) => [c.id, c.color]),
+);
 
 const complianceTagColors: Record<string, string> = {
   "PCI-DSS": "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
@@ -106,6 +102,49 @@ export default function TemplatesPage() {
   );
 
   const templates = templatesQuery.data ?? [];
+
+  // --- Filter state ---
+  const [search, setSearch] = useState("");
+  const [localSearch, setLocalSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setSearch(localSearch), 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [localSearch]);
+
+  const toggleCategory = (id: string) => {
+    setCategoryFilter((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
+    );
+  };
+
+  const hasActiveFilters = search.length > 0 || categoryFilter.length > 0;
+
+  const clearFilters = () => {
+    setSearch("");
+    setLocalSearch("");
+    setCategoryFilter([]);
+  };
+
+  // Derive categories that actually exist in the template data
+  const availableCategories = useMemo(() => {
+    const cats = new Set(templates.map((t) => t.category));
+    return CATEGORIES.filter((c) => cats.has(c.id));
+  }, [templates]);
+
+  const filteredTemplates = useMemo(() => {
+    const q = search.toLowerCase();
+    return templates.filter((t) => {
+      if (categoryFilter.length > 0 && !categoryFilter.includes(t.category)) return false;
+      if (q && !t.name.toLowerCase().includes(q) && !t.description.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [templates, search, categoryFilter]);
 
   // Create pipeline from template
   const createPipelineMutation = useMutation(
@@ -222,8 +261,72 @@ export default function TemplatesPage() {
         <EmptyState icon={Terminal} title="No templates yet. Save a pipeline as a template to get started." />
       ) : (
         <section className="space-y-4">
+          {/* Filter toolbar */}
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card px-4 py-2.5">
+            {/* Search */}
+            <div className="relative w-64">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={localSearch}
+                onChange={(e) => setLocalSearch(e.target.value)}
+                placeholder="Search templates..."
+                className="h-8 pl-8 text-sm"
+              />
+            </div>
+
+            {/* Separator */}
+            {availableCategories.length > 0 && <div className="h-6 w-px bg-border" />}
+
+            {/* Category chips */}
+            <div className="flex items-center gap-1">
+              {availableCategories.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => toggleCategory(cat.id)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3 h-7 text-xs font-medium border transition-colors",
+                    categoryFilter.includes(cat.id)
+                      ? cat.color + " border-transparent"
+                      : "bg-transparent text-muted-foreground border-border hover:bg-muted",
+                  )}
+                >
+                  {cat.icon}
+                  {cat.id}
+                </button>
+              ))}
+            </div>
+
+            {/* Clear filters */}
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-muted-foreground"
+                onClick={clearFilters}
+              >
+                <X className="mr-1 h-3 w-3" />
+                Clear filters
+              </Button>
+            )}
+          </div>
+
+          {/* Results count when filtered */}
+          {hasActiveFilters && (
+            <p className="text-xs text-muted-foreground">
+              {filteredTemplates.length} of {templates.length} templates
+            </p>
+          )}
+
+          {filteredTemplates.length === 0 ? (
+            <EmptyState
+              icon={Search}
+              title="No templates match your filters"
+              description="Try adjusting your search or category filters."
+            />
+          ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {templates.map((template) => (
+            {filteredTemplates.map((template) => (
               <Card key={template.id} className="cursor-pointer flex flex-col">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
@@ -297,6 +400,7 @@ export default function TemplatesPage() {
               </Card>
             ))}
           </div>
+          )}
         </section>
       )}
       <ConfirmDialog
