@@ -22,6 +22,78 @@ export const ANOMALY_CONFIG = {
   DEDUP_WINDOW_HOURS: 4,
 } as const;
 
+// ─── Runtime config (DB-backed with in-memory cache) ────────────────────────
+
+export interface RuntimeAnomalyConfig {
+  baselineWindowDays: number;
+  sigmaThreshold: number;
+  minBaselinePoints: number;
+  minStddevFloorPercent: number;
+  pollIntervalMs: number;
+  dedupWindowHours: number;
+  enabledMetrics: readonly string[];
+}
+
+let cachedConfig: RuntimeAnomalyConfig | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL_MS = 60_000; // 1 minute — aligns with poll interval
+
+/**
+ * Load anomaly config from DB with 60-second in-memory cache.
+ * Falls back to hardcoded ANOMALY_CONFIG defaults on DB failure.
+ */
+export async function getAnomalyConfig(): Promise<RuntimeAnomalyConfig> {
+  const now = Date.now();
+  if (cachedConfig && now - cacheTimestamp < CACHE_TTL_MS) {
+    return cachedConfig;
+  }
+
+  try {
+    const settings = await prisma.systemSettings.findUnique({
+      where: { id: "singleton" },
+      select: {
+        anomalyBaselineWindowDays: true,
+        anomalySigmaThreshold: true,
+        anomalyMinStddevFloorPercent: true,
+        anomalyDedupWindowHours: true,
+        anomalyEnabledMetrics: true,
+      },
+    });
+
+    cachedConfig = {
+      baselineWindowDays: settings?.anomalyBaselineWindowDays ?? ANOMALY_CONFIG.BASELINE_WINDOW_DAYS,
+      sigmaThreshold: settings?.anomalySigmaThreshold ?? ANOMALY_CONFIG.SIGMA_THRESHOLD,
+      minBaselinePoints: ANOMALY_CONFIG.MIN_BASELINE_POINTS, // not user-configurable
+      minStddevFloorPercent: settings?.anomalyMinStddevFloorPercent ?? ANOMALY_CONFIG.MIN_STDDEV_FLOOR_PERCENT,
+      pollIntervalMs: ANOMALY_CONFIG.POLL_INTERVAL_MS, // not user-configurable
+      dedupWindowHours: settings?.anomalyDedupWindowHours ?? ANOMALY_CONFIG.DEDUP_WINDOW_HOURS,
+      enabledMetrics: settings?.anomalyEnabledMetrics
+        ? settings.anomalyEnabledMetrics.split(",").map((s) => s.trim()).filter(Boolean)
+        : ["eventsIn", "errorsTotal", "latencyMeanMs"],
+    };
+  } catch {
+    // DB failure: fall back to hardcoded defaults
+    cachedConfig = {
+      baselineWindowDays: ANOMALY_CONFIG.BASELINE_WINDOW_DAYS,
+      sigmaThreshold: ANOMALY_CONFIG.SIGMA_THRESHOLD,
+      minBaselinePoints: ANOMALY_CONFIG.MIN_BASELINE_POINTS,
+      minStddevFloorPercent: ANOMALY_CONFIG.MIN_STDDEV_FLOOR_PERCENT,
+      pollIntervalMs: ANOMALY_CONFIG.POLL_INTERVAL_MS,
+      dedupWindowHours: ANOMALY_CONFIG.DEDUP_WINDOW_HOURS,
+      enabledMetrics: ["eventsIn", "errorsTotal", "latencyMeanMs"],
+    };
+  }
+
+  cacheTimestamp = now;
+  return cachedConfig;
+}
+
+/** Bust the in-memory cache so the next poll picks up fresh config. */
+export function invalidateAnomalyConfigCache(): void {
+  cachedConfig = null;
+  cacheTimestamp = 0;
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface MetricDataPoint {
@@ -104,9 +176,12 @@ export function computeBaseline(points: MetricDataPoint[]): Baseline | null {
  * Determine anomaly severity based on how many standard deviations the
  * current value is from the baseline mean.
  */
-function classifySeverity(deviationFactor: number): AnomalySeverityName {
-  if (deviationFactor >= 4) return "critical";
-  if (deviationFactor >= 3) return "warning";
+function classifySeverity(
+  deviationFactor: number,
+  sigmaThreshold: number,
+): AnomalySeverityName {
+  if (deviationFactor >= sigmaThreshold + 1) return "critical";
+  if (deviationFactor >= sigmaThreshold) return "warning";
   return "info";
 }
 
@@ -155,11 +230,20 @@ export function detectAnomalies(
   metricName: string,
   currentValue: number,
   baselinePoints: MetricDataPoint[],
+  config: RuntimeAnomalyConfig = {
+    baselineWindowDays: ANOMALY_CONFIG.BASELINE_WINDOW_DAYS,
+    sigmaThreshold: ANOMALY_CONFIG.SIGMA_THRESHOLD,
+    minBaselinePoints: ANOMALY_CONFIG.MIN_BASELINE_POINTS,
+    minStddevFloorPercent: ANOMALY_CONFIG.MIN_STDDEV_FLOOR_PERCENT,
+    pollIntervalMs: ANOMALY_CONFIG.POLL_INTERVAL_MS,
+    dedupWindowHours: ANOMALY_CONFIG.DEDUP_WINDOW_HOURS,
+    enabledMetrics: ["eventsIn", "errorsTotal", "latencyMeanMs"],
+  },
 ): AnomalyDetectionResult[] {
   const results: AnomalyDetectionResult[] = [];
 
   // Need sufficient historical data
-  if (baselinePoints.length < ANOMALY_CONFIG.MIN_BASELINE_POINTS) {
+  if (baselinePoints.length < config.minBaselinePoints) {
     return results;
   }
 
@@ -170,10 +254,10 @@ export function detectAnomalies(
   if (!mapping) return results;
 
   // Apply minimum stddev floor to avoid false positives on constant metrics.
-  // Floor is MIN_STDDEV_FLOOR_PERCENT% of the mean, so a metric at 1000 needs
-  // to deviate by at least 50 * SIGMA_THRESHOLD = 150 to trigger.
+  // Floor is minStddevFloorPercent% of the mean, so a metric at 1000 needs
+  // to deviate by at least 50 * sigmaThreshold = 150 to trigger.
   const stddevFloor =
-    Math.abs(baseline.mean) * (ANOMALY_CONFIG.MIN_STDDEV_FLOOR_PERCENT / 100);
+    Math.abs(baseline.mean) * (config.minStddevFloorPercent / 100);
   const effectiveStddev = Math.max(baseline.stddev, stddevFloor);
 
   // Prevent division by zero if mean is also zero
@@ -182,7 +266,7 @@ export function detectAnomalies(
   const deviation = currentValue - baseline.mean;
   const deviationFactor = Math.abs(deviation) / effectiveStddev;
 
-  if (deviationFactor < ANOMALY_CONFIG.SIGMA_THRESHOLD) {
+  if (deviationFactor < config.sigmaThreshold) {
     return results;
   }
 
@@ -193,7 +277,7 @@ export function detectAnomalies(
   // If there's no anomaly type for this direction (e.g. error drop), skip
   if (!anomalyType) return results;
 
-  const severity = classifySeverity(deviationFactor);
+  const severity = classifySeverity(deviationFactor, config.sigmaThreshold);
   const message = buildAnomalyMessage(
     anomalyType,
     metricName,
@@ -255,9 +339,10 @@ async function fetchCurrentMetrics(
  */
 async function fetchBaselineData(
   pipelineId: string,
+  baselineWindowDays: number,
 ): Promise<Record<string, MetricDataPoint[]>> {
   const windowStart = new Date(
-    Date.now() - ANOMALY_CONFIG.BASELINE_WINDOW_DAYS * 24 * 3600_000,
+    Date.now() - baselineWindowDays * 24 * 3600_000,
   );
 
   const rows = await prisma.pipelineMetric.findMany({
@@ -305,9 +390,10 @@ async function fetchBaselineData(
 async function isDuplicate(
   pipelineId: string,
   anomalyType: string,
+  dedupWindowHours: number,
 ): Promise<boolean> {
   const windowStart = new Date(
-    Date.now() - ANOMALY_CONFIG.DEDUP_WINDOW_HOURS * 3600_000,
+    Date.now() - dedupWindowHours * 3600_000,
   );
 
   const existing = await prisma.anomalyEvent.findFirst({
@@ -334,14 +420,21 @@ export async function evaluatePipeline(
     environmentId: string;
     environment: { teamId: string | null };
   },
+  config?: RuntimeAnomalyConfig,
 ): Promise<AnomalyDetectionResult[]> {
+  const cfg = config ?? await getAnomalyConfig();
+
   const current = await fetchCurrentMetrics(pipeline.id);
   if (!current) return [];
 
-  const baseline = await fetchBaselineData(pipeline.id);
+  const baseline = await fetchBaselineData(pipeline.id, cfg.baselineWindowDays);
   const allResults: AnomalyDetectionResult[] = [];
 
-  for (const metricName of MONITORED_METRICS) {
+  const enabledMetrics = MONITORED_METRICS.filter((m) =>
+    cfg.enabledMetrics.includes(m),
+  );
+
+  for (const metricName of enabledMetrics) {
     const currentValue = current[metricName];
     if (currentValue === undefined || currentValue === null) continue;
 
@@ -351,11 +444,12 @@ export async function evaluatePipeline(
       metricName,
       currentValue,
       baselinePoints,
+      cfg,
     );
 
     for (const result of results) {
       // Deduplicate: skip if a recent open anomaly exists for the same type
-      const duplicate = await isDuplicate(pipeline.id, result.anomalyType);
+      const duplicate = await isDuplicate(pipeline.id, result.anomalyType, cfg.dedupWindowHours);
       if (duplicate) continue;
 
       // Persist the anomaly event
@@ -388,6 +482,8 @@ export async function evaluatePipeline(
  * Called by the background job on the leader instance.
  */
 export async function evaluateAllPipelines(): Promise<AnomalyDetectionResult[]> {
+  const config = await getAnomalyConfig();
+
   const pipelines = await prisma.pipeline.findMany({
     where: {
       isDraft: false,
@@ -404,7 +500,7 @@ export async function evaluateAllPipelines(): Promise<AnomalyDetectionResult[]> 
 
   for (const pipeline of pipelines) {
     try {
-      const results = await evaluatePipeline(pipeline);
+      const results = await evaluatePipeline(pipeline, config);
       allResults.push(...results);
     } catch (err) {
       // Per-pipeline isolation: one failure must not stop others
