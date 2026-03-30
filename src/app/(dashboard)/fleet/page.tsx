@@ -285,6 +285,16 @@ export default function FleetPage() {
 
   const updateTracker = useAgentUpdateTracker();
 
+  // Refetch fleet data when an update completes so the new agentVersion
+  // replaces the cached value and "Update available" disappears.
+  const prevStageRef = useRef(updateTracker.stage);
+  useEffect(() => {
+    if (prevStageRef.current !== "complete" && updateTracker.stage === "complete") {
+      queryClient.invalidateQueries({ queryKey: trpc.fleet.list.queryKey() });
+    }
+    prevStageRef.current = updateTracker.stage;
+  }, [updateTracker.stage, queryClient, trpc.fleet.list]);
+
   const triggerUpdate = useMutation(
     trpc.fleet.triggerAgentUpdate.mutationOptions({
       onSuccess: (_data, variables) => {
@@ -309,6 +319,14 @@ export default function FleetPage() {
   const [maintenanceTarget, setMaintenanceTarget] = useState<{
     id: string;
     name: string;
+  } | null>(null);
+
+  const [updateTarget, setUpdateTarget] = useState<{
+    id: string;
+    name: string;
+    version: string;
+    downloadUrl: string;
+    checksum: string;
   } | null>(null);
 
   if (nodesQuery.isError) {
@@ -460,6 +478,8 @@ export default function FleetPage() {
                     </span>
                     {getNodeLatest(node).version &&
                       node.agentVersion &&
+                      !node.pendingAction &&
+                      !(updateTracker.trackedNodeId === node.id && updateTracker.stage) &&
                       isVersionOlder(node.agentVersion, getNodeLatest(node).version ?? "") &&
                       (node.deploymentMode === "DOCKER" ? (
                         <Tooltip>
@@ -477,17 +497,16 @@ export default function FleetPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             const latest = getNodeLatest(node);
-                            triggerUpdate.mutate({
-                              nodeId: node.id,
-                              targetVersion: latest.version!,
+                            setUpdateTarget({
+                              id: node.id,
+                              name: node.name,
+                              version: latest.version!,
                               downloadUrl: `https://github.com/${AGENT_REPO}/releases/download/${latest.tag}/vf-agent-linux-amd64`,
                               checksum: `sha256:${latest.checksums["vf-agent-linux-amd64"] ?? ""}`,
                             });
                           }}
                         >
-                          {triggerUpdate.isPending && triggerUpdate.variables?.nodeId === node.id
-                            ? "Updating..."
-                            : "Update available"}
+                          Update available
                         </Badge>
                       ))}
                     {node.deploymentMode === "DOCKER" && (
@@ -711,6 +730,36 @@ export default function FleetPage() {
           }
         }}
       />
+
+      <ConfirmDialog
+        open={!!updateTarget}
+        onOpenChange={(open) => { if (!open) setUpdateTarget(null); }}
+        title="Update agent?"
+        description={
+          <>
+            Update &quot;{updateTarget?.name}&quot; to version {updateTarget?.version}.
+            The agent will download the new binary, restart, and reconnect automatically.
+          </>
+        }
+        confirmLabel="Update"
+        variant="default"
+        isPending={triggerUpdate.isPending}
+        pendingLabel="Triggering..."
+        onConfirm={() => {
+          if (updateTarget) {
+            triggerUpdate.mutate(
+              {
+                nodeId: updateTarget.id,
+                targetVersion: updateTarget.version,
+                downloadUrl: updateTarget.downloadUrl,
+                checksum: updateTarget.checksum,
+              },
+              { onSuccess: () => setUpdateTarget(null) },
+            );
+          }
+        }}
+      />
+
       {/* Screen reader announcements for real-time fleet status changes */}
       <div className="sr-only" aria-live="assertive" aria-atomic="true" role="alert">
         {nodesQuery.data && nodesQuery.data.some((n) => n.status === "UNREACHABLE")
