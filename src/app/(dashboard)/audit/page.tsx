@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, Fragment } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Rocket, ScrollText, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,12 +25,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTeamStore } from "@/stores/team-store";
 import { formatTimestamp } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { PageHeader } from "@/components/page-header";
+import { DeploymentHistory } from "./deployments/page";
 
 const ALL_VALUE = "__all__";
 const SCIM_VALUE = "__SCIM__";
@@ -56,6 +59,10 @@ function getActionColor(action: string): string {
 }
 
 export default function AuditPage() {
+  const searchParams = useSearchParams();
+  const defaultTab = searchParams.get("tab") === "deployments" ? "deployments" : "activity";
+  const [activeTab, setActiveTab] = useState(defaultTab);
+
   const trpc = useTRPC();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   // Filter state
@@ -141,6 +148,19 @@ export default function AuditPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Audit Log" description="Track all changes and actions across your VectorFlow instance." />
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="activity" className="gap-1.5">
+            <ScrollText className="h-4 w-4" />
+            Activity Log
+          </TabsTrigger>
+          <TabsTrigger value="deployments" className="gap-1.5">
+            <Rocket className="h-4 w-4" />
+            Deployments
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="activity" className="space-y-6">
 
       {/* Filter bar */}
       <Card>
@@ -503,6 +523,12 @@ export default function AuditPage() {
         )}
         </>
       )}
+
+        </TabsContent>
+        <TabsContent value="deployments">
+          <DeploymentHistory />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
