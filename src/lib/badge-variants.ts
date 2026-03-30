@@ -32,3 +32,12 @@ export function reductionBadgeClass(pct: number): string {
   if (pct > 10) return "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30";
   return "bg-muted text-muted-foreground";
 }
+
+/** Certificate expiry status badge color */
+export function certExpiryBadgeClass(daysUntilExpiry: number | null): string {
+  if (daysUntilExpiry === null) return "bg-muted text-muted-foreground";
+  if (daysUntilExpiry <= 0) return "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30";
+  if (daysUntilExpiry <= 7) return "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30";
+  if (daysUntilExpiry <= 30) return "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30";
+  return "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30";
+}
