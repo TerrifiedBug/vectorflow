@@ -36,11 +36,12 @@ func (c *Client) NodeToken() string {
 
 // EnrollRequest is sent to POST /api/agent/enroll
 type EnrollRequest struct {
-	Token         string `json:"token"`
-	Hostname      string `json:"hostname"`
-	OS            string `json:"os,omitempty"`
-	AgentVersion  string `json:"agentVersion,omitempty"`
-	VectorVersion string `json:"vectorVersion,omitempty"`
+	Token         string            `json:"token"`
+	Hostname      string            `json:"hostname"`
+	OS            string            `json:"os,omitempty"`
+	AgentVersion  string            `json:"agentVersion,omitempty"`
+	VectorVersion string            `json:"vectorVersion,omitempty"`
+	Labels        map[string]string `json:"labels,omitempty"`
 }
 
 // EnrollResponse is returned from POST /api/agent/enroll
@@ -211,6 +212,7 @@ type HeartbeatRequest struct {
 	DeploymentMode string            `json:"deploymentMode,omitempty"`
 	SampleResults  []SampleResultMsg `json:"sampleResults,omitempty"`
 	UpdateError    string            `json:"updateError,omitempty"`
+	Labels         map[string]string `json:"labels,omitempty"`
 }
 
 // SampleRequestMsg is received from the server via config poll.

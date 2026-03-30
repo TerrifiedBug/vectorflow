@@ -16,6 +16,7 @@ VECTOR_VERSION="0.54.0"
 # Defaults
 VF_URL=""
 VF_TOKEN=""
+VF_NODE_LABELS=""
 VERSION="latest"
 CHANNEL="stable"
 
@@ -39,6 +40,7 @@ Usage:
 Options:
   --url <url>        VectorFlow server URL (e.g. https://vectorflow.example.com)
   --token <token>    One-time enrollment token from the VectorFlow UI
+  --labels <labels>  Node labels as comma-separated key=value pairs
   --version <tag>    Release version to install (default: latest)
   --channel <name>   Release channel: stable or dev (default: stable)
   --help             Show this help message
@@ -46,6 +48,10 @@ Options:
 Examples:
   # Fresh install
   curl -sSfL .../install.sh | sudo bash -s -- --url https://vf.example.com --token abc123
+
+  # Fresh install with node labels
+  curl -sSfL .../install.sh | sudo bash -s -- --url https://vf.example.com --token abc123 \
+    --labels "region=us-east,role=web,env=prod"
 
   # Upgrade to latest
   curl -sSfL .../install.sh | sudo bash
@@ -65,10 +71,11 @@ EOF
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --url)    VF_URL="$2";   shift 2 ;;
-        --token)  VF_TOKEN="$2"; shift 2 ;;
-        --version) VERSION="$2"; shift 2 ;;
-        --channel) CHANNEL="$2";  shift 2 ;;
+        --url)    VF_URL="$2";          shift 2 ;;
+        --token)  VF_TOKEN="$2";        shift 2 ;;
+        --labels) VF_NODE_LABELS="$2";  shift 2 ;;
+        --version) VERSION="$2";        shift 2 ;;
+        --channel) CHANNEL="$2";         shift 2 ;;
         --help)   usage ;;
         *)        fatal "Unknown option: $1 (use --help for usage)" ;;
     esac
@@ -206,6 +213,11 @@ VF_URL=${VF_URL}
 VF_TOKEN=${VF_TOKEN}
 VF_DATA_DIR=${DATA_DIR}
 VF_VECTOR_BIN=${INSTALL_DIR}/vector
+
+# Node labels sent to VectorFlow on enrollment and every heartbeat.
+# Format: comma-separated key=value pairs (e.g. region=us-east,role=web)
+# Auto-detected labels (vf.io/* prefix) are always included.
+VF_NODE_LABELS=${VF_NODE_LABELS}
 ENVEOF
     chmod 0600 "${ENV_FILE}"
     ok "Environment file written"

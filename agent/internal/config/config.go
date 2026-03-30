@@ -16,6 +16,33 @@ type Config struct {
 	PollInterval time.Duration
 	LogLevel     string
 	SlogLevel    slog.Level
+	NodeLabels   map[string]string
+}
+
+// parseNodeLabels parses a comma-separated "key=value,key2=value2" string
+// into a map. Entries without "=" or with empty keys are skipped.
+func parseNodeLabels(raw string) map[string]string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	labels := make(map[string]string)
+	for _, pair := range strings.Split(raw, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(pair, "=")
+		k = strings.TrimSpace(k)
+		if !ok || k == "" {
+			continue
+		}
+		labels[k] = strings.TrimSpace(v)
+	}
+	if len(labels) == 0 {
+		return nil
+	}
+	return labels
 }
 
 func Load() (*Config, error) {
@@ -65,6 +92,8 @@ func Load() (*Config, error) {
 		slogLevel = slog.LevelInfo
 	}
 
+	nodeLabels := parseNodeLabels(os.Getenv("VF_NODE_LABELS"))
+
 	return &Config{
 		URL:          url,
 		Token:        token,
@@ -73,5 +102,6 @@ func Load() (*Config, error) {
 		PollInterval: poll,
 		LogLevel:     logLevel,
 		SlogLevel:    slogLevel,
+		NodeLabels:   nodeLabels,
 	}, nil
 }
