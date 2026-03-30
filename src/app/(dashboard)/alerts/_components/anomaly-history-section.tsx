@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useCallback, useEffect, useMemo } from "react";
+import { Fragment, useState, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
@@ -195,7 +195,7 @@ export function AnomalyHistorySection({
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const [accumulatedItems, setAccumulatedItems] = useState<AnomalyItem[]>([]);
+  const [allItems, setAllItems] = useState<AnomalyItem[]>([]);
 
   // ─── Server-side filter ───────────────────────────────────────────────────
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -208,7 +208,7 @@ export function AnomalyHistorySection({
   const applyStatusFilter = (value: string) => {
     setStatusFilter(value);
     setCursor(undefined);
-    setAccumulatedItems([]);
+    setAllItems([]);
   };
 
   // ─── Query ────────────────────────────────────────────────────────────────
@@ -235,20 +235,8 @@ export function AnomalyHistorySection({
   const nextCursor =
     pageItems.length === 50 ? pageItems[pageItems.length - 1]?.id : undefined;
 
-  // Merge newly fetched pages into accumulated list
-  useEffect(() => {
-    if (!cursor || !listQuery.data) return;
-    const incoming = listQuery.data as AnomalyItem[];
-    setAccumulatedItems((prev) => {
-      const existing = new Set(prev.map((i) => i.id));
-      const newItems = incoming.filter((i) => !existing.has(i.id));
-      if (newItems.length === 0) return prev;
-      return [...prev, ...newItems];
-    });
-  }, [listQuery.data, cursor]);
-
-  // Accumulate pages for "Load more"
-  const visibleItems = cursor ? accumulatedItems : pageItems;
+  // First page shown directly from query; subsequent pages accumulated in allItems
+  const visibleItems = cursor ? allItems : pageItems;
 
   // Pipeline options derived from all loaded items
   const pipelineOptions = useMemo(() => {
@@ -296,7 +284,7 @@ export function AnomalyHistorySection({
         toast.success("Anomaly acknowledged");
         invalidateAnomalies();
         setCursor(undefined);
-        setAccumulatedItems([]);
+        setAllItems([]);
       },
       onError: (error) => {
         toast.error(error.message || "Failed to acknowledge anomaly", {
@@ -312,7 +300,7 @@ export function AnomalyHistorySection({
         toast.success("Anomaly dismissed");
         invalidateAnomalies();
         setCursor(undefined);
-        setAccumulatedItems([]);
+        setAllItems([]);
       },
       onError: (error) => {
         toast.error(error.message || "Failed to dismiss anomaly", {
@@ -325,10 +313,10 @@ export function AnomalyHistorySection({
   // ─── Handlers ─────────────────────────────────────────────────────────────
   const handleLoadMore = () => {
     if (nextCursor) {
-      // Snapshot current page into accumulated before advancing cursor
-      setAccumulatedItems((prev) => {
-        if (prev.length > 0) return prev;
-        return pageItems;
+      setAllItems((prev) => {
+        const existing = new Set(prev.map((i) => i.id));
+        const newItems = pageItems.filter((i) => !existing.has(i.id));
+        return [...prev, ...newItems];
       });
       setCursor(nextCursor);
     }
@@ -426,7 +414,7 @@ export function AnomalyHistorySection({
                   setSeverityFilter("all");
                   setPipelineFilter("all");
                   setCursor(undefined);
-                  setAccumulatedItems([]);
+                  setAllItems([]);
                 }}
               >
                 Clear filters
