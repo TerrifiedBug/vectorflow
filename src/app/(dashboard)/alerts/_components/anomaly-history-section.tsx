@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useCallback, useMemo } from "react";
+import { Fragment, useState, useCallback, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
@@ -52,6 +52,24 @@ const SEVERITY_STYLES: Record<string, string> = {
   critical: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
 
+function formatTimestamp(date: Date | string | null): string {
+  if (!date) return "-";
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleString();
+}
+
+function getStatusBadgeVariant(status: string) {
+  if (status === "open") return "error" as const;
+  if (status === "acknowledged") return "degraded" as const;
+  return "healthy" as const;
+}
+
+function getStatusLabel(status: string) {
+  if (status === "open") return "Open";
+  if (status === "acknowledged") return "Acknowledged";
+  return "Dismissed";
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type AnomalyItem = {
@@ -94,12 +112,6 @@ function SeverityBadge({ severity }: { severity: string }) {
 // ─── Expanded Row Detail ──────────────────────────────────────────────────────
 
 function AnomalyDetailRow({ anomaly }: { anomaly: AnomalyItem }) {
-  const formatTimestamp = (date: Date | string | null) => {
-    if (!date) return "-";
-    const d = typeof date === "string" ? new Date(date) : date;
-    return d.toLocaleString();
-  };
-
   return (
     <div className="grid grid-cols-2 gap-x-8 gap-y-2 p-4 text-sm md:grid-cols-3">
       <div>
@@ -223,6 +235,18 @@ export function AnomalyHistorySection({
   const nextCursor =
     pageItems.length === 50 ? pageItems[pageItems.length - 1]?.id : undefined;
 
+  // Merge newly fetched pages into accumulated list
+  useEffect(() => {
+    if (!cursor || !listQuery.data) return;
+    const incoming = listQuery.data as AnomalyItem[];
+    setAccumulatedItems((prev) => {
+      const existing = new Set(prev.map((i) => i.id));
+      const newItems = incoming.filter((i) => !existing.has(i.id));
+      if (newItems.length === 0) return prev;
+      return [...prev, ...newItems];
+    });
+  }, [listQuery.data, cursor]);
+
   // Accumulate pages for "Load more"
   const visibleItems = cursor ? accumulatedItems : pageItems;
 
@@ -301,10 +325,10 @@ export function AnomalyHistorySection({
   // ─── Handlers ─────────────────────────────────────────────────────────────
   const handleLoadMore = () => {
     if (nextCursor) {
+      // Snapshot current page into accumulated before advancing cursor
       setAccumulatedItems((prev) => {
-        const existing = new Set(prev.map((i) => i.id));
-        const newItems = pageItems.filter((i) => !existing.has(i.id));
-        return [...prev, ...newItems];
+        if (prev.length > 0) return prev;
+        return pageItems;
       });
       setCursor(nextCursor);
     }
@@ -324,28 +348,10 @@ export function AnomalyHistorySection({
     [dismissMutation, environmentId],
   );
 
-  const formatTimestamp = (date: Date | string) => {
-    const d = typeof date === "string" ? new Date(date) : date;
-    return d.toLocaleString();
-  };
-
   const isInitialLoading = listQuery.isLoading && !cursor;
   const isFetchingMore = listQuery.isFetching && !!cursor;
   const isMutating =
     acknowledgeMutation.isPending || dismissMutation.isPending;
-
-  // ─── Status badge mapping ─────────────────────────────────────────────────
-  const getStatusBadgeVariant = (status: string) => {
-    if (status === "open") return "error" as const;
-    if (status === "acknowledged") return "degraded" as const;
-    return "healthy" as const;
-  };
-
-  const getStatusLabel = (status: string) => {
-    if (status === "open") return "Open";
-    if (status === "acknowledged") return "Acknowledged";
-    return "Dismissed";
-  };
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
