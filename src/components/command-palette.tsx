@@ -63,6 +63,13 @@ const NAV_PAGES: NavPage[] = [
   { title: "AI", href: "/settings/ai", icon: Settings, keywords: ["assistant", "copilot"] },
 ];
 
+// ─── External trigger ──────────────────────────────────────────────────────
+let openCommandPalette: (() => void) | null = null;
+
+export function triggerCommandPalette() {
+  openCommandPalette?.();
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export function CommandPalette() {
@@ -72,6 +79,12 @@ export function CommandPalette() {
   const trpc = useTRPC();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
+
+  // Register external trigger
+  useEffect(() => {
+    openCommandPalette = () => setOpen(true);
+    return () => { openCommandPalette = null; };
+  }, []);
 
   // Keyboard shortcut: Cmd+K / Ctrl+K
   useEffect(() => {

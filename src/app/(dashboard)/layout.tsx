@@ -31,7 +31,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { LazyMotionProvider } from "@/components/motion/lazy-motion-provider";
 import { UpdateBanner } from "@/components/update-banner";
-import { CommandPalette } from "@/components/command-palette";
+import { CommandPalette, triggerCommandPalette } from "@/components/command-palette";
+import { Search } from "lucide-react";
 
 export default function DashboardLayout({
   children,
@@ -167,6 +168,17 @@ export default function DashboardLayout({
           <TeamSelector />
           <Separator orientation="vertical" className="!h-5" />
           <EnvironmentSelector />
+          <button
+            type="button"
+            onClick={triggerCommandPalette}
+            className="hidden md:flex items-center gap-2 rounded-md border border-input bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span>Search...</span>
+            <kbd className="pointer-events-none ml-2 inline-flex h-5 items-center gap-0.5 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+              <span className="text-xs">&#8984;</span>K
+            </kbd>
+          </button>
           <div className="ml-auto flex items-center gap-4">
             <Button variant="ghost" size="icon" asChild aria-label="Documentation">
               <a href="https://terrifiedbug.gitbook.io/vectorflow" target="_blank" rel="noopener noreferrer">
