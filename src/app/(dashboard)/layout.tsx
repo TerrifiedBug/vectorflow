@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, LogOut, ShieldAlert, User } from "lucide-react";
+import { BookOpen, LogOut, Search, ShieldAlert, User } from "lucide-react";
 
 import { useTRPC } from "@/trpc/client";
 import { useSSE } from "@/hooks/use-sse";
@@ -168,7 +168,23 @@ export default function DashboardLayout({
           <TeamSelector />
           <Separator orientation="vertical" className="!h-5" />
           <EnvironmentSelector />
-          <div className="ml-auto flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(
+                new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }),
+              );
+            }}
+            className="ml-auto hidden md:flex items-center gap-2 rounded-md border border-input bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted transition-colors w-56"
+            aria-label="Search (Cmd+K)"
+          >
+            <Search className="h-4 w-4" />
+            <span className="flex-1 text-left">Search...</span>
+            <kbd className="pointer-events-none rounded border bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+              {"\u2318K"}
+            </kbd>
+          </button>
+          <div className="ml-auto md:ml-0 flex items-center gap-4">
             <Button variant="ghost" size="icon" asChild aria-label="Documentation">
               <a href="https://terrifiedbug.gitbook.io/vectorflow" target="_blank" rel="noopener noreferrer">
                 <BookOpen className="h-5 w-5" />
