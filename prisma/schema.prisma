@@ -748,6 +748,13 @@ model SystemSettings {
   metricsRetentionDays    Int @default(7)
   logsRetentionDays       Int @default(3)
 
+  // Anomaly detection tuning
+  anomalyBaselineWindowDays    Int    @default(7)
+  anomalySigmaThreshold        Float  @default(3)
+  anomalyMinStddevFloorPercent Int    @default(5)
+  anomalyDedupWindowHours      Int    @default(4)
+  anomalyEnabledMetrics        String @default("eventsIn,errorsTotal,latencyMeanMs")
+
   // Backup configuration
   backupEnabled        Boolean  @default(false)
   backupCron           String   @default("0 2 * * *")
