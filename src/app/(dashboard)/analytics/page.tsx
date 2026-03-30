@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { TimeRangeSelector } from "@/components/time-range-selector";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
 import { RecommendationsPanel } from "@/components/analytics/recommendations-panel";
@@ -187,23 +188,7 @@ export default function AnalyticsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-end">
-        <div className="flex items-center gap-1">
-          {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setRange(v)}
-              className={cn(
-                "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
-                range === v
-                  ? "bg-accent text-accent-foreground border-transparent"
-                  : "bg-transparent text-muted-foreground border-border hover:bg-muted",
-              )}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
+        <TimeRangeSelector value={range} onChange={setRange} />
       </div>
 
       {/* KPI Cards */}
