@@ -10,6 +10,7 @@ import { validateConfig } from "@/server/services/validator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
+import { parseDeploymentStrategy } from "@/lib/deployment-strategy";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { relayPush } from "@/server/services/push-broadcast";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
@@ -79,6 +80,7 @@ export const deployRouter = router({
         currentLogLevel: latestVersion?.logLevel ?? "info",
         newLogLevel: ((pipeline.globalConfig as Record<string, unknown>)?.log_level as string) ?? "info",
         nodeSelector: pipeline.nodeSelector as Record<string, string> | null,
+        deploymentStrategy: pipeline.deploymentStrategy,
       };
     }),
 
@@ -213,6 +215,44 @@ export const deployRouter = router({
           success: true,
           pendingApproval: true,
           requestId: request.id,
+        };
+      }
+
+      // Auto-canary: if pipeline has canary deployment strategy and labels are selected,
+      // redirect to staged rollout
+      const strategy = parseDeploymentStrategy(pipeline.deploymentStrategy);
+      if (
+        strategy?.type === "canary" &&
+        input.nodeSelector &&
+        Object.keys(input.nodeSelector).length > 0
+      ) {
+        const { stagedRolloutService } = await import("@/server/services/staged-rollout");
+        const result = await stagedRolloutService.createRollout(
+          input.pipelineId,
+          userId,
+          input.nodeSelector,
+          strategy.healthCheckWindowMinutes ?? 5,
+          input.changelog,
+        );
+
+        writeAuditLog({
+          userId,
+          action: "deploy.staged_auto",
+          entityType: "Pipeline",
+          entityId: input.pipelineId,
+          metadata: {
+            rolloutId: result.rolloutId,
+            strategy: "canary",
+            timestamp: new Date().toISOString(),
+          },
+          teamId: (ctx as Record<string, unknown>).teamId as string | null ?? null,
+          environmentId: pipeline.environment.id,
+        }).catch(() => {});
+
+        return {
+          success: true,
+          stagedDeploy: true,
+          rolloutId: result.rolloutId,
         };
       }
 
