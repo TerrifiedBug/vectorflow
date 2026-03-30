@@ -64,14 +64,14 @@ const CATEGORIES: SettingsCategory[] = [
     requiredSuperAdmin: true,
   },
   {
-    title: "Teams",
+    title: "All Teams",
     description: "Create and manage teams for multi-tenant workspace isolation.",
     href: "/settings/teams",
     icon: Building2,
     requiredSuperAdmin: true,
   },
   {
-    title: "Team Settings",
+    title: "My Team",
     description: "Configure your team's name, environments, and preferences.",
     href: "/settings/team",
     icon: Users,
