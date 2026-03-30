@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { Separator } from "@/components/ui/separator";
 import { EmptyState } from "@/components/empty-state";
@@ -25,7 +26,11 @@ export default function AlertsPage() {
   const selectedEnvironmentId = useEnvironmentStore(
     (s) => s.selectedEnvironmentId,
   );
-  const [alertView, setAlertView] = useState<"grouped" | "flat" | "anomalies">("grouped");
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab");
+  const [alertView, setAlertView] = useState<"grouped" | "flat" | "anomalies">(
+    initialTab === "anomalies" || initialTab === "flat" ? initialTab : "grouped"
+  );
 
   const trpc = useTRPC();
 

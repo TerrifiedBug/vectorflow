@@ -20,12 +20,20 @@ export const environmentRouter = router({
           teamId: true,
           createdAt: true,
           gitOpsMode: true,
+          gitRepoUrl: true,
           _count: {
             select: {
               nodes: true,
               pipelines: true,
               gitSyncJobs: { where: { status: "failed" } },
+              alertRules: true,
             },
+          },
+          pipelines: {
+            select: { deployedAt: true },
+            where: { deployedAt: { not: null } },
+            orderBy: { deployedAt: "desc" },
+            take: 1,
           },
         },
         orderBy: { createdAt: "desc" },

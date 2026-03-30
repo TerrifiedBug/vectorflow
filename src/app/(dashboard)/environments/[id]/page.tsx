@@ -2,10 +2,10 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { Copy, Pencil, Trash2, ShieldCheck } from "lucide-react";
+import { Copy, Pencil, Trash2, ShieldCheck, KeyRound, GitBranch, ServerCog } from "lucide-react";
 import { toast } from "sonner";
 
 import { copyToClipboard } from "@/lib/utils";
@@ -48,6 +48,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Breadcrumb } from "@/components/breadcrumb";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/page-header";
 import { SecretsSection } from "@/components/environment/secrets-section";
 import { CertificatesSection } from "@/components/environment/certificates-section";
@@ -90,6 +91,8 @@ export default function EnvironmentDetailPage({
     role: "",
   });
   const [enrollmentToken, setEnrollmentToken] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") ?? "overview";
 
   const updateMutation = useMutation(
     trpc.environment.update.mutationOptions({
@@ -264,125 +267,284 @@ export default function EnvironmentDetailPage({
         </Card>
       )}
 
-      {/* Overview Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Deployment</CardDescription>
-            <CardTitle className="text-lg">Agent</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {env.hasEnrollmentToken ? "Enrollment token configured" : "No enrollment token"}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Nodes</CardDescription>
-            <CardTitle className="text-lg">{env._count.nodes}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Pipelines</CardDescription>
-            <CardTitle className="text-lg">{env._count.pipelines}</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
+      {/* Tabbed content */}
+      <Tabs defaultValue={initialTab}>
+        <TabsList>
+          <TabsTrigger value="overview" className="gap-1.5">
+            <ShieldCheck className="h-4 w-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="secrets" className="gap-1.5">
+            <KeyRound className="h-4 w-4" />
+            Secrets
+          </TabsTrigger>
+          <TabsTrigger value="git-sync" className="gap-1.5">
+            <GitBranch className="h-4 w-4" />
+            Git Sync
+          </TabsTrigger>
+          <TabsTrigger value="enrollment" className="gap-1.5">
+            <ServerCog className="h-4 w-4" />
+            Enrollment
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Deploy Settings */}
-      <Card>
-        <CardHeader className="pb-0">
-          <CardTitle className="text-base">Deploy Settings</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-3">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                <Label htmlFor="require-approval-toggle" className="text-sm font-medium">
-                  Require approval for deploys
-                </Label>
-              </div>
-              <p className="text-xs text-muted-foreground ml-6">
-                When enabled, editors must request admin approval before deploying pipelines.
-                {!isAdmin && " Only admins can change this setting."}
-              </p>
-            </div>
-            <Switch
-              id="require-approval-toggle"
-              checked={env.requireDeployApproval ?? false}
-              disabled={!isAdmin}
-              onCheckedChange={(checked) => {
-                updateMutation.mutate({ id, requireDeployApproval: checked }, {
-                  onSuccess: () => toast.success(checked ? "Deploy approval enabled" : "Deploy approval disabled"),
-                  onError: (err) => toast.error(err.message, { duration: 6000 }),
-                });
-              }}
-            />
+        {/* -- Overview Tab -- */}
+        <TabsContent value="overview" className="space-y-6">
+          {/* Overview Cards */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Deployment</CardDescription>
+                <CardTitle className="text-lg">Agent</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">
+                  {env.hasEnrollmentToken ? "Enrollment token configured" : "No enrollment token"}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Nodes</CardDescription>
+                <CardTitle className="text-lg">{env._count.nodes}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Pipelines</CardDescription>
+                <CardTitle className="text-lg">{env._count.pipelines}</CardTitle>
+              </CardHeader>
+            </Card>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Nodes Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Vector Nodes</CardTitle>
-          <CardDescription>
-            Nodes registered in this environment
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {env.nodes.length === 0 ? (
-            <EmptyState
-              title="No nodes in this environment yet"
-              action={{ label: "Go to Fleet", href: "/fleet" }}
-              className="p-8"
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Host</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Last Seen</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {env.nodes.map((node) => (
-                  <TableRow key={node.id}>
-                    <TableCell className="font-medium">
-                      <Link
-                        href={`/fleet/${node.id}`}
-                        className="hover:underline"
-                      >
-                        {node.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm tabular-nums">
-                      {node.host}:{node.apiPort}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge variant={nodeStatusVariant(node.status)}>
-                        {nodeStatusLabel(node.status)}
-                      </StatusBadge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {node.lastSeen
-                        ? new Date(node.lastSeen).toLocaleString()
-                        : "Never"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          {/* Deploy Settings */}
+          <Card>
+            <CardHeader className="pb-0">
+              <CardTitle className="text-base">Deploy Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-3">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                    <Label htmlFor="require-approval-toggle" className="text-sm font-medium">
+                      Require approval for deploys
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground ml-6">
+                    When enabled, editors must request admin approval before deploying pipelines.
+                    {!isAdmin && " Only admins can change this setting."}
+                  </p>
+                </div>
+                <Switch
+                  id="require-approval-toggle"
+                  checked={env.requireDeployApproval ?? false}
+                  disabled={!isAdmin}
+                  onCheckedChange={(checked) => {
+                    updateMutation.mutate({ id, requireDeployApproval: checked }, {
+                      onSuccess: () => toast.success(checked ? "Deploy approval enabled" : "Deploy approval disabled"),
+                      onError: (err) => toast.error(err.message, { duration: 6000 }),
+                    });
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Nodes Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Vector Nodes</CardTitle>
+              <CardDescription>
+                Nodes registered in this environment
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {env.nodes.length === 0 ? (
+                <EmptyState
+                  title="No nodes in this environment yet"
+                  action={{ label: "Go to Fleet", href: "/fleet" }}
+                  className="p-8"
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Host</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Last Seen</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {env.nodes.map((node) => (
+                      <TableRow key={node.id}>
+                        <TableCell className="font-medium">
+                          <Link
+                            href={`/fleet/${node.id}`}
+                            className="hover:underline"
+                          >
+                            {node.name}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm tabular-nums">
+                          {node.host}:{node.apiPort}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge variant={nodeStatusVariant(node.status)}>
+                            {nodeStatusLabel(node.status)}
+                          </StatusBadge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {node.lastSeen
+                            ? new Date(node.lastSeen).toLocaleString()
+                            : "Never"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* -- Secrets Tab -- */}
+        <TabsContent value="secrets" className="space-y-6">
+          {/* Secret Backend */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Secret Backend</CardTitle>
+              <CardDescription>
+                Choose how pipelines on this environment resolve secret references.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                {editing ? (
+                  <Select value={editSecretBackend} onValueChange={(val) => setEditSecretBackend(val as "BUILTIN" | "VAULT" | "AWS_SM" | "EXEC")}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BUILTIN">Built-in (VectorFlow delivers secrets as env vars)</SelectItem>
+                      <SelectItem value="VAULT">HashiCorp Vault</SelectItem>
+                      <SelectItem value="AWS_SM">AWS Secrets Manager</SelectItem>
+                      <SelectItem value="EXEC">Exec (custom script)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Badge variant="secondary">
+                    {env.secretBackend === "VAULT" ? "HashiCorp Vault" :
+                     env.secretBackend === "AWS_SM" ? "AWS Secrets Manager" :
+                     env.secretBackend === "EXEC" ? "Exec (custom script)" :
+                     "Built-in"}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Vault-specific config fields */}
+              {((editing && editSecretBackend === "VAULT") || (!editing && env.secretBackend === "VAULT")) && (
+                <div className="space-y-3 border-t pt-3">
+                  <div>
+                    <label className="text-sm font-medium">Vault Address</label>
+                    {editing ? (
+                      <Input
+                        type="text"
+                        value={editVaultConfig.address}
+                        onChange={(e) => setEditVaultConfig(prev => ({ ...prev, address: e.target.value }))}
+                        placeholder="https://vault.internal:8200"
+                        className="mt-1"
+                      />
+                    ) : (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {(env.secretBackendConfig as Record<string, string>)?.address || "Not configured"}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Auth Method</label>
+                    {editing ? (
+                      <Select value={editVaultConfig.authMethod} onValueChange={(val) => setEditVaultConfig(prev => ({ ...prev, authMethod: val as "token" | "approle" | "kubernetes" }))}>
+                        <SelectTrigger className="mt-1 w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="token">Token</SelectItem>
+                          <SelectItem value="approle">AppRole</SelectItem>
+                          <SelectItem value="kubernetes">Kubernetes</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p className="mt-1 text-sm text-muted-foreground capitalize">
+                        {(env.secretBackendConfig as Record<string, string>)?.authMethod || "token"}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Mount Path</label>
+                    {editing ? (
+                      <Input
+                        type="text"
+                        value={editVaultConfig.mountPath}
+                        onChange={(e) => setEditVaultConfig(prev => ({ ...prev, mountPath: e.target.value }))}
+                        placeholder="secret/data/vectorflow"
+                        className="mt-1"
+                      />
+                    ) : (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {(env.secretBackendConfig as Record<string, string>)?.mountPath || "secret/data/vectorflow"}
+                      </p>
+                    )}
+                  </div>
+                  {((editing && (editVaultConfig.authMethod === "approle" || editVaultConfig.authMethod === "kubernetes")) ||
+                    (!editing && ((env.secretBackendConfig as Record<string, string>)?.authMethod === "approle" || (env.secretBackendConfig as Record<string, string>)?.authMethod === "kubernetes"))) && (
+                    <div>
+                      <label className="text-sm font-medium">Role</label>
+                      {editing ? (
+                        <Input
+                          type="text"
+                          value={editVaultConfig.role}
+                          onChange={(e) => setEditVaultConfig(prev => ({ ...prev, role: e.target.value }))}
+                          placeholder="vectorflow-agent"
+                          className="mt-1"
+                        />
+                      ) : (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {(env.secretBackendConfig as Record<string, string>)?.role || "\u2014"}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Secrets & Certificates */}
+          <SecretsSection environmentId={id} />
+          <CertificatesSection environmentId={id} />
+        </TabsContent>
+
+        {/* -- Git Sync Tab -- */}
+        <TabsContent value="git-sync" className="space-y-6">
+          <GitSyncSection
+            environmentId={id}
+            gitRepoUrl={env.gitRepoUrl}
+            gitBranch={env.gitBranch}
+            hasGitToken={env.hasGitToken}
+            gitOpsMode={env.gitOpsMode}
+            hasWebhookSecret={env.hasWebhookSecret}
+            gitProvider={env.gitProvider ?? null}
+          />
+
+          {env.gitOpsMode !== "off" && (
+            <GitSyncStatus environmentId={id} />
           )}
-        </CardContent>
-      </Card>
+        </TabsContent>
 
-      {/* Agent Enrollment */}
+        {/* -- Enrollment Tab -- */}
+        <TabsContent value="enrollment" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Agent Enrollment</CardTitle>
@@ -510,134 +672,8 @@ export default function EnvironmentDetailPage({
               </div>
             </CardContent>
           </Card>
-
-      {/* Secret Backend */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Secret Backend</CardTitle>
-              <CardDescription>
-                Choose how pipelines on this environment resolve secret references.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                {editing ? (
-                  <Select value={editSecretBackend} onValueChange={(val) => setEditSecretBackend(val as "BUILTIN" | "VAULT" | "AWS_SM" | "EXEC")}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="BUILTIN">Built-in (VectorFlow delivers secrets as env vars)</SelectItem>
-                      <SelectItem value="VAULT">HashiCorp Vault</SelectItem>
-                      <SelectItem value="AWS_SM">AWS Secrets Manager</SelectItem>
-                      <SelectItem value="EXEC">Exec (custom script)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Badge variant="secondary">
-                    {env.secretBackend === "VAULT" ? "HashiCorp Vault" :
-                     env.secretBackend === "AWS_SM" ? "AWS Secrets Manager" :
-                     env.secretBackend === "EXEC" ? "Exec (custom script)" :
-                     "Built-in"}
-                  </Badge>
-                )}
-              </div>
-
-              {/* Vault-specific config fields */}
-              {((editing && editSecretBackend === "VAULT") || (!editing && env.secretBackend === "VAULT")) && (
-                <div className="space-y-3 border-t pt-3">
-                  <div>
-                    <label className="text-sm font-medium">Vault Address</label>
-                    {editing ? (
-                      <Input
-                        type="text"
-                        value={editVaultConfig.address}
-                        onChange={(e) => setEditVaultConfig(prev => ({ ...prev, address: e.target.value }))}
-                        placeholder="https://vault.internal:8200"
-                        className="mt-1"
-                      />
-                    ) : (
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {(env.secretBackendConfig as Record<string, string>)?.address || "Not configured"}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Auth Method</label>
-                    {editing ? (
-                      <Select value={editVaultConfig.authMethod} onValueChange={(val) => setEditVaultConfig(prev => ({ ...prev, authMethod: val as "token" | "approle" | "kubernetes" }))}>
-                        <SelectTrigger className="mt-1 w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="token">Token</SelectItem>
-                          <SelectItem value="approle">AppRole</SelectItem>
-                          <SelectItem value="kubernetes">Kubernetes</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <p className="mt-1 text-sm text-muted-foreground capitalize">
-                        {(env.secretBackendConfig as Record<string, string>)?.authMethod || "token"}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Mount Path</label>
-                    {editing ? (
-                      <Input
-                        type="text"
-                        value={editVaultConfig.mountPath}
-                        onChange={(e) => setEditVaultConfig(prev => ({ ...prev, mountPath: e.target.value }))}
-                        placeholder="secret/data/vectorflow"
-                        className="mt-1"
-                      />
-                    ) : (
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {(env.secretBackendConfig as Record<string, string>)?.mountPath || "secret/data/vectorflow"}
-                      </p>
-                    )}
-                  </div>
-                  {((editing && (editVaultConfig.authMethod === "approle" || editVaultConfig.authMethod === "kubernetes")) ||
-                    (!editing && ((env.secretBackendConfig as Record<string, string>)?.authMethod === "approle" || (env.secretBackendConfig as Record<string, string>)?.authMethod === "kubernetes"))) && (
-                    <div>
-                      <label className="text-sm font-medium">Role</label>
-                      {editing ? (
-                        <Input
-                          type="text"
-                          value={editVaultConfig.role}
-                          onChange={(e) => setEditVaultConfig(prev => ({ ...prev, role: e.target.value }))}
-                          placeholder="vectorflow-agent"
-                          className="mt-1"
-                        />
-                      ) : (
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {(env.secretBackendConfig as Record<string, string>)?.role || "\u2014"}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-      {/* Secrets & Certificates */}
-      <SecretsSection environmentId={id} />
-      <CertificatesSection environmentId={id} />
-
-      <GitSyncSection
-        environmentId={id}
-        gitRepoUrl={env.gitRepoUrl}
-        gitBranch={env.gitBranch}
-        hasGitToken={env.hasGitToken}
-        gitOpsMode={env.gitOpsMode}
-        hasWebhookSecret={env.hasWebhookSecret}
-        gitProvider={env.gitProvider ?? null}
-      />
-
-      {env.gitOpsMode !== "off" && (
-        <GitSyncStatus environmentId={id} />
-      )}
+        </TabsContent>
+      </Tabs>
 
       {/* Created info */}
       <p className="text-xs text-muted-foreground">
