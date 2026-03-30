@@ -43,7 +43,7 @@ export function NodeSummaryCards({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" aria-live="polite" aria-atomic="false">
       {nodes.map((node) => {
         const hasIssues = node.errorCount > 0 || node.versionDriftCount > 0;
         return (

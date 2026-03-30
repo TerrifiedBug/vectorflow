@@ -17,6 +17,7 @@ import {
   Cpu,
   Terminal,
   Play,
+  Shield,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
   Archival: <Cloud className="h-4 w-4" />,
   Streaming: <Radio className="h-4 w-4" />,
   Metrics: <Cpu className="h-4 w-4" />,
+  "Data Protection": <Shield className="h-4 w-4" />,
 };
 
 const categoryColors: Record<string, string> = {
@@ -57,7 +59,29 @@ const categoryColors: Record<string, string> = {
     "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
   Metrics:
     "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300",
+  "Data Protection":
+    "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
 };
+
+const complianceTagColors: Record<string, string> = {
+  "PCI-DSS": "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  HIPAA: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+  GDPR: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+};
+
+/* ------------------------------------------------------------------ */
+/*  Compliance tag helper                                              */
+/* ------------------------------------------------------------------ */
+
+function getComplianceTags(nodes: unknown[] | undefined): string[] {
+  if (!Array.isArray(nodes)) return [];
+  for (const node of nodes as Array<{ metadata?: { complianceTags?: string[] } }>) {
+    if (node.metadata?.complianceTags?.length) {
+      return node.metadata.complianceTags;
+    }
+  }
+  return [];
+}
 
 /* ------------------------------------------------------------------ */
 /*  Page Component                                                     */
@@ -231,6 +255,23 @@ export default function TemplatesPage() {
                       {template.edgeCount} edges
                     </span>
                   </div>
+                  {(() => {
+                    const tags = getComplianceTags(template.nodes);
+                    if (tags.length === 0) return null;
+                    return (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {tags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant="secondary"
+                            className={`px-1.5 py-0 text-[10px] ${complianceTagColors[tag] ?? ""}`}
+                          >
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </CardContent>
                 <CardFooter className="flex gap-2 pt-0">
                   <Button
@@ -241,15 +282,17 @@ export default function TemplatesPage() {
                   >
                     {isCreating ? "Creating..." : "Use Template"}
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteConfirm({ id: template.id, name: template.name })}
-                    disabled={deleteTemplateMutation.isPending}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {template.teamId !== null && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setDeleteConfirm({ id: template.id, name: template.name })}
+                      disabled={deleteTemplateMutation.isPending}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </CardFooter>
               </Card>
             ))}

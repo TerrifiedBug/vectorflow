@@ -63,7 +63,7 @@ describe("fleet.matrixSummary — scale test", () => {
     const PIPELINE_COUNT = 200;
     const NODE_COUNT = 10;
 
-    // Build 10 nodes each with 200 pipeline statuses
+    // Build 10 nodes each with 200 pipeline statuses (versions nested in pipeline)
     const nodes = Array.from({ length: NODE_COUNT }, (_, nodeIdx) => ({
       id: `node-${nodeIdx}`,
       name: `node-${nodeIdx}`,
@@ -76,17 +76,11 @@ describe("fleet.matrixSummary — scale test", () => {
         pipelineId: `pipe-${pipeIdx}`,
         status: pipeIdx % 20 === 0 ? "CRASHED" : "RUNNING",
         version: pipeIdx % 10 === 0 ? 1 : 2,
-        pipeline: { id: `pipe-${pipeIdx}`, name: `pipeline-${pipeIdx}` },
+        pipeline: { id: `pipe-${pipeIdx}`, name: `pipeline-${pipeIdx}`, versions: [{ version: 2 }] },
       })),
     }));
 
     prismaMock.vectorNode.findMany.mockResolvedValueOnce(nodes as never);
-
-    const deployedPipelines = Array.from({ length: PIPELINE_COUNT }, (_, i) => ({
-      id: `pipe-${i}`,
-      versions: [{ version: 2 }],
-    }));
-    prismaMock.pipeline.findMany.mockResolvedValueOnce(deployedPipelines as never);
 
     const start = performance.now();
     const result = await caller.matrixSummary({ environmentId: "env-1" });

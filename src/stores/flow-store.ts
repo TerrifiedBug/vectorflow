@@ -85,6 +85,7 @@ export interface FlowState {
   setSelectedNodeIds: (ids: Set<string>) => void;
   toggleNodeSelection: (id: string) => void;
   clearSelection: () => void;
+  deselectAll: () => void;
   addNode: (
     componentDef: VectorComponentDef,
     position: { x: number; y: number },
@@ -331,6 +332,17 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
 
   clearSelection: () => {
     set({ selectedNodeIds: new Set(), selectedNodeId: null });
+  },
+
+  deselectAll: () => {
+    set((state) => ({
+      ...state,
+      selectedNodeId: null,
+      selectedEdgeId: null,
+      selectedNodeIds: new Set<string>(),
+      nodes: state.nodes.map((n) => ({ ...n, selected: false })),
+      edges: state.edges.map((e) => ({ ...e, selected: false })),
+    }));
   },
 
   addNode: (componentDef, position) => {

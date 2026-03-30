@@ -2,6 +2,7 @@ import { z } from "zod";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { metricStore } from "@/server/services/metric-store";
 import { prisma } from "@/lib/prisma";
+import { queryPipelineMetricsAggregated } from "@/server/services/metrics-query";
 
 export const metricsRouter = router({
   /**
@@ -12,34 +13,14 @@ export const metricsRouter = router({
     .input(
       z.object({
         pipelineId: z.string(),
-        minutes: z.number().int().min(1).max(1440).default(60),
+        minutes: z.number().int().min(1).max(10080).default(60), // max 7 days (was 1440)
       }),
     )
     .query(async ({ input }) => {
-      const since = new Date(Date.now() - input.minutes * 60 * 1000);
-
-      const rows = await prisma.pipelineMetric.findMany({
-        where: {
-          pipelineId: input.pipelineId,
-          nodeId: null,
-          componentId: null,
-          timestamp: { gte: since },
-        },
-        orderBy: { timestamp: "asc" },
-        select: {
-          timestamp: true,
-          eventsIn: true,
-          eventsOut: true,
-          eventsDiscarded: true,
-          errorsTotal: true,
-          bytesIn: true,
-          bytesOut: true,
-          utilization: true,
-          latencyMeanMs: true,
-        },
+      return queryPipelineMetricsAggregated({
+        pipelineId: input.pipelineId,
+        minutes: input.minutes,
       });
-
-      return { rows };
     }),
 
   /**

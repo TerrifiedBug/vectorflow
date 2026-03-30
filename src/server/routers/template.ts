@@ -30,7 +30,12 @@ export const templateRouter = router({
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const templates = await prisma.template.findMany({
-        where: { teamId: input.teamId },
+        where: {
+          OR: [
+            { teamId: input.teamId },
+            { teamId: null },
+          ],
+        },
         orderBy: { createdAt: "desc" },
       });
       return templates.map((t) => ({
@@ -38,6 +43,8 @@ export const templateRouter = router({
         name: t.name,
         description: t.description,
         category: t.category,
+        teamId: t.teamId,
+        nodes: t.nodes as unknown[],
         nodeCount: Array.isArray(t.nodes) ? (t.nodes as unknown[]).length : 0,
         edgeCount: Array.isArray(t.edges) ? (t.edges as unknown[]).length : 0,
         createdAt: t.createdAt,
@@ -118,6 +125,13 @@ export const templateRouter = router({
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Template not found",
+        });
+      }
+
+      if (existing.teamId === null) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "System templates cannot be deleted",
         });
       }
 

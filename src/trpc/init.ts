@@ -347,6 +347,28 @@ export const withTeamAccess = (minRole: Role) =>
       }
     }
 
+    // Resolve id as AlertCorrelationGroup → environment.teamId
+    if (!teamId && rawInput?.id) {
+      const correlationGroup = await prisma.alertCorrelationGroup.findUnique({
+        where: { id: rawInput.id as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (correlationGroup) {
+        teamId = correlationGroup.environment.teamId ?? undefined;
+      }
+    }
+
+    // Resolve groupId → AlertCorrelationGroup → environment.teamId
+    if (!teamId && rawInput?.groupId) {
+      const correlationGroup = await prisma.alertCorrelationGroup.findUnique({
+        where: { id: rawInput.groupId as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (correlationGroup) {
+        teamId = correlationGroup.environment.teamId ?? undefined;
+      }
+    }
+
     // Resolve id as Team → teamId (for team.get)
     if (!teamId && rawInput?.id) {
       const team = await prisma.team.findUnique({
