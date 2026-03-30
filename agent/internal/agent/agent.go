@@ -28,6 +28,7 @@ type Agent struct {
 	supervisor     *supervisor.Supervisor
 	vectorVersion  string
 	deploymentMode string
+	labels         map[string]string
 
 	mu                  sync.Mutex
 	sampleResults       []client.SampleResultMsg
@@ -50,19 +51,24 @@ func New(cfg *config.Config) (*Agent, error) {
 		vectorVersion = strings.TrimSpace(string(out))
 	}
 
+	deploymentMode := DetectDeploymentMode()
+	autoLabels := DetectLabels(deploymentMode)
+	labels := MergeLabels(autoLabels, cfg.NodeLabels)
+
 	return &Agent{
 		cfg:            cfg,
 		client:         c,
 		poller:         newPoller(cfg, c),
 		supervisor:     sup,
 		vectorVersion:  vectorVersion,
-		deploymentMode: DetectDeploymentMode(),
+		deploymentMode: deploymentMode,
+		labels:         labels,
 	}, nil
 }
 
 func (a *Agent) Run() error {
 	// Step 1: Enroll or load existing token
-	nodeToken, err := loadOrEnroll(a.cfg, a.client)
+	nodeToken, err := loadOrEnroll(a.cfg, a.client, a.labels)
 	if err != nil {
 		return fmt.Errorf("enrollment: %w", err)
 	}
@@ -230,7 +236,7 @@ func (a *Agent) sendHeartbeat() {
 	a.sampleResults = nil
 	a.mu.Unlock()
 
-	hb := buildHeartbeat(a.supervisor, a.vectorVersion, a.deploymentMode, results)
+	hb := buildHeartbeat(a.supervisor, a.vectorVersion, a.deploymentMode, results, a.labels)
 	updateErr := a.updateError
 	if updateErr != "" {
 		hb.UpdateError = updateErr

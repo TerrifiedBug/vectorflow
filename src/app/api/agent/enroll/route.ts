@@ -13,6 +13,7 @@ const enrollSchema = z.object({
   os: z.string().max(100).optional(),
   agentVersion: z.string().max(100).optional(),
   vectorVersion: z.string().max(100).optional(),
+  labels: z.record(z.string(), z.string()).optional(),
 });
 
 export async function POST(request: Request) {
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { token, hostname, os, agentVersion, vectorVersion } = parsed.data;
+    const { token, hostname, os, agentVersion, vectorVersion, labels: agentLabels } = parsed.data;
     const safeHostname = hostname.replace(/[\r\n\t"]/g, " ");
     const safeVersion = (agentVersion ?? "unknown").replace(/[\r\n\t"]/g, " ");
     debugLog("enroll", `attempt from hostname="${safeHostname}" agentVersion="${safeVersion}"`);
@@ -70,7 +71,9 @@ export async function POST(request: Request) {
     // Generate a unique node token for this agent
     const nodeToken = await generateNodeToken();
 
-    // Create the fleet node entry
+    // Create the fleet node entry with agent-provided labels so group matching
+    // can use them immediately (fixes the chicken-and-egg problem where nodes
+    // enrolled with no labels could never match groups with specific criteria).
     const node = await prisma.vectorNode.create({
       data: {
         name: hostname,
@@ -84,6 +87,9 @@ export async function POST(request: Request) {
         vectorVersion: vectorVersion ?? null,
         os: os ?? null,
         metadata: { enrolledVia: "agent" },
+        ...(agentLabels && Object.keys(agentLabels).length > 0
+          ? { labels: agentLabels }
+          : {}),
       },
     });
     // NODE-03: Auto-apply matching NodeGroup label templates
