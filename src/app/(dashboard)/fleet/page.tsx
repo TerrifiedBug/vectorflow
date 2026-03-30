@@ -49,6 +49,7 @@ import { FleetListToolbar } from "@/components/fleet/fleet-list-toolbar";
 import { FleetTabs } from "@/components/fleet/fleet-tabs";
 import { ArrowUp, ArrowDown } from "lucide-react";
 import { useFleetListFilters } from "@/hooks/use-fleet-list-filters";
+import { useAgentUpdateTracker } from "@/hooks/use-agent-update-tracker";
 
 const AGENT_REPO = "TerrifiedBug/vectorflow";
 
@@ -282,11 +283,13 @@ export default function FleetPage() {
     return { version: latestAgentVersion, checksums: agentChecksums, tag: latestAgentVersion ? `v${latestAgentVersion}` : null };
   };
 
+  const updateTracker = useAgentUpdateTracker();
+
   const triggerUpdate = useMutation(
     trpc.fleet.triggerAgentUpdate.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (_data, variables) => {
         queryClient.invalidateQueries({ queryKey: trpc.fleet.list.queryKey() });
-        toast.success("Update triggered");
+        updateTracker.startTracking(variables.nodeId, variables.targetVersion);
       },
       onError: (error) => {
         toast.error("Failed to trigger update: " + error.message, { duration: 6000 });
@@ -497,6 +500,23 @@ export default function FleetPage() {
                         SSE connected — real-time push enabled
                       </TooltipContent>
                     </Tooltip>
+                  )}
+                  {updateTracker.trackedNodeId === node.id && updateTracker.stage && (
+                    <Badge
+                      variant="outline"
+                      className={
+                        updateTracker.stage === "complete"
+                          ? "ml-1 text-[10px] px-1 py-0 border-green-500 text-green-600 dark:text-green-400 animate-pulse"
+                          : updateTracker.stage === "failed"
+                            ? "ml-1 text-[10px] px-1 py-0 border-red-500 text-red-600 dark:text-red-400"
+                            : "ml-1 text-[10px] px-1 py-0 border-amber-500 text-amber-600 dark:text-amber-400 animate-pulse"
+                      }
+                    >
+                      {updateTracker.stage === "updating" && "Updating..."}
+                      {updateTracker.stage === "restarting" && "Restarting..."}
+                      {updateTracker.stage === "complete" && "Updated"}
+                      {updateTracker.stage === "failed" && "Failed"}
+                    </Badge>
                   )}
                   {node.labelCompliant === false && (
                     <Tooltip>
