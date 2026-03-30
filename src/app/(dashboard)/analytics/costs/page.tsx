@@ -1,7 +1,8 @@
 // src/app/(dashboard)/analytics/costs/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
@@ -20,7 +21,7 @@ import { cn } from "@/lib/utils";
 
 type CostRange = "1d" | "7d" | "30d";
 
-export default function CostDashboardPage() {
+export function CostDashboard() {
   const trpc = useTRPC();
   const { selectedEnvironmentId } = useEnvironmentStore();
   const [range, setRange] = useState<CostRange>("7d");
@@ -186,4 +187,12 @@ export default function CostDashboardPage() {
       </Tabs>
     </div>
   );
+}
+
+export default function CostDashboardRedirect() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/analytics?tab=costs");
+  }, [router]);
+  return null;
 }

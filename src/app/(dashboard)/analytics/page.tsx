@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowUp, ArrowDown, Minus, Info, Inbox } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, Info, Inbox, BarChart3, DollarSign } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -30,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
 import { RecommendationsPanel } from "@/components/analytics/recommendations-panel";
 import { PageHeader } from "@/components/page-header";
+import { CostDashboard } from "./costs/page";
 
 type VolumeRange = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -57,6 +60,9 @@ type SortDir = "asc" | "desc";
 export default function AnalyticsPage() {
   const trpc = useTRPC();
   const { selectedEnvironmentId } = useEnvironmentStore();
+  const searchParams = useSearchParams();
+  const defaultTab = searchParams.get("tab") === "costs" ? "costs" : "volume";
+  const [activeTab, setActiveTab] = useState(defaultTab);
   const [range, setRange] = useState<VolumeRange>("1d");
   const [sortKey, setSortKey] = useState<SortKey>("bytesIn");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -189,335 +195,352 @@ export default function AnalyticsPage() {
     <div className="space-y-6">
       <PageHeader title="Analytics" description="Volume analytics and data reduction insights across your pipelines." />
 
-      <div className="flex items-center justify-end">
-        <div className="flex items-center gap-1">
-          {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setRange(v)}
-              className={cn(
-                "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
-                range === v
-                  ? "bg-accent text-accent-foreground border-transparent"
-                  : "bg-transparent text-muted-foreground border-border hover:bg-muted",
-              )}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        {/* Total In */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-muted-foreground">Total In</p>
-              <TrendArrow value={bytesInTrend} />
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="volume" className="gap-1.5">
+            <BarChart3 className="h-4 w-4" />
+            Volume
+          </TabsTrigger>
+          <TabsTrigger value="costs" className="gap-1.5">
+            <DollarSign className="h-4 w-4" />
+            Costs
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="volume" className="space-y-6">
+          <div className="flex items-center justify-end">
+            <div className="flex items-center gap-1">
+              {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setRange(v)}
+                  className={cn(
+                    "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
+                    range === v
+                      ? "bg-accent text-accent-foreground border-transparent"
+                      : "bg-transparent text-muted-foreground border-border hover:bg-muted",
+                  )}
+                >
+                  {v}
+                </button>
+              ))}
             </div>
-            <p className="mt-1 text-2xl font-bold">
-              {data ? formatBytes(totalBytesIn) : "--"}
-            </p>
-            {bytesInTrend != null && (
-              <p className="text-xs text-muted-foreground">
-                {bytesInTrend >= 0 ? "+" : ""}
-                {bytesInTrend.toFixed(1)}% vs previous period
-              </p>
-            )}
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Total Out */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-muted-foreground">Total Out</p>
-              <TrendArrow value={bytesOutTrend} />
-            </div>
-            <p className="mt-1 text-2xl font-bold">
-              {data ? formatBytes(totalBytesOut) : "--"}
-            </p>
-            {bytesOutTrend != null && (
-              <p className="text-xs text-muted-foreground">
-                {bytesOutTrend >= 0 ? "+" : ""}
-                {bytesOutTrend.toFixed(1)}% vs previous period
-              </p>
-            )}
-          </CardContent>
-        </Card>
+          {/* KPI Cards */}
+          <div className="grid gap-4 md:grid-cols-4">
+            {/* Total In */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">Total In</p>
+                  <TrendArrow value={bytesInTrend} />
+                </div>
+                <p className="mt-1 text-2xl font-bold">
+                  {data ? formatBytes(totalBytesIn) : "--"}
+                </p>
+                {bytesInTrend != null && (
+                  <p className="text-xs text-muted-foreground">
+                    {bytesInTrend >= 0 ? "+" : ""}
+                    {bytesInTrend.toFixed(1)}% vs previous period
+                  </p>
+                )}
+              </CardContent>
+            </Card>
 
-        {/* Events Reduced */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-muted-foreground">Events Reduced</p>
-              <TrendArrow value={eventsReducedDelta} invertColor />
-            </div>
-            <p
-              className={cn(
-                "mt-1 text-2xl font-bold",
-                eventsReducedPercent != null && eventsReducedPercent > 50
-                  ? "text-green-600 dark:text-green-400"
-                  : eventsReducedPercent != null && eventsReducedPercent > 10
-                    ? "text-amber-600 dark:text-amber-400"
-                    : "text-muted-foreground",
-              )}
-            >
-              {eventsReducedPercent != null ? `${eventsReducedPercent.toFixed(1)}%` : "--"}
-            </p>
-            {eventsReducedDelta != null && (
-              <p className="text-xs text-muted-foreground">
-                {eventsReducedDelta >= 0 ? "+" : ""}
-                {eventsReducedDelta.toFixed(1)} pp vs last period
-              </p>
-            )}
-          </CardContent>
-        </Card>
+            {/* Total Out */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">Total Out</p>
+                  <TrendArrow value={bytesOutTrend} />
+                </div>
+                <p className="mt-1 text-2xl font-bold">
+                  {data ? formatBytes(totalBytesOut) : "--"}
+                </p>
+                {bytesOutTrend != null && (
+                  <p className="text-xs text-muted-foreground">
+                    {bytesOutTrend >= 0 ? "+" : ""}
+                    {bytesOutTrend.toFixed(1)}% vs previous period
+                  </p>
+                )}
+              </CardContent>
+            </Card>
 
-        {/* Bytes Saved */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                <p className="text-sm font-medium text-muted-foreground">Bytes Saved</p>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Total bytes saved including sink compression and encoding
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <TrendArrow value={bytesSavedDelta} invertColor />
-            </div>
-            <p className="mt-1 text-2xl font-bold text-muted-foreground">
-              {bytesSavedPercent != null ? `${bytesSavedPercent.toFixed(1)}%` : "--"}
-            </p>
-            {bytesSavedDelta != null && (
-              <p className="text-xs text-muted-foreground">
-                {bytesSavedDelta >= 0 ? "+" : ""}
-                {bytesSavedDelta.toFixed(1)} pp vs last period
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            {/* Events Reduced */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">Events Reduced</p>
+                  <TrendArrow value={eventsReducedDelta} invertColor />
+                </div>
+                <p
+                  className={cn(
+                    "mt-1 text-2xl font-bold",
+                    eventsReducedPercent != null && eventsReducedPercent > 50
+                      ? "text-green-600 dark:text-green-400"
+                      : eventsReducedPercent != null && eventsReducedPercent > 10
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-muted-foreground",
+                  )}
+                >
+                  {eventsReducedPercent != null ? `${eventsReducedPercent.toFixed(1)}%` : "--"}
+                </p>
+                {eventsReducedDelta != null && (
+                  <p className="text-xs text-muted-foreground">
+                    {eventsReducedDelta >= 0 ? "+" : ""}
+                    {eventsReducedDelta.toFixed(1)} pp vs last period
+                  </p>
+                )}
+              </CardContent>
+            </Card>
 
-      {/* Volume Over Time Chart */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm font-medium">
-            Volume Over Time
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {chartData.length === 0 ? (
-            <div
-              className="flex flex-col items-center justify-center text-muted-foreground"
-              style={{ height: 300 }}
-            >
-              <Inbox className="h-8 w-8 text-muted-foreground/50" />
-              <p className="mt-2 text-sm">No data for selected time range</p>
-            </div>
-          ) : (
-            <ChartContainer config={chartConfig} className="w-full" style={{ height: 300 }}>
-              <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
-                <XAxis
-                  dataKey="t"
-                  tick={{ fontSize: 10 }}
-                  tickFormatter={(v) => formatTimeAxis(v, range)}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  tick={{ fontSize: 10 }}
-                  width={65}
-                  tickFormatter={formatBytes}
-                  domain={["auto", "auto"]}
-                />
-                <ChartTooltip
-                  content={
-                    <ChartTooltipContent
-                      labelFormatter={(_value: string, payload: Array<{ payload?: { t?: number } }>) => {
-                        const timestamp = payload?.[0]?.payload?.t;
-                        if (!timestamp) return "";
-                        return new Date(Number(timestamp)).toLocaleString([], {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        });
-                      }}
-                      formatter={(value, name) => (
-                        <div className="flex w-full items-center justify-between gap-2">
-                          <span className="text-muted-foreground">
-                            {chartConfig[name as string]?.label ?? name}
-                          </span>
-                          <span className="font-mono font-medium tabular-nums text-foreground">
-                            {formatBytes(value as number)}
-                          </span>
-                        </div>
-                      )}
+            {/* Bytes Saved */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    <p className="text-sm font-medium text-muted-foreground">Bytes Saved</p>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Total bytes saved including sink compression and encoding
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <TrendArrow value={bytesSavedDelta} invertColor />
+                </div>
+                <p className="mt-1 text-2xl font-bold text-muted-foreground">
+                  {bytesSavedPercent != null ? `${bytesSavedPercent.toFixed(1)}%` : "--"}
+                </p>
+                {bytesSavedDelta != null && (
+                  <p className="text-xs text-muted-foreground">
+                    {bytesSavedDelta >= 0 ? "+" : ""}
+                    {bytesSavedDelta.toFixed(1)} pp vs last period
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Volume Over Time Chart */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                Volume Over Time
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {chartData.length === 0 ? (
+                <div
+                  className="flex flex-col items-center justify-center text-muted-foreground"
+                  style={{ height: 300 }}
+                >
+                  <Inbox className="h-8 w-8 text-muted-foreground/50" />
+                  <p className="mt-2 text-sm">No data for selected time range</p>
+                </div>
+              ) : (
+                <ChartContainer config={chartConfig} className="w-full" style={{ height: 300 }}>
+                  <AreaChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                    <XAxis
+                      dataKey="t"
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(v) => formatTimeAxis(v, range)}
+                      interval="preserveStartEnd"
                     />
-                  }
-                />
-                <Area
-                  type="monotone"
-                  dataKey="bytesIn"
-                  stroke="var(--color-bytesIn)"
-                  fill="var(--color-bytesIn)"
-                  fillOpacity={0.2}
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="bytesOut"
-                  stroke="var(--color-bytesOut)"
-                  fill="var(--color-bytesOut)"
-                  fillOpacity={0.2}
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-              </AreaChart>
-            </ChartContainer>
-          )}
-        </CardContent>
-      </Card>
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      width={65}
+                      tickFormatter={formatBytes}
+                      domain={["auto", "auto"]}
+                    />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          labelFormatter={(_value: string, payload: Array<{ payload?: { t?: number } }>) => {
+                            const timestamp = payload?.[0]?.payload?.t;
+                            if (!timestamp) return "";
+                            return new Date(Number(timestamp)).toLocaleString([], {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            });
+                          }}
+                          formatter={(value, name) => (
+                            <div className="flex w-full items-center justify-between gap-2">
+                              <span className="text-muted-foreground">
+                                {chartConfig[name as string]?.label ?? name}
+                              </span>
+                              <span className="font-mono font-medium tabular-nums text-foreground">
+                                {formatBytes(value as number)}
+                              </span>
+                            </div>
+                          )}
+                        />
+                      }
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="bytesIn"
+                      stroke="var(--color-bytesIn)"
+                      fill="var(--color-bytesIn)"
+                      fillOpacity={0.2}
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="bytesOut"
+                      stroke="var(--color-bytesOut)"
+                      fill="var(--color-bytesOut)"
+                      fillOpacity={0.2}
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </AreaChart>
+                </ChartContainer>
+              )}
+            </CardContent>
+          </Card>
 
-      {/* Per-Pipeline Breakdown Table */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Per-Pipeline Breakdown</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {sortedPipelines.length === 0 ? (
-            <div className="flex items-center justify-center py-8 text-xs text-muted-foreground">
-              No pipeline data for selected time range
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="select-none">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort("pipelineName")}
-                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
-                      aria-label={`Sort by pipeline name${sortKey === "pipelineName" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
-                    >
-                      Pipeline Name{sortIndicator("pipelineName")}
-                    </button>
-                  </TableHead>
-                  <TableHead className="select-none text-right">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort("bytesIn")}
-                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer ml-auto"
-                      aria-label={`Sort by bytes in${sortKey === "bytesIn" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
-                    >
-                      Bytes In{sortIndicator("bytesIn")}
-                    </button>
-                  </TableHead>
-                  <TableHead className="select-none text-right">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort("bytesOut")}
-                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer ml-auto"
-                      aria-label={`Sort by bytes out${sortKey === "bytesOut" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
-                    >
-                      Bytes Out{sortIndicator("bytesOut")}
-                    </button>
-                  </TableHead>
-                  <TableHead className="select-none text-right">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort("eventsReduced")}
-                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer ml-auto"
-                      aria-label={`Sort by events reduced${sortKey === "eventsReduced" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
-                    >
-                      Events Reduced{sortIndicator("eventsReduced")}
-                    </button>
-                  </TableHead>
-                  <TableHead className="select-none text-right">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort("reduction")}
-                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer ml-auto"
-                      aria-label={`Sort by bytes saved${sortKey === "reduction" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
-                    >
-                      Bytes Saved{sortIndicator("reduction")}
-                    </button>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedPipelines.map((p: PipelineRow) => (
-                  <TableRow key={p.pipelineId}>
-                    <TableCell className="font-medium">{p.pipelineName}</TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
-                      {formatBytes(p.bytesIn)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
-                      {formatBytes(p.bytesOut)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <div className="h-2 w-16 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className={cn(
-                              "h-full rounded-full transition-[width] duration-300",
-                              p.eventsReduced > 50
-                                ? "bg-green-500"
-                                : p.eventsReduced > 10
-                                  ? "bg-amber-500"
-                                  : "bg-muted-foreground/30",
-                            )}
-                            style={{ width: `${Math.max(0, Math.min(100, p.eventsReduced))}%` }}
-                          />
-                        </div>
-                        <span className="font-mono text-sm tabular-nums w-14 text-right">
-                          {p.eventsReduced.toFixed(1)}%
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <div className="h-2 w-16 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className={cn(
-                              "h-full rounded-full transition-[width] duration-300",
-                              p.reduction >= 50
-                                ? "bg-green-500"
-                                : p.reduction >= 20
-                                  ? "bg-amber-500"
-                                  : "bg-red-400",
-                            )}
-                            style={{ width: `${Math.max(0, Math.min(100, p.reduction))}%` }}
-                          />
-                        </div>
-                        <span className="font-mono text-sm tabular-nums w-14 text-right">
-                          {p.reduction.toFixed(1)}%
-                        </span>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          {/* Per-Pipeline Breakdown Table */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Per-Pipeline Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {sortedPipelines.length === 0 ? (
+                <div className="flex items-center justify-center py-8 text-xs text-muted-foreground">
+                  No pipeline data for selected time range
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="select-none">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort("pipelineName")}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
+                          aria-label={`Sort by pipeline name${sortKey === "pipelineName" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
+                        >
+                          Pipeline Name{sortIndicator("pipelineName")}
+                        </button>
+                      </TableHead>
+                      <TableHead className="select-none text-right">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort("bytesIn")}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer ml-auto"
+                          aria-label={`Sort by bytes in${sortKey === "bytesIn" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
+                        >
+                          Bytes In{sortIndicator("bytesIn")}
+                        </button>
+                      </TableHead>
+                      <TableHead className="select-none text-right">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort("bytesOut")}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer ml-auto"
+                          aria-label={`Sort by bytes out${sortKey === "bytesOut" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
+                        >
+                          Bytes Out{sortIndicator("bytesOut")}
+                        </button>
+                      </TableHead>
+                      <TableHead className="select-none text-right">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort("eventsReduced")}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer ml-auto"
+                          aria-label={`Sort by events reduced${sortKey === "eventsReduced" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
+                        >
+                          Events Reduced{sortIndicator("eventsReduced")}
+                        </button>
+                      </TableHead>
+                      <TableHead className="select-none text-right">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort("reduction")}
+                          className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer ml-auto"
+                          aria-label={`Sort by bytes saved${sortKey === "reduction" ? `, currently ${sortDir === "asc" ? "ascending" : "descending"}` : ""}`}
+                        >
+                          Bytes Saved{sortIndicator("reduction")}
+                        </button>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedPipelines.map((p: PipelineRow) => (
+                      <TableRow key={p.pipelineId}>
+                        <TableCell className="font-medium">{p.pipelineName}</TableCell>
+                        <TableCell className="text-right font-mono tabular-nums">
+                          {formatBytes(p.bytesIn)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums">
+                          {formatBytes(p.bytesOut)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="h-2 w-16 rounded-full bg-muted overflow-hidden">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-[width] duration-300",
+                                  p.eventsReduced > 50
+                                    ? "bg-green-500"
+                                    : p.eventsReduced > 10
+                                      ? "bg-amber-500"
+                                      : "bg-muted-foreground/30",
+                                )}
+                                style={{ width: `${Math.max(0, Math.min(100, p.eventsReduced))}%` }}
+                              />
+                            </div>
+                            <span className="font-mono text-sm tabular-nums w-14 text-right">
+                              {p.eventsReduced.toFixed(1)}%
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="h-2 w-16 rounded-full bg-muted overflow-hidden">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-[width] duration-300",
+                                  p.reduction >= 50
+                                    ? "bg-green-500"
+                                    : p.reduction >= 20
+                                      ? "bg-amber-500"
+                                      : "bg-red-400",
+                                )}
+                                style={{ width: `${Math.max(0, Math.min(100, p.reduction))}%` }}
+                              />
+                            </div>
+                            <span className="font-mono text-sm tabular-nums w-14 text-right">
+                              {p.reduction.toFixed(1)}%
+                            </span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-      {selectedEnvironmentId && (
-        <RecommendationsPanel environmentId={selectedEnvironmentId} />
-      )}
+          {selectedEnvironmentId && (
+            <RecommendationsPanel environmentId={selectedEnvironmentId} />
+          )}
+        </TabsContent>
+        <TabsContent value="costs">
+          <CostDashboard />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

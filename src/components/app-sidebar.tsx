@@ -13,7 +13,6 @@ import {
   Rocket,
   Bell,
   BarChart3,
-  DollarSign,
   Settings,
   ChevronsLeft,
   ChevronsRight,
@@ -54,7 +53,6 @@ const navItems = [
   { title: "Deployments", href: "/audit/deployments", icon: Rocket },
   { title: "Alerts", href: "/alerts", icon: Bell },
   { title: "Analytics", href: "/analytics", icon: BarChart3 },
-  { title: "Costs", href: "/analytics/costs", icon: DollarSign },
   { title: "Settings", href: "/settings", icon: Settings, requiredRole: "ADMIN" as const },
 ];
 
