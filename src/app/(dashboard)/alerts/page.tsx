@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, Layers, List } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 import { AlertRulesSection } from "./_components/alert-rules-section";
 import { NotificationChannelsSection } from "./_components/notification-channels-section";
@@ -78,12 +78,9 @@ export default function AlertsPage() {
             <AlertTriangle className="h-4 w-4" />
             Anomalies
             {totalAnomalies > 0 && (
-              <Badge
-                variant="outline"
-                className="ml-1 border-transparent bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 tabular-nums"
-              >
+              <StatusBadge variant="error" className="ml-1">
                 {totalAnomalies}
-              </Badge>
+              </StatusBadge>
             )}
           </TabsTrigger>
         </TabsList>
