@@ -42,6 +42,7 @@ import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
 import { formatLastSeen } from "@/lib/format";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { isVersionOlder } from "@/lib/version";
+import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { FleetListToolbar } from "@/components/fleet/fleet-list-toolbar";
@@ -49,6 +50,8 @@ import { FleetTabs } from "@/components/fleet/fleet-tabs";
 import { ArrowUp, ArrowDown } from "lucide-react";
 import { useFleetListFilters } from "@/hooks/use-fleet-list-filters";
 import { useAgentUpdateTracker } from "@/hooks/use-agent-update-tracker";
+
+const AGENT_REPO = "TerrifiedBug/vectorflow";
 
 export default function FleetPage() {
   const trpc = useTRPC();
@@ -282,6 +285,18 @@ export default function FleetPage() {
 
   const updateTracker = useAgentUpdateTracker();
 
+  const triggerUpdate = useMutation(
+    trpc.fleet.triggerAgentUpdate.mutationOptions({
+      onSuccess: (_data, variables) => {
+        queryClient.invalidateQueries({ queryKey: trpc.fleet.list.queryKey() });
+        updateTracker.startTracking(variables.nodeId, variables.targetVersion);
+      },
+      onError: (error) => {
+        toast.error("Failed to trigger update: " + error.message, { duration: 6000 });
+      },
+    }),
+  );
+
   const setMaintenance = useMutation(
     trpc.fleet.setMaintenanceMode.mutationOptions({
       onSuccess: () => {
@@ -445,11 +460,36 @@ export default function FleetPage() {
                     </span>
                     {getNodeLatest(node).version &&
                       node.agentVersion &&
-                      isVersionOlder(node.agentVersion, getNodeLatest(node).version ?? "") && (
-                        <Badge variant="outline" className="text-amber-600">
-                          Update available
+                      isVersionOlder(node.agentVersion, getNodeLatest(node).version ?? "") &&
+                      (node.deploymentMode === "DOCKER" ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="outline" className="text-amber-600">
+                              Update available
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>Update via Docker image pull</TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-amber-600 cursor-pointer hover:bg-amber-600/10 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const latest = getNodeLatest(node);
+                            triggerUpdate.mutate({
+                              nodeId: node.id,
+                              targetVersion: latest.version!,
+                              downloadUrl: `https://github.com/${AGENT_REPO}/releases/download/${latest.tag}/vf-agent-linux-amd64`,
+                              checksum: `sha256:${latest.checksums["vf-agent-linux-amd64"] ?? ""}`,
+                            });
+                          }}
+                        >
+                          {triggerUpdate.isPending && triggerUpdate.variables?.nodeId === node.id
+                            ? "Updating..."
+                            : "Update available"}
                         </Badge>
-                      )}
+                      ))}
                     {node.deploymentMode === "DOCKER" && (
                       <Badge variant="secondary" className="text-xs">
                         Docker
@@ -459,6 +499,16 @@ export default function FleetPage() {
                       <Badge variant="secondary" className="text-xs">
                         Binary
                       </Badge>
+                    )}
+                    {node.lastUpdateError && !node.pendingAction && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge variant="destructive" className="text-xs">
+                            Update failed
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>{node.lastUpdateError}</TooltipContent>
+                      </Tooltip>
                     )}
                   </div>
                 </TableCell>
