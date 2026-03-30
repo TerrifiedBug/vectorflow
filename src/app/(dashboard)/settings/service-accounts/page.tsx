@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
@@ -8,7 +7,6 @@ import { useTeamStore } from "@/stores/team-store";
 import { copyToClipboard } from "@/lib/utils";
 import { toast } from "sonner";
 import {
-  ArrowLeft,
   Plus,
   Loader2,
   Copy,
@@ -47,6 +45,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Breadcrumb } from "@/components/breadcrumb";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import {
@@ -644,12 +643,11 @@ export function ServiceAccountsSettings() {
 export default function ServiceAccountsPage() {
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center gap-4 mb-6">
-        <Link href="/settings">
-          <Button variant="ghost" size="icon">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+      <div className="space-y-2 mb-6">
+        <Breadcrumb items={[
+          { label: "Settings", href: "/settings" },
+          { label: "Service Accounts" },
+        ]} />
         <h1 className="text-2xl font-semibold">Service Accounts</h1>
       </div>
       <ServiceAccountsSettings />
