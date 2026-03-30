@@ -1,7 +1,7 @@
 services:
   postgres:
     container_name: vectorflow-postgres
-    image: postgres:17-alpine
+    image: timescale/timescaledb:latest-pg16
     environment:
       POSTGRES_DB: vectorflow
       POSTGRES_USER: vectorflow

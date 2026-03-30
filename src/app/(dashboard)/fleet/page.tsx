@@ -317,7 +317,7 @@ export default function FleetPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" role="region" aria-label="Fleet management">
       <FleetTabs active="nodes" />
 
       {/* Toolbar — shown when not loading and nodes exist or filters active */}
@@ -623,7 +623,7 @@ export default function FleetPage() {
       )}
 
       {activeEnvId && (
-        <div className="space-y-4">
+        <div className="space-y-4" role="region" aria-label="Fleet overview">
           <h3 className="text-lg font-semibold">Fleet Overview</h3>
 
           {/* Top section: Node summary cards */}
@@ -730,6 +730,12 @@ export default function FleetPage() {
           }
         }}
       />
+      {/* Screen reader announcements for real-time fleet status changes */}
+      <div className="sr-only" aria-live="assertive" aria-atomic="true" role="alert">
+        {nodesQuery.data && nodesQuery.data.some((n) => n.status === "UNREACHABLE")
+          ? `Warning: ${nodesQuery.data.filter((n) => n.status === "UNREACHABLE").length} node${nodesQuery.data.filter((n) => n.status === "UNREACHABLE").length === 1 ? " is" : "s are"} unreachable`
+          : null}
+      </div>
     </div>
   );
 }

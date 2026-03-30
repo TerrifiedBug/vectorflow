@@ -10,6 +10,7 @@ export default defineConfig({
   test: {
     globals: false,
     exclude: ["src/generated/**", "node_modules/**"],
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "docker/**/*.test.ts"],
+    environment: "node",
   },
 });

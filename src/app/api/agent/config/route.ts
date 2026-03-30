@@ -6,8 +6,12 @@ import { collectSecretRefs, convertSecretRefsToEnvVars, resolveCertRefs, secretN
 import { decrypt } from "@/server/services/crypto";
 import { createHash } from "crypto";
 import { setExpectedChecksum } from "@/server/services/drift-metrics";
+import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 
 export async function GET(request: Request) {
+  const rateLimited = checkTokenRateLimit(request, "config", 30);
+  if (rateLimited) return rateLimited;
+
   const agent = await authenticateAgent(request);
   if (!agent) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
