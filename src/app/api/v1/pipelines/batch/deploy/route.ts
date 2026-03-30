@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/server/services/audit";
 import { apiRoute } from "../../../_lib/api-handler";
 import { deployBatch } from "@/server/services/deploy-agent";
@@ -37,6 +38,22 @@ export const POST = apiRoute(
     }
 
     const { pipelineIds, changelog } = parsed.data;
+
+    // Verify all pipelines belong to the service account's environment
+    const owned = await prisma.pipeline.findMany({
+      where: {
+        id: { in: pipelineIds },
+        environmentId: ctx.environmentId,
+      },
+      select: { id: true },
+    });
+
+    if (owned.length !== pipelineIds.length) {
+      return NextResponse.json(
+        { error: "One or more pipeline IDs are not accessible in this environment" },
+        { status: 403 },
+      );
+    }
 
     const result = await deployBatch(
       pipelineIds,

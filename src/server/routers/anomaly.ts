@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { prisma } from "@/lib/prisma";
 import {
   listAnomalies,
   acknowledgeAnomaly,
@@ -47,18 +49,32 @@ export const anomalyRouter = router({
   // ─── Acknowledge an anomaly ────────────────────────────────────────────
 
   acknowledge: protectedProcedure
-    .input(z.object({ anomalyId: z.string() }))
+    .input(z.object({ environmentId: z.string(), anomalyId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
     .mutation(async ({ ctx, input }) => {
-      const userId = ctx.session.user.id!;
-      return acknowledgeAnomaly(input.anomalyId, userId);
+      const anomaly = await prisma.anomalyEvent.findUnique({
+        where: { id: input.anomalyId },
+        select: { environmentId: true },
+      });
+      if (!anomaly || anomaly.environmentId !== input.environmentId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Anomaly not found" });
+      }
+      return acknowledgeAnomaly(input.anomalyId, ctx.session.user.id!);
     }),
 
   // ─── Dismiss an anomaly ────────────────────────────────────────────────
 
   dismiss: protectedProcedure
-    .input(z.object({ anomalyId: z.string() }))
+    .input(z.object({ environmentId: z.string(), anomalyId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
     .mutation(async ({ ctx, input }) => {
-      const userId = ctx.session.user.id!;
-      return dismissAnomaly(input.anomalyId, userId);
+      const anomaly = await prisma.anomalyEvent.findUnique({
+        where: { id: input.anomalyId },
+        select: { environmentId: true },
+      });
+      if (!anomaly || anomaly.environmentId !== input.environmentId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Anomaly not found" });
+      }
+      return dismissAnomaly(input.anomalyId, ctx.session.user.id!);
     }),
 });

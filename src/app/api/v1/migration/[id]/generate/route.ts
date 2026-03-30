@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiRoute } from "../../../_lib/api-handler";
+import { resolveTeamForEnv } from "../../../_lib/resolve-team";
 import { generatePipeline } from "@/server/services/migration/pipeline-generator";
 import type { TranslationResult } from "@/server/services/migration/types";
 
@@ -29,11 +30,13 @@ export const POST = apiRoute(
       );
     }
 
+    const teamId = await resolveTeamForEnv(ctx.environmentId);
+
     const project = await prisma.migrationProject.findUnique({
       where: { id },
     });
 
-    if (!project) {
+    if (!project || project.teamId !== teamId) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
