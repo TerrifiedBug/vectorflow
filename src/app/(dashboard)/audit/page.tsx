@@ -29,6 +29,7 @@ import { useTeamStore } from "@/stores/team-store";
 import { formatTimestamp } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { getAuditActionLabel } from "@/lib/audit-actions";
 
 const ALL_VALUE = "__all__";
 const SCIM_VALUE = "__SCIM__";
@@ -397,7 +398,7 @@ export default function AuditPage() {
                           className={`max-w-full truncate ${getActionColor(entry.action)}`}
                           title={entry.action}
                         >
-                          {entry.action}
+                          {getAuditActionLabel(entry.action)}
                         </Badge>
                       </TableCell>
                       <TableCell>
