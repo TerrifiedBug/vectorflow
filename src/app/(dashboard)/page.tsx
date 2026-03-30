@@ -20,6 +20,7 @@ import {
   Workflow,
   Settings,
   LayoutDashboard,
+  Lightbulb,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
@@ -118,6 +119,13 @@ export default function DashboardPage() {
   );
   const anomalySeveritiesQuery = useQuery(
     trpc.anomaly.maxSeverityByPipeline.queryOptions(
+      { environmentId: selectedEnvironmentId ?? "" },
+      { enabled: !!selectedEnvironmentId && activeView === null },
+    ),
+  );
+
+  const costSummaryQuery = useQuery(
+    trpc.costRecommendation.summary.queryOptions(
       { environmentId: selectedEnvironmentId ?? "" },
       { enabled: !!selectedEnvironmentId && activeView === null },
     ),
@@ -456,6 +464,32 @@ export default function DashboardPage() {
             </Card>
             </StaggerItem>
           </StaggerList>
+          )}
+
+          {/* Cost Recommendations Banner */}
+          {(costSummaryQuery.data?.pendingCount ?? 0) > 0 && (
+            <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900/50 dark:bg-amber-950/20">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40">
+                  <Lightbulb className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">
+                    {costSummaryQuery.data!.pendingCount} cost optimization{" "}
+                    {costSummaryQuery.data!.pendingCount === 1
+                      ? "recommendation"
+                      : "recommendations"}{" "}
+                    available
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Review recommendations to reduce data volume and optimize costs
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/analytics?tab=costs">View recommendations</Link>
+                </Button>
+              </CardContent>
+            </Card>
           )}
 
           {/* Metrics Filter Bar */}

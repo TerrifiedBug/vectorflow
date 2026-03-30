@@ -33,6 +33,7 @@ import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { PageHeader } from "@/components/page-header";
 import { DeploymentHistory } from "./deployments/page";
+import { getAuditActionLabel } from "@/lib/audit-actions";
 
 const ALL_VALUE = "__all__";
 const SCIM_VALUE = "__SCIM__";
@@ -378,7 +379,7 @@ export default function AuditPage() {
                 <TableHead className="hidden xl:table-cell">IP Address</TableHead>
                 <TableHead>Action</TableHead>
                 <TableHead>Entity Type</TableHead>
-                <TableHead className="max-w-[180px]">Entity ID</TableHead>
+                <TableHead className="hidden xl:table-cell max-w-[180px]">Entity ID</TableHead>
                 <TableHead className="hidden lg:table-cell">Details</TableHead>
               </TableRow>
             </TableHeader>
@@ -424,7 +425,7 @@ export default function AuditPage() {
                           className={`max-w-full truncate ${getActionColor(entry.action)}`}
                           title={entry.action}
                         >
-                          {entry.action}
+                          {getAuditActionLabel(entry.action)}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -432,7 +433,7 @@ export default function AuditPage() {
                           {entry.entityType}
                         </Badge>
                       </TableCell>
-                      <TableCell className="font-mono text-xs tabular-nums max-w-[180px] truncate" title={entry.entityId}>
+                      <TableCell className="hidden xl:table-cell font-mono text-xs tabular-nums max-w-[180px] truncate" title={entry.entityId}>
                         {entry.entityId}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell text-xs text-muted-foreground max-w-[300px] truncate">
@@ -451,6 +452,12 @@ export default function AuditPage() {
                               <div className="xl:hidden">
                                 <p className="text-xs font-medium text-muted-foreground mb-1">IP Address</p>
                                 <span className="text-xs font-mono tabular-nums">{entry.ipAddress}</span>
+                              </div>
+                            )}
+                            {entry.entityId && (
+                              <div className="xl:hidden">
+                                <p className="text-xs font-medium text-muted-foreground mb-1">Entity ID</p>
+                                <span className="text-xs font-mono tabular-nums break-all">{entry.entityId}</span>
                               </div>
                             )}
                             {hasMetadata && (
