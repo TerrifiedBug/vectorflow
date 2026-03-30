@@ -87,6 +87,13 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
         return;
       }
 
+      // Escape → Deselect all nodes and edges — only when canvas has focus
+      if (e.key === "Escape" && isCanvasFocused) {
+        e.preventDefault();
+        useFlowStore.getState().deselectAll();
+        return;
+      }
+
       // Delete / Backspace → Delete selected node or edge — only when canvas has focus
       if ((e.key === "Delete" || e.key === "Backspace") && isCanvasFocused) {
         if (selectedNodeId) {

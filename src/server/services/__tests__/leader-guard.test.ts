@@ -44,6 +44,11 @@ vi.mock("@/server/services/git-sync-retry", () => ({
   initGitSyncRetryService: () => mockInitGitSyncRetryService(),
 }));
 
+const mockInitAnomalyDetectionService = vi.fn();
+vi.mock("@/server/services/anomaly-detection-job", () => ({
+  initAnomalyDetectionService: () => mockInitAnomalyDetectionService(),
+}));
+
 // Mock prisma and other dependencies used by register()
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -68,6 +73,7 @@ const allSingletonInits = () => [
   mockInitStagedRolloutService,
   mockInitFleetAlertService,
   mockInitGitSyncRetryService,
+  mockInitAnomalyDetectionService,
 ];
 
 // ─── Tests ──────────────────────────────────────────────────────────────────

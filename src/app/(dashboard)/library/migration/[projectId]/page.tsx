@@ -1,0 +1,274 @@
+"use client";
+
+import { use, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTRPC } from "@/trpc/client";
+import { useTeamStore } from "@/stores/team-store";
+import { useEnvironmentStore } from "@/stores/environment-store";
+import {
+  ArrowLeft,
+  Play,
+  CheckCircle,
+  Loader2,
+  Download,
+  ExternalLink,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+
+import { MigrationTopology } from "@/components/migration/migration-topology";
+import { BlockDetailPanel } from "@/components/migration/block-detail-panel";
+import { ConfigViewer } from "@/components/migration/config-viewer";
+import { ReadinessBadge } from "@/components/migration/readiness-badge";
+import type { ParsedConfig, TranslationResult } from "@/server/services/migration/types";
+
+export default function MigrationProjectPage({
+  params,
+}: {
+  params: Promise<{ projectId: string }>;
+}) {
+  const { projectId } = use(params);
+  const trpc = useTRPC();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
+  const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
+
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+
+  const projectQuery = useQuery(
+    trpc.migration.get.queryOptions(
+      { id: projectId, teamId: selectedTeamId! },
+      { enabled: !!selectedTeamId },
+    ),
+  );
+
+  const project = projectQuery.data;
+  const parsedConfig = project?.parsedTopology as unknown as ParsedConfig | null;
+  const translationResult = project?.translatedBlocks as unknown as TranslationResult | null;
+
+  const selectedBlock = parsedConfig?.blocks.find((b) => b.id === selectedBlockId) ?? null;
+  const selectedTranslation = translationResult?.blocks.find(
+    (b) => b.blockId === selectedBlockId,
+  ) ?? null;
+
+  const translateMutation = useMutation(
+    trpc.migration.translate.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.migration.get.queryKey() });
+        toast.success("Translation complete");
+      },
+      onError: (err) => {
+        toast.error(err.message);
+      },
+    }),
+  );
+
+  const validateMutation = useMutation(
+    trpc.migration.validate.mutationOptions({
+      onSuccess: (result) => {
+        queryClient.invalidateQueries({ queryKey: trpc.migration.get.queryKey() });
+        if (result.valid) {
+          toast.success("Validation passed");
+        } else {
+          toast.error(`Validation failed: ${result.errors.length} errors`);
+        }
+      },
+    }),
+  );
+
+  const generateMutation = useMutation(
+    trpc.migration.generate.mutationOptions({
+      onSuccess: (result) => {
+        queryClient.invalidateQueries({ queryKey: trpc.migration.get.queryKey() });
+        toast.success("Pipeline generated");
+        router.push(`/pipelines/${result.pipelineId}`);
+      },
+      onError: (err) => {
+        toast.error(err.message);
+      },
+    }),
+  );
+
+  const retranslateMutation = useMutation(
+    trpc.migration.retranslateBlock.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.migration.get.queryKey() });
+        toast.success("Block re-translated");
+      },
+    }),
+  );
+
+  const handleTranslate = () => {
+    if (!selectedTeamId) return;
+    translateMutation.mutate({ id: projectId, teamId: selectedTeamId });
+  };
+
+  const handleValidate = () => {
+    if (!selectedTeamId) return;
+    validateMutation.mutate({ id: projectId, teamId: selectedTeamId });
+  };
+
+  const handleGenerate = () => {
+    if (!selectedTeamId || !selectedEnvironmentId || !project) return;
+    generateMutation.mutate({
+      id: projectId,
+      teamId: selectedTeamId,
+      environmentId: selectedEnvironmentId,
+      pipelineName: `${project.name} (migrated)`,
+    });
+  };
+
+  const handleRetranslateBlock = (blockId: string) => {
+    if (!selectedTeamId) return;
+    retranslateMutation.mutate({
+      id: projectId,
+      teamId: selectedTeamId,
+      blockId,
+    });
+  };
+
+  if (projectQuery.isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!project) {
+    return <div className="p-8">Project not found</div>;
+  }
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-background shrink-0">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push("/library/migration")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-lg font-semibold">{project.name}</h1>
+          <Badge variant="outline">{project.platform}</Badge>
+          <ReadinessBadge score={project.readinessScore} />
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Translate with AI */}
+          {parsedConfig && !translationResult && (
+            <Button
+              size="sm"
+              onClick={handleTranslate}
+              disabled={translateMutation.isPending}
+            >
+              {translateMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4 mr-1" />
+              )}
+              Translate with AI
+            </Button>
+          )}
+
+          {/* Validate */}
+          {translationResult && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleValidate}
+              disabled={validateMutation.isPending}
+            >
+              {validateMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <CheckCircle className="h-4 w-4 mr-1" />
+              )}
+              Validate
+            </Button>
+          )}
+
+          {/* Generate Pipeline */}
+          {translationResult && selectedEnvironmentId && (
+            <Button
+              size="sm"
+              onClick={handleGenerate}
+              disabled={generateMutation.isPending}
+            >
+              {generateMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-1" />
+              )}
+              Generate Pipeline
+            </Button>
+          )}
+
+          {/* View generated pipeline */}
+          {project.generatedPipeline && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                router.push(`/pipelines/${project.generatedPipeline!.id}`)
+              }
+            >
+              <ExternalLink className="h-4 w-4 mr-1" />
+              View Pipeline
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Three-panel layout */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left panel: Original config */}
+        <div className="w-1/4 min-w-[200px] border-r overflow-y-auto p-4">
+          <h3 className="text-sm font-semibold mb-2">Original Config</h3>
+          <ConfigViewer
+            config={project.originalConfig}
+            selectedLineRange={selectedBlock?.lineRange ?? null}
+          />
+        </div>
+
+        {/* Center: Topology */}
+        <div className="flex-1 min-w-[300px]">
+          {parsedConfig ? (
+            <MigrationTopology
+              parsedConfig={parsedConfig}
+              translationResult={translationResult}
+              selectedBlockId={selectedBlockId}
+              onSelectBlock={setSelectedBlockId}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              Parsing config...
+            </div>
+          )}
+        </div>
+
+        {/* Right panel: Block detail */}
+        <div className="w-1/4 min-w-[200px] border-l overflow-y-auto">
+          {selectedBlock ? (
+            <BlockDetailPanel
+              block={selectedBlock}
+              translation={selectedTranslation}
+              onRetranslate={() => handleRetranslateBlock(selectedBlock.id)}
+              isRetranslating={retranslateMutation.isPending}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+              Select a block in the topology to view details
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

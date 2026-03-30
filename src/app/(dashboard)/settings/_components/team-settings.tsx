@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
+import { CostSettings } from "@/components/analytics/cost-settings";
 import { toast } from "sonner";
 import {
   Shield,
@@ -750,6 +751,9 @@ export function TeamSettings() {
           </form>
         </CardContent>
       </Card>
+
+      {/* Cost Attribution Settings */}
+      <CostSettings />
     </div>
   );
 }
