@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
+import { parseCertExpiry, daysUntilExpiry } from "@/server/services/cert-expiry-checker";
 import { withAudit } from "@/server/middleware/audit";
 
 const MAX_CERT_SIZE = 100 * 1024; // 100KB
@@ -12,11 +13,56 @@ export const certificateRouter = router({
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      return prisma.certificate.findMany({
+      const certs = await prisma.certificate.findMany({
         where: { environmentId: input.environmentId },
-        select: { id: true, name: true, filename: true, fileType: true, createdAt: true },
-        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          filename: true,
+          fileType: true,
+          createdAt: true,
+          encryptedData: true,
+        },
       });
+
+      const now = new Date();
+
+      const enriched = certs.map((cert) => {
+        let expiryDate: string | null = null;
+        let days: number | null = null;
+
+        if (cert.fileType === "cert" || cert.fileType === "ca") {
+          try {
+            const pem = decrypt(cert.encryptedData);
+            const expiry = parseCertExpiry(pem);
+            if (expiry) {
+              expiryDate = expiry.toISOString();
+              days = Math.round(daysUntilExpiry(expiry, now));
+            }
+          } catch {
+            // Decryption or parse failure — leave as null
+          }
+        }
+
+        return {
+          id: cert.id,
+          name: cert.name,
+          filename: cert.filename,
+          fileType: cert.fileType,
+          createdAt: cert.createdAt,
+          expiryDate,
+          daysUntilExpiry: days,
+        };
+      });
+
+      enriched.sort((a, b) => {
+        if (a.daysUntilExpiry === null && b.daysUntilExpiry === null) return a.name.localeCompare(b.name);
+        if (a.daysUntilExpiry === null) return 1;
+        if (b.daysUntilExpiry === null) return -1;
+        return a.daysUntilExpiry - b.daysUntilExpiry;
+      });
+
+      return enriched;
     }),
 
   upload: protectedProcedure
