@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Node, Edge } from "@xyflow/react";
+import type { Node } from "@xyflow/react";
 import type { AiSuggestion } from "../types";
 
 // ─── Mocks (same deps as suggestion-applier.test.ts + xyflow) ───────────────
@@ -34,14 +34,6 @@ function makeNode(
     position: { x: 0, y: 0 },
     data: { componentKey, config },
   };
-}
-
-function makeEdge(
-  source: string,
-  target: string,
-  id = `e-${source}-${target}`,
-): Edge {
-  return { id, source, target };
 }
 
 function baseSuggestion(
