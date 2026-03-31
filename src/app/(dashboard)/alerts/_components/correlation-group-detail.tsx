@@ -57,6 +57,9 @@ export function CorrelationGroupDetail({
             environmentId,
           }),
         });
+        queryClient.invalidateQueries({
+          queryKey: trpc.dashboard.stats.queryKey({ environmentId }),
+        });
       },
       onError: (error) => {
         toast.error(error.message || "Failed to acknowledge group", {
