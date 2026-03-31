@@ -1,6 +1,10 @@
 // src/lib/ai/debug-prompt.ts
 
 import type { SliResult, SliStatus } from "@/server/services/sli-evaluator";
+import {
+  buildSuggestionSchemaBlock,
+  buildVrlReferenceBlock,
+} from "@/lib/ai/shared-prompt-context";
 
 const YAML_CHAR_LIMIT = 16_000;
 
@@ -132,10 +136,30 @@ export function buildDebugSystemPrompt(params: {
   }
   parts.push("");
 
-  // Instructions
+  // Instructions with structured output
   parts.push(
-    "When diagnosing issues, reference specific components by name, cite exact metric values, and point to relevant configuration lines. If SLIs are breached, explain which thresholds were violated and suggest remediation steps.",
+    "When diagnosing issues, reference specific components by name, cite exact metric values, and point to relevant configuration lines.",
+    "If SLIs are breached, explain which thresholds were violated.",
+    "",
+    "When you identify a fix (VRL code change, config change, or component to add/remove), include it as a structured suggestion.",
+    "If no code fix is needed (just explanation), return empty suggestions array.",
+    "",
+    buildSuggestionSchemaBlock("vrl"),
+    "",
+    "Rules:",
+    "- Each suggestion needs a unique id (s1, s2, s3...)",
+    "- For replace_code/remove_code, targetCode MUST be an exact substring of the current VRL code shown in the pipeline YAML",
+    "- Focus on: root cause identification, specific fixes, remediation steps",
+    "- Prioritize: high = causing errors or data loss now, medium = degraded performance, low = potential issue",
+    "- Return valid JSON only. No markdown, no code fences, no commentary outside the JSON.",
+    "- Even in follow-up messages, always return the full JSON object.",
+    "- If diagnosis doesn't require code changes, return empty suggestions with your analysis in summary.",
   );
+
+  // Include VRL reference when YAML contains remap transforms
+  if (params.yaml && params.yaml.includes("remap")) {
+    parts.push("", buildVrlReferenceBlock());
+  }
 
   return parts.join("\n");
 }

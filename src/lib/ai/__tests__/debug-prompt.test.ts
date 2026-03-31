@@ -174,6 +174,28 @@ describe("buildDebugSystemPrompt", () => {
     const result = buildDebugSystemPrompt({});
     expect(result).toContain("debugging");
   });
+
+  it("includes structured suggestion schema", () => {
+    const result = buildDebugSystemPrompt({});
+    expect(result).toContain("insert_code");
+    expect(result).toContain("replace_code");
+    expect(result).toContain("remove_code");
+    expect(result).toContain("suggestions");
+  });
+
+  it("includes VRL reference when YAML contains remap transforms", () => {
+    const result = buildDebugSystemPrompt({
+      yaml: "transforms:\n  parse_logs:\n    type: remap\n    source: .message = downcase(.message)",
+    });
+    expect(result).toContain("VRL Function Reference");
+  });
+
+  it("omits VRL reference when YAML has no remap transforms", () => {
+    const result = buildDebugSystemPrompt({
+      yaml: "sources:\n  stdin:\n    type: stdin",
+    });
+    expect(result).not.toContain("VRL Function Reference");
+  });
 });
 
 // ─── formatSliResults ───────────────────────────────────────────────────────

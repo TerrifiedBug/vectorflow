@@ -38,6 +38,7 @@ interface RecommendationCardProps {
     aiSummary: string | null;
     estimatedSavingsBytes: bigint | null;
     suggestedAction: unknown;
+    aiSuggestions: unknown[] | null;
     createdAt: Date;
     pipeline: { id: string; name: string };
   };
@@ -148,6 +149,15 @@ export function RecommendationCard({
               </span>
             </div>
           )}
+
+        {Array.isArray(recommendation.aiSuggestions) && recommendation.aiSuggestions.length > 0 && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-violet-600 dark:text-violet-400">
+            <Sparkles className="h-3 w-3" />
+            <span>
+              {recommendation.aiSuggestions.length} suggested change{recommendation.aiSuggestions.length > 1 ? "s" : ""} ready to apply
+            </span>
+          </div>
+        )}
       </CardContent>
 
       <CardFooter className="gap-2 pt-0">
