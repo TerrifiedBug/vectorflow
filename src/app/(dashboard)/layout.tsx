@@ -203,7 +203,7 @@ export default function DashboardLayout({
               <span className="text-xs">&#8984;</span>K
             </kbd>
           </button>
-          <div className="ml-auto md:ml-0 flex items-center gap-4">
+          <div className="ml-auto flex items-center gap-4">
             <Button
               variant="ghost"
               size="icon"
