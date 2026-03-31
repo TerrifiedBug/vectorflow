@@ -471,6 +471,7 @@ model CostRecommendation {
   title           String
   description     String               @db.Text
   aiSummary       String?              @db.Text
+  aiSuggestions   Json?                // structured AI suggestions (AiSuggestion[] format from src/lib/ai/types.ts)
   suggestedAction Json?                // { type: "add_filter" | "add_sampling" | "remove_sink" | ..., config: {...} }
   analysisData    Json                 // raw metrics that triggered the recommendation
   estimatedSavingsBytes BigInt?        // estimated bytes/day reduction
