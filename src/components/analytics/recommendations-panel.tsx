@@ -35,11 +35,9 @@ export function RecommendationsPanel({ environmentId }: RecommendationsPanelProp
     ),
   );
 
-  const handleApply = (recommendationId: string, pipelineId: string) => {
-    // Navigate to pipeline editor with recommendation context
-    router.push(
-      `/pipelines/${pipelineId}/edit?recommendation=${recommendationId}`,
-    );
+  const handleApply = (_recommendationId: string, pipelineId: string) => {
+    // Navigate to pipeline editor
+    router.push(`/pipelines/${pipelineId}`);
   };
 
   if (summaryQuery.isLoading) {
