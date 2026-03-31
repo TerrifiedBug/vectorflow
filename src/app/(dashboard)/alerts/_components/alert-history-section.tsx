@@ -392,7 +392,7 @@ export function AlertHistorySection({
       visibleItems.filter(
         (e) =>
           getAlertCategory(e.alertRule.metric) === "actionable" &&
-          e.status !== "resolved",
+          e.status === "firing",
       ).length,
     [visibleItems],
   );
@@ -402,7 +402,7 @@ export function AlertHistorySection({
       visibleItems.filter(
         (e) =>
           getAlertCategory(e.alertRule.metric) === "informational" &&
-          e.status !== "resolved",
+          e.status === "firing",
       ).length,
     [visibleItems],
   );
