@@ -1,6 +1,6 @@
 "use client";
 import { useCallback } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 
 export interface MatrixFilters {
   search: string;
@@ -12,6 +12,7 @@ export interface MatrixFilters {
 export function useMatrixFilters() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
 
   const search = searchParams.get("search") ?? "";
   const statusFilter =
@@ -27,9 +28,9 @@ export function useMatrixFilters() {
       } else {
         params.delete("search");
       }
-      router.replace(`/fleet?${params.toString()}`, { scroll: false });
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [searchParams, router],
+    [searchParams, router, pathname],
   );
 
   const setStatusFilter = useCallback(
@@ -40,9 +41,9 @@ export function useMatrixFilters() {
       } else {
         params.delete("status");
       }
-      router.replace(`/fleet?${params.toString()}`, { scroll: false });
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [searchParams, router],
+    [searchParams, router, pathname],
   );
 
   const setTagFilter = useCallback(
@@ -53,14 +54,14 @@ export function useMatrixFilters() {
       } else {
         params.delete("tags");
       }
-      router.replace(`/fleet?${params.toString()}`, { scroll: false });
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [searchParams, router],
+    [searchParams, router, pathname],
   );
 
   const clearFilters = useCallback(() => {
-    router.replace("/fleet", { scroll: false });
-  }, [router]);
+    router.replace(pathname, { scroll: false });
+  }, [router, pathname]);
 
   const hasActiveFilters =
     search.length > 0 || statusFilter.length > 0 || tagFilter.length > 0;

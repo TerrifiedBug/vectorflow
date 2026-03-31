@@ -14,6 +14,7 @@ import {
 
 import { DeliveryStatusPanel } from "./delivery-status-panel";
 import { AlertTimeline } from "./alert-timeline";
+import { AnomalyHistorySection } from "./anomaly-history-section";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -270,13 +271,21 @@ function AlertEventContent({
 
 // ─── Alert History Section ──────────────────────────────────────────────────────
 
-export function AlertHistorySection({ environmentId }: { environmentId: string }) {
+type AlertCategory = "all" | "actionable" | "informational" | "anomalies";
+
+export function AlertHistorySection({
+  environmentId,
+  initialCategory,
+}: {
+  environmentId: string;
+  initialCategory?: AlertCategory;
+}) {
   const trpc = useTRPC();
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const queryClient = useQueryClient();
   const [allItems, setAllItems] = useState<AlertEventItem[]>([]);
-  const [category, setCategory] = useState<"all" | "actionable" | "informational">("actionable");
+  const [category, setCategory] = useState<AlertCategory>(initialCategory ?? "actionable");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -311,13 +320,16 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
         ...(dateFrom ? { dateFrom } : {}),
         ...(dateTo ? { dateTo } : {}),
       },
-      { enabled: !!environmentId },
+      { enabled: !!environmentId && category !== "anomalies" },
     ),
   );
 
   const invalidateEvents = useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: trpc.alert.listEvents.queryKey({ environmentId }),
+    });
+    queryClient.invalidateQueries({
+      queryKey: trpc.dashboard.stats.queryKey({ environmentId }),
     });
   }, [queryClient, trpc, environmentId]);
 
@@ -395,6 +407,18 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
     [visibleItems],
   );
 
+  const anomalyCountQuery = useQuery(
+    trpc.anomaly.countByPipeline.queryOptions(
+      { environmentId },
+      { enabled: !!environmentId },
+    ),
+  );
+
+  const anomalyCount = useMemo(
+    () => Object.values(anomalyCountQuery.data ?? {}).reduce((sum, count) => sum + count, 0),
+    [anomalyCountQuery.data],
+  );
+
   const hasFilters = statusFilter !== "all" || !!dateFrom || !!dateTo;
 
   const handleAcknowledge = useCallback(
@@ -411,7 +435,45 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
         <h3 className="text-lg font-semibold">Alert History</h3>
       </div>
 
-      {eventsQuery.isError ? (
+      <Tabs
+        value={category}
+        onValueChange={(v) => setCategory(v as AlertCategory)}
+      >
+        <TabsList>
+          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="actionable">
+            Actionable
+            {actionableCount > 0 && (
+              <Badge variant="secondary" size="sm" className="ml-1.5 tabular-nums">
+                {actionableCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="informational">
+            Informational
+            {informationalCount > 0 && (
+              <Badge variant="secondary" size="sm" className="ml-1.5 tabular-nums">
+                {informationalCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="anomalies">
+            Anomalies
+            {anomalyCount > 0 && (
+              <Badge variant="secondary" size="sm" className="ml-1.5 tabular-nums">
+                {anomalyCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {category === "anomalies" ? (
+        <AnomalyHistorySection
+          environmentId={environmentId}
+          hideHeader
+        />
+      ) : eventsQuery.isError ? (
         <QueryError message="Failed to load alert events" onRetry={() => eventsQuery.refetch()} />
       ) : isLoading && !cursor ? (
         <div className="space-y-3">
@@ -419,8 +481,6 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
-      ) : visibleItems.length === 0 && items.length === 0 ? (
-        <EmptyState title="No alert events yet" description="Alert events will appear here when rules are triggered." />
       ) : (
         <>
           <div className="flex flex-wrap items-end gap-4">
@@ -476,76 +536,19 @@ export function AlertHistorySection({ environmentId }: { environmentId: string }
             )}
           </div>
 
-          <Tabs
-            value={category}
-            onValueChange={(v) => setCategory(v as "all" | "actionable" | "informational")}
-          >
-            <TabsList>
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="actionable">
-                Actionable
-                {actionableCount > 0 && (
-                  <Badge variant="secondary" size="sm" className="ml-1.5 tabular-nums">
-                    {actionableCount}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="informational">
-                Informational
-                {informationalCount > 0 && (
-                  <Badge variant="secondary" size="sm" className="ml-1.5 tabular-nums">
-                    {informationalCount}
-                  </Badge>
-                )}
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="all">
-              <AlertEventContent
-                items={filteredItems}
-                nextCursor={nextCursor}
-                isFetchingMore={isFetchingMore}
-                onLoadMore={loadMore}
-                onAcknowledge={handleAcknowledge}
-                isPending={acknowledgeMutation.isPending}
-                category="all"
-                expandedEventId={expandedEventId}
-                onToggleExpand={setExpandedEventId}
-                formatTimestamp={formatTimestamp}
-                hasFilters={hasFilters}
-              />
-            </TabsContent>
-            <TabsContent value="actionable">
-              <AlertEventContent
-                items={filteredItems}
-                nextCursor={nextCursor}
-                isFetchingMore={isFetchingMore}
-                onLoadMore={loadMore}
-                onAcknowledge={handleAcknowledge}
-                isPending={acknowledgeMutation.isPending}
-                category="actionable"
-                expandedEventId={expandedEventId}
-                onToggleExpand={setExpandedEventId}
-                formatTimestamp={formatTimestamp}
-                hasFilters={hasFilters}
-              />
-            </TabsContent>
-            <TabsContent value="informational">
-              <AlertEventContent
-                items={filteredItems}
-                nextCursor={nextCursor}
-                isFetchingMore={isFetchingMore}
-                onLoadMore={loadMore}
-                onAcknowledge={handleAcknowledge}
-                isPending={acknowledgeMutation.isPending}
-                category="informational"
-                expandedEventId={expandedEventId}
-                onToggleExpand={setExpandedEventId}
-                formatTimestamp={formatTimestamp}
-                hasFilters={hasFilters}
-              />
-            </TabsContent>
-          </Tabs>
+          <AlertEventContent
+            items={filteredItems}
+            nextCursor={nextCursor}
+            isFetchingMore={isFetchingMore}
+            onLoadMore={loadMore}
+            onAcknowledge={handleAcknowledge}
+            isPending={acknowledgeMutation.isPending}
+            category={category}
+            expandedEventId={expandedEventId}
+            onToggleExpand={setExpandedEventId}
+            formatTimestamp={formatTimestamp}
+            hasFilters={hasFilters}
+          />
         </>
       )}
     </div>
