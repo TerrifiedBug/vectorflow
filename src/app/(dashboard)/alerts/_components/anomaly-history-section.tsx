@@ -287,6 +287,9 @@ export function AnomalyHistorySection({
     queryClient.invalidateQueries({
       queryKey: trpc.anomaly.countByPipeline.queryKey({ environmentId }),
     });
+    queryClient.invalidateQueries({
+      queryKey: trpc.dashboard.stats.queryKey({ environmentId }),
+    });
   }, [queryClient, trpc, environmentId]);
 
   // ─── Mutations ────────────────────────────────────────────────────────────
