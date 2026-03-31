@@ -22,7 +22,7 @@ export const dashboardRouter = router({
     .query(async ({ input }) => {
       const envFilter = { environment: { id: input.environmentId } };
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      const [pipelineCount, nodeCount, healthyCounts, reductionMetrics, firingAlertCount] = await Promise.all([
+      const [pipelineCount, nodeCount, healthyCounts, reductionMetrics, firingAlertCount, openAnomalyCount] = await Promise.all([
         prisma.pipeline.count({
           where: { environmentId: input.environmentId, isDraft: false, deployedAt: { not: null } },
         }),
@@ -50,6 +50,12 @@ export const dashboardRouter = router({
             alertRule: { environmentId: input.environmentId },
           },
         }),
+        prisma.anomalyEvent.count({
+          where: {
+            environmentId: input.environmentId,
+            status: "open",
+          },
+        }),
       ]);
 
       const healthy = healthyCounts.find((h) => h.status === "HEALTHY")?._count.status ?? 0;
@@ -71,7 +77,7 @@ export const dashboardRouter = router({
           eventsIn: totalEventsIn,
           eventsOut: totalEventsOut,
         },
-        alerts: firingAlertCount,
+        alerts: firingAlertCount + openAnomalyCount,
       };
     }),
 
