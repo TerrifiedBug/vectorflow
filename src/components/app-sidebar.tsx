@@ -111,15 +111,7 @@ export function AppSidebar() {
   const isSubMode = isSettingsMode || isLibraryMode || isPipelinesMode;
 
   const handleBack = () => {
-    if (isSettingsMode) {
-      router.push("/settings");
-    } else if (isLibraryMode) {
-      router.push("/library");
-    } else if (isPipelinesMode) {
-      router.push("/pipelines");
-    } else {
-      router.push("/");
-    }
+    router.push("/");
   };
 
   const { state, toggleSidebar } = useSidebar();
@@ -171,9 +163,9 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isSubMode && !isCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100",
+            isSubMode ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100",
           )}
-          aria-hidden={isSubMode && !isCollapsed}
+          aria-hidden={isSubMode}
         >
           {visibleGroups.map((group) => (
             <SidebarGroup key={group.label}>
@@ -221,9 +213,9 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isSettingsMode && !isCollapsed ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
+            isSettingsMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
           )}
-          aria-hidden={!isSettingsMode || isCollapsed}
+          aria-hidden={!isSettingsMode}
         >
           {settingsNavGroups.map((group) => {
             const visibleGroupItems = group.items.filter((item) => {
@@ -262,9 +254,9 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isLibraryMode && !isCollapsed ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
+            isLibraryMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
           )}
-          aria-hidden={!isLibraryMode || isCollapsed}
+          aria-hidden={!isLibraryMode}
         >
           <SidebarGroup>
             <SidebarGroupLabel>Browse</SidebarGroupLabel>
@@ -294,9 +286,9 @@ export function AppSidebar() {
         <div
           className={cn(
             "absolute inset-0 overflow-y-auto transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isPipelinesMode && !isCollapsed ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
+            isPipelinesMode ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none",
           )}
-          aria-hidden={!isPipelinesMode || isCollapsed}
+          aria-hidden={!isPipelinesMode}
         >
           <SidebarGroup>
             <SidebarGroupLabel className="flex items-center justify-between">
