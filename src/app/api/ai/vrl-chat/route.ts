@@ -142,11 +142,35 @@ export async function POST(request: Request) {
     { role: "user", content: body.prompt },
   ];
 
+  // Fetch recent errors for this component
+  let errorContext: string | undefined;
+  try {
+    const recentErrors = await prisma.pipelineLog.findMany({
+      where: {
+        pipelineId: body.pipelineId,
+        level: { in: ["ERROR", "WARN"] },
+        message: { contains: body.componentKey },
+      },
+      orderBy: { timestamp: "desc" },
+      take: 10,
+      select: { timestamp: true, level: true, message: true },
+    });
+
+    if (recentErrors.length > 0) {
+      errorContext = recentErrors
+        .map((l) => `[${l.timestamp instanceof Date ? l.timestamp.toISOString() : l.timestamp}] ${l.level}: ${l.message}`)
+        .join("\n");
+    }
+  } catch {
+    // Non-fatal — proceed without error context
+  }
+
   const systemPrompt = buildVrlChatSystemPrompt({
     fields: body.fields,
     currentCode: body.currentCode,
     componentType: body.componentType,
     sourceTypes: body.sourceTypes,
+    errorContext,
   });
 
   const encoder = new TextEncoder();
