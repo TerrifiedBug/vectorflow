@@ -325,6 +325,7 @@ export const promotionRouter = router({
     .input(z.object({ requestId: z.string(), note: z.string().optional() }))
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("promotion.rejected", "PromotionRequest"))
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     .mutation(async ({ input, ctx }) => {
       const request = await prisma.promotionRequest.findUnique({
         where: { id: input.requestId },
