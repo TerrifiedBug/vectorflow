@@ -130,7 +130,8 @@ function mockRawQueries(
   baselineRows: ReturnType<typeof generateRealisticBaseline>,
 ) {
   const baselineResult = toBaselineSqlResult(baselineRows);
-  mock.$queryRawUnsafe.mockImplementation(async (sql: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mock.$queryRawUnsafe.mockImplementation((async (sql: string) => {
     if ((sql as string).includes("DISTINCT ON")) {
       return [{
         pipelineId: "pipe-1",
@@ -143,7 +144,7 @@ function mockRawQueries(
       return baselineResult;
     }
     return [];
-  });
+  }) as any);
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -274,7 +275,8 @@ describe("Anomaly Detection Integration", () => {
 
   it("handles pipeline with insufficient baseline gracefully", async () => {
     // SQL returns sampleCount=3 — below MIN_BASELINE_POINTS (24)
-    prismaMock.$queryRawUnsafe.mockImplementation(async (sql: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    prismaMock.$queryRawUnsafe.mockImplementation((async (sql: string) => {
       if ((sql as string).includes("DISTINCT ON")) {
         return [{
           pipelineId: "pipe-1",
@@ -295,7 +297,7 @@ describe("Anomaly Detection Integration", () => {
         }];
       }
       return [];
-    });
+    }) as any);
 
     const results = await evaluatePipeline({
       id: "pipe-1",
