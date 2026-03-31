@@ -1,43 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { getTeamAiConfig } from "@/server/services/ai";
+import { buildCostRecommendationPrompt } from "@/lib/ai/cost-recommendation-prompt";
+import { parseAiReviewResponse } from "@/lib/ai/suggestion-validator";
 import { debugLog } from "@/lib/logger";
+import { Prisma } from "@/generated/prisma";
 
 const TAG = "cost-optimizer-ai";
 
-const SYSTEM_PROMPT = `You are a data pipeline cost optimization expert for VectorFlow, a control plane for Vector data pipelines.
-
-You will receive a cost optimization recommendation with analysis data. Your job is to:
-1. Write a clear, actionable summary (2-3 sentences) explaining the issue and what to do about it
-2. Be specific about which Vector transforms or configuration changes would help
-3. Quantify the potential savings when possible
-
-Respond with ONLY the summary text. No markdown formatting, no headers, no bullet points -- just a clear paragraph.`;
-
-interface AiEnrichableRecommendation {
-  id: string;
-  type: string;
-  title: string;
-  description: string;
-  analysisData: unknown;
-  suggestedAction: unknown;
-  teamId: string;
-  pipeline: { name: string };
-}
-
-/** Build the user prompt from a recommendation's analysis data. */
-function buildUserPrompt(rec: AiEnrichableRecommendation): string {
-  return `Recommendation type: ${rec.type}
-Pipeline: ${rec.pipeline.name}
-Title: ${rec.title}
-Description: ${rec.description}
-Analysis data: ${JSON.stringify(rec.analysisData, null, 2)}
-Suggested action: ${JSON.stringify(rec.suggestedAction, null, 2)}
-
-Write a concise, actionable summary for this optimization opportunity.`;
-}
-
 /**
- * Generate AI summaries for PENDING recommendations that have no aiSummary.
+ * Generate AI summaries and structured suggestions for PENDING recommendations.
  * Groups by team to use the correct AI provider per team.
  * Returns the count of successfully enriched recommendations.
  */
@@ -49,9 +20,21 @@ export async function generateAiRecommendations(): Promise<number> {
       expiresAt: { gt: new Date() },
     },
     include: {
-      pipeline: { select: { name: true } },
+      pipeline: {
+        select: {
+          name: true,
+          nodes: {
+            select: {
+              componentKey: true,
+              componentType: true,
+              kind: true,
+              config: true,
+            },
+          },
+        },
+      },
     },
-    take: 50, // cap per run to avoid excessive AI calls
+    take: 50,
   });
 
   if (recommendations.length === 0) {
@@ -59,7 +42,6 @@ export async function generateAiRecommendations(): Promise<number> {
     return 0;
   }
 
-  // Group by teamId
   const byTeam = new Map<string, typeof recommendations>();
   for (const rec of recommendations) {
     const group = byTeam.get(rec.teamId) ?? [];
@@ -78,10 +60,22 @@ export async function generateAiRecommendations(): Promise<number> {
       continue;
     }
 
-    // Process recommendations sequentially per team to respect rate limits
     for (const rec of recs) {
       try {
-        const userPrompt = buildUserPrompt(rec);
+        const prompts = buildCostRecommendationPrompt({
+          type: rec.type,
+          title: rec.title,
+          description: rec.description,
+          analysisData: rec.analysisData as Record<string, unknown>,
+          suggestedAction: rec.suggestedAction,
+          pipelineName: rec.pipeline.name,
+          nodes: rec.pipeline.nodes.map((n) => ({
+            componentKey: n.componentKey,
+            componentType: n.componentType,
+            kind: n.kind,
+            config: n.config,
+          })),
+        });
 
         const response = await fetch(`${config.baseUrl}/chat/completions`, {
           method: "POST",
@@ -91,11 +85,11 @@ export async function generateAiRecommendations(): Promise<number> {
           },
           body: JSON.stringify({
             model: config.model,
-            max_tokens: 300,
+            max_tokens: 1500,
             temperature: 0.3,
             messages: [
-              { role: "system", content: SYSTEM_PROMPT },
-              { role: "user", content: userPrompt },
+              { role: "system", content: prompts.system },
+              { role: "user", content: prompts.user },
             ],
           }),
         });
@@ -107,15 +101,28 @@ export async function generateAiRecommendations(): Promise<number> {
         }
 
         const json = await response.json();
-        const aiSummary = json.choices?.[0]?.message?.content?.trim();
+        const rawContent = json.choices?.[0]?.message?.content?.trim();
 
-        if (aiSummary) {
-          await prisma.costRecommendation.update({
-            where: { id: rec.id },
-            data: { aiSummary },
-          });
-          enriched++;
+        if (!rawContent) continue;
+
+        const parsed = parseAiReviewResponse(rawContent);
+
+        const updateData: Record<string, unknown> = {};
+
+        if (parsed) {
+          updateData.aiSummary = parsed.summary;
+          if (parsed.suggestions.length > 0) {
+            updateData.aiSuggestions = parsed.suggestions as unknown as Prisma.InputJsonValue;
+          }
+        } else {
+          updateData.aiSummary = rawContent;
         }
+
+        await prisma.costRecommendation.update({
+          where: { id: rec.id },
+          data: updateData,
+        });
+        enriched++;
       } catch (error) {
         console.error(`[${TAG}] Failed to enrich recommendation ${rec.id}:`, error);
       }
