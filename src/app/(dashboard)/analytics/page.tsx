@@ -534,12 +534,12 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
 
+        </TabsContent>
+        <TabsContent value="costs" className="space-y-6">
+          <CostDashboard />
           {selectedEnvironmentId && (
             <RecommendationsPanel environmentId={selectedEnvironmentId} />
           )}
-        </TabsContent>
-        <TabsContent value="costs">
-          <CostDashboard />
         </TabsContent>
       </Tabs>
     </div>
