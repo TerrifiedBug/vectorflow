@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockDeep, mockReset } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 import type { PipelineAggregates } from "@/server/services/cost-optimizer-types";
-import { DEFAULT_THRESHOLDS } from "@/server/services/cost-optimizer-types";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockDeep<PrismaClient>(),

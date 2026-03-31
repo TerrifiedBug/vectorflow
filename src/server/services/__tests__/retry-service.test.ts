@@ -35,7 +35,6 @@ vi.mock("@/server/services/delivery-tracking", async (importOriginal) => {
         _webhookId: string,
         _webhookName: string,
         deliverFn: () => Promise<{ success: boolean; error?: string }>,
-        _attemptNumber?: number,
       ) => {
         return deliverFn();
       },
@@ -47,7 +46,6 @@ vi.mock("@/server/services/delivery-tracking", async (importOriginal) => {
         _channelType: string,
         _channelName: string,
         deliverFn: () => Promise<{ success: boolean; error?: string }>,
-        _attemptNumber?: number,
       ) => {
         return deliverFn();
       },
@@ -74,7 +72,6 @@ const trackChannelDeliveryMock = vi.mocked(trackChannelDelivery);
 
 const NOW = new Date("2025-06-01T12:00:00Z");
 const PAST = new Date("2025-06-01T11:59:00Z");
-const FUTURE = new Date("2025-06-01T12:30:00Z");
 
 function makeDueAttempt(overrides: Record<string, unknown> = {}) {
   return {

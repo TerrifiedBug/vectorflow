@@ -25,13 +25,12 @@ vi.mock("@/server/services/sse-broadcast", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
-import { gitSyncCommitPipeline, gitSyncDeletePipeline } from "@/server/services/git-sync";
+import { gitSyncCommitPipeline } from "@/server/services/git-sync";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { GitSyncRetryService, getNextRetryAt, createGitSyncJob } from "../git-sync-retry";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const commitMock = vi.mocked(gitSyncCommitPipeline);
-const deleteMock = vi.mocked(gitSyncDeletePipeline);
 const fireAlertMock = vi.mocked(fireEventAlert);
 
 describe("getNextRetryAt", () => {
