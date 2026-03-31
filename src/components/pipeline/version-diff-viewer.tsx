@@ -1,6 +1,6 @@
 "use client";
 
-import { diffJson, type Change } from "diff";
+import { type Change } from "diff";
 import { ChevronRight, Minus, Plus, RefreshCw, Unplug } from "lucide-react";
 import { useState } from "react";
 

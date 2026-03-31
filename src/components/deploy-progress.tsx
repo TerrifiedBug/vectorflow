@@ -42,7 +42,6 @@ export function DeployProgressPanel() {
 
   const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
   const succeeded = completed - failed;
-  const isComplete = !isActive && completed === total;
 
   return (
     <div className="w-[360px] rounded-lg border bg-card p-4 shadow-lg">
