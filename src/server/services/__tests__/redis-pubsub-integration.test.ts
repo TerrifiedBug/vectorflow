@@ -69,8 +69,6 @@ vi.mock("@/server/services/metric-store", () => ({
 
 import {
   initPubSub,
-  publishSSE,
-  publishMetrics,
   _handleMessageForTest as handleMessage,
   type PubSubEnvelope,
 } from "@/server/services/redis-pubsub";
