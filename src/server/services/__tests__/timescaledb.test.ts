@@ -10,7 +10,6 @@ vi.mock("@/lib/prisma", () => ({
 import { prisma } from "@/lib/prisma";
 import {
   detectTimescaleDb,
-  isTimescaleDbAvailable,
   getTimescaleDbConfig,
 } from "../timescaledb";
 
