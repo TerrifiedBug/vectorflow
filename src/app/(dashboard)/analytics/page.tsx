@@ -28,7 +28,6 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
-import { TimeRangeSelector } from "@/components/time-range-selector";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
 import { RecommendationsPanel } from "@/components/analytics/recommendations-panel";

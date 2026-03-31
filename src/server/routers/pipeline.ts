@@ -18,7 +18,7 @@ import { getOrCreateSystemEnvironment } from "@/server/services/system-environme
 import { saveGraphComponents, promotePipeline, discardPipelineChanges, detectConfigChanges, listPipelinesForEnvironment } from "@/server/services/pipeline-graph";
 import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
 import { gitSyncDeletePipeline } from "@/server/services/git-sync";
-import { deployAgent, undeployAgent } from "@/server/services/deploy-agent";
+import { undeployAgent } from "@/server/services/deploy-agent";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
 import { relayPush } from "@/server/services/push-broadcast";
