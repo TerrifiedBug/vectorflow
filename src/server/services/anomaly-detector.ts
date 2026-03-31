@@ -16,8 +16,8 @@ export const ANOMALY_CONFIG = {
    * before it can exceed the sigma threshold.
    */
   MIN_STDDEV_FLOOR_PERCENT: 5,
-  /** Interval between detection runs in milliseconds (60 seconds) */
-  POLL_INTERVAL_MS: 60_000,
+  /** Interval between detection runs in milliseconds (5 minutes) */
+  POLL_INTERVAL_MS: 300_000,
   /** Cooldown: don't create a new anomaly if one exists for the same pipeline+type within this window */
   DEDUP_WINDOW_HOURS: 4,
 } as const;
@@ -250,6 +250,23 @@ export function detectAnomalies(
   const baseline = computeBaseline(baselinePoints);
   if (!baseline) return results;
 
+  return detectAnomalyFromBaseline(pipelineId, metricName, currentValue, baseline, config);
+}
+
+/**
+ * Core anomaly check against a precomputed Baseline object.
+ * Used by both detectAnomalies (which computes baseline from points)
+ * and evaluatePipeline (which gets baseline from SQL aggregation).
+ */
+function detectAnomalyFromBaseline(
+  pipelineId: string,
+  metricName: string,
+  currentValue: number,
+  baseline: Baseline,
+  config: RuntimeAnomalyConfig,
+): AnomalyDetectionResult[] {
+  const results: AnomalyDetectionResult[] = [];
+
   const mapping = METRIC_ANOMALY_MAP[metricName];
   if (!mapping) return results;
 
@@ -302,85 +319,156 @@ export function detectAnomalies(
   return results;
 }
 
-// ─── Data fetching ──────────────────────────────────────────────────────────
+// ─── Baseline cache (15-minute TTL) ─────────────────────────────────────────
+
+const BASELINE_CACHE_TTL_MS = 15 * 60_000; // 15 minutes
+
+interface BaselineCacheEntry {
+  /** Baselines keyed by metricName — null when sampleCount < minBaselinePoints */
+  baselines: Map<string, Baseline | null>;
+  fetchedAt: number;
+}
+
+/** Module-level cache keyed by pipelineId */
+const baselineCache = new Map<string, BaselineCacheEntry>();
+
+/** Clear all cached baselines (e.g. after config changes). */
+export function invalidateBaselineCache(): void {
+  baselineCache.clear();
+}
+
+// ─── SQL shape for baseline aggregate query ──────────────────────────────────
+
+interface BaselineRow {
+  eventsInMean: number | null;
+  eventsInStddev: number | null;
+  errorsTotalMean: number | null;
+  errorsTotalStddev: number | null;
+  latencyMeanMsMean: number | null;
+  latencyMeanMsStddev: number | null;
+  sampleCount: number;
+}
+
+// ─── SQL-optimized data fetching ─────────────────────────────────────────────
 
 /** Metrics to evaluate for anomalies. */
 const MONITORED_METRICS = ["eventsIn", "errorsTotal", "latencyMeanMs"] as const;
 
 /**
- * Fetch the most recent aggregate metric row for a pipeline (componentId = null).
- * Returns the latest data point values keyed by metric name.
+ * Fetch aggregate baseline stats for a single pipeline using a single SQL query.
+ * Checks the in-memory cache first; re-fetches when the entry is older than
+ * BASELINE_CACHE_TTL_MS. Returns a Map<metricName, Baseline | null>.
+ *
+ * Returns null entries for metrics where sampleCount < minBaselinePoints
+ * or where the aggregate produced no non-null values.
  */
-async function fetchCurrentMetrics(
+async function fetchBaselineSql(
   pipelineId: string,
-): Promise<Record<string, number> | null> {
-  const latest = await prisma.pipelineMetric.findFirst({
-    where: { pipelineId, componentId: null },
-    orderBy: { timestamp: "desc" },
-    select: {
-      eventsIn: true,
-      errorsTotal: true,
-      latencyMeanMs: true,
-    },
-  });
+  windowStart: Date,
+  minBaselinePoints: number,
+): Promise<Map<string, Baseline | null>> {
+  const now = Date.now();
+  const cached = baselineCache.get(pipelineId);
+  if (cached && now - cached.fetchedAt < BASELINE_CACHE_TTL_MS) {
+    return cached.baselines;
+  }
 
-  if (!latest) return null;
+  const rows = await prisma.$queryRawUnsafe<BaselineRow[]>(
+    `SELECT
+       AVG("eventsIn"::float8)           AS "eventsInMean",
+       STDDEV_POP("eventsIn"::float8)    AS "eventsInStddev",
+       AVG("errorsTotal"::float8)        AS "errorsTotalMean",
+       STDDEV_POP("errorsTotal"::float8) AS "errorsTotalStddev",
+       AVG("latencyMeanMs")              AS "latencyMeanMsMean",
+       STDDEV_POP("latencyMeanMs")       AS "latencyMeanMsStddev",
+       COUNT(*)::int                     AS "sampleCount"
+     FROM "PipelineMetric"
+     WHERE "pipelineId" = $1
+       AND "componentId" IS NULL
+       AND "timestamp" >= $2`,
+    pipelineId,
+    windowStart,
+  );
 
-  return {
-    eventsIn: Number(latest.eventsIn),
-    errorsTotal: Number(latest.errorsTotal),
-    latencyMeanMs: latest.latencyMeanMs ?? 0,
-  };
+  const row = rows[0];
+  const baselines = new Map<string, Baseline | null>();
+
+  if (!row || row.sampleCount < minBaselinePoints) {
+    // Insufficient data — null for all metrics
+    for (const metric of MONITORED_METRICS) {
+      baselines.set(metric, null);
+    }
+  } else {
+    // Build a Baseline for each metric (null if aggregate produced no non-null values)
+    const metricDefs: Array<{
+      name: string;
+      mean: number | null;
+      stddev: number | null;
+    }> = [
+      { name: "eventsIn", mean: row.eventsInMean, stddev: row.eventsInStddev },
+      { name: "errorsTotal", mean: row.errorsTotalMean, stddev: row.errorsTotalStddev },
+      { name: "latencyMeanMs", mean: row.latencyMeanMsMean, stddev: row.latencyMeanMsStddev },
+    ];
+
+    for (const def of metricDefs) {
+      if (def.mean === null || def.mean === undefined) {
+        baselines.set(def.name, null);
+      } else {
+        baselines.set(def.name, {
+          mean: def.mean,
+          stddev: def.stddev ?? 0,
+          sampleCount: row.sampleCount,
+        });
+      }
+    }
+  }
+
+  baselineCache.set(pipelineId, { baselines, fetchedAt: now });
+  return baselines;
+}
+
+// ─── SQL shape for current-metrics batch query ───────────────────────────────
+
+interface CurrentMetricRow {
+  pipelineId: string;
+  eventsIn: bigint;
+  errorsTotal: bigint;
+  latencyMeanMs: number | null;
 }
 
 /**
- * Fetch historical metric data for a pipeline over the baseline window.
- * Returns hourly data points for each monitored metric.
+ * Fetch the most recent aggregate metric row for ALL given pipeline IDs in one
+ * DISTINCT ON query. Returns a Map<pipelineId, Record<metricName, number>>.
+ * Pipelines with no data are absent from the map.
  */
-async function fetchBaselineData(
-  pipelineId: string,
-  baselineWindowDays: number,
-): Promise<Record<string, MetricDataPoint[]>> {
-  const windowStart = new Date(
-    Date.now() - baselineWindowDays * 24 * 3600_000,
-  );
-
-  const rows = await prisma.pipelineMetric.findMany({
-    where: {
-      pipelineId,
-      componentId: null,
-      timestamp: { gte: windowStart },
-    },
-    orderBy: { timestamp: "asc" },
-    select: {
-      timestamp: true,
-      eventsIn: true,
-      errorsTotal: true,
-      latencyMeanMs: true,
-    },
-  });
-
-  const result: Record<string, MetricDataPoint[]> = {
-    eventsIn: [],
-    errorsTotal: [],
-    latencyMeanMs: [],
-  };
-
-  for (const row of rows) {
-    result.eventsIn.push({
-      timestamp: row.timestamp,
-      value: Number(row.eventsIn),
-    });
-    result.errorsTotal.push({
-      timestamp: row.timestamp,
-      value: Number(row.errorsTotal),
-    });
-    result.latencyMeanMs.push({
-      timestamp: row.timestamp,
-      value: row.latencyMeanMs ?? 0,
-    });
+async function fetchAllCurrentMetrics(
+  pipelineIds: string[],
+): Promise<Map<string, Record<string, number>>> {
+  if (pipelineIds.length === 0) {
+    return new Map();
   }
 
+  const rows = await prisma.$queryRawUnsafe<CurrentMetricRow[]>(
+    `SELECT DISTINCT ON ("pipelineId")
+       "pipelineId",
+       "eventsIn",
+       "errorsTotal",
+       "latencyMeanMs"
+     FROM "PipelineMetric"
+     WHERE "pipelineId" = ANY($1::text[])
+       AND "componentId" IS NULL
+     ORDER BY "pipelineId", "timestamp" DESC`,
+    pipelineIds,
+  );
+
+  const result = new Map<string, Record<string, number>>();
+  for (const row of rows) {
+    result.set(row.pipelineId, {
+      eventsIn: Number(row.eventsIn),
+      errorsTotal: Number(row.errorsTotal),
+      latencyMeanMs: row.latencyMeanMs ?? 0,
+    });
+  }
   return result;
 }
 
@@ -412,6 +500,8 @@ async function isDuplicate(
 
 /**
  * Evaluate a single pipeline for anomalies across all monitored metrics.
+ * Uses SQL-aggregated baseline and the batch current-metrics map when provided,
+ * falling back to individual queries otherwise.
  * Persists any newly detected anomalies and returns them.
  */
 export async function evaluatePipeline(
@@ -421,13 +511,21 @@ export async function evaluatePipeline(
     environment: { teamId: string | null };
   },
   config?: RuntimeAnomalyConfig,
+  currentMetricsMap?: Map<string, Record<string, number>>,
 ): Promise<AnomalyDetectionResult[]> {
   const cfg = config ?? await getAnomalyConfig();
 
-  const current = await fetchCurrentMetrics(pipeline.id);
+  // Use pre-fetched batch map when available (evaluateAllPipelines path)
+  const current = currentMetricsMap
+    ? (currentMetricsMap.get(pipeline.id) ?? null)
+    : null;
+
   if (!current) return [];
 
-  const baseline = await fetchBaselineData(pipeline.id, cfg.baselineWindowDays);
+  const windowStart = new Date(
+    Date.now() - cfg.baselineWindowDays * 24 * 3600_000,
+  );
+  const baselines = await fetchBaselineSql(pipeline.id, windowStart, cfg.minBaselinePoints);
   const allResults: AnomalyDetectionResult[] = [];
 
   const enabledMetrics = MONITORED_METRICS.filter((m) =>
@@ -438,12 +536,14 @@ export async function evaluatePipeline(
     const currentValue = current[metricName];
     if (currentValue === undefined || currentValue === null) continue;
 
-    const baselinePoints = baseline[metricName] ?? [];
-    const results = detectAnomalies(
+    const baseline = baselines.get(metricName) ?? null;
+    if (!baseline) continue; // insufficient historical data for this metric
+
+    const results = detectAnomalyFromBaseline(
       pipeline.id,
       metricName,
       currentValue,
-      baselinePoints,
+      baseline,
       cfg,
     );
 
@@ -479,6 +579,9 @@ export async function evaluatePipeline(
 
 /**
  * Evaluate all active (deployed, non-draft) pipelines for anomalies.
+ * Uses two SQL queries for the full fleet:
+ *   1. One DISTINCT ON batch query for current metrics across all pipelines
+ *   2. One AVG/STDDEV_POP query per pipeline (cached for 15 minutes)
  * Called by the background job on the leader instance.
  */
 export async function evaluateAllPipelines(): Promise<AnomalyDetectionResult[]> {
@@ -496,11 +599,21 @@ export async function evaluateAllPipelines(): Promise<AnomalyDetectionResult[]> 
     },
   });
 
+  if (pipelines.length === 0) return [];
+
+  const pipelineIds = pipelines.map((p) => p.id);
+
+  // Single batch query for all current metrics
+  const currentMetricsMap = await fetchAllCurrentMetrics(pipelineIds);
+
   const allResults: AnomalyDetectionResult[] = [];
 
   for (const pipeline of pipelines) {
+    // Skip pipelines with no recent metric data
+    if (!currentMetricsMap.has(pipeline.id)) continue;
+
     try {
-      const results = await evaluatePipeline(pipeline, config);
+      const results = await evaluatePipeline(pipeline, config, currentMetricsMap);
       allResults.push(...results);
     } catch (err) {
       // Per-pipeline isolation: one failure must not stop others
