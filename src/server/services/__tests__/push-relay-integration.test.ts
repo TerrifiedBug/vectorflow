@@ -49,7 +49,7 @@ vi.mock("@/server/services/leader-election", () => ({
 // ─── Import after mocks ────────────────────────────────────────────────────
 
 import { relayPush } from "@/server/services/push-broadcast";
-import { publishPush, _handleMessageForTest as handleMessage } from "@/server/services/redis-pubsub";
+import { _handleMessageForTest as handleMessage } from "@/server/services/redis-pubsub";
 import type { PushMessage } from "@/server/services/push-types";
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
