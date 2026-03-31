@@ -176,6 +176,9 @@ export function buildPipelineSystemPrompt(context: {
       "- Return valid JSON only. No markdown, no code fences, no commentary outside the JSON.",
       "- Even in follow-up messages, always return the full JSON object. Never mix prose with JSON.",
     );
+
+    // Include VRL reference for review mode so VRL suggestions use valid functions
+    parts.push("", "=== VRL Function Reference ===", buildVrlReferenceBlock());
   }
 
   // Inject live metric context for review mode only

@@ -172,4 +172,14 @@ describe("buildPipelineSystemPrompt", () => {
       expect(result).not.toContain("some metrics");
     });
   });
+
+  it("includes VRL function reference in review mode", () => {
+    const result = buildPipelineSystemPrompt({ mode: "review" });
+    expect(result).toContain("VRL Function Reference");
+  });
+
+  it("does not include VRL reference in generate mode", () => {
+    const result = buildPipelineSystemPrompt({ mode: "generate" });
+    expect(result).not.toContain("VRL Function Reference");
+  });
 });
