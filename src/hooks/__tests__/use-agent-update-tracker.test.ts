@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { FleetStatusEvent } from "@/lib/sse/types";
 import {
   createUpdateTracker,
   type UpdateStage,

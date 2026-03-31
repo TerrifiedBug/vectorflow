@@ -1,6 +1,6 @@
 // src/components/__tests__/command-palette.test.tsx
 // @vitest-environment jsdom
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { vi, describe, it, expect } from "vitest";
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
