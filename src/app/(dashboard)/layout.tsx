@@ -195,7 +195,7 @@ export default function DashboardLayout({
           <button
             type="button"
             onClick={triggerCommandPalette}
-            className="hidden md:flex items-center gap-2 rounded-md border border-input bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+            className="hidden md:flex flex-1 max-w-md items-center gap-2 rounded-md border border-input bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
           >
             <Search className="h-3.5 w-3.5" />
             <span>Search...</span>

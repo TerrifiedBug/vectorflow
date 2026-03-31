@@ -187,8 +187,10 @@ function AnomalyDetailRow({ anomaly }: { anomaly: AnomalyItem }) {
 
 export function AnomalyHistorySection({
   environmentId,
+  hideHeader = false,
 }: {
   environmentId: string;
+  hideHeader?: boolean;
 }) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -350,10 +352,12 @@ export function AnomalyHistorySection({
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Activity className="h-5 w-5 text-muted-foreground" />
-        <h3 className="text-lg font-semibold">Anomaly History</h3>
-      </div>
+      {!hideHeader && (
+        <div className="flex items-center gap-2">
+          <Activity className="h-5 w-5 text-muted-foreground" />
+          <h3 className="text-lg font-semibold">Anomaly History</h3>
+        </div>
+      )}
 
       {listQuery.isError ? (
         <QueryError
