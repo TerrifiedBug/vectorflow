@@ -48,7 +48,6 @@ const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-const WEBHOOK_SECRET = "test-webhook-secret";
 const ENCRYPTED_SECRET = "enc-secret";
 
 function makeHmacSignature(body: string, secret: string): string {

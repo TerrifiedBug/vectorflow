@@ -1,5 +1,5 @@
 // src/app/api/agent/heartbeat/__tests__/heartbeat-rate-limit.test.ts
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // Mock dependencies before importing the route
 vi.mock("@/generated/prisma", () => ({
@@ -16,7 +16,7 @@ vi.mock("@/lib/sse/types", () => ({}));
 vi.mock("@/app/api/_lib/ip-rate-limit", () => {
   let callCount = 0;
   return {
-    checkTokenRateLimit: vi.fn((_req: Request, _endpoint: string, _limit: number) => {
+    checkTokenRateLimit: vi.fn(() => {
       callCount++;
       // Return 429 on the 31st call
       if (callCount > 30) {
