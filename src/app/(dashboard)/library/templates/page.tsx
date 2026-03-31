@@ -101,7 +101,7 @@ export default function TemplatesPage() {
     ),
   );
 
-  const templates = templatesQuery.data ?? [];
+  const templates = useMemo(() => templatesQuery.data ?? [], [templatesQuery.data]);
 
   // --- Filter state ---
   const [search, setSearch] = useState("");
