@@ -74,6 +74,20 @@ describe("buildVrlChatSystemPrompt", () => {
     });
     expect(result).toContain(".x = 1");
   });
+
+  it("includes error context when provided", () => {
+    const result = buildVrlChatSystemPrompt({
+      currentCode: ".x = 1",
+      errorContext: '[2026-03-31T10:00:00Z] ERROR: function call error for "downcase" in remap transform',
+    });
+    expect(result).toContain("Recent Errors");
+    expect(result).toContain("downcase");
+  });
+
+  it("omits error section when no errors", () => {
+    const result = buildVrlChatSystemPrompt({ currentCode: ".x = 1" });
+    expect(result).not.toContain("Recent Errors");
+  });
 });
 
 describe("buildPipelineSystemPrompt", () => {

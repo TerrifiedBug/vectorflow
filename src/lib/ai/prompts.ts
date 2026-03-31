@@ -1,6 +1,7 @@
 // src/lib/ai/prompts.ts
 
 import { buildVrlReferenceFromRegistry } from "@/lib/vrl/function-registry";
+import { buildVrlReferenceBlock } from "@/lib/ai/shared-prompt-context";
 
 export function buildVrlSystemPrompt(context: {
   fields?: { name: string; type: string }[];
@@ -43,6 +44,7 @@ export function buildVrlChatSystemPrompt(context: {
   currentCode?: string;
   componentType?: string;
   sourceTypes?: string[];
+  errorContext?: string;
 }): string {
   const parts: string[] = [
     "You are a VRL (Vector Remap Language) assistant for Vector data pipelines.",
@@ -99,6 +101,16 @@ export function buildVrlChatSystemPrompt(context: {
 
   if (context.currentCode?.trim()) {
     parts.push("", "Current VRL code in the editor:", "```", context.currentCode, "```");
+  }
+
+  if (context.errorContext?.trim()) {
+    parts.push(
+      "",
+      "=== Recent Errors for this Component ===",
+      context.errorContext,
+      "",
+      "Use these errors to inform your suggestions — if the VRL code is causing runtime errors, prioritize fixing them.",
+    );
   }
 
   return parts.join("\n");
