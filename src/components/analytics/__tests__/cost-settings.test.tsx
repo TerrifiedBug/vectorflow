@@ -1,5 +1,5 @@
 // src/components/analytics/__tests__/cost-settings.test.tsx
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // This is a simplified component test to verify rendering
 describe("CostSettings", () => {
