@@ -288,7 +288,6 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     if (hasCanaryStrategy) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStagedDeploy(true);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHealthCheckWindow(strategy?.healthCheckWindowMinutes ?? 5);
     }
   }, [open, hasCanaryStrategy, strategy?.healthCheckWindowMinutes]);

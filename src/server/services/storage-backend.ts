@@ -57,14 +57,10 @@ export class LocalBackend implements StorageBackend {
   constructor(private readonly backupDir: string) {}
 
   /** No-op: file is already at localPath on the local filesystem. */
-  async upload(_localPath: string, _key: string): Promise<void> {
-    // Local files are already in place — nothing to upload
-  }
+  async upload(_localPath: string, _key: string): Promise<void> {} // eslint-disable-line @typescript-eslint/no-unused-vars
 
   /** No-op: caller already has the file path for local backups. */
-  async download(_key: string, _destPath: string): Promise<void> {
-    // Local files are already accessible — nothing to download
-  }
+  async download(_key: string, _destPath: string): Promise<void> {} // eslint-disable-line @typescript-eslint/no-unused-vars
 
   async delete(key: string): Promise<void> {
     await fs.unlink(path.join(this.backupDir, key)).catch(() => {});

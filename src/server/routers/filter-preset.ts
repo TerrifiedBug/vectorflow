@@ -101,6 +101,7 @@ export const filterPresetRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Filter preset not found" });
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { id, environmentId: _envId, filters, ...rest } = input;
       const data = {
         ...rest,
