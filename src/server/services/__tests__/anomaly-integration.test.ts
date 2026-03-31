@@ -13,6 +13,7 @@ import {
   computeBaseline,
   detectAnomalies,
   evaluatePipeline,
+  invalidateBaselineCache,
   type MetricDataPoint,
 } from "@/server/services/anomaly-detector";
 
@@ -93,35 +94,72 @@ function generateAnomalySnapshot(type: string) {
   }
 }
 
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+/** Convert fixture rows into the shape that the AVG/STDDEV_POP SQL query returns. */
+function toBaselineSqlResult(rows: ReturnType<typeof generateRealisticBaseline>) {
+  const eventsInVals = rows.map((r) => Number(r.eventsIn));
+  const errorsTotalVals = rows.map((r) => Number(r.errorsTotal));
+  const latencyVals = rows.map((r) => r.latencyMeanMs ?? 0);
+  const n = rows.length;
+
+  const avg = (vals: number[]) => vals.reduce((s, v) => s + v, 0) / vals.length;
+  const stddevPop = (vals: number[]) => {
+    const m = avg(vals);
+    return Math.sqrt(vals.reduce((s, v) => s + (v - m) ** 2, 0) / vals.length);
+  };
+
+  return [{
+    eventsInMean: avg(eventsInVals),
+    eventsInStddev: stddevPop(eventsInVals),
+    errorsTotalMean: avg(errorsTotalVals),
+    errorsTotalStddev: stddevPop(errorsTotalVals),
+    latencyMeanMsMean: avg(latencyVals),
+    latencyMeanMsStddev: stddevPop(latencyVals),
+    sampleCount: n,
+  }];
+}
+
+/**
+ * Mock $queryRawUnsafe to handle both DISTINCT ON (current metrics) and
+ * AVG/STDDEV_POP (baseline) queries based on the SQL string.
+ */
+function mockRawQueries(
+  mock: DeepMockProxy<PrismaClient>,
+  currentSnapshot: { eventsIn: bigint; errorsTotal: bigint; latencyMeanMs: number | null },
+  baselineRows: ReturnType<typeof generateRealisticBaseline>,
+) {
+  const baselineResult = toBaselineSqlResult(baselineRows);
+  mock.$queryRawUnsafe.mockImplementation(async (sql: string) => {
+    if ((sql as string).includes("DISTINCT ON")) {
+      return [{
+        pipelineId: "pipe-1",
+        eventsIn: currentSnapshot.eventsIn,
+        errorsTotal: currentSnapshot.errorsTotal,
+        latencyMeanMs: currentSnapshot.latencyMeanMs,
+      }];
+    }
+    if ((sql as string).includes("AVG")) {
+      return baselineResult;
+    }
+    return [];
+  });
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe("Anomaly Detection Integration", () => {
   beforeEach(() => {
     mockReset(prismaMock);
+    invalidateBaselineCache();
   });
 
   it("detects throughput_drop on a pipeline with realistic data", async () => {
     const baselineRows = generateRealisticBaseline();
     const currentSnapshot = generateAnomalySnapshot("throughput_drop");
 
-    // Mock: fetch latest metric
-    prismaMock.pipelineMetric.findFirst.mockResolvedValue({
-      ...currentSnapshot,
-      id: "m-latest",
-      pipelineId: "pipe-1",
-      nodeId: null,
-      componentId: null,
-      timestamp: new Date("2026-03-29T12:00:00Z"),
-      eventsDiscarded: BigInt(0),
-      bytesIn: BigInt(0),
-      bytesOut: BigInt(0),
-      utilization: 0,
-    } as never);
-
-    // Mock: fetch baseline data
-    prismaMock.pipelineMetric.findMany.mockResolvedValue(
-      baselineRows as never,
-    );
+    // Mock: SQL queries for current metrics and baseline
+    mockRawQueries(prismaMock, currentSnapshot, baselineRows);
 
     // Mock: no existing anomaly (dedup check)
     prismaMock.anomalyEvent.findFirst.mockResolvedValue(null);
@@ -156,22 +194,7 @@ describe("Anomaly Detection Integration", () => {
     const baselineRows = generateRealisticBaseline();
     const currentSnapshot = generateAnomalySnapshot("error_rate_spike");
 
-    prismaMock.pipelineMetric.findFirst.mockResolvedValue({
-      ...currentSnapshot,
-      id: "m-latest",
-      pipelineId: "pipe-1",
-      nodeId: null,
-      componentId: null,
-      timestamp: new Date("2026-03-29T12:00:00Z"),
-      eventsDiscarded: BigInt(0),
-      bytesIn: BigInt(0),
-      bytesOut: BigInt(0),
-      utilization: 0,
-    } as never);
-
-    prismaMock.pipelineMetric.findMany.mockResolvedValue(
-      baselineRows as never,
-    );
+    mockRawQueries(prismaMock, currentSnapshot, baselineRows);
 
     prismaMock.anomalyEvent.findFirst.mockResolvedValue(null);
 
@@ -199,22 +222,7 @@ describe("Anomaly Detection Integration", () => {
     const baselineRows = generateRealisticBaseline();
     const normalSnapshot = generateAnomalySnapshot("normal");
 
-    prismaMock.pipelineMetric.findFirst.mockResolvedValue({
-      ...normalSnapshot,
-      id: "m-latest",
-      pipelineId: "pipe-1",
-      nodeId: null,
-      componentId: null,
-      timestamp: new Date("2026-03-29T12:00:00Z"),
-      eventsDiscarded: BigInt(0),
-      bytesIn: BigInt(0),
-      bytesOut: BigInt(0),
-      utilization: 0,
-    } as never);
-
-    prismaMock.pipelineMetric.findMany.mockResolvedValue(
-      baselineRows as never,
-    );
+    mockRawQueries(prismaMock, normalSnapshot, baselineRows);
 
     const results = await evaluatePipeline({
       id: "pipe-1",
@@ -230,22 +238,7 @@ describe("Anomaly Detection Integration", () => {
     const baselineRows = generateRealisticBaseline();
     const currentSnapshot = generateAnomalySnapshot("throughput_drop");
 
-    prismaMock.pipelineMetric.findFirst.mockResolvedValue({
-      ...currentSnapshot,
-      id: "m-latest",
-      pipelineId: "pipe-1",
-      nodeId: null,
-      componentId: null,
-      timestamp: new Date("2026-03-29T12:00:00Z"),
-      eventsDiscarded: BigInt(0),
-      bytesIn: BigInt(0),
-      bytesOut: BigInt(0),
-      utilization: 0,
-    } as never);
-
-    prismaMock.pipelineMetric.findMany.mockResolvedValue(
-      baselineRows as never,
-    );
+    mockRawQueries(prismaMock, currentSnapshot, baselineRows);
 
     // Existing open anomaly within dedup window
     prismaMock.anomalyEvent.findFirst.mockResolvedValue({
@@ -267,7 +260,8 @@ describe("Anomaly Detection Integration", () => {
   });
 
   it("handles pipeline with no metric data gracefully", async () => {
-    prismaMock.pipelineMetric.findFirst.mockResolvedValue(null);
+    // DISTINCT ON returns empty result — no metrics for this pipeline
+    prismaMock.$queryRawUnsafe.mockResolvedValue([]);
 
     const results = await evaluatePipeline({
       id: "pipe-no-data",
@@ -279,52 +273,29 @@ describe("Anomaly Detection Integration", () => {
   });
 
   it("handles pipeline with insufficient baseline gracefully", async () => {
-    // Only 3 data points -- not enough for baseline
-    const sparseRows = [
-      {
-        timestamp: new Date("2026-03-28T00:00:00Z"),
-        eventsIn: BigInt(1000),
-        errorsTotal: BigInt(5),
-        latencyMeanMs: 45,
-        componentId: null,
-        pipelineId: "pipe-1",
-      },
-      {
-        timestamp: new Date("2026-03-28T01:00:00Z"),
-        eventsIn: BigInt(1100),
-        errorsTotal: BigInt(6),
-        latencyMeanMs: 47,
-        componentId: null,
-        pipelineId: "pipe-1",
-      },
-      {
-        timestamp: new Date("2026-03-28T02:00:00Z"),
-        eventsIn: BigInt(900),
-        errorsTotal: BigInt(4),
-        latencyMeanMs: 43,
-        componentId: null,
-        pipelineId: "pipe-1",
-      },
-    ];
-
-    prismaMock.pipelineMetric.findFirst.mockResolvedValue({
-      eventsIn: BigInt(50000),
-      errorsTotal: BigInt(500),
-      latencyMeanMs: 500,
-      id: "m-latest",
-      pipelineId: "pipe-1",
-      nodeId: null,
-      componentId: null,
-      timestamp: new Date("2026-03-29T12:00:00Z"),
-      eventsDiscarded: BigInt(0),
-      bytesIn: BigInt(0),
-      bytesOut: BigInt(0),
-      utilization: 0,
-    } as never);
-
-    prismaMock.pipelineMetric.findMany.mockResolvedValue(
-      sparseRows as never,
-    );
+    // SQL returns sampleCount=3 — below MIN_BASELINE_POINTS (24)
+    prismaMock.$queryRawUnsafe.mockImplementation(async (sql: string) => {
+      if ((sql as string).includes("DISTINCT ON")) {
+        return [{
+          pipelineId: "pipe-1",
+          eventsIn: BigInt(50000),
+          errorsTotal: BigInt(500),
+          latencyMeanMs: 500,
+        }];
+      }
+      if ((sql as string).includes("AVG")) {
+        return [{
+          eventsInMean: 1000,
+          eventsInStddev: 100,
+          errorsTotalMean: 5,
+          errorsTotalStddev: 1,
+          latencyMeanMsMean: 45,
+          latencyMeanMsStddev: 2,
+          sampleCount: 3, // below MIN_BASELINE_POINTS
+        }];
+      }
+      return [];
+    });
 
     const results = await evaluatePipeline({
       id: "pipe-1",
