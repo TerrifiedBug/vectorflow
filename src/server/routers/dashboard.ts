@@ -4,6 +4,7 @@ import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { withAudit } from "@/server/middleware/audit";
 import { prisma } from "@/lib/prisma";
 import { metricStore } from "@/server/services/metric-store";
+import type { AlertMetric } from "@/generated/prisma";
 import {
   computeChartMetrics,
   assembleNodeCards,
@@ -47,7 +48,18 @@ export const dashboardRouter = router({
         prisma.alertEvent.count({
           where: {
             status: "firing",
-            alertRule: { environmentId: input.environmentId },
+            alertRule: {
+              environmentId: input.environmentId,
+              metric: {
+                notIn: [
+                  "deploy_requested",
+                  "deploy_completed",
+                  "deploy_rejected",
+                  "deploy_cancelled",
+                  "new_version_available",
+                ] as AlertMetric[],
+              },
+            },
           },
         }),
         prisma.anomalyEvent.count({
