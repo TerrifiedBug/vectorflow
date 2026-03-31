@@ -515,10 +515,11 @@ export async function evaluatePipeline(
 ): Promise<AnomalyDetectionResult[]> {
   const cfg = config ?? await getAnomalyConfig();
 
-  // Use pre-fetched batch map when available (evaluateAllPipelines path)
+  // Use pre-fetched batch map when available (evaluateAllPipelines path),
+  // otherwise fetch for this single pipeline (standalone evaluatePipeline call)
   const current = currentMetricsMap
     ? (currentMetricsMap.get(pipeline.id) ?? null)
-    : null;
+    : ((await fetchAllCurrentMetrics([pipeline.id])).get(pipeline.id) ?? null);
 
   if (!current) return [];
 
