@@ -6,7 +6,6 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import { EmptyState } from "@/components/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  AlertTriangle,
   Bell,
   Clock,
   Layers,
@@ -25,7 +24,6 @@ import { WebhooksSection } from "./_components/webhooks-section";
 import { AlertHistorySection } from "./_components/alert-history-section";
 import { CorrelatedAlertHistory } from "./_components/correlated-alert-history";
 import { FailedDeliveriesSection } from "./_components/failed-deliveries-section";
-import { AnomalyHistorySection } from "./_components/anomaly-history-section";
 
 // ─── Alerts Page ────────────────────────────────────────────────────────────────
 
@@ -38,8 +36,8 @@ export default function AlertsPage() {
   const [topTab, setTopTab] = useState<"rules" | "channels" | "history">(
     initialTab === "anomalies" || initialTab === "flat" ? "history" : "rules",
   );
-  const [alertView, setAlertView] = useState<"grouped" | "flat" | "anomalies">(
-    initialTab === "anomalies" || initialTab === "flat" ? initialTab : "grouped"
+  const [alertView, setAlertView] = useState<"grouped" | "flat">(
+    initialTab === "anomalies" || initialTab === "flat" ? "flat" : "grouped"
   );
 
   const trpc = useTRPC();
@@ -145,7 +143,7 @@ export default function AlertsPage() {
             <Tabs
               value={alertView}
               onValueChange={(v) =>
-                setAlertView(v as "grouped" | "flat" | "anomalies")
+                setAlertView(v as "grouped" | "flat")
               }
             >
               <TabsList>
@@ -156,15 +154,6 @@ export default function AlertsPage() {
                 <TabsTrigger value="flat" className="gap-1.5">
                   <List className="h-4 w-4" />
                   All Events
-                </TabsTrigger>
-                <TabsTrigger value="anomalies" className="gap-1.5">
-                  <AlertTriangle className="h-4 w-4" />
-                  Anomalies
-                  {totalAnomalies > 0 && (
-                    <StatusBadge variant="error" className="ml-1">
-                      {totalAnomalies}
-                    </StatusBadge>
-                  )}
                 </TabsTrigger>
               </TabsList>
 
@@ -177,12 +166,7 @@ export default function AlertsPage() {
               <TabsContent value="flat">
                 <AlertHistorySection
                   environmentId={selectedEnvironmentId}
-                />
-              </TabsContent>
-
-              <TabsContent value="anomalies">
-                <AnomalyHistorySection
-                  environmentId={selectedEnvironmentId}
+                  initialCategory={initialTab === "anomalies" ? "anomalies" : undefined}
                 />
               </TabsContent>
             </Tabs>
