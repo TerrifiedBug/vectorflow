@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Search, Clock, Download, Copy } from "lucide-react";
 import { toast } from "sonner";
@@ -71,9 +71,14 @@ export function PipelineLogs({ pipelineId, nodeId }: PipelineLogsProps) {
     pipelineId,
   });
 
-  const sinceDate = timeRange !== "all"
-    ? new Date(Date.now() - (TIME_RANGES.find((t) => t.value === timeRange)?.ms ?? 60 * 60 * 1000))
-    : undefined;
+  // Memoize sinceDate so the query key stays stable between renders.
+  // Without this, Date.now() produces a new millisecond value each render,
+  // creating a new query key every frame and causing a fetch hot-loop.
+  const sinceDate = useMemo(() => {
+    if (timeRange === "all") return undefined;
+    const ms = TIME_RANGES.find((t) => t.value === timeRange)?.ms ?? 60 * 60 * 1000;
+    return new Date(Date.now() - ms);
+  }, [timeRange]);
 
   const queryInput = {
     pipelineId,
