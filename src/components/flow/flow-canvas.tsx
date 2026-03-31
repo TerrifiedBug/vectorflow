@@ -182,6 +182,7 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
           aiSummary={recommendationCtx.recommendation.aiSummary}
           description={recommendationCtx.recommendation.description}
           suggestedAction={recommendationCtx.suggestedAction}
+          aiSuggestions={recommendationCtx.aiSuggestions}
         />
       )}
       <ReactFlow
