@@ -22,7 +22,6 @@ const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 // ─── Fixture generators ─────────────────────────────────────────────────────
 
 const HOUR_MS = 3600_000;
-const DAY_MS = 24 * HOUR_MS;
 const BASE_DATE = new Date("2026-03-22T00:00:00Z");
 
 /**
@@ -130,9 +129,8 @@ function mockRawQueries(
   baselineRows: ReturnType<typeof generateRealisticBaseline>,
 ) {
   const baselineResult = toBaselineSqlResult(baselineRows);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mock.$queryRawUnsafe.mockImplementation((async (sql: string) => {
-    if ((sql as string).includes("DISTINCT ON")) {
+  (mock.$queryRawUnsafe as ReturnType<typeof vi.fn>).mockImplementation(async (sql: string) => {
+    if (sql.includes("DISTINCT ON")) {
       return [{
         pipelineId: "pipe-1",
         eventsIn: currentSnapshot.eventsIn,
@@ -140,11 +138,11 @@ function mockRawQueries(
         latencyMeanMs: currentSnapshot.latencyMeanMs,
       }];
     }
-    if ((sql as string).includes("AVG")) {
+    if (sql.includes("AVG")) {
       return baselineResult;
     }
     return [];
-  }) as any);
+  });
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -250,7 +248,7 @@ describe("Anomaly Detection Integration", () => {
       detectedAt: new Date("2026-03-29T10:00:00Z"),
     } as never);
 
-    const results = await evaluatePipeline({
+    await evaluatePipeline({
       id: "pipe-1",
       environmentId: "env-1",
       environment: { teamId: "team-1" },
@@ -275,9 +273,8 @@ describe("Anomaly Detection Integration", () => {
 
   it("handles pipeline with insufficient baseline gracefully", async () => {
     // SQL returns sampleCount=3 — below MIN_BASELINE_POINTS (24)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    prismaMock.$queryRawUnsafe.mockImplementation((async (sql: string) => {
-      if ((sql as string).includes("DISTINCT ON")) {
+    (prismaMock.$queryRawUnsafe as ReturnType<typeof vi.fn>).mockImplementation(async (sql: string) => {
+      if (sql.includes("DISTINCT ON")) {
         return [{
           pipelineId: "pipe-1",
           eventsIn: BigInt(50000),
@@ -285,7 +282,7 @@ describe("Anomaly Detection Integration", () => {
           latencyMeanMs: 500,
         }];
       }
-      if ((sql as string).includes("AVG")) {
+      if (sql.includes("AVG")) {
         return [{
           eventsInMean: 1000,
           eventsInStddev: 100,
@@ -297,7 +294,7 @@ describe("Anomaly Detection Integration", () => {
         }];
       }
       return [];
-    }) as any);
+    });
 
     const results = await evaluatePipeline({
       id: "pipe-1",
