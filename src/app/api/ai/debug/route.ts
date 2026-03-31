@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma";
 import { streamCompletion } from "@/server/services/ai";
 import { buildDebugSystemPrompt } from "@/lib/ai/debug-prompt";
 import { buildMetricContext } from "@/lib/ai/metric-context";
@@ -208,13 +209,25 @@ export async function POST(request: Request) {
           signal: request.signal,
         });
 
-        // Persist assistant response (no suggestion parsing — debug responses are free-form)
+        // Parse structured suggestions if present
+        let parsedSuggestions = null;
+        try {
+          const { parseVrlChatResponse } = await import("@/lib/ai/vrl-suggestion-types");
+          const parsed = parseVrlChatResponse(fullResponse);
+          if (parsed) {
+            parsedSuggestions = parsed.suggestions;
+          }
+        } catch {
+          // Not valid JSON — store as raw text (backward compatible)
+        }
+
         try {
           await prisma.aiMessage.create({
             data: {
               conversationId: conversationId!,
               role: "assistant",
               content: fullResponse,
+              suggestions: (parsedSuggestions as unknown as Prisma.InputJsonValue) ?? undefined,
               createdById: session.user.id,
             },
           });
