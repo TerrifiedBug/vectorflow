@@ -9,6 +9,7 @@ import { buildMetricContext } from "@/lib/ai/metric-context";
 import { metricStore } from "@/server/services/metric-store";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { writeAuditLog } from "@/server/services/audit";
+import { errorLog } from "@/lib/logger";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -93,14 +94,14 @@ export async function POST(request: Request) {
       metricContext = buildMetricContext(metrics);
     }
   } catch (err) {
-    console.error("Failed to fetch pipeline metrics for AI debug:", err);
+    errorLog("ai-debug", "Failed to fetch pipeline metrics", err);
   }
 
   let sliResults: Awaited<ReturnType<typeof evaluatePipelineHealth>> | undefined;
   try {
     sliResults = await evaluatePipelineHealth(body.pipelineId);
   } catch (err) {
-    console.error("Failed to evaluate SLI health:", err);
+    errorLog("ai-debug", "Failed to evaluate SLI health", err);
   }
 
   let logLines:
@@ -117,7 +118,7 @@ export async function POST(request: Request) {
       select: { timestamp: true, level: true, message: true },
     });
   } catch (err) {
-    console.error("Failed to fetch recent logs for AI debug:", err);
+    errorLog("ai-debug", "Failed to fetch recent logs", err);
   }
 
   const systemPrompt = buildDebugSystemPrompt({
@@ -232,7 +233,7 @@ export async function POST(request: Request) {
             },
           });
         } catch (err) {
-          console.error("Failed to persist AI debug response:", err);
+          errorLog("ai-debug", "Failed to persist AI debug response", err);
         }
 
         writeAuditLog({

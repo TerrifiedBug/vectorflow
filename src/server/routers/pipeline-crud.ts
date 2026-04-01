@@ -12,6 +12,7 @@ import { promotePipeline, detectConfigChanges, listPipelinesForEnvironment } fro
 import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
 import { gitSyncDeletePipeline } from "@/server/services/git-sync";
 import { pipelineNameSchema } from "./pipeline-schemas";
+import { errorLog } from "@/lib/logger";
 
 export const pipelineCrudRouter = router({
   getSystemPipeline: protectedProcedure
@@ -326,7 +327,7 @@ export const pipelineCrudRouter = router({
           existing.name,
           { name: dbUser?.name ?? "VectorFlow User", email: dbUser?.email ?? "noreply@vectorflow" },
         ).catch((err) => {
-          console.error("[git-sync] Delete failed for pipeline:", existing.name, err);
+          errorLog("git-sync", `Delete failed for pipeline: ${existing.name}`, err);
         });
       }
 

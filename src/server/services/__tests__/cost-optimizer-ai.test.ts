@@ -5,7 +5,7 @@ import type { PrismaClient } from "@/generated/prisma";
 vi.mock("@/lib/prisma", () => ({
   prisma: mockDeep<PrismaClient>(),
 }));
-vi.mock("@/lib/logger", () => ({ debugLog: vi.fn() }));
+vi.mock("@/lib/logger", () => ({ debugLog: vi.fn(), errorLog: vi.fn() }));
 
 const mockGetTeamAiConfig = vi.fn();
 vi.mock("@/server/services/ai", () => ({

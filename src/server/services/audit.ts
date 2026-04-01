@@ -2,6 +2,7 @@ import { appendFile, mkdir } from "fs/promises";
 import { join, dirname } from "path";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
+import { errorLog } from "@/lib/logger";
 
 export const AUDIT_LOG_PATH =
   process.env.VF_AUDIT_LOG_PATH ??
@@ -50,7 +51,7 @@ export async function writeAuditLog(params: {
     await appendFile(AUDIT_LOG_PATH, jsonLine);
   } catch (error) {
     // File write failure should not break audit logging to DB
-    console.error("Failed to append audit event to file:", AUDIT_LOG_PATH, error);
+    errorLog("audit", `Failed to append audit event to file: ${AUDIT_LOG_PATH}`, error);
   }
 
   return log;

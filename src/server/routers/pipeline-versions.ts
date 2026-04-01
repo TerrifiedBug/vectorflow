@@ -13,6 +13,7 @@ import {
 import { relayPush } from "@/server/services/push-broadcast";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { fireEventAlert } from "@/server/services/event-alerts";
+import { errorLog } from "@/lib/logger";
 
 export const pipelineVersionsRouter = router({
   versions: protectedProcedure
@@ -148,7 +149,7 @@ export const pipelineVersionsRouter = router({
           });
         }
       } catch (err) {
-        console.error("[rollback] Push/SSE notification failed:", err);
+        errorLog("pipeline-versions", "Push/SSE notification failed", err);
       }
 
       return version;

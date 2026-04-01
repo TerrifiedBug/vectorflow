@@ -6,6 +6,7 @@ import {
   type ServiceAccountContext,
 } from "@/server/middleware/api-auth";
 import { rateLimiter, type RateLimitTier } from "./rate-limiter";
+import { errorLog } from "@/lib/logger";
 
 /** BigInt-safe NextResponse.json() — converts BigInts to numbers before serialization. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,7 +76,7 @@ export function apiRoute(
         const status = TRPC_TO_HTTP[err.code] ?? 500;
         return NextResponse.json({ error: err.message }, { status });
       }
-      console.error("[api-handler] unhandled error:", err);
+      errorLog("api-handler", "unhandled error", err);
       return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
   };

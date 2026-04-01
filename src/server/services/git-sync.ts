@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, rm, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { decrypt } from "@/server/services/crypto";
+import { errorLog } from "@/lib/logger";
 
 export interface GitSyncConfig {
   repoUrl: string;
@@ -108,7 +109,7 @@ export async function gitSyncCommitPipeline(
     return { success: true, commitSha: log.latest?.hash };
   } catch (err) {
     const message = sanitizeError(err instanceof Error ? err.message : String(err));
-    console.error("[git-sync] Commit failed:", message);
+    errorLog("git-sync", "Commit failed", message);
     return { success: false, error: message };
   } finally {
     if (workdir) {
@@ -160,7 +161,7 @@ export async function gitSyncDeletePipeline(
     return { success: true, commitSha: log.latest?.hash };
   } catch (err) {
     const message = sanitizeError(err instanceof Error ? err.message : String(err));
-    console.error("[git-sync] Delete failed:", message);
+    errorLog("git-sync", "Delete failed", message);
     return { success: false, error: message };
   } finally {
     if (workdir) {

@@ -1,4 +1,5 @@
 import Redis from "ioredis";
+import { infoLog, errorLog } from "@/lib/logger";
 
 // ---------------------------------------------------------------------------
 // globalThis cache — survives HMR in dev (same pattern as src/lib/prisma.ts)
@@ -46,17 +47,15 @@ export function getRedis(): Redis | null {
 
   // Connection lifecycle logging
   client.on("connect", () => {
-    console.log("[redis] Connected");
+    infoLog("redis", "Connected");
   });
 
   client.on("error", (err: Error) => {
-    console.error(
-      `[redis] Connection error (${redactRedisUrl(url)}): ${err.message}`,
-    );
+    errorLog("redis", `Connection error (${redactRedisUrl(url)}): ${err.message}`);
   });
 
   client.on("close", () => {
-    console.log("[redis] Connection closed");
+    infoLog("redis", "Connection closed");
   });
 
   // Kick off the lazy connection — fire-and-forget; errors surface via

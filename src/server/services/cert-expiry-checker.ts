@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/server/services/crypto";
 import { fireEventAlert } from "@/server/services/event-alerts";
+import { errorLog } from "@/lib/logger";
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
@@ -112,14 +113,15 @@ export async function checkCertificateExpiry(
         }
       } catch (certErr) {
         // Per-certificate isolation — one cert failure must not stop others
-        console.error(
-          `[cert-expiry] Error checking certificate ${cert.id}:`,
+        errorLog(
+          "cert-expiry",
+          `Error checking certificate ${cert.id}`,
           certErr,
         );
       }
     }
   } catch (err) {
-    console.error("[cert-expiry] Error in checkCertificateExpiry:", err);
+    errorLog("cert-expiry", "Error in checkCertificateExpiry", err);
   }
 
   return alertsFired;
