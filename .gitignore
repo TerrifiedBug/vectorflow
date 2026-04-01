@@ -61,10 +61,7 @@ scripts/
 .worktrees/
 
 # ── GSD baseline (auto-generated) ──
-<<<<<<< Updated upstream
-=======
 .gsd
->>>>>>> Stashed changes
 Thumbs.db
 *.swp
 *.swo
@@ -88,9 +85,10 @@ vendor/
 coverage/
 .cache/
 tmp/
-<<<<<<< Updated upstream
 
-# ── GSD baseline (auto-generated) ──
-.gsd
-=======
->>>>>>> Stashed changes
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+e2e/.auth/

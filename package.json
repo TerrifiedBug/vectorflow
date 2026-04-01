@@ -9,6 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "postinstall": "prisma generate",
     "generate:openapi": "tsx scripts/generate-openapi.ts"
   },
@@ -75,6 +77,7 @@
   "devDependencies": {
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@next/bundle-analyzer": "^16.2.1",
+    "@playwright/test": "^1.59.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
