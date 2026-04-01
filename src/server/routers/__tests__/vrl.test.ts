@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { mockDeep, type DeepMockProxy } from "vitest-mock-extended";
+import { mockDeep } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
 const { t, writeFileMock, unlinkMock, mkdtempMock, execFileMock } = vi.hoisted(() => {
@@ -54,7 +54,6 @@ vi.mock("util", async (importOriginal) => {
 
 import { vrlRouter } from "@/server/routers/vrl";
 
-const _prismaMock = (await import("@/lib/prisma")).prisma as unknown as DeepMockProxy<PrismaClient>;
 
 const caller = t.createCallerFactory(vrlRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },

@@ -1,7 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
-import { TRPCError } from "@trpc/server";
 
 const { t, mockValidatePublicUrl, mockValidateSmtpHost, mockChannelTest } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports

@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { mockDeep, type DeepMockProxy } from "vitest-mock-extended";
+import { mockDeep } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
 const { t } = vi.hoisted(() => {
@@ -40,7 +40,6 @@ import { validateConfig } from "@/server/services/validator";
 const validateConfigMock = validateConfig as ReturnType<typeof vi.fn>;
 
 // We don't actually need prismaMock for this router, but keep the setup consistent
-const _prismaMock = (await import("@/lib/prisma")).prisma as unknown as DeepMockProxy<PrismaClient>;
 
 const caller = t.createCallerFactory(validatorRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },

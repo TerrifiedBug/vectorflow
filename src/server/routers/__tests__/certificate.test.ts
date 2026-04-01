@@ -45,7 +45,7 @@ vi.mock("@/server/services/cert-expiry-checker", () => ({
 import { prisma } from "@/lib/prisma";
 import { certificateRouter } from "@/server/routers/certificate";
 import { encrypt } from "@/server/services/crypto";
-import { parseCertExpiry, daysUntilExpiry } from "@/server/services/cert-expiry-checker";
+import { parseCertExpiry } from "@/server/services/cert-expiry-checker";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
