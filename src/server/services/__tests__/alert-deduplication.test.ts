@@ -32,6 +32,9 @@ function makeAlertRule(overrides: Partial<AlertRule> = {}): AlertRule {
     durationSeconds: overrides.durationSeconds ?? 0,
     snoozedUntil: overrides.snoozedUntil ?? null,
     cooldownMinutes: overrides.cooldownMinutes ?? null,
+    keyword: null,
+    keywordSeverityFilter: null,
+    keywordWindowMinutes: null,
     createdAt: overrides.createdAt ?? NOW,
     updatedAt: overrides.updatedAt ?? NOW,
   };
@@ -51,6 +54,7 @@ function makeAlertEvent(overrides: Partial<AlertEvent> = {}): AlertEvent {
     acknowledgedAt: overrides.acknowledgedAt ?? null,
     acknowledgedBy: overrides.acknowledgedBy ?? null,
     correlationGroupId: overrides.correlationGroupId ?? null,
+    errorContext: null,
   };
 }
 

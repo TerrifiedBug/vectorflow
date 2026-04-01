@@ -364,6 +364,7 @@ describe("heartbeat async decomposition", () => {
     expect(ingestLogsMock).toHaveBeenCalledWith(
       "node-1",
       "pipe-1",
+      "env-1",
       ["line 1", "line 2"],
     );
   });

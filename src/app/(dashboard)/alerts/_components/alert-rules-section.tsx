@@ -80,6 +80,9 @@ interface RuleFormState {
   durationSeconds: string;
   cooldownMinutes: string;
   channelIds: string[];
+  keyword: string;
+  keywordSeverityFilter: string;
+  keywordWindowMinutes: string;
 }
 
 const EMPTY_RULE_FORM: RuleFormState = {
@@ -91,6 +94,9 @@ const EMPTY_RULE_FORM: RuleFormState = {
   durationSeconds: "60",
   cooldownMinutes: "",
   channelIds: [],
+  keyword: "",
+  keywordSeverityFilter: "",
+  keywordWindowMinutes: "5",
 };
 
 const SNOOZE_PRESETS = [
@@ -259,6 +265,9 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
       durationSeconds: skipThreshold ? "" : String(rule.durationSeconds ?? ""),
       cooldownMinutes: rule.cooldownMinutes != null ? String(rule.cooldownMinutes) : "",
       channelIds: rule.channels?.map((c) => c.channelId) ?? [],
+      keyword: rule.keyword ?? "",
+      keywordSeverityFilter: rule.keywordSeverityFilter ?? "",
+      keywordWindowMinutes: rule.keywordWindowMinutes != null ? String(rule.keywordWindowMinutes) : "5",
     });
     setTouched({});
     setDialogOpen(true);
@@ -277,15 +286,21 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
   const formErrors = {
     name: !form.name.trim() ? "Name is required." : null,
     metric: !form.metric ? "Select a metric." : null,
-    threshold: !isBinaryOrEvent && !form.threshold ? "Enter a numeric threshold value." : null,
+    threshold: !isBinaryOrEvent && form.metric !== "log_keyword" && !form.threshold ? "Enter a numeric threshold value." : null,
+    keyword: form.metric === "log_keyword" && !form.keyword.trim() ? "Keyword is required." : null,
   };
-  const isFormValid = !formErrors.name && !formErrors.metric && !formErrors.threshold;
+  const isFormValid = !formErrors.name && !formErrors.metric && !formErrors.threshold && !formErrors.keyword;
 
   const handleSubmit = () => {
     setTouched({ name: true, metric: true, threshold: true });
     const isBinary = BINARY_METRICS.has(form.metric);
     const isEvent = isEventMetric(form.metric);
-    if (!form.name || !form.metric || (!isBinary && !isEvent && !form.threshold)) {
+    const isKeyword = form.metric === "log_keyword";
+    if (!form.name || !form.metric || (!isBinary && !isEvent && !isKeyword && !form.threshold)) {
+      toast.error("Please fill in all required fields", { duration: 6000 });
+      return;
+    }
+    if (isKeyword && !form.keyword.trim()) {
       toast.error("Please fill in all required fields", { duration: 6000 });
       return;
     }
@@ -300,7 +315,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
           ? {}
           : {
               threshold: parseFloat(form.threshold),
-              durationSeconds: parseInt(form.durationSeconds, 10) || 60,
+              durationSeconds: isKeyword ? undefined : (parseInt(form.durationSeconds, 10) || 60),
             }),
         cooldownMinutes: form.cooldownMinutes ? parseInt(form.cooldownMinutes, 10) : null,
         channelIds: form.channelIds,
@@ -313,10 +328,19 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
         metric: form.metric as AlertMetric,
         condition: skipThreshold ? null : (form.condition as AlertCondition),
         threshold: skipThreshold ? null : parseFloat(form.threshold),
-        durationSeconds: skipThreshold ? null : (parseInt(form.durationSeconds, 10) || 60),
+        durationSeconds: skipThreshold || isKeyword ? null : (parseInt(form.durationSeconds, 10) || 60),
         cooldownMinutes: form.cooldownMinutes ? parseInt(form.cooldownMinutes, 10) : null,
         teamId: selectedTeamId!,
         channelIds: form.channelIds.length > 0 ? form.channelIds : undefined,
+        ...(isKeyword
+          ? {
+              keyword: form.keyword,
+              keywordSeverityFilter: (form.keywordSeverityFilter || null) as "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | null,
+              keywordWindowMinutes: form.keywordWindowMinutes
+                ? parseInt(form.keywordWindowMinutes, 10)
+                : null,
+            }
+          : {}),
       });
     }
   };
@@ -516,6 +540,8 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                   condition: values.condition,
                   threshold: values.threshold,
                   durationSeconds: values.durationSeconds,
+                  keyword: values.keyword ?? "",
+                  keywordWindowMinutes: values.keywordWindowMinutes ?? "5",
                 }))
               }
             />
@@ -560,6 +586,9 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                             ? { threshold: "", durationSeconds: "" }
                             : {}),
                         ...(GLOBAL_METRICS.has(v) ? { pipelineId: "" } : {}),
+                        ...(v === "log_keyword"
+                          ? { keyword: "", keywordWindowMinutes: "5", durationSeconds: "" }
+                          : { keyword: "" }),
                       }));
                     }}
                   >
@@ -597,6 +626,10 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                         <SelectItem value="fleet_event_volume">Fleet Event Volume</SelectItem>
                         <SelectItem value="node_load_imbalance">Node Load Imbalance</SelectItem>
                       </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Logs</SelectLabel>
+                        <SelectItem value="log_keyword">Log Keyword</SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                   {touched.metric && formErrors.metric && (
@@ -633,6 +666,63 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
               </>
             )}
 
+            {form.metric === "log_keyword" && (
+              <>
+                <div className="space-y-2">
+                  <Label>Keyword *</Label>
+                  <Input
+                    value={form.keyword}
+                    onChange={(e) => setForm((f) => ({ ...f, keyword: e.target.value }))}
+                    placeholder="e.g. timeout, NullPointerException"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Case-insensitive substring match against log messages.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Minimum Severity</Label>
+                    <Select
+                      value={form.keywordSeverityFilter || "any"}
+                      onValueChange={(v) =>
+                        setForm((f) => ({ ...f, keywordSeverityFilter: v === "any" ? "" : v }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Any level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Any level</SelectItem>
+                        <SelectItem value="ERROR">ERROR</SelectItem>
+                        <SelectItem value="WARN">WARN</SelectItem>
+                        <SelectItem value="INFO">INFO</SelectItem>
+                        <SelectItem value="DEBUG">DEBUG</SelectItem>
+                        <SelectItem value="TRACE">TRACE</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Window (minutes)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={form.keywordWindowMinutes}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, keywordWindowMinutes: e.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <p className="text-sm text-muted-foreground">
+                  Alert fires when keyword matches exceed the threshold within the time window.
+                </p>
+              </>
+            )}
+
             {isEventMetric(form.metric) || BINARY_METRICS.has(form.metric) ? (
               <p className="text-sm text-muted-foreground py-2">
                 Notifications will be sent when this event occurs.
@@ -658,18 +748,20 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="rule-duration">Duration (seconds)</Label>
-                  <Input
-                    id="rule-duration"
-                    type="number"
-                    placeholder="60"
-                    value={form.durationSeconds}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, durationSeconds: e.target.value }))
-                    }
-                  />
-                </div>
+                {form.metric !== "log_keyword" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="rule-duration">Duration (seconds)</Label>
+                    <Input
+                      id="rule-duration"
+                      type="number"
+                      placeholder="60"
+                      value={form.durationSeconds}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, durationSeconds: e.target.value }))
+                      }
+                    />
+                  </div>
+                )}
               </>
             )}
 
