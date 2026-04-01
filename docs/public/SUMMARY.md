@@ -21,6 +21,10 @@
 * [Templates](user-guide/templates.md)
 * [Shared Components](user-guide/shared-components.md)
 * [AI Suggestions](user-guide/ai-suggestions.md)
+* [Cost Optimization](user-guide/cost-optimization.md)
+* [Anomaly Detection](user-guide/anomaly-detection.md)
+* [Pipeline Dependencies](user-guide/pipeline-dependencies.md)
+* [Migration Toolkit](user-guide/migration-toolkit.md)
 
 ## Operations
 
