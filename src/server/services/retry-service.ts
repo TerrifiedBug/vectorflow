@@ -10,6 +10,7 @@ import {
 } from "@/server/services/webhook-delivery";
 import { getDriver } from "@/server/services/channels";
 import { deliverOutboundWebhook, isPermanentFailure } from "@/server/services/outbound-webhook";
+import { infoLog, errorLog } from "@/lib/logger";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ export class RetryService {
   private timer: ReturnType<typeof setInterval> | null = null;
 
   init(): void {
-    console.log("[retry-service] Initializing delivery retry service");
+    infoLog("retry-service", "Initializing delivery retry service");
     this.start();
   }
 
@@ -33,16 +34,14 @@ export class RetryService {
       POLL_INTERVAL_MS,
     );
     this.timer.unref();
-    console.log(
-      `[retry-service] Poll loop started (every ${POLL_INTERVAL_MS / 1000}s)`,
-    );
+    infoLog("retry-service", `Poll loop started (every ${POLL_INTERVAL_MS / 1000}s)`);
   }
 
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      console.log("[retry-service] Poll loop stopped");
+      infoLog("retry-service", "Poll loop stopped");
     }
   }
 
@@ -67,15 +66,13 @@ export class RetryService {
         take: BATCH_SIZE,
       });
     } catch (err) {
-      console.error("[retry-service] Error querying due retries:", err);
+      errorLog("retry-service", "Error querying due retries", err);
       return;
     }
 
     if (dueRetries.length === 0) return;
 
-    console.log(
-      `[retry-service] Found ${dueRetries.length} due retr${dueRetries.length === 1 ? "y" : "ies"}`,
-    );
+    infoLog("retry-service", `Found ${dueRetries.length} due retr${dueRetries.length === 1 ? "y" : "ies"}`);
 
     for (const attempt of dueRetries) {
       try {
@@ -88,9 +85,7 @@ export class RetryService {
         // Reconstruct the payload from the AlertEvent + AlertRule
         const payload = await this.buildPayload(attempt.alertEventId);
         if (!payload) {
-          console.error(
-            `[retry-service] Cannot build payload for alertEvent=${attempt.alertEventId} — skipping retry`,
-          );
+          errorLog("retry-service", `Cannot build payload for alertEvent=${attempt.alertEventId} — skipping retry`);
           continue;
         }
 
@@ -112,16 +107,11 @@ export class RetryService {
             nextAttemptNumber,
           );
         } else {
-          console.error(
-            `[retry-service] Attempt ${attempt.id} has no webhookId or channelId — skipping`,
-          );
+          errorLog("retry-service", `Attempt ${attempt.id} has no webhookId or channelId — skipping`);
         }
       } catch (err) {
         // Individual retry errors must never crash the poll loop
-        console.error(
-          `[retry-service] Error retrying attempt ${attempt.id}:`,
-          err,
-        );
+        errorLog("retry-service", `Error retrying attempt ${attempt.id}`, err);
       }
     }
 
@@ -150,15 +140,13 @@ export class RetryService {
         take: BATCH_SIZE,
       });
     } catch (err) {
-      console.error("[retry-service] Error querying outbound webhook retries:", err);
+      errorLog("retry-service", "Error querying outbound webhook retries", err);
       return;
     }
 
     if (!dueRetries || dueRetries.length === 0) return;
 
-    console.log(
-      `[retry-service] Found ${dueRetries.length} outbound webhook retr${dueRetries.length === 1 ? "y" : "ies"}`,
-    );
+    infoLog("retry-service", `Found ${dueRetries.length} outbound webhook retr${dueRetries.length === 1 ? "y" : "ies"}`);
 
     for (const delivery of dueRetries) {
       try {
@@ -197,9 +185,7 @@ export class RetryService {
               completedAt: new Date(),
             },
           });
-          console.log(
-            `[retry-service] Outbound webhook retry succeeded (delivery=${delivery.id}, attempt=${nextAttemptNumber})`,
-          );
+          infoLog("retry-service", `Outbound webhook retry succeeded (delivery=${delivery.id}, attempt=${nextAttemptNumber})`);
         } else if (isPermanentFailure(result)) {
           await prisma.webhookDelivery.update({
             where: { id: delivery.id },
@@ -211,9 +197,7 @@ export class RetryService {
               completedAt: new Date(),
             },
           });
-          console.log(
-            `[retry-service] Outbound webhook dead-lettered (delivery=${delivery.id}): ${result.error}`,
-          );
+          infoLog("retry-service", `Outbound webhook dead-lettered (delivery=${delivery.id}): ${result.error}`);
         } else {
           const nextRetryAt = getNextRetryAt(nextAttemptNumber);
           await prisma.webhookDelivery.update({
@@ -226,12 +210,10 @@ export class RetryService {
               nextRetryAt,
             },
           });
-          console.log(
-            `[retry-service] Outbound webhook retry failed (delivery=${delivery.id}, attempt=${nextAttemptNumber}): ${result.error}`,
-          );
+          infoLog("retry-service", `Outbound webhook retry failed (delivery=${delivery.id}, attempt=${nextAttemptNumber}): ${result.error}`);
         }
       } catch (err) {
-        console.error(`[retry-service] Error retrying outbound delivery ${delivery.id}:`, err);
+        errorLog("retry-service", `Error retrying outbound delivery ${delivery.id}`, err);
       }
     }
   }
@@ -294,9 +276,7 @@ export class RetryService {
     });
 
     if (!webhook) {
-      console.error(
-        `[retry-service] Webhook ${webhookId} not found — skipping retry`,
-      );
+      errorLog("retry-service", `Webhook ${webhookId} not found — skipping retry`);
       return;
     }
 
@@ -309,13 +289,9 @@ export class RetryService {
     );
 
     if (result.success) {
-      console.log(
-        `[retry-service] Webhook retry succeeded (webhook=${webhookId}, attempt=${attemptNumber})`,
-      );
+      infoLog("retry-service", `Webhook retry succeeded (webhook=${webhookId}, attempt=${attemptNumber})`);
     } else {
-      console.log(
-        `[retry-service] Webhook retry failed (webhook=${webhookId}, attempt=${attemptNumber}): ${result.error}`,
-      );
+      infoLog("retry-service", `Webhook retry failed (webhook=${webhookId}, attempt=${attemptNumber}): ${result.error}`);
     }
   }
 
@@ -333,9 +309,7 @@ export class RetryService {
     });
 
     if (!channel) {
-      console.error(
-        `[retry-service] Channel ${channelId} not found — skipping retry`,
-      );
+      errorLog("retry-service", `Channel ${channelId} not found — skipping retry`);
       return;
     }
 
@@ -356,13 +330,9 @@ export class RetryService {
     );
 
     if (result.success) {
-      console.log(
-        `[retry-service] Channel retry succeeded (channel=${channelId}, attempt=${attemptNumber})`,
-      );
+      infoLog("retry-service", `Channel retry succeeded (channel=${channelId}, attempt=${attemptNumber})`);
     } else {
-      console.log(
-        `[retry-service] Channel retry failed (channel=${channelId}, attempt=${attemptNumber}): ${result.error}`,
-      );
+      infoLog("retry-service", `Channel retry failed (channel=${channelId}, attempt=${attemptNumber}): ${result.error}`);
     }
   }
 }

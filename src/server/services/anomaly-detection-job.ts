@@ -3,6 +3,7 @@ import {
   evaluateAllPipelines,
   ANOMALY_CONFIG,
 } from "@/server/services/anomaly-detector";
+import { infoLog, errorLog } from "@/lib/logger";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -21,7 +22,7 @@ export class AnomalyDetectionService {
   private tickCount = 0;
 
   init(): void {
-    console.log("[anomaly-detection] Initializing...");
+    infoLog("anomaly-detection", "Initializing...");
     this.start();
   }
 
@@ -31,16 +32,14 @@ export class AnomalyDetectionService {
       ANOMALY_CONFIG.POLL_INTERVAL_MS,
     );
     this.timer.unref();
-    console.log(
-      `[anomaly-detection] Poll loop started (every ${ANOMALY_CONFIG.POLL_INTERVAL_MS / 1000}s)`,
-    );
+    infoLog("anomaly-detection", `Poll loop started (every ${ANOMALY_CONFIG.POLL_INTERVAL_MS / 1000}s)`);
   }
 
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      console.log("[anomaly-detection] Poll loop stopped");
+      infoLog("anomaly-detection", "Poll loop stopped");
     }
   }
 
@@ -58,7 +57,7 @@ export class AnomalyDetectionService {
     try {
       await evaluateAllPipelines();
     } catch (err) {
-      console.error("[anomaly-detection] Evaluation error:", err);
+      errorLog("anomaly-detection", "Evaluation error", err);
     }
 
     // Run cleanup once per day
@@ -66,7 +65,7 @@ export class AnomalyDetectionService {
       try {
         await this.cleanup();
       } catch (err) {
-        console.error("[anomaly-detection] Cleanup error:", err);
+        errorLog("anomaly-detection", "Cleanup error", err);
       }
     }
   }
@@ -85,9 +84,7 @@ export class AnomalyDetectionService {
     });
 
     if (result.count > 0) {
-      console.log(
-        `[anomaly-detection] Cleaned up ${result.count} old anomaly events`,
-      );
+      infoLog("anomaly-detection", `Cleaned up ${result.count} old anomaly events`);
     }
   }
 }

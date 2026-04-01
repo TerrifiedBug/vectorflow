@@ -15,6 +15,7 @@ import type { LoadImbalanceResult } from "@/server/services/fleet-metrics";
 import { getVersionDrift } from "@/server/services/drift-metrics";
 import { checkCertificateExpiry } from "@/server/services/cert-expiry-checker";
 import { evaluateCostAlerts } from "@/server/services/cost-alert";
+import { infoLog, errorLog } from "@/lib/logger";
 
 // Re-export the constant for downstream use (e.g. T03 validation)
 export { FLEET_METRICS } from "@/server/services/alert-evaluator";
@@ -41,7 +42,7 @@ export class FleetAlertService {
   private conditionFirstSeen = new Map<string, Date>();
 
   init(): void {
-    console.log("[fleet-alert-service] Initializing...");
+    infoLog("fleet-alert", "Initializing...");
     this.start();
   }
 
@@ -51,16 +52,14 @@ export class FleetAlertService {
       POLL_INTERVAL_MS,
     );
     this.timer.unref();
-    console.log(
-      `[fleet-alert-service] Poll loop started (every ${POLL_INTERVAL_MS / 1000}s)`,
-    );
+    infoLog("fleet-alert", `Poll loop started (every ${POLL_INTERVAL_MS / 1000}s)`);
   }
 
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      console.log("[fleet-alert-service] Poll loop stopped");
+      infoLog("fleet-alert", "Poll loop stopped");
     }
   }
 
@@ -99,10 +98,7 @@ export class FleetAlertService {
           if (result) results.push(result);
         } catch (err) {
           // Per-rule isolation: one rule's failure must not stop others
-          console.error(
-            `[fleet-alert-service] Error evaluating rule ${rule.id} (${rule.metric}):`,
-            err,
-          );
+          errorLog("fleet-alert", `Error evaluating rule ${rule.id} (${rule.metric})`, err);
         }
       }
 
@@ -113,17 +109,17 @@ export class FleetAlertService {
       try {
         await checkCertificateExpiry();
       } catch (certErr) {
-        console.error("[fleet-alert-service] Certificate expiry check failed:", certErr);
+        errorLog("fleet-alert", "Certificate expiry check failed", certErr);
       }
 
       // ── Cost budget alerts ──
       try {
         await evaluateCostAlerts();
       } catch (err) {
-        console.error("[fleet-alert-service] Cost alert evaluation failed:", err);
+        errorLog("fleet-alert", "Cost alert evaluation failed", err);
       }
     } catch (err) {
-      console.error("[fleet-alert-service] Poll loop error:", err);
+      errorLog("fleet-alert", "Poll loop error", err);
     }
 
     return results;
@@ -334,10 +330,7 @@ export class FleetAlertService {
             webhook.url,
             () => deliverSingleWebhook(webhook, payload),
           ).catch((err) =>
-            console.error(
-              `[fleet-alert-service] Webhook delivery error for ${webhook.url}:`,
-              err,
-            ),
+            errorLog("fleet-alert", `Webhook delivery error for ${webhook.url}`, err),
           );
         }
 
@@ -348,16 +341,10 @@ export class FleetAlertService {
           payload,
           event.id,
         ).catch((err) =>
-          console.error(
-            "[fleet-alert-service] Channel delivery error:",
-            err,
-          ),
+          errorLog("fleet-alert", "Channel delivery error", err),
         );
       } catch (err) {
-        console.error(
-          `[fleet-alert-service] Delivery error for event ${event.id}:`,
-          err,
-        );
+        errorLog("fleet-alert", `Delivery error for event ${event.id}`, err);
       }
     }
   }

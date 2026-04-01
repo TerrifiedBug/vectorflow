@@ -1,6 +1,7 @@
 import type Redis from "ioredis";
 import { randomUUID } from "crypto";
 import { getRedis } from "@/lib/redis";
+import { infoLog, debugLog, errorLog } from "@/lib/logger";
 
 // ─── Lua Scripts ────────────────────────────────────────────────────────────
 
@@ -52,9 +53,7 @@ export class LeaderElection {
 
     if (!this.redis) {
       this._isLeader = true;
-      console.log(
-        "[leader-election] No Redis configured — assuming leadership (single-instance mode)",
-      );
+      infoLog("leader-election", "No Redis configured — assuming leadership (single-instance mode)");
     }
   }
 
@@ -82,9 +81,7 @@ export class LeaderElection {
           ) {
             this._isLeader = false;
             this.consecutiveFailures = 0;
-            console.log(
-              "[leader-election] Lost leadership — another instance is leader",
-            );
+            infoLog("leader-election", "Lost leadership — another instance is leader");
           }
         }
       } else {
@@ -104,9 +101,7 @@ export class LeaderElection {
     if (this._isLeader && this.redis) {
       await this.release();
       this._isLeader = false;
-      console.log(
-        `[leader-election] Released leadership (shutdown)`,
-      );
+      infoLog("leader-election", "Released leadership (shutdown)");
     }
   }
 
@@ -127,17 +122,13 @@ export class LeaderElection {
       if (result === "OK") {
         this._isLeader = true;
         this.consecutiveFailures = 0;
-        console.log(
-          `[leader-election] Acquired leadership (instance=${this.instanceId})`,
-        );
+        infoLog("leader-election", `Acquired leadership (instance=${this.instanceId})`);
         return true;
       }
 
       return false;
     } catch (err) {
-      console.error(
-        `[leader-election] Error acquiring leadership: ${(err as Error).message}`,
-      );
+      errorLog("leader-election", `Error acquiring leadership: ${(err as Error).message}`);
       return false;
     }
   }
@@ -155,15 +146,13 @@ export class LeaderElection {
       );
 
       if (result === 1) {
-        console.log("[leader-election] Renewed leadership");
+        debugLog("leader-election", "Renewed leadership");
         return true;
       }
 
       return false;
     } catch (err) {
-      console.error(
-        `[leader-election] Error renewing leadership: ${(err as Error).message}`,
-      );
+      errorLog("leader-election", `Error renewing leadership: ${(err as Error).message}`);
       return false;
     }
   }
@@ -179,9 +168,7 @@ export class LeaderElection {
         this.instanceId,
       );
     } catch (err) {
-      console.error(
-        `[leader-election] Error releasing leadership: ${(err as Error).message}`,
-      );
+      errorLog("leader-election", `Error releasing leadership: ${(err as Error).message}`);
     }
   }
 }

@@ -210,7 +210,10 @@ describe("redis-pubsub", () => {
       // Wait for the catch handler to execute
       await vi.waitFor(() => {
         expect(console.error).toHaveBeenCalledWith(
-          expect.stringContaining("Publish SSE error: Connection lost"),
+          "%s [%s] %s",
+          expect.any(String),
+          "redis-pubsub",
+          "Publish SSE error: Connection lost",
         );
       });
     });
@@ -379,6 +382,9 @@ describe("redis-pubsub", () => {
       expect(mockBroadcast).not.toHaveBeenCalled();
       expect(mockMergeSample).not.toHaveBeenCalled();
       expect(console.warn).toHaveBeenCalledWith(
+        "%s [%s] %s",
+        expect.any(String),
+        "redis-pubsub",
         expect.stringContaining("Malformed message"),
       );
     });

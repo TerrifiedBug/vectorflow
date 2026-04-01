@@ -12,6 +12,7 @@ import {
   getRecentMeanLatency,
 } from "@/server/services/auto-rollback";
 import { TRPCError } from "@trpc/server";
+import { infoLog, errorLog } from "@/lib/logger";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ export class StagedRolloutService {
   private timer: ReturnType<typeof setInterval> | null = null;
 
   init(): void {
-    console.log("[staged-rollout] Initializing staged rollout service");
+    infoLog("staged-rollout", "Initializing staged rollout service");
     this.start();
   }
 
@@ -33,16 +34,14 @@ export class StagedRolloutService {
       POLL_INTERVAL_MS,
     );
     this.timer.unref();
-    console.log(
-      `[staged-rollout] Poll loop started (every ${POLL_INTERVAL_MS / 1000}s)`,
-    );
+    infoLog("staged-rollout", `Poll loop started (every ${POLL_INTERVAL_MS / 1000}s)`);
   }
 
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      console.log("[staged-rollout] Poll loop stopped");
+      infoLog("staged-rollout", "Poll loop stopped");
     }
   }
 
@@ -65,9 +64,7 @@ export class StagedRolloutService {
 
       if (expiredRollouts.length === 0) return;
 
-      console.log(
-        `[staged-rollout] Found ${expiredRollouts.length} rollout(s) with expired health-check window`,
-      );
+      infoLog("staged-rollout", `Found ${expiredRollouts.length} rollout(s) with expired health-check window`);
 
       for (const rollout of expiredRollouts) {
         try {
@@ -87,9 +84,7 @@ export class StagedRolloutService {
             rollout.pipeline.environmentId,
           );
 
-          console.log(
-            `[staged-rollout] Rollout ${rollout.id} transitioned to HEALTH_CHECK`,
-          );
+          infoLog("staged-rollout", `Rollout ${rollout.id} transitioned to HEALTH_CHECK`);
 
           // Check if auto-broaden is enabled in pipeline's deployment strategy
           const strategy = parseDeploymentStrategy(rollout.pipeline.deploymentStrategy);
@@ -101,28 +96,18 @@ export class StagedRolloutService {
             );
 
             if (shouldBroaden) {
-              console.log(
-                `[staged-rollout] Auto-broadening rollout ${rollout.id} — success criteria met`,
-              );
+              infoLog("staged-rollout", `Auto-broadening rollout ${rollout.id} — success criteria met`);
               await this.broadenRollout(rollout.id);
               continue;
             }
-            console.log(
-              `[staged-rollout] Auto-broaden criteria not met for rollout ${rollout.id}, leaving in HEALTH_CHECK for manual review`,
-            );
+            infoLog("staged-rollout", `Auto-broaden criteria not met for rollout ${rollout.id}, leaving in HEALTH_CHECK for manual review`);
           }
         } catch (err) {
-          console.error(
-            `[staged-rollout] Error transitioning rollout ${rollout.id}:`,
-            err,
-          );
+          errorLog("staged-rollout", `Error transitioning rollout ${rollout.id}`, err);
         }
       }
     } catch (err) {
-      console.error(
-        "[staged-rollout] Error in checkHealthWindows poll:",
-        err,
-      );
+      errorLog("staged-rollout", "Error in checkHealthWindows poll", err);
     }
   }
 
@@ -321,9 +306,7 @@ export class StagedRolloutService {
       pipeline.environmentId,
     );
 
-    console.log(
-      `[staged-rollout] Created rollout ${rollout.id} for pipeline ${pipelineId} — ${canaryNodeIds.length} canary, ${remainingNodeIds.length} remaining`,
-    );
+    infoLog("staged-rollout", `Created rollout ${rollout.id} for pipeline ${pipelineId} — ${canaryNodeIds.length} canary, ${remainingNodeIds.length} remaining`);
 
     return { rolloutId: rollout.id };
   }
@@ -360,10 +343,7 @@ export class StagedRolloutService {
 
       return true;
     } catch (err) {
-      console.error(
-        `[staged-rollout] Error checking success criteria for pipeline=${pipelineId}:`,
-        err,
-      );
+      errorLog("staged-rollout", `Error checking success criteria for pipeline=${pipelineId}`, err);
       return false;
     }
   }
@@ -431,9 +411,7 @@ export class StagedRolloutService {
       rollout.pipeline.environmentId,
     );
 
-    console.log(
-      `[staged-rollout] Broadened rollout ${rolloutId} — pushed to ${remainingNodeIds.length} remaining node(s)`,
-    );
+    infoLog("staged-rollout", `Broadened rollout ${rolloutId} — pushed to ${remainingNodeIds.length} remaining node(s)`);
   }
 
   /**
@@ -501,9 +479,7 @@ export class StagedRolloutService {
       rollout.pipeline.environmentId,
     );
 
-    console.log(
-      `[staged-rollout] Rolled back rollout ${rolloutId}${rollout.previousVersionId ? ` to version ${rollout.previousVersionId}` : " (no previous version)"}`,
-    );
+    infoLog("staged-rollout", `Rolled back rollout ${rolloutId}${rollout.previousVersionId ? ` to version ${rollout.previousVersionId}` : " (no previous version)"}`);
   }
 }
 
