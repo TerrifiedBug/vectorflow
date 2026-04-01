@@ -34,6 +34,7 @@ import {
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { isFleetMetric, getAlertCategory } from "@/lib/alert-metrics";
+import type { Prisma } from "@/generated/prisma";
 import {
   Table,
   TableBody,
@@ -50,7 +51,7 @@ type AlertEventItem = {
   status: string;
   value: number;
   message: string | null;
-  errorContext: { lines: Array<{ timestamp: string; message: string }>; truncated: boolean } | null;
+  errorContext: Prisma.JsonValue;
   firedAt: Date;
   resolvedAt: Date | null;
   acknowledgedAt: Date | null;
@@ -232,7 +233,7 @@ function AlertEventContent({
                         {event.errorContext && (
                           <div className="px-4 pt-3">
                             <ErrorContextPanel
-                              errorContext={event.errorContext}
+                              errorContext={event.errorContext as { lines: Array<{ timestamp: string; message: string }>; truncated: boolean }}
                               pipelineId={event.alertRule.pipeline?.id}
                             />
                           </div>
