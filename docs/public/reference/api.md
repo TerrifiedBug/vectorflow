@@ -148,7 +148,7 @@ Some procedures require **Super Admin** access -- this is a server-wide flag on 
 | `serviceAccount` | `serviceAccount.*` | Service account API key management |
 | `userPreference` | `userPreference.*` | Per-user UI preferences |
 | `sharedComponent` | `sharedComponent.*` | Reusable pipeline components shared across pipelines |
-| `aiRouter` | `aiRouter.*` | AI assistant conversations and suggestions |
+| `ai` | `ai.*` | AI assistant conversations and suggestions |
 | `pipelineGroup` | `pipelineGroup.*` | Pipeline folder organization |
 | `pipelineDependency` | `pipelineDependency.*` | Inter-pipeline dependency graph |
 | `promotion` | `promotion.*` | Cross-environment pipeline promotion with approval workflow |
@@ -499,7 +499,7 @@ Configure system-wide settings. All procedures require **Super Admin** access ex
 |-----------|------|----------|-------|-------------|
 | `settings.testOidc` | mutation | Super Admin | `{ issuer: string }` | Test OIDC provider discovery |
 | `settings.updateOidc` | mutation | Super Admin | `{ issuer: string, clientId: string, clientSecret: string, displayName?: string, tokenEndpointAuthMethod?: string }` | Update OIDC provider configuration |
-| `settings.updateOidcRoleMapping` | mutation | Super Admin | `{ defaultRole: Role, groupsClaim?: string, adminGroups?: string[], editorGroups?: string[] }` | Map OIDC groups to VectorFlow roles |
+| `settings.updateOidcRoleMapping` | mutation | Super Admin | `{ defaultRole: Role, groupsClaim?: string, adminGroups?: string, editorGroups?: string }` | Map OIDC groups to VectorFlow roles |
 | `settings.updateOidcTeamMappings` | mutation | Super Admin | `{ mappings: TeamMapping[], defaultTeamId?: string, defaultRole: Role, groupSyncEnabled: boolean, groupsScope?: string, groupsClaim?: string }` | Map OIDC groups to teams with roles |
 
 <details>
@@ -524,7 +524,7 @@ Each entry in the `mappings` array:
 
 | Procedure | Type | Min Role | Input | Description |
 |-----------|------|----------|-------|-------------|
-| `settings.updateAnomalyConfig` | mutation | Super Admin | `{ baselineWindowDays: number, sigmaThreshold: number, minStddevFloorPercent: number, dedupWindowHours: number, enabledMetrics: string[] }` | Configure anomaly detection parameters |
+| `settings.updateAnomalyConfig` | mutation | Super Admin | `{ baselineWindowDays: number, sigmaThreshold: number, minStddevFloorPercent: number, dedupWindowHours: number, enabledMetrics: string }` | Configure anomaly detection parameters (enabledMetrics is comma-delimited) |
 
 ### Backup & restore
 
@@ -825,12 +825,12 @@ Manage AI assistant conversations for pipeline building, debugging, and VRL auth
 
 | Procedure | Type | Min Role | Input | Description |
 |-----------|------|----------|-------|-------------|
-| `aiRouter.getConversation` | query | VIEWER | `{ pipelineId: string }` | Get the AI conversation for a pipeline |
-| `aiRouter.startNewConversation` | mutation | EDITOR | `{ pipelineId: string }` | Start a new AI conversation (replaces existing) |
-| `aiRouter.markSuggestionsApplied` | mutation | EDITOR | `{ pipelineId: string, conversationId: string, messageId: string, suggestionIds: string[] }` | Mark AI suggestions as applied to the pipeline |
-| `aiRouter.getDebugConversation` | query | VIEWER | `{ pipelineId: string }` | Get the debug-mode AI conversation |
-| `aiRouter.getVrlConversation` | query | VIEWER | `{ pipelineId: string, componentKey: string }` | Get the VRL assistant conversation for a component |
-| `aiRouter.markVrlSuggestionsApplied` | mutation | EDITOR | `{ pipelineId: string, conversationId: string, messageId: string, suggestionIds: string[] }` | Mark VRL suggestions as applied |
+| `ai.getConversation` | query | VIEWER | `{ pipelineId: string }` | Get the AI conversation for a pipeline |
+| `ai.startNewConversation` | mutation | EDITOR | `{ pipelineId: string }` | Start a new AI conversation (replaces existing) |
+| `ai.markSuggestionsApplied` | mutation | EDITOR | `{ pipelineId: string, conversationId: string, messageId: string, suggestionIds: string[] }` | Mark AI suggestions as applied to the pipeline |
+| `ai.getDebugConversation` | query | VIEWER | `{ pipelineId: string }` | Get the debug-mode AI conversation |
+| `ai.getVrlConversation` | query | VIEWER | `{ pipelineId: string, componentKey: string }` | Get the VRL assistant conversation for a component |
+| `ai.markVrlSuggestionsApplied` | mutation | EDITOR | `{ pipelineId: string, conversationId: string, messageId: string, suggestionIds: string[] }` | Mark VRL suggestions as applied |
 
 ---
 
