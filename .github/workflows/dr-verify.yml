@@ -1,0 +1,88 @@
+name: DR Verification
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly: Sunday at 4:00 AM UTC
+    - cron: "0 4 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  dr-verify:
+    name: DR Verify
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: vectorflow
+          POSTGRES_USER: vectorflow
+          POSTGRES_PASSWORD: dr-test-password
+        options: >-
+          --health-cmd "pg_isready -U vectorflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://vectorflow:dr-test-password@localhost:5432/vectorflow
+
+      - name: Seed test data
+        run: |
+          PGPASSWORD=dr-test-password psql -h localhost -U vectorflow -d vectorflow <<'SQL'
+            INSERT INTO "SystemSettings" (id, "instanceName") VALUES ('singleton', 'DR Test Instance');
+            INSERT INTO "Team" (id, name, slug, "createdAt", "updatedAt") VALUES ('dr-team', 'DR Test Team', 'dr-test', NOW(), NOW());
+            INSERT INTO "User" (id, email, name, "hashedPassword", "createdAt", "updatedAt") VALUES ('dr-user', 'dr@test.local', 'DR User', 'not-a-real-hash', NOW(), NOW());
+            INSERT INTO "Environment" (id, name, slug, "teamId", "createdAt", "updatedAt") VALUES ('dr-env', 'Production', 'production', 'dr-team', NOW(), NOW());
+            INSERT INTO "Pipeline" (id, name, "environmentId", "teamId", status, config, "createdAt", "updatedAt") VALUES ('dr-pipe', 'Test Pipeline', 'dr-env', 'dr-team', 'stopped', '{}', NOW(), NOW());
+          SQL
+
+      - name: Create test backup
+        run: |
+          mkdir -p /tmp/dr-backups
+          PGPASSWORD=dr-test-password pg_dump \
+            -h localhost -U vectorflow -d vectorflow \
+            --format=custom --compress=6 \
+            -f /tmp/dr-backups/vectorflow-dr-test.dump
+
+          # Create metadata sidecar
+          MIGRATION_COUNT=$(PGPASSWORD=dr-test-password psql -h localhost -U vectorflow -d vectorflow -t -A \
+            -c "SELECT count(*) FROM \"_prisma_migrations\" WHERE finished_at IS NOT NULL;")
+
+          cat > /tmp/dr-backups/vectorflow-dr-test.meta.json <<META
+          {
+            "version": "dr-test",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+            "migrationCount": $MIGRATION_COUNT,
+            "lastMigration": "dr-test",
+            "sizeBytes": $(stat -c%s /tmp/dr-backups/vectorflow-dr-test.dump),
+            "pgVersion": "16",
+            "checksum": "$(sha256sum /tmp/dr-backups/vectorflow-dr-test.dump | awk '{print $1}')"
+          }
+          META
+
+      - name: Run DR verification
+        run: |
+          VF_BACKUP_DIR=/tmp/dr-backups ./scripts/dr-verify.sh
