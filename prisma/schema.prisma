@@ -963,6 +963,7 @@ enum AlertMetric {
   promotion_completed
   git_sync_failed
   cost_threshold_exceeded   // fires when monthly cost exceeds costBudgetCents
+  log_keyword
 }
 
 enum AlertCondition {
@@ -975,6 +976,7 @@ enum AlertStatus {
   firing
   resolved
   acknowledged
+  dismissed
 }
 
 model AlertRule {
@@ -992,7 +994,10 @@ model AlertRule {
   threshold       Float?
   durationSeconds Int?
   snoozedUntil    DateTime?
-  cooldownMinutes Int?
+  cooldownMinutes       Int?
+  keyword               String?
+  keywordSeverityFilter LogLevel?
+  keywordWindowMinutes  Int?
   events          AlertEvent[]
   channels        AlertRuleChannel[]
   createdAt       DateTime       @default(now())
@@ -1065,6 +1070,7 @@ model AlertEvent {
   notifiedAt      DateTime?
   acknowledgedAt  DateTime?
   acknowledgedBy  String?
+  errorContext    Json?     // { lines: Array<{timestamp, message}>, truncated }
   correlationGroupId  String?
   correlationGroup    AlertCorrelationGroup? @relation(fields: [correlationGroupId], references: [id], onDelete: SetNull)
   deliveries      DeliveryAttempt[]
@@ -1257,6 +1263,7 @@ model AnomalyEvent {
   acknowledgedBy  String?
   dismissedAt     DateTime?
   dismissedBy     String?
+  errorContext    Json?            // { lines: Array<{timestamp, message}>, truncated }
   createdAt       DateTime         @default(now())
 
   @@index([pipelineId])

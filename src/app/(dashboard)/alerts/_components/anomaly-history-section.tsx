@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { ErrorContextPanel } from "./error-context-panel";
+import type { Prisma } from "@/generated/prisma";
 import {
   Table,
   TableBody,
@@ -83,6 +85,7 @@ type AnomalyItem = {
   baselineStddev: number;
   deviationFactor: number;
   message: string | null;
+  errorContext: Prisma.JsonValue | null;
   status: string;
   detectedAt: Date;
   acknowledgedAt: Date | null;
@@ -544,6 +547,14 @@ export function AnomalyHistorySection({
                           {isExpanded && (
                             <TableRow className="bg-muted/30 hover:bg-muted/30">
                               <TableCell colSpan={99} className="p-0">
+                                {anomaly.errorContext && (
+                                  <div className="px-4 pt-3">
+                                    <ErrorContextPanel
+                                      errorContext={anomaly.errorContext as { lines: Array<{ timestamp: string; message: string }>; truncated: boolean }}
+                                      pipelineId={anomaly.pipelineId}
+                                    />
+                                  </div>
+                                )}
                                 <AnomalyDetailRow anomaly={anomaly} />
                               </TableCell>
                             </TableRow>
