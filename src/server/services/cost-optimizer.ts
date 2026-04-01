@@ -78,6 +78,7 @@ export async function aggregatePipelineMetrics(
 export function detectLowReduction(
   aggregates: readonly PipelineAggregates[],
   thresholds: AnalysisThresholds = DEFAULT_THRESHOLDS,
+  sinkKeyMap: Map<string, string> = new Map(),
 ): AnalysisResult[] {
   const results: AnalysisResult[] = [];
 
@@ -109,6 +110,7 @@ export function detectLowReduction(
           reductionRatio,
           eventsIn: agg.totalEventsIn.toString(),
           eventsOut: agg.totalEventsOut.toString(),
+          targetSinkKey: sinkKeyMap.get(agg.pipelineId) ?? "",
         },
         estimatedSavingsBytes: estimatedSavings,
         suggestedAction: {
@@ -129,6 +131,7 @@ export function detectLowReduction(
 export function detectHighErrorRate(
   aggregates: readonly PipelineAggregates[],
   thresholds: AnalysisThresholds = DEFAULT_THRESHOLDS,
+  sinkKeyMap: Map<string, string> = new Map(),
 ): AnalysisResult[] {
   const results: AnalysisResult[] = [];
 
@@ -156,6 +159,7 @@ export function detectHighErrorRate(
           errors: agg.totalErrors.toString(),
           discarded: agg.totalDiscarded.toString(),
           errorRate,
+          targetSinkKey: sinkKeyMap.get(agg.pipelineId) ?? "",
         },
         estimatedSavingsBytes:
           (agg.totalBytesIn * BigInt(Math.round(errorRate * 100))) / BigInt(100),
@@ -252,9 +256,26 @@ export async function runCostAnalysis(
   const aggregates = await aggregatePipelineMetrics(since);
   debugLog(TAG, `Aggregated metrics for ${aggregates.length} pipelines`);
 
+  // Fetch the first sink key for each pipeline (used by apply service to rewire inputs)
+  const pipelineIds = aggregates.map((a) => a.pipelineId);
+  const sinkNodes = pipelineIds.length > 0
+    ? await prisma.pipelineNode.findMany({
+        where: { pipelineId: { in: pipelineIds }, kind: "SINK" },
+        select: { pipelineId: true, componentKey: true },
+        orderBy: { componentKey: "asc" },
+      })
+    : [];
+
+  const sinkKeyMap = new Map<string, string>();
+  for (const node of sinkNodes) {
+    if (!sinkKeyMap.has(node.pipelineId)) {
+      sinkKeyMap.set(node.pipelineId, node.componentKey);
+    }
+  }
+
   const [lowReduction, highError, stale] = await Promise.all([
-    Promise.resolve(detectLowReduction(aggregates, thresholds)),
-    Promise.resolve(detectHighErrorRate(aggregates, thresholds)),
+    Promise.resolve(detectLowReduction(aggregates, thresholds, sinkKeyMap)),
+    Promise.resolve(detectHighErrorRate(aggregates, thresholds, sinkKeyMap)),
     detectStalePipelines(aggregates, thresholds),
   ]);
 
