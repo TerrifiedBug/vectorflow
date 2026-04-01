@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Loader2,
   History,
+  XCircle,
 } from "lucide-react";
 
 import { DeliveryStatusPanel } from "./delivery-status-panel";
@@ -18,6 +19,7 @@ import { AlertTimeline } from "./alert-timeline";
 import { AnomalyHistorySection } from "./anomaly-history-section";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -81,6 +83,9 @@ function AlertEventContent({
   onToggleExpand,
   formatTimestamp,
   hasFilters,
+  selectedIds,
+  onToggleSelection,
+  onToggleSelectAll,
 }: {
   items: AlertEventItem[];
   nextCursor: string | undefined;
@@ -93,6 +98,9 @@ function AlertEventContent({
   onToggleExpand: (id: string | null) => void;
   formatTimestamp: (date: Date | string) => string;
   hasFilters: boolean;
+  selectedIds: Set<string>;
+  onToggleSelection: (id: string) => void;
+  onToggleSelectAll: (items: AlertEventItem[]) => void;
 }) {
   if (items.length === 0) {
     if (hasFilters) {
@@ -136,6 +144,13 @@ function AlertEventContent({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[30px] px-2">
+                <Checkbox
+                  checked={items.length > 0 && items.every((item) => selectedIds.has(item.id))}
+                  onCheckedChange={() => onToggleSelectAll(items)}
+                  aria-label="Select all"
+                />
+              </TableHead>
               <TableHead className="w-[30px]" />
               <TableHead>Timestamp</TableHead>
               <TableHead>Rule Name</TableHead>
@@ -157,6 +172,13 @@ function AlertEventContent({
                       onToggleExpand(isExpanded ? null : event.id)
                     }
                   >
+                    <TableCell className="w-[30px] px-2" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.has(event.id)}
+                        onCheckedChange={() => onToggleSelection(event.id)}
+                        aria-label={`Select alert ${event.alertRule.name}`}
+                      />
+                    </TableCell>
                     <TableCell className="w-[30px] px-2">
                       {isExpanded ? (
                         <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -184,14 +206,18 @@ function AlertEventContent({
                               ? "error"
                               : event.status === "acknowledged"
                                 ? "degraded"
-                                : "healthy"
+                                : event.status === "dismissed"
+                                  ? "neutral"
+                                  : "healthy"
                           }
                         >
                           {event.status === "firing"
                             ? "Firing"
                             : event.status === "acknowledged"
                               ? "Acknowledged"
-                              : "Resolved"}
+                              : event.status === "dismissed"
+                                ? "Dismissed"
+                                : "Resolved"}
                         </StatusBadge>
                         {event.status === "firing" && (
                           <Button
@@ -300,23 +326,27 @@ export function AlertHistorySection({
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const applyStatusFilter = (value: string) => {
     setStatusFilter(value);
     setCursor(undefined);
     setAllItems([]);
+    setSelectedIds(new Set());
   };
 
   const applyDateFrom = (value: string) => {
     setDateFrom(value);
     setCursor(undefined);
     setAllItems([]);
+    setSelectedIds(new Set());
   };
 
   const applyDateTo = (value: string) => {
     setDateTo(value);
     setCursor(undefined);
     setAllItems([]);
+    setSelectedIds(new Set());
   };
 
   const eventsQuery = useQuery(
@@ -326,7 +356,7 @@ export function AlertHistorySection({
         limit: 50,
         cursor,
         ...(statusFilter !== "all"
-          ? { status: statusFilter as "firing" | "resolved" | "acknowledged" }
+          ? { status: statusFilter as "firing" | "resolved" | "acknowledged" | "dismissed" }
           : {}),
         ...(dateFrom ? { dateFrom } : {}),
         ...(dateTo ? { dateTo } : {}),
@@ -352,6 +382,61 @@ export function AlertHistorySection({
       },
       onError: (error) => {
         toast.error(error.message || "Failed to acknowledge alert", { duration: 6000 });
+      },
+    }),
+  );
+
+  const toggleSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(
+    (items: AlertEventItem[]) => {
+      setSelectedIds((prev) => {
+        const allSelected = items.every((item) => prev.has(item.id));
+        if (allSelected) {
+          return new Set();
+        }
+        return new Set(items.map((item) => item.id));
+      });
+    },
+    [],
+  );
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const bulkAcknowledgeMutation = useMutation(
+    trpc.alert.bulkAcknowledge.mutationOptions({
+      onSuccess: (data) => {
+        toast.success(`Acknowledged ${data.updated} alerts`);
+        clearSelection();
+        invalidateEvents();
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to bulk acknowledge", { duration: 6000 });
+      },
+    }),
+  );
+
+  const bulkDismissMutation = useMutation(
+    trpc.alert.bulkDismiss.mutationOptions({
+      onSuccess: (data) => {
+        toast.success(`Dismissed ${data.updated} alerts`);
+        clearSelection();
+        invalidateEvents();
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to bulk dismiss", { duration: 6000 });
       },
     }),
   );
@@ -506,6 +591,7 @@ export function AlertHistorySection({
                   <SelectItem value="firing">Firing</SelectItem>
                   <SelectItem value="resolved">Resolved</SelectItem>
                   <SelectItem value="acknowledged">Acknowledged</SelectItem>
+                  <SelectItem value="dismissed">Dismissed</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -547,6 +633,49 @@ export function AlertHistorySection({
             )}
           </div>
 
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-3 rounded-lg border bg-muted/50 px-4 py-2">
+              <span className="text-sm font-medium">
+                {selectedIds.size} selected
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                disabled={bulkAcknowledgeMutation.isPending}
+                onClick={() =>
+                  bulkAcknowledgeMutation.mutate({
+                    alertEventIds: Array.from(selectedIds),
+                  })
+                }
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Acknowledge
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                disabled={bulkDismissMutation.isPending}
+                onClick={() =>
+                  bulkDismissMutation.mutate({
+                    alertEventIds: Array.from(selectedIds),
+                  })
+                }
+              >
+                <XCircle className="h-3.5 w-3.5" />
+                Dismiss
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={clearSelection}
+              >
+                Clear
+              </Button>
+            </div>
+          )}
+
           <AlertEventContent
             items={filteredItems}
             nextCursor={nextCursor}
@@ -559,6 +688,9 @@ export function AlertHistorySection({
             onToggleExpand={setExpandedEventId}
             formatTimestamp={formatTimestamp}
             hasFilters={hasFilters}
+            selectedIds={selectedIds}
+            onToggleSelection={toggleSelection}
+            onToggleSelectAll={toggleSelectAll}
           />
         </>
       )}
