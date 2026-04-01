@@ -91,6 +91,7 @@ const heartbeatSchema = z.object({
   })).nullable().optional(),
   updateError: z.string().max(500).optional(),
   labels: z.record(z.string(), z.string()).optional(),
+  runningAs: z.string().max(100).optional(),
 });
 
 let lastCleanup = 0;
@@ -203,7 +204,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { pipelines: rawPipelines, hostMetrics, agentVersion, vectorVersion, deploymentMode, updateError } = parsed.data;
+    const { pipelines: rawPipelines, hostMetrics, agentVersion, vectorVersion, deploymentMode, updateError, runningAs } = parsed.data;
 
     // Validate pipeline ownership: only accept pipelines belonging to this agent's environment
     const validPipelines = await prisma.pipeline.findMany({
@@ -254,6 +255,7 @@ export async function POST(request: Request) {
         status: "HEALTHY",
         ...(agentVersion ? { agentVersion } : {}),
         ...(vectorVersion ? { vectorVersion } : {}),
+        ...(runningAs ? { runningUser: runningAs } : {}),
         ...(deploymentMode && Object.values(DeploymentMode).includes(deploymentMode)
           ? { deploymentMode }
           : {}),
