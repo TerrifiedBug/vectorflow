@@ -239,3 +239,78 @@ VectorFlow tracks the number of database migrations in each backup's metadata. W
 4. **Create a manual backup** before upgrading VectorFlow or making major configuration changes.
 5. **Monitor backup status** on the Settings page. Failed backups are logged with error details.
 6. **Check server logs for disk space warnings.** Before each backup, VectorFlow checks available disk space in `VF_BACKUP_DIR` and logs a warning if it drops below the configured threshold (default: 500 MB). Configure the threshold with the `VF_BACKUP_DISK_WARN_MB` environment variable.
+
+## Recovery targets (RTO/RPO)
+
+Recovery Point Objective (RPO) defines the maximum acceptable data loss. Recovery Time Objective (RTO) defines the maximum acceptable downtime during recovery.
+
+### Default targets
+
+| Metric | Default Target | Basis |
+|--------|---------------|-------|
+| **RPO** (max data loss) | 24 hours | Default daily backup schedule (`0 2 * * *`) |
+| **RTO** (time to recover) | < 15 minutes | pg_restore of < 1 GB database + container startup |
+
+{% hint style="info" %}
+These defaults assume the standard daily backup schedule and a database under 1 GB. Adjust targets based on your backup frequency and database size using the framework below.
+{% endhint %}
+
+### Calculating your targets
+
+**RPO formula:**
+
+```
+RPO = backup_interval + backup_duration + transfer_time
+```
+
+- **backup_interval** — time between scheduled backups (e.g., 24h for daily, 6h for `0 */6 * * *`)
+- **backup_duration** — time to complete `pg_dump` (typically seconds for < 1 GB)
+- **transfer_time** — S3 upload time (0 for local storage)
+
+Data created after the last successful backup and before a failure is at risk.
+
+**RTO formula:**
+
+```
+RTO = download_time + restore_time + app_restart + smoke_test
+```
+
+- **download_time** — time to retrieve backup from S3 (0 for local storage)
+- **restore_time** — `pg_restore` duration (see estimates below)
+- **app_restart** — VectorFlow startup + automatic migration run (~30s typical)
+- **smoke_test** — manual verification of application health (~2-5 min)
+
+### Size-based RTO estimates
+
+| Database Size | Local Restore | S3 Restore (100 Mbps) |
+|--------------|---------------|----------------------|
+| 100 MB | ~1 min | ~2 min |
+| 500 MB | ~3 min | ~5 min |
+| 1 GB | ~5 min | ~8 min |
+| 5 GB | ~15 min | ~25 min |
+
+{% hint style="info" %}
+These estimates include `pg_restore` time and application restart. Actual times depend on disk speed, CPU, and network throughput. Run `scripts/dr-verify.sh` to benchmark your environment.
+{% endhint %}
+
+### Reducing RPO
+
+Increase backup frequency by changing the cron schedule:
+
+| Schedule | Cron Expression | RPO |
+|----------|----------------|-----|
+| Every 24 hours (default) | `0 2 * * *` | 24h |
+| Every 12 hours | `0 2,14 * * *` | 12h |
+| Every 6 hours | `0 */6 * * *` | 6h |
+| Every hour | `0 * * * *` | 1h |
+
+{% hint style="warning" %}
+More frequent backups increase storage usage and I/O load. Adjust the retention count accordingly and monitor disk space warnings in the server logs.
+{% endhint %}
+
+### Reducing RTO
+
+- **Keep local backup copies** alongside S3 to eliminate download time
+- **Use faster storage** (SSD) for the backup directory
+- **Pre-provision a standby PostgreSQL** instance to eliminate container startup time
+- **Automate the runbook** using `scripts/dr-verify.sh` as a starting point
