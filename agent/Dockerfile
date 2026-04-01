@@ -18,7 +18,7 @@ RUN apk add --no-cache curl && \
 
 # Stage 3: Runtime
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates && \
+RUN apk add --no-cache ca-certificates su-exec && \
     addgroup -S vfagent && \
     adduser -S vfagent -G vfagent
 COPY --from=builder /vf-agent /usr/local/bin/vf-agent
@@ -27,5 +27,14 @@ ENV VF_VECTOR_BIN=/usr/local/bin/vector
 ENV VF_DATA_DIR=/var/lib/vf-agent
 RUN mkdir -p /var/lib/vf-agent /var/lib/vector && \
     chown -R vfagent:vfagent /var/lib/vf-agent /var/lib/vector
-USER vfagent
-ENTRYPOINT ["vf-agent"]
+
+# Entrypoint fixes volume permissions (mounted volumes may be root-owned
+# from previous deployments) then drops to non-root user
+COPY <<'ENTRYPOINT' /entrypoint.sh
+#!/bin/sh
+chown -R vfagent:vfagent /var/lib/vf-agent /var/lib/vector 2>/dev/null || true
+exec su-exec vfagent vf-agent "$@"
+ENTRYPOINT
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
