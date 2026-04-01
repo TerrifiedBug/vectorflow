@@ -31,6 +31,7 @@ export const alertDeliveriesRouter = router({
   listChannelDeliveries: protectedProcedure
     .input(
       z.object({
+        environmentId: z.string(),
         channelName: z.string(),
         channelType: z.string(),
         limit: z.number().min(1).max(50).default(10),
@@ -42,6 +43,9 @@ export const alertDeliveriesRouter = router({
         where: {
           channelName: input.channelName,
           channelType: input.channelType,
+          alertEvent: {
+            alertRule: { environmentId: input.environmentId },
+          },
         },
         select: {
           id: true,

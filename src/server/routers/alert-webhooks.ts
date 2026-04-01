@@ -124,6 +124,7 @@ export const alertWebhooksRouter = router({
   testWebhook: protectedProcedure
     .input(z.object({ id: z.string() }))
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("alertWebhook.tested", "AlertWebhook"))
     .mutation(async ({ input }) => {
       const webhook = await prisma.alertWebhook.findUnique({
         where: { id: input.id },
