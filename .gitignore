@@ -57,8 +57,6 @@ next-env.d.ts
 # worktrees
 .worktrees/
 
-# ── GSD baseline (auto-generated) ──
-.gsd
 Thumbs.db
 *.swp
 *.swo
@@ -82,3 +80,10 @@ vendor/
 coverage/
 .cache/
 tmp/
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+e2e/.auth/
