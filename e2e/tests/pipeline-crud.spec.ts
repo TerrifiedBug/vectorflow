@@ -1,4 +1,4 @@
-import { test, expect } from "../fixtures/test.fixture";
+import { test } from "../fixtures/test.fixture";
 
 test.describe("Pipeline CRUD", () => {
   test("should create a pipeline with source, transform, and sink nodes", async ({
@@ -6,7 +6,6 @@ test.describe("Pipeline CRUD", () => {
     pipelinesPage,
     pipelineEditor,
     sidebar,
-    toast,
   }) => {
     await sidebar.navigateTo("Pipelines");
     await page.waitForLoadState("networkidle");
@@ -27,7 +26,6 @@ test.describe("Pipeline CRUD", () => {
   });
 
   test("should persist pipeline nodes after reload", async ({
-    page,
     pipelineEditor,
   }) => {
     const fs = await import("fs/promises");
@@ -41,7 +39,6 @@ test.describe("Pipeline CRUD", () => {
   });
 
   test("should delete a pipeline from the list", async ({
-    page,
     pipelinesPage,
     sidebar,
   }) => {

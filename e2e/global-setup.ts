@@ -14,6 +14,7 @@ setup("seed database and authenticate", async ({ page }) => {
     const result = await seed(prisma);
 
     const fs = await import("fs/promises");
+    await fs.mkdir("e2e/.auth", { recursive: true });
     await fs.writeFile(
       "e2e/.auth/seed-result.json",
       JSON.stringify(result, null, 2),
@@ -32,7 +33,7 @@ setup("seed database and authenticate", async ({ page }) => {
   await page.locator('input[type="password"]').fill(TEST_USER.password);
   await page.getByRole("button", { name: /sign in/i }).click();
 
-  await page.waitForURL("**/*", { timeout: 15_000 });
+  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 15_000 });
 
   await page.context().storageState({ path: authFile });
 });

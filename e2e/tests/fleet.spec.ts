@@ -1,4 +1,4 @@
-import { test, expect } from "../fixtures/test.fixture";
+import { test } from "../fixtures/test.fixture";
 
 test.describe("Fleet Management", () => {
   test("should display fleet node list with correct status", async ({

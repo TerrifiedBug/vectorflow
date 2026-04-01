@@ -1,8 +1,7 @@
-import { test, expect } from "../fixtures/test.fixture";
+import { test } from "../fixtures/test.fixture";
 
 test.describe("Pipeline Deploy", () => {
   test("should open deploy dialog and submit deployment", async ({
-    page,
     pipelineEditor,
     deployDialog,
   }) => {
@@ -25,13 +24,12 @@ test.describe("Pipeline Deploy", () => {
   });
 
   test("should show deployment badge on pipeline list after deploy", async ({
-    page,
     pipelinesPage,
     sidebar,
   }) => {
     await sidebar.navigateTo("Pipelines");
-    await page.waitForLoadState("networkidle");
 
     await pipelinesPage.expectPipelineInList("E2E Test Pipeline");
+    await pipelinesPage.expectDeploymentBadge("E2E Test Pipeline");
   });
 });

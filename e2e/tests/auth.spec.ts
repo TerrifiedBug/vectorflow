@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { LoginPage } from "../pages/login.page";
 import { SidebarComponent } from "../pages/components/sidebar.component";
+import { TEST_USER } from "../helpers/constants";
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -12,7 +13,7 @@ test.describe("Authentication", () => {
     const sidebar = new SidebarComponent(page);
 
     await loginPage.goto();
-    await loginPage.login("e2e@test.local", "TestPassword123!");
+    await loginPage.login(TEST_USER.email, TEST_USER.password);
     await loginPage.expectRedirectedToDashboard();
     await sidebar.expectVisible();
   });
@@ -21,7 +22,7 @@ test.describe("Authentication", () => {
     const loginPage = new LoginPage(page);
 
     await loginPage.goto();
-    await loginPage.login("e2e@test.local", "WrongPassword!");
+    await loginPage.login(TEST_USER.email, "WrongPassword!");
     await loginPage.expectError("Invalid email or password");
   });
 
@@ -34,7 +35,7 @@ test.describe("Authentication", () => {
     const loginPage = new LoginPage(page);
 
     await loginPage.goto();
-    await loginPage.login("e2e@test.local", "TestPassword123!");
+    await loginPage.login(TEST_USER.email, TEST_USER.password);
     await loginPage.expectRedirectedToDashboard();
 
     await loginPage.logout();
