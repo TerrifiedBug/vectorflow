@@ -334,6 +334,17 @@ export async function evaluateAlerts(
             },
           });
 
+          // Attach error context for error-related alerts
+          if (rule.metric === "error_rate" && rule.pipelineId) {
+            const errorContext = await queryErrorContext(rule.pipelineId);
+            if (errorContext) {
+              await prisma.alertEvent.update({
+                where: { id: event.id },
+                data: { errorContext: errorContext as unknown as Prisma.InputJsonValue },
+              });
+            }
+          }
+
           // ── Correlation: assign to a group ──
           const group = await correlateEvent(event, rule);
           if (group.eventCount > 1) {
