@@ -18,10 +18,14 @@ RUN apk add --no-cache curl && \
 
 # Stage 3: Runtime
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates && \
+    addgroup -S vfagent && \
+    adduser -S vfagent -G vfagent
 COPY --from=builder /vf-agent /usr/local/bin/vf-agent
 COPY --from=vector /usr/local/bin/vector /usr/local/bin/vector
 ENV VF_VECTOR_BIN=/usr/local/bin/vector
 ENV VF_DATA_DIR=/var/lib/vf-agent
-RUN mkdir -p /var/lib/vf-agent /var/lib/vector
+RUN mkdir -p /var/lib/vf-agent /var/lib/vector && \
+    chown -R vfagent:vfagent /var/lib/vf-agent /var/lib/vector
+USER vfagent
 ENTRYPOINT ["vf-agent"]

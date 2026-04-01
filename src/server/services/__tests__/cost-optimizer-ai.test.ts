@@ -44,7 +44,7 @@ describe("generateAiRecommendations", () => {
         description: "Pipeline has minimal reduction",
         analysisData: { bytesIn: "10000000000" },
         suggestedAction: null,
-        pipeline: { name: "My Pipeline" },
+        pipeline: { name: "My Pipeline", nodes: [] },
       },
     ] as never);
 
@@ -104,7 +104,7 @@ describe("generateAiRecommendations", () => {
         description: "desc",
         analysisData: {},
         suggestedAction: null,
-        pipeline: { name: "Pipeline A" },
+        pipeline: { name: "Pipeline A", nodes: [] },
       },
       {
         id: "rec-2",
@@ -114,7 +114,7 @@ describe("generateAiRecommendations", () => {
         description: "desc",
         analysisData: {},
         suggestedAction: null,
-        pipeline: { name: "Pipeline B" },
+        pipeline: { name: "Pipeline B", nodes: [] },
       },
     ] as never);
 
