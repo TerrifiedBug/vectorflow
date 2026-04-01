@@ -35,6 +35,8 @@ export const METRIC_LABELS: Record<string, string> = {
   // Drift detection
   version_drift: "Version Drift",
   config_drift: "Config Drift",
+  // Keyword-based log alerts
+  log_keyword: "Log Keyword",
 };
 
 export const CONDITION_LABELS: Record<string, string> = {

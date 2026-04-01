@@ -499,7 +499,7 @@ export async function POST(request: Request) {
     // Persist pipeline logs and broadcast to browser SSE connections
     for (const ps of pipelines) {
       if (Array.isArray(ps.recentLogs) && ps.recentLogs.length > 0) {
-        ingestLogs(agent.nodeId, ps.pipelineId, ps.recentLogs).catch((err) =>
+        ingestLogs(agent.nodeId, ps.pipelineId, agent.environmentId, ps.recentLogs).catch((err) =>
           errorLog("agent-heartbeat", "Log ingestion error", err),
         );
 
