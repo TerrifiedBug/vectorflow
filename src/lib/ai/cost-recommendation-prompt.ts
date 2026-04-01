@@ -7,7 +7,7 @@ import {
 } from "@/lib/ai/shared-prompt-context";
 
 export interface CostRecommendationPromptContext {
-  type: string; // "LOW_REDUCTION" | "HIGH_ERROR_RATE" | "DUPLICATE_SINK" | "STALE_PIPELINE"
+  type: string; // "LOW_REDUCTION" | "HIGH_ERROR_RATE" | "STALE_PIPELINE"
   title: string;
   description: string;
   analysisData: Record<string, unknown>;

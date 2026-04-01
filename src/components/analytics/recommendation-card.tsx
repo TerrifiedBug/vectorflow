@@ -16,7 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   Lightbulb,
   AlertTriangle,
-  Copy,
   Clock,
   X,
   ExternalLink,
@@ -27,7 +26,7 @@ import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type RecommendationType = "LOW_REDUCTION" | "HIGH_ERROR_RATE" | "DUPLICATE_SINK" | "STALE_PIPELINE";
+type RecommendationType = "LOW_REDUCTION" | "HIGH_ERROR_RATE" | "STALE_PIPELINE";
 
 interface RecommendationCardProps {
   recommendation: {
@@ -59,11 +58,6 @@ const TYPE_CONFIG: Record<
     icon: AlertTriangle,
     label: "High Error Rate",
     color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  },
-  DUPLICATE_SINK: {
-    icon: Copy,
-    label: "Duplicate Sink",
-    color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
   },
   STALE_PIPELINE: {
     icon: Clock,
