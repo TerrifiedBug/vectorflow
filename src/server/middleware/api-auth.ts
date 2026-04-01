@@ -57,6 +57,7 @@ export const VALID_PERMISSIONS = [
   "alerts.read",
   "alerts.manage",
   "audit.read",
+  "audit.export",
   // New (API v1 completeness)
   "pipelines.write",
   "pipelines.promote",
