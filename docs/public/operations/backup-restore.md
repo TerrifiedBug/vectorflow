@@ -314,3 +314,151 @@ More frequent backups increase storage usage and I/O load. Adjust the retention 
 - **Use faster storage** (SSD) for the backup directory
 - **Pre-provision a standby PostgreSQL** instance to eliminate container startup time
 - **Automate the runbook** using `scripts/dr-verify.sh` as a starting point
+
+## Disaster recovery runbook
+
+Step-by-step procedure for recovering VectorFlow from a backup after a database failure, corruption, or full system loss.
+
+{% stepper %}
+{% step %}
+### Assess the situation
+
+Determine the failure type:
+- **Database corruption** — PostgreSQL data is damaged but the server host is intact
+- **Hardware failure** — the database host is lost; VectorFlow server may still be running
+- **Full system loss** — both VectorFlow and PostgreSQL are unavailable
+
+This determines whether you restore in-place or provision new infrastructure.
+{% endstep %}
+
+{% step %}
+### Identify the most recent good backup
+
+Check the backup list in **Settings > Backup** (if the UI is accessible) or list files in the backup directory:
+
+```bash
+ls -lt /backups/*.dump | head -5
+```
+
+For S3-stored backups, list objects in the bucket:
+
+```bash
+aws s3 ls s3://your-bucket/your-prefix/ --recursive | sort -r | head -5
+```
+
+Verify the backup checksum before proceeding:
+
+```bash
+sha256sum /backups/vectorflow-2026-01-15T02-00-00-000Z.dump
+```
+
+Compare against the checksum in the corresponding `.meta.json` file or the `BackupRecord` in the database.
+{% endstep %}
+
+{% step %}
+### Provision PostgreSQL
+
+If the existing PostgreSQL instance is recoverable, skip to the next step.
+
+For a new instance, use the same image as production:
+
+```bash
+docker run -d \
+  --name vectorflow-postgres \
+  -e POSTGRES_DB=vectorflow \
+  -e POSTGRES_USER=vectorflow \
+  -e POSTGRES_PASSWORD=<your-password> \
+  -v pgdata:/var/lib/postgresql/data \
+  timescale/timescaledb:latest-pg16
+```
+
+Wait for it to be ready:
+
+```bash
+docker exec vectorflow-postgres pg_isready -U vectorflow
+```
+{% endstep %}
+
+{% step %}
+### Restore the backup
+
+Stop the VectorFlow server first to prevent writes during restore:
+
+```bash
+docker compose stop vectorflow
+```
+
+Run `pg_restore`:
+
+```bash
+docker compose exec postgres pg_restore \
+  --clean --if-exists \
+  -U vectorflow -d vectorflow \
+  /backups/vectorflow-2026-01-15T02-00-00-000Z.dump
+```
+
+For S3-stored backups, download first:
+
+```bash
+aws s3 cp s3://your-bucket/your-prefix/vectorflow-2026-01-15T02-00-00-000Z.dump /tmp/
+docker cp /tmp/vectorflow-2026-01-15T02-00-00-000Z.dump vectorflow-postgres:/tmp/
+docker exec -e PGPASSWORD=<your-password> vectorflow-postgres \
+  pg_restore --clean --if-exists \
+  -U vectorflow -d vectorflow /tmp/vectorflow-2026-01-15T02-00-00-000Z.dump
+```
+{% endstep %}
+
+{% step %}
+### Verify the restore
+
+Run the automated DR verification script:
+
+```bash
+./scripts/dr-verify.sh /backups/vectorflow-2026-01-15T02-00-00-000Z.dump
+```
+
+Or verify manually:
+
+```bash
+docker compose exec postgres psql -U vectorflow -d vectorflow -c "SELECT count(*) FROM \"User\";"
+docker compose exec postgres psql -U vectorflow -d vectorflow -c "SELECT count(*) FROM \"Pipeline\";"
+docker compose exec postgres psql -U vectorflow -d vectorflow -c "SELECT count(*) FROM \"_prisma_migrations\" WHERE finished_at IS NOT NULL;"
+```
+{% endstep %}
+
+{% step %}
+### Restart VectorFlow
+
+```bash
+docker compose start vectorflow
+```
+
+Database migrations run automatically on startup. Check the logs for migration output:
+
+```bash
+docker compose logs vectorflow --tail=50
+```
+{% endstep %}
+
+{% step %}
+### Validate application health
+
+1. **Login** — verify authentication works
+2. **Pipeline list** — confirm pipelines are visible and match expected state
+3. **Agent connectivity** — check the Fleet page for connected agents
+4. **Settings** — verify system settings, backup schedule, and S3 configuration
+
+{% endstep %}
+
+{% step %}
+### Post-incident review
+
+- Was the RPO exceeded? If data loss was unacceptable, increase backup frequency.
+- Was the RTO exceeded? If recovery took too long, consider keeping local backup copies or pre-provisioning standby infrastructure.
+- Update this runbook with any lessons learned.
+{% endstep %}
+{% endstepper %}
+
+{% hint style="info" %}
+**Automated DR verification:** Run `scripts/dr-verify.sh` periodically (or via CI) to confirm your backups remain restorable without waiting for a real incident. See the [recommended backup strategy](#recommended-backup-strategy) section above.
+{% endhint %}
