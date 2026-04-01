@@ -16,10 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Lightbulb,
   AlertTriangle,
-  Copy,
   Clock,
   X,
-  ExternalLink,
   Sparkles,
   TrendingDown,
 } from "lucide-react";
@@ -27,7 +25,7 @@ import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type RecommendationType = "LOW_REDUCTION" | "HIGH_ERROR_RATE" | "DUPLICATE_SINK" | "STALE_PIPELINE";
+type RecommendationType = "LOW_REDUCTION" | "HIGH_ERROR_RATE" | "STALE_PIPELINE";
 
 interface RecommendationCardProps {
   recommendation: {
@@ -43,7 +41,7 @@ interface RecommendationCardProps {
     pipeline: { id: string; name: string };
   };
   environmentId: string;
-  onApply: (recommendationId: string, pipelineId: string) => void;
+  onApply: (recommendationId: string) => void;
 }
 
 const TYPE_CONFIG: Record<
@@ -59,11 +57,6 @@ const TYPE_CONFIG: Record<
     icon: AlertTriangle,
     label: "High Error Rate",
     color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  },
-  DUPLICATE_SINK: {
-    icon: Copy,
-    label: "Duplicate Sink",
-    color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
   },
   STALE_PIPELINE: {
     icon: Clock,
@@ -108,7 +101,7 @@ export function RecommendationCard({
   };
 
   const handleApply = () => {
-    onApply(recommendation.id, recommendation.pipeline.id);
+    onApply(recommendation.id);
   };
 
   return (
@@ -167,7 +160,7 @@ export function RecommendationCard({
           onClick={handleApply}
           className="gap-1.5"
         >
-          <ExternalLink className="h-3.5 w-3.5" />
+          <Sparkles className="h-3.5 w-3.5" />
           Apply
         </Button>
         <Button
