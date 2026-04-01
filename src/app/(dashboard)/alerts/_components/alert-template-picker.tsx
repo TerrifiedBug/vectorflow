@@ -11,6 +11,8 @@ interface TemplatePick {
   condition: string;
   threshold: string;
   durationSeconds: string;
+  keyword?: string;
+  keywordWindowMinutes?: string;
 }
 
 interface AlertTemplatePickerProps {
@@ -25,6 +27,9 @@ export function AlertTemplatePicker({ onSelect }: AlertTemplatePickerProps) {
       condition: template.defaults.condition,
       threshold: template.defaults.threshold,
       durationSeconds: template.defaults.durationSeconds,
+      ...(template.defaults.metric === "log_keyword"
+        ? { keyword: "", keywordWindowMinutes: "5" }
+        : {}),
     });
   };
 

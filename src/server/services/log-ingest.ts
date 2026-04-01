@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { LogLevel } from "@/generated/prisma";
+import { checkKeywordMatches } from "@/server/services/keyword-alert";
 
 const VALID_LEVELS = new Set<LogLevel>(["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]);
 
@@ -36,6 +37,7 @@ export function parseLogLevel(line: string): LogLevel {
 export async function ingestLogs(
   nodeId: string,
   pipelineId: string,
+  environmentId: string,
   lines: string[],
 ): Promise<void> {
   if (lines.length === 0) return;
@@ -50,4 +52,9 @@ export async function ingestLogs(
   }));
 
   await prisma.pipelineLog.createMany({ data });
+
+  // Check keyword alert rules (non-blocking — errors logged, not thrown)
+  checkKeywordMatches(pipelineId, environmentId, data).catch((err) =>
+    console.error("[keyword-alert] match check failed:", err),
+  );
 }
