@@ -17,7 +17,6 @@ export interface AnalysisResult {
 export type SuggestedAction =
   | { type: "add_sampling"; config: { rate: number; componentKey: string } }
   | { type: "add_filter"; config: { condition: string; componentKey: string } }
-  | { type: "remove_sink"; config: { sinkComponentKey: string } }
   | { type: "disable_pipeline"; config: Record<string, never> };
 
 /** Pipeline metrics aggregated over the analysis window */
@@ -33,17 +32,6 @@ export interface PipelineAggregates {
   totalErrors: bigint;
   totalDiscarded: bigint;
   metricCount: number;
-}
-
-/** Sink destination fingerprint for duplicate detection */
-export interface SinkFingerprint {
-  pipelineId: string;
-  pipelineName: string;
-  environmentId: string;
-  teamId: string;
-  sinkComponentKey: string;
-  sinkComponentType: string;
-  destinationFingerprint: string;
 }
 
 /** Thresholds for analysis (configurable) */
