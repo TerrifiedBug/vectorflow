@@ -37,6 +37,9 @@ export const alertRulesRouter = router({
         cooldownMinutes: z.number().int().min(0).max(1440).nullable().optional(),
         teamId: z.string(),
         channelIds: z.array(z.string()).optional(),
+        keyword: z.string().min(1).max(500).optional(),
+        keywordSeverityFilter: z.enum(["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]).nullable().optional(),
+        keywordWindowMinutes: z.number().int().min(1).max(60).nullable().optional(),
       }),
     )
     .use(withTeamAccess("EDITOR"))
@@ -102,6 +105,17 @@ export const alertRulesRouter = router({
         }
       }
 
+      // Keyword alerts require keyword field and use threshold for match count
+      if (input.metric === "log_keyword") {
+        if (!input.keyword) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Keyword is required for log keyword alerts",
+          });
+        }
+        input.durationSeconds = null;
+      }
+
       const rule = await prisma.alertRule.create({
         data: {
           name: input.name,
@@ -113,6 +127,9 @@ export const alertRulesRouter = router({
           threshold: input.threshold,
           durationSeconds: input.durationSeconds,
           cooldownMinutes: input.cooldownMinutes,
+          keyword: input.keyword,
+          keywordSeverityFilter: input.keywordSeverityFilter,
+          keywordWindowMinutes: input.keywordWindowMinutes,
         },
       });
 

@@ -419,6 +419,7 @@ const METRIC_LABELS: Record<AlertMetric, string> = {
   promotion_completed: "Promotion completed",
   git_sync_failed: "Git sync failed",
   cost_threshold_exceeded: "Cost threshold exceeded",
+  log_keyword: "Log keyword match",
 };
 
 const CONDITION_LABELS: Record<AlertCondition, string> = {
