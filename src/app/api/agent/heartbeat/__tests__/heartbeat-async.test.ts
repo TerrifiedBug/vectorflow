@@ -56,6 +56,10 @@ vi.mock("@/server/services/sse-registry", () => ({
   sseRegistry: { broadcast: vi.fn() },
 }));
 
+vi.mock("@/app/api/_lib/ip-rate-limit", () => ({
+  checkTokenRateLimit: vi.fn().mockReturnValue(null),
+}));
+
 // ── Imports (after mocks) ──
 
 import { prisma } from "@/lib/prisma";
@@ -162,7 +166,7 @@ function setupBaseMocks() {
 describe("heartbeat async decomposition", () => {
   beforeEach(() => {
     mockReset(prismaMock);
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
     setupBaseMocks();
   });
 
