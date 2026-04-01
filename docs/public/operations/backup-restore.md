@@ -239,3 +239,226 @@ VectorFlow tracks the number of database migrations in each backup's metadata. W
 4. **Create a manual backup** before upgrading VectorFlow or making major configuration changes.
 5. **Monitor backup status** on the Settings page. Failed backups are logged with error details.
 6. **Check server logs for disk space warnings.** Before each backup, VectorFlow checks available disk space in `VF_BACKUP_DIR` and logs a warning if it drops below the configured threshold (default: 500 MB). Configure the threshold with the `VF_BACKUP_DISK_WARN_MB` environment variable.
+
+## Recovery targets (RTO/RPO)
+
+Recovery Point Objective (RPO) defines the maximum acceptable data loss. Recovery Time Objective (RTO) defines the maximum acceptable downtime during recovery.
+
+### Default targets
+
+| Metric | Default Target | Basis |
+|--------|---------------|-------|
+| **RPO** (max data loss) | 24 hours | Default daily backup schedule (`0 2 * * *`) |
+| **RTO** (time to recover) | < 15 minutes | pg_restore of < 1 GB database + container startup |
+
+{% hint style="info" %}
+These defaults assume the standard daily backup schedule and a database under 1 GB. Adjust targets based on your backup frequency and database size using the framework below.
+{% endhint %}
+
+### Calculating your targets
+
+**RPO formula:**
+
+```
+RPO = backup_interval + backup_duration + transfer_time
+```
+
+- **backup_interval** — time between scheduled backups (e.g., 24h for daily, 6h for `0 */6 * * *`)
+- **backup_duration** — time to complete `pg_dump` (typically seconds for < 1 GB)
+- **transfer_time** — S3 upload time (0 for local storage)
+
+Data created after the last successful backup and before a failure is at risk.
+
+**RTO formula:**
+
+```
+RTO = download_time + restore_time + app_restart + smoke_test
+```
+
+- **download_time** — time to retrieve backup from S3 (0 for local storage)
+- **restore_time** — `pg_restore` duration (see estimates below)
+- **app_restart** — VectorFlow startup + automatic migration run (~30s typical)
+- **smoke_test** — manual verification of application health (~2-5 min)
+
+### Size-based RTO estimates
+
+| Database Size | Local Restore | S3 Restore (100 Mbps) |
+|--------------|---------------|----------------------|
+| 100 MB | ~1 min | ~2 min |
+| 500 MB | ~3 min | ~5 min |
+| 1 GB | ~5 min | ~8 min |
+| 5 GB | ~15 min | ~25 min |
+
+{% hint style="info" %}
+These estimates include `pg_restore` time and application restart. Actual times depend on disk speed, CPU, and network throughput. Run `scripts/dr-verify.sh` to benchmark your environment.
+{% endhint %}
+
+### Reducing RPO
+
+Increase backup frequency by changing the cron schedule:
+
+| Schedule | Cron Expression | RPO |
+|----------|----------------|-----|
+| Every 24 hours (default) | `0 2 * * *` | 24h |
+| Every 12 hours | `0 2,14 * * *` | 12h |
+| Every 6 hours | `0 */6 * * *` | 6h |
+| Every hour | `0 * * * *` | 1h |
+
+{% hint style="warning" %}
+More frequent backups increase storage usage and I/O load. Adjust the retention count accordingly and monitor disk space warnings in the server logs.
+{% endhint %}
+
+### Reducing RTO
+
+- **Keep local backup copies** alongside S3 to eliminate download time
+- **Use faster storage** (SSD) for the backup directory
+- **Pre-provision a standby PostgreSQL** instance to eliminate container startup time
+- **Automate the runbook** using `scripts/dr-verify.sh` as a starting point
+
+## Disaster recovery runbook
+
+Step-by-step procedure for recovering VectorFlow from a backup after a database failure, corruption, or full system loss.
+
+{% stepper %}
+{% step %}
+### Assess the situation
+
+Determine the failure type:
+- **Database corruption** — PostgreSQL data is damaged but the server host is intact
+- **Hardware failure** — the database host is lost; VectorFlow server may still be running
+- **Full system loss** — both VectorFlow and PostgreSQL are unavailable
+
+This determines whether you restore in-place or provision new infrastructure.
+{% endstep %}
+
+{% step %}
+### Identify the most recent good backup
+
+Check the backup list in **Settings > Backup** (if the UI is accessible) or list files in the backup directory:
+
+```bash
+ls -lt /backups/*.dump | head -5
+```
+
+For S3-stored backups, list objects in the bucket:
+
+```bash
+aws s3 ls s3://your-bucket/your-prefix/ --recursive | sort -r | head -5
+```
+
+Verify the backup checksum before proceeding:
+
+```bash
+sha256sum /backups/vectorflow-2026-01-15T02-00-00-000Z.dump
+```
+
+Compare against the checksum in the corresponding `.meta.json` file or the `BackupRecord` in the database.
+{% endstep %}
+
+{% step %}
+### Provision PostgreSQL
+
+If the existing PostgreSQL instance is recoverable, skip to the next step.
+
+For a new instance, use the same image as production:
+
+```bash
+docker run -d \
+  --name vectorflow-postgres \
+  -e POSTGRES_DB=vectorflow \
+  -e POSTGRES_USER=vectorflow \
+  -e POSTGRES_PASSWORD=<your-password> \
+  -v pgdata:/var/lib/postgresql/data \
+  timescale/timescaledb:latest-pg16
+```
+
+Wait for it to be ready:
+
+```bash
+docker exec vectorflow-postgres pg_isready -U vectorflow
+```
+{% endstep %}
+
+{% step %}
+### Restore the backup
+
+Stop the VectorFlow server first to prevent writes during restore:
+
+```bash
+docker compose stop vectorflow
+```
+
+Run `pg_restore`:
+
+```bash
+docker compose exec postgres pg_restore \
+  --clean --if-exists \
+  -U vectorflow -d vectorflow \
+  /backups/vectorflow-2026-01-15T02-00-00-000Z.dump
+```
+
+For S3-stored backups, download first:
+
+```bash
+aws s3 cp s3://your-bucket/your-prefix/vectorflow-2026-01-15T02-00-00-000Z.dump /tmp/
+docker cp /tmp/vectorflow-2026-01-15T02-00-00-000Z.dump vectorflow-postgres:/tmp/
+docker exec -e PGPASSWORD=<your-password> vectorflow-postgres \
+  pg_restore --clean --if-exists \
+  -U vectorflow -d vectorflow /tmp/vectorflow-2026-01-15T02-00-00-000Z.dump
+```
+{% endstep %}
+
+{% step %}
+### Verify the restore
+
+Run the automated DR verification script:
+
+```bash
+./scripts/dr-verify.sh /backups/vectorflow-2026-01-15T02-00-00-000Z.dump
+```
+
+Or verify manually:
+
+```bash
+docker compose exec postgres psql -U vectorflow -d vectorflow -c "SELECT count(*) FROM \"User\";"
+docker compose exec postgres psql -U vectorflow -d vectorflow -c "SELECT count(*) FROM \"Pipeline\";"
+docker compose exec postgres psql -U vectorflow -d vectorflow -c "SELECT count(*) FROM \"_prisma_migrations\" WHERE finished_at IS NOT NULL;"
+```
+{% endstep %}
+
+{% step %}
+### Restart VectorFlow
+
+```bash
+docker compose start vectorflow
+```
+
+Database migrations run automatically on startup. Check the logs for migration output:
+
+```bash
+docker compose logs vectorflow --tail=50
+```
+{% endstep %}
+
+{% step %}
+### Validate application health
+
+1. **Login** — verify authentication works
+2. **Pipeline list** — confirm pipelines are visible and match expected state
+3. **Agent connectivity** — check the Fleet page for connected agents
+4. **Settings** — verify system settings, backup schedule, and S3 configuration
+
+{% endstep %}
+
+{% step %}
+### Post-incident review
+
+- Was the RPO exceeded? If data loss was unacceptable, increase backup frequency.
+- Was the RTO exceeded? If recovery took too long, consider keeping local backup copies or pre-provisioning standby infrastructure.
+- Update this runbook with any lessons learned.
+{% endstep %}
+{% endstepper %}
+
+{% hint style="info" %}
+**Automated DR verification:** Run `scripts/dr-verify.sh` periodically (or via CI) to confirm your backups remain restorable without waiting for a real incident. See the [recommended backup strategy](#recommended-backup-strategy) section above.
+{% endhint %}
