@@ -17,3 +17,36 @@ export function debugLog(tag: string, message: string, data?: unknown): void {
     console.log("%s [%s] %s", ts, safeTag, safeMessage);
   }
 }
+
+export function infoLog(tag: string, message: string, data?: unknown): void {
+  const ts = new Date().toISOString();
+  const safeTag = sanitizeLogString(tag);
+  const safeMessage = sanitizeLogString(message);
+  if (data !== undefined) {
+    console.log("%s [%s] %s", ts, safeTag, safeMessage, data);
+  } else {
+    console.log("%s [%s] %s", ts, safeTag, safeMessage);
+  }
+}
+
+export function warnLog(tag: string, message: string, data?: unknown): void {
+  const ts = new Date().toISOString();
+  const safeTag = sanitizeLogString(tag);
+  const safeMessage = sanitizeLogString(message);
+  if (data !== undefined) {
+    console.warn("%s [%s] %s", ts, safeTag, safeMessage, data);
+  } else {
+    console.warn("%s [%s] %s", ts, safeTag, safeMessage);
+  }
+}
+
+export function errorLog(tag: string, message: string, data?: unknown): void {
+  const ts = new Date().toISOString();
+  const safeTag = sanitizeLogString(tag);
+  const safeMessage = sanitizeLogString(message);
+  if (data !== undefined) {
+    console.error("%s [%s] %s", ts, safeTag, safeMessage, data);
+  } else {
+    console.error("%s [%s] %s", ts, safeTag, safeMessage);
+  }
+}
