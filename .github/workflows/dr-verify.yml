@@ -44,6 +44,11 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+
       - name: Apply migrations
         run: npx prisma migrate deploy
         env:
@@ -52,11 +57,11 @@ jobs:
       - name: Seed test data
         run: |
           PGPASSWORD=dr-test-password psql -h localhost -U vectorflow -d vectorflow <<'SQL'
-            INSERT INTO "SystemSettings" (id, "instanceName") VALUES ('singleton', 'DR Test Instance');
-            INSERT INTO "Team" (id, name, slug, "createdAt", "updatedAt") VALUES ('dr-team', 'DR Test Team', 'dr-test', NOW(), NOW());
-            INSERT INTO "User" (id, email, name, "hashedPassword", "createdAt", "updatedAt") VALUES ('dr-user', 'dr@test.local', 'DR User', 'not-a-real-hash', NOW(), NOW());
-            INSERT INTO "Environment" (id, name, slug, "teamId", "createdAt", "updatedAt") VALUES ('dr-env', 'Production', 'production', 'dr-team', NOW(), NOW());
-            INSERT INTO "Pipeline" (id, name, "environmentId", "teamId", status, config, "createdAt", "updatedAt") VALUES ('dr-pipe', 'Test Pipeline', 'dr-env', 'dr-team', 'stopped', '{}', NOW(), NOW());
+            INSERT INTO "SystemSettings" (id) VALUES ('singleton');
+            INSERT INTO "Team" (id, name) VALUES ('dr-team', 'DR Test Team');
+            INSERT INTO "User" (id, email, name, "passwordHash") VALUES ('dr-user', 'dr@test.local', 'DR User', 'not-a-real-hash');
+            INSERT INTO "Environment" (id, name, "teamId") VALUES ('dr-env', 'Production', 'dr-team');
+            INSERT INTO "Pipeline" (id, name, "environmentId", "updatedAt") VALUES ('dr-pipe', 'Test Pipeline', 'dr-env', NOW());
           SQL
 
       - name: Create test backup

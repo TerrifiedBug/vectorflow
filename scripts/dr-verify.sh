@@ -30,8 +30,6 @@ CONTAINER_NAME="vf-dr-verify-$$"
 READY_TIMEOUT=30
 CHECKS_PASSED=0
 CHECKS_FAILED=0
-STARTED_AT=$(date +%s)
-
 # Key tables to verify have non-zero rows
 KEY_TABLES=("User" "Team" "Pipeline" "Environment" "SystemSettings")
 
@@ -217,6 +215,10 @@ if [ "$RESTORE_EXIT" -le 1 ]; then
   pass "Backup restored successfully" "$(elapsed_since "$RESTORE_START")"
 else
   fail "pg_restore failed with exit code $RESTORE_EXIT" "$(elapsed_since "$RESTORE_START")"
+  if [ -s "/tmp/dr-restore-err.$$" ]; then
+    info "pg_restore stderr:"
+    cat "/tmp/dr-restore-err.$$" >&2
+  fi
   # Skip data-level checks — results would be meaningless after a failed restore
   info "Skipping remaining checks due to restore failure"
   echo "═══════════════════════════════════════════════════"
