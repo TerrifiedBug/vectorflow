@@ -3,6 +3,7 @@ import { deployFromVersion } from "@/server/services/pipeline-version";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { writeAuditLog } from "@/server/services/audit";
+import { infoLog, errorLog } from "@/lib/logger";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -39,10 +40,7 @@ export async function getAggregateErrorRate(
     // Convert to percentage: (errors / totalIn) * 100
     return Number((totalErrors * BigInt(10000)) / totalIn) / 100;
   } catch (err) {
-    console.error(
-      `[auto-rollback] Error computing error rate for pipeline=${pipelineId}:`,
-      err,
-    );
+    errorLog("auto-rollback", `Error computing error rate for pipeline=${pipelineId}`, err);
     return null;
   }
 }
@@ -62,10 +60,7 @@ export async function getRecentMeanLatency(
     });
     return metric?.latencyMeanMs ?? null;
   } catch (err) {
-    console.error(
-      `[auto-rollback] Error computing mean latency for pipeline=${pipelineId}:`,
-      err,
-    );
+    errorLog("auto-rollback", `Error computing mean latency for pipeline=${pipelineId}`, err);
     return null;
   }
 }
@@ -76,7 +71,7 @@ export class AutoRollbackService {
   private timer: ReturnType<typeof setInterval> | null = null;
 
   init(): void {
-    console.log("[auto-rollback] Initializing auto-rollback service");
+    infoLog("auto-rollback", "Initializing auto-rollback service");
     this.start();
   }
 
@@ -86,16 +81,14 @@ export class AutoRollbackService {
       POLL_INTERVAL_MS,
     );
     this.timer.unref();
-    console.log(
-      `[auto-rollback] Poll loop started (every ${POLL_INTERVAL_MS / 1000}s)`,
-    );
+    infoLog("auto-rollback", `Poll loop started (every ${POLL_INTERVAL_MS / 1000}s)`);
   }
 
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      console.log("[auto-rollback] Poll loop stopped");
+      infoLog("auto-rollback", "Poll loop stopped");
     }
   }
 
@@ -123,7 +116,7 @@ export class AutoRollbackService {
         },
       });
     } catch (err) {
-      console.error("[auto-rollback] Error querying candidate pipelines:", err);
+      errorLog("auto-rollback", "Error querying candidate pipelines", err);
       return;
     }
 
@@ -137,9 +130,7 @@ export class AutoRollbackService {
 
     if (activeCandidates.length === 0) return;
 
-    console.log(
-      `[auto-rollback] Found ${activeCandidates.length} candidate pipeline(s)`,
-    );
+    infoLog("auto-rollback", `Found ${activeCandidates.length} candidate pipeline(s)`);
 
     for (const pipeline of activeCandidates) {
       try {
@@ -152,9 +143,7 @@ export class AutoRollbackService {
         });
 
         if (versions.length < 2) {
-          console.log(
-            `[auto-rollback] Pipeline ${pipeline.id} (${pipeline.name}) has no previous version — skipping`,
-          );
+          infoLog("auto-rollback", `Pipeline ${pipeline.id} (${pipeline.name}) has no previous version — skipping`);
           continue;
         }
 
@@ -164,9 +153,7 @@ export class AutoRollbackService {
         const errorRate = await getAggregateErrorRate(pipeline.id);
 
         if (errorRate === null) {
-          console.log(
-            `[auto-rollback] Pipeline ${pipeline.id} (${pipeline.name}) has no status data — skipping`,
-          );
+          infoLog("auto-rollback", `Pipeline ${pipeline.id} (${pipeline.name}) has no status data — skipping`);
           continue;
         }
 
@@ -175,15 +162,11 @@ export class AutoRollbackService {
         }
 
         // Error rate exceeds threshold — trigger rollback
-        console.log(
-          `[auto-rollback] Pipeline ${pipeline.id} (${pipeline.name}) error rate ${errorRate.toFixed(2)}% exceeds threshold ${pipeline.autoRollbackThreshold}% — triggering rollback`,
-        );
+        infoLog("auto-rollback", `Pipeline ${pipeline.id} (${pipeline.name}) error rate ${errorRate.toFixed(2)}% exceeds threshold ${pipeline.autoRollbackThreshold}% — triggering rollback`);
 
         // Check for userId — need it for deployFromVersion
         if (!latestVersion!.createdById) {
-          console.error(
-            `[auto-rollback] Pipeline ${pipeline.id} (${pipeline.name}) latest version has no createdById — skipping rollback`,
-          );
+          errorLog("auto-rollback", `Pipeline ${pipeline.id} (${pipeline.name}) latest version has no createdById — skipping rollback`);
           continue;
         }
 
@@ -234,15 +217,10 @@ export class AutoRollbackService {
                 rolledBackAt: new Date(),
               },
             });
-            console.log(
-              `[auto-rollback] Marked staged rollout ${activeRollout.id} as ROLLED_BACK`,
-            );
+            infoLog("auto-rollback", `Marked staged rollout ${activeRollout.id} as ROLLED_BACK`);
           }
         } catch (rolloutErr) {
-          console.error(
-            `[auto-rollback] Error updating staged rollout for pipeline ${pipeline.id}:`,
-            rolloutErr,
-          );
+          errorLog("auto-rollback", `Error updating staged rollout for pipeline ${pipeline.id}`, rolloutErr);
         }
 
         // Fire event alert
@@ -263,15 +241,10 @@ export class AutoRollbackService {
           pipeline.environmentId,
         );
 
-        console.log(
-          `[auto-rollback] Successfully rolled back pipeline ${pipeline.id} (${pipeline.name})`,
-        );
+        infoLog("auto-rollback", `Successfully rolled back pipeline ${pipeline.id} (${pipeline.name})`);
       } catch (err) {
         // Per-pipeline error isolation — one failure doesn't stop others
-        console.error(
-          `[auto-rollback] Error processing pipeline ${pipeline.id}:`,
-          err,
-        );
+        errorLog("auto-rollback", `Error processing pipeline ${pipeline.id}`, err);
       }
     }
   }
