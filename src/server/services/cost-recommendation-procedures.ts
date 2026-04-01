@@ -20,8 +20,9 @@ function generateUnifiedDiff(oldText: string, newText: string): string {
 }
 
 function findFirstSinkKey(yamlStr: string): string {
-  const parsed = yaml.load(yamlStr) as Record<string, Record<string, unknown>>;
-  const sinks = parsed.sinks ?? {};
+  if (!yamlStr) return "";
+  const parsed = yaml.load(yamlStr) as Record<string, Record<string, unknown>> | null;
+  const sinks = parsed?.sinks ?? {};
   return Object.keys(sinks)[0] ?? "";
 }
 
@@ -30,15 +31,15 @@ function findFirstSinkKey(yamlStr: string): string {
  * Returns the current YAML, proposed YAML, and a unified diff,
  * or an isDisable flag for disable_pipeline actions.
  */
-export async function previewRecommendation(recommendationId: string) {
+export async function previewRecommendation(recommendationId: string, environmentId: string) {
   const rec = await prisma.costRecommendation.findUnique({
     where: { id: recommendationId },
     include: {
-      pipeline: { select: { id: true, name: true } },
+      pipeline: { select: { id: true, name: true, environmentId: true } },
     },
   });
 
-  if (!rec) {
+  if (!rec || rec.environmentId !== environmentId) {
     throw new TRPCError({
       code: "NOT_FOUND",
       message: "Recommendation not found",
@@ -97,15 +98,16 @@ export async function previewRecommendation(recommendationId: string) {
 export async function applyRecommendation(
   recommendationId: string,
   userId: string,
+  environmentId: string,
 ) {
   const rec = await prisma.costRecommendation.findUnique({
     where: { id: recommendationId },
     include: {
-      pipeline: { select: { id: true, name: true } },
+      pipeline: { select: { id: true, name: true, environmentId: true } },
     },
   });
 
-  if (!rec) {
+  if (!rec || rec.environmentId !== environmentId) {
     throw new TRPCError({
       code: "NOT_FOUND",
       message: "Recommendation not found",

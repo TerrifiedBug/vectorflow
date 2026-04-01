@@ -34,7 +34,13 @@ interface AddTransformParams {
 }
 
 function applyAddTransform(currentYaml: string, params: AddTransformParams): string {
-  const parsed = yaml.load(currentYaml) as Record<string, Record<string, unknown>>;
+  if (!currentYaml) {
+    throw new Error("Pipeline has no saved configuration to modify");
+  }
+  const parsed = yaml.load(currentYaml) as Record<string, Record<string, unknown>> | null;
+  if (!parsed) {
+    throw new Error("Pipeline has no saved configuration to modify");
+  }
 
   const sinks = parsed.sinks as Record<string, Record<string, unknown>> | undefined;
   if (!sinks || !sinks[params.targetSinkKey]) {

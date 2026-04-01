@@ -73,6 +73,7 @@ function makeRecommendation(overrides: Record<string, unknown> = {}) {
     pipeline: {
       id: "pipe-1",
       name: "Test Pipeline",
+      environmentId: "env-1",
     },
     ...overrides,
   };
@@ -90,7 +91,7 @@ describe("previewRecommendation", () => {
     } as never);
     applyYamlMock.mockReturnValue(PROPOSED_YAML);
 
-    const result = await previewRecommendation("rec-1");
+    const result = await previewRecommendation("rec-1", "env-1");
 
     expect(result.currentYaml).toBe(SAMPLE_YAML);
     expect(result.proposedYaml).toBe(PROPOSED_YAML);
@@ -109,7 +110,7 @@ describe("previewRecommendation", () => {
       }) as never,
     );
 
-    const result = await previewRecommendation("rec-1");
+    const result = await previewRecommendation("rec-1", "env-1");
 
     expect(result.isDisable).toBe(true);
     expect(result.recommendation.id).toBe("rec-1");
@@ -118,7 +119,7 @@ describe("previewRecommendation", () => {
   it("throws NOT_FOUND for missing recommendation", async () => {
     prismaMock.costRecommendation.findUnique.mockResolvedValue(null);
 
-    await expect(previewRecommendation("rec-missing")).rejects.toThrow(
+    await expect(previewRecommendation("rec-missing", "env-1")).rejects.toThrow(
       "Recommendation not found",
     );
   });
@@ -128,8 +129,18 @@ describe("previewRecommendation", () => {
       makeRecommendation({ suggestedAction: null }) as never,
     );
 
-    await expect(previewRecommendation("rec-1")).rejects.toThrow(
+    await expect(previewRecommendation("rec-1", "env-1")).rejects.toThrow(
       "No suggested action",
+    );
+  });
+
+  it("throws NOT_FOUND when environmentId does not match", async () => {
+    prismaMock.costRecommendation.findUnique.mockResolvedValue(
+      makeRecommendation() as never,
+    );
+
+    await expect(previewRecommendation("rec-1", "env-OTHER")).rejects.toThrow(
+      "Recommendation not found",
     );
   });
 });
@@ -155,7 +166,7 @@ describe("applyRecommendation", () => {
       status: "APPLIED",
     } as never);
 
-    const result = await applyRecommendation("rec-1", "user-1");
+    const result = await applyRecommendation("rec-1", "user-1", "env-1");
 
     expect(result.success).toBe(true);
     expect(result.pipelineId).toBe("pipe-1");
@@ -191,7 +202,7 @@ describe("applyRecommendation", () => {
       status: "APPLIED",
     } as never);
 
-    const result = await applyRecommendation("rec-1", "user-1");
+    const result = await applyRecommendation("rec-1", "user-1", "env-1");
 
     expect(result.success).toBe(true);
     expect(result.versionNumber).toBe(0);
@@ -207,7 +218,7 @@ describe("applyRecommendation", () => {
     );
 
     await expect(
-      applyRecommendation("rec-1", "user-1"),
+      applyRecommendation("rec-1", "user-1", "env-1"),
     ).rejects.toThrow("only be applied when PENDING");
   });
 

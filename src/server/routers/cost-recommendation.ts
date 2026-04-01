@@ -124,7 +124,7 @@ export const costRecommendationRouter = router({
     .input(z.object({ environmentId: z.string(), id: z.string() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      return previewRecommendation(input.id);
+      return previewRecommendation(input.id, input.environmentId);
     }),
 
   /** Apply a recommendation by creating a new pipeline version (or disabling the pipeline). */
@@ -133,7 +133,7 @@ export const costRecommendationRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("costRecommendation.apply", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
-      return applyRecommendation(input.id, ctx.session.user!.id!);
+      return applyRecommendation(input.id, ctx.session.user!.id!, input.environmentId);
     }),
 
   /** Summary stats for the recommendation cards header. */
