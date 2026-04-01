@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import type {
   AnalysisResult,
   PipelineAggregates,
-  SinkFingerprint,
   AnalysisThresholds,
 } from "@/server/services/cost-optimizer-types";
 import { DEFAULT_THRESHOLDS } from "@/server/services/cost-optimizer-types";
@@ -79,6 +78,7 @@ export async function aggregatePipelineMetrics(
 export function detectLowReduction(
   aggregates: readonly PipelineAggregates[],
   thresholds: AnalysisThresholds = DEFAULT_THRESHOLDS,
+  sinkKeyMap: Map<string, string> = new Map(),
 ): AnalysisResult[] {
   const results: AnalysisResult[] = [];
 
@@ -110,6 +110,7 @@ export function detectLowReduction(
           reductionRatio,
           eventsIn: agg.totalEventsIn.toString(),
           eventsOut: agg.totalEventsOut.toString(),
+          targetSinkKey: sinkKeyMap.get(agg.pipelineId) ?? "",
         },
         estimatedSavingsBytes: estimatedSavings,
         suggestedAction: {
@@ -130,6 +131,7 @@ export function detectLowReduction(
 export function detectHighErrorRate(
   aggregates: readonly PipelineAggregates[],
   thresholds: AnalysisThresholds = DEFAULT_THRESHOLDS,
+  sinkKeyMap: Map<string, string> = new Map(),
 ): AnalysisResult[] {
   const results: AnalysisResult[] = [];
 
@@ -157,6 +159,7 @@ export function detectHighErrorRate(
           errors: agg.totalErrors.toString(),
           discarded: agg.totalDiscarded.toString(),
           errorRate,
+          targetSinkKey: sinkKeyMap.get(agg.pipelineId) ?? "",
         },
         estimatedSavingsBytes:
           (agg.totalBytesIn * BigInt(Math.round(errorRate * 100))) / BigInt(100),
@@ -166,101 +169,6 @@ export function detectHighErrorRate(
             condition: ".level != \"error\" && !is_nullish(.message)",
             componentKey: `error_filter_${agg.pipelineId.slice(0, 8)}`,
           },
-        },
-      });
-    }
-  }
-
-  return results;
-}
-
-/**
- * Detect duplicate sinks -- pipelines that send data to the same destination.
- * Builds a fingerprint from sink component type + key config fields (host, endpoint, index).
- */
-export async function detectDuplicateSinks(): Promise<AnalysisResult[]> {
-  // Get all deployed pipeline sink nodes
-  const sinkNodes = await prisma.pipelineNode.findMany({
-    where: {
-      kind: "SINK",
-      pipeline: { isDraft: false, deployedAt: { not: null } },
-    },
-    select: {
-      componentKey: true,
-      componentType: true,
-      config: true,
-      pipeline: {
-        select: {
-          id: true,
-          name: true,
-          environmentId: true,
-          environment: { select: { teamId: true } },
-        },
-      },
-    },
-  });
-
-  // Build fingerprints from sink config
-  const fingerprints: SinkFingerprint[] = sinkNodes
-    .filter((n) => n.pipeline.environment.teamId)
-    .map((node) => {
-      const config = node.config as Record<string, unknown>;
-      // Use common destination-identifying fields for fingerprint
-      const destParts = [
-        node.componentType,
-        config.endpoint ?? config.host ?? config.address ?? "",
-        config.index ?? config.bucket ?? config.topic ?? config.database ?? "",
-      ];
-      return {
-        pipelineId: node.pipeline.id,
-        pipelineName: node.pipeline.name,
-        environmentId: node.pipeline.environmentId,
-        teamId: node.pipeline.environment.teamId!,
-        sinkComponentKey: node.componentKey,
-        sinkComponentType: node.componentType,
-        destinationFingerprint: destParts.join("::"),
-      };
-    });
-
-  // Group by team + environment + fingerprint
-  const groups = new Map<string, SinkFingerprint[]>();
-  for (const fp of fingerprints) {
-    const key = `${fp.teamId}::${fp.environmentId}::${fp.destinationFingerprint}`;
-    const group = groups.get(key) ?? [];
-    group.push(fp);
-    groups.set(key, group);
-  }
-
-  const results: AnalysisResult[] = [];
-  for (const [, group] of groups) {
-    if (group.length < 2) continue;
-
-    // Generate a recommendation for each duplicate beyond the first
-    const primaryPipeline = group[0];
-    for (const dup of group.slice(1)) {
-      results.push({
-        pipelineId: dup.pipelineId,
-        pipelineName: dup.pipelineName,
-        environmentId: dup.environmentId,
-        teamId: dup.teamId,
-        type: "DUPLICATE_SINK",
-        title: `Pipeline "${dup.pipelineName}" has a duplicate sink`,
-        description:
-          `Sink "${dup.sinkComponentKey}" (${dup.sinkComponentType}) sends data to the same ` +
-          `destination as "${primaryPipeline.sinkComponentKey}" in pipeline ` +
-          `"${primaryPipeline.pipelineName}". Consider consolidating these pipelines ` +
-          `to reduce duplicate writes.`,
-        analysisData: {
-          duplicateOf: primaryPipeline.pipelineId,
-          duplicateOfName: primaryPipeline.pipelineName,
-          sinkType: dup.sinkComponentType,
-          sinkKey: dup.sinkComponentKey,
-          destinationFingerprint: dup.destinationFingerprint,
-        },
-        estimatedSavingsBytes: null,
-        suggestedAction: {
-          type: "remove_sink",
-          config: { sinkComponentKey: dup.sinkComponentKey },
         },
       });
     }
@@ -348,18 +256,33 @@ export async function runCostAnalysis(
   const aggregates = await aggregatePipelineMetrics(since);
   debugLog(TAG, `Aggregated metrics for ${aggregates.length} pipelines`);
 
-  const [lowReduction, highError, duplicateSinks, stale] = await Promise.all([
-    Promise.resolve(detectLowReduction(aggregates, thresholds)),
-    Promise.resolve(detectHighErrorRate(aggregates, thresholds)),
-    detectDuplicateSinks(),
+  // Fetch the first sink key for each pipeline (used by apply service to rewire inputs)
+  const pipelineIds = aggregates.map((a) => a.pipelineId);
+  const sinkNodes = pipelineIds.length > 0
+    ? await prisma.pipelineNode.findMany({
+        where: { pipelineId: { in: pipelineIds }, kind: "SINK" },
+        select: { pipelineId: true, componentKey: true },
+        orderBy: { componentKey: "asc" },
+      })
+    : [];
+
+  const sinkKeyMap = new Map<string, string>();
+  for (const node of sinkNodes) {
+    if (!sinkKeyMap.has(node.pipelineId)) {
+      sinkKeyMap.set(node.pipelineId, node.componentKey);
+    }
+  }
+
+  const [lowReduction, highError, stale] = await Promise.all([
+    Promise.resolve(detectLowReduction(aggregates, thresholds, sinkKeyMap)),
+    Promise.resolve(detectHighErrorRate(aggregates, thresholds, sinkKeyMap)),
     detectStalePipelines(aggregates, thresholds),
   ]);
 
-  const allResults = [...lowReduction, ...highError, ...duplicateSinks, ...stale];
+  const allResults = [...lowReduction, ...highError, ...stale];
   debugLog(TAG, `Analysis complete: ${allResults.length} recommendations`, {
     lowReduction: lowReduction.length,
     highError: highError.length,
-    duplicateSinks: duplicateSinks.length,
     stale: stale.length,
   });
 

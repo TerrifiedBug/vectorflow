@@ -8,6 +8,10 @@ import {
   dismissRecommendation,
   markRecommendationApplied,
 } from "@/server/services/cost-recommendations";
+import {
+  previewRecommendation,
+  applyRecommendation,
+} from "@/server/services/cost-recommendation-procedures";
 import { runDailyCostAnalysis } from "@/server/services/cost-optimizer-scheduler";
 
 export const costRecommendationRouter = router({
@@ -113,6 +117,23 @@ export const costRecommendationRouter = router({
       }
 
       return markRecommendationApplied(input.id);
+    }),
+
+  /** Preview the YAML diff that would result from applying a recommendation. */
+  previewApply: protectedProcedure
+    .input(z.object({ environmentId: z.string(), id: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return previewRecommendation(input.id, input.environmentId);
+    }),
+
+  /** Apply a recommendation by creating a new pipeline version (or disabling the pipeline). */
+  applyRecommendation: protectedProcedure
+    .input(z.object({ environmentId: z.string(), id: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("costRecommendation.apply", "Pipeline"))
+    .mutation(async ({ input, ctx }) => {
+      return applyRecommendation(input.id, ctx.session.user!.id!, input.environmentId);
     }),
 
   /** Summary stats for the recommendation cards header. */
