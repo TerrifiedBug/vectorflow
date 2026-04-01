@@ -281,8 +281,8 @@ describe("alertRulesRouter", () => {
           createMany: vi.fn().mockResolvedValue({ count: 2 }),
         },
       };
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
-        return fn(mockTx);
+      prismaMock.$transaction.mockImplementation(async (fn) => {
+        return (fn as (tx: unknown) => Promise<unknown>)(mockTx);
       });
 
       await caller.updateRule({

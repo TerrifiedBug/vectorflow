@@ -223,7 +223,7 @@ describe("pipelineCrudRouter", () => {
           create: vi.fn().mockResolvedValue({ id: "node-1" }),
         },
       };
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(mockTx));
+      prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(mockTx));
 
       const result = await caller.createSystemPipeline();
 
@@ -250,7 +250,7 @@ describe("pipelineCrudRouter", () => {
           findFirst: vi.fn().mockResolvedValue({ id: "existing" }),
         },
       };
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(mockTx));
+      prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(mockTx));
 
       await expect(caller.createSystemPipeline()).rejects.toThrow("A system pipeline already exists");
     });
@@ -380,7 +380,7 @@ describe("pipelineCrudRouter", () => {
           create: vi.fn().mockResolvedValue(cloned),
         },
       };
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(mockTx));
+      prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)(mockTx));
 
       const result = await caller.clone({ pipelineId: "p-1" });
 

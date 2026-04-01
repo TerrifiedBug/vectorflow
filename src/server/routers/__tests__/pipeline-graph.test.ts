@@ -58,9 +58,9 @@ describe("pipelineGraphRouter", () => {
     it("saves graph components within a transaction", async () => {
       const savedResult = { pipelineId: "p-1", nodeCount: 2, edgeCount: 1 };
       vi.mocked(saveGraphComponents).mockResolvedValue(savedResult as never);
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      prismaMock.$transaction.mockImplementation(async (fn) => {
         const fakeTx = {};
-        return fn(fakeTx);
+        return (fn as (tx: unknown) => unknown)(fakeTx);
       });
 
       const nodes = [
@@ -108,7 +108,7 @@ describe("pipelineGraphRouter", () => {
 
     it("passes globalConfig to saveGraphComponents when provided", async () => {
       vi.mocked(saveGraphComponents).mockResolvedValue({} as never);
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn({}));
+      prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)({}));
 
       await caller.saveGraph({
         pipelineId: "p-1",
@@ -136,7 +136,7 @@ describe("pipelineGraphRouter", () => {
 
     it("passes null globalConfig when explicitly set to null", async () => {
       vi.mocked(saveGraphComponents).mockResolvedValue({} as never);
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn({}));
+      prismaMock.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => unknown)({}));
 
       await caller.saveGraph({
         pipelineId: "p-1",

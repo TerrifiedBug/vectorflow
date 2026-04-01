@@ -47,7 +47,7 @@ import { stagedRolloutRouter } from "@/server/routers/staged-rollout";
 import { stagedRolloutService } from "@/server/services/staged-rollout";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
-const stagedRolloutServiceMock = stagedRolloutService as {
+const stagedRolloutServiceMock = stagedRolloutService as unknown as {
   createRollout: ReturnType<typeof vi.fn>;
   broadenRollout: ReturnType<typeof vi.fn>;
   rollbackRollout: ReturnType<typeof vi.fn>;
