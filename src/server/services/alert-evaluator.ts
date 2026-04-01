@@ -5,6 +5,8 @@ import type {
   AlertRule,
   AlertEvent,
 } from "@/generated/prisma";
+import { Prisma } from "@/generated/prisma";
+import { queryErrorContext } from "@/server/services/error-context";
 import { getConfigDrift } from "@/server/services/drift-metrics";
 import { shouldSuppressDuplicate } from "@/server/services/alert-deduplication";
 import { correlateEvent, suggestRootCause, closeResolvedGroups } from "@/server/services/alert-correlator";
@@ -276,6 +278,9 @@ export async function evaluateAlerts(
     // Skip fleet-scoped metrics — handled by FleetAlertService
     if (FLEET_METRICS.has(rule.metric)) continue;
 
+    // Keyword rules are handled on ingest by keyword-alert.ts, not here
+    if (rule.metric === "log_keyword") continue;
+
     const value = await readMetricValue(
       rule.metric,
       nodeId,
@@ -322,6 +327,12 @@ export async function evaluateAlerts(
 
           // Create a new firing event
           const message = buildMessage(rule, value, rule.pipeline?.name);
+
+          // Query error context before creating the event (single write)
+          const errorContext = rule.metric === "error_rate" && rule.pipelineId
+            ? await queryErrorContext(rule.pipelineId)
+            : null;
+
           const event = await prisma.alertEvent.create({
             data: {
               alertRuleId: rule.id,
@@ -329,6 +340,7 @@ export async function evaluateAlerts(
               status: "firing",
               value,
               message,
+              ...(errorContext ? { errorContext: errorContext as unknown as Prisma.InputJsonValue } : {}),
             },
           });
 
@@ -406,6 +418,7 @@ const METRIC_LABELS: Record<AlertMetric, string> = {
   promotion_completed: "Promotion completed",
   git_sync_failed: "Git sync failed",
   cost_threshold_exceeded: "Cost threshold exceeded",
+  log_keyword: "Log keyword match",
 };
 
 const CONDITION_LABELS: Record<AlertCondition, string> = {
@@ -763,6 +776,9 @@ export async function evaluateAlertsBatch(
     // Skip fleet-scoped metrics
     if (FLEET_METRICS.has(rule.metric)) continue;
 
+    // Keyword rules are handled on ingest by keyword-alert.ts, not here
+    if (rule.metric === "log_keyword") continue;
+
     for (const nodeId of cache.nodeIds) {
       const value = readMetricFromCache(
         rule.metric,
@@ -838,6 +854,12 @@ async function processRuleForNode(
 
       if (!existingEvent) {
         const message = buildMessage(rule, value, rule.pipeline?.name);
+
+        // Query error context before creating (single write)
+        const errorContext = rule.metric === "error_rate" && rule.pipelineId
+          ? await queryErrorContext(rule.pipelineId)
+          : null;
+
         const event = await prisma.alertEvent.create({
           data: {
             alertRuleId: rule.id,
@@ -845,8 +867,10 @@ async function processRuleForNode(
             status: "firing",
             value,
             message,
+            ...(errorContext ? { errorContext: errorContext as unknown as Prisma.InputJsonValue } : {}),
           },
         });
+
         results.push({ event, rule });
       }
     }
