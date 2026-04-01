@@ -53,6 +53,7 @@ When using the Docker Compose setup, these variables go in your `.env` file and 
 | `VF_VECTOR_BIN` | No | `vector` | Path to the Vector binary |
 | `VF_POLL_INTERVAL` | No | `15s` | How often the agent polls the server for changes |
 | `VF_LOG_LEVEL` | No | `info` | Logging verbosity: `debug`, `info`, `warn`, `error` |
+| `VF_AGENT_USER` | Docker only | — | Run the agent as this user instead of root. The entrypoint creates the user if needed. |
 
 ## Database connection
 
