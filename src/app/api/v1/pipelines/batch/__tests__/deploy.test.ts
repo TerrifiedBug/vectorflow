@@ -30,6 +30,7 @@ vi.mock("../../_lib/rate-limiter", () => ({
   },
 }));
 
+import { prisma } from "@/lib/prisma";
 import {
   authenticateApiKey,
   hasPermission,
@@ -37,6 +38,7 @@ import {
 import { deployBatch } from "@/server/services/deploy-agent";
 import { POST } from "../deploy/route";
 
+const prismaMock = prisma as unknown as ReturnType<typeof mockDeep<PrismaClient>>;
 const authMock = authenticateApiKey as ReturnType<typeof vi.fn>;
 const permMock = hasPermission as ReturnType<typeof vi.fn>;
 const deployBatchMock = deployBatch as ReturnType<typeof vi.fn>;
@@ -57,6 +59,12 @@ describe("POST /api/v1/pipelines/batch/deploy", () => {
   });
 
   it("deploys multiple pipelines and returns results", async () => {
+    // Mock pipeline ownership check — return matching pipelines
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "pipe-1" },
+      { id: "pipe-2" },
+    ] as never);
+
     deployBatchMock.mockResolvedValue({
       total: 2,
       completed: 2,
