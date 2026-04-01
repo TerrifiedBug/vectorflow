@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 import { validatePublicUrl } from "@/server/services/url-validation";
+import { errorLog } from "@/lib/logger";
 
 export interface WebhookPayload {
   alertId: string;
@@ -126,9 +127,7 @@ export async function deliverWebhooks(
   for (const webhook of webhooks) {
     const result = await deliverSingleWebhook(webhook, payload);
     if (!result.success) {
-      console.error(
-        `Webhook delivery failed to ${webhook.url}: ${result.error}`,
-      );
+      errorLog("webhook-delivery", `Webhook delivery failed to ${webhook.url}: ${result.error}`);
     }
   }
 }

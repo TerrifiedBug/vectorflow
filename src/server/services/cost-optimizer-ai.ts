@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getTeamAiConfig } from "@/server/services/ai";
 import { buildCostRecommendationPrompt } from "@/lib/ai/cost-recommendation-prompt";
 import { parseAiReviewResponse } from "@/lib/ai/suggestion-validator";
-import { debugLog } from "@/lib/logger";
+import { debugLog, errorLog } from "@/lib/logger";
 import { Prisma } from "@/generated/prisma";
 
 const TAG = "cost-optimizer-ai";
@@ -96,7 +96,7 @@ export async function generateAiRecommendations(): Promise<number> {
 
         if (!response.ok) {
           const errorText = await response.text().catch(() => "Unknown error");
-          console.error(`[${TAG}] AI call failed for rec ${rec.id}: ${response.status} ${errorText}`);
+          errorLog(TAG, `AI call failed for rec ${rec.id}: ${response.status} ${errorText}`);
           continue;
         }
 
@@ -124,7 +124,7 @@ export async function generateAiRecommendations(): Promise<number> {
         });
         enriched++;
       } catch (error) {
-        console.error(`[${TAG}] Failed to enrich recommendation ${rec.id}:`, error);
+        errorLog(TAG, `Failed to enrich recommendation ${rec.id}`, error);
       }
     }
   }

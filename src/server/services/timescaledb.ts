@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { infoLog, warnLog } from "@/lib/logger";
 
 /** Cached detection result. null = not yet probed. */
 let timescaleAvailable: boolean | null = null;
@@ -53,23 +54,15 @@ export async function detectTimescaleDb(): Promise<boolean> {
     timescaleAvailable = found;
 
     if (found) {
-      console.log(
-        `[timescaledb] TimescaleDB ${rows[0].extversion} detected — hypertable features enabled`
-      );
+      infoLog("timescaledb", `TimescaleDB ${rows[0].extversion} detected — hypertable features enabled`);
     } else {
-      console.warn(
-        "[timescaledb] TimescaleDB extension not found — falling back to plain PostgreSQL. " +
-          "Metrics retention will use deleteMany (slow at scale). " +
-          "Install TimescaleDB for O(1) retention and 10-20x compression."
-      );
+      warnLog("timescaledb", "TimescaleDB extension not found — falling back to plain PostgreSQL. Metrics retention will use deleteMany (slow at scale). Install TimescaleDB for O(1) retention and 10-20x compression.");
     }
 
     return found;
   } catch {
     timescaleAvailable = false;
-    console.warn(
-      "[timescaledb] Failed to detect TimescaleDB — falling back to plain PostgreSQL"
-    );
+    warnLog("timescaledb", "Failed to detect TimescaleDB — falling back to plain PostgreSQL");
     return false;
   }
 }

@@ -7,6 +7,7 @@ import { buildPipelineSystemPrompt } from "@/lib/ai/prompts";
 import { buildMetricContext } from "@/lib/ai/metric-context";
 import { metricStore } from "@/server/services/metric-store";
 import { writeAuditLog } from "@/server/services/audit";
+import { errorLog } from "@/lib/logger";
 
 import { Prisma } from "@/generated/prisma";
 
@@ -172,7 +173,7 @@ export async function POST(request: Request) {
       }
     } catch (err) {
       // Non-fatal: proceed without metric context
-      console.error("Failed to fetch pipeline metrics for AI review:", err);
+      errorLog("ai-pipeline", "Failed to fetch pipeline metrics for AI review", err);
     }
   }
 
@@ -229,7 +230,7 @@ export async function POST(request: Request) {
               },
             });
           } catch (err) {
-            console.error("Failed to persist AI response:", err);
+            errorLog("ai-pipeline", "Failed to persist AI response", err);
           }
 
           const pipelineForAudit = await prisma.pipeline.findUnique({

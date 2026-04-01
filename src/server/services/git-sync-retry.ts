@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { debugLog } from "@/lib/logger";
+import { debugLog, infoLog, errorLog } from "@/lib/logger";
 import { gitSyncCommitPipeline, gitSyncDeletePipeline } from "@/server/services/git-sync";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
@@ -26,7 +26,7 @@ export class GitSyncRetryService {
   private timer: ReturnType<typeof setInterval> | null = null;
 
   init(): void {
-    console.log("[git-sync-retry] Initializing git sync retry service");
+    infoLog("git-sync-retry", "Initializing git sync retry service");
     this.start();
   }
 
@@ -36,16 +36,14 @@ export class GitSyncRetryService {
       POLL_INTERVAL_MS,
     );
     this.timer.unref();
-    console.log(
-      `[git-sync-retry] Poll loop started (every ${POLL_INTERVAL_MS / 1000}s)`,
-    );
+    infoLog("git-sync-retry", `Poll loop started (every ${POLL_INTERVAL_MS / 1000}s)`);
   }
 
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      console.log("[git-sync-retry] Poll loop stopped");
+      infoLog("git-sync-retry", "Poll loop stopped");
     }
   }
 
@@ -75,7 +73,7 @@ export class GitSyncRetryService {
         take: BATCH_SIZE,
       });
     } catch (err) {
-      console.error("[git-sync-retry] Error querying due jobs:", err);
+      errorLog("git-sync-retry", "Error querying due jobs", err);
       return;
     }
 
@@ -172,7 +170,7 @@ export class GitSyncRetryService {
           }
         }
       } catch (err) {
-        console.error(`[git-sync-retry] Error processing job ${job.id}:`, err);
+        errorLog("git-sync-retry", `Error processing job ${job.id}`, err);
       }
     }
   }

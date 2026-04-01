@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyEnrollmentToken, generateNodeToken } from "@/server/services/agent-token";
 import { fireEventAlert } from "@/server/services/event-alerts";
-import { debugLog } from "@/lib/logger";
+import { debugLog, errorLog } from "@/lib/logger";
 import { nodeMatchesGroup } from "@/lib/node-group-utils";
 import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
 
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const parsed = enrollSchema.safeParse(body);
     if (!parsed.success) {
-      console.error("[enroll] invalid input:", parsed.error.flatten().fieldErrors);
+      errorLog("enroll", "invalid input", parsed.error.flatten().fieldErrors);
       return NextResponse.json(
         { error: "Invalid input", details: parsed.error.flatten().fieldErrors },
         { status: 400 },
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     }
 
     if (!matchedEnv) {
-      console.error(`[enroll] REJECTED -- no matching environment (checked ${environments.length})`);
+      errorLog("enroll", `REJECTED -- no matching environment (checked ${environments.length})`);
       return NextResponse.json(
         { error: "Invalid enrollment token" },
         { status: 401 },
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
       }
     } catch (err) {
       // Non-fatal: enrollment still succeeds even if label template application fails
-      console.error("[enroll] label template application failed:", err);
+      errorLog("enroll", "label template application failed", err);
     }
 
     debugLog("enroll", `SUCCESS -- node ${node.id} enrolled in "${matchedEnv.name}"`);
@@ -146,7 +146,7 @@ export async function POST(request: Request) {
       environmentName: matchedEnv.name,
     });
   } catch (error) {
-    console.error("[enroll] unexpected error:", error);
+    errorLog("enroll", "unexpected error", error);
     return NextResponse.json(
       { error: "Enrollment failed" },
       { status: 500 },

@@ -1,6 +1,7 @@
 import { Registry, Gauge } from "prom-client";
 import { prisma } from "@/lib/prisma";
 import { metricStore } from "@/server/services/metric-store";
+import { errorLog } from "@/lib/logger";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -249,7 +250,7 @@ export class PrometheusMetricsService {
 
       return await this.registry.metrics();
     } catch (error) {
-      console.error("[PrometheusMetricsService] collectMetrics failed:", error);
+      errorLog("prometheus-metrics", "collectMetrics failed", error);
       // Return whatever is in the registry (stale or empty)
       return await this.registry.metrics();
     }

@@ -1,5 +1,5 @@
 import cron, { type ScheduledTask } from "node-cron";
-import { debugLog } from "@/lib/logger";
+import { debugLog, infoLog, errorLog } from "@/lib/logger";
 import { runCostAnalysis } from "@/server/services/cost-optimizer";
 import {
   storeRecommendations,
@@ -28,21 +28,21 @@ export function stopCostOptimizerScheduler(): void {
 
 function scheduleJob(cronExpression: string): void {
   if (!cron.validate(cronExpression)) {
-    console.error(`[cost-optimizer] Invalid cron expression: ${cronExpression}`);
+    errorLog("cost-optimizer", `Invalid cron expression: ${cronExpression}`);
     return;
   }
 
   scheduledTask = cron.schedule(cronExpression, async () => {
-    console.log("[cost-optimizer] Starting daily cost analysis...");
+    infoLog("cost-optimizer", "Starting daily cost analysis...");
     try {
       await runDailyCostAnalysis();
     } catch (error) {
-      console.error("[cost-optimizer] Daily analysis failed:", error);
+      errorLog("cost-optimizer", "Daily analysis failed", error);
     }
   });
   scheduledTask.start();
 
-  console.log(`[cost-optimizer] Scheduler active: ${cronExpression}`);
+  infoLog("cost-optimizer", `Scheduler active: ${cronExpression}`);
 }
 
 /** Run the full daily analysis pipeline. Exported for manual triggering. */
@@ -68,10 +68,7 @@ export async function runDailyCostAnalysis(): Promise<{
     try {
       aiEnriched = await generateAiRecommendations();
     } catch (error) {
-      console.error(
-        "[cost-optimizer] AI enrichment failed (recommendations saved without AI summary):",
-        error,
-      );
+      errorLog("cost-optimizer", "AI enrichment failed (recommendations saved without AI summary)", error);
     }
   }
 
@@ -83,6 +80,6 @@ export async function runDailyCostAnalysis(): Promise<{
     expiredCleaned,
   };
 
-  console.log("[cost-optimizer] Daily analysis complete", summary);
+  infoLog("cost-optimizer", "Daily analysis complete", summary);
   return summary;
 }

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { ChannelDriver, ChannelPayload, ChannelDeliveryResult } from "./types";
+import { errorLog } from "@/lib/logger";
 import { slackDriver } from "./slack";
 import { emailDriver } from "./email";
 import { pagerdutyDriver } from "./pagerduty";
@@ -113,10 +114,7 @@ export async function deliverToChannels(
         );
         results.push({ ...result, channelId: channel.id });
       } catch (err) {
-        console.error(
-          `Channel delivery error (${channel.type} / ${channel.id}):`,
-          err,
-        );
+        errorLog("channels", `Channel delivery error (${channel.type} / ${channel.id})`, err);
         results.push({
           channelId: channel.id,
           success: false,

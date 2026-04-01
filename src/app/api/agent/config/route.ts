@@ -7,6 +7,7 @@ import { decrypt } from "@/server/services/crypto";
 import { createHash } from "crypto";
 import { setExpectedChecksum } from "@/server/services/drift-metrics";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
+import { warnLog, errorLog } from "@/lib/logger";
 
 export async function GET(request: Request) {
   const rateLimited = checkTokenRateLimit(request, "config", 30);
@@ -119,7 +120,7 @@ export async function GET(request: Request) {
         for (const s of envSecrets) {
           const envKey = secretNameToEnvVar(s.name);
           if (secrets[envKey] !== undefined) {
-            console.warn(`[agent-config] Secret name collision: "${s.name}" normalizes to "${envKey}" which is already set`);
+            warnLog("agent-config", `Secret name collision: "${s.name}" normalizes to "${envKey}" which is already set`);
           }
           secrets[envKey] = decrypt(s.encryptedValue);
         }
@@ -178,7 +179,7 @@ export async function GET(request: Request) {
           ...(certFiles.length > 0 ? { certFiles } : {}),
         });
       } catch (err) {
-        console.error(`Failed to generate config for pipeline ${pipeline.id} (${pipeline.name}):`, err);
+        errorLog("agent-config", `Failed to generate config for pipeline ${pipeline.id} (${pipeline.name})`, err);
         continue;
       }
     }
@@ -230,7 +231,7 @@ export async function GET(request: Request) {
       ...(node?.pendingAction ? { pendingAction: node.pendingAction } : {}),
     });
   } catch (error) {
-    console.error("Agent config error:", error);
+    errorLog("agent-config", "Agent config error", error);
     return NextResponse.json(
       { error: "Failed to generate config" },
       { status: 500 },

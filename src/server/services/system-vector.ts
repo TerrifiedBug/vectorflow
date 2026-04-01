@@ -3,7 +3,7 @@ import { writeFile, mkdir } from "fs/promises";
 import { dirname, join } from "path";
 import yaml from "js-yaml";
 import { AUDIT_LOG_PATH } from "@/server/services/audit";
-import { debugLog } from "@/lib/logger";
+import { debugLog, errorLog } from "@/lib/logger";
 
 const VECTOR_BIN = process.env.VF_VECTOR_BIN ?? "vector";
 const VECTORFLOW_DATA_DIR = join(process.cwd(), ".vectorflow");
@@ -54,7 +54,7 @@ export async function startSystemVector(configYaml: string): Promise<void> {
   });
 
   proc.stderr?.on("data", (data: Buffer) => {
-    console.error(`[system-vector stderr] ${data.toString().trimEnd()}`);
+    errorLog("system-vector", data.toString().trimEnd());
   });
 
   proc.on("exit", (code, signal) => {
