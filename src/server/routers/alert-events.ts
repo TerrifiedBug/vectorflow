@@ -12,7 +12,7 @@ export const alertEventsRouter = router({
         environmentId: z.string(),
         limit: z.number().min(1).max(200).default(50),
         cursor: z.string().optional(),
-        status: z.enum(["firing", "resolved", "acknowledged"]).optional(),
+        status: z.enum(["firing", "resolved", "acknowledged", "dismissed"]).optional(),
         dateFrom: z.string().optional(),
         dateTo: z.string().optional(),
       }),
@@ -108,6 +108,56 @@ export const alertEventsRouter = router({
           acknowledgedBy,
         },
       });
+    }),
+
+  bulkAcknowledge: protectedProcedure
+    .input(
+      z.object({
+        alertEventIds: z.array(z.string()).min(1).max(100),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("alertEvent.bulkAcknowledged", "AlertEvent"))
+    .mutation(async ({ input, ctx }) => {
+      const user = ctx.session.user;
+      const acknowledgedBy =
+        user?.email || user?.name || user?.id || "unknown";
+
+      const result = await prisma.alertEvent.updateMany({
+        where: {
+          id: { in: input.alertEventIds },
+          status: "firing",
+        },
+        data: {
+          status: "acknowledged",
+          acknowledgedAt: new Date(),
+          acknowledgedBy,
+        },
+      });
+
+      return { updated: result.count, total: input.alertEventIds.length };
+    }),
+
+  bulkDismiss: protectedProcedure
+    .input(
+      z.object({
+        alertEventIds: z.array(z.string()).min(1).max(100),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("alertEvent.bulkDismissed", "AlertEvent"))
+    .mutation(async ({ input }) => {
+      const result = await prisma.alertEvent.updateMany({
+        where: {
+          id: { in: input.alertEventIds },
+          status: { in: ["firing", "acknowledged"] },
+        },
+        data: {
+          status: "dismissed",
+        },
+      });
+
+      return { updated: result.count, total: input.alertEventIds.length };
     }),
 
   listCorrelationGroups: protectedProcedure
