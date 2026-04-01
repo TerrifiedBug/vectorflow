@@ -448,7 +448,6 @@ model PipelineSli {
 enum RecommendationType {
   LOW_REDUCTION
   HIGH_ERROR_RATE
-  DUPLICATE_SINK
   STALE_PIPELINE
 }
 
