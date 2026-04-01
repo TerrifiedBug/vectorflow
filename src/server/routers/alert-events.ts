@@ -113,6 +113,7 @@ export const alertEventsRouter = router({
   bulkAcknowledge: protectedProcedure
     .input(
       z.object({
+        environmentId: z.string(),
         alertEventIds: z.array(z.string()).min(1).max(100),
       }),
     )
@@ -123,10 +124,12 @@ export const alertEventsRouter = router({
       const acknowledgedBy =
         user?.email || user?.name || user?.id || "unknown";
 
+      // Scope through alertRule → environment to prevent cross-team access
       const result = await prisma.alertEvent.updateMany({
         where: {
           id: { in: input.alertEventIds },
           status: "firing",
+          alertRule: { environmentId: input.environmentId },
         },
         data: {
           status: "acknowledged",
@@ -141,16 +144,19 @@ export const alertEventsRouter = router({
   bulkDismiss: protectedProcedure
     .input(
       z.object({
+        environmentId: z.string(),
         alertEventIds: z.array(z.string()).min(1).max(100),
       }),
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("alertEvent.bulkDismissed", "AlertEvent"))
     .mutation(async ({ input }) => {
+      // Scope through alertRule → environment to prevent cross-team access
       const result = await prisma.alertEvent.updateMany({
         where: {
           id: { in: input.alertEventIds },
           status: { in: ["firing", "acknowledged"] },
+          alertRule: { environmentId: input.environmentId },
         },
         data: {
           status: "dismissed",

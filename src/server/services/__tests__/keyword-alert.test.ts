@@ -64,7 +64,7 @@ describe("checkKeywordMatches", () => {
     const { refreshKeywordRuleCache } = await import("../keyword-alert");
     await refreshKeywordRuleCache();
 
-    await checkKeywordMatches("pipeline-1", [
+    await checkKeywordMatches("pipeline-1", "env-1", [
       { message: "some error", level: "ERROR" },
     ]);
 
@@ -103,7 +103,7 @@ describe("checkKeywordMatches", () => {
     prismaMock.alertEvent.create.mockResolvedValue({} as never);
 
     // Send 3 lines with "timeout" — should exceed threshold of 2
-    await checkKeywordMatches("pipeline-1", [
+    await checkKeywordMatches("pipeline-1", "env-1", [
       { message: "Connection timeout on port 8080", level: "ERROR" },
       { message: "Request timeout after 30s", level: "WARN" },
       { message: "Timeout waiting for response", level: "ERROR" },
@@ -142,14 +142,14 @@ describe("checkKeywordMatches", () => {
     prismaMock.alertEvent.create.mockResolvedValue({} as never);
 
     // WARN-level line matches keyword but not severity filter
-    await checkKeywordMatches("pipeline-1", [
+    await checkKeywordMatches("pipeline-1", "env-1", [
       { message: "Task failed with warning", level: "WARN" },
     ]);
 
     expect(prismaMock.alertEvent.create).not.toHaveBeenCalled();
 
     // ERROR-level line matches both keyword and severity
-    await checkKeywordMatches("pipeline-1", [
+    await checkKeywordMatches("pipeline-1", "env-1", [
       { message: "Task failed critically", level: "ERROR" },
     ]);
 

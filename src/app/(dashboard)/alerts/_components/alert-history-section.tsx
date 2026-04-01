@@ -645,6 +645,7 @@ export function AlertHistorySection({
                 disabled={bulkAcknowledgeMutation.isPending}
                 onClick={() =>
                   bulkAcknowledgeMutation.mutate({
+                    environmentId,
                     alertEventIds: Array.from(selectedIds),
                   })
                 }
@@ -659,6 +660,7 @@ export function AlertHistorySection({
                 disabled={bulkDismissMutation.isPending}
                 onClick={() =>
                   bulkDismissMutation.mutate({
+                    environmentId,
                     alertEventIds: Array.from(selectedIds),
                   })
                 }

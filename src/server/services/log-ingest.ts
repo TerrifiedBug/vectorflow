@@ -37,6 +37,7 @@ export function parseLogLevel(line: string): LogLevel {
 export async function ingestLogs(
   nodeId: string,
   pipelineId: string,
+  environmentId: string,
   lines: string[],
 ): Promise<void> {
   if (lines.length === 0) return;
@@ -53,7 +54,7 @@ export async function ingestLogs(
   await prisma.pipelineLog.createMany({ data });
 
   // Check keyword alert rules (non-blocking — errors logged, not thrown)
-  checkKeywordMatches(pipelineId, data).catch((err) =>
+  checkKeywordMatches(pipelineId, environmentId, data).catch((err) =>
     console.error("[keyword-alert] match check failed:", err),
   );
 }

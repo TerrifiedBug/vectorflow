@@ -37,6 +37,13 @@ const GLOBAL_KEY = "__global__";
 
 let ruleCache = new Map<string, KeywordRule[]>();
 let ruleCacheTimestamp = 0;
+
+/**
+ * Sliding window match counters keyed by ruleId.
+ * NOTE: In-process state — in multi-worker deployments, each worker tracks
+ * counts independently. VectorFlow runs as a single server process, so this
+ * is not currently a concern.
+ */
 const windowCounters = new Map<string, WindowCounter>();
 
 // ─── Exported helpers ───────────────────────────────────────────────────────
@@ -98,9 +105,13 @@ export async function refreshKeywordRuleCache(): Promise<void> {
   ruleCacheTimestamp = Date.now();
 }
 
-export function getKeywordRules(pipelineId: string): KeywordRule[] {
+/** Get keyword rules applicable to a specific pipeline + environment. */
+export function getKeywordRules(pipelineId: string, environmentId: string): KeywordRule[] {
   const pipelineRules = ruleCache.get(pipelineId) ?? [];
-  const globalRules = ruleCache.get(GLOBAL_KEY) ?? [];
+  // Global rules (no pipeline) are filtered by environment to prevent cross-team matching
+  const globalRules = (ruleCache.get(GLOBAL_KEY) ?? []).filter(
+    (r) => r.environmentId === environmentId,
+  );
   return [...pipelineRules, ...globalRules];
 }
 
@@ -108,13 +119,14 @@ export function getKeywordRules(pipelineId: string): KeywordRule[] {
 
 export async function checkKeywordMatches(
   pipelineId: string,
+  environmentId: string,
   lines: Array<{ message: string; level: LogLevel | string }>,
 ): Promise<void> {
   if (Date.now() - ruleCacheTimestamp > CACHE_TTL_MS) {
     await refreshKeywordRuleCache();
   }
 
-  const rules = getKeywordRules(pipelineId);
+  const rules = getKeywordRules(pipelineId, environmentId);
   if (rules.length === 0) return;
 
   const now = Date.now();
