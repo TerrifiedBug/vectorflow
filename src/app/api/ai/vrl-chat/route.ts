@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { streamCompletion } from "@/server/services/ai";
 import { buildVrlChatSystemPrompt } from "@/lib/ai/prompts";
 import { writeAuditLog } from "@/server/services/audit";
+import { errorLog } from "@/lib/logger";
 
 import { Prisma } from "@/generated/prisma";
 
@@ -219,7 +220,7 @@ export async function POST(request: Request) {
             },
           });
         } catch (err) {
-          console.error("Failed to persist VRL AI response:", err);
+          errorLog("ai-vrl", "Failed to persist VRL AI response", err);
         }
 
         writeAuditLog({

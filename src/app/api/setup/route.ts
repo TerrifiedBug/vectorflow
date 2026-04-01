@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isSetupRequired, completeSetup } from "@/server/services/setup";
 import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
+import { errorLog } from "@/lib/logger";
 
 export async function GET(request: Request) {
   const rateLimited = checkIpRateLimit(request, "setup", 5);
@@ -61,7 +62,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Setup error:", error);
+    errorLog("setup", "Setup error", error);
     return NextResponse.json(
       { error: "An unexpected error occurred during setup." },
       { status: 500 }

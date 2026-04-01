@@ -10,6 +10,7 @@ import { getProvider } from "@/server/services/git-providers";
 import type { GitWebhookEvent } from "@/server/services/git-providers";
 import { toFilenameSlug } from "@/server/services/git-sync";
 import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
+import { errorLog } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   const rateLimited = checkIpRateLimit(req, "webhook", 30);
@@ -372,7 +373,7 @@ export async function POST(req: NextRequest) {
           },
         });
       } catch (auditErr) {
-        console.error("Failed to write audit log for gitops import:", auditErr);
+        errorLog("gitops", "Failed to write audit log for gitops import", auditErr);
       }
     } catch (err) {
       // Write YAML import error to audit log for visibility

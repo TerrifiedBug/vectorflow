@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { TRPCError } from "@trpc/server";
+import { errorLog } from "@/lib/logger";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { validateConfig } from "@/server/services/validator";
 import { createVersion } from "@/server/services/pipeline-version";
@@ -174,7 +175,7 @@ export async function deployAgent(
         authorEmail: user?.email ?? "noreply@vectorflow",
         error: result.error,
       }).catch((err) => {
-        console.error("[deploy-agent] Failed to create git sync retry job:", err);
+        errorLog("deploy-agent", "Failed to create git sync retry job", err);
       });
     }
 

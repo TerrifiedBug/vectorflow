@@ -19,6 +19,7 @@ vi.mock("@/server/services/event-alerts", () => ({
 
 vi.mock("@/lib/logger", () => ({
   debugLog: vi.fn(),
+  errorLog: vi.fn(),
 }));
 
 // ─── Import SUT + mocks after vi.mock ───────────────────────────────────────
