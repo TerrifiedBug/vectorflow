@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma";
+import { queryErrorContext } from "@/server/services/error-context";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -554,7 +556,7 @@ export async function evaluatePipeline(
       if (duplicate) continue;
 
       // Persist the anomaly event
-      await prisma.anomalyEvent.create({
+      const anomalyEvent = await prisma.anomalyEvent.create({
         data: {
           pipelineId: pipeline.id,
           environmentId: pipeline.environmentId,
@@ -570,6 +572,17 @@ export async function evaluatePipeline(
           status: "open",
         },
       });
+
+      // Attach error context for error-related anomalies
+      if (result.anomalyType === "error_rate_spike") {
+        const errorContext = await queryErrorContext(pipeline.id);
+        if (errorContext) {
+          await prisma.anomalyEvent.update({
+            where: { id: anomalyEvent.id },
+            data: { errorContext: errorContext as unknown as Prisma.InputJsonValue },
+          });
+        }
+      }
 
       allResults.push(result);
     }
