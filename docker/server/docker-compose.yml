@@ -33,7 +33,7 @@ services:
       - vfdata:/app/.vectorflow
       - backups:/backups
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health/live"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health/ready"]
       interval: 30s
       timeout: 5s
       start_period: 30s
