@@ -15,6 +15,7 @@ import { batchUpsertPipelineStatuses } from "@/server/services/heartbeat-batch";
 import { DeploymentMode } from "@/generated/prisma";
 import { isVersionOlder } from "@/lib/version";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
+import { warnLog, errorLog } from "@/lib/logger";
 
 /** Compute pipeline-level weighted mean latency (ms) from per-component metrics. */
 function computeWeightedLatency(
@@ -177,7 +178,7 @@ async function processSampleResults(results: SampleResult[], nodeId: string): Pr
           },
         });
       }
-      console.error("EventSample write error:", err);
+      errorLog("agent-heartbeat", "EventSample write error", err);
     }
   }
 }
@@ -220,7 +221,7 @@ export async function POST(request: Request) {
     if (updateError) {
       // Agent reported update failure — clear to stop retry loop
       clearPendingAction = true;
-      console.warn("Agent update failed, clearing pending action:", agent.nodeId, updateError);
+      warnLog("agent-heartbeat", `Agent update failed, clearing pending action: ${agent.nodeId}`, updateError);
     } else if (agentVersion) {
       const currentNode = await prisma.vectorNode.findUnique({
         where: { id: agent.nodeId },
@@ -405,7 +406,7 @@ export async function POST(request: Request) {
             netTxBytes: hostMetrics.netTxBytes ?? 0,
           },
         })
-        .catch((err) => console.error("Node metrics insert error:", err));
+        .catch((err) => errorLog("agent-heartbeat", "Node metrics insert error", err));
     }
 
     // Shared minute-truncated timestamp for all metric rows this heartbeat
@@ -430,7 +431,7 @@ export async function POST(request: Request) {
 
     if (metricsData.length > 0) {
       ingestMetrics(metricsData, prevSnapshots).catch((err) =>
-        console.error("Metrics ingestion error:", err),
+        errorLog("agent-heartbeat", "Metrics ingestion error", err),
       );
     }
 
@@ -468,7 +469,7 @@ export async function POST(request: Request) {
           },
         }),
         prisma.pipelineMetric.createMany({ data: componentLatencyRows }),
-      ]).catch((err) => console.error("Per-component latency upsert error:", err));
+      ]).catch((err) => errorLog("agent-heartbeat", "Per-component latency upsert error", err));
     }
 
     // Feed per-component metrics into the in-memory MetricStore for editor overlays
@@ -499,7 +500,7 @@ export async function POST(request: Request) {
     for (const ps of pipelines) {
       if (Array.isArray(ps.recentLogs) && ps.recentLogs.length > 0) {
         ingestLogs(agent.nodeId, ps.pipelineId, ps.recentLogs).catch((err) =>
-          console.error("Log ingestion error:", err),
+          errorLog("agent-heartbeat", "Log ingestion error", err),
         );
 
         const logEvent: LogEntryEvent = {
@@ -517,13 +518,13 @@ export async function POST(request: Request) {
 
     if (Array.isArray(sampleResults) && sampleResults.length > 0) {
       processSampleResults(sampleResults, agent.nodeId).catch((err) =>
-        console.error("Sample processing error:", err),
+        errorLog("agent-heartbeat", "Sample processing error", err),
       );
     }
 
     // Check fleet-wide node health
     checkNodeHealth().catch((err) =>
-      console.error("Node health check error:", err),
+      errorLog("agent-heartbeat", "Node health check error", err),
     );
 
     // Throttle cleanup to once per hour. Only leader runs cleanup.
@@ -531,7 +532,7 @@ export async function POST(request: Request) {
     if (isLeader() && Date.now() - lastCleanup > ONE_HOUR) {
       lastCleanup = Date.now();
       cleanupOldMetrics().catch((err) =>
-        console.error("Metrics cleanup error:", err),
+        errorLog("agent-heartbeat", "Metrics cleanup error", err),
       );
 
       prisma.eventSampleRequest
@@ -539,7 +540,7 @@ export async function POST(request: Request) {
           where: { status: "PENDING", expiresAt: { lt: new Date() } },
           data: { status: "EXPIRED" },
         })
-        .catch((err) => console.error("Sample request cleanup error:", err));
+        .catch((err) => errorLog("agent-heartbeat", "Sample request cleanup error", err));
 
       prisma.eventSampleRequest
         .deleteMany({
@@ -548,12 +549,12 @@ export async function POST(request: Request) {
             requestedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
           },
         })
-        .catch((err) => console.error("Old sample cleanup error:", err));
+        .catch((err) => errorLog("agent-heartbeat", "Old sample cleanup error", err));
     }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("Agent heartbeat error:", error);
+    errorLog("agent-heartbeat", "Agent heartbeat error", error);
     return NextResponse.json(
       { error: "Heartbeat processing failed" },
       { status: 500 },

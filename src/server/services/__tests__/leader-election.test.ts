@@ -57,7 +57,10 @@ describe("LeaderElection", () => {
     it("logs single-instance mode message", () => {
       new LeaderElection({ redis: null });
       expect(console.log).toHaveBeenCalledWith(
-        "[leader-election] No Redis configured — assuming leadership (single-instance mode)",
+        "%s [%s] %s",
+        expect.any(String),
+        "leader-election",
+        "No Redis configured — assuming leadership (single-instance mode)",
       );
     });
   });
@@ -114,7 +117,10 @@ describe("LeaderElection", () => {
       });
       await le.start();
       expect(console.log).toHaveBeenCalledWith(
-        "[leader-election] Acquired leadership (instance=inst-log)",
+        "%s [%s] %s",
+        expect.any(String),
+        "leader-election",
+        "Acquired leadership (instance=inst-log)",
       );
       await le.stop();
     });
@@ -143,9 +149,7 @@ describe("LeaderElection", () => {
 
       expect(redis.eval).toHaveBeenCalled();
       expect(le.isLeader()).toBe(true);
-      expect(console.log).toHaveBeenCalledWith(
-        "[leader-election] Renewed leadership",
-      );
+      // Renewal is logged at debug level (verbose), so not asserted here
       await le.stop();
     });
 
@@ -174,7 +178,10 @@ describe("LeaderElection", () => {
       expect(le.isLeader()).toBe(false); // 3 failures → lost
 
       expect(console.log).toHaveBeenCalledWith(
-        "[leader-election] Lost leadership — another instance is leader",
+        "%s [%s] %s",
+        expect.any(String),
+        "leader-election",
+        "Lost leadership — another instance is leader",
       );
       await le.stop();
     });
@@ -249,7 +256,10 @@ describe("LeaderElection", () => {
 
       expect(le.isLeader()).toBe(false);
       expect(console.log).toHaveBeenCalledWith(
-        "[leader-election] Released leadership (shutdown)",
+        "%s [%s] %s",
+        expect.any(String),
+        "leader-election",
+        "Released leadership (shutdown)",
       );
     });
 
@@ -363,7 +373,10 @@ describe("LeaderElection", () => {
       await le.start();
       expect(le.isLeader()).toBe(false);
       expect(console.error).toHaveBeenCalledWith(
-        "[leader-election] Error acquiring leadership: connection refused",
+        "%s [%s] %s",
+        expect.any(String),
+        "leader-election",
+        "Error acquiring leadership: connection refused",
       );
       await le.stop();
     });
@@ -392,7 +405,10 @@ describe("LeaderElection", () => {
 
       expect(le.isLeader()).toBe(false);
       expect(console.error).toHaveBeenCalledWith(
-        "[leader-election] Error renewing leadership: LOADING Redis is loading",
+        "%s [%s] %s",
+        expect.any(String),
+        "leader-election",
+        "Error renewing leadership: LOADING Redis is loading",
       );
       await le.stop();
     });
@@ -414,7 +430,10 @@ describe("LeaderElection", () => {
       // stop() calls release which will error — should not throw
       await expect(le.stop()).resolves.toBeUndefined();
       expect(console.error).toHaveBeenCalledWith(
-        "[leader-election] Error releasing leadership: connection reset",
+        "%s [%s] %s",
+        expect.any(String),
+        "leader-election",
+        "Error releasing leadership: connection reset",
       );
     });
   });
