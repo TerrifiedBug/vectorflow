@@ -40,5 +40,7 @@ const withBundleAnalyzer = bundleAnalyzer({
 
 export default withSentryConfig(withBundleAnalyzer(nextConfig), {
   silent: true,
-  disableServerWebpackPlugin: !process.env.SENTRY_DSN,
+  sourcemaps: {
+    disable: !process.env.SENTRY_AUTH_TOKEN,
+  },
 });

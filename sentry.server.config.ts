@@ -24,9 +24,11 @@ if (dsn) {
       }
 
       // Also check the message for TRPCError patterns (some serializations differ)
-      for (const code of EXPECTED_TRPC_CODES) {
-        if (errorValue.includes(code)) {
-          return null;
+      if (errorType === "TRPCError") {
+        for (const code of EXPECTED_TRPC_CODES) {
+          if (errorValue.includes(code)) {
+            return null;
+          }
         }
       }
 
