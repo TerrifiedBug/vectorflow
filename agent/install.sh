@@ -19,6 +19,7 @@ VF_TOKEN=""
 VF_NODE_LABELS=""
 VERSION="latest"
 CHANNEL="stable"
+VF_USER=""
 
 # ─────────────────────────────────────────────────
 # Helpers
@@ -43,6 +44,7 @@ Options:
   --labels <labels>  Node labels as comma-separated key=value pairs
   --version <tag>    Release version to install (default: latest)
   --channel <name>   Release channel: stable or dev (default: stable)
+  --user <name>    Run agent as non-root user (created if needed)
   --help             Show this help message
 
 Examples:
@@ -58,6 +60,9 @@ Examples:
 
   # Install specific version
   curl -sSfL .../install.sh | sudo bash -s -- --version v0.3.0
+
+  # Install with non-root user
+  curl -sSfL .../install.sh | sudo bash -s -- --url https://vf.example.com --token abc123 --user vfagent
 
   # Install dev channel
   curl -sSfL .../install.sh | sudo bash -s -- --channel dev --url https://vf.example.com --token abc123
@@ -76,6 +81,7 @@ while [ $# -gt 0 ]; do
         --labels) VF_NODE_LABELS="$2";  shift 2 ;;
         --version) VERSION="$2";        shift 2 ;;
         --channel) CHANNEL="$2";         shift 2 ;;
+        --user)   VF_USER="$2";          shift 2 ;;
         --help)   usage ;;
         *)        fatal "Unknown option: $1 (use --help for usage)" ;;
     esac
@@ -83,6 +89,54 @@ done
 
 if [ "${CHANNEL}" = "dev" ] && [ "${VERSION}" != "latest" ]; then
     fatal "--channel dev and --version are mutually exclusive"
+fi
+
+# ─────────────────────────────────────────────────
+# Interactive mode (TTY detected, missing values)
+# ─────────────────────────────────────────────────
+
+if [ -t 0 ]; then
+    # At least one promptable value is missing — enter interactive mode
+    _needs_prompt=false
+    [ -z "${VF_URL}" ] && _needs_prompt=true
+    [ -z "${VF_TOKEN}" ] && _needs_prompt=true
+    [ -z "${VF_NODE_LABELS}" ] && _needs_prompt=true
+    [ -z "${VF_USER}" ] && _needs_prompt=true
+
+    if [ "${_needs_prompt}" = true ]; then
+        echo ""
+        echo "  VectorFlow Agent Installer (interactive)"
+        echo ""
+
+        if [ -z "${VF_URL}" ]; then
+            printf "  VectorFlow server URL: "
+            read -r VF_URL
+        fi
+
+        if [ -z "${VF_TOKEN}" ]; then
+            printf "  Enrollment token: "
+            read -r VF_TOKEN
+        fi
+
+        if [ -z "${VF_NODE_LABELS}" ]; then
+            printf "  Node labels (comma-separated key=value, or blank): "
+            read -r VF_NODE_LABELS
+        fi
+
+        if [ -z "${VF_USER}" ]; then
+            printf "  Run as non-root user? [y/N]: "
+            read -r _nonroot
+            case "${_nonroot}" in
+                [yY]|[yY][eE][sS])
+                    printf "  Username (default: vfagent): "
+                    read -r _username
+                    VF_USER="${_username:-vfagent}"
+                    ;;
+            esac
+        fi
+
+        echo ""
+    fi
 fi
 
 # ─────────────────────────────────────────────────
@@ -198,6 +252,25 @@ install -d -m 0755 "${VECTOR_DATA_DIR}"
 install -d -m 0755 "${CONFIG_DIR}"
 
 # ─────────────────────────────────────────────────
+# Create non-root user (if requested)
+# ─────────────────────────────────────────────────
+
+if [ -n "${VF_USER}" ]; then
+    if id "${VF_USER}" >/dev/null 2>&1; then
+        ok "User ${VF_USER} already exists"
+    else
+        info "Creating system user ${VF_USER}..."
+        useradd --system --no-create-home --shell /usr/sbin/nologin "${VF_USER}" \
+            || fatal "Failed to create user ${VF_USER}"
+        ok "Created user ${VF_USER}"
+    fi
+
+    info "Setting directory ownership to ${VF_USER}..."
+    chown -R "${VF_USER}:${VF_USER}" "${DATA_DIR}" "${VECTOR_DATA_DIR}" "${CONFIG_DIR}"
+    ok "Directories owned by ${VF_USER}"
+fi
+
+# ─────────────────────────────────────────────────
 # Write environment file (preserve on upgrade)
 # ─────────────────────────────────────────────────
 
@@ -232,7 +305,15 @@ fi
 # ─────────────────────────────────────────────────
 
 info "Writing systemd unit..."
-cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<'UNITEOF'
+
+# Check if we're overwriting a non-root unit with a root unit
+if [ -z "${VF_USER}" ] && [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
+    if grep -q "^User=" "/etc/systemd/system/${SERVICE_NAME}.service" 2>/dev/null; then
+        warn "Existing unit runs as non-root — rewriting to run as root"
+    fi
+fi
+
+cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<UNITEOF
 [Unit]
 Description=VectorFlow Agent
 Documentation=https://github.com/TerrifiedBug/vectorflow
@@ -249,6 +330,7 @@ KillMode=mixed
 KillSignal=SIGTERM
 TimeoutStopSec=30
 LimitNOFILE=65536
+$([ -n "${VF_USER}" ] && printf "User=%s\nGroup=%s\n" "${VF_USER}" "${VF_USER}")
 
 [Install]
 WantedBy=multi-user.target
@@ -275,6 +357,17 @@ echo "  Follow logs:      journalctl -u ${SERVICE_NAME} -f"
 echo "  Configuration:    ${ENV_FILE}"
 echo "  Restart:          systemctl restart ${SERVICE_NAME}"
 echo ""
+
+if [ -n "${VF_USER}" ]; then
+    echo "  Running as:       ${VF_USER}"
+    echo ""
+    echo "  If your pipelines need access to the Docker socket:"
+    echo "    sudo usermod -aG docker ${VF_USER}"
+    echo ""
+    echo "  If your pipelines read host log files:"
+    echo "    Ensure ${VF_USER} has read access to those paths"
+    echo ""
+fi
 
 if [ -z "${VF_URL}" ] && [ ! -f "${ENV_FILE}" ]; then
     warn "Don't forget to set VF_URL and VF_TOKEN in ${ENV_FILE}, then restart:"
