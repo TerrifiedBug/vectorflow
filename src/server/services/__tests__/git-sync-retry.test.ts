@@ -8,6 +8,8 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/logger", () => ({
   debugLog: vi.fn(),
+  infoLog: vi.fn(),
+  errorLog: vi.fn(),
 }));
 
 vi.mock("@/server/services/git-sync", () => ({

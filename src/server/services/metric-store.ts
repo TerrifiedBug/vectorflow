@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import type { MetricUpdateEvent } from "@/lib/sse/types";
+import { warnLog } from "@/lib/logger";
 
 export interface MetricSample {
   timestamp: number;
@@ -192,8 +193,9 @@ export class MetricStore {
     // Check capacity warning after insertion
     if (isNewKey && !this.hasWarnedCapacity && this.samples.size >= this.maxKeys * 0.8) {
       this.hasWarnedCapacity = true;
-      console.warn(
-        `[metric-store] Approaching 80% capacity (${this.samples.size}/${this.maxKeys} streams)`,
+      warnLog(
+        "metric-store",
+        `Approaching 80% capacity (${this.samples.size}/${this.maxKeys} streams)`,
       );
     }
 

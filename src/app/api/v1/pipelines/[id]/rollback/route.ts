@@ -6,6 +6,7 @@ import { rollback } from "@/server/services/pipeline-version";
 import { relayPush } from "@/server/services/push-broadcast";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { fireEventAlert } from "@/server/services/event-alerts";
+import { errorLog } from "@/lib/logger";
 
 export const POST = apiRoute(
   "pipelines.deploy",
@@ -94,7 +95,7 @@ export const POST = apiRoute(
         });
       }
     } catch (err) {
-      console.error("[v1-rollback] Push/SSE notification failed:", err);
+      errorLog("v1-rollback", "Push/SSE notification failed", err);
     }
 
     writeAuditLog({

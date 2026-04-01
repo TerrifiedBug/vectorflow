@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { AlertMetric } from "@/generated/prisma";
+import { errorLog } from "@/lib/logger";
 import { deliverToChannels } from "@/server/services/channels";
 import { deliverWebhooks } from "@/server/services/webhook-delivery";
 import { fireOutboundWebhooks } from "@/server/services/outbound-webhook";
@@ -130,17 +131,11 @@ export async function fireEventAlert(
       } catch (ruleErr) {
         // Per-rule isolation: one rule's delivery failure must not
         // prevent other rules from being processed.
-        console.error(
-          `fireEventAlert delivery error (rule=${rule.id}, metric=${metric}):`,
-          ruleErr,
-        );
+        errorLog("event-alerts", `fireEventAlert delivery error (rule=${rule.id}, metric=${metric})`, ruleErr);
       }
     }
   } catch (err) {
-    console.error(
-      `fireEventAlert error (metric=${metric}, env=${environmentId}):`,
-      err,
-    );
+    errorLog("event-alerts", `fireEventAlert error (metric=${metric}, env=${environmentId})`, err);
   }
 }
 

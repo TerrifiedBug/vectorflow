@@ -1,5 +1,6 @@
 import { PrometheusMetricsService } from "@/server/services/prometheus-metrics";
 import { authenticateApiKey, hasPermission } from "@/server/middleware/api-auth";
+import { errorLog } from "@/lib/logger";
 
 const service = new PrometheusMetricsService();
 
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    console.error("[/api/metrics] Failed to collect metrics:", error);
+    errorLog("metrics", "Failed to collect metrics", error);
     return new Response("Internal Server Error\n", {
       status: 500,
       headers: { "Content-Type": "text/plain; charset=utf-8" },

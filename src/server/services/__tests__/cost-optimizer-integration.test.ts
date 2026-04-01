@@ -5,7 +5,7 @@ import type { PrismaClient } from "@/generated/prisma";
 vi.mock("@/lib/prisma", () => ({
   prisma: mockDeep<PrismaClient>(),
 }));
-vi.mock("@/lib/logger", () => ({ debugLog: vi.fn() }));
+vi.mock("@/lib/logger", () => ({ debugLog: vi.fn(), infoLog: vi.fn(), errorLog: vi.fn() }));
 
 import { prisma } from "@/lib/prisma";
 import { runCostAnalysis } from "@/server/services/cost-optimizer";
