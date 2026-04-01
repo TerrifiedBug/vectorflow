@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { DeliveryStatusPanel } from "./delivery-status-panel";
+import { ErrorContextPanel } from "./error-context-panel";
 import { AlertTimeline } from "./alert-timeline";
 import { AnomalyHistorySection } from "./anomaly-history-section";
 
@@ -49,6 +50,7 @@ type AlertEventItem = {
   status: string;
   value: number;
   message: string | null;
+  errorContext: { lines: Array<{ timestamp: string; message: string }>; truncated: boolean } | null;
   firedAt: Date;
   resolvedAt: Date | null;
   acknowledgedAt: Date | null;
@@ -227,6 +229,14 @@ function AlertEventContent({
                   {isExpanded && (
                     <TableRow className="bg-muted/30 hover:bg-muted/30">
                       <TableCell colSpan={99} className="p-0">
+                        {event.errorContext && (
+                          <div className="px-4 pt-3">
+                            <ErrorContextPanel
+                              errorContext={event.errorContext}
+                              pipelineId={event.alertRule.pipeline?.id}
+                            />
+                          </div>
+                        )}
                         <DeliveryStatusPanel
                           alertEventId={event.id}
                           isOpen={true}
