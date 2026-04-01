@@ -166,6 +166,19 @@ export async function checkKeywordMatches(
 
     if (existingEvent) continue;
 
+    // Cooldown: don't fire again if recently fired within cooldown window
+    if (rule.cooldownMinutes > 0) {
+      const lastFired = await prisma.alertEvent.findFirst({
+        where: { alertRuleId: rule.id },
+        orderBy: { firedAt: "desc" },
+        select: { firedAt: true },
+      });
+      if (lastFired) {
+        const cooldownMs = rule.cooldownMinutes * 60_000;
+        if (Date.now() - lastFired.firedAt.getTime() < cooldownMs) continue;
+      }
+    }
+
     await prisma.alertEvent.create({
       data: {
         alertRuleId: rule.id,

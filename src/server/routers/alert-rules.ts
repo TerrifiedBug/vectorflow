@@ -156,12 +156,15 @@ export const alertRulesRouter = router({
         durationSeconds: z.number().int().min(1).optional(),
         cooldownMinutes: z.number().int().min(0).max(1440).nullable().optional(),
         channelIds: z.array(z.string()).optional(),
+        keyword: z.string().min(1).max(500).optional(),
+        keywordSeverityFilter: z.enum(["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]).nullable().optional(),
+        keywordWindowMinutes: z.number().int().min(1).max(60).nullable().optional(),
       }),
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("alertRule.updated", "AlertRule"))
     .mutation(async ({ input }) => {
-      const { id, channelIds, ...data } = input;
+      const { id, channelIds, keyword, keywordSeverityFilter, keywordWindowMinutes, ...data } = input;
       const existing = await prisma.alertRule.findUnique({
         where: { id },
       });
@@ -190,7 +193,12 @@ export const alertRulesRouter = router({
 
       const rule = await prisma.alertRule.update({
         where: { id },
-        data,
+        data: {
+          ...data,
+          ...(keyword !== undefined ? { keyword } : {}),
+          ...(keywordSeverityFilter !== undefined ? { keywordSeverityFilter } : {}),
+          ...(keywordWindowMinutes !== undefined ? { keywordWindowMinutes } : {}),
+        },
       });
 
       if (channelIds !== undefined) {

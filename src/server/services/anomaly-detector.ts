@@ -555,8 +555,13 @@ export async function evaluatePipeline(
       const duplicate = await isDuplicate(pipeline.id, result.anomalyType, cfg.dedupWindowHours);
       if (duplicate) continue;
 
+      // Query error context before creating (single write)
+      const errorContext = result.anomalyType === "error_rate_spike"
+        ? await queryErrorContext(pipeline.id)
+        : null;
+
       // Persist the anomaly event
-      const anomalyEvent = await prisma.anomalyEvent.create({
+      await prisma.anomalyEvent.create({
         data: {
           pipelineId: pipeline.id,
           environmentId: pipeline.environmentId,
@@ -570,19 +575,9 @@ export async function evaluatePipeline(
           deviationFactor: result.deviationFactor,
           message: result.message,
           status: "open",
+          ...(errorContext ? { errorContext: errorContext as unknown as Prisma.InputJsonValue } : {}),
         },
       });
-
-      // Attach error context for error-related anomalies
-      if (result.anomalyType === "error_rate_spike") {
-        const errorContext = await queryErrorContext(pipeline.id);
-        if (errorContext) {
-          await prisma.anomalyEvent.update({
-            where: { id: anomalyEvent.id },
-            data: { errorContext: errorContext as unknown as Prisma.InputJsonValue },
-          });
-        }
-      }
 
       allResults.push(result);
     }

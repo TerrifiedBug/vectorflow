@@ -278,6 +278,9 @@ export async function evaluateAlerts(
     // Skip fleet-scoped metrics — handled by FleetAlertService
     if (FLEET_METRICS.has(rule.metric)) continue;
 
+    // Keyword rules are handled on ingest by keyword-alert.ts, not here
+    if (rule.metric === "log_keyword") continue;
+
     const value = await readMetricValue(
       rule.metric,
       nodeId,
@@ -324,6 +327,12 @@ export async function evaluateAlerts(
 
           // Create a new firing event
           const message = buildMessage(rule, value, rule.pipeline?.name);
+
+          // Query error context before creating the event (single write)
+          const errorContext = rule.metric === "error_rate" && rule.pipelineId
+            ? await queryErrorContext(rule.pipelineId)
+            : null;
+
           const event = await prisma.alertEvent.create({
             data: {
               alertRuleId: rule.id,
@@ -331,19 +340,9 @@ export async function evaluateAlerts(
               status: "firing",
               value,
               message,
+              ...(errorContext ? { errorContext: errorContext as unknown as Prisma.InputJsonValue } : {}),
             },
           });
-
-          // Attach error context for error-related alerts
-          if (rule.metric === "error_rate" && rule.pipelineId) {
-            const errorContext = await queryErrorContext(rule.pipelineId);
-            if (errorContext) {
-              await prisma.alertEvent.update({
-                where: { id: event.id },
-                data: { errorContext: errorContext as unknown as Prisma.InputJsonValue },
-              });
-            }
-          }
 
           // ── Correlation: assign to a group ──
           const group = await correlateEvent(event, rule);
@@ -777,6 +776,9 @@ export async function evaluateAlertsBatch(
     // Skip fleet-scoped metrics
     if (FLEET_METRICS.has(rule.metric)) continue;
 
+    // Keyword rules are handled on ingest by keyword-alert.ts, not here
+    if (rule.metric === "log_keyword") continue;
+
     for (const nodeId of cache.nodeIds) {
       const value = readMetricFromCache(
         rule.metric,
@@ -852,6 +854,12 @@ async function processRuleForNode(
 
       if (!existingEvent) {
         const message = buildMessage(rule, value, rule.pipeline?.name);
+
+        // Query error context before creating (single write)
+        const errorContext = rule.metric === "error_rate" && rule.pipelineId
+          ? await queryErrorContext(rule.pipelineId)
+          : null;
+
         const event = await prisma.alertEvent.create({
           data: {
             alertRuleId: rule.id,
@@ -859,19 +867,9 @@ async function processRuleForNode(
             status: "firing",
             value,
             message,
+            ...(errorContext ? { errorContext: errorContext as unknown as Prisma.InputJsonValue } : {}),
           },
         });
-
-        // Attach error context for error-related alerts
-        if (rule.metric === "error_rate" && rule.pipelineId) {
-          const errorContext = await queryErrorContext(rule.pipelineId);
-          if (errorContext) {
-            await prisma.alertEvent.update({
-              where: { id: event.id },
-              data: { errorContext: errorContext as unknown as Prisma.InputJsonValue },
-            });
-          }
-        }
 
         results.push({ event, rule });
       }

@@ -55,3 +55,7 @@ export function isFleetMetric(metric: string): boolean {
 export function getAlertCategory(metric: string): "actionable" | "informational" {
   return isEventMetric(metric) ? "informational" : "actionable";
 }
+
+// Note: log_keyword is intentionally NOT in EVENT_METRICS. Although keyword
+// alerts fire on log matches (event-like), they use threshold counting and
+// should appear in the "actionable" category alongside other threshold metrics.
