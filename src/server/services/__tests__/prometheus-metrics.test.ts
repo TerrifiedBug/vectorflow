@@ -274,7 +274,10 @@ describe("PrometheusMetricsService", () => {
     expect(output).toBeDefined();
     expect(typeof output).toBe("string");
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("collectMetrics failed"),
+      "%s [%s] %s",
+      expect.any(String),
+      "prometheus-metrics",
+      "collectMetrics failed",
       expect.any(Error),
     );
 

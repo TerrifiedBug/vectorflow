@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
 import { z } from "zod";
+import { errorLog } from "@/lib/logger";
 
 const sampleResultSchema = z.object({
   results: z.array(
@@ -104,7 +105,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("Sample results error:", error);
+    errorLog("agent-samples", "Sample results error", error);
     return NextResponse.json(
       { error: "Failed to process sample results" },
       { status: 500 },

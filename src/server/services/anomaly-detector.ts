@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
+import { infoLog, errorLog } from "@/lib/logger";
 import { queryErrorContext } from "@/server/services/error-context";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
@@ -626,16 +627,18 @@ export async function evaluateAllPipelines(): Promise<AnomalyDetectionResult[]> 
       allResults.push(...results);
     } catch (err) {
       // Per-pipeline isolation: one failure must not stop others
-      console.error(
-        `[anomaly-detector] Error evaluating pipeline ${pipeline.id}:`,
+      errorLog(
+        "anomaly-detector",
+        `Error evaluating pipeline ${pipeline.id}`,
         err,
       );
     }
   }
 
   if (allResults.length > 0) {
-    console.log(
-      `[anomaly-detector] Detected ${allResults.length} anomalies across ${pipelines.length} pipelines`,
+    infoLog(
+      "anomaly-detector",
+      `Detected ${allResults.length} anomalies across ${pipelines.length} pipelines`,
     );
   }
 

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { type Prisma, type ComponentKind } from "@/generated/prisma";
 import { TRPCError } from "@trpc/server";
 import { relayPush } from "@/server/services/push-broadcast";
+import { errorLog } from "@/lib/logger";
 
 /**
  * Creates an immutable pipeline version snapshot with auto-incrementing
@@ -318,7 +319,7 @@ export async function deployFromVersion(
       }
     }
   } catch (err) {
-    console.error("[deployFromVersion] Push notification failed:", err);
+    errorLog("pipeline-version", "Push notification failed", err);
   }
 
   return { version, pushedNodeIds };

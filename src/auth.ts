@@ -8,7 +8,7 @@ import { encrypt, decrypt } from "@/server/services/crypto";
 import { verifyTotpCode, verifyBackupCode } from "@/server/services/totp";
 import { authConfig } from "@/auth.config";
 import { writeAuditLog } from "@/server/services/audit";
-import { debugLog } from "@/lib/logger";
+import { debugLog, infoLog, warnLog } from "@/lib/logger";
 import { headers } from "next/headers";
 
 async function getClientIp(): Promise<string | null> {
@@ -192,7 +192,7 @@ async function getAuthInstance() {
             token_endpoint_auth_method: oidc.tokenEndpointAuthMethod,
           },
         } as Provider);
-        console.log(`OIDC provider registered: ${oidc.displayName} (${oidc.issuer})`);
+        infoLog("auth", `OIDC provider registered: ${oidc.displayName} (${oidc.issuer})`);
       }
 
       const instance = NextAuth({
@@ -235,9 +235,7 @@ async function getAuthInstance() {
                   ipAddress, userEmail: dbUser.email, userName: dbUser.name,
                   metadata: { reason: "local_account_exists" },
                 }).catch(() => {});
-                console.warn(
-                  `OIDC login blocked: local account exists for ${dbUser.email}. Admin must explicitly link accounts.`,
-                );
+                warnLog("auth", `OIDC login blocked: local account exists for ${dbUser.email}. Admin must explicitly link accounts.`);
                 return "/login?error=local_account";
               }
 

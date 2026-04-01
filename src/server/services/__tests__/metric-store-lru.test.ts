@@ -85,6 +85,9 @@ describe("MetricStore LRU eviction", () => {
     }
 
     expect(warnSpy).toHaveBeenCalledWith(
+      "%s [%s] %s",
+      expect.any(String),
+      "metric-store",
       expect.stringContaining("80%"),
     );
 
