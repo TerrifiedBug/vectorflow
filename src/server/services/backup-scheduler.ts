@@ -1,6 +1,6 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { prisma } from "@/lib/prisma";
-import { debugLog } from "@/lib/logger";
+import { debugLog, infoLog, errorLog } from "@/lib/logger";
 import { createBackup, runRetentionCleanup, runOrphanCleanup } from "./backup";
 import { fireEventAlert } from "./event-alerts";
 
@@ -37,24 +37,24 @@ export function isValidCron(expression: string): boolean {
 
 function scheduleJob(cronExpression: string): void {
   if (!cron.validate(cronExpression)) {
-    console.error(`[backup] Invalid cron expression: ${cronExpression}`);
+    errorLog("backup-scheduler", `Invalid cron expression: ${cronExpression}`);
     return;
   }
 
   scheduledTask = cron.schedule(cronExpression, async () => {
-    console.log("[backup] Starting scheduled backup...");
+    infoLog("backup-scheduler", "Starting scheduled backup...");
     try {
       const metadata = await createBackup("scheduled");
-      console.log(`[backup] Scheduled backup complete: ${metadata.sizeBytes} bytes`);
+      infoLog("backup-scheduler", `Scheduled backup complete: ${metadata.sizeBytes} bytes`);
       await runRetentionCleanup();
       try {
         const orphanResult = await runOrphanCleanup();
         debugLog("backup", "Orphan cleanup complete", orphanResult);
       } catch (orphanErr) {
-        console.error("[backup] Orphan cleanup failed:", orphanErr);
+        errorLog("backup-scheduler", "Orphan cleanup failed", orphanErr);
       }
     } catch (error) {
-      console.error("[backup] Scheduled backup failed:", error);
+      errorLog("backup-scheduler", "Scheduled backup failed", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
       // Fire backup_failed alert for all environments (properly awaited -- RELY-01)
       try {
@@ -68,10 +68,10 @@ function scheduleJob(cronExpression: string): void {
           });
         }
       } catch (alertErr) {
-        console.error("[backup] Failed to fire backup_failed alerts:", alertErr);
+        errorLog("backup-scheduler", "Failed to fire backup_failed alerts", alertErr);
       }
     }
   });
 
-  console.log(`[backup] Scheduler active: ${cronExpression}`);
+  infoLog("backup-scheduler", `Scheduler active: ${cronExpression}`);
 }

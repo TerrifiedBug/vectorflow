@@ -6,6 +6,7 @@ import { leaderElection } from "@/server/services/leader-election";
 import { sseRegistry } from "@/server/services/sse-registry";
 import { metricStore } from "@/server/services/metric-store";
 import { pushRegistry } from "@/server/services/push-registry";
+import { infoLog, warnLog, errorLog } from "@/lib/logger";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -46,16 +47,14 @@ let subscriber: Redis | null = null;
 export async function initPubSub(): Promise<void> {
   const redis = getRedis();
   if (!redis) {
-    console.log(
-      "[redis-pubsub] No Redis configured — pub/sub disabled (single-instance mode)",
-    );
+    infoLog("redis-pubsub", "No Redis configured — pub/sub disabled (single-instance mode)");
     return;
   }
 
   subscriber = redis.duplicate();
 
   subscriber.on("error", (err: Error) => {
-    console.error(`[redis-pubsub] Subscriber error: ${err.message}`);
+    errorLog("redis-pubsub", `Subscriber error: ${err.message}`);
   });
 
   subscriber.on("message", (_channel: string, message: string) => {
@@ -63,7 +62,7 @@ export async function initPubSub(): Promise<void> {
   });
 
   await subscriber.subscribe(CHANNEL);
-  console.log(`[redis-pubsub] Subscribed to channel: ${CHANNEL}`);
+  infoLog("redis-pubsub", `Subscribed to channel: ${CHANNEL}`);
 }
 
 /**
@@ -76,11 +75,9 @@ export async function shutdownPubSub(): Promise<void> {
   try {
     await subscriber.unsubscribe(CHANNEL);
     subscriber.disconnect();
-    console.log("[redis-pubsub] Subscriber disconnected");
+    infoLog("redis-pubsub", "Subscriber disconnected");
   } catch (err) {
-    console.error(
-      `[redis-pubsub] Error during shutdown: ${(err as Error).message}`,
-    );
+    errorLog("redis-pubsub", `Error during shutdown: ${(err as Error).message}`);
   } finally {
     subscriber = null;
   }
@@ -104,7 +101,7 @@ export function publishSSE(event: SSEEvent, environmentId: string): void {
   };
 
   redis.publish(CHANNEL, JSON.stringify(envelope)).catch((err: Error) => {
-    console.error(`[redis-pubsub] Publish SSE error: ${err.message}`);
+    errorLog("redis-pubsub", `Publish SSE error: ${err.message}`);
   });
 }
 
@@ -127,7 +124,7 @@ export function publishMetrics(
   };
 
   redis.publish(CHANNEL, JSON.stringify(envelope)).catch((err: Error) => {
-    console.error(`[redis-pubsub] Publish metrics error: ${err.message}`);
+    errorLog("redis-pubsub", `Publish metrics error: ${err.message}`);
   });
 }
 
@@ -146,7 +143,7 @@ export function publishPush(nodeId: string, message: PushMessage): void {
   };
 
   redis.publish(CHANNEL, JSON.stringify(envelope)).catch((err: Error) => {
-    console.error(`[redis-pubsub] Publish push error: ${err.message}`);
+    errorLog("redis-pubsub", `Publish push error: ${err.message}`);
   });
 }
 
@@ -157,9 +154,7 @@ function handleMessage(message: string): void {
   try {
     envelope = JSON.parse(message);
   } catch {
-    console.warn(
-      `[redis-pubsub] Malformed message (not valid JSON), skipping: ${message.slice(0, 200)}`,
-    );
+    warnLog("redis-pubsub", `Malformed message (not valid JSON), skipping: ${message.slice(0, 200)}`);
     return;
   }
 
