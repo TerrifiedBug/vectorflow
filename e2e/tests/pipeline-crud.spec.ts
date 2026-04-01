@@ -39,6 +39,7 @@ test.describe("Pipeline CRUD", () => {
   });
 
   test("should delete a pipeline from the list", async ({
+    page,
     pipelinesPage,
     sidebar,
   }) => {
