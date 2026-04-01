@@ -19,7 +19,7 @@ export async function cleanup(prisma: PrismaClient): Promise<void> {
     const alertRuleIds = alertRules.map((r) => r.id);
 
     if (alertRuleIds.length > 0) {
-      await prisma.alertDelivery.deleteMany({
+      await prisma.deliveryAttempt.deleteMany({
         where: { alertEvent: { alertRuleId: { in: alertRuleIds } } },
       });
       await prisma.alertEvent.deleteMany({
