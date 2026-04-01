@@ -1,3 +1,5 @@
+import { infoLog, errorLog } from "@/lib/logger";
+
 export async function register() {
   // Only run in the Node.js runtime — Edge doesn't support child_process/fs/path.
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
@@ -13,16 +15,11 @@ export async function register() {
     leaderIsLeader = isLeader;
     leaderRenewIntervalMs = leaderElection.renewIntervalMs ?? 5000;
   } catch (error) {
-    console.error(
-      "[instrumentation] Leader election init failed — assuming leadership (single-instance fallback):",
-      error,
-    );
+    errorLog("instrumentation", "Leader election init failed — assuming leadership (single-instance fallback)", error);
     leaderIsLeader = () => true;
   }
 
-  console.log(
-    `[instrumentation] Instance is ${leaderIsLeader() ? "leader" : "follower"} — ${leaderIsLeader() ? "starting" : "skipping"} singleton services`,
-  );
+  infoLog("instrumentation", `Instance is ${leaderIsLeader() ? "leader" : "follower"} — ${leaderIsLeader() ? "starting" : "skipping"} singleton services`);
 
   // Initialize Redis pub/sub for cross-instance SSE broadcasting.
   // Runs on EVERY instance (not just leader) since any instance may have browser SSE connections.
@@ -30,10 +27,7 @@ export async function register() {
     const { initPubSub } = await import("@/server/services/redis-pubsub");
     await initPubSub();
   } catch (error) {
-    console.error(
-      "[instrumentation] Redis pub/sub init failed — continuing without cross-instance SSE:",
-      error,
-    );
+    errorLog("instrumentation", "Redis pub/sub init failed — continuing without cross-instance SSE", error);
   }
 
   // Start system Vector process if a deployed system pipeline exists.
@@ -63,15 +57,13 @@ export async function register() {
       });
 
       if (latestVersion?.configYaml) {
-        console.log(
-          "Starting system Vector process for deployed system pipeline",
-        );
+        infoLog("instrumentation", "Starting system Vector process for deployed system pipeline");
         await startSystemVector(latestVersion.configYaml);
       }
     }
   } catch (error) {
     // Startup failure should not prevent the server from booting.
-    console.error("Failed to start system Vector on boot:", error);
+    errorLog("instrumentation", "Failed to start system Vector on boot", error);
   }
 
   // ─── Singleton services (leader-only) ─────────────────────────────────
@@ -81,11 +73,9 @@ export async function register() {
     try {
       const { importLegacyBackups } = await import("@/server/services/backup");
       const result = await importLegacyBackups();
-      console.log(
-        `[backup] Legacy import: ${result.imported} imported, ${result.skipped} skipped`,
-      );
+      infoLog("instrumentation", `Legacy backup import: ${result.imported} imported, ${result.skipped} skipped`);
     } catch (error) {
-      console.error("Failed to import legacy backups:", error);
+      errorLog("instrumentation", "Failed to import legacy backups", error);
     }
 
     // Start backup scheduler if enabled.
@@ -95,7 +85,7 @@ export async function register() {
       );
       await initBackupScheduler();
     } catch (error) {
-      console.error("Failed to initialize backup scheduler:", error);
+      errorLog("instrumentation", "Failed to initialize backup scheduler", error);
     }
 
     // Start delivery retry service.
@@ -105,7 +95,7 @@ export async function register() {
       );
       initRetryService();
     } catch (error) {
-      console.error("Failed to initialize retry service:", error);
+      errorLog("instrumentation", "Failed to initialize retry service", error);
     }
 
     // Start auto-rollback monitoring service.
@@ -115,7 +105,7 @@ export async function register() {
       );
       initAutoRollbackService();
     } catch (error) {
-      console.error("Failed to initialize auto-rollback service:", error);
+      errorLog("instrumentation", "Failed to initialize auto-rollback service", error);
     }
 
     // Start staged rollout health-check monitoring service.
@@ -125,7 +115,7 @@ export async function register() {
       );
       initStagedRolloutService();
     } catch (error) {
-      console.error("Failed to initialize staged rollout service:", error);
+      errorLog("instrumentation", "Failed to initialize staged rollout service", error);
     }
 
     // Start fleet alert evaluation service.
@@ -135,7 +125,7 @@ export async function register() {
       );
       initFleetAlertService();
     } catch (error) {
-      console.error("Failed to initialize fleet alert service:", error);
+      errorLog("instrumentation", "Failed to initialize fleet alert service", error);
     }
 
     // Start git sync retry service.
@@ -145,7 +135,7 @@ export async function register() {
       );
       initGitSyncRetryService();
     } catch (error) {
-      console.error("Failed to initialize git sync retry service:", error);
+      errorLog("instrumentation", "Failed to initialize git sync retry service", error);
     }
 
     // Start cost optimizer scheduler.
@@ -155,7 +145,7 @@ export async function register() {
       );
       await initCostOptimizerScheduler();
     } catch (error) {
-      console.error("Failed to initialize cost optimizer scheduler:", error);
+      errorLog("instrumentation", "Failed to initialize cost optimizer scheduler", error);
     }
 
     // Start anomaly detection service.
@@ -165,7 +155,7 @@ export async function register() {
       );
       initAnomalyDetectionService();
     } catch (error) {
-      console.error("Failed to initialize anomaly detection service:", error);
+      errorLog("instrumentation", "Failed to initialize anomaly detection service", error);
     }
   }
 
@@ -177,9 +167,7 @@ export async function register() {
     const failoverTimer = setInterval(async () => {
       if (leaderIsLeader()) {
         clearInterval(failoverTimer);
-        console.log(
-          "[instrumentation] Leadership acquired via failover — starting singleton services",
-        );
+        infoLog("instrumentation", "Leadership acquired via failover — starting singleton services");
         await startSingletonServices();
       }
     }, leaderRenewIntervalMs);
