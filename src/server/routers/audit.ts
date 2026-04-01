@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 
 /** Actions that represent deployment lifecycle events */
@@ -515,5 +515,99 @@ export const auditRouter = router({
       });
 
       return { items: enrichedItems };
+    }),
+
+  /** Export audit log entries — same filters as list but returns all records (up to 10,000), no cursor */
+  exportAuditLog: protectedProcedure
+    .input(
+      z.object({
+        action: z.string().optional(),
+        userId: z.string().optional(),
+        entityTypes: z.array(z.string()).optional(),
+        search: z.string().optional(),
+        teamId: z.string().optional(),
+        environmentId: z.string().optional(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      })
+    )
+    .use(withTeamAccess("ADMIN"))
+    .query(async ({ input }) => {
+      const {
+        action,
+        userId,
+        entityTypes,
+        search,
+        startDate,
+        endDate,
+      } = input;
+      const maxExportRows = 10_000;
+
+      const conditions: Record<string, unknown>[] = [];
+
+      if (action) {
+        conditions.push({ action });
+      }
+
+      if (userId) {
+        conditions.push({ userId });
+      }
+
+      if (entityTypes && entityTypes.length > 0) {
+        conditions.push({ entityType: { in: entityTypes } });
+      }
+
+      if (input.teamId) {
+        conditions.push({
+          OR: [{ teamId: input.teamId }, { teamId: null }],
+        });
+      }
+
+      if (input.environmentId) {
+        conditions.push({ environmentId: input.environmentId });
+      }
+
+      if (startDate || endDate) {
+        const createdAt: Record<string, Date> = {};
+        if (startDate) {
+          createdAt.gte = new Date(startDate);
+        }
+        if (endDate) {
+          createdAt.lte = new Date(endDate);
+        }
+        conditions.push({ createdAt });
+      }
+
+      if (search) {
+        conditions.push({
+          OR: [
+            { action: { contains: search, mode: "insensitive" } },
+            { entityType: { contains: search, mode: "insensitive" } },
+            { entityId: { contains: search, mode: "insensitive" } },
+          ],
+        });
+      }
+
+      const where = conditions.length > 0 ? { AND: conditions } : {};
+
+      const [items, totalCount] = await Promise.all([
+        prisma.auditLog.findMany({
+          where,
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: maxExportRows,
+        }),
+        prisma.auditLog.count({ where }),
+      ]);
+
+      return { items, totalCount };
     }),
 });
