@@ -268,6 +268,41 @@ Click **Exit Maintenance** from the fleet list or the node detail page. No confi
 Toggling maintenance mode requires the **Admin** role on the team.
 {% endhint %}
 
+## Drift Detection
+
+Drift detection monitors your fleet for discrepancies between the expected state (what the server says should be running) and the actual state (what agents report). VectorFlow tracks two types of drift:
+
+### Version drift
+
+Version drift occurs when one or more nodes are running a different pipeline version than the latest deployed version. For example, if Pipeline A is at version 5 on the server but a node is still running version 4, that pipeline has version drift on that node.
+
+Version drift is evaluated fleet-wide across all deployed pipelines in an environment. The system compares each node's reported pipeline version (from its heartbeat) against the latest deployed version in the database.
+
+### Config drift
+
+Config drift occurs when a node's running configuration checksum does not match the expected checksum computed by the server. This can happen when:
+
+- A deploy was initiated but the agent has not yet picked up the new configuration
+- The agent's local config file was modified outside of VectorFlow
+- A network issue prevented the agent from receiving the latest config
+
+Config drift is evaluated per-node during heartbeat processing by comparing the agent-reported `configChecksum` against the server-side expected checksum.
+
+{% hint style="info" %}
+Older agents that do not report a config checksum are excluded from config drift detection -- they do not count as drifted.
+{% endhint %}
+
+### Drift alerts
+
+Drift metrics feed into the fleet alerting system. When version drift is detected, alerts can be triggered based on your configured alert rules. The alert message includes details about which pipelines are drifted and what versions each node is running.
+
+### Responding to drift
+
+When drift is detected:
+
+1. **Version drift** -- Check if the affected nodes are reachable and polling. Most version drift resolves automatically on the next agent poll cycle. If it persists, verify the agent is running and can reach the server.
+2. **Config drift** -- Verify that the agent is receiving the latest configuration. Re-deploying the pipeline can force a fresh config push. If the agent's local config was manually modified, the next poll cycle will overwrite it with the server's version.
+
 ## Node management
 
 From the node detail page you can:
