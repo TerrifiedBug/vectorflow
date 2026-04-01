@@ -58,6 +58,7 @@ const adminCaller = t.createCallerFactory(teamRouter)({
   teamId: "team-1",
 });
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- available for viewer-permission tests
 const viewerCaller = t.createCallerFactory(teamRouter)({
   session: { user: { id: "user-1", email: "viewer@test.com", name: "Viewer" } },
   userRole: "VIEWER",

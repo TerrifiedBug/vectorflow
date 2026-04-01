@@ -51,7 +51,7 @@ describe("promotion-service", () => {
       prismaMock.pipelineNode.findMany.mockResolvedValue([
         { componentType: "stdin", config: {} },
       ] as never);
-      vi.mocked(secretResolver.collectSecretRefs).mockReturnValue([]);
+      vi.mocked(secretResolver.collectSecretRefs).mockReturnValue(new Set<string>());
 
       const result = await preflightSecrets("pipeline-1", "env-target");
 
@@ -64,7 +64,7 @@ describe("promotion-service", () => {
       prismaMock.pipelineNode.findMany.mockResolvedValue([
         { componentType: "http", config: { password: "SECRET[api_key]" } },
       ] as never);
-      vi.mocked(secretResolver.collectSecretRefs).mockReturnValue(["api_key"]);
+      vi.mocked(secretResolver.collectSecretRefs).mockReturnValue(new Set(["api_key"]));
       prismaMock.secret.findMany.mockResolvedValue([] as never);
 
       const result = await preflightSecrets("pipeline-1", "env-target");
@@ -77,7 +77,7 @@ describe("promotion-service", () => {
       prismaMock.pipelineNode.findMany.mockResolvedValue([
         { componentType: "http", config: { password: "SECRET[api_key]" } },
       ] as never);
-      vi.mocked(secretResolver.collectSecretRefs).mockReturnValue(["api_key"]);
+      vi.mocked(secretResolver.collectSecretRefs).mockReturnValue(new Set(["api_key"]));
       prismaMock.secret.findMany.mockResolvedValue([
         { name: "api_key" },
       ] as never);
@@ -95,8 +95,8 @@ describe("promotion-service", () => {
         { componentType: "splunk", config: { token: "SECRET[splunk_token]" } },
       ] as never);
       vi.mocked(secretResolver.collectSecretRefs)
-        .mockReturnValueOnce(["db_pass"])
-        .mockReturnValueOnce(["splunk_token"]);
+        .mockReturnValueOnce(new Set(["db_pass"]))
+        .mockReturnValueOnce(new Set(["splunk_token"]));
       prismaMock.secret.findMany.mockResolvedValue([
         { name: "db_pass" },
       ] as never);
@@ -131,7 +131,8 @@ describe("promotion-service", () => {
       };
 
       prismaMock.promotionRequest.findUnique.mockResolvedValue(request as never);
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+        if (typeof fn !== "function") return;
         const tx = {
           pipeline: {
             findFirst: vi.fn().mockResolvedValue(null),

@@ -59,7 +59,8 @@ describe("setup service", () => {
       };
       const mockTeam = { id: "team-1", name: "My Org" };
 
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+        if (typeof fn !== "function") return;
         const tx = {
           user: {
             create: vi.fn().mockResolvedValue(mockUser),
@@ -96,7 +97,8 @@ describe("setup service", () => {
     it("hashes the password before storing", async () => {
       const bcrypt = await import("bcryptjs");
 
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+        if (typeof fn !== "function") return;
         const tx = {
           user: {
             create: vi.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => {

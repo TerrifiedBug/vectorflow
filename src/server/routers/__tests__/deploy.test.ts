@@ -201,7 +201,8 @@ describe("deploy router", () => {
           environment: { id: "env-1", name: "Production", requireDeployApproval: true },
         }) as never,
       );
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+        if (typeof fn !== "function") return;
         const tx = {
           deployRequest: {
             findFirst: vi.fn().mockResolvedValue(null),
@@ -231,7 +232,8 @@ describe("deploy router", () => {
           environment: { id: "env-1", name: "Production", requireDeployApproval: true },
         }) as never,
       );
-      prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+        if (typeof fn !== "function") return;
         const tx = {
           deployRequest: {
             findFirst: vi.fn().mockResolvedValue({ id: "existing-req" }),
