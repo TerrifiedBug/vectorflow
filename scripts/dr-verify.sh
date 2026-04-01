@@ -30,7 +30,7 @@ CONTAINER_NAME="vf-dr-verify-$$"
 READY_TIMEOUT=30
 CHECKS_PASSED=0
 CHECKS_FAILED=0
-STARTED_AT=""
+STARTED_AT=$(date +%s)
 
 # Key tables to verify have non-zero rows
 KEY_TABLES=("User" "Team" "Pipeline" "Environment" "SystemSettings")
@@ -85,6 +85,7 @@ cleanup() {
   if docker inspect "$CONTAINER_NAME" &>/dev/null; then
     docker rm -f "$CONTAINER_NAME" &>/dev/null || true
   fi
+  rm -f "/tmp/dr-restore-err.$$"
 }
 trap cleanup EXIT
 
@@ -216,6 +217,12 @@ if [ "$RESTORE_EXIT" -le 1 ]; then
   pass "Backup restored successfully" "$(elapsed_since "$RESTORE_START")"
 else
   fail "pg_restore failed with exit code $RESTORE_EXIT" "$(elapsed_since "$RESTORE_START")"
+  # Skip data-level checks — results would be meaningless after a failed restore
+  info "Skipping remaining checks due to restore failure"
+  echo "═══════════════════════════════════════════════════"
+  TOTAL_ELAPSED=$(elapsed_since "$STARTED_AT")
+  printf "${RED}${BOLD}RESULT: FAIL${RESET} — %d check(s) failed (%s total)\n" "$CHECKS_FAILED" "$TOTAL_ELAPSED"
+  exit 1
 fi
 
 # ---------------------------------------------------------------------------
