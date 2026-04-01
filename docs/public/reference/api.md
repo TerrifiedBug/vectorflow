@@ -141,10 +141,26 @@ Some procedures require **Super Admin** access -- this is a server-wide flag on 
 | `audit` | `audit.*` | Audit log queries |
 | `vrl` | `vrl.*` | VRL expression testing |
 | `vrlSnippet` | `vrlSnippet.*` | VRL snippet library |
-| `settings` | `settings.*` | System settings (Super Admin) |
-| `admin` | `admin.*` | Admin operations (Super Admin) |
-| `metrics` | `metrics.*` | Real-time metric streaming |
+| `admin` | `admin.*` | User management, super admin operations |
+| `settings` | `settings.*` | System settings — OIDC, fleet, backup, SCIM (Super Admin) |
+| `metrics` | `metrics.*` | Pipeline and component metrics, live rates |
 | `validator` | `validator.*` | Pipeline config validation |
+| `serviceAccount` | `serviceAccount.*` | Service account API key management |
+| `userPreference` | `userPreference.*` | Per-user UI preferences |
+| `sharedComponent` | `sharedComponent.*` | Reusable pipeline components shared across pipelines |
+| `aiRouter` | `aiRouter.*` | AI assistant conversations and suggestions |
+| `pipelineGroup` | `pipelineGroup.*` | Pipeline folder organization |
+| `pipelineDependency` | `pipelineDependency.*` | Inter-pipeline dependency graph |
+| `promotion` | `promotion.*` | Cross-environment pipeline promotion with approval workflow |
+| `stagedRollout` | `stagedRollout.*` | Canary and staged pipeline deployments |
+| `nodeGroup` | `nodeGroup.*` | Node grouping with label-based criteria and health stats |
+| `webhookEndpoint` | `webhookEndpoint.*` | Outbound webhook endpoint management and delivery history |
+| `gitSync` | `gitSync.*` | GitOps sync status, jobs, and error tracking |
+| `migration` | `migration.*` | Config migration from Fluentd to Vector |
+| `analytics` | `analytics.*` | Cost analytics, per-pipeline breakdown, CSV export |
+| `costRecommendation` | `costRecommendation.*` | Cost optimization recommendations and analysis |
+| `anomaly` | `anomaly.*` | Anomaly detection events, acknowledgement, dismissal |
+| `filterPreset` | `filterPreset.*` | Saved filter presets for pipeline and fleet views |
 
 ---
 
