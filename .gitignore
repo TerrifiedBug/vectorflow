@@ -49,19 +49,14 @@ next-env.d.ts
 /docs/plans/*
 /docs/screenshots/*
 /docs/internal/*
-scripts/
 # agent build output
 /agent/bin/
 
 # codeql
 .codeql/
-
-/scripts/*
 # worktrees
 .worktrees/
 
-# ── GSD baseline (auto-generated) ──
-.gsd
 Thumbs.db
 *.swp
 *.swo
