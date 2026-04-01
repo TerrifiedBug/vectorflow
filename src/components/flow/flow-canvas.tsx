@@ -15,7 +15,6 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useFlowStore } from "@/stores/flow-store";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import type { AiSuggestion } from "@/lib/ai/types";
 import { nodeTypes } from "./node-types";
 import { NodeContextMenu } from "./node-context-menu";
 import { EdgeContextMenu } from "./edge-context-menu";
@@ -23,10 +22,6 @@ import { SaveSharedComponentDialog } from "./save-shared-component-dialog";
 import { findComponentDef } from "@/lib/vector/catalog";
 import type { VectorComponentDef, DataType } from "@/lib/vector/types";
 import { DLP_VRL_SOURCES } from "@/lib/vector/dlp-vrl-sources";
-import { useRecommendationContext } from "@/hooks/use-recommendation-context";
-import { RecommendationBanner } from "@/components/flow/recommendation-banner";
-import { useEnvironmentStore } from "@/stores/environment-store";
-import { toast } from "sonner";
 
 interface FlowCanvasProps {
   onSave?: () => void;
@@ -55,24 +50,10 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange);
   const onConnect = useFlowStore((s) => s.onConnect);
   const addNode = useFlowStore((s) => s.addNode);
-  const applySuggestions = useFlowStore((s) => s.applySuggestions);
-  const { selectedEnvironmentId } = useEnvironmentStore();
-  const recommendationCtx = useRecommendationContext(selectedEnvironmentId ?? "");
   const hasFitRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const [edgeContextMenu, setEdgeContextMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
   const [saveSharedNodeId, setSaveSharedNodeId] = useState<string | null>(null);
-
-  const handleApplySuggestion = useCallback(
-    (suggestion: AiSuggestion) => {
-      const { results } = applySuggestions([suggestion]);
-      const result = results[0];
-      if (result && !result.success) {
-        toast.error(`Failed to apply: ${result.error ?? "Unknown error"}`);
-      }
-    },
-    [applySuggestions],
-  );
 
   const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
     event.preventDefault();
@@ -190,16 +171,6 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
 
   return (
     <div className="h-full w-full" role="region" aria-label="Pipeline editor canvas">
-      {recommendationCtx?.recommendation && (
-        <RecommendationBanner
-          title={recommendationCtx.recommendation.title}
-          aiSummary={recommendationCtx.recommendation.aiSummary}
-          description={recommendationCtx.recommendation.description}
-          suggestedAction={recommendationCtx.suggestedAction}
-          aiSuggestions={recommendationCtx.aiSuggestions}
-          onApplySuggestion={handleApplySuggestion}
-        />
-      )}
       <ReactFlow
         nodes={nodes}
         edges={edges}
