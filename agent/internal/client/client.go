@@ -210,6 +210,7 @@ type HeartbeatRequest struct {
 	AgentVersion   string            `json:"agentVersion,omitempty"`
 	VectorVersion  string            `json:"vectorVersion,omitempty"`
 	DeploymentMode string            `json:"deploymentMode,omitempty"`
+	RunningAs      string            `json:"runningAs,omitempty"`
 	SampleResults  []SampleResultMsg `json:"sampleResults,omitempty"`
 	UpdateError    string            `json:"updateError,omitempty"`
 	Labels         map[string]string `json:"labels,omitempty"`
