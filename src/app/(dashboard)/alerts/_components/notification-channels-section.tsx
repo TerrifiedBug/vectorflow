@@ -63,15 +63,18 @@ import {
 // ─── Channel Delivery History sub-component ──────────────────────────────────
 
 function ChannelDeliveryHistory({
+  environmentId,
   channelName,
   channelType,
 }: {
+  environmentId: string;
   channelName: string;
   channelType: string;
 }) {
   const trpc = useTRPC();
   const deliveriesQuery = useQuery(
     trpc.alert.listChannelDeliveries.queryOptions({
+      environmentId,
       channelName,
       channelType,
       limit: 10,
@@ -580,6 +583,7 @@ export function NotificationChannelsSection({
                     <TableRow className="bg-muted/30 hover:bg-muted/30">
                       <TableCell colSpan={99} className="p-0">
                         <ChannelDeliveryHistory
+                          environmentId={environmentId}
                           channelName={channel.name}
                           channelType={channel.type}
                         />
