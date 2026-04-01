@@ -80,6 +80,9 @@ function makeRule(
     durationSeconds: overrides.durationSeconds ?? 0,
     snoozedUntil: overrides.snoozedUntil ?? null,
     cooldownMinutes: overrides.cooldownMinutes ?? null,
+    keyword: null,
+    keywordSeverityFilter: null,
+    keywordWindowMinutes: null,
     createdAt: overrides.createdAt ?? NOW,
     updatedAt: overrides.updatedAt ?? NOW,
     environment: overrides.environment ?? {
@@ -103,6 +106,7 @@ function makeEvent(overrides: Partial<AlertEvent> = {}): AlertEvent {
     acknowledgedAt: overrides.acknowledgedAt ?? null,
     acknowledgedBy: overrides.acknowledgedBy ?? null,
     correlationGroupId: overrides.correlationGroupId ?? null,
+    errorContext: null,
   };
 }
 
@@ -544,6 +548,7 @@ describe("FleetAlertService", () => {
         acknowledgedAt: null,
         acknowledgedBy: null,
         correlationGroupId: null,
+        errorContext: null,
       });
       prismaMock.alertWebhook.findMany.mockResolvedValue([]);
 
@@ -578,6 +583,7 @@ describe("FleetAlertService", () => {
         acknowledgedAt: null,
         acknowledgedBy: null,
         correlationGroupId: null,
+        errorContext: null,
       });
       prismaMock.alertEvent.update.mockResolvedValue({
         id: "event-vd-2",
@@ -592,6 +598,7 @@ describe("FleetAlertService", () => {
         acknowledgedAt: null,
         acknowledgedBy: null,
         correlationGroupId: null,
+        errorContext: null,
       });
 
       const results = await service.evaluateFleetAlerts();

@@ -20,6 +20,7 @@ import {
   Scale,
   GitCompareArrows,
   FileWarning,
+  Search,
 } from "lucide-react";
 
 export interface AlertRuleTemplate {
@@ -201,6 +202,18 @@ export const ALERT_RULE_TEMPLATES: AlertRuleTemplate[] = [
       condition: "gt",
       threshold: "0",
       durationSeconds: "60",
+    },
+  },
+  {
+    id: "log-keyword",
+    name: "Log Keyword",
+    description: "Alert when a keyword appears in pipeline logs more than 3 times in 5 minutes.",
+    icon: Search,
+    defaults: {
+      metric: "log_keyword",
+      condition: "gt",
+      threshold: "3",
+      durationSeconds: "",
     },
   },
 ];
