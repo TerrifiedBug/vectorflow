@@ -255,7 +255,7 @@ export async function POST(request: Request) {
         status: "HEALTHY",
         ...(agentVersion ? { agentVersion } : {}),
         ...(vectorVersion ? { vectorVersion } : {}),
-        ...(runningAs ? { runningUser: runningAs } : {}),
+        ...(runningAs !== undefined ? { runningUser: runningAs || null } : {}),
         ...(deploymentMode && Object.values(DeploymentMode).includes(deploymentMode)
           ? { deploymentMode }
           : {}),

@@ -115,7 +115,8 @@ if [ -t 0 ]; then
 
         if [ -z "${VF_TOKEN}" ]; then
             printf "  Enrollment token: "
-            read -r VF_TOKEN
+            read -rs VF_TOKEN
+            echo ""
         fi
 
         if [ -z "${VF_NODE_LABELS}" ]; then
