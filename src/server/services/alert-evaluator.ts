@@ -5,6 +5,8 @@ import type {
   AlertRule,
   AlertEvent,
 } from "@/generated/prisma";
+import { Prisma } from "@/generated/prisma";
+import { queryErrorContext } from "@/server/services/error-context";
 import { getConfigDrift } from "@/server/services/drift-metrics";
 import { shouldSuppressDuplicate } from "@/server/services/alert-deduplication";
 import { correlateEvent, suggestRootCause, closeResolvedGroups } from "@/server/services/alert-correlator";
@@ -847,6 +849,18 @@ async function processRuleForNode(
             message,
           },
         });
+
+        // Attach error context for error-related alerts
+        if (rule.metric === "error_rate" && rule.pipelineId) {
+          const errorContext = await queryErrorContext(rule.pipelineId);
+          if (errorContext) {
+            await prisma.alertEvent.update({
+              where: { id: event.id },
+              data: { errorContext: errorContext as unknown as Prisma.InputJsonValue },
+            });
+          }
+        }
+
         results.push({ event, rule });
       }
     }
