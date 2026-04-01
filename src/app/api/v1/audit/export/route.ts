@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiRoute, jsonResponse } from "@/app/api/v1/_lib/api-handler";
+import { apiRoute } from "@/app/api/v1/_lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { formatAuditCsv } from "@/server/services/audit-export";
+import { formatAuditCsv, formatAuditJson } from "@/server/services/audit-export";
 
 export const GET = apiRoute(
   "audit.export",
@@ -65,21 +65,11 @@ export const GET = apiRoute(
     });
 
     if (format === "json") {
-      return jsonResponse(
-        items.map((item) => ({
-          id: item.id,
-          timestamp: item.createdAt.toISOString(),
-          user: item.user?.name ?? null,
-          email: item.user?.email ?? null,
-          action: item.action,
-          entityType: item.entityType,
-          entityId: item.entityId,
-          teamId: item.teamId,
-          environmentId: item.environmentId,
-          ipAddress: item.ipAddress,
-          metadata: item.metadata ?? null,
-        })),
-      );
+      const json = formatAuditJson(items);
+      return new NextResponse(json, {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const csv = formatAuditCsv(items);
@@ -92,5 +82,5 @@ export const GET = apiRoute(
       },
     });
   },
-  "deploy",
+  "read",
 );
