@@ -56,6 +56,10 @@ vi.mock("@/server/services/sse-registry", () => ({
   sseRegistry: { broadcast: vi.fn() },
 }));
 
+vi.mock("@/app/api/_lib/ip-rate-limit", () => ({
+  checkTokenRateLimit: vi.fn().mockReturnValue(null),
+}));
+
 // ── Imports (after mocks) ──
 
 import { prisma } from "@/lib/prisma";
@@ -162,7 +166,7 @@ function setupBaseMocks() {
 describe("heartbeat async decomposition", () => {
   beforeEach(() => {
     mockReset(prismaMock);
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
     setupBaseMocks();
   });
 
@@ -249,9 +253,11 @@ describe("heartbeat async decomposition", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     // Verify errors are logged, not swallowed
-    const errorMessages = consoleErrorSpy.mock.calls.map((c) => c[0]);
-    expect(errorMessages).toContain("Sample processing error:");
-    expect(errorMessages).toContain("Per-component latency upsert error:");
+    // errorLog calls console.error("%s [%s] %s", ts, tag, message, data)
+    // so the message is at index 3
+    const errorMessages = consoleErrorSpy.mock.calls.map((c) => c[3] ?? c[0]);
+    expect(errorMessages).toContain("Sample processing error");
+    expect(errorMessages).toContain("Per-component latency upsert error");
 
     consoleErrorSpy.mockRestore();
   });
