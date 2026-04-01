@@ -59,18 +59,18 @@ describe("buildCostRecommendationPrompt", () => {
 
   it("returns user prompt with analysis data", () => {
     const result = buildCostRecommendationPrompt({
-      type: "DUPLICATE_SINK",
-      title: "Duplicate sink",
-      description: "Two sinks to same endpoint",
-      analysisData: { duplicateOf: "pipeline-abc", sinkKey: "es_sink" },
-      suggestedAction: { type: "remove_sink", config: { sinkComponentKey: "es_sink" } },
-      pipelineName: "dup-test",
+      type: "HIGH_ERROR_RATE",
+      title: "High error rate",
+      description: "Pipeline has elevated error rate",
+      analysisData: { errorRate: 0.15, sinkKey: "es_sink" },
+      suggestedAction: { type: "add_filter", config: { filterComponentKey: "error_filter" } },
+      pipelineName: "error-test",
       nodes: [
         { componentKey: "es_sink", componentType: "elasticsearch", kind: "SINK", config: {} },
       ],
     });
 
-    expect(result.user).toContain("DUPLICATE_SINK");
+    expect(result.user).toContain("HIGH_ERROR_RATE");
     expect(result.user).toContain("es_sink");
   });
 });

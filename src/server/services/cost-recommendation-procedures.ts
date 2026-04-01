@@ -1,6 +1,7 @@
 import yaml from "js-yaml";
 import { TRPCError } from "@trpc/server";
 import { diffLines } from "diff";
+import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { createVersion } from "@/server/services/pipeline-version";
 import { applyRecommendationToYaml } from "@/server/services/cost-optimizer-apply";
@@ -162,6 +163,61 @@ export async function applyRecommendation(
   const proposedYaml =
     applyRecommendationToYaml(currentYaml, suggestedAction, targetSinkKey) ??
     currentYaml;
+
+  // Update the pipeline graph (nodes + edges) so the deploy flow
+  // generates YAML consistent with the applied recommendation.
+  // Without this, deployAgent regenerates YAML from stale graph state,
+  // effectively reverting the recommendation.
+  if (suggestedAction.type === "add_filter" || suggestedAction.type === "add_sampling") {
+    await prisma.$transaction(async (tx) => {
+      const sinkNode = await tx.pipelineNode.findFirst({
+        where: { pipelineId, componentKey: targetSinkKey },
+      });
+
+      if (sinkNode) {
+        // Find all edges currently pointing to the sink
+        const incomingEdges = await tx.pipelineEdge.findMany({
+          where: { pipelineId, targetNodeId: sinkNode.id },
+        });
+
+        // Create the new transform node positioned above the sink
+        const transformType = suggestedAction.type === "add_filter" ? "filter" : "sample";
+        const transformConfig =
+          suggestedAction.type === "add_filter"
+            ? { condition: suggestedAction.config.condition }
+            : { rate: suggestedAction.config.rate };
+
+        const transformNode = await tx.pipelineNode.create({
+          data: {
+            pipelineId,
+            componentKey: suggestedAction.config.componentKey,
+            componentType: transformType,
+            kind: "TRANSFORM",
+            config: transformConfig as unknown as Prisma.InputJsonValue,
+            positionX: sinkNode.positionX,
+            positionY: sinkNode.positionY - 120,
+          },
+        });
+
+        // Rewire: incoming edges now point to the transform
+        for (const edge of incomingEdges) {
+          await tx.pipelineEdge.update({
+            where: { id: edge.id },
+            data: { targetNodeId: transformNode.id },
+          });
+        }
+
+        // Add edge from transform to sink
+        await tx.pipelineEdge.create({
+          data: {
+            pipelineId,
+            sourceNodeId: transformNode.id,
+            targetNodeId: sinkNode.id,
+          },
+        });
+      }
+    });
+  }
 
   const version = await createVersion(
     pipelineId,
