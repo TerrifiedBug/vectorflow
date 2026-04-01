@@ -18,7 +18,6 @@ import {
   AlertTriangle,
   Clock,
   X,
-  ExternalLink,
   Sparkles,
   TrendingDown,
 } from "lucide-react";
@@ -42,7 +41,7 @@ interface RecommendationCardProps {
     pipeline: { id: string; name: string };
   };
   environmentId: string;
-  onApply: (recommendationId: string, pipelineId: string) => void;
+  onApply: (recommendationId: string) => void;
 }
 
 const TYPE_CONFIG: Record<
@@ -102,7 +101,7 @@ export function RecommendationCard({
   };
 
   const handleApply = () => {
-    onApply(recommendation.id, recommendation.pipeline.id);
+    onApply(recommendation.id);
   };
 
   return (
@@ -161,7 +160,7 @@ export function RecommendationCard({
           onClick={handleApply}
           className="gap-1.5"
         >
-          <ExternalLink className="h-3.5 w-3.5" />
+          <Sparkles className="h-3.5 w-3.5" />
           Apply
         </Button>
         <Button

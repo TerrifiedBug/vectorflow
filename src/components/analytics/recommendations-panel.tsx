@@ -2,8 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { useRouter } from "next/navigation";
 import { RecommendationCard } from "@/components/analytics/recommendation-card";
+import { ApplyRecommendationModal } from "@/components/analytics/apply-recommendation-modal";
+import { useApplyRecommendation } from "@/hooks/use-apply-recommendation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,7 +19,7 @@ interface RecommendationsPanelProps {
 
 export function RecommendationsPanel({ environmentId }: RecommendationsPanelProps) {
   const trpc = useTRPC();
-  const router = useRouter();
+  const { selectedRecommendationId, openApplyModal, closeApplyModal } = useApplyRecommendation();
   const pollingInterval = usePollingInterval(60_000);
 
   const summaryQuery = useQuery(
@@ -35,9 +36,8 @@ export function RecommendationsPanel({ environmentId }: RecommendationsPanelProp
     ),
   );
 
-  const handleApply = (_recommendationId: string, pipelineId: string) => {
-    // Navigate to pipeline editor
-    router.push(`/pipelines/${pipelineId}`);
+  const handleApply = (recommendationId: string) => {
+    openApplyModal(recommendationId);
   };
 
   if (summaryQuery.isLoading) {
@@ -78,43 +78,50 @@ export function RecommendationsPanel({ environmentId }: RecommendationsPanelProp
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Lightbulb className="h-4 w-4 text-amber-500" />
-            <CardTitle className="text-base">Cost Recommendations</CardTitle>
-            <Badge variant="secondary" className="text-xs">
-              {pendingCount}
-            </Badge>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="h-4 w-4 text-amber-500" />
+              <CardTitle className="text-base">Cost Recommendations</CardTitle>
+              <Badge variant="secondary" className="text-xs">
+                {pendingCount}
+              </Badge>
+            </div>
+            {estimatedSavings > BigInt(0) && (
+              <span className="text-sm text-green-600 dark:text-green-400">
+                Est. savings: {formatBytes(Number(estimatedSavings))}/day
+              </span>
+            )}
           </div>
-          {estimatedSavings > BigInt(0) && (
-            <span className="text-sm text-green-600 dark:text-green-400">
-              Est. savings: {formatBytes(Number(estimatedSavings))}/day
-            </span>
+        </CardHeader>
+        <CardContent>
+          {listQuery.isLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(listQuery.data ?? []).map((rec) => (
+                <RecommendationCard
+                  key={rec.id}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  recommendation={rec as any}
+                  environmentId={environmentId}
+                  onApply={handleApply}
+                />
+              ))}
+            </div>
           )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {listQuery.isLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {(listQuery.data ?? []).map((rec) => (
-              <RecommendationCard
-                key={rec.id}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                recommendation={rec as any}
-                environmentId={environmentId}
-                onApply={handleApply}
-              />
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+      <ApplyRecommendationModal
+        recommendationId={selectedRecommendationId}
+        environmentId={environmentId}
+        onClose={closeApplyModal}
+      />
+    </>
   );
 }
