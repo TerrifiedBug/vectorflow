@@ -226,7 +226,7 @@ describe("applyRecommendation", () => {
     prismaMock.costRecommendation.findUnique.mockResolvedValue(null);
 
     await expect(
-      applyRecommendation("rec-missing", "user-1"),
+      applyRecommendation("rec-missing", "user-1", "env-1"),
     ).rejects.toThrow("Recommendation not found");
   });
 });
