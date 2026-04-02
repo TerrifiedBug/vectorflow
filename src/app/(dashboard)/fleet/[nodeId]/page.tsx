@@ -405,6 +405,12 @@ export default function NodeDetailPage() {
                     <p className="text-sm text-muted-foreground">API Port</p>
                     <p className="text-sm font-mono tabular-nums">{node.apiPort}</p>
                   </div>
+                  {node.runningUser && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Running As</p>
+                      <p className="text-sm font-mono tabular-nums">{node.runningUser}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-sm text-muted-foreground">Last Seen</p>
                     <p className="text-sm">{formatLastSeen(node.lastSeen)}</p>

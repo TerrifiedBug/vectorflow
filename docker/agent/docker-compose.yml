@@ -4,6 +4,11 @@ services:
     image: ghcr.io/terrifiedbug/vectorflow-agent:${VF_VERSION:-latest}
     env_file:
       - .env
+    # Uncomment to run the agent as a non-root user.
+    # The user is responsible for granting this user access to
+    # resources like the Docker socket or host log files.
+    # environment:
+    #   - VF_AGENT_USER=vfagent
     volumes:
       - agent-data:/var/lib/vf-agent
       - vector-data:/var/lib/vector
