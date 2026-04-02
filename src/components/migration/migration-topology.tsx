@@ -72,99 +72,115 @@ function getRewriteOutputTags(block: ParsedBlock): string[] {
 }
 
 /**
+ * Trace a tag through all filters in config order, returning only
+ * those whose tagPattern matches. This models FluentD's actual
+ * processing: filters run top-to-bottom, each applies if its pattern
+ * matches the event tag (including glob patterns like auth0.**).
+ */
+function traceFilterChain(tag: string, filters: ParsedBlock[]): ParsedBlock[] {
+  return filters.filter((f) => f.tagPattern && tagMatches(tag, f.tagPattern));
+}
+
+/**
+ * Collect all concrete tags that flow through the pipeline.
+ * Sources emit tags directly. rewrite_tag_filter matches emit new tags.
+ */
+function collectTags(
+  sources: ParsedBlock[],
+  matches: ParsedBlock[],
+): Array<{ tag: string; emitter: ParsedBlock }> {
+  const tags: Array<{ tag: string; emitter: ParsedBlock }> = [];
+
+  for (const source of sources) {
+    const tag = source.params.tag;
+    if (tag) tags.push({ tag, emitter: source });
+  }
+
+  for (const match of matches) {
+    for (const outputTag of getRewriteOutputTags(match)) {
+      tags.push({ tag: outputTag, emitter: match });
+    }
+  }
+
+  return tags;
+}
+
+/**
  * Build edges representing FluentD's routing semantics:
- * 1. Source → first matching filter or match (by source tag)
- * 2. Filter → next filter with same tag (sequential processing order)
- * 3. Last filter for a tag → matching match block
- * 4. rewrite_tag_filter → downstream filters/matches for its output tags
+ * - Source/rewrite emits a tag
+ * - Filters are processed in CONFIG ORDER — each matching filter applies
+ * - After all filters, events hit the first matching <match> block
  */
 function buildFluentdEdges(
   sources: ParsedBlock[],
   filters: ParsedBlock[],
   matches: ParsedBlock[],
 ): Array<{ from: string; to: string }> {
+  const seen = new Set<string>();
   const edges: Array<{ from: string; to: string }> = [];
-  const seen = new Set<string>(); // deduplicate
 
   const addEdge = (from: string, to: string) => {
+    if (from === to) return;
     const key = `${from}->${to}`;
     if (seen.has(key)) return;
     seen.add(key);
     edges.push({ from, to });
   };
 
-  // Group filters by tag pattern for sequential chaining
-  const filtersByTag = new Map<string, ParsedBlock[]>();
-  for (const f of filters) {
-    if (!f.tagPattern) continue;
-    const group = filtersByTag.get(f.tagPattern) ?? [];
-    group.push(f);
-    filtersByTag.set(f.tagPattern, group);
-  }
-
-  // Chain filters with the same tag pattern sequentially
-  for (const [, group] of filtersByTag) {
-    for (let i = 0; i < group.length - 1; i++) {
-      addEdge(group[i].id, group[i + 1].id);
-    }
-  }
-
-  // Source → first filter or match by tag
+  // For source tags, connect source → rewrite_tag_filter or first filter
   for (const source of sources) {
-    const sourceTag = source.params.tag;
-    if (!sourceTag) continue;
+    const tag = source.params.tag;
+    if (!tag) continue;
 
-    // Find first filter for this tag
-    for (const [pattern, group] of filtersByTag) {
-      if (tagMatches(sourceTag, pattern)) {
-        addEdge(source.id, group[0].id);
-      }
-    }
-
-    // Source → match (only if no filters match this tag)
-    const hasMatchingFilter = [...filtersByTag.keys()].some((p) =>
-      tagMatches(sourceTag, p),
+    // Does a match block (like rewrite_tag_filter) consume this tag?
+    const consumingMatch = matches.find(
+      (m) => m.tagPattern && tagMatches(tag, m.tagPattern),
     );
-    if (!hasMatchingFilter) {
-      for (const match of matches) {
-        if (match.tagPattern && tagMatches(sourceTag, match.tagPattern)) {
-          addEdge(source.id, match.id);
-        }
-      }
+
+    // Get the filter chain for this tag
+    const chain = traceFilterChain(tag, filters);
+
+    if (chain.length > 0) {
+      addEdge(source.id, chain[0].id);
+    } else if (consumingMatch) {
+      addEdge(source.id, consumingMatch.id);
+    }
+
+    // Chain filters and connect last to match
+    for (let i = 0; i < chain.length - 1; i++) {
+      addEdge(chain[i].id, chain[i + 1].id);
+    }
+
+    if (chain.length > 0 && consumingMatch) {
+      addEdge(chain[chain.length - 1].id, consumingMatch.id);
     }
   }
 
-  // Last filter in each group → matching match blocks
-  for (const [pattern, group] of filtersByTag) {
-    const lastFilter = group[group.length - 1];
-    for (const match of matches) {
-      if (!match.tagPattern) continue;
-      if (tagMatches(pattern, match.tagPattern) || pattern === match.tagPattern) {
-        addEdge(lastFilter.id, match.id);
-      }
-    }
-  }
+  // For tags emitted by rewrite_tag_filter, trace through filters to final match
+  const allTags = collectTags(sources, matches);
+  const rewriteTags = allTags.filter(
+    (t) => t.emitter.pluginType === "rewrite_tag_filter",
+  );
 
-  // rewrite_tag_filter: connect to downstream filters/matches by output tags
-  for (const match of matches) {
-    const outputTags = getRewriteOutputTags(match);
-    for (const tag of outputTags) {
-      // Connect to first filter in the matching group
-      for (const [pattern, group] of filtersByTag) {
-        if (tagMatches(tag, pattern)) {
-          addEdge(match.id, group[0].id);
-        }
+  for (const { tag, emitter } of rewriteTags) {
+    const chain = traceFilterChain(tag, filters);
+    const finalMatch = matches.find(
+      (m) =>
+        m.id !== emitter.id &&
+        m.tagPattern &&
+        tagMatches(tag, m.tagPattern),
+    );
+
+    if (chain.length > 0) {
+      addEdge(emitter.id, chain[0].id);
+      for (let i = 0; i < chain.length - 1; i++) {
+        addEdge(chain[i].id, chain[i + 1].id);
       }
-      // Connect to matching match blocks (if no filters)
-      const hasFilter = [...filtersByTag.keys()].some((p) => tagMatches(tag, p));
-      if (!hasFilter) {
-        for (const m of matches) {
-          if (m.id === match.id) continue;
-          if (m.tagPattern && tagMatches(tag, m.tagPattern)) {
-            addEdge(match.id, m.id);
-          }
-        }
+      if (finalMatch) {
+        addEdge(chain[chain.length - 1].id, finalMatch.id);
       }
+    } else if (finalMatch) {
+      addEdge(emitter.id, finalMatch.id);
     }
   }
 
