@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const systemPrompt = buildVrlSystemPrompt({
+  const systemPrompt = await buildVrlSystemPrompt({
     fields: body.fields,
     currentCode: body.currentCode,
     componentType: body.componentType,

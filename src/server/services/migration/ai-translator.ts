@@ -424,7 +424,7 @@ async function translateOneBlock(params: {
     };
   }
 
-  const prompt = buildBlockTranslationPrompt({
+  const prompt = await buildBlockTranslationPrompt({
     block,
     blockIndex,
     totalBlocks,
@@ -471,7 +471,7 @@ async function retranslateWithErrors(params: {
   const { teamId, block, blockIndex, totalBlocks, parsedConfig, previousErrors } =
     params;
 
-  const basePrompt = buildBlockTranslationPrompt({
+  const basePrompt = await buildBlockTranslationPrompt({
     block,
     blockIndex,
     totalBlocks,

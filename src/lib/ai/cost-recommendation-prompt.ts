@@ -5,6 +5,7 @@ import {
   buildVrlReferenceBlock,
   buildPipelineNodeContext,
   buildComponentDocsBlock,
+  lookupPipelineComponents,
 } from "@/lib/ai/shared-prompt-context";
 
 export interface CostRecommendationPromptContext {
@@ -27,10 +28,10 @@ export interface CostRecommendationPromptContext {
  * The system prompt sets the role, response format, and relevant context blocks.
  * The user prompt describes the specific recommendation and requests actionable suggestions.
  */
-export function buildCostRecommendationPrompt(ctx: CostRecommendationPromptContext): {
+export async function buildCostRecommendationPrompt(ctx: CostRecommendationPromptContext): Promise<{
   system: string;
   user: string;
-} {
+}> {
   const hasRemapTransforms = ctx.nodes.some((n) => n.componentType === "remap");
   const includeVrlReference = ctx.type !== "STALE_PIPELINE" && hasRemapTransforms;
 
@@ -49,14 +50,25 @@ export function buildCostRecommendationPrompt(ctx: CostRecommendationPromptConte
   if (ctx.nodes.length > 0) {
     systemParts.push("", "=== Pipeline Nodes ===", buildPipelineNodeContext(ctx.nodes));
 
-    // Include targeted Vector docs for each unique component type in the pipeline
-    const seen = new Set<string>();
-    for (const node of ctx.nodes) {
-      const key = `${node.kind}:${node.componentType}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const docs = buildComponentDocsBlock(node.componentType, node.kind as "source" | "transform" | "sink");
-      if (docs) systemParts.push("", docs);
+    // Runtime docs from Context7 for each unique component type
+    const liveDocs = await lookupPipelineComponents(
+      ctx.nodes.map((n) => ({
+        componentType: n.componentType,
+        kind: n.kind as "source" | "transform" | "sink",
+      })),
+    );
+    if (liveDocs) {
+      systemParts.push("", liveDocs);
+    } else {
+      // Fallback to static reference
+      const seen = new Set<string>();
+      for (const node of ctx.nodes) {
+        const key = `${node.kind}:${node.componentType}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const docs = buildComponentDocsBlock(node.componentType, node.kind as "source" | "transform" | "sink");
+        if (docs) systemParts.push("", docs);
+      }
     }
   }
 
