@@ -187,6 +187,7 @@ model VectorNode {
   agentVersion     String?
   vectorVersion    String?
   os               String?
+  runningUser      String?
   deploymentMode   DeploymentMode       @default(UNKNOWN)
   pendingAction    Json?
   lastUpdateError  String?

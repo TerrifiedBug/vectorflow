@@ -17,13 +17,12 @@ RUN apk add --no-cache curl && \
     cp /tmp/vector-x86_64-unknown-linux-musl/bin/vector /usr/local/bin/vector
 
 # Stage 3: Runtime
-# NOTE: The agent runs as root because Vector sources (docker_logs, file)
-# need access to the Docker socket and host filesystem paths.
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates su-exec
 COPY --from=builder /vf-agent /usr/local/bin/vf-agent
 COPY --from=vector /usr/local/bin/vector /usr/local/bin/vector
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 ENV VF_VECTOR_BIN=/usr/local/bin/vector
 ENV VF_DATA_DIR=/var/lib/vf-agent
 RUN mkdir -p /var/lib/vf-agent /var/lib/vector
-ENTRYPOINT ["vf-agent"]
+ENTRYPOINT ["docker-entrypoint.sh"]
