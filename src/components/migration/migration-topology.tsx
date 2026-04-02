@@ -22,10 +22,10 @@ interface MigrationTopologyProps {
   onRetryAllFailed?: () => void;
 }
 
-const NODE_WIDTH = 200;
-const NODE_HEIGHT = 60;
-const COLUMN_SPACING = 300;
-const ROW_SPACING = 100;
+const NODE_WIDTH = 180;
+const NODE_HEIGHT = 54;
+const COLUMN_SPACING = 250;
+const ROW_SPACING = 76;
 const START_X = 50;
 const START_Y = 50;
 
@@ -120,10 +120,11 @@ export function MigrationTopology({
           style: {
             width: NODE_WIDTH,
             height: NODE_HEIGHT,
-            backgroundColor: isSelected ? `${color}20` : "#ffffff",
+            backgroundColor: isSelected ? `${color}20` : `${color}15`,
             border: `2px solid ${borderColor}`,
             borderRadius: "8px",
             fontSize: "11px",
+            color: "#e2e8f0",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
