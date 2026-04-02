@@ -31,6 +31,13 @@ import { toast } from "sonner";
 
 type WizardStep = "platform" | "config" | "parse" | "review";
 
+interface ReadinessFactor {
+  name: string;
+  weight: number;
+  score: number;
+  details: string;
+}
+
 interface ParseResult {
   readinessScore: number;
   complexity: {
@@ -39,6 +46,7 @@ interface ParseResult {
     rubyExpressionCount: number;
     routingBranches: number;
   };
+  factors: ReadinessFactor[];
 }
 
 export default function NewMigrationPage() {
@@ -99,6 +107,10 @@ export default function NewMigrationPage() {
         teamId: selectedTeamId,
       });
 
+      const report = result.readinessReport as {
+        factors?: ReadinessFactor[];
+      } | null;
+
       setParseResult({
         readinessScore: result.readinessScore ?? 0,
         complexity: (result.parsedTopology as { complexity: ParseResult["complexity"] })?.complexity ?? {
@@ -107,6 +119,7 @@ export default function NewMigrationPage() {
           rubyExpressionCount: 0,
           routingBranches: 0,
         },
+        factors: report?.factors ?? [],
       });
 
       setStep("review");
@@ -168,7 +181,8 @@ export default function NewMigrationPage() {
           <CardHeader>
             <CardTitle>Select Platform</CardTitle>
             <CardDescription>
-              Choose the log pipeline platform you are migrating from.
+              Choose the platform you are migrating from. We&apos;ll translate
+              your config to a Vector pipeline.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -217,6 +231,16 @@ export default function NewMigrationPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Paste or upload your FluentD configuration file. Supports{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">&lt;source&gt;</code>,{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">&lt;match&gt;</code>,{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">&lt;filter&gt;</code>, and{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">&lt;label&gt;</code> blocks.
+              External <code className="text-xs bg-muted px-1 py-0.5 rounded">@include</code> files
+              must be merged before upload.
+            </p>
+
             <div className="space-y-2">
               <Label htmlFor="file">Upload file</Label>
               <div className="flex items-center gap-2">
@@ -265,7 +289,27 @@ export default function NewMigrationPage() {
                 onChange={(e) => setConfigText(e.target.value)}
                 className="font-mono text-sm min-h-[300px]"
               />
+              <div className="text-xs text-muted-foreground text-right">
+                {new Blob([configText]).size.toLocaleString()} / 512,000 bytes
+              </div>
             </div>
+
+            <details className="text-sm">
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors">
+                What makes a good config?
+              </summary>
+              <ul className="mt-2 ml-4 space-y-1 text-muted-foreground list-disc">
+                <li>Complete blocks — no partial or truncated configs</li>
+                <li>
+                  External <code className="text-xs bg-muted px-1 py-0.5 rounded">@include</code>{" "}
+                  files merged into a single file
+                </li>
+                <li>
+                  Ruby expressions are supported but may lower translation
+                  confidence
+                </li>
+              </ul>
+            </details>
 
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep("platform")}>
@@ -355,6 +399,38 @@ export default function NewMigrationPage() {
               </div>
             </div>
 
+            {/* Readiness Factor Breakdown */}
+            {parseResult.factors.length > 0 && (
+              <div className="space-y-3">
+                <div className="text-sm font-medium">Readiness Factors</div>
+                {parseResult.factors.map((factor) => (
+                  <div key={factor.name} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>{factor.name}</span>
+                      <span className="text-muted-foreground">
+                        {factor.score}% · {factor.weight}% weight
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          factor.score >= 70
+                            ? "bg-green-500"
+                            : factor.score >= 40
+                              ? "bg-yellow-500"
+                              : "bg-red-500"
+                        }`}
+                        style={{ width: `${factor.score}%` }}
+                      />
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {factor.details}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Plugins */}
             <div>
               <div className="text-sm font-medium mb-2">Detected Plugins</div>
@@ -366,6 +442,14 @@ export default function NewMigrationPage() {
                 ))}
               </div>
             </div>
+
+            {/* What happens next */}
+            <p className="text-sm text-muted-foreground">
+              Click <span className="font-medium text-foreground">Open Project</span> to
+              enter the migration workspace. You&apos;ll see your config topology
+              and can translate blocks with AI, edit results, and generate a
+              VectorFlow pipeline.
+            </p>
 
             <Button onClick={handleFinish} className="w-full">
               Open Project
