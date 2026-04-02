@@ -305,6 +305,60 @@ The detected mode (`STANDALONE` or `DOCKER`) is reported in every heartbeat and 
 
 ---
 
+## Running as Non-Root
+
+By default the agent runs as root, which gives Vector access to the Docker socket and host filesystem. For environments that require non-root execution, both Docker and binary deployments support running as a dedicated user.
+
+### Docker
+
+Set the `VF_AGENT_USER` environment variable:
+
+```yaml
+services:
+  vf-agent:
+    image: ghcr.io/terrifiedbug/vectorflow-agent:latest
+    environment:
+      - VF_AGENT_USER=vfagent
+    volumes:
+      - agent-data:/var/lib/vf-agent
+      - vector-data:/var/lib/vector
+```
+
+The entrypoint creates the user (if needed), sets ownership on data directories, and runs the agent as that user.
+
+### Binary (systemd)
+
+Use the `--user` flag during installation:
+
+```bash
+curl -sSfL .../install.sh | sudo bash -s -- \
+  --url https://vf.example.com \
+  --token abc123 \
+  --user vfagent
+```
+
+Or run the installer interactively (from a terminal) and select non-root when prompted.
+
+The installer creates a system user, sets directory ownership, and configures the systemd unit with `User=` and `Group=` directives.
+
+### Granting Permissions
+
+When running as non-root, pipelines that access privileged resources will fail with permission errors. Grant the agent user access as needed:
+
+| Resource | Command |
+|----------|---------|
+| Docker socket (`docker_logs` source) | `sudo usermod -aG docker vfagent` |
+| Host log files (`file` source) | Ensure the user has read access to the paths |
+| Network ports below 1024 | Use `setcap` or a reverse proxy |
+
+Permission errors are displayed on the pipeline card in the dashboard.
+
+### Viewing the Running User
+
+The fleet node detail page shows "Running As" when the agent reports its user.
+
+---
+
 ## Data directory layout
 
 ```

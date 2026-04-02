@@ -9,7 +9,7 @@ import (
 	"github.com/TerrifiedBug/vectorflow/agent/internal/supervisor"
 )
 
-func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string, deploymentMode string, sampleResults []client.SampleResultMsg, labels map[string]string) client.HeartbeatRequest {
+func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string, deploymentMode string, sampleResults []client.SampleResultMsg, labels map[string]string, runningAs string) client.HeartbeatRequest {
 	statuses := sup.Statuses()
 
 	pipelines := make([]client.PipelineStatus, 0, len(statuses))
@@ -95,6 +95,7 @@ func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string, deployment
 		AgentVersion:   Version,
 		VectorVersion:  vectorVersion,
 		DeploymentMode: deploymentMode,
+		RunningAs:      runningAs,
 		SampleResults:  sampleResults,
 		Labels:         labels,
 	}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"os/user"
 	"strings"
 	"sync"
 	"syscall"
@@ -29,6 +30,7 @@ type Agent struct {
 	vectorVersion  string
 	deploymentMode string
 	labels         map[string]string
+	runningAs      string
 
 	mu                  sync.Mutex
 	sampleResults       []client.SampleResultMsg
@@ -55,6 +57,11 @@ func New(cfg *config.Config) (*Agent, error) {
 	autoLabels := DetectLabels(deploymentMode)
 	labels := MergeLabels(autoLabels, cfg.NodeLabels)
 
+	var runningAs string
+	if u, err := user.Current(); err == nil {
+		runningAs = u.Username
+	}
+
 	return &Agent{
 		cfg:            cfg,
 		client:         c,
@@ -63,6 +70,7 @@ func New(cfg *config.Config) (*Agent, error) {
 		vectorVersion:  vectorVersion,
 		deploymentMode: deploymentMode,
 		labels:         labels,
+		runningAs:      runningAs,
 	}, nil
 }
 
@@ -240,7 +248,7 @@ func (a *Agent) sendHeartbeat() {
 	a.sampleResults = nil
 	a.mu.Unlock()
 
-	hb := buildHeartbeat(a.supervisor, a.vectorVersion, a.deploymentMode, results, a.labels)
+	hb := buildHeartbeat(a.supervisor, a.vectorVersion, a.deploymentMode, results, a.labels, a.runningAs)
 	updateErr := a.updateError
 	if updateErr != "" {
 		hb.UpdateError = updateErr
