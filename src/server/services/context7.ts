@@ -4,8 +4,8 @@
 // Provides up-to-date library docs for all AI features: migration translation,
 // VRL chat, pipeline debug, cost optimizer.
 //
-// Requires CONTEXT7_API_KEY env var. When not set, all lookups return empty
-// strings gracefully — AI features still work, just without doc context.
+// Works without an API key (free tier ~100 req/day). Set CONTEXT7_API_KEY
+// env var for higher limits. On failure, callers fall back to static docs.
 
 import { debugLog, warnLog } from "@/lib/logger";
 
@@ -51,9 +51,6 @@ interface Context7Response {
  * or the request fails.
  */
 async function queryDocs(libraryId: string, query: string): Promise<string> {
-  const apiKey = getApiKey();
-  if (!apiKey) return "";
-
   const cacheKey = getCacheKey(libraryId, query);
   const cached = cache.get(cacheKey);
   if (cached && cached.expiry > Date.now()) {
@@ -67,9 +64,15 @@ async function queryDocs(libraryId: string, query: string): Promise<string> {
     url.searchParams.set("query", query);
     url.searchParams.set("type", "json");
 
+    const headers: Record<string, string> = {};
+    const apiKey = getApiKey();
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+
     const response = await fetch(url.toString(), {
       method: "GET",
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers,
       signal: AbortSignal.timeout(10_000), // 10s timeout
     });
 
@@ -174,7 +177,9 @@ export async function lookupPipelineComponents(
 }
 
 /**
- * Check if Context7 is configured (has API key).
+ * Check if Context7 has an API key configured (higher rate limits).
+ * Context7 works without a key (free tier ~100 req/day), but an API key
+ * from context7.com/dashboard removes the limit.
  */
 export function isContext7Configured(): boolean {
   return getApiKey() !== null;
