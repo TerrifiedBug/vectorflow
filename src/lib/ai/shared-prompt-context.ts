@@ -1,6 +1,8 @@
 // src/lib/ai/shared-prompt-context.ts
 
 import { buildVrlReferenceFromRegistry } from "@/lib/vrl/function-registry";
+import { buildComponentDocsBlock as _buildComponentDocsBlock } from "@/lib/ai/vector-docs-reference";
+export { buildVectorDocsBlock, buildComponentDocsBlock } from "@/lib/ai/vector-docs-reference";
 
 export interface PipelineNode {
   componentKey: string;
@@ -139,4 +141,23 @@ export function buildPipelineNodeContext(nodes: PipelineNode[]): string {
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Builds targeted Vector docs for the unique component types in a pipeline.
+ * Only includes docs for components that have a reference entry — adds ~5-10 lines per component.
+ */
+export function buildPipelineDocsBlock(nodes: PipelineNode[]): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+
+  for (const node of nodes) {
+    const key = `${node.kind}:${node.componentType}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const docs = _buildComponentDocsBlock(node.componentType, node.kind as "source" | "transform" | "sink");
+    if (docs) parts.push(docs);
+  }
+
+  return parts.length > 0 ? ["=== Vector Component Reference ===", ...parts].join("\n\n") : "";
 }
