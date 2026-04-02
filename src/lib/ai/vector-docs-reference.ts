@@ -305,7 +305,23 @@ const FLUENTD_MIGRATION_MAP = `## FluentD → Vector Component Mapping
 | value.gsub(/pat/, "rep") | replace(value, r'pat', "rep") |
 | JSON.parse(value) | parse_json!(value) |
 | if cond; expr; end | if condition { expr } |
-| value.instance_of?(String) | is_string(value) |`;
+| value.instance_of?(String) | is_string(value) |
+
+## FluentD Event Routing Model
+
+FluentD processes events through a tag-based pipeline:
+1. **Source** emits events with a tag (e.g., tag auth0_log)
+2. **Filters** are processed IN CONFIG FILE ORDER — each filter applies if its tag pattern matches the event tag (including glob patterns like auth0.**)
+3. **Match** blocks catch events by tag pattern — the FIRST matching match consumes the event
+4. **rewrite_tag_filter** is a special match plugin that re-emits events with NEW tags. Re-emitted events flow back through all filters from the top, then hit the next matching match block.
+5. **copy** match plugin sends events to multiple outputs (<store> blocks)
+6. **Labels** (@label) create isolated routing scopes — events routed to a label only see filters/matches inside that label
+
+When translating to Vector:
+- rewrite_tag_filter → Vector "route" transform with VRL conditions per output
+- Filters in config order for the same tag → chain of Vector transforms with sequential inputs
+- copy with multiple stores → multiple Vector sinks reading from the same transform
+- The "inputs" field in Vector replaces FluentD's tag-based routing`;
 
 // ---------------------------------------------------------------------------
 // Public API
