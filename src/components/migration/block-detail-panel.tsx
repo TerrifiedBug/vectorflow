@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -32,13 +32,8 @@ export function BlockDetailPanel({
   );
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  useEffect(() => {
-    if (translation) {
-      const newValue = yaml.dump(translation.config, { indent: 2, lineWidth: -1 });
-      setEditorValue(newValue);
-      setHasUnsavedChanges(false);
-    }
-  }, [translation]);
+  // Editor state resets via key prop on the parent (keyed by block ID + confidence),
+  // so no useEffect needed to sync translation → editor value.
 
   const handleSave = () => {
     try {

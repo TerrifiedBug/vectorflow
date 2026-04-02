@@ -334,6 +334,7 @@ export default function MigrationProjectPage({
         <div className="w-1/4 min-w-[200px] border-l overflow-y-auto">
           {selectedBlock ? (
             <BlockDetailPanel
+              key={selectedBlock.id + (selectedTranslation?.confidence ?? "")}
               block={selectedBlock}
               translation={selectedTranslation}
               onRetranslate={() => handleRetranslateBlock(selectedBlock.id)}
