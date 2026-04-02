@@ -2,6 +2,7 @@ import type { ParsedBlock, ParsedConfig } from "./types";
 import { WELL_KNOWN_PLUGINS } from "./types";
 import { getVectorCatalog } from "@/lib/vector/catalog";
 import type { VectorComponentDef } from "@/lib/vector/types";
+import { buildComponentDocsBlock, buildMigrationMappingBlock } from "@/lib/ai/vector-docs-reference";
 
 /**
  * Build a structured AI prompt for translating a single FluentD block to Vector config.
@@ -80,6 +81,14 @@ export function buildBlockTranslationPrompt(params: {
       `FluentD "${block.pluginType}" typically maps to Vector "${hint.vectorType}" (${hint.kind}).`,
       `Base confidence: ${hint.confidence}%`,
     );
+  }
+
+  // Vector docs reference for the target component
+  if (hint) {
+    const docsBlock = buildComponentDocsBlock(hint.vectorType, hint.kind);
+    if (docsBlock) {
+      parts.push("", "## Vector Configuration Reference", docsBlock);
+    }
   }
 
   // Available Vector components
@@ -163,6 +172,8 @@ export function buildMigrationSystemPrompt(): string {
     "- FluentD's `out_copy` with multiple `<store>` becomes multiple Vector sinks reading from the same input",
     "",
     "Always output valid JSON. Never include markdown fencing or explanatory text outside the JSON.",
+    "",
+    buildMigrationMappingBlock(),
   ].join("\n");
 }
 
