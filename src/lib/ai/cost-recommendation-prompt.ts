@@ -4,6 +4,7 @@ import {
   buildSuggestionSchemaBlock,
   buildVrlReferenceBlock,
   buildPipelineNodeContext,
+  buildComponentDocsBlock,
 } from "@/lib/ai/shared-prompt-context";
 
 export interface CostRecommendationPromptContext {
@@ -47,6 +48,16 @@ export function buildCostRecommendationPrompt(ctx: CostRecommendationPromptConte
 
   if (ctx.nodes.length > 0) {
     systemParts.push("", "=== Pipeline Nodes ===", buildPipelineNodeContext(ctx.nodes));
+
+    // Include targeted Vector docs for each unique component type in the pipeline
+    const seen = new Set<string>();
+    for (const node of ctx.nodes) {
+      const key = `${node.kind}:${node.componentType}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const docs = buildComponentDocsBlock(node.componentType, node.kind as "source" | "transform" | "sink");
+      if (docs) systemParts.push("", docs);
+    }
   }
 
   // ─── User Prompt ─────────────────────────────────────────────────────────────
