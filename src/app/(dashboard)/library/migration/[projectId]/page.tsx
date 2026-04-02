@@ -206,8 +206,8 @@ export default function MigrationProjectPage({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Translate with AI */}
-          {parsedConfig && !translationResult && (
+          {/* Translate with AI — always show when parsed */}
+          {parsedConfig && !project.generatedPipeline && (
             <Button
               size="sm"
               onClick={handleTranslate}
@@ -301,12 +301,19 @@ export default function MigrationProjectPage({
         <div className="flex-1 min-w-[300px] flex flex-col">
           {project.validationResult &&
             !(project.validationResult as { valid: boolean }).valid && (
-              <div className="px-3 py-2 bg-destructive/10 border-b border-destructive/20 text-xs text-destructive">
-                Validation failed:{" "}
-                {(
-                  (project.validationResult as { errors: string[] }).errors ?? []
-                ).length}{" "}
-                error(s)
+              <div className="px-3 py-2 bg-destructive/10 border-b border-destructive/20 text-xs text-destructive space-y-1">
+                <p className="font-medium">
+                  Validation failed:{" "}
+                  {(
+                    (project.validationResult as { errors: string[] }).errors ?? []
+                  ).length}{" "}
+                  error(s)
+                </p>
+                <ul className="font-mono pl-3 space-y-0.5">
+                  {((project.validationResult as { errors: string[] }).errors ?? []).map((err, i) => (
+                    <li key={i}>{err}</li>
+                  ))}
+                </ul>
               </div>
             )}
           {parsedConfig ? (
