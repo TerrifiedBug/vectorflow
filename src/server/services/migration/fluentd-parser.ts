@@ -11,6 +11,7 @@ const BLOCK_TYPES = new Set(["source", "match", "filter", "label", "system"]);
 const NESTED_BLOCK_TYPES = new Set([
   "parse", "format", "buffer", "store", "server", "secondary",
   "inject", "extract", "record", "pattern", "section",
+  "rule", "regexp", "exclude", "and", "or",
 ]);
 
 /**
