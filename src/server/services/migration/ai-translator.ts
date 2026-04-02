@@ -6,6 +6,9 @@ import {
 } from "./prompt-builder";
 import { assembleVectorYaml } from "./translation-assembler";
 import { validateConfig } from "@/server/services/validator";
+import { prisma } from "@/lib/prisma";
+import { errorLog, infoLog } from "@/lib/logger";
+import { Prisma } from "@/generated/prisma";
 import type {
   ParsedBlock,
   ParsedConfig,
@@ -173,6 +176,210 @@ export async function translateBlocks(
     overallConfidence,
     warnings,
   };
+}
+
+interface TranslateBlocksAsyncParams {
+  projectId: string;
+  teamId: string;
+  parsedConfig: ParsedConfig;
+  platform: string;
+}
+
+/**
+ * Async version of translateBlocks that persists partial results after each batch.
+ * Designed for fire-and-forget usage — sets project status to READY or FAILED when done.
+ */
+export async function translateBlocksAsync(
+  params: TranslateBlocksAsyncParams,
+): Promise<void> {
+  const { projectId, teamId, parsedConfig, platform } = params;
+
+  try {
+    // Filter to translatable blocks (same logic as translateBlocks)
+    const translatableBlocks = parsedConfig.blocks.filter(
+      (b) => b.blockType !== "system" && b.blockType !== "label",
+    );
+
+    const labelInnerBlocks = parsedConfig.blocks
+      .filter((b) => b.blockType === "label")
+      .flatMap((b) => b.nestedBlocks);
+
+    const allBlocks = [...translatableBlocks, ...labelInnerBlocks];
+    const totalBlocks = allBlocks.length;
+
+    // Translate blocks in parallel batches, persisting after each batch
+    const translatedBlocks: TranslatedBlock[] = [];
+
+    for (let i = 0; i < allBlocks.length; i += PARALLEL_BATCH_SIZE) {
+      const batch = allBlocks.slice(i, i + PARALLEL_BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map((block, batchIdx) =>
+          translateOneBlock({
+            teamId,
+            block,
+            blockIndex: i + batchIdx,
+            totalBlocks,
+            parsedConfig,
+          }),
+        ),
+      );
+      translatedBlocks.push(...batchResults);
+
+      // Persist partial results after each batch
+      const partialYaml = assembleVectorYaml(translatedBlocks);
+      const partialConfidence =
+        translatedBlocks.length > 0
+          ? Math.round(
+              translatedBlocks.reduce((sum, b) => sum + b.confidence, 0) /
+                translatedBlocks.length,
+            )
+          : 0;
+
+      const partialResult: TranslationResult = {
+        blocks: translatedBlocks,
+        vectorYaml: partialYaml,
+        overallConfidence: partialConfidence,
+        warnings: [],
+      };
+
+      await prisma.migrationProject.update({
+        where: { id: projectId },
+        data: {
+          translatedBlocks: partialResult as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      infoLog(
+        "migration.translateBlocksAsync",
+        `Project ${projectId}: translated ${translatedBlocks.length}/${totalBlocks} blocks`,
+      );
+    }
+
+    // Assemble into full Vector YAML
+    let vectorYaml = assembleVectorYaml(translatedBlocks);
+
+    // Validate with vector validate
+    let validationResult = await validateConfig(vectorYaml);
+
+    // Self-correcting retry loop (same as synchronous version)
+    let retryCount = 0;
+    while (!validationResult.valid && retryCount < MAX_RETRIES) {
+      retryCount++;
+
+      const errorBlockIds = new Set<string>();
+      for (const error of validationResult.errors) {
+        if (error.componentKey) {
+          const matchingBlock = translatedBlocks.find(
+            (b) => b.componentId === error.componentKey,
+          );
+          if (matchingBlock) {
+            errorBlockIds.add(matchingBlock.blockId);
+          }
+        }
+      }
+
+      if (errorBlockIds.size === 0) {
+        for (const b of translatedBlocks.filter((b) => b.status === "failed")) {
+          errorBlockIds.add(b.blockId);
+        }
+      }
+
+      for (const blockId of errorBlockIds) {
+        const originalBlock = allBlocks.find((b) => b.id === blockId);
+        if (!originalBlock) continue;
+
+        const blockErrors = validationResult.errors
+          .filter((e: { componentKey?: string; message: string }) => {
+            const tb = translatedBlocks.find((b) => b.blockId === blockId);
+            return tb && e.componentKey === tb.componentId;
+          })
+          .map((e: { message: string }) => e.message);
+
+        const retranslated = await retranslateWithErrors({
+          teamId,
+          block: originalBlock,
+          blockIndex: allBlocks.indexOf(originalBlock),
+          totalBlocks,
+          parsedConfig,
+          previousErrors: blockErrors,
+        });
+
+        const idx = translatedBlocks.findIndex((b) => b.blockId === blockId);
+        if (idx !== -1) {
+          translatedBlocks[idx] = retranslated;
+        }
+      }
+
+      vectorYaml = assembleVectorYaml(translatedBlocks);
+      validationResult = await validateConfig(vectorYaml);
+    }
+
+    // Record validation errors on individual blocks
+    for (const error of validationResult.errors) {
+      if (error.componentKey) {
+        const block = translatedBlocks.find(
+          (b) => b.componentId === error.componentKey,
+        );
+        if (block) {
+          block.validationErrors.push(error.message);
+        }
+      }
+    }
+
+    const overallConfidence =
+      translatedBlocks.length > 0
+        ? Math.round(
+            translatedBlocks.reduce((sum, b) => sum + b.confidence, 0) /
+              translatedBlocks.length,
+          )
+        : 0;
+
+    const warnings: string[] = [];
+    if (!validationResult.valid) {
+      warnings.push(
+        `Validation failed after ${retryCount} retries. ${validationResult.errors.length} errors remain.`,
+      );
+    }
+
+    for (const w of validationResult.warnings) {
+      warnings.push(w.message);
+    }
+
+    const finalResult: TranslationResult = {
+      blocks: translatedBlocks,
+      vectorYaml,
+      overallConfidence,
+      warnings,
+    };
+
+    await prisma.migrationProject.update({
+      where: { id: projectId },
+      data: {
+        translatedBlocks: finalResult as unknown as Prisma.InputJsonValue,
+        validationResult: Prisma.JsonNull,
+        status: "READY",
+      },
+    });
+
+    infoLog(
+      "migration.translateBlocksAsync",
+      `Project ${projectId}: translation complete — ${totalBlocks} blocks, confidence ${overallConfidence}%`,
+    );
+  } catch (err) {
+    errorLog(
+      "migration.translateBlocksAsync",
+      `Project ${projectId}: translation failed`,
+      err,
+    );
+
+    await prisma.migrationProject.update({
+      where: { id: projectId },
+      data: {
+        status: "FAILED",
+        errorMessage: err instanceof Error ? err.message : "Translation failed",
+      },
+    });
+  }
 }
 
 /**
