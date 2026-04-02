@@ -3,6 +3,7 @@ import { WELL_KNOWN_PLUGINS } from "./types";
 import { getVectorCatalog } from "@/lib/vector/catalog";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import { buildComponentDocsBlock, buildMigrationMappingBlock } from "@/lib/ai/vector-docs-reference";
+import { lookupVectorComponent, lookupFluentdPlugin } from "@/server/services/context7";
 
 /**
  * Build a structured AI prompt for translating a single FluentD block to Vector config.
@@ -13,12 +14,12 @@ import { buildComponentDocsBlock, buildMigrationMappingBlock } from "@/lib/ai/ve
  * - Known plugin mapping hints
  * - Instructions for output format
  */
-export function buildBlockTranslationPrompt(params: {
+export async function buildBlockTranslationPrompt(params: {
   block: ParsedBlock;
   blockIndex: number;
   totalBlocks: number;
   parsedConfig: ParsedConfig;
-}): string {
+}): Promise<string> {
   const { block, blockIndex, totalBlocks, parsedConfig } = params;
   const parts: string[] = [];
 
@@ -83,8 +84,19 @@ export function buildBlockTranslationPrompt(params: {
     );
   }
 
-  // Vector docs reference for the target component
-  if (hint) {
+  // Context7 runtime docs: FluentD source plugin + Vector target component
+  const [fluentdDocs, vectorDocs] = await Promise.all([
+    lookupFluentdPlugin(block.pluginType),
+    hint ? lookupVectorComponent(hint.vectorType, hint.kind) : Promise.resolve(""),
+  ]);
+
+  if (fluentdDocs) {
+    parts.push("", "## FluentD Plugin Documentation (from docs)", fluentdDocs);
+  }
+  if (vectorDocs) {
+    parts.push("", "## Vector Component Documentation (from docs)", vectorDocs);
+  } else if (hint) {
+    // Fallback to static reference if Context7 unavailable
     const docsBlock = buildComponentDocsBlock(hint.vectorType, hint.kind);
     if (docsBlock) {
       parts.push("", "## Vector Configuration Reference", docsBlock);

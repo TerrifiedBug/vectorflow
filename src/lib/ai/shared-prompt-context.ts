@@ -3,6 +3,12 @@
 import { buildVrlReferenceFromRegistry } from "@/lib/vrl/function-registry";
 import { buildComponentDocsBlock as _buildComponentDocsBlock } from "@/lib/ai/vector-docs-reference";
 export { buildVectorDocsBlock, buildComponentDocsBlock } from "@/lib/ai/vector-docs-reference";
+export {
+  lookupVectorComponent,
+  lookupVrlFunction,
+  lookupPipelineComponents,
+  isContext7Configured,
+} from "@/server/services/context7";
 
 export interface PipelineNode {
   componentKey: string;

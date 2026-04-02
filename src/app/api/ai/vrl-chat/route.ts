@@ -166,7 +166,7 @@ export async function POST(request: Request) {
     // Non-fatal — proceed without error context
   }
 
-  const systemPrompt = buildVrlChatSystemPrompt({
+  const systemPrompt = await buildVrlChatSystemPrompt({
     fields: body.fields,
     currentCode: body.currentCode,
     componentType: body.componentType,
