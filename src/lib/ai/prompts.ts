@@ -1,7 +1,7 @@
 // src/lib/ai/prompts.ts
 
 import { buildVrlReferenceFromRegistry } from "@/lib/vrl/function-registry";
-import { buildVrlReferenceBlock } from "@/lib/ai/shared-prompt-context";
+import { buildVrlReferenceBlock, buildComponentDocsBlock } from "@/lib/ai/shared-prompt-context";
 
 export function buildVrlSystemPrompt(context: {
   fields?: { name: string; type: string }[];
@@ -23,6 +23,8 @@ export function buildVrlSystemPrompt(context: {
 
   if (context.componentType) {
     parts.push(`Transform component type: ${context.componentType}`);
+    const docs = buildComponentDocsBlock(context.componentType, "transform");
+    if (docs) parts.push("", docs);
   }
 
   if (context.fields?.length) {
@@ -90,6 +92,8 @@ export function buildVrlChatSystemPrompt(context: {
 
   if (context.componentType) {
     parts.push(`Transform component type: ${context.componentType}`);
+    const docs = buildComponentDocsBlock(context.componentType, "transform");
+    if (docs) parts.push("", docs);
   }
 
   if (context.fields?.length) {
