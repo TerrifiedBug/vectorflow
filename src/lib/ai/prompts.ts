@@ -1,14 +1,14 @@
 // src/lib/ai/prompts.ts
 
 import { buildVrlReferenceFromRegistry } from "@/lib/vrl/function-registry";
-import { buildVrlReferenceBlock, buildComponentDocsBlock } from "@/lib/ai/shared-prompt-context";
+import { buildVrlReferenceBlock, buildComponentDocsBlock, lookupVectorComponent } from "@/lib/ai/shared-prompt-context";
 
-export function buildVrlSystemPrompt(context: {
+export async function buildVrlSystemPrompt(context: {
   fields?: { name: string; type: string }[];
   currentCode?: string;
   componentType?: string;
   sourceTypes?: string[];
-}): string {
+}): Promise<string> {
   const parts: string[] = [
     "You are a VRL (Vector Remap Language) code assistant for Vector data pipelines.",
     "Generate VRL code based on the user's request. Output ONLY the VRL code — no explanations, no markdown fencing, no comments unless the user asks for them.",
@@ -23,8 +23,14 @@ export function buildVrlSystemPrompt(context: {
 
   if (context.componentType) {
     parts.push(`Transform component type: ${context.componentType}`);
-    const docs = buildComponentDocsBlock(context.componentType, "transform");
-    if (docs) parts.push("", docs);
+    // Runtime docs from Context7 (falls back to static if unavailable)
+    const liveDocs = await lookupVectorComponent(context.componentType, "transform");
+    if (liveDocs) {
+      parts.push("", liveDocs);
+    } else {
+      const staticDocs = buildComponentDocsBlock(context.componentType, "transform");
+      if (staticDocs) parts.push("", staticDocs);
+    }
   }
 
   if (context.fields?.length) {
@@ -41,13 +47,13 @@ export function buildVrlSystemPrompt(context: {
   return parts.join("\n");
 }
 
-export function buildVrlChatSystemPrompt(context: {
+export async function buildVrlChatSystemPrompt(context: {
   fields?: { name: string; type: string }[];
   currentCode?: string;
   componentType?: string;
   sourceTypes?: string[];
   errorContext?: string;
-}): string {
+}): Promise<string> {
   const parts: string[] = [
     "You are a VRL (Vector Remap Language) assistant for Vector data pipelines.",
     "Analyze the user's VRL code and requests. Return your response as a JSON object.",
@@ -92,8 +98,13 @@ export function buildVrlChatSystemPrompt(context: {
 
   if (context.componentType) {
     parts.push(`Transform component type: ${context.componentType}`);
-    const docs = buildComponentDocsBlock(context.componentType, "transform");
-    if (docs) parts.push("", docs);
+    const liveDocs = await lookupVectorComponent(context.componentType, "transform");
+    if (liveDocs) {
+      parts.push("", liveDocs);
+    } else {
+      const staticDocs = buildComponentDocsBlock(context.componentType, "transform");
+      if (staticDocs) parts.push("", staticDocs);
+    }
   }
 
   if (context.fields?.length) {
