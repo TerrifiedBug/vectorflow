@@ -39,14 +39,21 @@ export default function MigrationProjectPage({
 
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
 
+  const teamId = selectedTeamId!;
+
   const projectQuery = useQuery(
     trpc.migration.get.queryOptions(
-      { id: projectId, teamId: selectedTeamId! },
-      { enabled: !!selectedTeamId },
+      { id: projectId, teamId },
+      {
+        enabled: !!selectedTeamId,
+        refetchInterval: (query) =>
+          query.state.data?.status === "TRANSLATING" ? 2000 : false,
+      },
     ),
   );
 
   const project = projectQuery.data;
+  const isTranslating = project?.status === "TRANSLATING";
   const parsedConfig = project?.parsedTopology as unknown as ParsedConfig | null;
   const translationResult = project?.translatedBlocks as unknown as TranslationResult | null;
 
@@ -65,6 +72,14 @@ export default function MigrationProjectPage({
         toast.error(err.message);
       },
     }),
+  );
+
+  const startTranslationMutation = useMutation(
+    trpc.migration.startTranslation.mutationOptions(),
+  );
+
+  const updateBlockMutation = useMutation(
+    trpc.migration.updateBlockConfig.mutationOptions(),
   );
 
   const validateMutation = useMutation(
@@ -104,19 +119,30 @@ export default function MigrationProjectPage({
 
   const handleTranslate = () => {
     if (!selectedTeamId) return;
-    translateMutation.mutate({ id: projectId, teamId: selectedTeamId });
+    startTranslationMutation.mutate(
+      { id: projectId, teamId },
+      {
+        onError: (err) => {
+          if (err.message.includes("rate limit")) {
+            toast.error("Translation rate limit reached. Please wait a moment and try again.");
+          } else {
+            toast.error(err.message);
+          }
+        },
+      },
+    );
   };
 
   const handleValidate = () => {
     if (!selectedTeamId) return;
-    validateMutation.mutate({ id: projectId, teamId: selectedTeamId });
+    validateMutation.mutate({ id: projectId, teamId });
   };
 
   const handleGenerate = () => {
     if (!selectedTeamId || !selectedEnvironmentId || !project) return;
     generateMutation.mutate({
       id: projectId,
-      teamId: selectedTeamId,
+      teamId,
       environmentId: selectedEnvironmentId,
       pipelineName: `${project.name} (migrated)`,
     });
@@ -126,9 +152,40 @@ export default function MigrationProjectPage({
     if (!selectedTeamId) return;
     retranslateMutation.mutate({
       id: projectId,
-      teamId: selectedTeamId,
+      teamId,
       blockId,
     });
+  };
+
+  const handleRetryAllFailed = async () => {
+    if (!translationResult?.blocks) return;
+    const failedBlocks = translationResult.blocks.filter((b) => b.status === "failed");
+    for (const block of failedBlocks) {
+      await retranslateMutation.mutateAsync({
+        id: projectId,
+        teamId,
+        blockId: block.blockId,
+      });
+    }
+    queryClient.invalidateQueries({
+      queryKey: trpc.migration.get.queryKey({ id: projectId, teamId }),
+    });
+  };
+
+  const handleSaveBlockConfig = (config: Record<string, unknown>) => {
+    if (!selectedBlockId) return;
+    updateBlockMutation.mutate(
+      { id: projectId, teamId, blockId: selectedBlockId, config },
+      {
+        onSuccess: () => {
+          toast.success("Block config saved");
+          queryClient.invalidateQueries({
+            queryKey: trpc.migration.get.queryKey({ id: projectId, teamId }),
+          });
+        },
+        onError: (err) => toast.error(err.message),
+      },
+    );
   };
 
   if (projectQuery.isLoading) {
@@ -166,14 +223,19 @@ export default function MigrationProjectPage({
             <Button
               size="sm"
               onClick={handleTranslate}
-              disabled={translateMutation.isPending}
+              disabled={isTranslating || startTranslationMutation.isPending}
             >
-              {translateMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              {isTranslating || startTranslationMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  Translating...
+                </>
               ) : (
-                <Play className="h-4 w-4 mr-1" />
+                <>
+                  <Play className="h-4 w-4 mr-1" />
+                  Translate with AI
+                </>
               )}
-              Translate with AI
             </Button>
           )}
 
@@ -186,11 +248,16 @@ export default function MigrationProjectPage({
               disabled={validateMutation.isPending}
             >
               {validateMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  Validating...
+                </>
               ) : (
-                <CheckCircle className="h-4 w-4 mr-1" />
+                <>
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Validate
+                </>
               )}
-              Validate
             </Button>
           )}
 
@@ -202,11 +269,16 @@ export default function MigrationProjectPage({
               disabled={generateMutation.isPending}
             >
               {generateMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  Generating...
+                </>
               ) : (
-                <Download className="h-4 w-4 mr-1" />
+                <>
+                  <Download className="h-4 w-4 mr-1" />
+                  Generate Pipeline
+                </>
               )}
-              Generate Pipeline
             </Button>
           )}
 
@@ -238,16 +310,33 @@ export default function MigrationProjectPage({
         </div>
 
         {/* Center: Topology */}
-        <div className="flex-1 min-w-[300px]">
+        <div className="flex-1 min-w-[300px] flex flex-col">
+          {project.validationResult &&
+            !(project.validationResult as { valid: boolean }).valid && (
+              <div className="px-3 py-2 bg-destructive/10 border-b border-destructive/20 text-xs text-destructive">
+                Validation failed:{" "}
+                {(
+                  (project.validationResult as { errors: string[] }).errors ?? []
+                ).length}{" "}
+                error(s)
+              </div>
+            )}
           {parsedConfig ? (
             <MigrationTopology
               parsedConfig={parsedConfig}
               translationResult={translationResult}
               selectedBlockId={selectedBlockId}
               onSelectBlock={setSelectedBlockId}
+              isTranslating={isTranslating}
+              onRetryAllFailed={handleRetryAllFailed}
             />
+          ) : project.status === "FAILED" ? (
+            <div className="flex items-center justify-center h-full text-sm text-destructive">
+              Parsing failed. Please check your config and try again.
+            </div>
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground">
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               Parsing config...
             </div>
           )}
@@ -260,7 +349,9 @@ export default function MigrationProjectPage({
               block={selectedBlock}
               translation={selectedTranslation}
               onRetranslate={() => handleRetranslateBlock(selectedBlock.id)}
+              onSaveConfig={handleSaveBlockConfig}
               isRetranslating={retranslateMutation.isPending}
+              isSaving={updateBlockMutation.isPending}
             />
           ) : (
             <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
