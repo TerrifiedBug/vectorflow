@@ -11,12 +11,15 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { ParsedConfig, TranslationResult } from "@/server/services/migration/types";
+import { Button } from "@/components/ui/button";
 
 interface MigrationTopologyProps {
   parsedConfig: ParsedConfig;
   translationResult: TranslationResult | null;
   selectedBlockId: string | null;
   onSelectBlock: (blockId: string | null) => void;
+  isTranslating?: boolean;
+  onRetryAllFailed?: () => void;
 }
 
 const NODE_WIDTH = 200;
@@ -41,12 +44,46 @@ function getStatusColor(
   return "#f97316"; // orange-500
 }
 
+const TRANSLATABLE_TYPES = new Set(["source", "match", "filter"]);
+
 export function MigrationTopology({
   parsedConfig,
   translationResult,
   selectedBlockId,
   onSelectBlock,
+  isTranslating,
+  onRetryAllFailed,
 }: MigrationTopologyProps) {
+  const statusCounts = useMemo(() => {
+    const translatableBlocks = parsedConfig.blocks.filter((b) =>
+      TRANSLATABLE_TYPES.has(b.blockType),
+    );
+    const total = translatableBlocks.length;
+
+    if (!translationResult) {
+      return { translated: 0, lowConfidence: 0, failed: 0, pending: total, total };
+    }
+
+    let translated = 0;
+    let lowConfidence = 0;
+    let failed = 0;
+
+    for (const block of translatableBlocks) {
+      const result = translationResult.blocks.find((b) => b.blockId === block.id);
+      if (!result) continue;
+
+      if (result.status === "failed") {
+        failed++;
+      } else if (result.status === "translated" && result.confidence >= 40) {
+        translated++;
+      } else if (result.status === "translated" && result.confidence < 40) {
+        lowConfidence++;
+      }
+    }
+
+    const pending = total - translated - lowConfidence - failed;
+    return { translated, lowConfidence, failed, pending, total };
+  }, [parsedConfig, translationResult]);
   const { nodes, edges } = useMemo(() => {
     const sources = parsedConfig.blocks.filter((b) => b.blockType === "source");
     const filters = parsedConfig.blocks.filter((b) => b.blockType === "filter");
@@ -62,6 +99,15 @@ export function MigrationTopology({
         const isSelected = block.id === selectedBlockId;
         const color = getStatusColor(block.id, translationResult);
 
+        const hasValidationErrors =
+          translationResult?.blocks.some(
+            (b) =>
+              b.blockId === block.id &&
+              b.validationErrors.length > 0,
+          ) ?? false;
+
+        const borderColor = hasValidationErrors ? "#ef4444" : color;
+
         rfNodes.push({
           id: block.id,
           position: {
@@ -75,7 +121,7 @@ export function MigrationTopology({
             width: NODE_WIDTH,
             height: NODE_HEIGHT,
             backgroundColor: isSelected ? `${color}20` : "#ffffff",
-            border: `2px solid ${color}`,
+            border: `2px solid ${borderColor}`,
             borderRadius: "8px",
             fontSize: "11px",
             display: "flex",
@@ -149,21 +195,82 @@ export function MigrationTopology({
     [onSelectBlock, selectedBlockId],
   );
 
+  const { translated, lowConfidence, failed, pending, total } = statusCounts;
+  const completedCount = translated + lowConfidence + failed;
+  const percent = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodeClick={handleNodeClick}
-      fitView
-      fitViewOptions={{ padding: 0.2 }}
-      proOptions={{ hideAttribution: true }}
-      nodesDraggable={false}
-      nodesConnectable={false}
-      elementsSelectable
-    >
-      <Background />
-      <Controls showInteractive={false} />
-    </ReactFlow>
+    <div className="flex flex-col h-full">
+      {/* Status header */}
+      <div className="flex items-center gap-4 px-3 py-2 border-b text-sm">
+        {translated > 0 && (
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500" />
+            {translated} translated
+          </span>
+        )}
+        {lowConfidence > 0 && (
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-2.5 h-2.5 rounded-full bg-yellow-500" />
+            {lowConfidence} low confidence
+          </span>
+        )}
+        {failed > 0 && (
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500" />
+            {failed} failed
+          </span>
+        )}
+        {pending > 0 && (
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-400" />
+            {pending} pending
+          </span>
+        )}
+        {isTranslating && (
+          <span className="text-muted-foreground ml-auto">
+            Translating {completedCount} of {total}...
+          </span>
+        )}
+        {!isTranslating && failed > 0 && onRetryAllFailed && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto"
+            onClick={onRetryAllFailed}
+          >
+            Retry all failed
+          </Button>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      {isTranslating && (
+        <div className="h-1 bg-muted">
+          <div
+            className="h-1 bg-primary transition-all duration-500"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      )}
+
+      <div className="flex-1">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodeClick={handleNodeClick}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          proOptions={{ hideAttribution: true }}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable
+        >
+          <Background />
+          <Controls showInteractive={false} />
+        </ReactFlow>
+      </div>
+    </div>
   );
 }
 
