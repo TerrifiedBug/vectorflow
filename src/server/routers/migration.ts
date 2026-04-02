@@ -5,10 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { parseFluentdConfig } from "@/server/services/migration/fluentd-parser";
 import { computeReadiness } from "@/server/services/migration/readiness";
-import { translateBlocks } from "@/server/services/migration/ai-translator";
+import { translateBlocks, translateBlocksAsync } from "@/server/services/migration/ai-translator";
 import { generatePipeline } from "@/server/services/migration/pipeline-generator";
 import type { ParsedConfig, TranslationResult } from "@/server/services/migration/types";
 import { Prisma } from "@/generated/prisma";
+import { errorLog } from "@/lib/logger";
 
 export const migrationRouter = router({
   /** List all migration projects for a team */
@@ -604,5 +605,79 @@ export const migrationRouter = router({
       });
 
       return { success: true };
+    }),
+
+  /** Kick off async AI translation — returns immediately with status TRANSLATING */
+  startTranslation: protectedProcedure
+    .input(z.object({ id: z.string(), teamId: z.string() }))
+    .use(withTeamAccess("EDITOR"))
+    .mutation(async ({ input }) => {
+      const project = await prisma.migrationProject.findUnique({
+        where: { id: input.id },
+      });
+
+      if (!project) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Migration project not found",
+        });
+      }
+
+      if (project.teamId !== input.teamId) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Migration project does not belong to this team",
+        });
+      }
+
+      if (!project.parsedTopology) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Config must be parsed before translation. Run parse first.",
+        });
+      }
+
+      if (project.status === "TRANSLATING") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Translation is already in progress.",
+        });
+      }
+
+      // Check if AI is configured for this team
+      const team = await prisma.team.findUnique({
+        where: { id: input.teamId },
+        select: { aiEnabled: true, aiApiKey: true },
+      });
+
+      if (!team?.aiEnabled || !team.aiApiKey) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "AI is not configured for this team. Configure an AI provider in Settings to enable auto-translation.",
+        });
+      }
+
+      await prisma.migrationProject.update({
+        where: { id: input.id },
+        data: { status: "TRANSLATING" },
+      });
+
+      const parsedConfig = project.parsedTopology as unknown as ParsedConfig;
+
+      // Fire-and-forget — do NOT await
+      translateBlocksAsync({
+        projectId: input.id,
+        teamId: input.teamId,
+        parsedConfig,
+        platform: project.platform,
+      }).catch((err) => {
+        errorLog(
+          "migration.startTranslation",
+          `Async translation failed for project ${input.id}`,
+          err,
+        );
+      });
+
+      return { status: "TRANSLATING" as const };
     }),
 });
