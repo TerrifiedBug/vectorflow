@@ -331,18 +331,15 @@ KillMode=mixed
 KillSignal=SIGTERM
 TimeoutStopSec=30
 LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
 UNITEOF
 
-# Inject User=/Group= into the unit if non-root mode is requested.
-# Done via sed after writing so the heredoc stays quoted (no shell expansion),
-# keeping future systemd specifiers like %n or $MAINPID safe.
 if [ -n "${VF_USER}" ]; then
-    sed -i "/^LimitNOFILE=/a User=${VF_USER}\nGroup=${VF_USER}" \
-        "/etc/systemd/system/${SERVICE_NAME}.service"
+    printf 'User=%s\nGroup=%s\n' "${VF_USER}" "${VF_USER}" \
+        >> "/etc/systemd/system/${SERVICE_NAME}.service"
 fi
+
+printf '\n[Install]\nWantedBy=multi-user.target\n' \
+    >> "/etc/systemd/system/${SERVICE_NAME}.service"
 
 # ─────────────────────────────────────────────────
 # Enable and start service
