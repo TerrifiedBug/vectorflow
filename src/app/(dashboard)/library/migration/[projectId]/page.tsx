@@ -13,6 +13,8 @@ import {
   Loader2,
   Download,
   ExternalLink,
+  FileText,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -38,6 +40,7 @@ export default function MigrationProjectPage({
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
 
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [showOriginalConfig, setShowOriginalConfig] = useState(false);
 
   const teamId = selectedTeamId!;
 
@@ -206,6 +209,16 @@ export default function MigrationProjectPage({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Toggle original config */}
+          <Button
+            variant={showOriginalConfig ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setShowOriginalConfig(!showOriginalConfig)}
+          >
+            <FileText className="h-4 w-4 mr-1" />
+            Config
+          </Button>
+
           {/* Translate with AI — always show when parsed */}
           {parsedConfig && !project.generatedPipeline && (
             <Button
@@ -286,19 +299,33 @@ export default function MigrationProjectPage({
         </div>
       </div>
 
-      {/* Three-panel layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left panel: Original config */}
-        <div className="w-1/4 min-w-[200px] border-r overflow-y-auto p-4">
-          <h3 className="text-sm font-semibold mb-2">Original Config</h3>
-          <ConfigViewer
-            config={project.originalConfig}
-            selectedLineRange={selectedBlock?.lineRange ?? null}
-          />
-        </div>
+      {/* Main layout: topology full-width with collapsible side panels */}
+      <div className="relative flex flex-1 overflow-hidden">
+        {/* Left panel: Original config (collapsible overlay) */}
+        {showOriginalConfig && (
+          <div className="absolute inset-y-0 left-0 z-10 w-80 border-r bg-background shadow-lg overflow-y-auto">
+            <div className="flex items-center justify-between p-3 border-b">
+              <h3 className="text-sm font-semibold">Original Config</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={() => setShowOriginalConfig(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-3">
+              <ConfigViewer
+                config={project.originalConfig}
+                selectedLineRange={selectedBlock?.lineRange ?? null}
+              />
+            </div>
+          </div>
+        )}
 
-        {/* Center: Topology */}
-        <div className="flex-1 min-w-[300px] flex flex-col">
+        {/* Center: Topology (always full width) */}
+        <div className="flex-1 flex flex-col">
           {project.validationResult &&
             !(project.validationResult as { valid: boolean }).valid && (
               <div className="px-3 py-2 bg-destructive/10 border-b border-destructive/20 text-xs text-destructive space-y-1">
@@ -309,7 +336,7 @@ export default function MigrationProjectPage({
                   ).length}{" "}
                   error(s)
                 </p>
-                <ul className="font-mono pl-3 space-y-0.5">
+                <ul className="font-mono pl-3 space-y-0.5 max-h-20 overflow-y-auto">
                   {((project.validationResult as { errors: string[] }).errors ?? []).map((err, i) => (
                     <li key={i}>{err}</li>
                   ))}
@@ -337,9 +364,9 @@ export default function MigrationProjectPage({
           )}
         </div>
 
-        {/* Right panel: Block detail */}
-        <div className="w-1/4 min-w-[200px] border-l overflow-y-auto">
-          {selectedBlock ? (
+        {/* Right panel: Block detail (fixed width, only when selected) */}
+        {selectedBlock && (
+          <div className="w-80 border-l overflow-y-auto shrink-0">
             <BlockDetailPanel
               key={selectedBlock.id + (selectedTranslation?.confidence ?? "")}
               block={selectedBlock}
@@ -349,12 +376,8 @@ export default function MigrationProjectPage({
               isRetranslating={retranslateMutation.isPending}
               isSaving={updateBlockMutation.isPending}
             />
-          ) : (
-            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-              Select a block in the topology to view details
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
