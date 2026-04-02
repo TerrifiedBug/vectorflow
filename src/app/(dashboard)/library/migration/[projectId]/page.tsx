@@ -62,18 +62,6 @@ export default function MigrationProjectPage({
     (b) => b.blockId === selectedBlockId,
   ) ?? null;
 
-  const translateMutation = useMutation(
-    trpc.migration.translate.mutationOptions({
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: trpc.migration.get.queryKey() });
-        toast.success("Translation complete");
-      },
-      onError: (err) => {
-        toast.error(err.message);
-      },
-    }),
-  );
-
   const startTranslationMutation = useMutation(
     trpc.migration.startTranslation.mutationOptions(),
   );
