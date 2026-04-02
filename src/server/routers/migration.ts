@@ -554,6 +554,7 @@ export const migrationRouter = router({
       }),
     )
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("migration.block_config_updated", "MigrationProject"))
     .mutation(async ({ input }) => {
       const project = await prisma.migrationProject.findUnique({
         where: { id: input.id },
@@ -611,6 +612,7 @@ export const migrationRouter = router({
   startTranslation: protectedProcedure
     .input(z.object({ id: z.string(), teamId: z.string() }))
     .use(withTeamAccess("EDITOR"))
+    .use(withAudit("migration.translation_started", "MigrationProject"))
     .mutation(async ({ input }) => {
       const project = await prisma.migrationProject.findUnique({
         where: { id: input.id },
