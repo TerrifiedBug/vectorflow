@@ -62,7 +62,7 @@ export async function generateAiRecommendations(): Promise<number> {
 
     for (const rec of recs) {
       try {
-        const prompts = buildCostRecommendationPrompt({
+        const prompts = await buildCostRecommendationPrompt({
           type: rec.type,
           title: rec.title,
           description: rec.description,

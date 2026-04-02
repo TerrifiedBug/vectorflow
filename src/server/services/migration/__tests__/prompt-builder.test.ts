@@ -55,7 +55,7 @@ vi.mock("@/lib/vector/catalog", () => ({
 }));
 
 describe("buildBlockTranslationPrompt", () => {
-  it("includes block type and plugin info", () => {
+  it("includes block type and plugin info", async () => {
     const config = `
 <source>
   @type tail
@@ -64,7 +64,7 @@ describe("buildBlockTranslationPrompt", () => {
 </source>`;
 
     const parsed = parseFluentdConfig(config);
-    const prompt = buildBlockTranslationPrompt({
+    const prompt = await buildBlockTranslationPrompt({
       block: parsed.blocks[0],
       blockIndex: 0,
       totalBlocks: 1,
@@ -76,7 +76,7 @@ describe("buildBlockTranslationPrompt", () => {
     expect(prompt).toContain("path: /var/log/app.log");
   });
 
-  it("includes Ruby expression warnings", () => {
+  it("includes Ruby expression warnings", async () => {
     const config = `
 <source>
   @type tail
@@ -84,7 +84,7 @@ describe("buildBlockTranslationPrompt", () => {
 </source>`;
 
     const parsed = parseFluentdConfig(config);
-    const prompt = buildBlockTranslationPrompt({
+    const prompt = await buildBlockTranslationPrompt({
       block: parsed.blocks[0],
       blockIndex: 0,
       totalBlocks: 1,
@@ -95,7 +95,7 @@ describe("buildBlockTranslationPrompt", () => {
     expect(prompt).toContain("#{ENV['LOG_PATH']}");
   });
 
-  it("includes known mapping hints", () => {
+  it("includes known mapping hints", async () => {
     const config = `
 <source>
   @type tail
@@ -103,7 +103,7 @@ describe("buildBlockTranslationPrompt", () => {
 </source>`;
 
     const parsed = parseFluentdConfig(config);
-    const prompt = buildBlockTranslationPrompt({
+    const prompt = await buildBlockTranslationPrompt({
       block: parsed.blocks[0],
       blockIndex: 0,
       totalBlocks: 1,
@@ -114,7 +114,7 @@ describe("buildBlockTranslationPrompt", () => {
     expect(prompt).toContain('"file"');
   });
 
-  it("includes Vector component suggestions", () => {
+  it("includes Vector component suggestions", async () => {
     const config = `
 <match **>
   @type elasticsearch
@@ -122,7 +122,7 @@ describe("buildBlockTranslationPrompt", () => {
 </match>`;
 
     const parsed = parseFluentdConfig(config);
-    const prompt = buildBlockTranslationPrompt({
+    const prompt = await buildBlockTranslationPrompt({
       block: parsed.blocks[0],
       blockIndex: 0,
       totalBlocks: 1,
@@ -133,14 +133,14 @@ describe("buildBlockTranslationPrompt", () => {
     expect(prompt).toContain("elasticsearch");
   });
 
-  it("includes output format instructions", () => {
+  it("includes output format instructions", async () => {
     const config = `
 <source>
   @type forward
 </source>`;
 
     const parsed = parseFluentdConfig(config);
-    const prompt = buildBlockTranslationPrompt({
+    const prompt = await buildBlockTranslationPrompt({
       block: parsed.blocks[0],
       blockIndex: 0,
       totalBlocks: 1,
@@ -155,7 +155,7 @@ describe("buildBlockTranslationPrompt", () => {
 });
 
 describe("buildMigrationSystemPrompt", () => {
-  it("returns a non-empty system prompt", () => {
+  it("returns a non-empty system prompt", async () => {
     const prompt = buildMigrationSystemPrompt();
 
     expect(prompt.length).toBeGreaterThan(100);

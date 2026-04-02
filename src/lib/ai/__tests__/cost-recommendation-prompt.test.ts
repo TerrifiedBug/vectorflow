@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { buildCostRecommendationPrompt } from "@/lib/ai/cost-recommendation-prompt";
 
 describe("buildCostRecommendationPrompt", () => {
-  it("includes pipeline suggestion schema for LOW_REDUCTION with nodes", () => {
-    const result = buildCostRecommendationPrompt({
+  it("includes pipeline suggestion schema for LOW_REDUCTION with nodes", async () => {
+    const result = await buildCostRecommendationPrompt({
       type: "LOW_REDUCTION",
       title: 'Pipeline "nginx-logs" has minimal data reduction',
       description: "This pipeline processed 50 GB...",
@@ -26,8 +26,8 @@ describe("buildCostRecommendationPrompt", () => {
     expect(result.user).toContain("nginx-logs");
   });
 
-  it("includes VRL reference for recommendations that may need VRL changes", () => {
-    const result = buildCostRecommendationPrompt({
+  it("includes VRL reference for recommendations that may need VRL changes", async () => {
+    const result = await buildCostRecommendationPrompt({
       type: "HIGH_ERROR_RATE",
       title: "High errors",
       description: "10% error rate",
@@ -42,8 +42,8 @@ describe("buildCostRecommendationPrompt", () => {
     expect(result.system).toContain("VRL Function Reference");
   });
 
-  it("omits VRL reference for STALE_PIPELINE (no code changes needed)", () => {
-    const result = buildCostRecommendationPrompt({
+  it("omits VRL reference for STALE_PIPELINE (no code changes needed)", async () => {
+    const result = await buildCostRecommendationPrompt({
       type: "STALE_PIPELINE",
       title: "Stale pipeline",
       description: "No data in 7 days",
@@ -57,8 +57,8 @@ describe("buildCostRecommendationPrompt", () => {
     expect(result.user).toContain("STALE_PIPELINE");
   });
 
-  it("returns user prompt with analysis data", () => {
-    const result = buildCostRecommendationPrompt({
+  it("returns user prompt with analysis data", async () => {
+    const result = await buildCostRecommendationPrompt({
       type: "HIGH_ERROR_RATE",
       title: "High error rate",
       description: "Pipeline has elevated error rate",

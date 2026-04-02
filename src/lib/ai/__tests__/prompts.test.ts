@@ -13,34 +13,34 @@ import {
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe("buildVrlSystemPrompt", () => {
-  it("includes VRL function reference", () => {
-    const result = buildVrlSystemPrompt({});
+  it("includes VRL function reference", async () => {
+    const result = await buildVrlSystemPrompt({});
     expect(result).toContain("STUB_VRL_REFERENCE");
   });
 
-  it("includes fields when provided", () => {
-    const result = buildVrlSystemPrompt({
+  it("includes fields when provided", async () => {
+    const result = await buildVrlSystemPrompt({
       fields: [{ name: "message", type: "string" }],
     });
     expect(result).toContain(".message (string)");
   });
 
-  it("includes currentCode when provided", () => {
-    const result = buildVrlSystemPrompt({
+  it("includes currentCode when provided", async () => {
+    const result = await buildVrlSystemPrompt({
       currentCode: '.tag = "hello"',
     });
     expect(result).toContain('.tag = "hello"');
   });
 
-  it("includes sourceTypes when provided", () => {
-    const result = buildVrlSystemPrompt({
+  it("includes sourceTypes when provided", async () => {
+    const result = await buildVrlSystemPrompt({
       sourceTypes: ["syslog", "kafka"],
     });
     expect(result).toContain("syslog, kafka");
   });
 
-  it("includes componentType when provided", () => {
-    const result = buildVrlSystemPrompt({
+  it("includes componentType when provided", async () => {
+    const result = await buildVrlSystemPrompt({
       componentType: "remap",
     });
     expect(result).toContain("remap");
@@ -48,35 +48,35 @@ describe("buildVrlSystemPrompt", () => {
 });
 
 describe("buildVrlChatSystemPrompt", () => {
-  it("includes VRL function reference", () => {
-    const result = buildVrlChatSystemPrompt({});
+  it("includes VRL function reference", async () => {
+    const result = await buildVrlChatSystemPrompt({});
     expect(result).toContain("STUB_VRL_REFERENCE");
   });
 
-  it("includes JSON response format instructions", () => {
-    const result = buildVrlChatSystemPrompt({});
+  it("includes JSON response format instructions", async () => {
+    const result = await buildVrlChatSystemPrompt({});
     expect(result).toContain("insert_code");
     expect(result).toContain("replace_code");
     expect(result).toContain("remove_code");
     expect(result).toContain("summary");
   });
 
-  it("includes fields when provided", () => {
-    const result = buildVrlChatSystemPrompt({
+  it("includes fields when provided", async () => {
+    const result = await buildVrlChatSystemPrompt({
       fields: [{ name: "host", type: "string" }],
     });
     expect(result).toContain(".host (string)");
   });
 
-  it("includes currentCode when provided", () => {
-    const result = buildVrlChatSystemPrompt({
+  it("includes currentCode when provided", async () => {
+    const result = await buildVrlChatSystemPrompt({
       currentCode: ".x = 1",
     });
     expect(result).toContain(".x = 1");
   });
 
-  it("includes error context when provided", () => {
-    const result = buildVrlChatSystemPrompt({
+  it("includes error context when provided", async () => {
+    const result = await buildVrlChatSystemPrompt({
       currentCode: ".x = 1",
       errorContext: '[2026-03-31T10:00:00Z] ERROR: function call error for "downcase" in remap transform',
     });
@@ -84,21 +84,21 @@ describe("buildVrlChatSystemPrompt", () => {
     expect(result).toContain("downcase");
   });
 
-  it("omits error section when no errors", () => {
-    const result = buildVrlChatSystemPrompt({ currentCode: ".x = 1" });
+  it("omits error section when no errors", async () => {
+    const result = await buildVrlChatSystemPrompt({ currentCode: ".x = 1" });
     expect(result).not.toContain("Recent Errors");
   });
 });
 
 describe("buildPipelineSystemPrompt", () => {
   describe("generate mode", () => {
-    it("includes Vector YAML generation instructions", () => {
+    it("includes Vector YAML generation instructions", async () => {
       const result = buildPipelineSystemPrompt({ mode: "generate" });
       expect(result).toContain("Vector pipeline generator");
       expect(result).toContain("YAML");
     });
 
-    it("includes currentYaml when provided", () => {
+    it("includes currentYaml when provided", async () => {
       const result = buildPipelineSystemPrompt({
         mode: "generate",
         currentYaml: "sources:\n  my_src:\n    type: demo_logs",
@@ -106,7 +106,7 @@ describe("buildPipelineSystemPrompt", () => {
       expect(result).toContain("my_src");
     });
 
-    it("includes environmentName when provided", () => {
+    it("includes environmentName when provided", async () => {
       const result = buildPipelineSystemPrompt({
         mode: "generate",
         environmentName: "production",
@@ -116,21 +116,21 @@ describe("buildPipelineSystemPrompt", () => {
   });
 
   describe("review mode", () => {
-    it("includes JSON response format instructions", () => {
+    it("includes JSON response format instructions", async () => {
       const result = buildPipelineSystemPrompt({ mode: "review" });
       expect(result).toContain("JSON");
       expect(result).toContain("modify_config");
       expect(result).toContain("modify_vrl");
     });
 
-    it("includes suggestion type documentation", () => {
+    it("includes suggestion type documentation", async () => {
       const result = buildPipelineSystemPrompt({ mode: "review" });
       expect(result).toContain("add_component");
       expect(result).toContain("remove_component");
       expect(result).toContain("modify_connections");
     });
 
-    it("includes currentYaml when provided", () => {
+    it("includes currentYaml when provided", async () => {
       const result = buildPipelineSystemPrompt({
         mode: "review",
         currentYaml: "transforms:\n  parse:\n    type: remap",
@@ -140,7 +140,7 @@ describe("buildPipelineSystemPrompt", () => {
   });
 
   describe("metric context integration", () => {
-    it("includes metric context section in review mode when provided", () => {
+    it("includes metric context section in review mode when provided", async () => {
       const metricText = 'Component "kafka_source": recv=100.0 ev/s, sent=95.0 ev/s, errors=2 (0.3/s), latency=5.0ms';
       const result = buildPipelineSystemPrompt({
         mode: "review",
@@ -150,7 +150,7 @@ describe("buildPipelineSystemPrompt", () => {
       expect(result).toContain(metricText);
     });
 
-    it("includes instruction to flag high error rates", () => {
+    it("includes instruction to flag high error rates", async () => {
       const result = buildPipelineSystemPrompt({
         mode: "review",
         metricContext: "some metrics",
@@ -158,12 +158,12 @@ describe("buildPipelineSystemPrompt", () => {
       expect(result).toContain("flag components with high error rates");
     });
 
-    it("omits metric section in review mode when metricContext is undefined", () => {
+    it("omits metric section in review mode when metricContext is undefined", async () => {
       const result = buildPipelineSystemPrompt({ mode: "review" });
       expect(result).not.toContain("Live Pipeline Metrics");
     });
 
-    it("omits metric section in generate mode even when metricContext is provided", () => {
+    it("omits metric section in generate mode even when metricContext is provided", async () => {
       const result = buildPipelineSystemPrompt({
         mode: "generate",
         metricContext: "some metrics",
@@ -173,12 +173,12 @@ describe("buildPipelineSystemPrompt", () => {
     });
   });
 
-  it("includes VRL function reference in review mode", () => {
+  it("includes VRL function reference in review mode", async () => {
     const result = buildPipelineSystemPrompt({ mode: "review" });
     expect(result).toContain("VRL Function Reference");
   });
 
-  it("does not include VRL reference in generate mode", () => {
+  it("does not include VRL reference in generate mode", async () => {
     const result = buildPipelineSystemPrompt({ mode: "generate" });
     expect(result).not.toContain("VRL Function Reference");
   });
