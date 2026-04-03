@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/TerrifiedBug/vectorflow/agent/internal/tapper"
 )
 
 type Client struct {
@@ -337,5 +339,35 @@ func (c *Client) SendSampleResults(results []SampleResultMsg) error {
 		return fmt.Errorf("sample results failed (status %d): %s", resp.StatusCode, string(respBody))
 	}
 	slog.Debug("http response", "method", "POST", "url", "/api/agent/samples", "status", 200)
+	return nil
+}
+
+// SendTapEvents sends a tap result (event batch or stopped signal) to POST /api/agent/tap-events.
+func (c *Client) SendTapEvents(result tapper.TapResult) error {
+	body, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("marshal tap result: %w", err)
+	}
+
+	httpReq, err := http.NewRequest("POST", c.baseURL+"/api/agent/tap-events", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create tap-events request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+c.nodeToken)
+
+	slog.Debug("http request", "method", "POST", "url", c.baseURL+"/api/agent/tap-events")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		slog.Debug("http error", "method", "POST", "url", "/api/agent/tap-events", "error", err)
+		return fmt.Errorf("tap-events request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		slog.Debug("http response", "method", "POST", "url", "/api/agent/tap-events", "status", resp.StatusCode, "body", string(respBody))
+		return fmt.Errorf("tap-events failed (status %d): %s", resp.StatusCode, string(respBody))
+	}
 	return nil
 }
