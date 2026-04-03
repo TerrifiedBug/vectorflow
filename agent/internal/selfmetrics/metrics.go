@@ -99,11 +99,8 @@ type Snapshot struct {
 }
 
 // Snap returns a consistent read of all agent metrics at this instant.
+// All fields use atomic operations; no mutex is required here.
 func (m *Metrics) Snap() Snapshot {
-	m.pollDurationMu.Lock()
-	_ = m.pollDuration // not in snapshot, but reads are safe under lock
-	m.pollDurationMu.Unlock()
-
 	return Snapshot{
 		PollErrorsTotal:      m.pollErrors.Load(),
 		PushReconnectsTotal:  m.pushReconnects.Load(),
