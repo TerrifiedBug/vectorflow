@@ -263,6 +263,36 @@ func (s *Supervisor) Restart(pipelineID, configPath string, version int, logLeve
 	return s.startProcess(pipelineID, configPath, version, logLevel, secrets, metricsPort, apiPort)
 }
 
+// RestartInPlace restarts a pipeline using its currently stored config.
+// Used by push-triggered restarts where the config has not changed.
+func (s *Supervisor) RestartInPlace(pipelineID string) error {
+	s.mu.Lock()
+	info, exists := s.processes[pipelineID]
+	if !exists {
+		s.mu.Unlock()
+		return fmt.Errorf("pipeline %s not found", pipelineID)
+	}
+	// Copy config fields and atomically remove the entry from the map while
+	// still holding the lock. This closes the TOCTOU window where the
+	// crash-recovery goroutine could replace s.processes[pipelineID] with a
+	// newly-recovered process between our read and the subsequent Stop call,
+	// which would cause Stop to kill the recovered process instead.
+	configPath := info.configPath
+	version := info.Version
+	logLevel := info.LogLevel
+	secrets := info.Secrets
+	delete(s.processes, pipelineID)
+	s.mu.Unlock()
+
+	s.stopProcess(info)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	metricsPort := s.nextPort()
+	apiPort := s.nextPort()
+	return s.startProcess(pipelineID, configPath, version, logLevel, secrets, metricsPort, apiPort)
+}
+
 // UpdateVersion updates the reported version for a pipeline without restarting.
 // Used when a new deploy creates a version with identical config.
 func (s *Supervisor) UpdateVersion(pipelineID string, version int) {
