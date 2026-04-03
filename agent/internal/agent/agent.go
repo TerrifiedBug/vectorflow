@@ -15,9 +15,10 @@ import (
 
 	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/push"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/sampler"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/supervisor"
-	"github.com/TerrifiedBug/vectorflow/agent/internal/push"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/tapper"
 )
 
 var Version = "dev"
@@ -27,6 +28,7 @@ type Agent struct {
 	client         *client.Client
 	poller         *poller
 	supervisor     *supervisor.Supervisor
+	tapManager     *tapper.Manager
 	vectorVersion  string
 	deploymentMode string
 	labels         map[string]string
@@ -67,6 +69,7 @@ func New(cfg *config.Config) (*Agent, error) {
 		client:         c,
 		poller:         newPoller(cfg, c),
 		supervisor:     sup,
+		tapManager:     tapper.New(cfg.VectorBin),
 		vectorVersion:  vectorVersion,
 		deploymentMode: deploymentMode,
 		labels:         labels,
@@ -139,6 +142,7 @@ func (a *Agent) Run() error {
 			if a.immediateHeartbeat != nil {
 				a.immediateHeartbeat.Stop()
 			}
+			a.tapManager.StopAll()
 			a.supervisor.ShutdownAll()
 			slog.Info("agent stopped")
 			return nil
@@ -468,6 +472,14 @@ func (a *Agent) handlePushMessage(msg push.PushMessage, ticker *time.Ticker) {
 			slog.Info("push: poll interval changed", "intervalMs", msg.IntervalMs)
 		}
 
+	case "tap_start":
+		slog.Info("push: tap start request", "requestId", msg.RequestID, "pipeline", msg.PipelineID, "component", msg.ComponentID)
+		a.handleTapStart(msg)
+
+	case "tap_stop":
+		slog.Info("push: tap stop request", "requestId", msg.RequestID)
+		a.handleTapStop(msg)
+
 	default:
 		slog.Warn("push: unknown message type", "type", msg.Type)
 	}
@@ -554,4 +566,38 @@ func (a *Agent) processSampleRequestsAndSend(requests []client.SampleRequestMsg)
 			}(req.RequestID, s.APIPort, key, req.Limit)
 		}
 	}
+}
+
+// handleTapStart validates the push message and starts a long-lived tap subprocess.
+func (a *Agent) handleTapStart(msg push.PushMessage) {
+	if msg.RequestID == "" || msg.PipelineID == "" || msg.ComponentID == "" {
+		slog.Warn("tap_start: missing required fields", "requestId", msg.RequestID, "pipelineId", msg.PipelineID, "componentId", msg.ComponentID)
+		return
+	}
+
+	statuses := a.supervisor.Statuses()
+	var apiPort int
+	for _, s := range statuses {
+		if s.PipelineID == msg.PipelineID && s.Status == "RUNNING" {
+			apiPort = s.APIPort
+			break
+		}
+	}
+	if apiPort == 0 {
+		slog.Warn("tap_start: pipeline not running or no API port", "pipelineId", msg.PipelineID)
+		return
+	}
+
+	sendFn := func(result tapper.TapResult) error {
+		return a.client.SendTapEvents(result)
+	}
+
+	if err := a.tapManager.Start(msg.RequestID, msg.PipelineID, msg.ComponentID, apiPort, sendFn); err != nil {
+		slog.Error("tap_start: failed to start tap", "requestId", msg.RequestID, "error", err)
+	}
+}
+
+// handleTapStop cancels a running tap subprocess.
+func (a *Agent) handleTapStop(msg push.PushMessage) {
+	a.tapManager.Stop(msg.RequestID)
 }
