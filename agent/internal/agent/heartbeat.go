@@ -79,12 +79,8 @@ func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string, deployment
 		// Include config checksum from last applied config
 		ps.ConfigChecksum = s.ConfigChecksum
 
-		// Include recent stdout/stderr lines (max 100 per heartbeat)
-		logs := sup.GetRecentLogs(s.PipelineID)
-		if len(logs) > 100 {
-			logs = logs[len(logs)-100:]
-		}
-		ps.RecentLogs = logs
+		// Logs are now flushed by the dedicated log flusher goroutine.
+		// RecentLogs field is kept on the struct for backward compat but no longer populated here.
 
 		pipelines = append(pipelines, ps)
 	}

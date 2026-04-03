@@ -18,6 +18,8 @@ const EVENT_TYPES: SSEEvent["type"][] = [
   "fleet_status",
   "log_entry",
   "status_change",
+  "tap_event",
+  "tap_stopped",
 ];
 
 // ── Types ────────────────────────────────────────────────────────────
