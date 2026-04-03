@@ -12,7 +12,9 @@ export type PushMessage =
   | ConfigChangedMessage
   | SampleRequestMessage
   | ActionMessage
-  | PollIntervalMessage;
+  | PollIntervalMessage
+  | TapStartMessage
+  | TapStopMessage;
 
 /** Notification that pipeline config has changed. Agent should re-poll immediately. */
 export interface ConfigChangedMessage {
@@ -42,4 +44,18 @@ export interface ActionMessage {
 export interface PollIntervalMessage {
   type: "poll_interval";
   intervalMs: number;
+}
+
+/** Request agent to start a live tap on a component. */
+export interface TapStartMessage {
+  type: "tap_start";
+  requestId: string;
+  pipelineId: string;
+  componentId: string;
+}
+
+/** Request agent to stop a live tap. */
+export interface TapStopMessage {
+  type: "tap_stop";
+  requestId: string;
 }

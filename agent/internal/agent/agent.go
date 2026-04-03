@@ -15,9 +15,10 @@ import (
 
 	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/push"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/sampler"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/supervisor"
-	"github.com/TerrifiedBug/vectorflow/agent/internal/push"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/tapper"
 )
 
 var Version = "dev"
@@ -27,6 +28,7 @@ type Agent struct {
 	client         *client.Client
 	poller         *poller
 	supervisor     *supervisor.Supervisor
+	tapManager     *tapper.Manager
 	vectorVersion  string
 	deploymentMode string
 	labels         map[string]string
@@ -67,6 +69,7 @@ func New(cfg *config.Config) (*Agent, error) {
 		client:         c,
 		poller:         newPoller(cfg, c),
 		supervisor:     sup,
+		tapManager:     tapper.New(cfg.VectorBin),
 		vectorVersion:  vectorVersion,
 		deploymentMode: deploymentMode,
 		labels:         labels,
@@ -124,6 +127,8 @@ func (a *Agent) Run() error {
 	go a.pushClient.Connect()
 	slog.Info("push client started", "url", pushURL, "fallback", derivedURL)
 
+	go a.runLogFlusher(ctx)
+
 	a.sendHeartbeat()
 	currentInterval = a.maybeResetTicker(ticker, currentInterval)
 
@@ -137,6 +142,7 @@ func (a *Agent) Run() error {
 			if a.immediateHeartbeat != nil {
 				a.immediateHeartbeat.Stop()
 			}
+			a.tapManager.StopAll()
 			a.supervisor.ShutdownAll()
 			slog.Info("agent stopped")
 			return nil
@@ -267,6 +273,92 @@ func (a *Agent) sendHeartbeat() {
 	}
 }
 
+// collectLogs drains the ring buffer for every running pipeline and returns non-empty batches.
+func (a *Agent) collectLogs() []client.LogBatch {
+	statuses := a.supervisor.Statuses()
+	var batches []client.LogBatch
+	for _, s := range statuses {
+		lines := a.supervisor.GetRecentLogs(s.PipelineID)
+		if len(lines) > 0 {
+			batches = append(batches, client.LogBatch{
+				PipelineID: s.PipelineID,
+				Lines:      lines,
+			})
+		}
+	}
+	return batches
+}
+
+// runLogFlusher periodically drains pipeline log buffers and sends them to the server.
+// On failure, overflow lines are retained (capped at 500 total) and prepended to the next flush.
+func (a *Agent) runLogFlusher(ctx context.Context) {
+	ticker := time.NewTicker(a.cfg.LogFlushInterval)
+	defer ticker.Stop()
+
+	var overflow []client.LogBatch
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			batches := a.collectLogs()
+
+			// Prepend overflow from a previous failed send
+			if len(overflow) > 0 {
+				merged := make(map[string][]string, len(overflow)+len(batches))
+				for _, b := range overflow {
+					merged[b.PipelineID] = append(merged[b.PipelineID], b.Lines...)
+				}
+				for _, b := range batches {
+					merged[b.PipelineID] = append(merged[b.PipelineID], b.Lines...)
+				}
+				batches = batches[:0]
+				for pid, lines := range merged {
+					batches = append(batches, client.LogBatch{PipelineID: pid, Lines: lines})
+				}
+				overflow = nil
+			}
+
+			if len(batches) == 0 {
+				continue
+			}
+
+			if err := a.client.SendLogs(batches); err != nil {
+				slog.Warn("log flush error", "error", err)
+				// Cap overflow at 500 total lines across all pipelines
+				const maxOverflow = 500
+				total := 0
+				for _, b := range batches {
+					total += len(b.Lines)
+				}
+				if total > maxOverflow {
+					// Trim from the front (oldest) to fit within cap
+					remaining := maxOverflow
+					var trimmed []client.LogBatch
+					for i := len(batches) - 1; i >= 0 && remaining > 0; i-- {
+						b := batches[i]
+						if len(b.Lines) <= remaining {
+							trimmed = append([]client.LogBatch{b}, trimmed...)
+							remaining -= len(b.Lines)
+						} else {
+							trimmed = append([]client.LogBatch{{
+								PipelineID: b.PipelineID,
+								Lines:      b.Lines[len(b.Lines)-remaining:],
+							}}, trimmed...)
+							remaining = 0
+						}
+					}
+					batches = trimmed
+				}
+				overflow = batches
+			} else {
+				slog.Debug("logs flushed", "batches", len(batches))
+			}
+		}
+	}
+}
+
 // processSampleRequests launches goroutines to run vector tap for each sample request.
 // Results are appended to a.sampleResults under mutex and sent in the next heartbeat.
 func (a *Agent) processSampleRequests(requests []client.SampleRequestMsg) {
@@ -380,6 +472,14 @@ func (a *Agent) handlePushMessage(msg push.PushMessage, ticker *time.Ticker) {
 			slog.Info("push: poll interval changed", "intervalMs", msg.IntervalMs)
 		}
 
+	case "tap_start":
+		slog.Info("push: tap start request", "requestId", msg.RequestID, "pipeline", msg.PipelineID, "component", msg.ComponentID)
+		a.handleTapStart(msg)
+
+	case "tap_stop":
+		slog.Info("push: tap stop request", "requestId", msg.RequestID)
+		a.handleTapStop(msg)
+
 	default:
 		slog.Warn("push: unknown message type", "type", msg.Type)
 	}
@@ -466,4 +566,38 @@ func (a *Agent) processSampleRequestsAndSend(requests []client.SampleRequestMsg)
 			}(req.RequestID, s.APIPort, key, req.Limit)
 		}
 	}
+}
+
+// handleTapStart validates the push message and starts a long-lived tap subprocess.
+func (a *Agent) handleTapStart(msg push.PushMessage) {
+	if msg.RequestID == "" || msg.PipelineID == "" || msg.ComponentID == "" {
+		slog.Warn("tap_start: missing required fields", "requestId", msg.RequestID, "pipelineId", msg.PipelineID, "componentId", msg.ComponentID)
+		return
+	}
+
+	statuses := a.supervisor.Statuses()
+	var apiPort int
+	for _, s := range statuses {
+		if s.PipelineID == msg.PipelineID && s.Status == "RUNNING" {
+			apiPort = s.APIPort
+			break
+		}
+	}
+	if apiPort == 0 {
+		slog.Warn("tap_start: pipeline not running or no API port", "pipelineId", msg.PipelineID)
+		return
+	}
+
+	sendFn := func(result tapper.TapResult) error {
+		return a.client.SendTapEvents(result)
+	}
+
+	if err := a.tapManager.Start(msg.RequestID, msg.PipelineID, msg.ComponentID, apiPort, sendFn); err != nil {
+		slog.Error("tap_start: failed to start tap", "requestId", msg.RequestID, "error", err)
+	}
+}
+
+// handleTapStop cancels a running tap subprocess.
+func (a *Agent) handleTapStop(msg push.PushMessage) {
+	a.tapManager.Stop(msg.RequestID)
 }
