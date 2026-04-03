@@ -179,39 +179,29 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     sourceTypes,
   });
 
-  const applyValidationMarkers = useCallback((markers: import("monaco-editor").editor.IMarkerData[]) => {
-    pendingMarkersRef.current = markers;
+  const applyValidationMarkers = useCallback((errors: Array<{ line: number; column: number; message: string }>) => {
     const monaco = monacoRef.current;
     const model = editorRef.current?.getModel();
-    if (!monaco || !model) return;
+    if (!monaco || !model) {
+      pendingMarkersRef.current = [];
+      return;
+    }
+    const markers = errors
+      .filter((e) => e.line > 0)
+      .map((e) => ({
+        severity: monaco.MarkerSeverity.Error,
+        startLineNumber: e.line,
+        startColumn: e.column,
+        endLineNumber: e.line,
+        endColumn: Math.max(e.column + 1, model.getLineLength(e.line) + 1),
+        message: e.message,
+      }));
+    pendingMarkersRef.current = markers;
     monaco.editor.setModelMarkers(model, "vrl-validate", markers);
   }, []);
 
   const validateMutation = useMutation(
-    trpc.vrl.validate.mutationOptions({
-      onSuccess: (data) => {
-        const monaco = monacoRef.current;
-        if (!monaco) {
-          pendingMarkersRef.current = [];
-          return;
-        }
-        const markers = data.errors
-          .filter((e) => e.line > 0)
-          .map((e) => {
-            const model = editorRef.current?.getModel();
-            const lineLength = model ? model.getLineLength(e.line) : 0;
-            return {
-              severity: monaco.MarkerSeverity.Error,
-              startLineNumber: e.line,
-              startColumn: e.column,
-              endLineNumber: e.line,
-              endColumn: Math.max(e.column + 1, lineLength + 1),
-              message: e.message,
-            };
-          });
-        applyValidationMarkers(markers);
-      },
-    }),
+    trpc.vrl.validate.mutationOptions(),
   );
 
   const testMutation = useMutation(
@@ -285,7 +275,10 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
       return;
     }
     validateDebounceRef.current = setTimeout(() => {
-      runValidate({ source: value });
+      runValidate(
+        { source: value },
+        { onSuccess: (data) => applyValidationMarkers(data.errors) },
+      );
     }, 500);
     return () => {
       if (validateDebounceRef.current) clearTimeout(validateDebounceRef.current);
