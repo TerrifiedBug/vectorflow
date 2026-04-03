@@ -10,6 +10,12 @@ import { authConfig } from "@/auth.config";
 import { writeAuditLog } from "@/server/services/audit";
 import { debugLog, infoLog, warnLog } from "@/lib/logger";
 import { headers } from "next/headers";
+import {
+  loginAttemptTracker,
+  getRemainingLockSeconds,
+  ACCOUNT_LOCKOUT_THRESHOLD,
+  TOTP_RATE_LIMIT,
+} from "@/server/services/login-protection";
 
 async function getClientIp(): Promise<string | null> {
   try {
@@ -91,12 +97,25 @@ const credentialsProvider = Credentials({
       }).catch(() => {});
       return null;
     }
+
+    // Check account lockout. Brute-force locks auto-expire after 15 minutes;
+    // admin-imposed locks never expire automatically.
     if (user.lockedAt) {
-      writeAuditLog({
-        userId: user.id, action: "auth.login_failed", entityType: "Auth", entityId: "credentials",
-        ipAddress, userEmail: user.email, userName: user.name, metadata: { reason: "account_locked" },
-      }).catch(() => {});
-      return null;
+      const remainingSecs = getRemainingLockSeconds(user.lockedAt, user.lockedBy);
+      if (remainingSecs > 0) {
+        writeAuditLog({
+          userId: user.id, action: "auth.login_failed", entityType: "Auth", entityId: "credentials",
+          ipAddress, userEmail: user.email, userName: user.name,
+          metadata: { reason: "account_locked", remainingSeconds: remainingSecs },
+        }).catch(() => {});
+        return null;
+      }
+      // Lock has expired — clear it so this attempt can proceed
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lockedAt: null, lockedBy: null },
+      });
+      loginAttemptTracker.clearFailures(email);
     }
 
     const valid = await bcrypt.compare(
@@ -104,10 +123,26 @@ const credentialsProvider = Credentials({
       user.passwordHash
     );
     if (!valid) {
-      writeAuditLog({
-        userId: user.id, action: "auth.login_failed", entityType: "Auth", entityId: "credentials",
-        ipAddress, userEmail: user.email, userName: user.name, metadata: { reason: "invalid_password" },
-      }).catch(() => {});
+      const failures = loginAttemptTracker.recordFailure(email);
+      const shouldLock = failures >= ACCOUNT_LOCKOUT_THRESHOLD;
+
+      if (shouldLock) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lockedAt: new Date(), lockedBy: "brute_force" },
+        });
+        writeAuditLog({
+          userId: user.id, action: "auth.account_locked", entityType: "Auth", entityId: "credentials",
+          ipAddress, userEmail: user.email, userName: user.name,
+          metadata: { reason: "brute_force", failedAttempts: failures },
+        }).catch(() => {});
+      } else {
+        writeAuditLog({
+          userId: user.id, action: "auth.login_failed", entityType: "Auth", entityId: "credentials",
+          ipAddress, userEmail: user.email, userName: user.name,
+          metadata: { reason: "invalid_password", failedAttempts: failures, lockoutAt: ACCOUNT_LOCKOUT_THRESHOLD },
+        }).catch(() => {});
+      }
       return null;
     }
 
@@ -138,13 +173,33 @@ const credentialsProvider = Credentials({
       }
 
       if (!codeValid) {
-        writeAuditLog({
-          userId: user.id, action: "auth.login_failed", entityType: "Auth", entityId: "credentials",
-          ipAddress, userEmail: user.email, userName: user.name, metadata: { reason: "invalid_totp" },
-        }).catch(() => {});
+        // Count invalid TOTP as a login failure (brute-force protection)
+        const failures = loginAttemptTracker.recordFailure(email);
+        const shouldLock = failures >= TOTP_RATE_LIMIT || failures >= ACCOUNT_LOCKOUT_THRESHOLD;
+
+        if (shouldLock) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { lockedAt: new Date(), lockedBy: "brute_force" },
+          });
+          writeAuditLog({
+            userId: user.id, action: "auth.account_locked", entityType: "Auth", entityId: "credentials",
+            ipAddress, userEmail: user.email, userName: user.name,
+            metadata: { reason: "totp_brute_force", failedAttempts: failures },
+          }).catch(() => {});
+        } else {
+          writeAuditLog({
+            userId: user.id, action: "auth.login_failed", entityType: "Auth", entityId: "credentials",
+            ipAddress, userEmail: user.email, userName: user.name,
+            metadata: { reason: "invalid_totp", failedAttempts: failures, lockoutAt: ACCOUNT_LOCKOUT_THRESHOLD },
+          }).catch(() => {});
+        }
         throw new InvalidVerificationCodeError();
       }
     }
+
+    // Successful login — clear any in-memory failure counter
+    loginAttemptTracker.clearFailures(email);
 
     writeAuditLog({
       userId: user.id, action: "auth.login_success", entityType: "Auth", entityId: "credentials",
