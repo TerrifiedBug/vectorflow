@@ -2,6 +2,8 @@
 
 The VectorFlow agent is a lightweight Go binary that runs on each node where you want to execute Vector pipelines. It has zero external dependencies -- a single binary is all you need. The agent communicates with the VectorFlow server to receive pipeline configurations, report status and metrics, and apply updates.
 
+See also: [Agent Architecture](./agent-architecture.md) — internal component map, port allocation, and concurrency model. [Agent Troubleshooting](./agent-troubleshooting.md) — step-by-step fixes for the most common operational issues.
+
 ## Overview
 
 - **Single binary**: No runtime dependencies, no package managers. Download and run.
@@ -74,9 +76,11 @@ After each poll, the agent sends a heartbeat (`POST /api/agent/heartbeat`) that 
 | `VF_TOKEN` | On first run | -- | Enrollment token from the VectorFlow UI. Not needed after initial enrollment. |
 | `VF_DATA_DIR` | No | `/var/lib/vf-agent` | Directory for node token, pipeline configs, and certificate files |
 | `VF_VECTOR_BIN` | No | `vector` | Path to the Vector binary. Use if Vector is not on the system `PATH`. |
-| `VF_POLL_INTERVAL` | No | `15s` | How often to poll the server for config changes. Accepts Go duration syntax (e.g., `10s`, `1m`). |
+| `VF_POLL_INTERVAL` | No | `5s` | How often to poll the server for config changes. Accepts Go duration syntax (e.g., `10s`, `1m`). |
+| `VF_LOG_FLUSH_INTERVAL` | No | `2s` | How often to flush pipeline log buffers to the server. |
 | `VF_LOG_LEVEL` | No | `info` | Agent log level: `debug`, `info`, `warn`, `error` |
-| `VF_LABELS` | No | -- | Comma-separated key=value pairs reported to the server on each heartbeat (e.g., `region=us-east-1,tier=production`). Labels set via the UI take precedence over agent-reported values. Used for selective pipeline deployment. |
+| `VF_NODE_LABELS` | No | -- | Comma-separated key=value pairs reported to the server on each heartbeat (e.g., `region=us-east-1,tier=production`). Labels set via the UI take precedence over agent-reported values. Used for selective pipeline deployment. |
+| `VF_METRICS_PORT` | No | `9090` | Port for the agent's own Prometheus metrics endpoint (`/metrics`). Set to `0` to disable. |
 
 {% hint style="warning" %}
 `VF_URL` is the only strictly required variable. However, `VF_TOKEN` must be set on the first run for enrollment. After the agent writes its node token to disk, `VF_TOKEN` can be removed.

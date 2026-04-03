@@ -43,5 +43,7 @@
 
 * [API Reference](reference/api.md)
 * [Agent Reference](reference/agent.md)
+* [Agent Architecture](reference/agent-architecture.md)
+* [Agent Troubleshooting](reference/agent-troubleshooting.md)
 * [Database Schema](reference/database.md)
 * [Pipeline YAML](reference/pipeline-yaml.md)
