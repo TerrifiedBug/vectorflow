@@ -5,6 +5,8 @@
 package selfmetrics
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -166,16 +168,27 @@ func (m *Metrics) Handler() http.Handler {
 }
 
 // Serve starts a blocking HTTP server on the given port exposing /metrics.
-// It is meant to be called in a dedicated goroutine.
-func (m *Metrics) Serve(port int) error {
+// It is meant to be called in a dedicated goroutine. The server shuts down
+// gracefully when ctx is cancelled. Returns nil if the server was closed via
+// context cancellation.
+func (m *Metrics) Serve(ctx context.Context, port int) error {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", m.Handler())
 	addr := fmt.Sprintf(":%d", port)
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
-	return srv.ListenAndServe()
+	go func() {
+		<-ctx.Done()
+		_ = srv.Shutdown(context.Background())
+	}()
+	err := srv.ListenAndServe()
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
 }
 
 // --- text format helpers ---

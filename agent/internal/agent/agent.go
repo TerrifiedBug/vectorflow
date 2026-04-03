@@ -103,19 +103,20 @@ func (a *Agent) Run() error {
 	slog.Info("VectorFlow Agent starting", "version", Version, "vector", a.vectorVersion)
 	slog.Info("polling configured", "url", a.cfg.URL, "interval", a.cfg.PollInterval)
 
+	// Set up signal handling for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Start self-metrics HTTP server (port 0 = disabled by operator).
+	// Launched after ctx is created so the server shuts down cleanly on SIGTERM.
 	if a.cfg.MetricsPort > 0 {
 		go func() {
 			slog.Info("self-metrics server starting", "port", a.cfg.MetricsPort)
-			if err := a.metrics.Serve(a.cfg.MetricsPort); err != nil {
+			if err := a.metrics.Serve(ctx, a.cfg.MetricsPort); err != nil {
 				slog.Error("self-metrics server error", "error", err)
 			}
 		}()
 	}
-
-	// Set up signal handling for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
