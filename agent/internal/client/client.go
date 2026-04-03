@@ -269,6 +269,42 @@ func (c *Client) SendHeartbeat(req HeartbeatRequest) error {
 	return nil
 }
 
+// LogBatch holds log lines for a single pipeline, sent via the dedicated log endpoint.
+type LogBatch struct {
+	PipelineID string   `json:"pipelineId"`
+	Lines      []string `json:"lines"`
+}
+
+// SendLogs sends log batches to POST /api/agent/logs.
+func (c *Client) SendLogs(batches []LogBatch) error {
+	body, err := json.Marshal(batches)
+	if err != nil {
+		return fmt.Errorf("marshal log batches: %w", err)
+	}
+
+	httpReq, err := http.NewRequest("POST", c.baseURL+"/api/agent/logs", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create logs request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+c.nodeToken)
+
+	slog.Debug("http request", "method", "POST", "url", c.baseURL+"/api/agent/logs")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		slog.Debug("http error", "method", "POST", "url", "/api/agent/logs", "error", err)
+		return fmt.Errorf("logs request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		slog.Debug("http response", "method", "POST", "url", "/api/agent/logs", "status", resp.StatusCode, "body", string(respBody))
+		return fmt.Errorf("logs failed (status %d): %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
 // SampleResultsRequest is sent to POST /api/agent/samples
 type SampleResultsRequest struct {
 	Results []SampleResultMsg `json:"results"`
