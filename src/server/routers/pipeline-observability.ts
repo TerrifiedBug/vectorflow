@@ -359,7 +359,8 @@ export const pipelineObservabilityRouter = router({
         componentId: z.string(),
       }),
     )
-    .use(withTeamAccess("VIEWER"))
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.tap_started", "Pipeline"))
     .mutation(async ({ input }) => {
       const statuses = await prisma.nodePipelineStatus.findMany({
         where: { pipelineId: input.pipelineId, status: "RUNNING" },
@@ -381,6 +382,7 @@ export const pipelineObservabilityRouter = router({
 
   stopTap: protectedProcedure
     .input(z.object({ requestId: z.string() }))
+    .use(withAudit("pipeline.tap_stopped", "Pipeline"))
     .mutation(({ input }) => {
       stopTapHandler(input.requestId);
       return { ok: true };

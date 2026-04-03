@@ -152,9 +152,8 @@ func (m *Manager) run(ctx context.Context, done chan struct{}, requestID, pipeli
 
 	// Read stdout lines into a channel from a dedicated goroutine.
 	lines := make(chan string, 64)
-	scanDone := make(chan struct{})
 	go func() {
-		defer close(scanDone)
+		defer close(lines)
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			lines <- scanner.Text()
@@ -196,23 +195,6 @@ func (m *Manager) run(ctx context.Context, done chan struct{}, requestID, pipeli
 				flushBatch(send, requestID, pipelineID, componentID, batch)
 				batch = nil
 			}
-
-		case <-scanDone:
-			// Scanner goroutine exited — drain remaining lines then exit.
-			for line := range lines {
-				var parsed interface{}
-				if err := json.Unmarshal([]byte(line), &parsed); err != nil {
-					continue
-				}
-				batch = append(batch, parsed)
-			}
-			if len(batch) > 0 {
-				flushBatch(send, requestID, pipelineID, componentID, batch)
-			}
-			_ = cmd.Wait()
-			slog.Info("tap: process exited", "requestId", requestID)
-			sendStopped(send, requestID, pipelineID, componentID, "process exited")
-			return
 
 		case <-ctx.Done():
 			slog.Info("tap: context cancelled", "requestId", requestID)
