@@ -41,6 +41,7 @@ export default function MigrationProjectPage({
 
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [showOriginalConfig, setShowOriginalConfig] = useState(false);
+  const [wasTranslating, setWasTranslating] = useState(false);
 
   const teamId = selectedTeamId!;
 
@@ -49,14 +50,31 @@ export default function MigrationProjectPage({
       { id: projectId, teamId },
       {
         enabled: !!selectedTeamId,
-        refetchInterval: (query) =>
-          query.state.data?.status === "TRANSLATING" ? 2000 : false,
+        refetchInterval: (query) => {
+          const status = query.state.data?.status;
+          if (status === "TRANSLATING") {
+            return 2000;
+          }
+          return false;
+        },
       },
     ),
   );
 
   const project = projectQuery.data;
   const isTranslating = project?.status === "TRANSLATING";
+
+  // Detect translation completion: wasTranslating + no longer translating
+  if (wasTranslating && project && !isTranslating) {
+    // Runs during render but only sets state (safe in React 19)
+    setWasTranslating(false);
+    if (project.status === "READY") {
+      // Use queueMicrotask to defer the toast out of render
+      queueMicrotask(() => toast.success("Translation complete"));
+    } else if (project.status === "FAILED") {
+      queueMicrotask(() => toast.error(project.errorMessage ?? "Translation failed"));
+    }
+  }
   const parsedConfig = project?.parsedTopology as unknown as ParsedConfig | null;
   const translationResult = project?.translatedBlocks as unknown as TranslationResult | null;
 
@@ -80,8 +98,12 @@ export default function MigrationProjectPage({
         if (result.valid) {
           toast.success("Validation passed");
         } else {
-          toast.error(`Validation failed: ${result.errors.length} errors`);
+          const errorCount = Array.isArray(result.errors) ? result.errors.length : 0;
+          toast.error(`Validation failed: ${errorCount} error(s)`);
         }
+      },
+      onError: (err) => {
+        toast.error(`Validation error: ${err.message}`);
       },
     }),
   );
@@ -113,6 +135,11 @@ export default function MigrationProjectPage({
     startTranslationMutation.mutate(
       { id: projectId, teamId },
       {
+        onSuccess: () => {
+          setWasTranslating(true);
+          queryClient.invalidateQueries({ queryKey: trpc.migration.get.queryKey() });
+          toast.info("Translation started...");
+        },
         onError: (err) => {
           if (err.message.includes("rate limit")) {
             toast.error("Translation rate limit reached. Please wait a moment and try again.");
@@ -327,22 +354,27 @@ export default function MigrationProjectPage({
         {/* Center: Topology (always full width) */}
         <div className="flex-1 flex flex-col">
           {project.validationResult &&
-            !(project.validationResult as { valid: boolean }).valid && (
-              <div className="px-3 py-2 bg-destructive/10 border-b border-destructive/20 text-xs text-destructive space-y-1">
-                <p className="font-medium">
-                  Validation failed:{" "}
-                  {(
-                    (project.validationResult as { errors: string[] }).errors ?? []
-                  ).length}{" "}
-                  error(s)
-                </p>
-                <ul className="font-mono pl-3 space-y-0.5 max-h-20 overflow-y-auto">
-                  {((project.validationResult as { errors: string[] }).errors ?? []).map((err, i) => (
-                    <li key={i}>{err}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            typeof project.validationResult === "object" &&
+            !(project.validationResult as { valid?: boolean }).valid && (() => {
+              const errors = (project.validationResult as { errors?: unknown[] }).errors;
+              const errorList = Array.isArray(errors)
+                ? errors.map((e) => (typeof e === "string" ? e : JSON.stringify(e)))
+                : [];
+              return (
+                <div className="px-3 py-2 bg-destructive/10 border-b border-destructive/20 text-xs text-destructive space-y-1">
+                  <p className="font-medium">
+                    Validation failed: {errorList.length} error(s)
+                  </p>
+                  {errorList.length > 0 && (
+                    <ul className="font-mono pl-3 space-y-0.5 max-h-20 overflow-y-auto">
+                      {errorList.map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })()}
           {parsedConfig ? (
             <MigrationTopology
               parsedConfig={parsedConfig}
