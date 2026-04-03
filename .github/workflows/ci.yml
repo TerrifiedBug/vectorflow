@@ -38,10 +38,22 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: agent/go.sum
+
       - run: pnpm install --frozen-lockfile
+
+      - name: Dependency audit (high/critical)
+        run: pnpm audit --audit-level high --ignore GHSA-r5fr-rjxr-66jc
 
       - name: Generate Prisma client
         run: npx prisma generate
+
+      - name: Verify Go module dependencies
+        working-directory: agent
+        run: go mod verify
 
       - name: Lint
         run: pnpm lint
@@ -51,6 +63,20 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          upload-artifact: false
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.cdx.json
 
   server-image:
     name: Server Image
