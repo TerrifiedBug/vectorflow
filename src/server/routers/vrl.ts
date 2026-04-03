@@ -8,7 +8,82 @@ import { router, protectedProcedure } from "@/trpc/init";
 
 const execFileAsync = promisify(execFile);
 
+export interface VrlDiagnostic {
+  line: number;
+  column: number;
+  message: string;
+}
+
+export function parseVrlDiagnostics(errorText: string): VrlDiagnostic[] {
+  const diagnostics: VrlDiagnostic[] = [];
+  // Match patterns like ":3:5" (line:col) or "line 3" or ":3,"
+  const lineColRegex = /(?:line\s+|:)(\d+)(?:[:,]\s*(?:col(?:umn)?\s+)?(\d+))?/gi;
+  const lines = errorText.split("\n").filter(Boolean);
+  for (const line of lines) {
+    lineColRegex.lastIndex = 0;
+    const match = lineColRegex.exec(line);
+    if (match) {
+      diagnostics.push({
+        line: parseInt(match[1], 10),
+        column: match[2] ? parseInt(match[2], 10) : 1,
+        message: line.trim(),
+      });
+    }
+  }
+  if (diagnostics.length === 0 && errorText.trim()) {
+    diagnostics.push({ line: 1, column: 1, message: errorText.trim() });
+  }
+  return diagnostics;
+}
+
 export const vrlRouter = router({
+  validate: protectedProcedure
+    .input(z.object({ source: z.string() }))
+    .mutation(async ({ input }) => {
+      if (!input.source.trim()) {
+        return { errors: [] as VrlDiagnostic[] };
+      }
+
+      let tmpDir: string;
+      try {
+        tmpDir = await mkdtemp(join(tmpdir(), "vectorflow-vrl-"));
+      } catch {
+        return { errors: [] as VrlDiagnostic[] };
+      }
+
+      const programPath = join(tmpDir, "program.vrl");
+      const inputPath = join(tmpDir, "input.json");
+      const defaultInput = JSON.stringify({ message: "validate", timestamp: new Date().toISOString(), host: "localhost" });
+
+      try {
+        await writeFile(programPath, input.source);
+        await writeFile(inputPath, defaultInput);
+
+        const { stderr } = await execFileAsync(
+          "vector",
+          ["vrl", "--input", inputPath, "--program", programPath, "--print-object"],
+          { timeout: 5000, env: { ...process.env, VECTOR_LOG: "error" } },
+        );
+
+        if (stderr?.trim()) {
+          return { errors: parseVrlDiagnostics(stderr.trim()) };
+        }
+        return { errors: [] as VrlDiagnostic[] };
+      } catch (err: unknown) {
+        const execErr = err as NodeJS.ErrnoException & { stderr?: string };
+        if (execErr.code === "ENOENT") {
+          // vector not installed — silently skip inline validation
+          return { errors: [] as VrlDiagnostic[] };
+        }
+        const errorText = execErr.stderr?.trim() ?? "";
+        if (!errorText) return { errors: [] as VrlDiagnostic[] };
+        return { errors: parseVrlDiagnostics(errorText) };
+      } finally {
+        await unlink(programPath).catch(() => {});
+        await unlink(inputPath).catch(() => {});
+      }
+    }),
+
   test: protectedProcedure
     .input(
       z.object({
