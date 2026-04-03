@@ -31,6 +31,7 @@ Environment variables:
   VF_VECTOR_BIN     Path to Vector binary (default: vector)
   VF_POLL_INTERVAL  Poll interval duration (default: 15s)
   VF_LOG_LEVEL      Log level: debug|info|warn|error (default: info)
+  VF_METRICS_PORT   Port for agent self-metrics Prometheus endpoint (default: 9090, 0 = disabled)
 `)
 			os.Exit(0)
 		}
