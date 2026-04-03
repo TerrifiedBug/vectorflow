@@ -124,6 +124,8 @@ func (a *Agent) Run() error {
 	go a.pushClient.Connect()
 	slog.Info("push client started", "url", pushURL, "fallback", derivedURL)
 
+	go a.runLogFlusher(ctx)
+
 	a.sendHeartbeat()
 	currentInterval = a.maybeResetTicker(ticker, currentInterval)
 
@@ -264,6 +266,92 @@ func (a *Agent) sendHeartbeat() {
 	} else {
 		a.updateError = "" // clear only after successful delivery
 		slog.Debug("heartbeat sent", "pipelines", len(hb.Pipelines), "sampleResults", len(results))
+	}
+}
+
+// collectLogs drains the ring buffer for every running pipeline and returns non-empty batches.
+func (a *Agent) collectLogs() []client.LogBatch {
+	statuses := a.supervisor.Statuses()
+	var batches []client.LogBatch
+	for _, s := range statuses {
+		lines := a.supervisor.GetRecentLogs(s.PipelineID)
+		if len(lines) > 0 {
+			batches = append(batches, client.LogBatch{
+				PipelineID: s.PipelineID,
+				Lines:      lines,
+			})
+		}
+	}
+	return batches
+}
+
+// runLogFlusher periodically drains pipeline log buffers and sends them to the server.
+// On failure, overflow lines are retained (capped at 500 total) and prepended to the next flush.
+func (a *Agent) runLogFlusher(ctx context.Context) {
+	ticker := time.NewTicker(a.cfg.LogFlushInterval)
+	defer ticker.Stop()
+
+	var overflow []client.LogBatch
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			batches := a.collectLogs()
+
+			// Prepend overflow from a previous failed send
+			if len(overflow) > 0 {
+				merged := make(map[string][]string, len(overflow)+len(batches))
+				for _, b := range overflow {
+					merged[b.PipelineID] = append(merged[b.PipelineID], b.Lines...)
+				}
+				for _, b := range batches {
+					merged[b.PipelineID] = append(merged[b.PipelineID], b.Lines...)
+				}
+				batches = batches[:0]
+				for pid, lines := range merged {
+					batches = append(batches, client.LogBatch{PipelineID: pid, Lines: lines})
+				}
+				overflow = nil
+			}
+
+			if len(batches) == 0 {
+				continue
+			}
+
+			if err := a.client.SendLogs(batches); err != nil {
+				slog.Warn("log flush error", "error", err)
+				// Cap overflow at 500 total lines across all pipelines
+				const maxOverflow = 500
+				total := 0
+				for _, b := range batches {
+					total += len(b.Lines)
+				}
+				if total > maxOverflow {
+					// Trim from the front (oldest) to fit within cap
+					remaining := maxOverflow
+					var trimmed []client.LogBatch
+					for i := len(batches) - 1; i >= 0 && remaining > 0; i-- {
+						b := batches[i]
+						if len(b.Lines) <= remaining {
+							trimmed = append([]client.LogBatch{b}, trimmed...)
+							remaining -= len(b.Lines)
+						} else {
+							trimmed = append([]client.LogBatch{{
+								PipelineID: b.PipelineID,
+								Lines:      b.Lines[len(b.Lines)-remaining:],
+							}}, trimmed...)
+							remaining = 0
+						}
+					}
+					batches = trimmed
+				}
+				overflow = batches
+			} else {
+				slog.Debug("logs flushed", "batches", len(batches))
+			}
+		}
 	}
 }
 
