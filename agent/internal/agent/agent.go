@@ -24,11 +24,24 @@ import (
 
 var Version = "dev"
 
+// pipelineSupervisor abstracts the supervisor package for testing.
+type pipelineSupervisor interface {
+	Start(pipelineID, configPath string, version int, logLevel string, secrets map[string]string) error
+	Stop(pipelineID string) error
+	Restart(pipelineID, configPath string, version int, logLevel string, secrets map[string]string) error
+	RestartInPlace(pipelineID string) error
+	UpdateVersion(pipelineID string, version int)
+	SetConfigChecksum(pipelineID, checksum string)
+	GetRecentLogs(pipelineID string) []string
+	Statuses() []supervisor.ProcessInfo
+	ShutdownAll()
+}
+
 type Agent struct {
 	cfg            *config.Config
 	client         *client.Client
 	poller         *poller
-	supervisor     *supervisor.Supervisor
+	supervisor     pipelineSupervisor
 	tapManager     *tapper.Manager
 	metrics        *selfmetrics.Metrics
 	vectorVersion  string
@@ -496,8 +509,17 @@ func (a *Agent) handlePushMessage(msg push.PushMessage, ticker *time.Ticker) {
 			})
 			a.triggerImmediateHeartbeat()
 		case "restart":
-			slog.Warn("push: restart action not yet implemented, triggering re-poll instead")
-			a.pollAndApply()
+			pipelineID := msg.PipelineID
+			if pipelineID == "" {
+				slog.Warn("push: restart action missing pipelineId")
+				return
+			}
+			slog.Info("push: restarting pipeline", "pipeline", pipelineID)
+			if err := a.supervisor.RestartInPlace(pipelineID); err != nil {
+				slog.Error("push: pipeline restart failed", "pipeline", pipelineID, "error", err)
+			} else {
+				slog.Info("push: pipeline restarted", "pipeline", pipelineID)
+			}
 			a.triggerImmediateHeartbeat()
 		default:
 			slog.Warn("push: unknown action", "action", msg.Action)
