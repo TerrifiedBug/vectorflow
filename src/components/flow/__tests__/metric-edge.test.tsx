@@ -8,6 +8,7 @@ afterEach(cleanup);
 
 // Mock @xyflow/react before importing MetricEdge
 vi.mock("@xyflow/react", () => ({
+  Position: { Top: "top", Right: "right", Bottom: "bottom", Left: "left" },
   BaseEdge: ({ style, path }: { style?: React.CSSProperties; path: string }) => (
     <path data-testid="base-edge" d={path} style={style} />
   ),
@@ -15,6 +16,7 @@ vi.mock("@xyflow/react", () => ({
 }));
 
 import { MetricEdge } from "../metric-edge";
+import { Position as PositionEnum } from "@xyflow/react";
 
 const baseEdgeProps = {
   id: "edge-1",
@@ -24,8 +26,8 @@ const baseEdgeProps = {
   sourceY: 0,
   targetX: 100,
   targetY: 100,
-  sourcePosition: "right" as const,
-  targetPosition: "left" as const,
+  sourcePosition: PositionEnum.Right,
+  targetPosition: PositionEnum.Left,
   markerEnd: undefined,
   selected: false,
   animated: false,

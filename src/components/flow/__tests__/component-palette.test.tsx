@@ -64,6 +64,7 @@ const MOCK_CATALOG: VectorComponentDef[] = [
     icon: "default",
     configSchema: {},
     inputTypes: ["log"],
+    outputTypes: [],
   },
 ];
 
