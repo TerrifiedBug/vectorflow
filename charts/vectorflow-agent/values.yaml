@@ -1,0 +1,160 @@
+# Default values for vectorflow-agent.
+# Override with: helm install vectorflow-agent ./charts/vectorflow-agent -f my-values.yaml
+
+image:
+  repository: ghcr.io/terrifiedbug/vectorflow-agent
+  pullPolicy: IfNotPresent
+  # -- Overrides the image tag; defaults to the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Create a ServiceAccount for agent pods.
+  create: true
+  # -- Annotations to add to the ServiceAccount (e.g. for IRSA on EKS).
+  annotations: {}
+  # -- Override the name; defaults to the release fullname.
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+# -- SecurityContext at the pod level.
+# hostNetwork=true requires running as root in most environments (Vector writes to host paths).
+# Set runAsNonRoot: true and runAsUser only if your Vector config does not require root.
+podSecurityContext: {}
+
+securityContext:
+  # Vector may need to read host log files — adjust as needed for your environment.
+  privileged: false
+  allowPrivilegeEscalation: false
+  capabilities:
+    add:
+      # DAC_READ_SEARCH is needed to read log files owned by other users.
+      - DAC_READ_SEARCH
+    drop:
+      - NET_RAW
+
+# ------------------------------------------------------------------
+# Agent configuration
+# ------------------------------------------------------------------
+config:
+  # -- VectorFlow server URL. REQUIRED.
+  # Example: http://vectorflow-server.vectorflow.svc.cluster.local:3000
+  serverUrl: ""
+
+  # -- Enrollment token. Required on first run; can be omitted after enrollment
+  # (the agent stores its node token in the data directory).
+  token: ""
+
+  # -- Agent log level: debug | info | warn | error
+  logLevel: "info"
+
+  # -- How often the agent polls the server for config updates.
+  pollInterval: "5s"
+
+  # -- How often the agent flushes buffered logs to the server.
+  logFlushInterval: "2s"
+
+  # -- Comma-separated key=value pairs for node labeling, e.g. "region=us-east,env=prod".
+  # These labels help the VectorFlow UI identify this agent.
+  nodeLabels: ""
+
+  # -- Path to the data directory inside the container.
+  dataDir: "/var/lib/vf-agent"
+
+  # -- Path to the Vector binary inside the container.
+  vectorBin: "vector"
+
+# -- Name of an existing Kubernetes Secret with required keys:
+#    VF_URL (optional — overrides config.serverUrl if set in secret)
+#    VF_TOKEN (optional — overrides config.token if set in secret)
+# When set, config.serverUrl and config.token values are still used
+# unless the secret keys override them.
+existingSecret: ""
+
+# ------------------------------------------------------------------
+# Networking
+# ------------------------------------------------------------------
+# -- Use host network namespace. Required if the agent or Vector processes
+# need to bind to host-level network interfaces (e.g. syslog UDP 514).
+# Set to false if not needed to reduce the security footprint.
+hostNetwork: true
+
+# -- DNS policy. ClusterFirstWithHostNet is recommended when hostNetwork=true
+# so the agent can still resolve Kubernetes service names.
+dnsPolicy: ClusterFirstWithHostNet
+
+# ------------------------------------------------------------------
+# DaemonSet update strategy
+# ------------------------------------------------------------------
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+
+# ------------------------------------------------------------------
+# Host paths and persistence
+# ------------------------------------------------------------------
+persistence:
+  # -- Agent state directory (enrollment token, pipeline state).
+  agentData:
+    hostPath: ""          # Leave empty to use a PVC instead of a hostPath
+    size: 1Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    existingClaim: ""
+
+  # -- Vector data directory (buffer files, etc.).
+  vectorData:
+    hostPath: ""          # Leave empty to use a PVC instead of a hostPath
+    size: 2Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    existingClaim: ""
+
+# -- Mount /var/log from the host so Vector can tail node log files.
+mountHostLogs: true
+
+# -- Mount /var/lib/docker/containers for container log access.
+mountDockerContainers: false
+
+# ------------------------------------------------------------------
+# Resources
+# ------------------------------------------------------------------
+resources:
+  limits:
+    cpu: "1"
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+# ------------------------------------------------------------------
+# Node scheduling
+# ------------------------------------------------------------------
+nodeSelector: {}
+
+# -- Default tolerations to schedule on all nodes including control-plane.
+# Remove the control-plane toleration if you don't want agents there.
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+  - key: node.kubernetes.io/not-ready
+    operator: Exists
+    effect: NoExecute
+    tolerationSeconds: 10
+  - key: node.kubernetes.io/unreachable
+    operator: Exists
+    effect: NoExecute
+    tolerationSeconds: 10
+
+affinity: {}
+
+# -- Priority class. Recommend setting to system-node-critical for observability agents
+# so they are not evicted under memory pressure.
+priorityClassName: ""
