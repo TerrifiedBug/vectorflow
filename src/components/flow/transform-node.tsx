@@ -42,10 +42,8 @@ function TransformNodeComponent({
   const isStale = isShared && data.sharedComponentLatestVersion != null &&
     (data.sharedComponentVersion ?? 0) < data.sharedComponentLatestVersion;
   const Icon = useMemo(() => getIcon(componentDef.icon), [componentDef.icon]);
-  const canvasSearchTerm = useFlowStore((s) => s.canvasSearchTerm);
-  const canvasSearchMatchIds = useFlowStore((s) => s.canvasSearchMatchIds);
-  const isSearching = canvasSearchTerm.length > 0;
-  const isSearchMatch = isSearching && canvasSearchMatchIds.includes(id);
+  const isSearching = useFlowStore((s) => s.canvasSearchTerm.length > 0);
+  const isSearchMatch = useFlowStore((s) => s.canvasSearchMatchIds.includes(id));
 
   return (
     <div className={cn("relative", isSearching && !isSearchMatch && "opacity-40")}>

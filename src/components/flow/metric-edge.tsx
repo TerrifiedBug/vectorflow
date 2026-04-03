@@ -1,8 +1,9 @@
 "use client";
+import { memo } from "react";
 import { BaseEdge, getBezierPath, type EdgeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 
-export function MetricEdge({ data, ...props }: EdgeProps) {
+function MetricEdgeComponent({ data, ...props }: EdgeProps) {
   const [edgePath, labelX, labelY] = getBezierPath(props);
   const throughput = data?.throughput as number | undefined;
   const isActive = throughput !== undefined && throughput > 0;
@@ -42,3 +43,5 @@ export function MetricEdge({ data, ...props }: EdgeProps) {
     </>
   );
 }
+
+export const MetricEdge = memo(MetricEdgeComponent);
