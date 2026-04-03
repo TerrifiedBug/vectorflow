@@ -42,8 +42,6 @@ git worktree remove ../worktree-<branch-name>
 
 ```
 <type>: <description>
-
-Co-Authored-By: Paperclip <noreply@paperclip.ing>
 ```
 
 ## Tech Stack
