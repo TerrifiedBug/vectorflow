@@ -1,6 +1,7 @@
 import type { Role } from "../../src/generated/prisma";
 import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
+export { prisma };
 
 export interface SeedResult {
   userId: string;
