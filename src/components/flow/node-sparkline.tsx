@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import type { MetricSample } from "@/server/services/metric-store";
 
 interface NodeSparklineProps {
@@ -8,7 +9,7 @@ interface NodeSparklineProps {
   height?: number;
 }
 
-export function NodeSparkline({ samples, width = 60, height = 20 }: NodeSparklineProps) {
+function NodeSparklineComponent({ samples, width = 60, height = 20 }: NodeSparklineProps) {
   if (samples.length < 2) return null;
 
   const rates = samples.map((s) => s.sentEventsRate);
@@ -41,3 +42,11 @@ export function NodeSparkline({ samples, width = 60, height = 20 }: NodeSparklin
     </svg>
   );
 }
+
+export const NodeSparkline = memo(NodeSparklineComponent, (prev, next) => {
+  if (prev.width !== next.width || prev.height !== next.height) return false;
+  if (prev.samples.length !== next.samples.length) return false;
+  const prevLast = prev.samples[prev.samples.length - 1];
+  const nextLast = next.samples[next.samples.length - 1];
+  return prevLast?.timestamp === nextLast?.timestamp;
+});
