@@ -183,7 +183,17 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     const monaco = monacoRef.current;
     const model = editorRef.current?.getModel();
     if (!monaco || !model) {
-      pendingMarkersRef.current = [];
+      // Store markers so handleEditorMount can replay them once Monaco loads
+      pendingMarkersRef.current = errors
+        .filter((e) => e.line > 0)
+        .map((e) => ({
+          severity: 8 as import("monaco-editor").MarkerSeverity, // MarkerSeverity.Error
+          startLineNumber: e.line,
+          startColumn: e.column,
+          endLineNumber: e.line,
+          endColumn: e.column + 1,
+          message: e.message,
+        }));
       return;
     }
     const markers = errors
