@@ -5,11 +5,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os/exec"
 	"sync"
 	"time"
 )
+
+// tapProcess abstracts exec.Cmd so it can be replaced in tests.
+type tapProcess interface {
+	StdoutPipe() (io.ReadCloser, error)
+	Start() error
+	Wait() error
+}
 
 // TapResult is a batch of tap events sent back to the server.
 type TapResult struct {
@@ -32,9 +40,10 @@ type activeTap struct {
 
 // Manager manages concurrent long-lived `vector tap` subprocesses.
 type Manager struct {
-	vectorBin string
-	mu        sync.Mutex
-	active    map[string]*activeTap
+	vectorBin  string
+	newProcess func(ctx context.Context, url, componentID string) tapProcess
+	mu         sync.Mutex
+	active     map[string]*activeTap
 }
 
 const (
@@ -46,10 +55,21 @@ const (
 
 // New creates a new tap Manager.
 func New(vectorBin string) *Manager {
-	return &Manager{
+	m := &Manager{
 		vectorBin: vectorBin,
 		active:    make(map[string]*activeTap),
 	}
+	m.newProcess = func(ctx context.Context, url, componentID string) tapProcess {
+		return exec.CommandContext(ctx, m.vectorBin, "tap",
+			"--outputs-of", componentID,
+			"--url", url,
+			"--format", "json",
+			"--interval", "500",
+			"--limit", "50",
+			"--quiet",
+		)
+	}
+	return m
 }
 
 // Start launches a long-lived `vector tap` subprocess for the given component.
@@ -126,29 +146,22 @@ func (m *Manager) run(ctx context.Context, done chan struct{}, requestID, pipeli
 
 	url := fmt.Sprintf("http://127.0.0.1:%d/graphql", apiPort)
 
-	cmd := exec.CommandContext(ctx, m.vectorBin, "tap",
-		"--outputs-of", componentID,
-		"--url", url,
-		"--format", "json",
-		"--interval", "500",
-		"--limit", "50",
-		"--quiet",
-	)
+	proc := m.newProcess(ctx, url, componentID)
 
-	stdout, err := cmd.StdoutPipe()
+	stdout, err := proc.StdoutPipe()
 	if err != nil {
 		slog.Error("tap: failed to create stdout pipe", "requestId", requestID, "error", err)
 		sendStopped(send, requestID, pipelineID, componentID, fmt.Sprintf("stdout pipe: %v", err))
 		return
 	}
 
-	if err := cmd.Start(); err != nil {
+	if err := proc.Start(); err != nil {
 		slog.Error("tap: failed to start vector tap", "requestId", requestID, "error", err)
 		sendStopped(send, requestID, pipelineID, componentID, fmt.Sprintf("start: %v", err))
 		return
 	}
 
-	slog.Info("tap: started", "requestId", requestID, "component", componentID, "pid", cmd.Process.Pid)
+	slog.Info("tap: started", "requestId", requestID, "component", componentID)
 
 	// Read stdout lines into a channel from a dedicated goroutine.
 	lines := make(chan string, 64)
@@ -173,7 +186,7 @@ func (m *Manager) run(ctx context.Context, done chan struct{}, requestID, pipeli
 				if len(batch) > 0 {
 					flushBatch(send, requestID, pipelineID, componentID, batch)
 				}
-				_ = cmd.Wait()
+				_ = proc.Wait()
 				slog.Info("tap: process exited", "requestId", requestID)
 				sendStopped(send, requestID, pipelineID, componentID, "process exited")
 				return
@@ -200,7 +213,7 @@ func (m *Manager) run(ctx context.Context, done chan struct{}, requestID, pipeli
 			slog.Info("tap: context cancelled", "requestId", requestID)
 			// Kill the process — CommandContext handles this automatically,
 			// but we still wait for cleanup.
-			_ = cmd.Wait()
+			_ = proc.Wait()
 			// Drain the lines channel so the scanner goroutine can exit
 			// (it may be blocked trying to send on a full channel).
 			for range lines {
