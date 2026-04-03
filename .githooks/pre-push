@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Prevent direct pushes to the main branch.
+# Install: git config core.hooksPath .githooks
+
+PROTECTED_BRANCH="main"
+REMOTE="$1"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/${PROTECTED_BRANCH}" ]; then
+    echo "ERROR: Direct push to '${PROTECTED_BRANCH}' is not allowed."
+    echo "Create a feature branch and open a Pull Request instead."
+    echo ""
+    echo "  git checkout -b <type>/<description>"
+    echo "  git push -u origin <type>/<description>"
+    echo "  gh pr create"
+    exit 1
+  fi
+done
+
+exit 0
