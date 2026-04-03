@@ -272,13 +272,19 @@ func (s *Supervisor) RestartInPlace(pipelineID string) error {
 		s.mu.Unlock()
 		return fmt.Errorf("pipeline %s not found", pipelineID)
 	}
+	// Copy config fields and atomically remove the entry from the map while
+	// still holding the lock. This closes the TOCTOU window where the
+	// crash-recovery goroutine could replace s.processes[pipelineID] with a
+	// newly-recovered process between our read and the subsequent Stop call,
+	// which would cause Stop to kill the recovered process instead.
 	configPath := info.configPath
 	version := info.Version
 	logLevel := info.LogLevel
 	secrets := info.Secrets
+	delete(s.processes, pipelineID)
 	s.mu.Unlock()
 
-	s.Stop(pipelineID)
+	s.stopProcess(info)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -129,7 +129,8 @@ func TestHandlePushRestartErrorStillHeartbeats(t *testing.T) {
 }
 
 // TestHandlePushRestartMissingPipelineID verifies that a restart message
-// with no pipelineId is ignored without calling RestartInPlace.
+// with no pipelineId is ignored without calling RestartInPlace and without
+// triggering an immediate heartbeat (the handler returns early).
 func TestHandlePushRestartMissingPipelineID(t *testing.T) {
 	sup := &mockSupervisor{}
 	a := newTestAgent(sup)
@@ -149,5 +150,13 @@ func TestHandlePushRestartMissingPipelineID(t *testing.T) {
 
 	if called != "" {
 		t.Errorf("expected RestartInPlace not called, but was called with %q", called)
+	}
+
+	// The handler returns early on empty pipelineId — no heartbeat should fire.
+	select {
+	case <-a.immediateHeartbeatCh:
+		t.Error("expected no heartbeat signal for missing pipelineId, but got one")
+	case <-time.After(100 * time.Millisecond):
+		// pass: early-return path does not schedule a heartbeat
 	}
 }
