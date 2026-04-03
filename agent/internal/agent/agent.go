@@ -17,6 +17,7 @@ import (
 	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/push"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/sampler"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/selfmetrics"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/supervisor"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/tapper"
 )
@@ -29,6 +30,7 @@ type Agent struct {
 	poller         *poller
 	supervisor     *supervisor.Supervisor
 	tapManager     *tapper.Manager
+	metrics        *selfmetrics.Metrics
 	vectorVersion  string
 	deploymentMode string
 	labels         map[string]string
@@ -64,7 +66,7 @@ func New(cfg *config.Config) (*Agent, error) {
 		runningAs = u.Username
 	}
 
-	return &Agent{
+	a := &Agent{
 		cfg:            cfg,
 		client:         c,
 		poller:         newPoller(cfg, c),
@@ -74,7 +76,20 @@ func New(cfg *config.Config) (*Agent, error) {
 		deploymentMode: deploymentMode,
 		labels:         labels,
 		runningAs:      runningAs,
-	}, nil
+	}
+
+	// Initialise self-metrics with a live pipeline-count callback.
+	a.metrics = selfmetrics.New(func() int {
+		running := 0
+		for _, s := range sup.Statuses() {
+			if s.Status == "RUNNING" {
+				running++
+			}
+		}
+		return running
+	})
+
+	return a, nil
 }
 
 func (a *Agent) Run() error {
@@ -87,6 +102,16 @@ func (a *Agent) Run() error {
 
 	slog.Info("VectorFlow Agent starting", "version", Version, "vector", a.vectorVersion)
 	slog.Info("polling configured", "url", a.cfg.URL, "interval", a.cfg.PollInterval)
+
+	// Start self-metrics HTTP server (port 0 = disabled by operator).
+	if a.cfg.MetricsPort > 0 {
+		go func() {
+			slog.Info("self-metrics server starting", "port", a.cfg.MetricsPort)
+			if err := a.metrics.Serve(a.cfg.MetricsPort); err != nil {
+				slog.Error("self-metrics server error", "error", err)
+			}
+		}()
+	}
 
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -123,7 +148,13 @@ func (a *Agent) Run() error {
 		default:
 			slog.Warn("push: message channel full, dropping message", "type", msg.Type)
 		}
-	})
+	}).WithLifecycleCallbacks(
+		func(_ string) { a.metrics.SetPushConnected(true) },
+		func() {
+			a.metrics.IncPushReconnects()
+			a.metrics.SetPushConnected(false)
+		},
+	)
 	go a.pushClient.Connect()
 	slog.Info("push client started", "url", pushURL, "fallback", derivedURL)
 
@@ -175,8 +206,11 @@ func (a *Agent) maybeResetTicker(ticker *time.Ticker, current time.Duration) tim
 }
 
 func (a *Agent) pollAndApply() {
+	pollStart := time.Now()
 	actions, err := a.poller.Poll()
+	a.metrics.ObservePollDuration(time.Since(pollStart))
 	if err != nil {
+		a.metrics.IncPollErrors()
 		slog.Warn("poll error", "error", err)
 		return
 	}
@@ -254,12 +288,14 @@ func (a *Agent) sendHeartbeat() {
 	a.sampleResults = nil
 	a.mu.Unlock()
 
-	hb := buildHeartbeat(a.supervisor, a.vectorVersion, a.deploymentMode, results, a.labels, a.runningAs)
+	hb := buildHeartbeat(a.supervisor, a.metrics, a.vectorVersion, a.deploymentMode, results, a.labels, a.runningAs)
 	updateErr := a.updateError
 	if updateErr != "" {
 		hb.UpdateError = updateErr
 	}
+	hbStart := time.Now()
 	if err := a.client.SendHeartbeat(hb); err != nil {
+		a.metrics.IncHeartbeatErrors()
 		slog.Warn("heartbeat error", "error", err)
 		// Put results back so they retry on the next heartbeat
 		if len(results) > 0 {
@@ -268,6 +304,7 @@ func (a *Agent) sendHeartbeat() {
 			a.mu.Unlock()
 		}
 	} else {
+		a.metrics.ObserveHeartbeatDuration(time.Since(hbStart))
 		a.updateError = "" // clear only after successful delivery
 		slog.Debug("heartbeat sent", "pipelines", len(hb.Pipelines), "sampleResults", len(results))
 	}

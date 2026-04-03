@@ -205,6 +205,18 @@ type HostMetrics struct {
 	NetTxBytes        int64   `json:"netTxBytes"`
 }
 
+// AgentHealth carries key self-health indicators from the agent process,
+// included in every heartbeat so the server can surface them without
+// requiring a separate Prometheus scrape.
+type AgentHealth struct {
+	PollErrorsTotal      int64   `json:"pollErrorsTotal"`
+	PushReconnectsTotal  int64   `json:"pushReconnectsTotal"`
+	HeartbeatErrorsTotal int64   `json:"heartbeatErrorsTotal"`
+	PushConnected        bool    `json:"pushConnected"`
+	PipelinesRunning     int     `json:"pipelinesRunning"`
+	UptimeSeconds        float64 `json:"uptimeSeconds"`
+}
+
 // HeartbeatRequest is sent to POST /api/agent/heartbeat
 type HeartbeatRequest struct {
 	Pipelines      []PipelineStatus  `json:"pipelines"`
@@ -216,6 +228,7 @@ type HeartbeatRequest struct {
 	SampleResults  []SampleResultMsg `json:"sampleResults,omitempty"`
 	UpdateError    string            `json:"updateError,omitempty"`
 	Labels         map[string]string `json:"labels,omitempty"`
+	AgentHealth    *AgentHealth      `json:"agentHealth,omitempty"`
 }
 
 // SampleRequestMsg is received from the server via config poll.

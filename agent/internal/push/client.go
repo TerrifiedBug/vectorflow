@@ -31,6 +31,11 @@ type Client struct {
 	token       string
 	onMessage   func(PushMessage)
 
+	// Optional lifecycle callbacks for observability. Called with the
+	// connection URL; nil callbacks are silently ignored.
+	onConnect    func(url string) // called each time the stream is established
+	onDisconnect func()           // called each time the stream drops (before reconnect)
+
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -46,6 +51,16 @@ func New(url, fallbackURL, token string, onMessage func(PushMessage)) *Client {
 		onMessage:   onMessage,
 		done:        make(chan struct{}),
 	}
+}
+
+// WithLifecycleCallbacks attaches optional connect/disconnect observers.
+// onConnect is called each time the SSE stream is successfully established;
+// onDisconnect is called each time the stream drops before reconnecting.
+// Either argument may be nil.
+func (c *Client) WithLifecycleCallbacks(onConnect func(url string), onDisconnect func()) *Client {
+	c.onConnect = onConnect
+	c.onDisconnect = onDisconnect
+	return c
 }
 
 // Connect blocks and maintains a persistent SSE connection with exponential
@@ -82,6 +97,9 @@ func (c *Client) Connect() {
 			consecutiveFailures = 0
 		}
 
+		if c.onDisconnect != nil {
+			c.onDisconnect()
+		}
 		slog.Warn("push: connection lost, reconnecting",
 			"error", err, "url", c.url, "backoff", backoff)
 		select {
@@ -113,6 +131,9 @@ func (c *Client) stream(ctx context.Context) error {
 	}
 
 	slog.Info("push: connected", "url", c.url)
+	if c.onConnect != nil {
+		c.onConnect(c.url)
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, maxBufferSize), maxBufferSize)
