@@ -14,9 +14,10 @@ type Config struct {
 	DataDir      string
 	VectorBin    string
 	PollInterval time.Duration
-	LogLevel     string
-	SlogLevel    slog.Level
-	NodeLabels   map[string]string
+	LogLevel         string
+	SlogLevel        slog.Level
+	LogFlushInterval time.Duration
+	NodeLabels       map[string]string
 }
 
 // parseNodeLabels parses a comma-separated "key=value,key2=value2" string
@@ -73,6 +74,16 @@ func Load() (*Config, error) {
 		}
 	}
 
+	logFlushStr := os.Getenv("VF_LOG_FLUSH_INTERVAL")
+	logFlush := 2 * time.Second
+	if logFlushStr != "" {
+		if d, err := time.ParseDuration(logFlushStr); err != nil {
+			return nil, fmt.Errorf("invalid VF_LOG_FLUSH_INTERVAL: %w", err)
+		} else {
+			logFlush = d
+		}
+	}
+
 	logLevel := os.Getenv("VF_LOG_LEVEL")
 	if logLevel == "" {
 		logLevel = "info"
@@ -95,13 +106,14 @@ func Load() (*Config, error) {
 	nodeLabels := parseNodeLabels(os.Getenv("VF_NODE_LABELS"))
 
 	return &Config{
-		URL:          url,
-		Token:        token,
-		DataDir:      dataDir,
-		VectorBin:    vectorBin,
-		PollInterval: poll,
-		LogLevel:     logLevel,
-		SlogLevel:    slogLevel,
-		NodeLabels:   nodeLabels,
+		URL:              url,
+		Token:            token,
+		DataDir:          dataDir,
+		VectorBin:        vectorBin,
+		PollInterval:     poll,
+		LogFlushInterval: logFlush,
+		LogLevel:         logLevel,
+		SlogLevel:        slogLevel,
+		NodeLabels:       nodeLabels,
 	}, nil
 }
