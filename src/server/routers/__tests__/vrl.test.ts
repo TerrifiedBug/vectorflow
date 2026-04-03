@@ -52,13 +52,46 @@ vi.mock("util", async (importOriginal) => {
   };
 });
 
-import { vrlRouter } from "@/server/routers/vrl";
+import { vrlRouter, parseVrlDiagnostics } from "@/server/routers/vrl";
 
 
 const caller = t.createCallerFactory(vrlRouter)({
   session: { user: { id: "user-1", email: "test@test.com", name: "Test User" } },
   userRole: "ADMIN",
   teamId: "team-1",
+});
+
+describe("parseVrlDiagnostics", () => {
+  it("parses line:col format (vector arrow notation)", () => {
+    const errors = parseVrlDiagnostics("  ┌─ :3:7\nerror: undefined variable");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ line: 3, column: 7 });
+  });
+
+  it("parses line-only format and defaults column to 1", () => {
+    const errors = parseVrlDiagnostics("error at line 5: unexpected token");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ line: 5, column: 1 });
+  });
+
+  it("returns line 1 col 1 fallback for error text with no position", () => {
+    const errors = parseVrlDiagnostics("syntax error: unexpected EOF");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ line: 1, column: 1 });
+    expect(errors[0].message).toContain("syntax error");
+  });
+
+  it("returns empty array for empty error text", () => {
+    expect(parseVrlDiagnostics("")).toHaveLength(0);
+  });
+
+  it("parses multiple error lines", () => {
+    const errorText = "  ┌─ :1:3\n  ┌─ :4:10";
+    const errors = parseVrlDiagnostics(errorText);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toMatchObject({ line: 1, column: 3 });
+    expect(errors[1]).toMatchObject({ line: 4, column: 10 });
+  });
 });
 
 describe("vrlRouter", () => {
@@ -164,6 +197,64 @@ describe("vrlRouter", () => {
 
       expect(result.output).toBe("");
       expect(result.error).toBe("error[E123]: unexpected token");
+    });
+  });
+
+  describe("validate", () => {
+    it("returns empty errors array for valid VRL", async () => {
+      execFileMock.mockResolvedValueOnce({ stdout: '{"message":"hello"}', stderr: "" });
+
+      const result = await caller.validate({ source: '.message = "hello"' });
+
+      expect(result.errors).toEqual([]);
+    });
+
+    it("returns empty errors array for empty source", async () => {
+      const result = await caller.validate({ source: "" });
+      expect(result.errors).toEqual([]);
+      expect(execFileMock).not.toHaveBeenCalled();
+    });
+
+    it("returns structured errors with line/column from stderr", async () => {
+      const execErr = new Error("exit 1") as NodeJS.ErrnoException & { stderr: string };
+      execErr.stderr = "  ┌─ :2:5\nerror: undefined variable `foo`";
+      execFileMock.mockRejectedValueOnce(execErr);
+
+      const result = await caller.validate({ source: ".x = foo" });
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({ line: 2, column: 5 });
+    });
+
+    it("returns empty errors when vector is not installed (ENOENT)", async () => {
+      const enoentError = new Error("spawn vector ENOENT") as NodeJS.ErrnoException;
+      enoentError.code = "ENOENT";
+      execFileMock.mockRejectedValueOnce(enoentError);
+
+      const result = await caller.validate({ source: '.x = "test"' });
+
+      expect(result.errors).toEqual([]);
+    });
+
+    it("parses stderr when execution succeeds but has warnings", async () => {
+      execFileMock.mockResolvedValueOnce({
+        stdout: "{}",
+        stderr: "  ┌─ :1:3\nwarning: unused assignment",
+      });
+
+      const result = await caller.validate({ source: ".unused = 1" });
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({ line: 1, column: 3 });
+    });
+
+    it("cleans up temp files after validation", async () => {
+      execFileMock.mockResolvedValueOnce({ stdout: "{}", stderr: "" });
+
+      await caller.validate({ source: ". = {}" });
+
+      expect(unlinkMock).toHaveBeenCalledWith("/tmp/vectorflow-vrl-abc123/program.vrl");
+      expect(unlinkMock).toHaveBeenCalledWith("/tmp/vectorflow-vrl-abc123/input.json");
     });
   });
 });
