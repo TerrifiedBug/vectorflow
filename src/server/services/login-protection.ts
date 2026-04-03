@@ -22,6 +22,8 @@ interface FailureWindow {
 
 export class LoginAttemptTracker {
   private readonly failures = new Map<string, FailureWindow>();
+  /** Separate map so TOTP rate-limit checks never mix with password failures. */
+  private readonly totpFailures = new Map<string, FailureWindow>();
 
   /**
    * Record a failed login attempt for the given identifier (email).
@@ -59,6 +61,44 @@ export class LoginAttemptTracker {
   }
 
   /**
+   * Record a failed TOTP attempt for the given identifier (email).
+   * Tracked separately from password failures so the TOTP rate limit
+   * (TOTP_RATE_LIMIT) is only triggered by actual TOTP failures, not by a
+   * mix of password + TOTP failures.
+   * Returns the new TOTP failure count.
+   */
+  recordTotpFailure(identifier: string): number {
+    const now = Date.now();
+    const normalized = identifier.toLowerCase().trim();
+    const existing = this.totpFailures.get(normalized);
+
+    if (!existing) {
+      this.totpFailures.set(normalized, { count: 1, lastFailureAt: now });
+      return 1;
+    }
+
+    existing.count += 1;
+    existing.lastFailureAt = now;
+    return existing.count;
+  }
+
+  /**
+   * Return the current TOTP failure count for the identifier.
+   */
+  getTotpFailureCount(identifier: string): number {
+    const normalized = identifier.toLowerCase().trim();
+    return this.totpFailures.get(normalized)?.count ?? 0;
+  }
+
+  /**
+   * Clear the TOTP failure counter (call on successful login).
+   */
+  clearTotpFailures(identifier: string): void {
+    const normalized = identifier.toLowerCase().trim();
+    this.totpFailures.delete(normalized);
+  }
+
+  /**
    * Remove stale entries (optional periodic cleanup).
    * Entries older than maxAgeMs are purged.
    */
@@ -67,6 +107,11 @@ export class LoginAttemptTracker {
     for (const [key, window] of this.failures) {
       if (window.lastFailureAt < cutoff) {
         this.failures.delete(key);
+      }
+    }
+    for (const [key, window] of this.totpFailures) {
+      if (window.lastFailureAt < cutoff) {
+        this.totpFailures.delete(key);
       }
     }
   }

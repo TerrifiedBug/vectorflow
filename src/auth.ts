@@ -106,7 +106,11 @@ const credentialsProvider = Credentials({
         writeAuditLog({
           userId: user.id, action: "auth.login_failed", entityType: "Auth", entityId: "credentials",
           ipAddress, userEmail: user.email, userName: user.name,
-          metadata: { reason: "account_locked", remainingSeconds: remainingSecs },
+          metadata: {
+            reason: "account_locked",
+            remainingSeconds: Number.isFinite(remainingSecs) ? remainingSecs : null,
+            isPermanentLock: !Number.isFinite(remainingSecs),
+          },
         }).catch(() => {});
         return null;
       }
@@ -173,9 +177,13 @@ const credentialsProvider = Credentials({
       }
 
       if (!codeValid) {
-        // Count invalid TOTP as a login failure (brute-force protection)
-        const failures = loginAttemptTracker.recordFailure(email);
-        const shouldLock = failures >= TOTP_RATE_LIMIT || failures >= ACCOUNT_LOCKOUT_THRESHOLD;
+        // Count invalid TOTP toward both the overall lockout threshold and the
+        // TOTP-specific rate limit. Use separate counters so the TOTP limit
+        // (TOTP_RATE_LIMIT) is only triggered by actual TOTP failures, never
+        // by a mix of password + TOTP failures sharing one counter.
+        const allFailures = loginAttemptTracker.recordFailure(email);
+        const totpFailures = loginAttemptTracker.recordTotpFailure(email);
+        const shouldLock = totpFailures >= TOTP_RATE_LIMIT || allFailures >= ACCOUNT_LOCKOUT_THRESHOLD;
 
         if (shouldLock) {
           await prisma.user.update({
@@ -185,21 +193,22 @@ const credentialsProvider = Credentials({
           writeAuditLog({
             userId: user.id, action: "auth.account_locked", entityType: "Auth", entityId: "credentials",
             ipAddress, userEmail: user.email, userName: user.name,
-            metadata: { reason: "totp_brute_force", failedAttempts: failures },
+            metadata: { reason: "totp_brute_force", failedAttempts: allFailures, totpFailedAttempts: totpFailures },
           }).catch(() => {});
         } else {
           writeAuditLog({
             userId: user.id, action: "auth.login_failed", entityType: "Auth", entityId: "credentials",
             ipAddress, userEmail: user.email, userName: user.name,
-            metadata: { reason: "invalid_totp", failedAttempts: failures, lockoutAt: ACCOUNT_LOCKOUT_THRESHOLD },
+            metadata: { reason: "invalid_totp", failedAttempts: allFailures, lockoutAt: ACCOUNT_LOCKOUT_THRESHOLD },
           }).catch(() => {});
         }
         throw new InvalidVerificationCodeError();
       }
     }
 
-    // Successful login — clear any in-memory failure counter
+    // Successful login — clear all in-memory failure counters
     loginAttemptTracker.clearFailures(email);
+    loginAttemptTracker.clearTotpFailures(email);
 
     writeAuditLog({
       userId: user.id, action: "auth.login_success", entityType: "Auth", entityId: "credentials",

@@ -4,6 +4,7 @@ import {
   getRemainingLockSeconds,
   ACCOUNT_LOCKOUT_THRESHOLD,
   ACCOUNT_LOCKOUT_DURATION_MS,
+  TOTP_RATE_LIMIT,
 } from "../login-protection";
 
 describe("LoginAttemptTracker", () => {
@@ -77,6 +78,106 @@ describe("LoginAttemptTracker", () => {
     vi.advanceTimersByTime(ACCOUNT_LOCKOUT_DURATION_MS - 1000);
     tracker.cleanup();
     expect(tracker.getFailureCount("fresh@example.com")).toBe(1);
+  });
+});
+
+describe("LoginAttemptTracker — TOTP separate counter (regression: CVE fix)", () => {
+  let tracker: LoginAttemptTracker;
+
+  beforeEach(() => {
+    tracker = new LoginAttemptTracker();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("TOTP failures do NOT increment the password failure counter", () => {
+    tracker.recordTotpFailure("user@example.com");
+    tracker.recordTotpFailure("user@example.com");
+    expect(tracker.getFailureCount("user@example.com")).toBe(0);
+    expect(tracker.getTotpFailureCount("user@example.com")).toBe(2);
+  });
+
+  it("password failures do NOT increment the TOTP failure counter", () => {
+    tracker.recordFailure("user@example.com");
+    tracker.recordFailure("user@example.com");
+    expect(tracker.getTotpFailureCount("user@example.com")).toBe(0);
+    expect(tracker.getFailureCount("user@example.com")).toBe(2);
+  });
+
+  it("mixed password + TOTP failures cannot trigger TOTP_RATE_LIMIT via the shared counter", () => {
+    // Simulate TOTP_RATE_LIMIT - 1 password failures …
+    for (let i = 0; i < TOTP_RATE_LIMIT - 1; i++) {
+      tracker.recordFailure("user@example.com");
+    }
+    // … followed by 1 TOTP failure. The TOTP counter must still be 1, not TOTP_RATE_LIMIT.
+    const totpFailures = tracker.recordTotpFailure("user@example.com");
+    expect(totpFailures).toBe(1);
+    expect(totpFailures).toBeLessThan(TOTP_RATE_LIMIT);
+  });
+
+  it("TOTP_RATE_LIMIT is only reached after TOTP_RATE_LIMIT TOTP-specific failures", () => {
+    for (let i = 1; i <= TOTP_RATE_LIMIT; i++) {
+      const count = tracker.recordTotpFailure("user@example.com");
+      if (i < TOTP_RATE_LIMIT) {
+        expect(count).toBeLessThan(TOTP_RATE_LIMIT);
+      } else {
+        expect(count).toBe(TOTP_RATE_LIMIT);
+      }
+    }
+  });
+
+  it("clearTotpFailures resets only the TOTP counter, not the password counter", () => {
+    tracker.recordFailure("user@example.com");
+    tracker.recordTotpFailure("user@example.com");
+    tracker.clearTotpFailures("user@example.com");
+    expect(tracker.getTotpFailureCount("user@example.com")).toBe(0);
+    expect(tracker.getFailureCount("user@example.com")).toBe(1);
+  });
+
+  it("clearFailures resets only the password counter, not the TOTP counter", () => {
+    tracker.recordFailure("user@example.com");
+    tracker.recordTotpFailure("user@example.com");
+    tracker.clearFailures("user@example.com");
+    expect(tracker.getFailureCount("user@example.com")).toBe(0);
+    expect(tracker.getTotpFailureCount("user@example.com")).toBe(1);
+  });
+
+  it("cleanup purges stale TOTP entries too", () => {
+    tracker.recordTotpFailure("user@example.com");
+    vi.advanceTimersByTime(ACCOUNT_LOCKOUT_DURATION_MS + 1000);
+    tracker.cleanup();
+    expect(tracker.getTotpFailureCount("user@example.com")).toBe(0);
+  });
+
+  it("normalizes TOTP identifier to lowercase", () => {
+    tracker.recordTotpFailure("User@Example.COM");
+    expect(tracker.getTotpFailureCount("user@example.com")).toBe(1);
+    tracker.clearTotpFailures("USER@EXAMPLE.COM");
+    expect(tracker.getTotpFailureCount("user@example.com")).toBe(0);
+  });
+});
+
+describe("getRemainingLockSeconds — Infinity serialization (regression: audit log fix)", () => {
+  it("returns Infinity for admin locks, which must be guarded before JSON serialization", () => {
+    const lockedAt = new Date();
+    const remaining = getRemainingLockSeconds(lockedAt, null);
+    expect(remaining).toBe(Infinity);
+    // Infinity is not JSON-safe — callers must use Number.isFinite() guard
+    expect(Number.isFinite(remaining)).toBe(false);
+    expect(JSON.parse(JSON.stringify({ remainingSeconds: remaining }))).toStrictEqual({
+      remainingSeconds: null,
+    });
+  });
+
+  it("returns a finite number for brute_force locks, safe to serialize", () => {
+    const lockedAt = new Date();
+    const remaining = getRemainingLockSeconds(lockedAt, "brute_force");
+    expect(Number.isFinite(remaining)).toBe(true);
+    const serialized = JSON.parse(JSON.stringify({ remainingSeconds: remaining }));
+    expect(typeof serialized.remainingSeconds).toBe("number");
   });
 });
 
