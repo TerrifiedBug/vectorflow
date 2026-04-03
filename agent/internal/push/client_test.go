@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -169,6 +170,125 @@ func TestClientHandlesKeepalive(t *testing.T) {
 	}
 	if received.Reason != "test" {
 		t.Errorf("got reason %q, want %q", received.Reason, "test")
+	}
+}
+
+func TestWithLifecycleCallbacks_OnConnectFires(t *testing.T) {
+	var connectCalls atomic.Int32
+	var connectURL string
+	var mu sync.Mutex
+	connected := make(chan struct{}, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("expected flusher")
+		}
+		fmt.Fprintf(w, ": keepalive\n\n")
+		flusher.Flush()
+		time.Sleep(500 * time.Millisecond)
+	}))
+	defer server.Close()
+
+	c := New(server.URL, "", "token", func(msg PushMessage) {}).
+		WithLifecycleCallbacks(
+			func(url string) {
+				connectCalls.Add(1)
+				mu.Lock()
+				connectURL = url
+				mu.Unlock()
+				select {
+				case connected <- struct{}{}:
+				default:
+				}
+			},
+			nil,
+		)
+
+	go c.Connect()
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("onConnect not called within timeout")
+	}
+	c.Close()
+
+	if connectCalls.Load() < 1 {
+		t.Errorf("expected onConnect to be called at least once, got %d", connectCalls.Load())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if connectURL != server.URL {
+		t.Errorf("onConnect got url %q, want %q", connectURL, server.URL)
+	}
+}
+
+func TestWithLifecycleCallbacks_OnDisconnectFires(t *testing.T) {
+	var disconnectCalls atomic.Int32
+	disconnected := make(chan struct{}, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("expected flusher")
+		}
+		fmt.Fprintf(w, ": keepalive\n\n")
+		flusher.Flush()
+		// Return immediately to trigger disconnect
+	}))
+	defer server.Close()
+
+	c := New(server.URL, "", "token", func(msg PushMessage) {}).
+		WithLifecycleCallbacks(
+			nil,
+			func() {
+				disconnectCalls.Add(1)
+				select {
+				case disconnected <- struct{}{}:
+				default:
+				}
+			},
+		)
+
+	go c.Connect()
+	select {
+	case <-disconnected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("onDisconnect not called within timeout")
+	}
+	c.Close()
+
+	if disconnectCalls.Load() < 1 {
+		t.Errorf("expected onDisconnect to be called at least once, got %d", disconnectCalls.Load())
+	}
+}
+
+func TestWithLifecycleCallbacks_NoDisconnectOnInitialFailure(t *testing.T) {
+	var disconnectCalls atomic.Int32
+
+	// Server returns 502 on every request — stream never establishes.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	c := New(server.URL, "", "token", func(msg PushMessage) {}).
+		WithLifecycleCallbacks(
+			nil,
+			func() { disconnectCalls.Add(1) },
+		)
+
+	go c.Connect()
+	// Allow a few reconnect cycles
+	time.Sleep(500 * time.Millisecond)
+	c.Close()
+
+	if disconnectCalls.Load() != 0 {
+		t.Errorf("onDisconnect should not be called when stream never connected, got %d calls", disconnectCalls.Load())
 	}
 }
 

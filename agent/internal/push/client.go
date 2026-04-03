@@ -77,7 +77,7 @@ func (c *Client) Connect() {
 
 	for {
 		start := time.Now()
-		err := c.stream(ctx)
+		connected, err := c.stream(ctx)
 		if ctx.Err() != nil {
 			close(c.done)
 			return
@@ -97,7 +97,10 @@ func (c *Client) Connect() {
 			consecutiveFailures = 0
 		}
 
-		if c.onDisconnect != nil {
+		// Only fire onDisconnect if the stream was actually established at some
+		// point during this call. Failures before the first successful connect
+		// should not increment reconnect counters.
+		if connected && c.onDisconnect != nil {
 			c.onDisconnect()
 		}
 		slog.Warn("push: connection lost, reconnecting",
@@ -113,21 +116,24 @@ func (c *Client) Connect() {
 }
 
 // stream opens a single SSE connection and reads messages until error or cancel.
-func (c *Client) stream(ctx context.Context) error {
+// The bool return value indicates whether the stream was successfully established
+// (i.e. onConnect was called); callers use this to guard onDisconnect so that
+// a failure before the first connect does not trigger reconnect accounting.
+func (c *Client) stream(ctx context.Context) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.url, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 
 	resp, err := sseHTTPClient.Do(req)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return &httpError{StatusCode: resp.StatusCode}
+		return false, &httpError{StatusCode: resp.StatusCode}
 	}
 
 	slog.Info("push: connected", "url", c.url)
@@ -174,9 +180,9 @@ func (c *Client) stream(ctx context.Context) error {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return err
+		return true, err
 	}
-	return nil
+	return true, nil
 }
 
 func (c *Client) dispatch(eventType, data string) {
