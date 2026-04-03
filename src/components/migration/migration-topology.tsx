@@ -197,9 +197,9 @@ function layoutWithDagre(
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({
-    rankdir: "LR",
-    nodesep: 30,
-    ranksep: 80,
+    rankdir: "TB",
+    nodesep: 40,
+    ranksep: 60,
     marginx: 20,
     marginy: 20,
   });
