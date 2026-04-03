@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { prisma, readSeedResult } from "../helpers/scenario-utils";
+import { readSeedResult } from "../helpers/scenario-utils";
+import { prisma } from "../../src/lib/prisma";
+import type { Prisma } from "../../src/generated/prisma";
 import { saveGraphComponents } from "../../src/server/services/pipeline-graph";
 import { addDependency } from "../../src/server/services/pipeline-dependency";
 
@@ -8,7 +10,7 @@ test.describe("Pipeline Validation", () => {
     const seed = await readSeedResult();
 
     await expect(
-      prisma.$transaction((tx) =>
+      prisma.$transaction((tx: Prisma.TransactionClient) =>
         saveGraphComponents(tx, {
           pipelineId: seed.pipelineId,
           userId: seed.userId,
