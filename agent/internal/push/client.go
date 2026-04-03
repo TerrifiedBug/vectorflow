@@ -31,6 +31,11 @@ type Client struct {
 	token       string
 	onMessage   func(PushMessage)
 
+	// Optional lifecycle callbacks for observability. Called with the
+	// connection URL; nil callbacks are silently ignored.
+	onConnect    func(url string) // called each time the stream is established
+	onDisconnect func()           // called each time the stream drops (before reconnect)
+
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -48,6 +53,16 @@ func New(url, fallbackURL, token string, onMessage func(PushMessage)) *Client {
 	}
 }
 
+// WithLifecycleCallbacks attaches optional connect/disconnect observers.
+// onConnect is called each time the SSE stream is successfully established;
+// onDisconnect is called each time the stream drops before reconnecting.
+// Either argument may be nil.
+func (c *Client) WithLifecycleCallbacks(onConnect func(url string), onDisconnect func()) *Client {
+	c.onConnect = onConnect
+	c.onDisconnect = onDisconnect
+	return c
+}
+
 // Connect blocks and maintains a persistent SSE connection with exponential
 // backoff reconnection. Call Close() to stop.
 func (c *Client) Connect() {
@@ -62,7 +77,7 @@ func (c *Client) Connect() {
 
 	for {
 		start := time.Now()
-		err := c.stream(ctx)
+		connected, err := c.stream(ctx)
 		if ctx.Err() != nil {
 			close(c.done)
 			return
@@ -82,6 +97,12 @@ func (c *Client) Connect() {
 			consecutiveFailures = 0
 		}
 
+		// Only fire onDisconnect if the stream was actually established at some
+		// point during this call. Failures before the first successful connect
+		// should not increment reconnect counters.
+		if connected && c.onDisconnect != nil {
+			c.onDisconnect()
+		}
 		slog.Warn("push: connection lost, reconnecting",
 			"error", err, "url", c.url, "backoff", backoff)
 		select {
@@ -95,24 +116,30 @@ func (c *Client) Connect() {
 }
 
 // stream opens a single SSE connection and reads messages until error or cancel.
-func (c *Client) stream(ctx context.Context) error {
+// The bool return value indicates whether the stream was successfully established
+// (i.e. onConnect was called); callers use this to guard onDisconnect so that
+// a failure before the first connect does not trigger reconnect accounting.
+func (c *Client) stream(ctx context.Context) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.url, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 
 	resp, err := sseHTTPClient.Do(req)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return &httpError{StatusCode: resp.StatusCode}
+		return false, &httpError{StatusCode: resp.StatusCode}
 	}
 
 	slog.Info("push: connected", "url", c.url)
+	if c.onConnect != nil {
+		c.onConnect(c.url)
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, maxBufferSize), maxBufferSize)
@@ -153,9 +180,9 @@ func (c *Client) stream(ctx context.Context) error {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return err
+		return true, err
 	}
-	return nil
+	return true, nil
 }
 
 func (c *Client) dispatch(eventType, data string) {
