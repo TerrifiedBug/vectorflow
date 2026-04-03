@@ -91,7 +91,7 @@ VectorFlow is a monorepo with two main components:
 
 ```
 vectorflow/
-├── src/                     # Next.js 15 server (App Router + tRPC API)
+├── src/                     # Next.js 16 server (App Router + tRPC API)
 │   ├── app/                 # Pages and API routes
 │   ├── components/          # React components (flow editor, forms, UI)
 │   ├── server/              # tRPC routers and business logic services
