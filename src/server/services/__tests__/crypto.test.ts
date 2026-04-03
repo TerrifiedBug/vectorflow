@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
 
 // Set NEXTAUTH_SECRET before importing crypto module (it reads env at call time)
 const ORIGINAL_SECRET = process.env.NEXTAUTH_SECRET;
@@ -174,7 +175,6 @@ describe("V1 backward compatibility", () => {
     const legacyCiphertext = decryptLegacy
       ? (() => {
           // Use the exported legacy encrypt helper to generate a V1 payload
-          const { createCipheriv, createHash, randomBytes } = require("node:crypto");
           const secret = process.env.NEXTAUTH_SECRET!;
           const key = createHash("sha256").update(secret).digest();
           const iv = randomBytes(12);
@@ -192,7 +192,6 @@ describe("V1 backward compatibility", () => {
 
   it("decryptLegacy decrypts a V1 ciphertext", () => {
     const plaintext = "legacy-only-value";
-    const { createCipheriv, createHash, randomBytes } = require("node:crypto");
     const secret = process.env.NEXTAUTH_SECRET!;
     const key = createHash("sha256").update(secret).digest();
     const iv = randomBytes(12);
