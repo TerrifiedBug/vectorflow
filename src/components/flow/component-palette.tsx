@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search, PackageOpen, Link2 as LinkIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +33,7 @@ const kindMeta: Record<
   },
 };
 
-function DraggableItem({ def }: { def: VectorComponentDef }) {
+const DraggableItem = memo(function DraggableItem({ def }: { def: VectorComponentDef }) {
   const Icon = useMemo(() => getIcon(def.icon), [def.icon]);
   const meta = kindMeta[def.kind];
 
@@ -79,9 +79,9 @@ function DraggableItem({ def }: { def: VectorComponentDef }) {
       </div>
     </div>
   );
-}
+});
 
-function CategoryGroup({
+const CategoryGroup = memo(function CategoryGroup({
   category,
   items,
 }: {
@@ -116,7 +116,7 @@ function CategoryGroup({
       )}
     </div>
   );
-}
+});
 
 function CollapsibleSection({
   kind,
