@@ -6,10 +6,11 @@ import (
 
 	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/metrics"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/selfmetrics"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/supervisor"
 )
 
-func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string, deploymentMode string, sampleResults []client.SampleResultMsg, labels map[string]string, runningAs string) client.HeartbeatRequest {
+func buildHeartbeat(sup *supervisor.Supervisor, sm *selfmetrics.Metrics, vectorVersion string, deploymentMode string, sampleResults []client.SampleResultMsg, labels map[string]string, runningAs string) client.HeartbeatRequest {
 	statuses := sup.Statuses()
 
 	pipelines := make([]client.PipelineStatus, 0, len(statuses))
@@ -85,6 +86,18 @@ func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string, deployment
 		pipelines = append(pipelines, ps)
 	}
 
+	// Embed a snapshot of agent self-health so the server can surface it
+	// without requiring a separate Prometheus scrape of the agent.
+	snap := sm.Snap()
+	agentHealth := &client.AgentHealth{
+		PollErrorsTotal:      snap.PollErrorsTotal,
+		PushReconnectsTotal:  snap.PushReconnectsTotal,
+		HeartbeatErrorsTotal: snap.HeartbeatErrorsTotal,
+		PushConnected:        snap.PushConnected,
+		PipelinesRunning:     snap.PipelinesRunning,
+		UptimeSeconds:        snap.UptimeSeconds,
+	}
+
 	return client.HeartbeatRequest{
 		Pipelines:      pipelines,
 		HostMetrics:    hostMetrics,
@@ -94,5 +107,6 @@ func buildHeartbeat(sup *supervisor.Supervisor, vectorVersion string, deployment
 		RunningAs:      runningAs,
 		SampleResults:  sampleResults,
 		Labels:         labels,
+		AgentHealth:    agentHealth,
 	}
 }

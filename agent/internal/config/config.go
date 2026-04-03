@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,6 +19,7 @@ type Config struct {
 	SlogLevel        slog.Level
 	LogFlushInterval time.Duration
 	NodeLabels       map[string]string
+	MetricsPort      int // port for the agent self-metrics Prometheus endpoint (0 = disabled)
 }
 
 // parseNodeLabels parses a comma-separated "key=value,key2=value2" string
@@ -105,6 +107,15 @@ func Load() (*Config, error) {
 
 	nodeLabels := parseNodeLabels(os.Getenv("VF_NODE_LABELS"))
 
+	metricsPort := 9090
+	if portStr := os.Getenv("VF_METRICS_PORT"); portStr != "" {
+		p, err := strconv.Atoi(portStr)
+		if err != nil || p < 0 || p > 65535 {
+			return nil, fmt.Errorf("invalid VF_METRICS_PORT %q: must be 0-65535", portStr)
+		}
+		metricsPort = p
+	}
+
 	return &Config{
 		URL:              url,
 		Token:            token,
@@ -115,5 +126,6 @@ func Load() (*Config, error) {
 		LogLevel:         logLevel,
 		SlogLevel:        slogLevel,
 		NodeLabels:       nodeLabels,
+		MetricsPort:      metricsPort,
 	}, nil
 }
