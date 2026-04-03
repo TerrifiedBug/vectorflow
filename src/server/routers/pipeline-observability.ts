@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { nanoid } from "nanoid";
 import { LogLevel } from "@/generated/prisma";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
@@ -7,6 +8,69 @@ import { withAudit } from "@/server/middleware/audit";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
 import { relayPush } from "@/server/services/push-broadcast";
+
+// ── Active tap tracking ────────────────────────────────────────────────────
+
+interface ActiveTap {
+  nodeId: string;
+  pipelineId: string;
+  componentId: string;
+  startedAt: number;
+}
+
+export const activeTaps = new Map<string, ActiveTap>();
+const TAP_TTL_MS = 5 * 60 * 1000;
+
+export function startTapHandler(
+  nodeId: string,
+  pipelineId: string,
+  componentId: string,
+): string {
+  const requestId = nanoid();
+  activeTaps.set(requestId, {
+    nodeId,
+    pipelineId,
+    componentId,
+    startedAt: Date.now(),
+  });
+  relayPush(nodeId, {
+    type: "tap_start" as const,
+    requestId,
+    pipelineId,
+    componentId,
+  });
+  return requestId;
+}
+
+export function stopTapHandler(requestId: string): void {
+  const tap = activeTaps.get(requestId);
+  if (!tap) return;
+  activeTaps.delete(requestId);
+  relayPush(tap.nodeId, {
+    type: "tap_stop" as const,
+    requestId,
+  });
+}
+
+export function cleanupStaleTaps(): void {
+  const now = Date.now();
+  for (const [requestId, tap] of activeTaps) {
+    if (now - tap.startedAt > TAP_TTL_MS) {
+      activeTaps.delete(requestId);
+      relayPush(tap.nodeId, {
+        type: "tap_stop" as const,
+        requestId,
+      });
+    }
+  }
+}
+
+const sweepTimer = setInterval(cleanupStaleTaps, TAP_TTL_MS);
+if (typeof sweepTimer === "object" && "unref" in sweepTimer) {
+  sweepTimer.unref();
+}
+
+// ── Router ─────────────────────────────────────────────────────────────────
 
 export const pipelineObservabilityRouter = router({
   metrics: protectedProcedure
@@ -286,5 +350,39 @@ export const pipelineObservabilityRouter = router({
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return batchEvaluatePipelineHealth(input.pipelineIds);
+    }),
+
+  startTap: protectedProcedure
+    .input(
+      z.object({
+        pipelineId: z.string(),
+        componentId: z.string(),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .mutation(async ({ input }) => {
+      const statuses = await prisma.nodePipelineStatus.findMany({
+        where: { pipelineId: input.pipelineId, status: "RUNNING" },
+        select: { nodeId: true },
+      });
+      if (statuses.length === 0) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "No running nodes found for this pipeline",
+        });
+      }
+      const requestId = startTapHandler(
+        statuses[0].nodeId,
+        input.pipelineId,
+        input.componentId,
+      );
+      return { requestId };
+    }),
+
+  stopTap: protectedProcedure
+    .input(z.object({ requestId: z.string() }))
+    .mutation(({ input }) => {
+      stopTapHandler(input.requestId);
+      return { ok: true };
     }),
 });
