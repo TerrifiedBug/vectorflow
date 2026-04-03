@@ -57,6 +57,22 @@ export interface GitSyncStatusEvent {
   jobId: string;
 }
 
+/** Live tap events from a running Vector pipeline component. */
+export interface TapEventSSE {
+  type: "tap_event";
+  requestId: string;
+  pipelineId: string;
+  componentId: string;
+  events: unknown[];
+}
+
+/** Notification that a live tap session has stopped. */
+export interface TapStoppedSSE {
+  type: "tap_stopped";
+  requestId: string;
+  reason: string;
+}
+
 /** All SSE event types the browser can receive. */
 export type SSEEvent =
   | MetricUpdateEvent
@@ -64,4 +80,6 @@ export type SSEEvent =
   | LogEntryEvent
   | StatusChangeEvent
   | PipelineStatusEvent
-  | GitSyncStatusEvent;
+  | GitSyncStatusEvent
+  | TapEventSSE
+  | TapStoppedSSE;

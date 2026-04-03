@@ -15,6 +15,9 @@ type PushMessage struct {
 	ComponentKeys []string `json:"componentKeys,omitempty"`
 	Limit         int      `json:"limit,omitempty"`
 
+	// tap_start / tap_stop fields
+	ComponentID string `json:"componentId,omitempty"`
+
 	// action fields
 	Action        string `json:"action,omitempty"`
 	TargetVersion string `json:"targetVersion,omitempty"`
