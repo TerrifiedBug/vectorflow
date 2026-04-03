@@ -263,6 +263,30 @@ func (s *Supervisor) Restart(pipelineID, configPath string, version int, logLeve
 	return s.startProcess(pipelineID, configPath, version, logLevel, secrets, metricsPort, apiPort)
 }
 
+// RestartInPlace restarts a pipeline using its currently stored config.
+// Used by push-triggered restarts where the config has not changed.
+func (s *Supervisor) RestartInPlace(pipelineID string) error {
+	s.mu.Lock()
+	info, exists := s.processes[pipelineID]
+	if !exists {
+		s.mu.Unlock()
+		return fmt.Errorf("pipeline %s not found", pipelineID)
+	}
+	configPath := info.configPath
+	version := info.Version
+	logLevel := info.LogLevel
+	secrets := info.Secrets
+	s.mu.Unlock()
+
+	s.Stop(pipelineID)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	metricsPort := s.nextPort()
+	apiPort := s.nextPort()
+	return s.startProcess(pipelineID, configPath, version, logLevel, secrets, metricsPort, apiPort)
+}
+
 // UpdateVersion updates the reported version for a pipeline without restarting.
 // Used when a new deploy creates a version with identical config.
 func (s *Supervisor) UpdateVersion(pipelineID string, version int) {
