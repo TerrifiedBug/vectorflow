@@ -115,6 +115,8 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
   const functionProviderRef = useRef<{ dispose: () => void } | null>(null);
   const hoverProviderRef = useRef<{ dispose: () => void } | null>(null);
   const signatureHelpProviderRef = useRef<{ dispose: () => void } | null>(null);
+  const validateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingMarkersRef = useRef<import("monaco-editor").editor.IMarkerData[]>([]);
 
   const [sampleLimit, setSampleLimit] = useState(5);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -176,6 +178,41 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     fields: mergedFieldsForAi,
     sourceTypes,
   });
+
+  const applyValidationMarkers = useCallback((markers: import("monaco-editor").editor.IMarkerData[]) => {
+    pendingMarkersRef.current = markers;
+    const monaco = monacoRef.current;
+    const model = editorRef.current?.getModel();
+    if (!monaco || !model) return;
+    monaco.editor.setModelMarkers(model, "vrl-validate", markers);
+  }, []);
+
+  const validateMutation = useMutation(
+    trpc.vrl.validate.mutationOptions({
+      onSuccess: (data) => {
+        const monaco = monacoRef.current;
+        if (!monaco) {
+          pendingMarkersRef.current = [];
+          return;
+        }
+        const markers = data.errors
+          .filter((e) => e.line > 0)
+          .map((e) => {
+            const model = editorRef.current?.getModel();
+            const lineLength = model ? model.getLineLength(e.line) : 0;
+            return {
+              severity: monaco.MarkerSeverity.Error,
+              startLineNumber: e.line,
+              startColumn: e.column,
+              endLineNumber: e.line,
+              endColumn: Math.max(e.column + 1, lineLength + 1),
+              message: e.message,
+            };
+          });
+        applyValidationMarkers(markers);
+      },
+    }),
+  );
 
   const testMutation = useMutation(
     trpc.vrl.test.mutationOptions({
@@ -239,6 +276,22 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     setRequestId(null);
   }, [sampleResultQuery.data]);
 
+  // Debounced inline validation — fires 500ms after code changes
+  const { mutate: runValidate } = validateMutation;
+  useEffect(() => {
+    if (validateDebounceRef.current) clearTimeout(validateDebounceRef.current);
+    if (!value.trim()) {
+      applyValidationMarkers([]);
+      return;
+    }
+    validateDebounceRef.current = setTimeout(() => {
+      runValidate({ source: value });
+    }, 500);
+    return () => {
+      if (validateDebounceRef.current) clearTimeout(validateDebounceRef.current);
+    };
+  }, [value, runValidate, applyValidationMarkers]);
+
   const handleFetchSamples = useCallback(() => {
     if (!pipelineId || !upstreamSourceKeys?.length) return;
     requestSamplesMutation.mutate({
@@ -266,6 +319,11 @@ export function VrlEditor({ value, onChange, sourceTypes, pipelineId, componentK
     // Theme already defined in beforeMount
     monaco.editor.setTheme("vrl-theme");
     editor.focus();
+    // Apply any markers that arrived while the Dialog was closed
+    const model = editor.getModel();
+    if (model && pendingMarkersRef.current.length > 0) {
+      monaco.editor.setModelMarkers(model, "vrl-validate", pendingMarkersRef.current);
+    }
   }, []);
 
   // Register snippet completion provider once when Monaco is available.
