@@ -201,6 +201,10 @@ func (m *Manager) run(ctx context.Context, done chan struct{}, requestID, pipeli
 			// Kill the process — CommandContext handles this automatically,
 			// but we still wait for cleanup.
 			_ = cmd.Wait()
+			// Drain the lines channel so the scanner goroutine can exit
+			// (it may be blocked trying to send on a full channel).
+			for range lines {
+			}
 			if len(batch) > 0 {
 				flushBatch(send, requestID, pipelineID, componentID, batch)
 			}
