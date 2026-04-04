@@ -28,7 +28,7 @@ export const IP_ANONYMIZATION: DlpTemplateDefinition = {
 # Zeros the last octet of IPv4 addresses
 # 192.168.1.42 -> 192.168.1.0
 
-fields = [.message]
+fields = ["message"]
 replace_octet = "0"
 
 for_each(fields) -> |_idx, field_path| {

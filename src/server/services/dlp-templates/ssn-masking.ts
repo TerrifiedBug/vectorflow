@@ -28,7 +28,7 @@ export const SSN_MASKING: DlpTemplateDefinition = {
 # Detects XXX-XX-XXXX, XXX XX XXXX, and XXXXXXXXX patterns
 # Avoids false positives by excluding 000, 666, 900-999 area numbers per SSA rules
 
-fields = [.message]
+fields = ["message"]
 full_redact = false
 
 for_each(fields) -> |_idx, field_path| {
@@ -36,16 +36,9 @@ for_each(fields) -> |_idx, field_path| {
   if err == null && is_string(raw_value) {
     val = string!(raw_value)
 
-    # SSN pattern: area (001-899 excl 666), group (01-99), serial (0001-9999)
-    val = replace(val, r'\\b(?!000|666|9[0-9]{2})[0-9]{3}[- ]?(?!00)[0-9]{2}[- ]?(?!0000)[0-9]{4}\\b', |match| {
-      if full_redact {
-        "[REDACTED-SSN]"
-      } else {
-        digits = replace(match, r'[^0-9]', "")
-        last4 = slice!(digits, 5)
-        "***-**-" + last4
-      }
-    })
+    # SSN pattern: area (001-899, excludes 000 via [1-9] prefix), group (01-99), serial (4 digits)
+    # VRL regex does not support lookaheads; area 000 excluded by [1-9][0-9]{2}
+    val = replace(val, r'\\b([1-9][0-9]{2})[- ]?(0[1-9]|[1-9][0-9])[- ]?([0-9]{4})\\b', "***-**-$3")
 
     . = set!(., [field_path], val)
   }

@@ -7,7 +7,7 @@ export const DLP_VRL_SOURCES: Record<string, string> = {
 # Detects Visa, Mastercard, Amex, Discover patterns with optional separators
 # Preserves last 4 digits, replaces rest with mask character
 
-fields = [.message]
+fields = ["message"]
 mask_char = "*"
 
 for_each(fields) -> |_idx, field_path| {
@@ -38,7 +38,7 @@ for_each(fields) -> |_idx, field_path| {
 # Detects XXX-XX-XXXX, XXX XX XXXX, and XXXXXXXXX patterns
 # Avoids false positives by excluding 000, 666, 900-999 area numbers per SSA rules
 
-fields = [.message]
+fields = ["message"]
 full_redact = false
 
 for_each(fields) -> |_idx, field_path| {
@@ -64,7 +64,7 @@ for_each(fields) -> |_idx, field_path| {
   dlp_email_redaction: `# Email Redaction (GDPR / HIPAA)
 # Detects standard email patterns per RFC 5322 simplified
 
-fields = [.message]
+fields = ["message"]
 replacement = "[REDACTED-EMAIL]"
 
 for_each(fields) -> |_idx, field_path| {
@@ -83,7 +83,7 @@ for_each(fields) -> |_idx, field_path| {
 # Zeros the last octet of IPv4 addresses
 # 192.168.1.42 -> 192.168.1.0
 
-fields = [.message]
+fields = ["message"]
 replace_octet = "0"
 
 for_each(fields) -> |_idx, field_path| {
@@ -101,7 +101,7 @@ for_each(fields) -> |_idx, field_path| {
   dlp_phone_masking: `# Phone Number Masking (GDPR / HIPAA)
 # Detects US and international phone formats
 
-fields = [.message]
+fields = ["message"]
 replacement = "[REDACTED-PHONE]"
 
 for_each(fields) -> |_idx, field_path| {
@@ -120,7 +120,7 @@ for_each(fields) -> |_idx, field_path| {
   dlp_api_key_redaction: `# API Key / Token Redaction (PCI-DSS / GDPR)
 # Detects common secret patterns and replaces with placeholder
 
-fields = [.message]
+fields = ["message"]
 replacement = "[REDACTED-KEY]"
 
 for_each(fields) -> |_idx, field_path| {
@@ -144,7 +144,7 @@ for_each(fields) -> |_idx, field_path| {
   dlp_custom_regex_masking: `# Custom Regex Masking
 # User-defined regex pattern applied to specified fields
 
-fields = [.message]
+fields = ["message"]
 pattern = "CHANGE_ME"
 replacement = "[REDACTED]"
 
@@ -163,10 +163,10 @@ for_each(fields) -> |_idx, field_path| {
   dlp_json_field_removal: `# JSON Field Removal (GDPR / HIPAA / PCI-DSS)
 # Drops specified fields from structured log events
 
-remove_fields = [".password", ".secret", ".token"]
+remove_fields = ["password", "secret", "token"]
 
 for_each(remove_fields) -> |_idx, field_path| {
-  del(., field_path)
+  . = remove!(., [field_path], compact: false)
 }
 `,
 };

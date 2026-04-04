@@ -28,7 +28,7 @@ export const CREDIT_CARD_MASKING: DlpTemplateDefinition = {
 # Detects Visa, Mastercard, Amex, Discover patterns with optional separators
 # Preserves last 4 digits, replaces rest with mask character
 
-fields = [.message]
+fields = ["message"]
 mask_char = "*"
 
 for_each(fields) -> |_idx, field_path| {
@@ -36,19 +36,9 @@ for_each(fields) -> |_idx, field_path| {
   if err == null && is_string(raw_value) {
     val = string!(raw_value)
 
-    # Match 13-19 digit card numbers with optional dashes or spaces
-    # Pattern covers: Visa (4xxx), MC (5[1-5]xx, 2[2-7]xx), Amex (3[47]xx), Discover (6xxx)
-    val = replace(val, r'\\b(?:4[0-9]{3}|5[1-5][0-9]{2}|3[47][0-9]{2}|6(?:011|5[0-9]{2}))[- ]?[0-9]{4}[- ]?[0-9]{4}[- ]?[0-9]{1,7}\\b', |match| {
-      digits = replace(match, r'[^0-9]', "")
-      len = length(digits)
-      if len >= 13 && len <= 19 {
-        last4 = slice!(digits, len - 4)
-        masked_prefix = repeat(mask_char, len - 4)
-        masked_prefix + last4
-      } else {
-        match
-      }
-    })
+    # Match 16-digit card numbers with optional dashes or spaces, capture last 4 digits
+    # Pattern covers: Visa (4xxx), MC (5[1-5]xx), Amex (3[47]xxx 15-digit), Discover (6xxx)
+    val = replace(val, r'\\b(?:4[0-9]{3}|5[1-5][0-9]{2}|3[47][0-9]{2}|6(?:011|5[0-9]{2}))[- ]?[0-9]{4}[- ]?[0-9]{4}[- ]?([0-9]{4})\\b', "************$1")
 
     . = set!(., [field_path], val)
   }

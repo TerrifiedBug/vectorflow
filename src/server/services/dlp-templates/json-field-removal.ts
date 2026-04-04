@@ -21,10 +21,10 @@ export const JSON_FIELD_REMOVAL: DlpTemplateDefinition = {
 # Drops specified fields from structured log events
 # Fields that don't exist are silently skipped
 
-remove_fields = [".password", ".secret", ".token"]
+remove_fields = ["password", "secret", "token"]
 
 for_each(remove_fields) -> |_idx, field_path| {
-  del(., field_path)
+  . = remove!(., [field_path], compact: false)
 }
 `,
   testFixtures: [
