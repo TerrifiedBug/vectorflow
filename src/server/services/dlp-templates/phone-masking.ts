@@ -28,7 +28,7 @@ export const PHONE_MASKING: DlpTemplateDefinition = {
 # Detects US and international phone formats
 # +1 (555) 123-4567, 555-123-4567, (555) 123 4567, +44 20 7946 0958
 
-fields = [.message]
+fields = ["message"]
 replacement = "[REDACTED-PHONE]"
 
 for_each(fields) -> |_idx, field_path| {
@@ -36,8 +36,8 @@ for_each(fields) -> |_idx, field_path| {
   if err == null && is_string(raw_value) {
     val = string!(raw_value)
 
-    # International format: +country_code followed by digits/spaces/dashes/parens
-    val = replace(val, r'\\+[1-9][0-9]{0,2}[- ]?\\(?[0-9]{1,4}\\)?[- ]?[0-9]{1,4}[- ]?[0-9]{1,4}[- ]?[0-9]{0,4}', replacement)
+    # International format: +country_code (area) exchange number
+    val = replace(val, r'\\+[1-9][0-9]{0,2}[- ]?\\(?[0-9]{1,4}\\)?[- ]?[0-9]{1,4}[- ]?[0-9]{4}', replacement)
 
     # US format: (XXX) XXX-XXXX or XXX-XXX-XXXX or XXX.XXX.XXXX
     val = replace(val, r'\\(?[0-9]{3}\\)?[- .]?[0-9]{3}[- .]?[0-9]{4}\\b', replacement)
