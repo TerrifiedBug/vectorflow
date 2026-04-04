@@ -31,7 +31,7 @@ groups:
       # Fraction of nodes that are HEALTHY (value == 1)
       - record: vectorflow:node_healthy:ratio
         expr: |
-          count(vectorflow_node_status == 1)
+          (count(vectorflow_node_status == 1) or vector(0))
           /
           count(vectorflow_node_status)
 
@@ -120,7 +120,7 @@ groups:
           summary: "Error ratio > 5% on pipeline {{ $labels.pipeline_id }}"
           description: >
             Pipeline {{ $labels.pipeline_id }} on node {{ $labels.node_id }} has an
-            error ratio of {{ printf "%.1f" (mul $value 100) }}% over the last 5 minutes.
+            error ratio of {{ humanizePercentage $value }} over the last 5 minutes.
 
       # High pipeline latency (mean > 2000 ms)
       - alert: VectorFlowHighLatency
@@ -145,7 +145,7 @@ groups:
           summary: "Pipeline {{ $labels.pipeline_id }} utilization > 90%"
           description: >
             Pipeline {{ $labels.pipeline_id }} on node {{ $labels.node_id }} is running
-            at {{ printf "%.0f" (mul $value 100) }}% utilization. Consider scaling out
+            at {{ humanizePercentage $value }} utilization. Consider scaling out
             or reducing ingest volume.
 
       # MetricStore memory pressure (> 100 MiB)

@@ -154,7 +154,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "count(vectorflow_node_status == 1) / count(vectorflow_node_status)",
+          "expr": "(count(vectorflow_node_status == 1) or vector(0)) / count(vectorflow_node_status)",
           "instant": true,
           "legendFormat": "Healthy Ratio",
           "refId": "A"
