@@ -25,7 +25,7 @@
  */
 
 import { PrismaClient } from "../src/generated/prisma";
-import { decrypt, decryptLegacy, encrypt, ENCRYPTION_DOMAINS } from "../src/server/services/crypto";
+import { decryptLegacy, encrypt, ENCRYPTION_DOMAINS } from "../src/server/services/crypto";
 
 const prisma = new PrismaClient();
 
@@ -140,24 +140,8 @@ async function migrateSystemSettings(): Promise<{ total: number; migrated: numbe
   return { total: rows.length, migrated };
 }
 
-async function migrateAlertWebhooks(): Promise<{ total: number; migrated: number }> {
-  log("\n── AlertWebhook.encryptedSecret ──");
-  const rows = await prisma.alertWebhook.findMany({
-    where: { encryptedSecret: { not: null } },
-    select: { id: true, encryptedSecret: true },
-  });
-  let migrated = 0;
-  for (const row of rows) {
-    const newValue = migrateValue(row.encryptedSecret, ENCRYPTION_DOMAINS.GENERIC, `AlertWebhook(${row.id})`);
-    if (newValue && !isDryRun) {
-      await prisma.alertWebhook.update({ where: { id: row.id }, data: { encryptedSecret: newValue } });
-      migrated++;
-    } else if (newValue) {
-      migrated++;
-    }
-  }
-  return { total: rows.length, migrated };
-}
+// NOTE: AlertWebhook.hmacSecret is stored as plaintext (used for HMAC signing),
+// so it does not need encryption migration.
 
 // ─── Main ──────────────────────────────────────────────────────────────────
 
@@ -181,7 +165,6 @@ async function main(): Promise<void> {
     migrateCertificates(),
     migrateUserTotp(),
     migrateSystemSettings(),
-    migrateAlertWebhooks(),
   ]);
 
   const totalRows = results.reduce((sum, r) => sum + r.total, 0);

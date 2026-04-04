@@ -170,24 +170,17 @@ describe("missing NEXTAUTH_SECRET", () => {
 
 describe("V1 backward compatibility", () => {
   it("decrypt handles legacy V1 ciphertext (no v2: prefix)", () => {
-    // Generate a V1-format ciphertext manually using the internal legacy helper
     const plaintext = "legacy-value";
-    const legacyCiphertext = decryptLegacy
-      ? (() => {
-          // Use the exported legacy encrypt helper to generate a V1 payload
-          const secret = process.env.NEXTAUTH_SECRET!;
-          const key = createHash("sha256").update(secret).digest();
-          const iv = randomBytes(12);
-          const cipher = createCipheriv("aes-256-gcm", key, iv);
-          const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-          const authTag = cipher.getAuthTag();
-          return Buffer.concat([iv, authTag, encrypted]).toString("base64");
-        })()
-      : null;
+    // Build a V1-format ciphertext: raw SHA-256 key, no v2: prefix
+    const secret = process.env.NEXTAUTH_SECRET!;
+    const key = createHash("sha256").update(secret).digest();
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
+    const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    const legacyCiphertext = Buffer.concat([iv, authTag, encrypted]).toString("base64");
 
-    if (legacyCiphertext) {
-      expect(decrypt(legacyCiphertext)).toBe(plaintext);
-    }
+    expect(decrypt(legacyCiphertext)).toBe(plaintext);
   });
 
   it("decryptLegacy decrypts a V1 ciphertext", () => {

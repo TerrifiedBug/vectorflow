@@ -157,8 +157,16 @@ export function decrypt(
       // before rotation using NEXTAUTH_SECRET HKDF. Try that as fallback.
       // AES-GCM auth tag failure guarantees we never silently accept wrong data.
       if (process.env.VF_ENCRYPTION_KEY_V2 && process.env.NEXTAUTH_SECRET) {
-        const fallbackKey = deriveKeyV2Nextauth(domain);
-        return decryptWithKey(payload, fallbackKey);
+        try {
+          const fallbackKey = deriveKeyV2Nextauth(domain);
+          return decryptWithKey(payload, fallbackKey);
+        } catch (fallbackError) {
+          const primary = activeKeyError instanceof Error ? activeKeyError.message : String(activeKeyError);
+          const fallback = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+          throw new Error(
+            `Decryption failed with both keys — active: ${primary}; fallback (NEXTAUTH_SECRET): ${fallback}`,
+          );
+        }
       }
       throw activeKeyError;
     }
