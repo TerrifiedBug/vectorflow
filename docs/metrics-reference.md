@@ -73,7 +73,7 @@ Node health status.
 vectorflow_node_status != 1
 
 # Fraction of healthy nodes
-count(vectorflow_node_status == 1) / count(vectorflow_node_status)
+(count(vectorflow_node_status == 1) or vector(0)) / count(vectorflow_node_status)
 
 # Alert: any node unreachable for >2 min
 vectorflow_node_status == 3
