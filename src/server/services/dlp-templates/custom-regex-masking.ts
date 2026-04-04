@@ -35,7 +35,7 @@ export const CUSTOM_REGEX_MASKING: DlpTemplateDefinition = {
 # User-defined regex pattern applied to specified fields
 # Configure pattern and replacement to match your data
 
-fields = [.message]
+fields = ["message"]
 pattern = "CHANGE_ME"
 replacement = "[REDACTED]"
 

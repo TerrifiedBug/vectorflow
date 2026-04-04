@@ -27,7 +27,7 @@ export const EMAIL_REDACTION: DlpTemplateDefinition = {
   vrlSource: `# Email Redaction (GDPR / HIPAA)
 # Detects standard email patterns per RFC 5322 simplified
 
-fields = [.message]
+fields = ["message"]
 replacement = "[REDACTED-EMAIL]"
 
 for_each(fields) -> |_idx, field_path| {

@@ -13,18 +13,18 @@ export const JSON_FIELD_REMOVAL: DlpTemplateDefinition = {
       name: "remove_fields",
       label: "Fields to remove",
       type: "string[]",
-      description: "Dot-path fields to delete from events (e.g., .password, .user.ssn, .metadata.internal_id)",
-      default: [".password", ".secret", ".token"],
+      description: "Field names to delete from events (e.g., password, secret, token)",
+      default: ["password", "secret", "token"],
     },
   ],
   vrlSource: `# JSON Field Removal (GDPR / HIPAA / PCI-DSS)
 # Drops specified fields from structured log events
 # Fields that don't exist are silently skipped
 
-remove_fields = [".password", ".secret", ".token"]
+remove_fields = ["password", "secret", "token"]
 
 for_each(remove_fields) -> |_idx, field_path| {
-  del(., field_path)
+  . = remove!(., [field_path], compact: false)
 }
 `,
   testFixtures: [
