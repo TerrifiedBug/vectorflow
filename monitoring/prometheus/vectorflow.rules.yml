@@ -1,0 +1,162 @@
+groups:
+  # ---------------------------------------------------------------------------
+  # Recording rules — pre-compute expensive or frequently-used queries so
+  # dashboards and alerts read from fast, pre-aggregated series.
+  # ---------------------------------------------------------------------------
+  - name: vectorflow.recording
+    interval: 30s
+    rules:
+      # Per-pipeline event throughput (events/sec over 2m window)
+      - record: vectorflow:pipeline_events_in:rate2m
+        expr: rate(vectorflow_pipeline_events_in_total[2m])
+
+      - record: vectorflow:pipeline_events_out:rate2m
+        expr: rate(vectorflow_pipeline_events_out_total[2m])
+
+      # Per-pipeline error rate (errors/sec over 2m window)
+      - record: vectorflow:pipeline_errors:rate2m
+        expr: rate(vectorflow_pipeline_errors_total[2m])
+
+      # Per-pipeline discard rate (events/sec over 2m window)
+      - record: vectorflow:pipeline_events_discarded:rate2m
+        expr: rate(vectorflow_pipeline_events_discarded_total[2m])
+
+      # Per-pipeline byte throughput (bytes/sec over 2m window)
+      - record: vectorflow:pipeline_bytes_in:rate2m
+        expr: rate(vectorflow_pipeline_bytes_in_total[2m])
+
+      - record: vectorflow:pipeline_bytes_out:rate2m
+        expr: rate(vectorflow_pipeline_bytes_out_total[2m])
+
+      # Fraction of nodes that are HEALTHY (value == 1)
+      - record: vectorflow:node_healthy:ratio
+        expr: |
+          (count(vectorflow_node_status == 1) or vector(0))
+          /
+          count(vectorflow_node_status)
+
+      # Total events processed across all pipelines (instantaneous gauge sum)
+      - record: vectorflow:pipeline_events_in:sum
+        expr: sum(vectorflow_pipeline_events_in_total)
+
+      - record: vectorflow:pipeline_events_out:sum
+        expr: sum(vectorflow_pipeline_events_out_total)
+
+      # Average utilization across all running pipelines
+      - record: vectorflow:pipeline_utilization:avg
+        expr: avg(vectorflow_pipeline_utilization{} > 0)
+
+      # Error ratio: errors / events_in per pipeline over 5m (NaN when no events)
+      - record: vectorflow:pipeline_error_ratio:rate5m
+        expr: |
+          rate(vectorflow_pipeline_errors_total[5m])
+          /
+          (rate(vectorflow_pipeline_events_in_total[5m]) > 0)
+
+  # ---------------------------------------------------------------------------
+  # Alerting rules — actionable conditions operators should know about.
+  # ---------------------------------------------------------------------------
+  - name: vectorflow.alerts
+    rules:
+      # Node becomes unreachable
+      - alert: VectorFlowNodeUnreachable
+        expr: vectorflow_node_status == 3
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "VectorFlow node {{ $labels.node_name }} is UNREACHABLE"
+          description: >
+            Node {{ $labels.node_name }} ({{ $labels.node_id }}) in environment
+            {{ $labels.environment_id }} has been unreachable for more than 2 minutes.
+            Check network connectivity and the VectorFlow agent on that host.
+
+      # Node is degraded
+      - alert: VectorFlowNodeDegraded
+        expr: vectorflow_node_status == 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "VectorFlow node {{ $labels.node_name }} is DEGRADED"
+          description: >
+            Node {{ $labels.node_name }} ({{ $labels.node_id }}) has been in DEGRADED
+            state for more than 5 minutes. Inspect the node for resource pressure or
+            partial failures.
+
+      # Pipeline crashed
+      - alert: VectorFlowPipelineCrashed
+        expr: vectorflow_pipeline_status == 4
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "VectorFlow pipeline {{ $labels.pipeline_id }} CRASHED on {{ $labels.node_id }}"
+          description: >
+            Pipeline {{ $labels.pipeline_id }} on node {{ $labels.node_id }} has been
+            in CRASHED state for more than 1 minute. Check the Vector process logs on
+            that node.
+
+      # High error rate: more than 10 errors/sec sustained for 5 minutes
+      - alert: VectorFlowHighErrorRate
+        expr: vectorflow:pipeline_errors:rate2m > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on pipeline {{ $labels.pipeline_id }}"
+          description: >
+            Pipeline {{ $labels.pipeline_id }} on node {{ $labels.node_id }} is
+            producing {{ printf "%.1f" $value }} errors/sec (threshold: 10/sec).
+            Investigate sink connectivity and upstream data quality.
+
+      # Error ratio exceeds 5% of inbound events sustained for 10 minutes
+      - alert: VectorFlowHighErrorRatio
+        expr: vectorflow:pipeline_error_ratio:rate5m > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Error ratio > 5% on pipeline {{ $labels.pipeline_id }}"
+          description: >
+            Pipeline {{ $labels.pipeline_id }} on node {{ $labels.node_id }} has an
+            error ratio of {{ humanizePercentage $value }} over the last 5 minutes.
+
+      # High pipeline latency (mean > 2000 ms)
+      - alert: VectorFlowHighLatency
+        expr: vectorflow_pipeline_latency_mean_ms > 2000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency on pipeline {{ $labels.pipeline_id }}"
+          description: >
+            Pipeline {{ $labels.pipeline_id }} on node {{ $labels.node_id }} has a mean
+            latency of {{ printf "%.0f" $value }}ms (threshold: 2000ms). Check for
+            downstream backpressure or slow sinks.
+
+      # Pipeline utilization > 90% sustained for 10 minutes
+      - alert: VectorFlowHighUtilization
+        expr: vectorflow_pipeline_utilization > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pipeline {{ $labels.pipeline_id }} utilization > 90%"
+          description: >
+            Pipeline {{ $labels.pipeline_id }} on node {{ $labels.node_id }} is running
+            at {{ humanizePercentage $value }} utilization. Consider scaling out
+            or reducing ingest volume.
+
+      # MetricStore memory pressure (> 100 MiB)
+      - alert: VectorFlowMetricStoreMemoryHigh
+        expr: vectorflow_metric_store_memory_bytes > 104857600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "VectorFlow MetricStore memory > 100 MiB"
+          description: >
+            The in-process MetricStore is using {{ humanizeBytes $value }} of memory.
+            This may indicate a leak in streaming metric accumulation. Consider restarting
+            the VectorFlow server or increasing the eviction window.
