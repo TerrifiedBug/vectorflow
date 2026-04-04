@@ -13,8 +13,8 @@ export const JSON_FIELD_REMOVAL: DlpTemplateDefinition = {
       name: "remove_fields",
       label: "Fields to remove",
       type: "string[]",
-      description: "Dot-path fields to delete from events (e.g., .password, .user.ssn, .metadata.internal_id)",
-      default: [".password", ".secret", ".token"],
+      description: "Field names to delete from events (e.g., password, secret, token)",
+      default: ["password", "secret", "token"],
     },
   ],
   vrlSource: `# JSON Field Removal (GDPR / HIPAA / PCI-DSS)

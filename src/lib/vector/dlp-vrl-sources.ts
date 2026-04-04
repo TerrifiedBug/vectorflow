@@ -15,9 +15,14 @@ for_each(fields) -> |_idx, field_path| {
   if err == null && is_string(raw_value) {
     val = string!(raw_value)
 
-    # Match 16-digit card numbers with optional dashes or spaces, capture last 4 digits
-    # Pattern covers: Visa (4xxx), MC (5[1-5]xx), Amex (3[47]xxx 15-digit), Discover (6xxx)
-    val = replace(val, r'\\\\b(?:4[0-9]{3}|5[1-5][0-9]{2}|3[47][0-9]{2}|6(?:011|5[0-9]{2}))[- ]?[0-9]{4}[- ]?[0-9]{4}[- ]?([0-9]{4})\\\\b', "************$1")
+    mask_prefix_16 = repeat(mask_char, 12)
+    mask_prefix_15 = repeat(mask_char, 10)
+
+    # Amex: 3[47]xx-xxxxxx-xxxxx (15 digits, 4-6-5 grouping)
+    val = replace(val, r'\\\\b(3[47][0-9]{2})[- ]?([0-9]{6})[- ]?([0-9]{5})\\\\b', repeat(mask_char, 4) + "-" + repeat(mask_char, 6) + "-$3")
+
+    # Visa/MC/Discover: 16 digits (4-4-4-4 grouping)
+    val = replace(val, r'\\\\b(?:4[0-9]{3}|5[1-5][0-9]{2}|6(?:011|5[0-9]{2}))[- ]?[0-9]{4}[- ]?[0-9]{4}[- ]?([0-9]{4})\\\\b', mask_prefix_16 + "$1")
 
     . = set!(., [field_path], val)
   }
@@ -36,12 +41,12 @@ for_each(fields) -> |_idx, field_path| {
   if err == null && is_string(raw_value) {
     val = string!(raw_value)
 
-    # SSN pattern: area (100-665, 667-899), group (01-99), serial (4 digits)
+    # SSN pattern: area (001-665 excl 000/666, 667-899), group (01-99), serial (4 digits)
     # Explicit alternation excludes 000, 666, 900-999 (no lookaheads in VRL 0.54)
     if full_redact {
-      val = replace(val, r'\\\\b([1-5][0-9]{2}|6(?:[0-5][0-9]|6[0-57-9]|[7-9][0-9])|[78][0-9]{2})[- ]?(0[1-9]|[1-9][0-9])[- ]?([0-9]{4})\\\\b', "[REDACTED-SSN]")
+      val = replace(val, r'\\\\b(0(?:[1-9][0-9]|0[1-9])|[1-5][0-9]{2}|6(?:[0-5][0-9]|6[0-57-9]|[7-9][0-9])|[78][0-9]{2})[- ]?(0[1-9]|[1-9][0-9])[- ]?([0-9]{4})\\\\b', "[REDACTED-SSN]")
     } else {
-      val = replace(val, r'\\\\b([1-5][0-9]{2}|6(?:[0-5][0-9]|6[0-57-9]|[7-9][0-9])|[78][0-9]{2})[- ]?(0[1-9]|[1-9][0-9])[- ]?([0-9]{4})\\\\b', "***-**-$3")
+      val = replace(val, r'\\\\b(0(?:[1-9][0-9]|0[1-9])|[1-5][0-9]{2}|6(?:[0-5][0-9]|6[0-57-9]|[7-9][0-9])|[78][0-9]{2})[- ]?(0[1-9]|[1-9][0-9])[- ]?([0-9]{4})\\\\b', "***-**-$3")
     }
 
     . = set!(., [field_path], val)
