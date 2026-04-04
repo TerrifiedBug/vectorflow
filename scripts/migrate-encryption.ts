@@ -25,11 +25,12 @@
  */
 
 import { PrismaClient } from "../src/generated/prisma";
-import { decryptLegacy, encrypt, ENCRYPTION_DOMAINS } from "../src/server/services/crypto";
+import { decryptLegacy, encrypt } from "../src/server/services/crypto";
 
 const prisma = new PrismaClient();
 
 const isDryRun = process.argv.includes("--dry-run");
+let errorCount = 0;
 
 function isV1Ciphertext(value: string): boolean {
   return !value.startsWith("v2:");
@@ -41,11 +42,16 @@ function log(msg: string): void {
 
 /**
  * Migrates a single field value from V1 to V2 encryption.
+ *
+ * All fields are migrated with the default GENERIC domain because existing
+ * callers (secret.ts, user.ts, cert-expiry-checker.ts, secret-resolver.ts)
+ * all call decrypt() without a domain argument. Domain-separated keys can
+ * be adopted later by updating callers and re-running migration.
+ *
  * Returns the new V2 ciphertext, or null if no migration needed.
  */
 function migrateValue(
   value: string | null | undefined,
-  domain: typeof ENCRYPTION_DOMAINS[keyof typeof ENCRYPTION_DOMAINS],
   label: string,
 ): string | null {
   if (!value) return null;
@@ -55,10 +61,11 @@ function migrateValue(
   }
   try {
     const plaintext = decryptLegacy(value);
-    const newCiphertext = encrypt(plaintext, domain);
+    const newCiphertext = encrypt(plaintext);
     log(`  [migrate] ${label}`);
     return newCiphertext;
   } catch (err) {
+    errorCount++;
     log(`  [error]   ${label} — decryption failed: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
@@ -71,7 +78,7 @@ async function migrateSecrets(): Promise<{ total: number; migrated: number }> {
   const rows = await prisma.secret.findMany({ select: { id: true, name: true, encryptedValue: true } });
   let migrated = 0;
   for (const row of rows) {
-    const newValue = migrateValue(row.encryptedValue, ENCRYPTION_DOMAINS.SECRETS, `Secret(${row.name})`);
+    const newValue = migrateValue(row.encryptedValue, `Secret(${row.name})`);
     if (newValue && !isDryRun) {
       await prisma.secret.update({ where: { id: row.id }, data: { encryptedValue: newValue } });
       migrated++;
@@ -87,7 +94,7 @@ async function migrateCertificates(): Promise<{ total: number; migrated: number 
   const rows = await prisma.certificate.findMany({ select: { id: true, name: true, encryptedData: true } });
   let migrated = 0;
   for (const row of rows) {
-    const newValue = migrateValue(row.encryptedData, ENCRYPTION_DOMAINS.CERTIFICATES, `Certificate(${row.name})`);
+    const newValue = migrateValue(row.encryptedData, `Certificate(${row.name})`);
     if (newValue && !isDryRun) {
       await prisma.certificate.update({ where: { id: row.id }, data: { encryptedData: newValue } });
       migrated++;
@@ -108,10 +115,10 @@ async function migrateUserTotp(): Promise<{ total: number; migrated: number }> {
   for (const row of rows) {
     const updates: { totpSecret?: string; totpBackupCodes?: string } = {};
 
-    const newSecret = migrateValue(row.totpSecret, ENCRYPTION_DOMAINS.TOTP, `User(${row.email}).totpSecret`);
+    const newSecret = migrateValue(row.totpSecret, `User(${row.email}).totpSecret`);
     if (newSecret) { updates.totpSecret = newSecret; migrated++; }
 
-    const newCodes = migrateValue(row.totpBackupCodes, ENCRYPTION_DOMAINS.TOTP, `User(${row.email}).totpBackupCodes`);
+    const newCodes = migrateValue(row.totpBackupCodes, `User(${row.email}).totpBackupCodes`);
     if (newCodes) { updates.totpBackupCodes = newCodes; migrated++; }
 
     if (Object.keys(updates).length > 0 && !isDryRun) {
@@ -129,7 +136,7 @@ async function migrateSystemSettings(): Promise<{ total: number; migrated: numbe
   });
   let migrated = 0;
   for (const row of rows) {
-    const newValue = migrateValue(row.oidcClientSecret, ENCRYPTION_DOMAINS.GENERIC, `SystemSettings(${row.id}).oidcClientSecret`);
+    const newValue = migrateValue(row.oidcClientSecret, `SystemSettings(${row.id}).oidcClientSecret`);
     if (newValue && !isDryRun) {
       await prisma.systemSettings.update({ where: { id: row.id }, data: { oidcClientSecret: newValue } });
       migrated++;
@@ -171,7 +178,13 @@ async function main(): Promise<void> {
   const totalMigrated = results.reduce((sum, r) => sum + r.migrated, 0);
 
   log("\n" + "=".repeat(60));
-  log(`Done. ${totalMigrated}/${totalRows} fields migrated${isDryRun ? " (dry run)" : ""}.`);
+  log(`Done. ${totalMigrated}/${totalRows} fields migrated, ${errorCount} errors${isDryRun ? " (dry run)" : ""}.`);
+
+  if (errorCount > 0) {
+    log(`\nERROR: ${errorCount} field(s) failed to decrypt. Do NOT remove NEXTAUTH_SECRET.`);
+    log("Investigate the errors above and re-run after fixing.");
+    process.exit(1);
+  }
 
   if (!isDryRun && totalMigrated > 0) {
     log("\nNext steps:");
