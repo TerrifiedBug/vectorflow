@@ -36,9 +36,13 @@ for_each(fields) -> |_idx, field_path| {
   if err == null && is_string(raw_value) {
     val = string!(raw_value)
 
-    # SSN pattern: area (001-899, excludes 000 via [1-9] prefix), group (01-99), serial (4 digits)
-    # VRL regex does not support lookaheads; area 000 excluded by [1-9][0-9]{2}
-    val = replace(val, r'\\b([1-9][0-9]{2})[- ]?(0[1-9]|[1-9][0-9])[- ]?([0-9]{4})\\b', "***-**-$3")
+    # SSN pattern: area (100-665, 667-899), group (01-99), serial (4 digits)
+    # VRL regex does not support lookaheads; explicit alternation excludes 000, 666, 900-999
+    if full_redact {
+      val = replace(val, r'\\b([1-5][0-9]{2}|6(?:[0-5][0-9]|6[0-57-9]|[7-9][0-9])|[78][0-9]{2})[- ]?(0[1-9]|[1-9][0-9])[- ]?([0-9]{4})\\b', "[REDACTED-SSN]")
+    } else {
+      val = replace(val, r'\\b([1-5][0-9]{2}|6(?:[0-5][0-9]|6[0-57-9]|[7-9][0-9])|[78][0-9]{2})[- ]?(0[1-9]|[1-9][0-9])[- ]?([0-9]{4})\\b', "***-**-$3")
+    }
 
     . = set!(., [field_path], val)
   }
@@ -70,6 +74,24 @@ for_each(fields) -> |_idx, field_path| {
       },
       expectedOutput: {
         message: "ID: 000-12-3456",
+      },
+    },
+    {
+      description: "Does not match reserved area 666",
+      input: {
+        message: "ID: 666-12-3456",
+      },
+      expectedOutput: {
+        message: "ID: 666-12-3456",
+      },
+    },
+    {
+      description: "Does not match ITIN range (900-999)",
+      input: {
+        message: "ITIN: 900-70-1234",
+      },
+      expectedOutput: {
+        message: "ITIN: 900-70-1234",
       },
     },
   ],

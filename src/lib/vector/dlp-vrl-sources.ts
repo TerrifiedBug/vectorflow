@@ -15,19 +15,9 @@ for_each(fields) -> |_idx, field_path| {
   if err == null && is_string(raw_value) {
     val = string!(raw_value)
 
-    # Match 13-19 digit card numbers with optional dashes or spaces
-    # Pattern covers: Visa (4xxx), MC (5[1-5]xx, 2[2-7]xx), Amex (3[47]xx), Discover (6xxx)
-    val = replace(val, r'\\\\b(?:4[0-9]{3}|5[1-5][0-9]{2}|3[47][0-9]{2}|6(?:011|5[0-9]{2}))[- ]?[0-9]{4}[- ]?[0-9]{4}[- ]?[0-9]{1,7}\\\\b', |match| {
-      digits = replace(match, r'[^0-9]', "")
-      len = length(digits)
-      if len >= 13 && len <= 19 {
-        last4 = slice!(digits, len - 4)
-        masked_prefix = repeat(mask_char, len - 4)
-        masked_prefix + last4
-      } else {
-        match
-      }
-    })
+    # Match 16-digit card numbers with optional dashes or spaces, capture last 4 digits
+    # Pattern covers: Visa (4xxx), MC (5[1-5]xx), Amex (3[47]xxx 15-digit), Discover (6xxx)
+    val = replace(val, r'\\\\b(?:4[0-9]{3}|5[1-5][0-9]{2}|3[47][0-9]{2}|6(?:011|5[0-9]{2}))[- ]?[0-9]{4}[- ]?[0-9]{4}[- ]?([0-9]{4})\\\\b', "************$1")
 
     . = set!(., [field_path], val)
   }
@@ -46,15 +36,13 @@ for_each(fields) -> |_idx, field_path| {
   if err == null && is_string(raw_value) {
     val = string!(raw_value)
 
-    val = replace(val, r'\\\\b(?!000|666|9[0-9]{2})[0-9]{3}[- ]?(?!00)[0-9]{2}[- ]?(?!0000)[0-9]{4}\\\\b', |match| {
-      if full_redact {
-        "[REDACTED-SSN]"
-      } else {
-        digits = replace(match, r'[^0-9]', "")
-        last4 = slice!(digits, 5)
-        "***-**-" + last4
-      }
-    })
+    # SSN pattern: area (100-665, 667-899), group (01-99), serial (4 digits)
+    # Explicit alternation excludes 000, 666, 900-999 (no lookaheads in VRL 0.54)
+    if full_redact {
+      val = replace(val, r'\\\\b([1-5][0-9]{2}|6(?:[0-5][0-9]|6[0-57-9]|[7-9][0-9])|[78][0-9]{2})[- ]?(0[1-9]|[1-9][0-9])[- ]?([0-9]{4})\\\\b', "[REDACTED-SSN]")
+    } else {
+      val = replace(val, r'\\\\b([1-5][0-9]{2}|6(?:[0-5][0-9]|6[0-57-9]|[7-9][0-9])|[78][0-9]{2})[- ]?(0[1-9]|[1-9][0-9])[- ]?([0-9]{4})\\\\b', "***-**-$3")
+    }
 
     . = set!(., [field_path], val)
   }
@@ -109,7 +97,7 @@ for_each(fields) -> |_idx, field_path| {
   if err == null && is_string(raw_value) {
     val = string!(raw_value)
 
-    val = replace(val, r'\\\\+[1-9][0-9]{0,2}[- ]?\\\\(?[0-9]{1,4}\\\\)?[- ]?[0-9]{1,4}[- ]?[0-9]{1,4}[- ]?[0-9]{0,4}', replacement)
+    val = replace(val, r'\\\\+[1-9][0-9]{0,2}[- ]?\\\\(?[0-9]{1,4}\\\\)?[- ]?[0-9]{1,4}[- ]?[0-9]{4}', replacement)
     val = replace(val, r'\\\\(?[0-9]{3}\\\\)?[- .]?[0-9]{3}[- .]?[0-9]{4}\\\\b', replacement)
 
     . = set!(., [field_path], val)
@@ -132,9 +120,9 @@ for_each(fields) -> |_idx, field_path| {
     val = replace(val, r'\\\\bsk-(?:proj-)?[A-Za-z0-9]{20,}\\\\b', replacement)
     val = replace(val, r'\\\\b[sp]k_(?:live|test)_[A-Za-z0-9]{20,}\\\\b', replacement)
     val = replace(val, r'\\\\bAKIA[A-Z0-9]{16}\\\\b', replacement)
-    val = replace(val, r'(?i)(?:aws_secret_access_key|secret_key|aws_secret)[=: ]+["\\'\\']?[A-Za-z0-9/+=]{40}["\\'\\']?', replacement)
+    val = replace(val, r'(?i)(?:aws_secret_access_key|secret_key|aws_secret)[=: ]+[A-Za-z0-9/+=]{40}', replacement)
     val = replace(val, r'\\\\bgh[posr]_[A-Za-z0-9]{36,}\\\\b', replacement)
-    val = replace(val, r'(?i)(?:api[_-]?key|apikey|api[_-]?secret)[=: ]+["\\'\\']?[A-Za-z0-9\\\\-._~]{16,}["\\'\\']?', replacement)
+    val = replace(val, r'(?i)(?:api[_-]?key|apikey|api[_-]?secret)[=: ]+[A-Za-z0-9\\\\-._~]{16,}', replacement)
 
     . = set!(., [field_path], val)
   }
