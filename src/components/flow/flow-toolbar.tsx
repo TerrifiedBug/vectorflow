@@ -57,6 +57,7 @@ import { VersionHistoryDialog } from "@/components/pipeline/version-history-dial
 import { KeyboardShortcutsDialog } from "@/components/flow/keyboard-shortcuts-dialog";
 import { Input } from "@/components/ui/input";
 import { useCanvasSearch } from "@/hooks/use-canvas-search";
+import { PressableScale } from "@/components/motion";
 
 type ProcessStatusValue = "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING";
 
@@ -579,28 +580,7 @@ export function FlowToolbar({
           if (!isDeployed) {
             // Never deployed or undeployed
             return (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={onDeploy}
-                    disabled={nodes.length === 0}
-                    className="h-7 gap-1.5 px-2.5 text-xs"
-                  >
-                    <Rocket className="h-3.5 w-3.5" />
-                    Deploy
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Deploy pipeline to environment</TooltipContent>
-              </Tooltip>
-            );
-          }
-
-          if (hasChanges) {
-            // Deployed but has changes to deploy
-            return (
-              <>
+              <PressableScale>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -614,8 +594,33 @@ export function FlowToolbar({
                       Deploy
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Changes detected{deployedVersionNumber != null ? ` since v${deployedVersionNumber}` : ''} — deploy to update</TooltipContent>
+                  <TooltipContent>Deploy pipeline to environment</TooltipContent>
                 </Tooltip>
+              </PressableScale>
+            );
+          }
+
+          if (hasChanges) {
+            // Deployed but has changes to deploy
+            return (
+              <>
+                <PressableScale>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={onDeploy}
+                        disabled={nodes.length === 0}
+                        className="h-7 gap-1.5 px-2.5 text-xs"
+                      >
+                        <Rocket className="h-3.5 w-3.5" />
+                        Deploy
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Changes detected{deployedVersionNumber != null ? ` since v${deployedVersionNumber}` : ''} — deploy to update</TooltipContent>
+                  </Tooltip>
+                </PressableScale>
                 {onDiscardChanges && (
                   <Tooltip>
                     <TooltipTrigger asChild>
