@@ -1,8 +1,10 @@
 "use client";
 
+import type { TargetAndTransition } from "motion/react";
 import type { ReactNode } from "react";
 import * as m from "motion/react-m";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { fadeInUp, durations, easings } from "./variants";
 
 interface FadeInProps {
   className?: string;
@@ -21,9 +23,9 @@ export function FadeIn({ className, children, delay = 0 }: FadeInProps) {
   return (
     <m.div
       className={className}
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, delay }}
+      initial={fadeInUp.initial as TargetAndTransition}
+      animate={fadeInUp.animate as TargetAndTransition}
+      transition={{ duration: durations.normal, ease: easings.enter, delay }}
     >
       {children}
     </m.div>
