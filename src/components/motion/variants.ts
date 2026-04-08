@@ -1,4 +1,4 @@
-import type { Variants } from "motion/react";
+import type { Transition, Variants } from "motion/react";
 
 /* ------------------------------------------------------------------ */
 /*  Easing curves                                                       */
@@ -87,6 +87,21 @@ export const scaleIn: Variants = {
     transition: { duration: durations.normal, ease: easings.enter },
   },
 };
+
+/* ------------------------------------------------------------------ */
+/*  Spring transition preset                                            */
+/* ------------------------------------------------------------------ */
+
+/** Spring physics transition for hover/tap interactions (no overshoot feel). */
+export const springTransition: Transition = {
+  type: "spring",
+  stiffness: 400,
+  damping: 25,
+};
+
+/* ------------------------------------------------------------------ */
+/*  Stagger helpers                                                     */
+/* ------------------------------------------------------------------ */
 
 /** Returns container variants that stagger children proportionally. */
 export function staggerContainer(childCount: number): Variants {

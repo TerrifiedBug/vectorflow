@@ -13,6 +13,7 @@ import {
   staggerItem,
   pageEnter,
   pageExit,
+  springTransition,
 } from "../variants";
 
 describe("easings", () => {
@@ -110,5 +111,21 @@ describe("staggerItem", () => {
 
   it("visible state has opacity 1", () => {
     expect((staggerItem.visible as Record<string, unknown>).opacity).toBe(1);
+  });
+});
+
+describe("springTransition", () => {
+  it("has type 'spring'", () => {
+    expect(springTransition.type).toBe("spring");
+  });
+
+  it("has stiffness greater than 0", () => {
+    expect(typeof springTransition.stiffness).toBe("number");
+    expect(springTransition.stiffness).toBeGreaterThan(0);
+  });
+
+  it("has damping greater than 0", () => {
+    expect(typeof springTransition.damping).toBe("number");
+    expect(springTransition.damping).toBeGreaterThan(0);
   });
 });
