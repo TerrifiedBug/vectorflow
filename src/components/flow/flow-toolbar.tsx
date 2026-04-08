@@ -478,7 +478,7 @@ export function FlowToolbar({
               size="sm"
               onClick={() => autoLayout(selectedNodeIds.size > 1)}
               disabled={nodes.length === 0}
-              className="h-7 w-7 p-0"
+              className={cn("h-7 w-7 p-0", selectedNodeIds.size > 1 && "bg-accent")}
               aria-label="Auto-layout"
             >
               <LayoutGrid className="h-4 w-4" />
