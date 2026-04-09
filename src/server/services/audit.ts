@@ -3,9 +3,10 @@ import { join, dirname } from "path";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { errorLog } from "@/lib/logger";
+import { env } from "@/lib/env";
 
 export const AUDIT_LOG_PATH =
-  process.env.VF_AUDIT_LOG_PATH ??
+  env.VF_AUDIT_LOG_PATH ??
   join(process.cwd(), ".vectorflow", "audit.jsonl");
 
 export async function writeAuditLog(params: {

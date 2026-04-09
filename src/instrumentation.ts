@@ -1,3 +1,4 @@
+import "@/lib/env";
 import { infoLog, errorLog } from "@/lib/logger";
 
 export async function register() {

@@ -1,6 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { PipelineAggregates } from "@/server/services/cost-optimizer-types";
 import { DEFAULT_THRESHOLDS } from "@/server/services/cost-optimizer-types";
+
+// Mock prisma to prevent env validation from running at import time
+vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+
 import {
   detectLowReduction,
   detectHighErrorRate,
