@@ -261,6 +261,10 @@ describe("metrics.getComponentMetrics", () => {
 // ── metrics.getNodePipelineRates ───────────────────────────────────────────────
 
 describe("metrics.getNodePipelineRates", () => {
+  beforeEach(() => {
+    prismaMock.vectorNode.findUnique.mockResolvedValue({ environmentId: "env-1" } as never);
+  });
+
   it("returns empty rates when metricStore has no data for node", async () => {
     (metricStore.getAllForNode as ReturnType<typeof vi.fn>).mockReturnValue(new Map());
     prismaMock.pipelineNode.findMany.mockResolvedValue([]);
