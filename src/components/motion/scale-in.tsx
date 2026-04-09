@@ -1,19 +1,17 @@
 "use client";
 
-import type { TargetAndTransition } from "motion/react";
 import type { ReactNode } from "react";
 import * as m from "motion/react-m";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
-import { fadeInUp, durations, easings } from "./variants";
+import { durations, easings } from "./variants";
 
-interface FadeInProps {
+interface ScaleInProps {
+  delay?: number;
   className?: string;
   children: ReactNode;
-  /** Optional delay in seconds before the animation starts. */
-  delay?: number;
 }
 
-export function FadeIn({ className, children, delay = 0 }: FadeInProps) {
+export function ScaleIn({ delay = 0, className, children }: ScaleInProps) {
   const shouldReduceMotion = useReducedMotion();
 
   if (shouldReduceMotion) {
@@ -23,10 +21,10 @@ export function FadeIn({ className, children, delay = 0 }: FadeInProps) {
   return (
     <m.div
       className={className}
-      initial={fadeInUp.initial as TargetAndTransition}
+      initial={{ opacity: 0, scale: 0.95 }}
       animate={{
         opacity: 1,
-        y: 0,
+        scale: 1,
         transition: { duration: durations.normal, ease: easings.enter, delay },
       }}
     >

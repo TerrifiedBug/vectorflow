@@ -87,3 +87,8 @@ tmp/
 /blob-report/
 /playwright/.cache/
 e2e/.auth/
+
+# ── GSD baseline (auto-generated) ──
+.gsd
+.gsd-id
+.bg-shell/
