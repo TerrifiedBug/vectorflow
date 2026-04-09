@@ -24,8 +24,11 @@ export function FadeIn({ className, children, delay = 0 }: FadeInProps) {
     <m.div
       className={className}
       initial={fadeInUp.initial as TargetAndTransition}
-      animate={fadeInUp.animate as TargetAndTransition}
-      transition={{ duration: durations.normal, ease: easings.enter, delay }}
+      animate={{
+        opacity: 1,
+        y: 0,
+        transition: { duration: durations.normal, ease: easings.enter, delay },
+      }}
     >
       {children}
     </m.div>

@@ -11,8 +11,8 @@ import { useReducedMotion } from '@/hooks/use-reduced-motion';
 export interface AnimatedNumberProps {
   /** The numeric value to display and animate to. */
   value: number;
-  /** Optional formatter — receives the rounded current value and returns a string. */
-  formatter?: (v: number) => string;
+  /** Optional formatter — receives the current value (already `Math.round()`-ed) and returns a display string. */
+  formatter?: (roundedValue: number) => string;
   className?: string;
 }
 
