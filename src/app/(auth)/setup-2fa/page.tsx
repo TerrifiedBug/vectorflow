@@ -8,6 +8,10 @@ import { useTRPC } from "@/trpc/client";
 import { Shield, Copy, CheckCircle2, AlertTriangle, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import QRCode from "qrcode";
+import * as m from "motion/react-m";
+import type { TargetAndTransition } from "motion/react";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { fadeInUp } from "@/components/motion";
 
 import { cn } from "@/lib/utils";
 import { copyToClipboard } from "@/lib/utils";
@@ -25,6 +29,7 @@ import {
 
 export default function Setup2FAPage() {
   const router = useRouter();
+  const prefersReducedMotion = useReducedMotion();
   const { status } = useSession();
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -135,8 +140,8 @@ export default function Setup2FAPage() {
     );
   }
 
-  return (
-    <Card className="w-full">
+  const card = (
+    <Card className="w-full hover:translate-y-0 hover:shadow-none">
       <div className="flex items-center gap-2 px-6 pt-6">
         <div
           className={cn(
@@ -316,5 +321,18 @@ export default function Setup2FAPage() {
         )}
       </CardContent>
     </Card>
+  );
+
+  if (prefersReducedMotion) {
+    return card;
+  }
+
+  return (
+    <m.div
+      initial={fadeInUp.initial as TargetAndTransition}
+      animate={fadeInUp.animate as TargetAndTransition}
+    >
+      {card}
+    </m.div>
   );
 }

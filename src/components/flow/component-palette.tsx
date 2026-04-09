@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { getVectorCatalog } from "@/lib/vector/catalog";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import { getIcon } from "./node-icon";
+import { StaggerList, StaggerItem } from "@/components/motion";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
@@ -108,11 +109,13 @@ const CategoryGroup = memo(function CategoryGroup({
         </span>
       </button>
       {open && (
-        <div className="space-y-1.5 pb-1 pl-1">
+        <StaggerList className="space-y-1.5 pb-1 pl-1">
           {items.map((def) => (
-            <DraggableItem key={def.type} def={def} />
+            <StaggerItem key={def.type}>
+              <DraggableItem def={def} />
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerList>
       )}
     </div>
   );
@@ -167,9 +170,15 @@ function CollapsibleSection({
                   items={defs}
                 />
               ))
-            : items.map((def) => (
-                <DraggableItem key={def.type} def={def} />
-              ))}
+            : (
+              <StaggerList>
+                {items.map((def) => (
+                  <StaggerItem key={def.type}>
+                    <DraggableItem def={def} />
+                  </StaggerItem>
+                ))}
+              </StaggerList>
+            )}
         </div>
       )}
     </div>

@@ -4,6 +4,7 @@ import React from "react";
 import type { JSX, ComponentPropsWithoutRef, Ref } from "react";
 import * as m from "motion/react-m";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { staggerContainer, staggerItem } from "./variants";
 
 /* ------------------------------------------------------------------ */
 /*  Polymorphic element tag — union of all HTML element keys in m.*    */
@@ -20,15 +21,6 @@ type StaggerListProps<T extends ValidTag = "div"> = {
   className?: string;
   children: React.ReactNode;
 } & Omit<ComponentPropsWithoutRef<T>, "className" | "children">;
-
-const staggerListVariants = (childCount: number) => ({
-  hidden: {},
-  visible: {
-    transition: {
-      staggerChildren: Math.min(0.03, 0.3 / Math.max(childCount, 1)),
-    },
-  },
-});
 
 export function StaggerList<T extends ValidTag = "div">({
   as,
@@ -64,7 +56,7 @@ export function StaggerList<T extends ValidTag = "div">({
   return (
     <MotionComponent
       className={className}
-      variants={staggerListVariants(childCount)}
+      variants={staggerContainer(childCount)}
       initial="hidden"
       animate="visible"
       {...rest}
@@ -84,15 +76,6 @@ type StaggerItemProps<T extends ValidTag = "div"> = {
   children?: React.ReactNode;
   ref?: Ref<HTMLElement>;
 } & Omit<ComponentPropsWithoutRef<T>, "className" | "children">;
-
-const staggerItemVariants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.2 },
-  },
-};
 
 export function StaggerItem<T extends ValidTag = "div">({
   as,
@@ -127,7 +110,7 @@ export function StaggerItem<T extends ValidTag = "div">({
   return (
     <MotionComponent
       className={className}
-      variants={staggerItemVariants}
+      variants={staggerItem}
       {...rest}
     >
       {children}

@@ -63,7 +63,7 @@ function TransformNodeComponent({
       )}
       <div
         className={cn(
-          "w-56 rounded-lg border bg-card shadow-sm transition-[transform,box-shadow] duration-200 overflow-hidden",
+          "w-56 rounded-lg border bg-card shadow-md transition-[transform,box-shadow] duration-200 overflow-hidden",
           "ring-2 ring-transparent",
           "hover:-translate-y-0.5 hover:shadow-[0_0_12px_var(--node-transform-glow)]",
           selected && !isShared && "ring-node-transform shadow-md",
@@ -78,11 +78,11 @@ function TransformNodeComponent({
         <Handle
           type="target"
           position={Position.Left}
-          className="!h-3 !w-3 !border-2 !border-node-transform !bg-background"
+          className="!h-3.5 !w-3.5 !border-2 !border-node-transform !bg-background"
         />
 
         {/* Header bar */}
-        <div className="flex items-center gap-2 bg-node-transform px-3 py-2 text-node-transform-foreground">
+        <div className="flex items-center gap-2 bg-node-transform border-b border-node-transform/20 px-3 py-2 text-node-transform-foreground">
           {/* eslint-disable-next-line react-hooks/static-components */}
           <Icon className="h-4 w-4 shrink-0" />
           <span className="truncate text-sm font-medium">
@@ -141,7 +141,7 @@ function TransformNodeComponent({
         <Handle
           type="source"
           position={Position.Right}
-          className="!h-3 !w-3 !border-2 !border-node-transform !bg-background"
+          className="!h-3.5 !w-3.5 !border-2 !border-node-transform !bg-background"
         />
       </div>
     </div>
