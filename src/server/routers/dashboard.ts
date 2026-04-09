@@ -166,6 +166,7 @@ export const dashboardRouter = router({
         },
       },
       orderBy: { name: "asc" },
+      take: 100,
     });
 
     // Fetch sparkline data: metrics for last hour per node
@@ -260,6 +261,7 @@ export const dashboardRouter = router({
     const pipelineComponentNodes = await prisma.pipelineNode.findMany({
       where: { pipelineId: { in: pipelineIds } },
       select: { pipelineId: true, componentKey: true, kind: true },
+      take: 1000,
     });
 
     return assemblePipelineCards(pipelines, metricsRows, latestSamples, pipelineComponentNodes);
