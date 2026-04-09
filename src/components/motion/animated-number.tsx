@@ -49,8 +49,11 @@ function AnimatedNumberInner({
     return unsubscribe;
   }, [displayValue]);
 
-  // Initial textContent for SSR / before the spring fires.
-  const initial = formatter ? formatter(Math.round(value)) : String(Math.round(value));
+  // Use the spring's current position so there's no flash to the final
+  // value before the count-up animation starts.
+  const initial = formatter
+    ? formatter(Math.round(springValue.get()))
+    : String(Math.round(springValue.get()));
 
   return (
     <span ref={ref} className={className}>

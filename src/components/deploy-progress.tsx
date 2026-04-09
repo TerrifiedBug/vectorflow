@@ -11,8 +11,7 @@ import {
   ChevronUp,
   X,
 } from "lucide-react";
-import { AnimatePresence } from "motion/react";
-import * as m from "motion/react-m";
+import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { FadeIn } from "@/components/motion";
@@ -133,7 +132,7 @@ export function DeployProgressPanel() {
         ) : (
           <AnimatePresence>
             {expanded && (
-              <m.div
+              <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
@@ -141,7 +140,7 @@ export function DeployProgressPanel() {
                 className="overflow-hidden"
               >
                 {expandedContent}
-              </m.div>
+              </motion.div>
             )}
           </AnimatePresence>
         )}
