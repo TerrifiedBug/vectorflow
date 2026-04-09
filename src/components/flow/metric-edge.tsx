@@ -17,10 +17,10 @@ function MetricEdgeComponent({ data, ...props }: EdgeProps) {
         d={edgePath}
         fill="none"
         className={cn(
-          "stroke-muted-foreground",
+          "stroke-border",
           isActive && "stroke-foreground/60"
         )}
-        strokeWidth={2}
+        strokeWidth={isActive ? 2.5 : 2}
         strokeDasharray={isActive ? "8 4" : undefined}
         style={isActive ? { animation: "flow-dash 1.2s linear infinite" } : undefined}
         markerEnd={props.markerEnd}
@@ -33,7 +33,7 @@ function MetricEdgeComponent({ data, ...props }: EdgeProps) {
           x={labelX - 40}
           y={labelY - 12}
         >
-          <div className="flex items-center justify-center rounded bg-muted px-2 py-0.5 text-xs font-mono tabular-nums text-muted-foreground">
+          <div className="flex items-center justify-center rounded border border-border bg-muted px-2 py-0.5 text-xs font-mono tabular-nums text-muted-foreground">
             {throughput > 1000
               ? `${(throughput / 1000).toFixed(1)}k/s`
               : `${throughput}/s`}
