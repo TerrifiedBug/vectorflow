@@ -10,6 +10,7 @@ import { authConfig } from "@/auth.config";
 import { writeAuditLog } from "@/server/services/audit";
 import { debugLog, infoLog, warnLog } from "@/lib/logger";
 import { headers } from "next/headers";
+import { env } from "@/lib/env";
 import {
   loginAttemptTracker,
   getRemainingLockSeconds,
@@ -40,7 +41,7 @@ class InvalidVerificationCodeError extends CredentialsSignin {
  */
 async function getOidcSettings() {
   // Skip DB query during build (no database available)
-  if (!process.env.DATABASE_URL) return null;
+  if (!env.DATABASE_URL) return null;
 
   try {
     const settings = await prisma.systemSettings.findUnique({
@@ -77,7 +78,7 @@ const credentialsProvider = Credentials({
     totpCode: { label: "2FA Code", type: "text" },
   },
   async authorize(credentials) {
-    if (process.env.VF_DISABLE_LOCAL_AUTH === "true") {
+    if (env.VF_DISABLE_LOCAL_AUTH === "true") {
       throw new Error("Local authentication is disabled");
     }
 
@@ -466,6 +467,6 @@ export async function getOidcStatus(): Promise<{
   return {
     enabled: !!oidc,
     displayName: oidc?.displayName ?? "SSO",
-    localAuthDisabled: process.env.VF_DISABLE_LOCAL_AUTH === "true",
+    localAuthDisabled: env.VF_DISABLE_LOCAL_AUTH === "true",
   };
 }
