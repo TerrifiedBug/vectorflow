@@ -10,7 +10,7 @@ import { authConfig } from "@/auth.config";
 import { writeAuditLog } from "@/server/services/audit";
 import { debugLog, infoLog, warnLog } from "@/lib/logger";
 import { headers } from "next/headers";
-import { env } from "@/lib/env";
+import { env, isBuildPhase } from "@/lib/env";
 import {
   loginAttemptTracker,
   getRemainingLockSeconds,
@@ -41,7 +41,7 @@ class InvalidVerificationCodeError extends CredentialsSignin {
  */
 async function getOidcSettings() {
   // Skip DB query during build (no database available)
-  if (!env.DATABASE_URL) return null;
+  if (isBuildPhase) return null;
 
   try {
     const settings = await prisma.systemSettings.findUnique({

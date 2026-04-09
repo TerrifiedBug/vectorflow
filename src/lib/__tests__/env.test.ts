@@ -15,6 +15,7 @@ describe("env validation", () => {
     delete process.env.NEXTAUTH_SECRET;
     delete process.env.NEXTAUTH_URL;
     delete process.env.VF_LOG_LEVEL;
+    delete process.env.LOG_LEVEL;
     delete process.env.DATABASE_POOL_MAX;
     delete process.env.DATABASE_CONNECTION_TIMEOUT_MS;
     delete process.env.DATABASE_IDLE_TIMEOUT_MS;
@@ -77,6 +78,27 @@ describe("env validation", () => {
     expect(env.VF_VERSION).toBe("dev");
     expect(env.METRICS_CHUNK_INTERVAL).toBe("1 day");
     expect(env.METRICS_COMPRESS_AFTER).toBe("24 hours");
+  });
+
+  it("falls back to LOG_LEVEL when VF_LOG_LEVEL is unset", async () => {
+    setRequiredEnv();
+    process.env.LOG_LEVEL = "debug";
+    const { env } = await import("@/lib/env");
+    expect(env.VF_LOG_LEVEL).toBe("debug");
+  });
+
+  it("prefers VF_LOG_LEVEL over LOG_LEVEL when both are set", async () => {
+    setRequiredEnv();
+    process.env.LOG_LEVEL = "debug";
+    process.env.VF_LOG_LEVEL = "warn";
+    const { env } = await import("@/lib/env");
+    expect(env.VF_LOG_LEVEL).toBe("warn");
+  });
+
+  it("rejects invalid legacy LOG_LEVEL values", async () => {
+    setRequiredEnv();
+    process.env.LOG_LEVEL = "verbose";
+    await expect(import("@/lib/env")).rejects.toThrow();
   });
 
   it("coerces numeric strings to numbers", async () => {

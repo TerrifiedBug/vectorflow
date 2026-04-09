@@ -80,6 +80,7 @@ describe("dashboard.stats", () => {
   it("returns combined stats with correct shape", async () => {
     prismaMock.pipeline.count.mockResolvedValue(5);
     prismaMock.vectorNode.count.mockResolvedValue(3);
+    // @ts-expect-error - groupBy mock typing is complex
     prismaMock.vectorNode.groupBy.mockResolvedValue([
       { status: "HEALTHY", _count: { status: 2 } },
       { status: "DEGRADED", _count: { status: 1 } },
@@ -103,6 +104,7 @@ describe("dashboard.stats", () => {
   it("returns reductionPercent=null when eventsIn is 0", async () => {
     prismaMock.pipeline.count.mockResolvedValue(0);
     prismaMock.vectorNode.count.mockResolvedValue(0);
+    // @ts-expect-error - groupBy mock typing is complex
     prismaMock.vectorNode.groupBy.mockResolvedValue([]);
     prismaMock.pipelineMetric.aggregate.mockResolvedValue({
       _sum: { eventsIn: BigInt(0), eventsOut: BigInt(0) },
@@ -120,6 +122,7 @@ describe("dashboard.stats", () => {
   it("calculates reduction percent correctly when eventsIn > 0", async () => {
     prismaMock.pipeline.count.mockResolvedValue(1);
     prismaMock.vectorNode.count.mockResolvedValue(1);
+    // @ts-expect-error - groupBy mock typing is complex
     prismaMock.vectorNode.groupBy.mockResolvedValue([]);
     prismaMock.pipelineMetric.aggregate.mockResolvedValue({
       _sum: { eventsIn: BigInt(1000), eventsOut: BigInt(500) },
@@ -135,6 +138,7 @@ describe("dashboard.stats", () => {
   it("returns 0 for unreachable when no UNREACHABLE nodes exist", async () => {
     prismaMock.pipeline.count.mockResolvedValue(0);
     prismaMock.vectorNode.count.mockResolvedValue(2);
+    // @ts-expect-error - groupBy mock typing is complex
     prismaMock.vectorNode.groupBy.mockResolvedValue([
       { status: "HEALTHY", _count: { status: 2 } },
     ] as never);

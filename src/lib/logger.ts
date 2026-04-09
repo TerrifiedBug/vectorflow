@@ -1,6 +1,6 @@
 import { env } from "@/lib/env";
 
-const level = (env.VF_LOG_LEVEL ?? env.LOG_LEVEL ?? "info").toLowerCase();
+const level = env.VF_LOG_LEVEL.toLowerCase();
 const isDebug = level === "debug" || level === "trace";
 
 function sanitizeLogString(value: string): string {
