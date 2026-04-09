@@ -114,19 +114,21 @@ export const dashboardRouter = router({
 
   recentAudit: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session!.user!.id!;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isSuperAdmin: true },
-    });
 
-    let teamIdFilter: { teamId?: { in: string[] } } = {};
-    if (!user?.isSuperAdmin) {
-      const memberships = await prisma.teamMember.findMany({
+    const [user, memberships] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { isSuperAdmin: true },
+      }),
+      prisma.teamMember.findMany({
         where: { userId },
         select: { teamId: true },
-      });
-      teamIdFilter = { teamId: { in: memberships.map((m) => m.teamId) } };
-    }
+      }),
+    ]);
+
+    const teamIdFilter: { teamId?: { in: string[] } } = user?.isSuperAdmin
+      ? {}
+      : { teamId: { in: memberships.map((m) => m.teamId) } };
 
     return prisma.auditLog.findMany({
       where: teamIdFilter,
