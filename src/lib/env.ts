@@ -1,9 +1,22 @@
 import { z } from "zod";
 
+// During `next build`, server-side modules are statically analyzed without real
+// env vars. Skip strict validation in that phase so the build completes.
+// At runtime the required vars ARE present and validation will catch misconfig.
+const isBuild =
+  process.env.NEXT_PHASE === "phase-production-build" ||
+  process.env.NEXT_PHASE === "phase-export";
+
 const envSchema = z.object({
-  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-  NEXTAUTH_SECRET: z.string().min(16, "NEXTAUTH_SECRET must be at least 16 characters"),
-  NEXTAUTH_URL: z.string().url("NEXTAUTH_URL must be a valid URL"),
+  DATABASE_URL: isBuild
+    ? z.string().optional().default("build-placeholder")
+    : z.string().min(1, "DATABASE_URL is required"),
+  NEXTAUTH_SECRET: isBuild
+    ? z.string().optional().default("build-placeholder-secret-min-16-chars")
+    : z.string().min(16, "NEXTAUTH_SECRET must be at least 16 characters"),
+  NEXTAUTH_URL: isBuild
+    ? z.string().optional().default("http://localhost:3000")
+    : z.string().url("NEXTAUTH_URL must be a valid URL"),
 
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   VF_LOG_LEVEL: z.enum(["debug", "trace", "info", "warn", "error"]).default("info"),
