@@ -50,6 +50,7 @@ export const metricsRouter = router({
           timestamp: true,
           latencyMeanMs: true,
         },
+        take: 10000,
       });
 
       // Average across nodes per (componentId, timestamp) to handle multi-node deployments
@@ -139,10 +140,17 @@ export const metricsRouter = router({
   getNodePipelineRates: protectedProcedure
     .input(z.object({ nodeId: z.string() }))
     .query(async ({ input }) => {
+      const node = await prisma.vectorNode.findUnique({
+        where: { id: input.nodeId },
+        select: { environmentId: true },
+      });
+      if (!node) return { rates: {} };
+
       const nodeMetrics = metricStore.getAllForNode(input.nodeId, 5);
 
       // Map componentKey → { pipelineId, kind } using pipeline nodes
       const pipelineNodes = await prisma.pipelineNode.findMany({
+        where: { pipeline: { environmentId: node.environmentId } },
         select: { pipelineId: true, componentKey: true, displayName: true, kind: true },
       });
 
