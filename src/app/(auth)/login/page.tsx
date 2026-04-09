@@ -8,7 +8,9 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shield, KeyRound, Loader2, AlertCircle } from "lucide-react";
 import * as m from "motion/react-m";
+import type { TargetAndTransition } from "motion/react";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { fadeInUp } from "@/components/motion";
 import {
   Card,
   CardContent,
@@ -355,9 +357,8 @@ function LoginPageContent() {
 
   return (
     <m.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
+      initial={fadeInUp.initial as TargetAndTransition}
+      animate={fadeInUp.animate as TargetAndTransition}
     >
       {cardContent}
     </m.div>

@@ -6,6 +6,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
+import * as m from "motion/react-m";
+import type { TargetAndTransition } from "motion/react";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { fadeInUp } from "@/components/motion";
 import { cn } from "@/lib/utils";
 import {
   Card,
@@ -43,6 +47,7 @@ type SetupStep1Values = z.infer<typeof setupStep1Schema>;
 
 export default function SetupPage() {
   const router = useRouter();
+  const prefersReducedMotion = useReducedMotion();
   const [ready, setReady] = useState(false);
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +120,7 @@ export default function SetupPage() {
     return null;
   }
 
-  return (
+  const card = (
     <Card className="hover:translate-y-0 hover:shadow-none">
       <div className="flex items-center gap-2 px-6 pt-6">
         <div
@@ -278,5 +283,18 @@ export default function SetupPage() {
         </form>
       )}
     </Card>
+  );
+
+  if (prefersReducedMotion) {
+    return card;
+  }
+
+  return (
+    <m.div
+      initial={fadeInUp.initial as TargetAndTransition}
+      animate={fadeInUp.animate as TargetAndTransition}
+    >
+      {card}
+    </m.div>
   );
 }

@@ -26,7 +26,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StaggerList, StaggerItem } from "@/components/motion/stagger-list";
+import { StaggerList, StaggerItem, AnimatedNumber } from "@/components/motion";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { AnomalyBadge } from "@/components/anomaly-badge";
@@ -334,7 +334,9 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-muted-foreground">Total Nodes</p>
                   <Server className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className="mt-1 text-2xl font-semibold tabular-nums" role="status">{stats.data?.nodes ?? 0}</p>
+                <p role="status">
+                  <AnimatedNumber value={stats.data?.nodes ?? 0} className="mt-1 text-2xl font-semibold tabular-nums" />
+                </p>
               </CardContent>
             </Card>
             </StaggerItem>
@@ -373,7 +375,9 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-muted-foreground">Pipelines</p>
                   <GitBranch className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <p className="mt-1 text-2xl font-semibold tabular-nums" role="status">{stats.data?.pipelines ?? 0}</p>
+                <p role="status">
+                  <AnimatedNumber value={stats.data?.pipelines ?? 0} className="mt-1 text-2xl font-semibold tabular-nums" />
+                </p>
               </CardContent>
             </Card>
             </StaggerItem>
@@ -418,8 +422,11 @@ export default function DashboardPage() {
                       stats.data.reduction.percent > 50 ? "text-green-600 dark:text-green-400" :
                       stats.data.reduction.percent > 10 ? "text-amber-600 dark:text-amber-400" :
                       "text-muted-foreground"
-                    )}>
-                      {stats.data.reduction.percent.toFixed(0)}%
+                    )} role="status">
+                      <AnimatedNumber
+                        value={stats.data.reduction.percent ?? 0}
+                        formatter={(v) => `${v.toFixed(0)}%`}
+                      />
                     </p>
                     <p className="text-xs text-muted-foreground tabular-nums">
                       {formatEventsRate(stats.data.reduction.eventsIn / 3600)} → {formatEventsRate(stats.data.reduction.eventsOut / 3600)}
@@ -445,8 +452,8 @@ export default function DashboardPage() {
                 </div>
                 {(stats.data?.alerts ?? 0) > 0 || totalAnomalies > 0 ? (
                   <>
-                    <p className="mt-1 text-2xl font-semibold tabular-nums" role="status">
-                      {(stats.data?.alerts ?? 0) + totalAnomalies}
+                    <p role="status">
+                      <AnimatedNumber value={(stats.data?.alerts ?? 0) + totalAnomalies} className="mt-1 text-2xl font-semibold tabular-nums" />
                     </p>
                     <div className="flex items-center gap-2">
                       <Link href="/alerts" className="text-sm text-muted-foreground hover:text-foreground">

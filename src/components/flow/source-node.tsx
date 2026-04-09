@@ -60,7 +60,7 @@ function SourceNodeComponent({ id, data, selected }: NodeProps<SourceNodeType>) 
       )}
       <div
         className={cn(
-          "w-56 rounded-lg border bg-card shadow-sm transition-[transform,box-shadow] duration-200 overflow-hidden",
+          "w-56 rounded-lg border bg-card shadow-md transition-[transform,box-shadow] duration-200 overflow-hidden",
           "ring-2 ring-transparent",
           "hover:-translate-y-0.5 hover:shadow-[0_0_12px_var(--node-source-glow)]",
           selected && !isSystemLocked && !isShared && "ring-node-source shadow-md",
@@ -73,7 +73,7 @@ function SourceNodeComponent({ id, data, selected }: NodeProps<SourceNodeType>) 
         )}
       >
         {/* Header bar */}
-        <div className="flex items-center gap-2 bg-node-source px-3 py-2 text-node-source-foreground">
+        <div className="flex items-center gap-2 bg-node-source border-b border-node-source/20 px-3 py-2 text-node-source-foreground">
           {/* eslint-disable-next-line react-hooks/static-components */}
           <Icon className="h-4 w-4 shrink-0" />
           <span className="truncate text-sm font-medium">
@@ -124,7 +124,7 @@ function SourceNodeComponent({ id, data, selected }: NodeProps<SourceNodeType>) 
         <Handle
           type="source"
           position={Position.Right}
-          className="!h-3 !w-3 !border-2 !border-node-source !bg-background"
+          className="!h-3.5 !w-3.5 !border-2 !border-node-source !bg-background"
         />
       </div>
     </div>
