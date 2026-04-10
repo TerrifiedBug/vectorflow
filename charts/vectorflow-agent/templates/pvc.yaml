@@ -1,0 +1,37 @@
+{{- if and (not .Values.persistence.agentData.hostPath) (not .Values.persistence.agentData.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "vectorflow-agent.fullname" . }}-agent-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vectorflow-agent.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.agentData.accessMode | quote }}
+  {{- if .Values.persistence.agentData.storageClass }}
+  storageClassName: {{ .Values.persistence.agentData.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.agentData.size | quote }}
+{{- end }}
+---
+{{- if and (not .Values.persistence.vectorData.hostPath) (not .Values.persistence.vectorData.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "vectorflow-agent.fullname" . }}-vector-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vectorflow-agent.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.vectorData.accessMode | quote }}
+  {{- if .Values.persistence.vectorData.storageClass }}
+  storageClassName: {{ .Values.persistence.vectorData.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.vectorData.size | quote }}
+{{- end }}

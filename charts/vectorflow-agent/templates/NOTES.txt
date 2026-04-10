@@ -1,0 +1,19 @@
+VectorFlow Agent has been deployed as a DaemonSet!
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+The agent will be scheduled on every node that matches:
+  nodeSelector: {{ .Values.nodeSelector | toJson }}
+
+Check agent status:
+  kubectl get daemonset --namespace {{ .Release.Namespace }} {{ include "vectorflow-agent.fullname" . }}
+  kubectl get pods --namespace {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "vectorflow-agent.name" . }}
+
+View logs from one agent pod:
+  kubectl logs --namespace {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "vectorflow-agent.name" . }} --tail=50
+
+The agents will poll {{ .Values.config.serverUrl }} every {{ .Values.config.pollInterval }} for pipeline config updates.
+
+If this is the first deployment, agents will automatically enroll with the server
+on first contact using the provided token.

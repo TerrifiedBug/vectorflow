@@ -1,0 +1,198 @@
+# Default values for vectorflow-server.
+# Override with: helm install vectorflow ./charts/vectorflow-server -f my-values.yaml
+
+# -- Number of VectorFlow server replicas.
+# Set >1 only when redis.enabled=true (or externalRedisUrl is set) for session coordination.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/terrifiedbug/vectorflow-server
+  pullPolicy: IfNotPresent
+  # -- Overrides the image tag; defaults to the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Create a ServiceAccount for the server pods.
+  create: true
+  # -- Annotations to add to the ServiceAccount.
+  annotations: {}
+  # -- Override the name; defaults to the release fullname.
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 3000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: vectorflow.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  # - secretName: vectorflow-tls
+  #   hosts:
+  #     - vectorflow.example.com
+
+resources:
+  limits:
+    cpu: "2"
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+# -- Horizontal Pod Autoscaler. Requires redis.enabled=true (or externalRedisUrl) for multi-replica.
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+# -- PodDisruptionBudget to limit voluntary disruptions.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# -- Topology spread constraints for HA deployments.
+topologySpreadConstraints: []
+# - maxSkew: 1
+#   topologyKey: kubernetes.io/hostname
+#   whenUnsatisfiable: DoNotSchedule
+
+# ------------------------------------------------------------------
+# Application configuration
+# ------------------------------------------------------------------
+
+# -- Public URL where VectorFlow is reachable (used by NextAuth).
+# REQUIRED — set to your actual external URL.
+nextauthUrl: "http://localhost:3000"
+
+# -- VectorFlow data directory (stores encryption keys, uploads).
+dataDir: "/app/.vectorflow"
+
+# -- Trust the X-Forwarded-* headers from an upstream reverse proxy.
+# Set to "true" when running behind an ingress/load balancer.
+authTrustHost: "true"
+
+# ------------------------------------------------------------------
+# Secrets
+# ------------------------------------------------------------------
+# Provide secrets either via existingSecret (recommended) or inline.
+# Inline values are stored in a Kubernetes Secret created by this chart.
+# NEVER commit real values to version control.
+
+# -- Name of an existing Kubernetes Secret with the required keys:
+#    NEXTAUTH_SECRET, DATABASE_URL (and REDIS_URL if using external Redis).
+# When set, the secret.* values below are ignored.
+existingSecret: ""
+
+secret:
+  # -- NextAuth signing secret (required). Generate with: openssl rand -base64 32
+  nextauthSecret: ""
+  # -- PostgreSQL connection string (required when postgresql.enabled=false).
+  # Example: postgresql://vectorflow:password@postgres-host:5432/vectorflow
+  databaseUrl: ""
+  # -- Redis URL (required when redis.enabled=false and replicaCount > 1).
+  # Example: redis://redis-host:6379
+  redisUrl: ""
+  # -- Encryption key for key rotation (optional). When set, new encryptions use
+  # this key while old data encrypted with NEXTAUTH_SECRET can still be decrypted.
+  # See docs for the key rotation procedure.
+  encryptionKeyV2: ""
+
+# ------------------------------------------------------------------
+# Persistence
+# ------------------------------------------------------------------
+persistence:
+  # -- Persistent volume for /app/.vectorflow (encryption keys, uploads).
+  data:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 1Gi
+    existingClaim: ""
+  # -- Persistent volume for /backups.
+  backups:
+    enabled: false
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    existingClaim: ""
+
+# ------------------------------------------------------------------
+# Bundled PostgreSQL (bitnami/postgresql subchart)
+# Disabled by default — use an external managed database in production.
+# For TimescaleDB support, provision your own TimescaleDB instance and
+# set secret.databaseUrl to point at it.
+# ------------------------------------------------------------------
+postgresql:
+  enabled: false
+  auth:
+    database: vectorflow
+    username: vectorflow
+    # -- PostgreSQL password. Required when postgresql.enabled=true.
+    password: ""
+    existingSecret: ""
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+    resources:
+      limits:
+        cpu: "1"
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+# ------------------------------------------------------------------
+# Bundled Redis (bitnami/redis subchart)
+# Required only for multi-replica (HA) deployments.
+# ------------------------------------------------------------------
+redis:
+  enabled: false
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 1Gi
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
