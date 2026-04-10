@@ -27,7 +27,7 @@ export const API_KEY_REDACTION: DlpTemplateDefinition = {
   vrlSource: `# API Key / Token Redaction (PCI-DSS / GDPR)
 # Detects common secret patterns and replaces with placeholder
 
-fields = [.message]
+fields = ["message"]
 replacement = "[REDACTED-KEY]"
 
 for_each(fields) -> |_idx, field_path| {
@@ -47,14 +47,14 @@ for_each(fields) -> |_idx, field_path| {
     # AWS access key IDs: AKIA followed by 16 uppercase alphanum
     val = replace(val, r'\\bAKIA[A-Z0-9]{16}\\b', replacement)
 
-    # AWS secret keys: 40-char base64 after common key labels
-    val = replace(val, r'(?i)(?:aws_secret_access_key|secret_key|aws_secret)[=: ]+["\']?[A-Za-z0-9/+=]{40}["\']?', replacement)
+    # AWS secret keys: 40-char base64 after common key labels (quotes removed to avoid VRL raw string conflict)
+    val = replace(val, r'(?i)(?:aws_secret_access_key|secret_key|aws_secret)[=: ]+[A-Za-z0-9/+=]{40}', replacement)
 
     # GitHub tokens: ghp_, gho_, ghs_, ghr_ followed by 36+ alphanum
     val = replace(val, r'\\bgh[posr]_[A-Za-z0-9]{36,}\\b', replacement)
 
     # Generic api_key=, apikey=, api-key= query params or config values
-    val = replace(val, r'(?i)(?:api[_-]?key|apikey|api[_-]?secret)[=: ]+["\']?[A-Za-z0-9\\-._~]{16,}["\']?', replacement)
+    val = replace(val, r'(?i)(?:api[_-]?key|apikey|api[_-]?secret)[=: ]+[A-Za-z0-9\\-._~]{16,}', replacement)
 
     . = set!(., [field_path], val)
   }

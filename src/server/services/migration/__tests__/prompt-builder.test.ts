@@ -2,6 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import { buildBlockTranslationPrompt, buildMigrationSystemPrompt } from "../prompt-builder";
 import { parseFluentdConfig } from "../fluentd-parser";
 
+// Mock Context7 lookups to avoid network calls in tests
+vi.mock("@/server/services/context7", () => ({
+  lookupFluentdPlugin: vi.fn().mockResolvedValue(""),
+  lookupVectorComponent: vi.fn().mockResolvedValue(""),
+}));
+
 // Mock the vector catalog to avoid importing the full catalog in tests
 vi.mock("@/lib/vector/catalog", () => ({
   getVectorCatalog: () => [

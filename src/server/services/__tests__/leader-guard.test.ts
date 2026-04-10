@@ -2,6 +2,25 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
+// Mock env module so instrumentation.ts can be imported without real env vars
+vi.mock("@/lib/env", () => ({
+  env: {
+    DATABASE_URL: "postgresql://test:test@localhost:5432/test",
+    NEXTAUTH_SECRET: "test-secret-at-least-16-chars",
+    NEXTAUTH_URL: "http://localhost:3000",
+    NODE_ENV: "test",
+    VF_LOG_LEVEL: "info",
+    DATABASE_POOL_MAX: 50,
+    DATABASE_CONNECTION_TIMEOUT_MS: 5000,
+    DATABASE_IDLE_TIMEOUT_MS: 30000,
+    VF_BACKUP_DIR: "/backups",
+    VF_VECTOR_BIN: "vector",
+    VF_VERSION: "dev",
+    METRICS_CHUNK_INTERVAL: "1 day",
+    METRICS_COMPRESS_AFTER: "24 hours",
+  },
+}));
+
 // Mock leader election module — controls isLeader() return value for each test
 const mockIsLeader = vi.fn(() => true);
 const mockInitLeaderElection = vi.fn(async () => {});
