@@ -3,16 +3,21 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@/generated/prisma";
+import { ComponentKind, Prisma } from "@/generated/prisma";
+
+// Literal enum values for use in Zod schemas where nativeEnum causes
+// issues with the Prisma-generated enum at schema-build time.
+const componentKindValues = ["SOURCE", "TRANSFORM", "SINK"] as const;
 import { deploymentStrategySchema } from "@/lib/deployment-strategy";
 import { withAudit } from "@/server/middleware/audit";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { getOrCreateSystemEnvironment } from "@/server/services/system-environment";
-import { promotePipeline, detectConfigChanges, listPipelinesForEnvironment } from "@/server/services/pipeline-graph";
+import { promotePipeline, detectConfigChanges, listPipelinesForEnvironment, saveGraphComponents } from "@/server/services/pipeline-graph";
 import { copyPipelineGraph } from "@/server/services/copy-pipeline-graph";
 import { gitSyncDeletePipeline } from "@/server/services/git-sync";
 import { pipelineNameSchema } from "./pipeline-schemas";
 import { errorLog } from "@/lib/logger";
+import { generateId } from "@/lib/utils";
 
 export const pipelineCrudRouter = router({
   getSystemPipeline: protectedProcedure
@@ -395,5 +400,100 @@ export const pipelineCrudRouter = router({
         name: input.name,
         userId: ctx.session.user?.id ?? null,
       });
+    }),
+
+  batchImport: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        pipelines: z
+          .array(
+            z.object({
+              name: pipelineNameSchema,
+              description: z.string().optional(),
+              nodes: z.array(
+                z.object({
+                  componentKey: z.string(),
+                  componentType: z.string(),
+                  kind: z.enum(componentKindValues),
+                  config: z.record(z.string(), z.unknown()),
+                  positionX: z.number(),
+                  positionY: z.number(),
+                }),
+              ),
+              edges: z.array(
+                z.object({
+                  sourceNodeId: z.string(),
+                  targetNodeId: z.string(),
+                }),
+              ),
+              globalConfig: z.record(z.string(), z.unknown()).nullable(),
+            }),
+          )
+          .min(1, "At least one pipeline is required"),
+      }),
+    )
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("pipeline.batchImport", "Pipeline"))
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user?.id ?? null;
+      const { environmentId, pipelines } = input;
+
+      const created = await prisma.$transaction(async (tx) => {
+        const results: Array<{ id: string; name: string }> = [];
+
+        for (const pipeline of pipelines) {
+          const record = await tx.pipeline.create({
+            data: {
+              name: pipeline.name,
+              description: pipeline.description,
+              environmentId,
+              globalConfig:
+                pipeline.globalConfig == null
+                  ? Prisma.DbNull
+                  : (pipeline.globalConfig as Prisma.InputJsonValue),
+              createdById: userId,
+              updatedById: userId,
+            },
+          });
+
+          // Generate stable IDs for each node and build a lookup map
+          // so edge componentKey references can be resolved to real IDs.
+          const nodeIdMap = new Map<string, string>();
+          for (const node of pipeline.nodes) {
+            nodeIdMap.set(node.componentKey, generateId());
+          }
+
+          const mappedNodes = pipeline.nodes.map((node) => ({
+            id: nodeIdMap.get(node.componentKey)!,
+            componentKey: node.componentKey,
+            componentType: node.componentType,
+            kind: node.kind,
+            config: node.config as Record<string, unknown>,
+            positionX: node.positionX,
+            positionY: node.positionY,
+            disabled: false,
+          }));
+
+          const mappedEdges = pipeline.edges.map((edge) => ({
+            sourceNodeId: nodeIdMap.get(edge.sourceNodeId) ?? edge.sourceNodeId,
+            targetNodeId: nodeIdMap.get(edge.targetNodeId) ?? edge.targetNodeId,
+          }));
+
+          await saveGraphComponents(tx, {
+            pipelineId: record.id,
+            nodes: mappedNodes,
+            edges: mappedEdges,
+            globalConfig: pipeline.globalConfig as Record<string, unknown> | null,
+            userId,
+          });
+
+          results.push({ id: record.id, name: record.name });
+        }
+
+        return results;
+      });
+
+      return { created };
     }),
 });
