@@ -44,29 +44,32 @@ function detectFormat(content: string): "yaml" | "toml" {
 /**
  * Convert request.headers.Authorization bearer/basic tokens into Vector's
  * canonical `auth` structure so the GUI auth fields are populated correctly.
+ * Returns a new config object — the original is never mutated.
  *
  * Handles:
  *  - request.headers.Authorization: "Bearer <token>" → auth.strategy=bearer, auth.token=<token>
  *  - request.headers.Authorization: "Basic <b64>"    → auth.strategy=basic, auth.user/password (decoded)
  */
-function normaliseAuth(config: Record<string, unknown>): void {
+function normaliseAuth(config: Record<string, unknown>): Record<string, unknown> {
   const request = config.request as Record<string, unknown> | undefined;
   const headers = request?.headers as Record<string, unknown> | undefined;
   const authHeader = headers?.Authorization as string | undefined;
-  if (!authHeader || typeof authHeader !== "string") return;
+  if (!authHeader || typeof authHeader !== "string") return config;
 
   // Already has an explicit auth block — don't overwrite
-  const auth = config.auth as Record<string, unknown> | undefined;
-  if (auth?.strategy) return;
+  const existingAuth = config.auth as Record<string, unknown> | undefined;
+  if (existingAuth?.strategy) return config;
+
+  let authBlock: Record<string, unknown> | undefined;
 
   if (authHeader.startsWith("Bearer ")) {
     const token = authHeader.slice("Bearer ".length).trim();
-    config.auth = { strategy: "bearer", token };
+    authBlock = { strategy: "bearer", token };
   } else if (authHeader.startsWith("Basic ")) {
-    const decoded = atob(authHeader.slice("Basic ".length).trim());
+    const decoded = Buffer.from(authHeader.slice("Basic ".length).trim(), "base64").toString("utf8");
     const colonIdx = decoded.indexOf(":");
     if (colonIdx > -1) {
-      config.auth = {
+      authBlock = {
         strategy: "basic",
         user: decoded.slice(0, colonIdx),
         password: decoded.slice(colonIdx + 1),
@@ -74,27 +77,42 @@ function normaliseAuth(config: Record<string, unknown>): void {
     }
   }
 
-  // Remove the Authorization header since auth is now in the dedicated block
-  delete (headers as Record<string, unknown>).Authorization;
-  // Clean up empty headers/request objects
-  if (Object.keys(headers as Record<string, unknown>).length === 0) {
-    delete (request as Record<string, unknown>).headers;
-  }
-  if (Object.keys(request as Record<string, unknown>).length === 0) {
-    delete config.request;
-  }
+  if (!authBlock) return config;
+
+  // Build new headers without Authorization
+  const { Authorization: _, ...remainingHeaders } = headers as Record<string, unknown>;
+
+  // Build new request without empty headers
+  const hasRemainingHeaders = Object.keys(remainingHeaders).length > 0;
+  const newRequest = hasRemainingHeaders
+    ? { ...request, headers: remainingHeaders }
+    : Object.fromEntries(
+        Object.entries(request as Record<string, unknown>).filter(([k]) => k !== "headers"),
+      );
+
+  // Build new config without empty request
+  const hasRemainingRequest = Object.keys(newRequest).length > 0;
+  const { request: _req, ...configWithoutRequest } = config;
+
+  return {
+    ...(hasRemainingRequest ? { ...configWithoutRequest, request: newRequest } : configWithoutRequest),
+    auth: authBlock,
+  };
 }
 
 /**
  * Rename deprecated Vector config fields to their current names.
+ * Returns a new config object — the original is never mutated.
  */
-function normaliseFieldNames(config: Record<string, unknown>, kind: string): void {
+function normaliseFieldNames(config: Record<string, unknown>, kind: string): Record<string, unknown> {
+  let result = config;
   for (const [oldName, { newName, kinds }] of Object.entries(FIELD_RENAMES)) {
-    if (kinds.has(kind) && oldName in config && !(newName in config)) {
-      config[newName] = config[oldName];
-      delete config[oldName];
+    if (kinds.has(kind) && oldName in result && !(newName in result)) {
+      const { [oldName]: oldValue, ...rest } = result;
+      result = { ...rest, [newName]: oldValue };
     }
   }
+  return result;
 }
 
 /**
@@ -153,14 +171,11 @@ export function parseVectorConfig(
 
       // Strip `type` and `inputs` — they are structural, not user config
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { type: _type, inputs: _inputs, ...config } = value;
+      const { type: _type, inputs: _inputs, ...rawConfig } = value;
 
       // Normalise deprecated field names (e.g. fingerprinting → fingerprint)
-      normaliseFieldNames(config, kind);
-
-      // Normalise auth: convert request.headers.Authorization bearer/basic tokens
-      // into the canonical auth: { strategy, token } structure
-      normaliseAuth(config);
+      // then auth headers — both return new objects without mutating the input
+      const config = normaliseAuth(normaliseFieldNames(rawConfig, kind));
 
       // Collect inputs list (sources always have empty inputs)
       const inputs: string[] = Array.isArray(value.inputs)
