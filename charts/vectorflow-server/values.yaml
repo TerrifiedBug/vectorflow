@@ -126,6 +126,10 @@ secret:
   # -- Redis URL (required when redis.enabled=false and replicaCount > 1).
   # Example: redis://redis-host:6379
   redisUrl: ""
+  # -- Encryption key for key rotation (optional). When set, new encryptions use
+  # this key while old data encrypted with NEXTAUTH_SECRET can still be decrypted.
+  # See docs for the key rotation procedure.
+  encryptionKeyV2: ""
 
 # ------------------------------------------------------------------
 # Persistence

@@ -55,6 +55,14 @@ spec:
               value: {{ .Values.authTrustHost | quote }}
             - name: NODE_ENV
               value: "production"
+            {{- if or .Values.secret.encryptionKeyV2 .Values.existingSecret }}
+            - name: VF_ENCRYPTION_KEY_V2
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vectorflow-server.secretName" . }}
+                  key: VF_ENCRYPTION_KEY_V2
+                  optional: true
+            {{- end }}
           startupProbe:
             httpGet:
               path: /api/health/ready
