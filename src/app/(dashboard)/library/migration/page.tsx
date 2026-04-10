@@ -16,6 +16,7 @@ import {
   Loader2,
   FileText,
   AlertTriangle,
+  Workflow,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -52,19 +53,33 @@ const PLATFORMS = [
     id: "FLUENTD" as const,
     name: "FluentD",
     description: "Migrate from FluentD log pipelines to Vector",
+    icon: ArrowRightLeft,
     available: true,
+    href: null,
+  },
+  {
+    id: "VECTOR" as const,
+    name: "Vector",
+    description: "Import existing Vector pipeline configs",
+    icon: Workflow,
+    available: true,
+    href: "/library/migration/vector",
   },
   {
     id: "FLUENT_BIT" as const,
     name: "Fluent Bit",
     description: "Migrate from Fluent Bit pipelines to Vector",
+    icon: ArrowRightLeft,
     available: false,
+    href: null,
   },
   {
     id: "LOGSTASH" as const,
     name: "Logstash",
     description: "Migrate from Logstash pipelines to Vector",
+    icon: ArrowRightLeft,
     available: false,
+    href: null,
   },
 ];
 
@@ -105,38 +120,43 @@ export default function MigrationPage() {
       <section>
         <h2 className="text-lg font-semibold mb-4">Supported Platforms</h2>
         <div className="grid gap-4 sm:grid-cols-3">
-          {PLATFORMS.map((platform) => (
-            <Card
-              key={platform.id}
-              className={platform.available ? "cursor-pointer hover:border-primary/50 transition-colors" : "opacity-50"}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <ArrowRightLeft className="h-4 w-4" />
-                  {platform.name}
-                  {!platform.available && (
-                    <Badge variant="outline" className="text-xs">
-                      Coming Soon
-                    </Badge>
-                  )}
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  {platform.description}
-                </CardDescription>
-              </CardHeader>
-              {platform.available && (
-                <CardFooter className="pt-2">
-                  <Button
-                    size="sm"
-                    onClick={() => router.push("/library/migration/new")}
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Start Migration
-                  </Button>
-                </CardFooter>
-              )}
-            </Card>
-          ))}
+          {PLATFORMS.map((platform) => {
+            const PlatformIcon = platform.icon;
+            return (
+              <Card
+                key={platform.id}
+                className={platform.available ? "cursor-pointer hover:border-primary/50 transition-colors" : "opacity-50"}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <PlatformIcon className="h-4 w-4" />
+                    {platform.name}
+                    {!platform.available && (
+                      <Badge variant="outline" className="text-xs">
+                        Coming Soon
+                      </Badge>
+                    )}
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    {platform.description}
+                  </CardDescription>
+                </CardHeader>
+                {platform.available && (
+                  <CardFooter className="pt-2">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        router.push(platform.href ?? "/library/migration/new")
+                      }
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      {platform.href ? "Import Config" : "Start Migration"}
+                    </Button>
+                  </CardFooter>
+                )}
+              </Card>
+            );
+          })}
         </div>
       </section>
 
