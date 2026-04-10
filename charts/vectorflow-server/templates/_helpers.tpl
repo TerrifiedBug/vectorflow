@@ -83,13 +83,13 @@ Returns the envFrom/env block for database URL injection.
       name: {{ .Values.existingSecret }}
       key: DATABASE_URL
 {{- else if .Values.postgresql.enabled }}
-- name: DATABASE_URL
-  value: {{ printf "postgresql://%s:$(POSTGRES_PASSWORD)@%s-postgresql:5432/%s" .Values.postgresql.auth.username (include "vectorflow-server.fullname" .) .Values.postgresql.auth.database | quote }}
 - name: POSTGRES_PASSWORD
   valueFrom:
     secretKeyRef:
       name: {{ include "vectorflow-server.fullname" . }}-postgresql
       key: password
+- name: DATABASE_URL
+  value: {{ printf "postgresql://%s:$(POSTGRES_PASSWORD)@%s-postgresql:5432/%s" .Values.postgresql.auth.username (include "vectorflow-server.fullname" .) .Values.postgresql.auth.database | quote }}
 {{- else }}
 - name: DATABASE_URL
   valueFrom:
