@@ -102,7 +102,7 @@ updateStrategy:
 persistence:
   # -- Agent state directory (enrollment token, pipeline state).
   agentData:
-    hostPath: ""          # Leave empty to use a PVC instead of a hostPath
+    hostPath: "/var/lib/vf-agent"   # Default to hostPath (required for DaemonSet per-node storage)
     size: 1Gi
     storageClass: ""
     accessMode: ReadWriteOnce
@@ -110,7 +110,7 @@ persistence:
 
   # -- Vector data directory (buffer files, etc.).
   vectorData:
-    hostPath: ""          # Leave empty to use a PVC instead of a hostPath
+    hostPath: "/var/lib/vector"     # Default to hostPath (required for DaemonSet per-node storage)
     size: 2Gi
     storageClass: ""
     accessMode: ReadWriteOnce

@@ -61,6 +61,8 @@ ServiceAccount name.
 
 {{/*
 Agent data volume definition.
+NOTE: PVC mode (hostPath="") requires ReadWriteMany or a per-node provisioner.
+Default hostPath is recommended for DaemonSets.
 */}}
 {{- define "vectorflow-agent.agentDataVolume" -}}
 {{- if .Values.persistence.agentData.hostPath }}
@@ -75,6 +77,8 @@ persistentVolumeClaim:
 
 {{/*
 Vector data volume definition.
+NOTE: PVC mode (hostPath="") requires ReadWriteMany or a per-node provisioner.
+Default hostPath is recommended for DaemonSets.
 */}}
 {{- define "vectorflow-agent.vectorDataVolume" -}}
 {{- if .Values.persistence.vectorData.hostPath }}
