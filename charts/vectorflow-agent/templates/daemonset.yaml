@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "vectorflow-agent.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vectorflow-agent.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "vectorflow-agent.selectorLabels" . | nindent 6 }}
+  updateStrategy:
+    {{- toYaml .Values.updateStrategy | nindent 4 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "vectorflow-agent.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "vectorflow-agent.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      hostNetwork: {{ .Values.hostNetwork }}
+      dnsPolicy: {{ .Values.dnsPolicy }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
+      containers:
+        - name: agent
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: VF_URL
+              {{- if .Values.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: VF_URL
+              {{- else }}
+              value: {{ required "config.serverUrl is required" .Values.config.serverUrl | quote }}
+              {{- end }}
+            - name: VF_TOKEN
+              {{- if .Values.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: VF_TOKEN
+                  optional: true
+              {{- else if .Values.config.token }}
+              value: {{ .Values.config.token | quote }}
+              {{- else }}
+              value: ""
+              {{- end }}
+            - name: VF_DATA_DIR
+              value: {{ .Values.config.dataDir | quote }}
+            - name: VF_VECTOR_BIN
+              value: {{ .Values.config.vectorBin | quote }}
+            - name: VF_POLL_INTERVAL
+              value: {{ .Values.config.pollInterval | quote }}
+            - name: VF_LOG_FLUSH_INTERVAL
+              value: {{ .Values.config.logFlushInterval | quote }}
+            - name: VF_LOG_LEVEL
+              value: {{ .Values.config.logLevel | quote }}
+            {{- if .Values.config.nodeLabels }}
+            - name: VF_NODE_LABELS
+              value: {{ .Values.config.nodeLabels | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: agent-data
+              mountPath: {{ .Values.config.dataDir }}
+            - name: vector-data
+              mountPath: /var/lib/vector
+            {{- if .Values.mountHostLogs }}
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            {{- end }}
+            {{- if .Values.mountDockerContainers }}
+            - name: docker-containers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: agent-data
+          {{- include "vectorflow-agent.agentDataVolume" . | nindent 10 }}
+        - name: vector-data
+          {{- include "vectorflow-agent.vectorDataVolume" . | nindent 10 }}
+        {{- if .Values.mountHostLogs }}
+        - name: varlog
+          hostPath:
+            path: /var/log
+            type: Directory
+        {{- end }}
+        {{- if .Values.mountDockerContainers }}
+        - name: docker-containers
+          hostPath:
+            path: /var/lib/docker/containers
+            type: Directory
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

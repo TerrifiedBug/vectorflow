@@ -1,0 +1,20 @@
+apiVersion: v2
+name: vectorflow-agent
+description: VectorFlow Agent — deploys one agent per node to manage Vector data pipelines
+type: application
+version: 0.1.0
+appVersion: "latest"
+
+keywords:
+  - vectorflow
+  - vector
+  - observability
+  - pipelines
+  - agent
+
+home: https://github.com/TerrifiedBug/vectorflow
+sources:
+  - https://github.com/TerrifiedBug/vectorflow
+
+maintainers:
+  - name: VectorFlow

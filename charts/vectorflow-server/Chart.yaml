@@ -1,0 +1,29 @@
+apiVersion: v2
+name: vectorflow-server
+description: VectorFlow Server — self-hosted control plane for Vector data pipelines
+type: application
+version: 0.1.0
+appVersion: "latest"
+
+keywords:
+  - vectorflow
+  - vector
+  - observability
+  - pipelines
+
+home: https://github.com/TerrifiedBug/vectorflow
+sources:
+  - https://github.com/TerrifiedBug/vectorflow
+
+maintainers:
+  - name: VectorFlow
+
+dependencies:
+  - name: postgresql
+    version: ">=15.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: ">=19.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled

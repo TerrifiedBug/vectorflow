@@ -88,7 +88,5 @@ tmp/
 /playwright/.cache/
 e2e/.auth/
 
-# ── GSD baseline (auto-generated) ──
-.gsd
-.gsd-id
-.bg-shell/
+# helm subchart downloads (use 'helm dependency update' to restore)
+charts/*/charts/*.tgz

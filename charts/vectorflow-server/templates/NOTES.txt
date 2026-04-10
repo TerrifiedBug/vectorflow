@@ -1,0 +1,31 @@
+VectorFlow Server has been installed!
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+{{- if .Values.ingress.enabled }}
+Access VectorFlow at:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "vectorflow-server.fullname" . }} -o jsonpath="{.spec.ports[0].nodePort}")
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo "VectorFlow: http://$NODE_IP:$NODE_PORT"
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to become available.
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "vectorflow-server.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo "VectorFlow: http://$SERVICE_IP:{{ .Values.service.port }}"
+{{- else }}
+  # Port-forward for local access:
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "vectorflow-server.fullname" . }} 3000:{{ .Values.service.port }}
+  echo "VectorFlow: http://127.0.0.1:3000"
+{{- end }}
+
+To deploy agents, install the vectorflow-agent chart and set:
+  serverUrl: http://{{ include "vectorflow-server.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
+Health endpoints:
+  /api/health/live    — liveness (always 200)
+  /api/health/ready   — readiness (checks database)
+  /api/health/startup — startup probe
