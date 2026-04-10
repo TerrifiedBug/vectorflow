@@ -50,7 +50,6 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.existingSecret }}
                   key: VF_URL
-                  optional: true
               {{- else }}
               value: {{ required "config.serverUrl is required" .Values.config.serverUrl | quote }}
               {{- end }}

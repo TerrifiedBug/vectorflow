@@ -70,10 +70,10 @@ config:
   vectorBin: "vector"
 
 # -- Name of an existing Kubernetes Secret with required keys:
-#    VF_URL (optional — overrides config.serverUrl if set in secret)
-#    VF_TOKEN (optional — overrides config.token if set in secret)
-# When set, config.serverUrl and config.token values are still used
-# unless the secret keys override them.
+#    VF_URL (required — replaces config.serverUrl)
+#    VF_TOKEN (optional — replaces config.token)
+# When set, config.serverUrl and config.token values are ignored;
+# all credentials are read from the referenced secret.
 existingSecret: ""
 
 # ------------------------------------------------------------------
