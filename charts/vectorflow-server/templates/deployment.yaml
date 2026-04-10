@@ -55,7 +55,7 @@ spec:
               value: {{ .Values.authTrustHost | quote }}
           startupProbe:
             httpGet:
-              path: /api/health/startup
+              path: /api/health/ready
               port: http
             initialDelaySeconds: 15
             periodSeconds: 5
