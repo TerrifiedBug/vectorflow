@@ -149,7 +149,7 @@ sinks:
 
 describe("Vector migration integration — parse → detect", () => {
   describe("Test 1: two independent pipelines from a multi-path YAML config", () => {
-    it("parses 4 components and extracts globalConfig", () => {
+    it("parses 5 components and extracts globalConfig", () => {
       const result = parseVectorConfig(YAML_MULTI_PATH);
 
       expect(result.components).toHaveLength(5);

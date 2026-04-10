@@ -448,7 +448,10 @@ export const pipelineCrudRouter = router({
               name: pipeline.name,
               description: pipeline.description,
               environmentId,
-              globalConfig: (pipeline.globalConfig ?? null) as Prisma.InputJsonValue | null,
+              globalConfig:
+                pipeline.globalConfig == null
+                  ? Prisma.DbNull
+                  : (pipeline.globalConfig as Prisma.InputJsonValue),
               createdById: userId,
               updatedById: userId,
             },

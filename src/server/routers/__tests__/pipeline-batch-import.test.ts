@@ -1,6 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
-import type { PrismaClient } from "@/generated/prisma";
+import { Prisma, type PrismaClient } from "@/generated/prisma";
 
 const { t } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -254,7 +254,7 @@ describe("pipelineCrudRouter.batchImport", () => {
 
     expect(mockTx.pipeline.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ globalConfig: null }),
+        data: expect.objectContaining({ globalConfig: Prisma.DbNull }),
       }),
     );
   });

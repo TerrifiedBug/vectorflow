@@ -184,7 +184,7 @@ export default function VectorMigrationPage() {
   const importMutation = useMutation(
     trpc.pipeline.batchImport.mutationOptions({
       onSuccess: (data) => {
-        setCreatedPipelines(data);
+        setCreatedPipelines(data.created);
         setStep("done");
       },
       onError: (err) => {
@@ -220,7 +220,7 @@ export default function VectorMigrationPage() {
         return {
           componentKey: comp.componentKey,
           componentType: comp.componentType,
-          kind: comp.kind,
+          kind: comp.kind.toUpperCase() as "SOURCE" | "TRANSFORM" | "SINK",
           config: comp.config,
           positionX: pos?.positionX ?? 0,
           positionY: pos?.positionY ?? 0,
