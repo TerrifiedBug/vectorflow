@@ -33,6 +33,7 @@ import { useVrlAiConversation } from "@/hooks/use-vrl-ai-conversation";
 
 import { useTeamStore } from "@/stores/team-store";
 import { getMergedOutputSchemas, getSourceOutputSchema } from "@/lib/vector/source-output-schemas";
+import "@/lib/monaco-config";
 import type { Monaco, OnMount } from "@monaco-editor/react";
 
 type EditorInstance = Parameters<OnMount>[0];
