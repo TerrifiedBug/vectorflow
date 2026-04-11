@@ -213,8 +213,8 @@ export async function POST(request: Request) {
         // Parse structured suggestions if present
         let parsedSuggestions = null;
         try {
-          const { parseVrlChatResponse } = await import("@/lib/ai/vrl-suggestion-types");
-          const parsed = parseVrlChatResponse(fullResponse);
+          const { parseAiReviewResponse } = await import("@/lib/ai/suggestion-validator");
+          const parsed = parseAiReviewResponse(fullResponse);
           if (parsed) {
             parsedSuggestions = parsed.suggestions;
           }

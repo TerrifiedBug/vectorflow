@@ -24,6 +24,7 @@ import { AiMessageBubble } from "./ai-message-bubble";
 import { validateSuggestions } from "@/lib/ai/suggestion-validator";
 import { detectOutdatedSuggestions } from "@/lib/ai/suggestion-validator";
 import type { AiSuggestion, SuggestionStatus } from "@/lib/ai/types";
+import type { ConversationMessage } from "@/hooks/use-ai-conversation";
 
 interface AiPipelineDialogProps {
   open: boolean;
@@ -170,6 +171,59 @@ export function AiPipelineDialog({
 
     return statuses;
   }, [conversation.messages, nodes, currentYaml]);
+
+  // Compute suggestion statuses for debug messages
+  const debugSuggestionStatuses = useMemo(() => {
+    const statuses = new Map<string, SuggestionStatus>();
+
+    for (const msg of debugConversation.messages) {
+      if (msg.role !== "assistant" || !msg.suggestions) continue;
+
+      const validation = validateSuggestions(msg.suggestions, nodes);
+      for (const [id, status] of validation) {
+        statuses.set(id, status);
+      }
+
+      for (const s of msg.suggestions) {
+        if (s.type === "modify_vrl" && statuses.get(s.id) === "actionable") {
+          const node = nodes.find((n) => (n.data as Record<string, unknown>).componentKey === s.componentKey);
+          if (node) {
+            const config = (node.data as Record<string, unknown>).config as Record<string, unknown>;
+            let value: unknown = config;
+            for (const part of s.configPath.split(".")) {
+              if (value == null || typeof value !== "object") { value = undefined; break; }
+              value = (value as Record<string, unknown>)[part];
+            }
+            if (typeof value !== "string") {
+              statuses.set(s.id, "invalid");
+            } else if (!value.includes(s.targetCode)) {
+              statuses.set(s.id, "outdated");
+            }
+          }
+        }
+      }
+
+      const outdated = detectOutdatedSuggestions(
+        msg.suggestions,
+        msg.pipelineYaml ?? null,
+        currentYaml ?? "",
+      );
+      for (const id of outdated) {
+        if (statuses.get(id) === "actionable") {
+          statuses.set(id, "outdated");
+        }
+      }
+
+      for (const s of msg.suggestions) {
+        const raw = s as unknown as Record<string, unknown>;
+        if (raw.appliedAt) {
+          statuses.set(s.id, "applied");
+        }
+      }
+    }
+
+    return statuses;
+  }, [debugConversation.messages, nodes, currentYaml]);
 
   // --- Generate tab handlers (identical to original) ---
 
@@ -341,6 +395,34 @@ export function AiPipelineDialog({
       return results;
     },
     [applySuggestions, conversation],
+  );
+
+  const handleDebugApplySelected = useCallback(
+    (messageId: string, suggestions: AiSuggestion[]) => {
+      const { results } = applySuggestions(suggestions);
+      const applied = results.filter((r) => r.success).length;
+      const errors = results.filter((r) => !r.success);
+
+      if (applied > 0) {
+        toast.success(`Applied ${applied} suggestion${applied > 1 ? "s" : ""} to canvas`);
+        debugConversation.markSuggestionsApplied(
+          messageId,
+          suggestions.map((s) => s.id),
+        );
+        const currentPastLength = (useFlowStore.getState() as unknown as { _past: unknown[] })._past?.length ?? 0;
+        setLastApplyPastLength(currentPastLength);
+        setShowUndo(true);
+      }
+      if (errors.length > 0) {
+        toast.error(`${errors.length} suggestion${errors.length > 1 ? "s" : ""} failed`, {
+          description: errors[0].error,
+          duration: 6000,
+        });
+      }
+
+      return results;
+    },
+    [applySuggestions, debugConversation],
   );
 
   // --- Debug tab handlers ---
@@ -591,43 +673,13 @@ export function AiPipelineDialog({
                       )}
 
                     {debugConversation.messages.map((msg) => (
-                      <div
+                      <AiMessageBubble
                         key={msg.id}
-                        className={`flex items-start gap-3 ${
-                          msg.role === "user" ? "flex-row-reverse" : ""
-                        }`}
-                      >
-                        <div
-                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
-                            msg.role === "user"
-                              ? "bg-primary/10"
-                              : "bg-violet-500/10"
-                          }`}
-                        >
-                          {msg.role === "user" ? (
-                            <User className="h-3.5 w-3.5 text-primary" />
-                          ) : (
-                            <Bot className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
-                          )}
-                        </div>
-                        <div
-                          className={`flex-1 pt-0.5 ${
-                            msg.role === "user" ? "text-right" : ""
-                          }`}
-                        >
-                          <div
-                            className={`inline-block rounded-lg px-3 py-2 text-sm ${
-                              msg.role === "user"
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted"
-                            }`}
-                          >
-                            <div className="whitespace-pre-wrap">
-                              {msg.content}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                        message={msg as ConversationMessage}
+                        suggestionStatuses={debugSuggestionStatuses}
+                        onApplySelected={handleDebugApplySelected}
+                        nodes={nodes}
+                      />
                     ))}
 
                     {debugConversation.isStreaming && debugConversation.streamingContent && (
