@@ -1,14 +1,18 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
+import type { AiSuggestion } from "@/lib/ai/types";
+import { parseAiReviewResponse } from "@/lib/ai/suggestion-validator";
 
 export interface DebugConversationMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  suggestions?: AiSuggestion[];
+  pipelineYaml?: string | null;
   createdAt: string;
   createdBy?: { id: string; name: string | null; image: string | null } | null;
 }
@@ -55,6 +59,8 @@ export function useAiDebugConversation({
         id: m.id,
         role: m.role as "user" | "assistant",
         content: m.content,
+        suggestions: m.suggestions as unknown as AiSuggestion[] | undefined,
+        pipelineYaml: m.pipelineYaml,
         createdAt:
           m.createdAt instanceof Date
             ? m.createdAt.toISOString()
@@ -63,6 +69,16 @@ export function useAiDebugConversation({
       })),
     );
   }
+
+  const markAppliedMutation = useMutation(
+    trpc.ai.markSuggestionsApplied.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: trpc.ai.getDebugConversation.queryKey({ pipelineId }),
+        });
+      },
+    }),
+  );
 
   const sendMessage = useCallback(
     async (prompt: string) => {
@@ -147,11 +163,16 @@ export function useAiDebugConversation({
           }
         }
 
+        // Parse the completed response for structured suggestions
+        const parsed = parseAiReviewResponse(fullResponse);
+
         // Add assistant message on completion
         const assistantMessage: DebugConversationMessage = {
           id: `temp-assistant-${Date.now()}`,
           role: "assistant",
           content: fullResponse,
+          suggestions: parsed?.suggestions,
+          pipelineYaml: currentYaml ?? null,
           createdAt: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, assistantMessage]);
@@ -168,6 +189,10 @@ export function useAiDebugConversation({
               id: m.id,
               role: m.role as "user" | "assistant",
               content: m.content,
+              suggestions: m.suggestions as unknown as
+                | AiSuggestion[]
+                | undefined,
+              pipelineYaml: m.pipelineYaml,
               createdAt:
                 m.createdAt instanceof Date
                   ? m.createdAt.toISOString()
@@ -206,6 +231,21 @@ export function useAiDebugConversation({
     setError(null);
   }, [queryClient, trpc, pipelineId]);
 
+  const markSuggestionsApplied = useCallback(
+    (messageId: string, suggestionIds: string[]) => {
+      if (!conversationId) return;
+      if (messageId.startsWith("temp-")) return; // Wait for server-persisted IDs
+
+      markAppliedMutation.mutate({
+        pipelineId,
+        conversationId,
+        messageId,
+        suggestionIds,
+      });
+    },
+    [conversationId, pipelineId, markAppliedMutation],
+  );
+
   const cancelStreaming = useCallback(() => {
     abortRef.current?.abort();
   }, []);
@@ -219,6 +259,7 @@ export function useAiDebugConversation({
     isLoading: conversationQuery.isLoading,
     sendMessage,
     startNewConversation,
+    markSuggestionsApplied,
     cancelStreaming,
   };
 }

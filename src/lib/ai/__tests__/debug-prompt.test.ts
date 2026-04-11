@@ -177,9 +177,11 @@ describe("buildDebugSystemPrompt", () => {
 
   it("includes structured suggestion schema", () => {
     const result = buildDebugSystemPrompt({});
-    expect(result).toContain("insert_code");
-    expect(result).toContain("replace_code");
-    expect(result).toContain("remove_code");
+    expect(result).toContain("modify_config");
+    expect(result).toContain("modify_vrl");
+    expect(result).toContain("add_component");
+    expect(result).toContain("remove_component");
+    expect(result).toContain("modify_connections");
     expect(result).toContain("suggestions");
   });
 
