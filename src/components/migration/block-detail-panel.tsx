@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { RefreshCw, Loader2, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 import type { ParsedBlock, TranslatedBlock } from "@/server/services/migration/types";
+import "@/lib/monaco-config";
 import Editor from "@monaco-editor/react";
 import yaml from "js-yaml";
 import { toast } from "sonner";
