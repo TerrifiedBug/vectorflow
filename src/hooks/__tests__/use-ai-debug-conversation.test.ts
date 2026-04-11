@@ -23,6 +23,12 @@ const { mockQueryClient, mockTrpc } = vi.hoisted(() => ({
           input,
         ]),
       },
+      markSuggestionsApplied: {
+        mutationOptions: vi.fn((opts?: unknown) => ({
+          mutationFn: vi.fn(),
+          ...(opts as Record<string, unknown>),
+        })),
+      },
     },
   },
 }));
@@ -31,6 +37,7 @@ const { mockQueryClient, mockTrpc } = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: vi.fn(() => ({ data: undefined, isLoading: false })),
+  useMutation: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useQueryClient: vi.fn(() => mockQueryClient),
 }));
 
