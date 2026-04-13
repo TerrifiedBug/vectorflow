@@ -1,8 +1,20 @@
 import yaml from "js-yaml";
+import { parse as parseToml } from "smol-toml";
 import type { Node, Edge } from "@xyflow/react";
 import { findComponentDef } from "@/lib/vector/catalog";
 import { generateId } from "@/lib/utils";
 import Dagre from "@dagrejs/dagre";
+
+/**
+ * Detect whether content is TOML or YAML by looking for `[sources.`,
+ * `[transforms.`, or `[sinks.` — a reliable TOML-only indicator.
+ */
+function detectFormat(content: string): "yaml" | "toml" {
+  if (/^\s*\[(sources|transforms|sinks)\./m.test(content)) {
+    return "toml";
+  }
+  return "yaml";
+}
 
 /** Top-level keys that represent the pipeline graph — everything else is globalConfig */
 const GRAPH_SECTIONS = new Set(["sources", "transforms", "sinks"]);
@@ -89,12 +101,21 @@ export interface ImportResult {
  */
 export function importVectorConfig(
   content: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _format: "yaml" | "toml" = "yaml",
+  format?: "yaml" | "toml",
 ): ImportResult {
-  // Currently only YAML is fully supported; TOML parsing could be added
-  // later with a TOML library.
-  const config = yaml.load(content) as Record<string, unknown>;
+  if (!content || !content.trim()) {
+    throw new Error("Config content must not be empty");
+  }
+
+  const resolvedFormat = format ?? detectFormat(content);
+  const config =
+    resolvedFormat === "toml"
+      ? (parseToml(content) as Record<string, unknown>)
+      : (yaml.load(content) as Record<string, unknown>);
+
+  if (!config || typeof config !== "object") {
+    throw new Error("Failed to parse config: result is not an object");
+  }
 
   // Extract global config — everything that isn't sources/transforms/sinks
   const globalConfig: Record<string, unknown> = {};
