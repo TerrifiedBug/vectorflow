@@ -205,7 +205,7 @@ export function FlowToolbar({
     reader.onload = () => {
       try {
         const content = reader.result as string;
-        const format = file.name.endsWith(".toml") ? "toml" : "yaml";
+        const format = file.name.endsWith(".toml") ? "toml" as const : file.name.endsWith(".yaml") || file.name.endsWith(".yml") ? "yaml" as const : undefined;
         const { nodes: newNodes, edges: newEdges, globalConfig: importedGlobalConfig } = importVectorConfig(content, format);
         loadGraph(newNodes, newEdges, importedGlobalConfig);
         toast.success(`Imported ${newNodes.length} components from ${file.name}`);

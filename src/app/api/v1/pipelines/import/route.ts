@@ -45,9 +45,9 @@ export const POST = apiRoute(
     try {
       importResult = importVectorConfig(body.yaml);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to parse YAML";
+      const message = err instanceof Error ? err.message : "Failed to parse config";
       return NextResponse.json(
-        { error: `Invalid YAML config: ${message}` },
+        { error: `Invalid config: ${message}` },
         { status: 400 },
       );
     }
