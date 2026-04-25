@@ -1,17 +1,34 @@
-import { spawn, type ChildProcess } from "child_process";
-import { writeFile, mkdir } from "fs/promises";
-import { dirname, join } from "path";
+// Node-only imports are deferred to avoid Edge bundler errors.
+// This file is dynamically imported from instrumentation.ts behind a
+// `NEXT_RUNTIME === "nodejs"` guard, but the Edge bundler still traces into it
+// and rejects any Node-only API that appears at module evaluation time.
 import yaml from "js-yaml";
-import { AUDIT_LOG_PATH } from "@/server/services/audit";
+import { getAuditLogPath } from "@/server/services/audit";
 import { debugLog, errorLog } from "@/lib/logger";
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { spawn } = require("child_process") as typeof import("child_process");
+type ChildProcess = import("child_process").ChildProcess;
+
 const VECTOR_BIN = process.env.VF_VECTOR_BIN ?? "vector";
-const VECTORFLOW_DATA_DIR = join(process.cwd(), ".vectorflow");
-const SYSTEM_CONFIG_PATH =
-  process.env.VF_SYSTEM_CONFIG_PATH ??
-  join(VECTORFLOW_DATA_DIR, "system-pipeline.yaml");
+
+function getVectorflowDataDir(): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { join } = require("path") as typeof import("path");
+  return join(process.cwd(), ".vectorflow");
+}
+
+function getSystemConfigPath(): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { join } = require("path") as typeof import("path");
+  return (
+    process.env.VF_SYSTEM_CONFIG_PATH ??
+    join(getVectorflowDataDir(), "system-pipeline.yaml")
+  );
+}
 
 let vectorProcess: ChildProcess | null = null;
+let _shutdownHookRegistered = false;
 
 /**
  * Start (or restart) the local Vector process for the system pipeline.
