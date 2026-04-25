@@ -89,6 +89,16 @@ export async function register() {
       errorLog("instrumentation", "Failed to initialize backup scheduler", error);
     }
 
+    // Start telemetry scheduler.
+    try {
+      const { initTelemetryScheduler } = await import(
+        "@/server/services/telemetry-scheduler"
+      );
+      initTelemetryScheduler();
+    } catch (error) {
+      errorLog("instrumentation", "Failed to initialize telemetry scheduler", error);
+    }
+
     // Start delivery retry service.
     try {
       const { initRetryService } = await import(

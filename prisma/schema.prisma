@@ -789,6 +789,11 @@ model SystemSettings {
   scimEnabled      Boolean  @default(false)
   scimBearerToken  String?  // Encrypted token for SCIM auth
 
+  // Telemetry — see docs/superpowers/specs/2026-04-25-vf-telemetry-client-design.md
+  telemetryEnabled    Boolean   @default(false)
+  telemetryInstanceId String?
+  telemetryEnabledAt  DateTime?
+
   updatedAt DateTime @updatedAt
 }
 

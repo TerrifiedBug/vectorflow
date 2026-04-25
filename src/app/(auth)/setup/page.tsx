@@ -75,6 +75,11 @@ export default function SetupPage() {
   // Step 2 fields
   const [teamName, setTeamName] = useState("");
 
+  // Step 3 fields
+  const [telemetryChoice, setTelemetryChoice] = useState<"yes" | "no" | null>(
+    null
+  );
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function handleNext(_data: SetupStep1Values) {
     // _data is validated by zodResolver before handleNext is called
@@ -83,8 +88,8 @@ export default function SetupPage() {
     setStep(2);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
     setError(null);
     setLoading(true);
 
@@ -99,6 +104,7 @@ export default function SetupPage() {
           name: step1Data.name,
           password: step1Data.password,
           teamName,
+          telemetryChoice,
         }),
       });
 
@@ -138,6 +144,14 @@ export default function SetupPage() {
           )}
         />
         <p className="text-xs text-muted-foreground">Team Setup</p>
+        <div className="h-px flex-1 bg-border" />
+        <div
+          className={cn(
+            "h-2 w-2 rounded-full",
+            step >= 3 ? "bg-primary" : "bg-muted-foreground/30"
+          )}
+        />
+        <p className="text-xs text-muted-foreground">Telemetry</p>
       </div>
 
       <CardHeader>
@@ -145,7 +159,9 @@ export default function SetupPage() {
         <CardDescription>
           {step === 1
             ? "Create your administrator account. You'll use these credentials to sign in and manage VectorFlow."
-            : "Give your team a name. Teams contain environments and pipelines — you can create more teams later."}
+            : step === 2
+              ? "Give your team a name. Teams contain environments and pipelines — you can create more teams later."
+              : "Help make VectorFlow better for everyone."}
         </CardDescription>
       </CardHeader>
 
@@ -238,8 +254,8 @@ export default function SetupPage() {
             </CardFooter>
           </form>
         </Form>
-      ) : (
-        <form onSubmit={handleSubmit}>
+      ) : step === 2 ? (
+        <form onSubmit={(e) => { e.preventDefault(); setStep(3); }}>
           <CardContent className="flex flex-col gap-4">
             {error && (
               <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -265,11 +281,67 @@ export default function SetupPage() {
               variant="outline"
               className="flex-1"
               onClick={() => setStep(1)}
+            >
+              Back
+            </Button>
+            <Button type="submit" className="flex-1">
+              Continue to Telemetry
+            </Button>
+          </CardFooter>
+        </form>
+      ) : (
+        <div>
+          <CardContent className="flex flex-col gap-4">
+            {error && (
+              <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  VectorFlow can send anonymous, aggregate usage stats once a
+                  day: instance ID, version, agent and pipeline counts.
+                </p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  No pipeline data. No user info. No source/sink endpoints. You
+                  can change this any time in Settings.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant={telemetryChoice === "yes" ? "default" : "outline"}
+                  onClick={() => setTelemetryChoice("yes")}
+                  type="button"
+                >
+                  Yes, share anonymous stats
+                </Button>
+                <Button
+                  variant={telemetryChoice === "no" ? "default" : "outline"}
+                  onClick={() => setTelemetryChoice("no")}
+                  type="button"
+                >
+                  No thanks
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+          <CardFooter className="gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setStep(2)}
               disabled={loading}
             >
               Back
             </Button>
-            <Button type="submit" className="flex-1" disabled={loading}>
+            <Button
+              type="button"
+              className="flex-1"
+              onClick={handleSubmit}
+              disabled={telemetryChoice === null || loading}
+            >
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -280,7 +352,7 @@ export default function SetupPage() {
               )}
             </Button>
           </CardFooter>
-        </form>
+        </div>
       )}
     </Card>
   );
