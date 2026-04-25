@@ -35,10 +35,12 @@ describe("agent-token", () => {
       expect(await verifyEnrollmentToken("vf_node_abc123", hash)).toBe(false);
     });
 
+    // bcrypt.compare() against a mismatched token runs the full bcrypt round — intentionally
+    // slow by design. 15 s gives plenty of headroom on a loaded CI runner.
     it("rejects an incorrect token", async () => {
       const { hash } = await generateEnrollmentToken();
       expect(await verifyEnrollmentToken("vf_enroll_wrong", hash)).toBe(false);
-    });
+    }, 15_000);
   });
 
   describe("generateNodeToken", () => {
@@ -61,10 +63,12 @@ describe("agent-token", () => {
       expect(await verifyNodeToken(enrollToken, hash)).toBe(false);
     });
 
+    // bcrypt.compare() against a mismatched token runs the full bcrypt round — intentionally
+    // slow by design. 15 s gives plenty of headroom on a loaded CI runner.
     it("rejects an incorrect token", async () => {
       const { hash } = await generateNodeToken();
       expect(await verifyNodeToken("vf_node_wrong", hash)).toBe(false);
-    });
+    }, 15_000);
   });
 
   describe("extractBearerToken", () => {
