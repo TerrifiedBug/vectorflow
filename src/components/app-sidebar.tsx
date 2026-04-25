@@ -28,6 +28,7 @@ import { usePipelineSidebarStore } from "@/stores/pipeline-sidebar-store";
 import { PipelineGroupTree } from "@/components/pipeline/pipeline-group-tree";
 import { SidebarAlertBadge } from "@/components/sidebar-alert-badge";
 import { Button } from "@/components/ui/button";
+import { isDemoMode } from "@/lib/is-demo-mode";
 
 import {
   Sidebar,
@@ -218,7 +219,9 @@ export function AppSidebar() {
           aria-hidden={!isSettingsMode}
         >
           {settingsNavGroups.map((group) => {
+            const demoMode = isDemoMode();
             const visibleGroupItems = group.items.filter((item) => {
+              if (demoMode && item.demoHidden) return false;
               if (item.requiredSuperAdmin) return isSuperAdmin;
               return isSuperAdmin || userRole === "ADMIN";
             });

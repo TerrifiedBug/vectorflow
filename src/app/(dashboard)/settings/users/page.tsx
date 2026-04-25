@@ -1,7 +1,8 @@
-"use client";
+import { notFound } from "next/navigation";
+import { isDemoMode } from "@/lib/is-demo-mode";
+import UsersPageClient from "./_client";
 
-import { UsersSettings } from "../_components/users-settings";
-
-export default function UsersPage() {
-  return <UsersSettings />;
+export default async function UsersPage() {
+  if (isDemoMode()) notFound();
+  return <UsersPageClient />;
 }

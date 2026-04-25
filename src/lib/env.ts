@@ -30,6 +30,10 @@ const envSchema = z.object({
   VF_VECTOR_BIN: z.string().default("vector"),
   VF_SYSTEM_CONFIG_PATH: z.string().default("/etc/vectorflow/system-vector.yaml"),
   VF_AUDIT_LOG_PATH: z.string().optional(),
+  NEXT_PUBLIC_VF_DEMO_MODE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
   VF_VERSION: z.string().default("dev"),
   METRICS_CHUNK_INTERVAL: z.string().default("1 day"),
   METRICS_COMPRESS_AFTER: z.string().default("24 hours"),

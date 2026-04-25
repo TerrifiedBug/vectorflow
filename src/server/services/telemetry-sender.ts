@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
+import { isDemoMode } from "@/lib/is-demo-mode";
 import { buildHeartbeatPayload, type BuildPayloadInput } from "./telemetry-payload";
 
 const PULSE_URL = "https://pulse.terrifiedbug.com/api/v1/ping";
@@ -39,6 +40,8 @@ async function gatherCounts(): Promise<Pick<BuildPayloadInput, "agentCount" | "p
 }
 
 export async function sendTelemetryHeartbeat(): Promise<void> {
+  if (isDemoMode()) return;
+
   if (nextAllowedAtMs !== null && Date.now() < nextAllowedAtMs) {
     return;
   }
