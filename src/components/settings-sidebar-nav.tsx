@@ -27,15 +27,15 @@ export const settingsNavGroups = [
     items: [
       { title: "Authentication", href: "/settings/auth", icon: Shield, requiredSuperAdmin: true },
       { title: "SCIM", href: "/settings/scim", icon: KeyRound, requiredSuperAdmin: true },
-      { title: "Users", href: "/settings/users", icon: UserCog, requiredSuperAdmin: true },
+      { title: "Users", href: "/settings/users", icon: UserCog, requiredSuperAdmin: true, demoHidden: true },
     ],
   },
   {
     label: "Organization",
     items: [
       { title: "All Teams", href: "/settings/teams", icon: Building2, requiredSuperAdmin: true },
-      { title: "My Team", href: "/settings/team", icon: Users, requiredSuperAdmin: false },
-      { title: "Service Accounts", href: "/settings/service-accounts", icon: Bot, requiredSuperAdmin: false },
+      { title: "My Team", href: "/settings/team", icon: Users, requiredSuperAdmin: false, demoHidden: true },
+      { title: "Service Accounts", href: "/settings/service-accounts", icon: Bot, requiredSuperAdmin: false, demoHidden: true },
       { title: "Outbound Webhooks", href: "/settings/webhooks", icon: Webhook, requiredSuperAdmin: false },
       { title: "AI", href: "/settings/ai", icon: Sparkles, requiredSuperAdmin: false },
     ],

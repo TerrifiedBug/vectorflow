@@ -31,6 +31,8 @@ COPY prisma.config.ts ./prisma.config.ts
 RUN pnpm exec prisma generate
 COPY src ./src
 COPY public ./public
+ARG NEXT_PUBLIC_VF_DEMO_MODE
+ENV NEXT_PUBLIC_VF_DEMO_MODE=${NEXT_PUBLIC_VF_DEMO_MODE}
 RUN --mount=type=cache,target=/app/.next/cache \
     pnpm build
 # Save Prisma client version for the runner stage (standalone strips node_modules)
