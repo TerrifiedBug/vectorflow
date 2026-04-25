@@ -1,30 +1,57 @@
-import { spawn, type ChildProcess } from "child_process";
-import { writeFile, mkdir } from "fs/promises";
-import { dirname, join } from "path";
+// Node-only imports are deferred to avoid Edge bundler errors.
+// This file is dynamically imported from instrumentation.ts behind a
+// `NEXT_RUNTIME === "nodejs"` guard, but the Edge bundler still traces into it
+// and rejects any Node-only API that appears at module evaluation time.
 import yaml from "js-yaml";
-import { AUDIT_LOG_PATH } from "@/server/services/audit";
+import { getAuditLogPath } from "@/server/services/audit";
 import { debugLog, errorLog } from "@/lib/logger";
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { spawn } = require("child_process") as typeof import("child_process");
+type ChildProcess = import("child_process").ChildProcess;
+
 const VECTOR_BIN = process.env.VF_VECTOR_BIN ?? "vector";
-const VECTORFLOW_DATA_DIR = join(process.cwd(), ".vectorflow");
-const SYSTEM_CONFIG_PATH =
-  process.env.VF_SYSTEM_CONFIG_PATH ??
-  join(VECTORFLOW_DATA_DIR, "system-pipeline.yaml");
+
+function getVectorflowDataDir(): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { join } = require("path") as typeof import("path");
+  return join(process.cwd(), ".vectorflow");
+}
+
+function getSystemConfigPath(): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { join } = require("path") as typeof import("path");
+  return (
+    process.env.VF_SYSTEM_CONFIG_PATH ??
+    join(getVectorflowDataDir(), "system-pipeline.yaml")
+  );
+}
 
 let vectorProcess: ChildProcess | null = null;
+let _shutdownHookRegistered = false;
 
 /**
  * Start (or restart) the local Vector process for the system pipeline.
  * Writes the provided YAML config to disk and spawns a Vector child process.
  */
 export async function startSystemVector(configYaml: string): Promise<void> {
+  // Lazy-require Node-only deps. Only used at runtime; deferred import keeps
+  // the Edge bundler from tracing into them at module evaluation.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { writeFile, mkdir } = require("fs/promises") as typeof import("fs/promises");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { dirname, join } = require("path") as typeof import("path");
+
+  const systemConfigPath = getSystemConfigPath();
+  const dataRoot = getVectorflowDataDir();
+
   // Ensure the config directory exists
-  await mkdir(dirname(SYSTEM_CONFIG_PATH), { recursive: true });
+  await mkdir(dirname(systemConfigPath), { recursive: true });
 
   // Parse the config, inject runtime paths, and re-serialize.
   // The audit log source path and data_dir are runtime values that depend on
   // the deployment environment, not user configuration.
-  const dataDir = join(VECTORFLOW_DATA_DIR, "vector-data");
+  const dataDir = join(dataRoot, "vector-data");
   await mkdir(dataDir, { recursive: true });
 
   const config = yaml.load(configYaml) as Record<string, unknown>;
@@ -33,18 +60,21 @@ export async function startSystemVector(configYaml: string): Promise<void> {
   // Override the audit_log source's include path with the actual write location
   const sources = config.sources as Record<string, Record<string, unknown>> | undefined;
   if (sources?.audit_log) {
-    sources.audit_log.include = [AUDIT_LOG_PATH];
+    sources.audit_log.include = [getAuditLogPath()];
   }
 
   const fullConfig = yaml.dump(config, { indent: 2, lineWidth: -1, noRefs: true });
 
   // Write config to disk
-  await writeFile(SYSTEM_CONFIG_PATH, fullConfig);
+  await writeFile(systemConfigPath, fullConfig);
 
   // Stop existing process if running
   await stopSystemVector();
 
-  const proc = spawn(VECTOR_BIN, ["--config", SYSTEM_CONFIG_PATH], {
+  // Register shutdown hook on first successful start (idempotent).
+  ensureShutdownHook();
+
+  const proc = spawn(VECTOR_BIN, ["--config", systemConfigPath], {
     stdio: ["ignore", "pipe", "pipe"],
   });
   vectorProcess = proc;
@@ -107,10 +137,17 @@ export function isSystemVectorRunning(): boolean {
 }
 
 /**
- * Set up a shutdown hook so the Vector child process is killed
- * when the Node.js server process receives SIGTERM or SIGINT.
+ * Register a shutdown hook so the Vector child process is killed when the
+ * Node.js server process receives SIGTERM or SIGINT. Idempotent — safe to call
+ * on every `startSystemVector` invocation.
+ *
+ * Called from `startSystemVector` rather than at module load to keep
+ * `process.on()` out of the Edge bundler's static analysis path.
  */
-function setupShutdownHook() {
+function ensureShutdownHook(): void {
+  if (_shutdownHookRegistered) return;
+  _shutdownHookRegistered = true;
+
   const cleanup = () => {
     if (vectorProcess) {
       vectorProcess.kill("SIGTERM");
@@ -119,6 +156,3 @@ function setupShutdownHook() {
   process.on("SIGTERM", cleanup);
   process.on("SIGINT", cleanup);
 }
-
-// Register shutdown hook at module load time
-setupShutdownHook();
