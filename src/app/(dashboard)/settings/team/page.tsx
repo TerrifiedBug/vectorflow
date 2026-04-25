@@ -1,7 +1,8 @@
-"use client";
+import { notFound } from "next/navigation";
+import { isDemoMode } from "@/lib/is-demo-mode";
+import TeamPageClient from "./_client";
 
-import { TeamSettings } from "../_components/team-settings";
-
-export default function TeamPage() {
-  return <TeamSettings />;
+export default async function TeamPage() {
+  if (isDemoMode()) notFound();
+  return <TeamPageClient />;
 }
