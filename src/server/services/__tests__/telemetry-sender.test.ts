@@ -145,5 +145,61 @@ describe("sendTelemetryHeartbeat — happy path", () => {
   });
 });
 
+describe("sendTelemetryHeartbeat — failure paths", () => {
+  it("logs and Sentry-captures on network error, does not throw", async () => {
+    prismaMock.systemSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
+    mockCounts(0, 0, 0, 0);
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new TypeError("fetch failed")
+    );
+
+    await expect(sendTelemetryHeartbeat()).resolves.toBeUndefined();
+    expect(sentryCapture).toHaveBeenCalledOnce();
+  });
+
+  it("logs and Sentry-captures on non-2xx response that isn't 503", async () => {
+    prismaMock.systemSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
+    mockCounts(0, 0, 0, 0);
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      new Response(null, { status: 500 })
+    );
+
+    await sendTelemetryHeartbeat();
+    expect(sentryCapture).toHaveBeenCalledOnce();
+  });
+
+  it("on 503 with Retry-After, suppresses next call within the retry window", async () => {
+    prismaMock.systemSettings.findUnique.mockResolvedValue(enabledSettings as never);
+    mockCounts(0, 0, 0, 0);
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      new Response(null, { status: 503, headers: { "retry-after": "3600" } })
+    );
+
+    await sendTelemetryHeartbeat();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    // Second call within the retry window must NOT hit fetch
+    await sendTelemetryHeartbeat();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    // Sentry NOT captured for an in-band 503 — it's a graceful backoff
+    expect(sentryCapture).not.toHaveBeenCalled();
+  });
+
+  it("on 503 without Retry-After, does not suppress future calls", async () => {
+    prismaMock.systemSettings.findUnique.mockResolvedValue(enabledSettings as never);
+    // Need to mock counts twice because two calls will reach the count phase
+    mockCounts(0, 0, 0, 0);
+    mockCounts(0, 0, 0, 0);
+    (globalThis.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await sendTelemetryHeartbeat();
+    await sendTelemetryHeartbeat();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
 // Expose sentryCapture for potential future use in error-path tests
 export { sentryCapture };
