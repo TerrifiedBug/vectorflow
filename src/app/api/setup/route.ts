@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isSetupRequired, completeSetup } from "@/server/services/setup";
 import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { errorLog } from "@/lib/logger";
+import { sendTelemetryHeartbeat } from "@/server/services/telemetry-sender";
 
 export async function GET(request: Request) {
   const rateLimited = checkIpRateLimit(request, "setup", 5);
@@ -42,11 +43,18 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { email, name, password, teamName } = body;
+    const { email, name, password, teamName, telemetryChoice } = body;
 
-    if (!email || !name || !password || !teamName) {
+    if (!email || !name || !password || !teamName || !telemetryChoice) {
       return NextResponse.json(
         { error: "All fields are required." },
+        { status: 400 }
+      );
+    }
+
+    if (!["yes", "no"].includes(telemetryChoice)) {
+      return NextResponse.json(
+        { error: "telemetryChoice must be 'yes' or 'no'." },
         { status: 400 }
       );
     }
@@ -58,7 +66,11 @@ export async function POST(request: Request) {
       );
     }
 
-    await completeSetup({ email, name, password, teamName });
+    await completeSetup({ email, name, password, teamName, telemetryChoice });
+
+    if (telemetryChoice === "yes") {
+      void Promise.resolve(sendTelemetryHeartbeat()).catch(() => {});
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
