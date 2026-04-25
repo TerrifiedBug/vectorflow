@@ -37,6 +37,7 @@
 * [GitOps](operations/gitops.md)
 * [Outbound Webhooks](operations/outbound-webhooks.md)
 * [Security](operations/security.md)
+* [Telemetry](operations/telemetry.md)
 * [Upgrading](operations/upgrading.md)
 
 ## Reference
