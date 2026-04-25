@@ -18,6 +18,8 @@ Stop hand-editing YAML. Build observability pipelines with drag-and-drop<br>and 
 
 [Documentation](https://terrifiedbug.gitbook.io/vectorflow) · [Quick start](#quick-start) · [Deployment](#deployment) · [Features](#features) · [Configuration](#configuration) · [Development](#development)
 
+> 🌐 **[Try the live demo →](https://demo.terrifiedbug.com)**
+
 </div>
 
 <br>
