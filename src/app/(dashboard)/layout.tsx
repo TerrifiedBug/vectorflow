@@ -135,10 +135,12 @@ export default function DashboardLayout({
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/login" })}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
-                </DropdownMenuItem>
+                {!isDemoMode() && (
+                  <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/login" })}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -168,10 +170,12 @@ export default function DashboardLayout({
               >
                 Request Access
               </Button>
-              <Button variant="outline" onClick={() => signOut({ callbackUrl: "/login" })}>
-                <LogOut className="mr-2 h-4 w-4" />
-                Sign Out
-              </Button>
+              {!isDemoMode() && (
+                <Button variant="outline" onClick={() => signOut({ callbackUrl: "/login" })}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign Out
+                </Button>
+              )}
             </div>
           </div>
         </main>
@@ -256,12 +260,14 @@ export default function DashboardLayout({
                     Profile
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => signOut({ callbackUrl: "/login" })}
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
-                </DropdownMenuItem>
+                {!isDemoMode() && (
+                  <DropdownMenuItem
+                    onClick={() => signOut({ callbackUrl: "/login" })}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
