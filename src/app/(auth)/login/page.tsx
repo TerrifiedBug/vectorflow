@@ -76,9 +76,17 @@ function LoginPageContent() {
     : null;
   const [error, setError] = useState<string | null>(initialError);
 
+  // Pre-fill credentials when ?prefill=demo is present in the URL.
+  // Gated only on the URL param — not on VF_DEMO_MODE — so it works on any
+  // instance (auth will simply fail if the demo user doesn't exist there).
+  const prefill = searchParams.get("prefill") === "demo";
+
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: {
+      email: prefill ? "demo@demo.local" : "",
+      password: prefill ? "demo" : "",
+    },
     mode: "onBlur",
   });
 
