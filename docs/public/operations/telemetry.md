@@ -13,8 +13,8 @@ When telemetry is enabled, VectorFlow sends a single JSON payload **once per day
 | `instance_created_at` | timestamp of your first opt-in | cohort tracking — lets us see retention over time |
 | `sent_at` | current timestamp | when the heartbeat was sent |
 | `vf_version` | `process.env.VF_VERSION` (or `"unknown"`) | which version of VectorFlow you're running |
-| `agent_count` | row count of the agents table | scale signal — how many fleet agents are managed |
-| `pipeline_count` | grouped row counts of the pipelines table | `{ active, paused, draft }` — scale and lifecycle signal |
+| `agent_count` | row count of the `VectorNode` table (fleet agents managed by VectorFlow) | scale signal — how many fleet agents are managed |
+| `pipeline_count` | derived from the `Pipeline` table — `active` = `isDraft: false` with `deployedAt` set, `paused` = `isDraft: false` with `deployedAt` null, `draft` = `isDraft: true` | `{ active, paused, draft }` — scale and lifecycle signal |
 | `auth_method` | derived from OIDC issuer setting | `"credentials"` or `"oidc"` — informs which auth path matters |
 | `deployment_mode` | `process.env.VF_DEPLOYMENT_MODE` (or `"unknown"`) | `"docker"`, `"helm"`, `"bare"`, or `"unknown"` |
 

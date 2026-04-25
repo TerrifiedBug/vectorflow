@@ -301,7 +301,7 @@ export default function SetupPage() {
               <div>
                 <p className="text-sm text-muted-foreground">
                   VectorFlow can send anonymous, aggregate usage stats once a
-                  day: instance ID, version, agent and pipeline counts, country.
+                  day: instance ID, version, agent and pipeline counts.
                 </p>
                 <p className="text-sm text-muted-foreground mt-2">
                   No pipeline data. No user info. No source/sink endpoints. You
