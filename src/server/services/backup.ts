@@ -25,7 +25,15 @@ const BACKUP_DIR = process.env.VF_BACKUP_DIR ?? "/backups";
 const VF_VERSION = process.env.VF_VERSION ?? "dev";
 const PG_DUMP_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const PG_RESTORE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
-const MIGRATIONS_DIR = path.join(process.cwd(), "prisma", "migrations");
+// Lazy: defer process.cwd() to call time so the Edge bundler doesn't trip on
+// module-level Node API usage. See PR fixing the Edge-bundle build failure.
+let _migrationsDir: string | null = null;
+function getMigrationsDir(): string {
+  if (_migrationsDir === null) {
+    _migrationsDir = path.join(process.cwd(), "prisma", "migrations");
+  }
+  return _migrationsDir;
+}
 const BACKUP_DISK_WARN_THRESHOLD_MB = Number(
   process.env.VF_BACKUP_DISK_WARN_MB ?? "500"
 );
@@ -101,7 +109,7 @@ async function getMigrationInfo(): Promise<{
   lastMigration: string;
 }> {
   try {
-    const entries = await fs.readdir(MIGRATIONS_DIR);
+    const entries = await fs.readdir(getMigrationsDir());
     const migrations = entries
       .filter((e) => !e.startsWith(".") && e !== "migration_lock.toml")
       .sort();
