@@ -12,6 +12,9 @@ vi.mock("bcryptjs", () => ({
   },
 }));
 
+const { ulidGen } = vi.hoisted(() => ({ ulidGen: vi.fn() }));
+vi.mock("ulid", () => ({ ulid: ulidGen }));
+
 // ─── Import SUT + mocks ─────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
@@ -128,6 +131,61 @@ describe("setup service", () => {
       });
 
       expect(bcrypt.default.hash).toHaveBeenCalledWith("myPassword", 12);
+    });
+  });
+
+  // ─── completeSetup — telemetry choice ────────────────────────────────────
+
+  describe("completeSetup — telemetry choice", () => {
+    const baseInput = {
+      name: "Admin",
+      email: "admin@example.com",
+      password: "secret123",
+      teamName: "Default",
+    };
+
+    function makeTx(upsertMock: ReturnType<typeof vi.fn>) {
+      return {
+        user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "admin@example.com", name: "Admin", isSuperAdmin: true }) },
+        team: { create: vi.fn().mockResolvedValue({ id: "t1", name: "Default" }) },
+        teamMember: { create: vi.fn().mockResolvedValue({}) },
+        systemSettings: { upsert: upsertMock },
+      };
+    }
+
+    it("'yes' generates ULID and writes enabled=true with timestamp", async () => {
+      ulidGen.mockReturnValueOnce("01HX0000000000000000000000");
+      const upsertMock = vi.fn().mockResolvedValue({ id: "singleton" });
+
+      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+        if (typeof fn !== "function") return;
+        return fn(makeTx(upsertMock));
+      });
+
+      await completeSetup({ ...baseInput, telemetryChoice: "yes" });
+
+      expect(upsertMock).toHaveBeenCalled();
+      const args = upsertMock.mock.calls[0][0];
+      expect(args.create.telemetryEnabled).toBe(true);
+      expect(args.create.telemetryInstanceId).toBe("01HX0000000000000000000000");
+      expect(args.create.telemetryEnabledAt).toBeInstanceOf(Date);
+    });
+
+    it("'no' writes enabled=false with null id and date", async () => {
+      const upsertMock = vi.fn().mockResolvedValue({ id: "singleton" });
+
+      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+        if (typeof fn !== "function") return;
+        return fn(makeTx(upsertMock));
+      });
+
+      await completeSetup({ ...baseInput, telemetryChoice: "no" });
+
+      const args = upsertMock.mock.calls[0][0];
+      expect(args.create.telemetryEnabled).toBe(false);
+      expect(args.create.telemetryInstanceId).toBeNull();
+      expect(args.create.telemetryEnabledAt).toBeNull();
+      expect(ulidGen).not.toHaveBeenCalled();
     });
   });
 });
