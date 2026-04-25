@@ -90,6 +90,7 @@ describe("setup service", () => {
         name: "Admin",
         password: "securePassword123",
         teamName: "My Org",
+        telemetryChoice: "yes",
       });
 
       expect(result.user.email).toBe("admin@example.com");
@@ -128,6 +129,7 @@ describe("setup service", () => {
         name: "Admin",
         password: "myPassword",
         teamName: "Test Team",
+        telemetryChoice: "no",
       });
 
       expect(bcrypt.default.hash).toHaveBeenCalledWith("myPassword", 12);
