@@ -30,7 +30,7 @@ const envSchema = z.object({
   VF_VECTOR_BIN: z.string().default("vector"),
   VF_SYSTEM_CONFIG_PATH: z.string().default("/etc/vectorflow/system-vector.yaml"),
   VF_AUDIT_LOG_PATH: z.string().optional(),
-  VF_DEMO_MODE: z
+  NEXT_PUBLIC_VF_DEMO_MODE: z
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),

@@ -144,10 +144,10 @@ describe("sendTelemetryHeartbeat — happy path", () => {
     expect(body.deployment_mode).toBe("unknown");
   });
 
-  it("no-ops when VF_DEMO_MODE=true regardless of DB telemetryEnabled", async () => {
-    vi.stubEnv("VF_DEMO_MODE", "true");
+  it("no-ops when NEXT_PUBLIC_VF_DEMO_MODE=true regardless of DB telemetryEnabled", async () => {
+    vi.stubEnv("NEXT_PUBLIC_VF_DEMO_MODE", "true");
     vi.resetModules();
-    // Re-import to pick up the new env value via the env module's lazy Proxy
+    // Re-import to ensure process.env.NEXT_PUBLIC_VF_DEMO_MODE is read fresh
     const { sendTelemetryHeartbeat: senderWithDemo } = await import("../telemetry-sender");
 
     prismaMock.systemSettings.findUnique.mockResolvedValue(enabledSettings as never);
@@ -155,6 +155,7 @@ describe("sendTelemetryHeartbeat — happy path", () => {
     await senderWithDemo();
 
     expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(prismaMock.systemSettings.findUnique).not.toHaveBeenCalled();
   });
 });
 
