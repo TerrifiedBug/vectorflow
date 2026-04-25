@@ -35,6 +35,8 @@ import { UpdateBanner } from "@/components/update-banner";
 import { CommandPalette, triggerCommandPalette } from "@/components/command-palette";
 import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts-modal";
 import { useEnvironmentStore } from "@/stores/environment-store";
+import { DemoBanner } from "@/components/dashboard/demo-banner";
+import { isDemoMode } from "@/lib/is-demo-mode";
 
 export default function DashboardLayout({
   children,
@@ -178,16 +180,20 @@ export default function DashboardLayout({
     );
   }
 
+  const showDemoBanner = isDemoMode();
+
   return (
-    <SidebarProvider>
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
-      >
-        Skip to main content
-      </a>
-      <AppSidebar />
-      <SidebarInset>
+    <>
+      {showDemoBanner && <DemoBanner />}
+      <SidebarProvider>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          Skip to main content
+        </a>
+        <AppSidebar />
+        <SidebarInset>
         <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4" aria-label="Dashboard header">
           <TeamSelector />
           <Separator orientation="vertical" className="!h-5" />
@@ -273,5 +279,6 @@ export default function DashboardLayout({
         </LazyMotionProvider>
       </SidebarInset>
     </SidebarProvider>
+    </>
   );
 }
