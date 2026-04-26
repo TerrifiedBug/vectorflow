@@ -6,6 +6,7 @@ import { emailDriver } from "./email";
 import { pagerdutyDriver } from "./pagerduty";
 import { webhookDriver } from "./webhook";
 import { trackChannelDelivery } from "@/server/services/delivery-tracking";
+import { isDemoMode } from "@/lib/is-demo-mode";
 
 export type { ChannelPayload, ChannelDeliveryResult, ChannelDriver };
 
@@ -44,6 +45,12 @@ export async function deliverToChannels(
   payload: ChannelPayload,
   alertEventId?: string,
 ): Promise<ChannelDeliveryResult[]> {
+  // Demo mode: never deliver to external notification channels (slack/email/
+  // pagerduty/webhook). Individual drivers also have demo guards as
+  // defense-in-depth, but short-circuiting here also avoids reading channel
+  // configs for nothing.
+  if (isDemoMode()) return [];
+
   let channels: Array<{
     id: string;
     name: string;
