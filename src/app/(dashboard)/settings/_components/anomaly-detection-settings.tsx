@@ -99,7 +99,16 @@ export function AnomalyDetectionSettings() {
 
   const updateMutation = useMutation(
     trpc.settings.updateAnomalyConfig.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (result) => {
+        // Hydrate form state directly from the mutation response so the values
+        // can't be clobbered by a stale `settings` snapshot in the useEffect
+        // sync (the `dirty` toggle re-runs the effect before the refetch
+        // resolves, which previously made saves appear to revert).
+        setSigmaThreshold(result.anomalySigmaThreshold);
+        setBaselineWindowDays(result.anomalyBaselineWindowDays);
+        setDedupWindowHours(result.anomalyDedupWindowHours);
+        setMinStddevFloor(result.anomalyMinStddevFloorPercent);
+        setEnabledMetrics(parseEnabledMetrics(result.anomalyEnabledMetrics));
         setDirty(false);
         queryClient.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
         toast.success("Anomaly detection settings saved");

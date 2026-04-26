@@ -128,7 +128,7 @@ describe("sendTelemetryHeartbeat — happy path", () => {
     expect(body.auth_method).toBe("oidc");
   });
 
-  it("falls back to 'unknown' for missing env vars", async () => {
+  it("falls back to 'unknown' for vf_version and 'bare' for deployment_mode when no env vars are set", async () => {
     vi.unstubAllEnvs();
     prismaMock.systemSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
     mockCounts(0, 0, 0, 0);
@@ -141,7 +141,42 @@ describe("sendTelemetryHeartbeat — happy path", () => {
     const init = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
     const body = JSON.parse(init.body as string);
     expect(body.vf_version).toBe("unknown");
+    // deployment_mode is auto-detected. In the test env there is no
+    // KUBERNETES_SERVICE_HOST and no /.dockerenv, so we expect the "bare"
+    // fallback. ("unknown" is now reserved for explicitly bad VF_DEPLOYMENT_MODE
+    // overrides.)
+    expect(body.deployment_mode).toBe("bare");
+  });
+
+  it("returns 'unknown' when VF_DEPLOYMENT_MODE is set to a non-enum value", async () => {
+    vi.stubEnv("VF_DEPLOYMENT_MODE", "kubernetes");
+    prismaMock.systemSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
+    mockCounts(0, 0, 0, 0);
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      new Response(null, { status: 204 })
+    );
+
+    await sendTelemetryHeartbeat();
+
+    const init = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const body = JSON.parse(init.body as string);
     expect(body.deployment_mode).toBe("unknown");
+  });
+
+  it("auto-detects 'helm' when KUBERNETES_SERVICE_HOST is present", async () => {
+    vi.unstubAllEnvs();
+    vi.stubEnv("KUBERNETES_SERVICE_HOST", "10.0.0.1");
+    prismaMock.systemSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
+    mockCounts(0, 0, 0, 0);
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      new Response(null, { status: 204 })
+    );
+
+    await sendTelemetryHeartbeat();
+
+    const init = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const body = JSON.parse(init.body as string);
+    expect(body.deployment_mode).toBe("helm");
   });
 
   it("no-ops when NEXT_PUBLIC_VF_DEMO_MODE=true regardless of DB telemetryEnabled", async () => {

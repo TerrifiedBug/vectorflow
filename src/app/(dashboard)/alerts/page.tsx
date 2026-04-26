@@ -21,7 +21,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertRulesSection } from "./_components/alert-rules-section";
 import { NotificationChannelsSection } from "./_components/notification-channels-section";
 import { WebhooksSection } from "./_components/webhooks-section";
+import { OutboundWebhooksSection } from "./_components/outbound-webhooks-section";
 import { AlertHistorySection } from "./_components/alert-history-section";
+import { AnomalyHistorySection } from "./_components/anomaly-history-section";
 import { CorrelatedAlertHistory } from "./_components/correlated-alert-history";
 import { FailedDeliveriesSection } from "./_components/failed-deliveries-section";
 
@@ -134,6 +136,11 @@ export default function AlertsPage() {
               environmentId={selectedEnvironmentId}
             />
             <WebhooksSection environmentId={selectedEnvironmentId} />
+            {/* Team-scoped subscription firehose for events outside the
+                AlertRule → channel routing model. Lives here (rather than
+                under global settings) so all webhook configuration is in
+                one place. */}
+            <OutboundWebhooksSection />
           </div>
         </TabsContent>
 
@@ -158,9 +165,18 @@ export default function AlertsPage() {
               </TabsList>
 
               <TabsContent value="grouped">
-                <CorrelatedAlertHistory
-                  environmentId={selectedEnvironmentId}
-                />
+                <div className="space-y-6">
+                  <CorrelatedAlertHistory
+                    environmentId={selectedEnvironmentId}
+                  />
+                  {/* Anomalies aren't part of AlertCorrelationGroup yet, but
+                      they're peer signals during incident triage — surface them
+                      directly under the grouped alerts so this view answers the
+                      "what fired together" question for both alert types. */}
+                  <AnomalyHistorySection
+                    environmentId={selectedEnvironmentId}
+                  />
+                </div>
               </TabsContent>
 
               <TabsContent value="flat">

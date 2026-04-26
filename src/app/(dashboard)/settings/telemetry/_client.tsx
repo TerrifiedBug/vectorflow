@@ -62,7 +62,7 @@ export default function TelemetrySettingsPage() {
         )}
 
         <a
-          href="/docs/operations/telemetry"
+          href="https://terrifiedbug.gitbook.io/vectorflow/operations/telemetry"
           target="_blank"
           rel="noreferrer"
           className="text-sm text-primary underline inline-block"

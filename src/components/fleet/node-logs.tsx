@@ -153,9 +153,9 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
   }
 
   return (
-    <div className="flex h-[400px] flex-col rounded-md border overflow-hidden">
+    <div className="flex h-[400px] w-full min-w-0 flex-col rounded-md border overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-border/40 bg-black/80 px-3 py-1.5">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border/40 bg-black/80 px-3 py-1.5">
         <span className="text-xs text-muted-foreground mr-1">Level:</span>
         {ALL_LEVELS.map((level) => (
           <button
@@ -227,7 +227,7 @@ export function NodeLogs({ nodeId, pipelines }: NodeLogsProps) {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto bg-black/95 p-3 font-mono text-xs"
+        className="flex-1 min-w-0 overflow-auto break-words bg-black/95 p-3 font-mono text-xs"
       >
         {logsQuery.isFetchingNextPage && (
           <div className="text-center text-muted-foreground py-1 text-xs">

@@ -250,6 +250,16 @@ export const withTeamAccess = (minRole: Role) =>
     }
 
     if (!teamId && rawInput?.id) {
+      const nodeGroup = await prisma.nodeGroup.findUnique({
+        where: { id: rawInput.id as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (nodeGroup) {
+        teamId = nodeGroup.environment.teamId ?? undefined;
+      }
+    }
+
+    if (!teamId && rawInput?.id) {
       const notifChannel = await prisma.notificationChannel.findUnique({
         where: { id: rawInput.id as string },
         select: { environment: { select: { teamId: true } } },

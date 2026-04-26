@@ -10,8 +10,8 @@ import {
   KeyRound,
   Bot,
   Sparkles,
-  Webhook,
   Activity,
+  Send,
 } from "lucide-react";
 
 export const settingsNavGroups = [
@@ -20,6 +20,7 @@ export const settingsNavGroups = [
     items: [
       { title: "Version Check", href: "/settings/version", icon: RefreshCw, requiredSuperAdmin: true },
       { title: "Backup", href: "/settings/backup", icon: HardDrive, requiredSuperAdmin: true },
+      { title: "Telemetry", href: "/settings/telemetry", icon: Send, requiredSuperAdmin: true },
     ],
   },
   {
@@ -36,7 +37,6 @@ export const settingsNavGroups = [
       { title: "All Teams", href: "/settings/teams", icon: Building2, requiredSuperAdmin: true },
       { title: "My Team", href: "/settings/team", icon: Users, requiredSuperAdmin: false, demoHidden: true },
       { title: "Service Accounts", href: "/settings/service-accounts", icon: Bot, requiredSuperAdmin: false, demoHidden: true },
-      { title: "Outbound Webhooks", href: "/settings/webhooks", icon: Webhook, requiredSuperAdmin: false },
       { title: "AI", href: "/settings/ai", icon: Sparkles, requiredSuperAdmin: false },
     ],
   },

@@ -16,13 +16,22 @@ function sanitizeFilename(filename: string): string {
   return base;
 }
 
+// Always return JSON for errors so the client can render the message in a toast
+// instead of the browser saving the error body as `download.txt`.
+function jsonError(message: string, status: number): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ filename: string }> }
 ) {
   const session = await auth();
   if (!session?.user?.id) {
-    return new Response("Unauthorized", { status: 401 });
+    return jsonError("Unauthorized", 401);
   }
 
   const user = await prisma.user.findUnique({
@@ -31,7 +40,7 @@ export async function GET(
   });
 
   if (!user?.isSuperAdmin) {
-    return new Response("Forbidden", { status: 403 });
+    return jsonError("Forbidden", 403);
   }
 
   const { filename } = await params;
@@ -39,11 +48,11 @@ export async function GET(
   try {
     safe = sanitizeFilename(filename);
   } catch {
-    return new Response("Invalid filename", { status: 400 });
+    return jsonError("Invalid filename", 400);
   }
 
   if (!safe.endsWith(".dump")) {
-    return new Response("Invalid backup filename", { status: 400 });
+    return jsonError("Invalid backup filename", 400);
   }
 
   // Look up BackupRecord to determine storage location
@@ -67,7 +76,7 @@ export async function GET(
     });
 
     if (!settings?.s3Bucket || !settings?.s3AccessKeyId || !settings?.s3SecretAccessKey) {
-      return new Response("S3 not configured", { status: 500 });
+      return jsonError("S3 not configured", 500);
     }
 
     const { decrypt } = await import("@/server/services/crypto");
@@ -89,7 +98,7 @@ export async function GET(
     }));
 
     if (!response.Body) {
-      return new Response("S3 object body is empty", { status: 500 });
+      return jsonError("S3 object body is empty", 500);
     }
 
     const webStream = response.Body.transformToWebStream();
@@ -109,7 +118,7 @@ export async function GET(
   try {
     await fs.access(filePath);
   } catch {
-    return new Response("Backup not found", { status: 404 });
+    return jsonError("Backup not found", 404);
   }
 
   const stat = await fs.stat(filePath);
