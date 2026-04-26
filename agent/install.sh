@@ -11,6 +11,7 @@ VECTOR_DATA_DIR="/var/lib/vector"
 CONFIG_DIR="/etc/vectorflow"
 ENV_FILE="${CONFIG_DIR}/agent.env"
 SERVICE_NAME="vf-agent"
+# Keep this in sync with src/lib/vector-version.ts (canonical source).
 VECTOR_VERSION="0.54.0"
 
 # Defaults

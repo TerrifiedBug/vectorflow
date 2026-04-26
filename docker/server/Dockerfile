@@ -11,8 +11,9 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
 # ---- Stage 2: Download Vector binary (cached unless VECTOR_VERSION changes) ----
+# Keep this default in sync with src/lib/vector-version.ts (canonical source).
 FROM alpine:3.21 AS vector
-ARG VECTOR_VERSION=0.53.0
+ARG VECTOR_VERSION=0.54.0
 RUN apk add --no-cache curl && \
     curl -sSfL -o /tmp/vector.tar.gz \
       "https://packages.timber.io/vector/${VECTOR_VERSION}/vector-${VECTOR_VERSION}-x86_64-unknown-linux-musl.tar.gz" && \

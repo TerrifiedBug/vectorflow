@@ -8,6 +8,7 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/TerrifiedBug/vectorflow/agent/internal/agent.Version=${VERSION}" -o /vf-agent .
 
 # Stage 2: Download Vector
+# Keep this default in sync with src/lib/vector-version.ts (canonical source).
 FROM alpine:3.21 AS vector
 ARG VECTOR_VERSION=0.54.0
 RUN apk add --no-cache curl && \
