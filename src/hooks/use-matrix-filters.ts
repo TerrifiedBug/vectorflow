@@ -8,6 +8,10 @@ export interface MatrixFilters {
   tagFilter: string[];
 }
 
+// Default status filter applied when the URL has no `status` param at all.
+// An explicit empty `?status=` overrides the default (means "show all").
+const DEFAULT_STATUS_FILTER: readonly string[] = ["running"] as const;
+
 /** URL-synced filter state hook for the deployment matrix. */
 export function useMatrixFilters() {
   const searchParams = useSearchParams();
@@ -15,8 +19,13 @@ export function useMatrixFilters() {
   const pathname = usePathname();
 
   const search = searchParams.get("search") ?? "";
+
+  const statusParam = searchParams.get("status");
   const statusFilter =
-    searchParams.get("status")?.split(",").filter(Boolean) ?? [];
+    statusParam === null
+      ? [...DEFAULT_STATUS_FILTER]
+      : statusParam.split(",").filter(Boolean);
+
   const tagFilter =
     searchParams.get("tags")?.split(",").filter(Boolean) ?? [];
 
@@ -39,7 +48,9 @@ export function useMatrixFilters() {
       if (statuses.length > 0) {
         params.set("status", statuses.join(","));
       } else {
-        params.delete("status");
+        // Explicit empty overrides the "running" default; otherwise the next
+        // render would silently re-apply the default.
+        params.set("status", "");
       }
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
@@ -60,11 +71,17 @@ export function useMatrixFilters() {
   );
 
   const clearFilters = useCallback(() => {
-    router.replace(pathname, { scroll: false });
+    // Status="" is the explicit override (otherwise the default re-applies).
+    router.replace(`${pathname}?status=`, { scroll: false });
   }, [router, pathname]);
 
+  // The "running" default is not considered an active filter — the chip/banner
+  // shouldn't appear until the user has actually changed something.
+  const isStatusAtDefault = statusParam === null;
   const hasActiveFilters =
-    search.length > 0 || statusFilter.length > 0 || tagFilter.length > 0;
+    search.length > 0 ||
+    (statusFilter.length > 0 && !isStatusAtDefault) ||
+    tagFilter.length > 0;
 
   return {
     search,
