@@ -71,7 +71,7 @@ describe("sendTelemetryHeartbeat — happy path", () => {
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(url).toBe("https://pulse.terrifiedbug.com/api/v1/ping");
+    expect(url).toBe("https://pulse.vectorflow.sh/api/v1/ping");
     expect(init.method).toBe("POST");
     expect(init.headers["content-type"]).toBe("application/json");
     const body = JSON.parse(init.body as string);

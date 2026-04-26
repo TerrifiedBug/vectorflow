@@ -111,7 +111,7 @@ export default function DashboardLayout({
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <div className="ml-auto flex items-center gap-2">
             <Button variant="ghost" size="icon" asChild aria-label="Documentation">
-              <a href="https://terrifiedbug.gitbook.io/vectorflow" target="_blank" rel="noopener noreferrer">
+              <a href="https://vectorflow.sh/docs" target="_blank" rel="noopener noreferrer">
                 <BookOpen className="h-5 w-5" />
               </a>
             </Button>
@@ -230,7 +230,7 @@ export default function DashboardLayout({
               </Link>
             </Button>
             <Button variant="ghost" size="icon" asChild aria-label="Documentation">
-              <a href="https://terrifiedbug.gitbook.io/vectorflow" target="_blank" rel="noopener noreferrer">
+              <a href="https://vectorflow.sh/docs" target="_blank" rel="noopener noreferrer">
                 <BookOpen className="h-5 w-5" />
               </a>
             </Button>
