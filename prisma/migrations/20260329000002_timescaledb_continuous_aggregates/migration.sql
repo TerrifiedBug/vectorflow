@@ -33,7 +33,7 @@ BEGIN
     WITH NO DATA;
 
     -- Refresh policy: refresh data older than 2 minutes, look back 1 hour
-    SELECT add_continuous_aggregate_policy('pipeline_metrics_1m',
+    PERFORM add_continuous_aggregate_policy('pipeline_metrics_1m',
       start_offset    => INTERVAL '1 hour',
       end_offset      => INTERVAL '2 minutes',
       schedule_interval => INTERVAL '1 minute',
@@ -62,7 +62,7 @@ BEGIN
     GROUP BY bucket, "pipelineId"
     WITH NO DATA;
 
-    SELECT add_continuous_aggregate_policy('pipeline_metrics_1h',
+    PERFORM add_continuous_aggregate_policy('pipeline_metrics_1h',
       start_offset    => INTERVAL '3 hours',
       end_offset      => INTERVAL '1 hour',
       schedule_interval => INTERVAL '1 hour',
@@ -96,7 +96,7 @@ BEGIN
     GROUP BY bucket, "nodeId"
     WITH NO DATA;
 
-    SELECT add_continuous_aggregate_policy('node_metrics_1m',
+    PERFORM add_continuous_aggregate_policy('node_metrics_1m',
       start_offset    => INTERVAL '1 hour',
       end_offset      => INTERVAL '2 minutes',
       schedule_interval => INTERVAL '1 minute',
@@ -130,7 +130,7 @@ BEGIN
     GROUP BY bucket, "nodeId"
     WITH NO DATA;
 
-    SELECT add_continuous_aggregate_policy('node_metrics_1h',
+    PERFORM add_continuous_aggregate_policy('node_metrics_1h',
       start_offset    => INTERVAL '3 hours',
       end_offset      => INTERVAL '1 hour',
       schedule_interval => INTERVAL '1 hour',
