@@ -20,8 +20,14 @@ BEGIN
     ALTER TABLE "PipelineMetric"
       ADD CONSTRAINT "PipelineMetric_pkey" PRIMARY KEY ("id", "timestamp");
 
+    -- Note: the table-name argument to create_hypertable() is parsed as a
+    -- regclass, which folds *unquoted* identifiers to lowercase. Prisma
+    -- creates these tables with case-preserved identifiers like
+    -- "PipelineMetric", so we must pass the name with embedded double quotes
+    -- — otherwise regclass looks up "pipelinemetric" and errors with
+    -- "relation does not exist".
     PERFORM create_hypertable(
-      'PipelineMetric',
+      '"PipelineMetric"',
       by_range('timestamp', INTERVAL '1 day'),
       migrate_data => true,
       if_not_exists => true
@@ -35,7 +41,7 @@ BEGIN
       ADD CONSTRAINT "NodeMetric_pkey" PRIMARY KEY ("id", "timestamp");
 
     PERFORM create_hypertable(
-      'NodeMetric',
+      '"NodeMetric"',
       by_range('timestamp', INTERVAL '1 day'),
       migrate_data => true,
       if_not_exists => true
@@ -48,7 +54,7 @@ BEGIN
       ADD CONSTRAINT "PipelineLog_pkey" PRIMARY KEY ("id", "timestamp");
 
     PERFORM create_hypertable(
-      'PipelineLog',
+      '"PipelineLog"',
       by_range('timestamp', INTERVAL '1 day'),
       migrate_data => true,
       if_not_exists => true
@@ -61,7 +67,7 @@ BEGIN
       ADD CONSTRAINT "NodeStatusEvent_pkey" PRIMARY KEY ("id", "timestamp");
 
     PERFORM create_hypertable(
-      'NodeStatusEvent',
+      '"NodeStatusEvent"',
       by_range('timestamp', INTERVAL '1 day'),
       migrate_data => true,
       if_not_exists => true
