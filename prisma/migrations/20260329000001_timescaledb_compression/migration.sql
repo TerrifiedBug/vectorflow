@@ -3,6 +3,12 @@
 -- Enable native compression on hypertable chunks older than 24 hours.
 -- Achieves 10-20x size reduction for time-series metric data.
 -- Safe no-op on plain PostgreSQL.
+--
+-- Note on compress_orderby: every column of the hypertable's primary key
+-- (changed to ("id", "timestamp") in the previous migration) must appear in
+-- either compress_segmentby or compress_orderby. We put "id" in orderby —
+-- segmenting by a high-cardinality cuid would create one segment per row and
+-- destroy the compression ratio.
 
 DO $$
 BEGIN
@@ -12,7 +18,7 @@ BEGIN
     ALTER TABLE "PipelineMetric" SET (
       timescaledb.compress,
       timescaledb.compress_segmentby = 'pipelineId',
-      timescaledb.compress_orderby = 'timestamp DESC'
+      timescaledb.compress_orderby = 'timestamp DESC, id'
     );
 
     SELECT add_compression_policy(
@@ -25,7 +31,7 @@ BEGIN
     ALTER TABLE "NodeMetric" SET (
       timescaledb.compress,
       timescaledb.compress_segmentby = 'nodeId',
-      timescaledb.compress_orderby = 'timestamp DESC'
+      timescaledb.compress_orderby = 'timestamp DESC, id'
     );
 
     SELECT add_compression_policy(
@@ -38,7 +44,7 @@ BEGIN
     ALTER TABLE "PipelineLog" SET (
       timescaledb.compress,
       timescaledb.compress_segmentby = 'pipelineId',
-      timescaledb.compress_orderby = 'timestamp DESC'
+      timescaledb.compress_orderby = 'timestamp DESC, id'
     );
 
     SELECT add_compression_policy(
@@ -51,7 +57,7 @@ BEGIN
     ALTER TABLE "NodeStatusEvent" SET (
       timescaledb.compress,
       timescaledb.compress_segmentby = 'nodeId',
-      timescaledb.compress_orderby = 'timestamp DESC'
+      timescaledb.compress_orderby = 'timestamp DESC, id'
     );
 
     SELECT add_compression_policy(
