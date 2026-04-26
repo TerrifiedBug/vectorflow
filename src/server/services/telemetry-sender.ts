@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import { buildHeartbeatPayload, type BuildPayloadInput } from "./telemetry-payload";
 
-const PULSE_URL = "https://pulse.terrifiedbug.com/api/v1/ping";
+const PULSE_URL = "https://pulse.vectorflow.sh/api/v1/ping";
 const FETCH_TIMEOUT_MS = 10_000;
 
 let nextAllowedAtMs: number | null = null;
