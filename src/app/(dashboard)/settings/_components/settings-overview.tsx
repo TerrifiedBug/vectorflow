@@ -17,7 +17,6 @@ import {
   Sparkles,
   Server,
   Upload,
-  Webhook,
   Activity,
   Send,
 } from "lucide-react";
@@ -95,13 +94,6 @@ const CATEGORIES: SettingsCategory[] = [
     description: "Create API tokens for CI/CD pipelines and external integrations.",
     href: "/settings/service-accounts",
     icon: Bot,
-    requiredSuperAdmin: false,
-  },
-  {
-    title: "Outbound Webhooks",
-    description: "Configure webhooks to send events to external systems.",
-    href: "/settings/webhooks",
-    icon: Webhook,
     requiredSuperAdmin: false,
   },
   {
