@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getVectorCatalog } from "@/lib/vector/catalog";
 import type { VectorComponentDef } from "@/lib/vector/types";
+import { NODE_KIND_META } from "@/lib/node-kind-colors";
 import { getIcon } from "./node-icon";
 import { StaggerList, StaggerItem } from "@/components/motion";
 import { useQuery } from "@tanstack/react-query";
@@ -18,19 +19,19 @@ const kindMeta: Record<
   { label: string; borderClass: string; bgClass: string }
 > = {
   source: {
-    label: "Sources",
-    borderClass: "border-l-node-source",
-    bgClass: "bg-node-source",
+    label: NODE_KIND_META.source.pluralLabel,
+    borderClass: NODE_KIND_META.source.borderClass,
+    bgClass: NODE_KIND_META.source.bgClass,
   },
   transform: {
-    label: "Transforms",
-    borderClass: "border-l-node-transform",
-    bgClass: "bg-node-transform",
+    label: NODE_KIND_META.transform.pluralLabel,
+    borderClass: NODE_KIND_META.transform.borderClass,
+    bgClass: NODE_KIND_META.transform.bgClass,
   },
   sink: {
-    label: "Sinks",
-    borderClass: "border-l-node-sink",
-    bgClass: "bg-node-sink",
+    label: NODE_KIND_META.sink.pluralLabel,
+    borderClass: NODE_KIND_META.sink.borderClass,
+    bgClass: NODE_KIND_META.sink.bgClass,
   },
 };
 
