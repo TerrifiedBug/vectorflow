@@ -5,10 +5,13 @@ import { useSearchParams } from "next/navigation";
 import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { ChevronDown, ChevronRight, Rocket, ScrollText, Search } from "lucide-react";
+import { format } from "date-fns";
+import type { DateRange } from "react-day-picker";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -304,23 +307,21 @@ export default function AuditPage() {
 
             {/* Date range */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="audit-from" className="text-xs text-muted-foreground">From</label>
-              <Input
-                id="audit-from"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-[160px]"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <label htmlFor="audit-to" className="text-xs text-muted-foreground">To</label>
-              <Input
-                id="audit-to"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-[160px]"
+              <label htmlFor="date-range" className="text-xs text-muted-foreground">Date range</label>
+              <DateRangePicker
+                className="w-[280px]"
+                value={
+                  startDate || endDate
+                    ? {
+                        from: startDate ? new Date(startDate) : undefined,
+                        to: endDate ? new Date(endDate) : undefined,
+                      }
+                    : undefined
+                }
+                onChange={(range: DateRange | undefined) => {
+                  setStartDate(range?.from ? format(range.from, "yyyy-MM-dd") : "");
+                  setEndDate(range?.to ? format(range.to, "yyyy-MM-dd") : "");
+                }}
               />
             </div>
 
