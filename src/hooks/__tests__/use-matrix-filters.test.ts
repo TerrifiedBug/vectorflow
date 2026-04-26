@@ -19,11 +19,21 @@ describe("useMatrixFilters", () => {
     mockReplace.mockClear();
   });
 
-  it("returns default state when no URL params exist", () => {
+  it("defaults the status filter to 'running' when no URL params exist", () => {
     const { result } = renderHook(() => useMatrixFilters());
     expect(result.current.search).toBe("");
-    expect(result.current.statusFilter).toEqual([]);
+    expect(result.current.statusFilter).toEqual(["running"]);
     expect(result.current.tagFilter).toEqual([]);
+    // The default isn't considered an "active" filter so the
+    // clear-filters chip stays hidden until the user actually changes
+    // something.
+    expect(result.current.hasActiveFilters).toBe(false);
+  });
+
+  it("treats an explicit empty status param as 'show all'", () => {
+    currentSearchParams = new URLSearchParams("status=");
+    const { result } = renderHook(() => useMatrixFilters());
+    expect(result.current.statusFilter).toEqual([]);
     expect(result.current.hasActiveFilters).toBe(false);
   });
 
@@ -77,7 +87,7 @@ describe("useMatrixFilters", () => {
     expect(params.get("tags")).toBe("prod,staging");
   });
 
-  it("clearFilters replaces with just the pathname", () => {
+  it("clearFilters drops all params but keeps an explicit status= override", () => {
     currentSearchParams = new URLSearchParams(
       "search=agent&status=deployed&tags=prod",
     );
@@ -88,6 +98,8 @@ describe("useMatrixFilters", () => {
     });
 
     expect(mockReplace).toHaveBeenCalledTimes(1);
-    expect(mockReplace).toHaveBeenCalledWith("/test", { scroll: false });
+    // status="" overrides the implicit "running" default. Without it the
+    // next render would silently re-apply the default.
+    expect(mockReplace).toHaveBeenCalledWith("/test?status=", { scroll: false });
   });
 });
