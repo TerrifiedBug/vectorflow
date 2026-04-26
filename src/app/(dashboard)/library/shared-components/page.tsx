@@ -23,6 +23,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { NODE_KIND_META } from "@/lib/node-kind-colors";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 
@@ -49,21 +50,26 @@ function formatRelativeTime(date: Date | string | null | undefined): string {
 /*  Kind styling                                                       */
 /* ------------------------------------------------------------------ */
 
-const kindConfig: Record<string, { label: string; badge: string; accent: string }> = {
+// Library uses Prisma's UPPER-CASE enum; pipeline editor uses lowercase. Bridge
+// to the shared NODE_KIND_META so both surfaces use the same node colors.
+const kindConfig: Record<string, { label: string; badge: string; accent: string; border: string }> = {
   SOURCE: {
-    label: "Sources",
-    badge: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-    accent: "text-emerald-600 dark:text-emerald-400",
+    label: NODE_KIND_META.source.pluralLabel,
+    badge: cn(NODE_KIND_META.source.bgClass, NODE_KIND_META.source.fgClass),
+    accent: NODE_KIND_META.source.accentClass,
+    border: NODE_KIND_META.source.borderClass,
   },
   TRANSFORM: {
-    label: "Transforms",
-    badge: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300",
-    accent: "text-sky-600 dark:text-sky-400",
+    label: NODE_KIND_META.transform.pluralLabel,
+    badge: cn(NODE_KIND_META.transform.bgClass, NODE_KIND_META.transform.fgClass),
+    accent: NODE_KIND_META.transform.accentClass,
+    border: NODE_KIND_META.transform.borderClass,
   },
   SINK: {
-    label: "Sinks",
-    badge: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
-    accent: "text-orange-600 dark:text-orange-400",
+    label: NODE_KIND_META.sink.pluralLabel,
+    badge: cn(NODE_KIND_META.sink.bgClass, NODE_KIND_META.sink.fgClass),
+    accent: NODE_KIND_META.sink.accentClass,
+    border: NODE_KIND_META.sink.borderClass,
   },
 };
 
@@ -155,6 +161,7 @@ export default function SharedComponentsPage() {
                 count={group.items.length}
                 accent={group.accent}
                 badgeClass={group.badge}
+                borderClass={group.border}
                 items={group.items}
                 onItemClick={(id) => router.push(`/library/shared-components/${id}`)}
               />
@@ -185,6 +192,7 @@ function KindSection({
   count,
   accent,
   badgeClass,
+  borderClass,
   items,
   onItemClick,
 }: {
@@ -192,6 +200,7 @@ function KindSection({
   count: number;
   accent: string;
   badgeClass: string;
+  borderClass: string;
   items: SharedComponentItem[];
   onItemClick: (id: string) => void;
 }) {
@@ -216,7 +225,10 @@ function KindSection({
           {items.map((sc) => (
             <Card
               key={sc.id}
-              className="cursor-pointer transition-colors hover:bg-accent/50"
+              className={cn(
+                "cursor-pointer border-l-[3px] transition-colors hover:bg-accent/50",
+                borderClass,
+              )}
               onClick={() => onItemClick(sc.id)}
             >
               <CardHeader className="pb-2">

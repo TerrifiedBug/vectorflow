@@ -18,6 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
+import { VECTOR_VERSION } from "@/lib/vector-version";
 
 // ─── Relative Time Helper ───────────────────────────────────────────────────────
 
@@ -157,6 +158,25 @@ export function VersionCheckSection() {
               <span className="font-mono">
                 {agent?.latestVersion ?? "unknown"}
               </span>
+            </div>
+
+            <Separator />
+
+            {/* Vector binary version (bundled with the server image and pre-installed by agent installer) */}
+            <div className="grid grid-cols-[140px_1fr] items-center gap-x-4 gap-y-2 text-sm">
+              <span className="text-muted-foreground">Vector version</span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono">{VECTOR_VERSION}</span>
+                <a
+                  href={`https://github.com/vectordotdev/vector/releases/tag/v${VECTOR_VERSION}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Release notes
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
             </div>
 
             <Separator />
