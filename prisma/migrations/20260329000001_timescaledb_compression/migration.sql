@@ -29,7 +29,7 @@ BEGIN
       timescaledb.compress_orderby = '"timestamp" DESC, "id"'
     );
 
-    SELECT add_compression_policy(
+    PERFORM add_compression_policy(
       '"PipelineMetric"',
       compress_after => INTERVAL '24 hours',
       if_not_exists => true
@@ -42,7 +42,7 @@ BEGIN
       timescaledb.compress_orderby = '"timestamp" DESC, "id"'
     );
 
-    SELECT add_compression_policy(
+    PERFORM add_compression_policy(
       '"NodeMetric"',
       compress_after => INTERVAL '24 hours',
       if_not_exists => true
@@ -55,7 +55,7 @@ BEGIN
       timescaledb.compress_orderby = '"timestamp" DESC, "id"'
     );
 
-    SELECT add_compression_policy(
+    PERFORM add_compression_policy(
       '"PipelineLog"',
       compress_after => INTERVAL '24 hours',
       if_not_exists => true
@@ -68,7 +68,7 @@ BEGIN
       timescaledb.compress_orderby = '"timestamp" DESC, "id"'
     );
 
-    SELECT add_compression_policy(
+    PERFORM add_compression_policy(
       '"NodeStatusEvent"',
       compress_after => INTERVAL '24 hours',
       if_not_exists => true
