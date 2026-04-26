@@ -191,6 +191,30 @@ export function BackupSettings() {
     }),
   );
 
+  // Download via fetch + blob so we can render JSON errors as toasts instead of
+  // letting the browser save the error body as `download.txt`.
+  async function handleDownload(filename: string) {
+    try {
+      const res = await fetch(`/api/backups/${encodeURIComponent(filename)}/download`);
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(data.error || `Download failed (${res.status})`, { duration: 6000 });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Download failed", { duration: 6000 });
+    }
+  }
+
   if (settingsQuery.isError) return <QueryError message="Failed to load backup settings" onRetry={() => settingsQuery.refetch()} />;
   if (backupsQuery.isError) return <QueryError message="Failed to load backup history" onRetry={() => backupsQuery.refetch()} />;
 
@@ -535,14 +559,9 @@ export function BackupSettings() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              asChild
+                              onClick={() => handleDownload(backup.filename)}
                             >
-                              <a
-                                href={`/api/backups/${encodeURIComponent(backup.filename)}/download`}
-                                download
-                              >
-                                <Download className="h-4 w-4" />
-                              </a>
+                              <Download className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="outline"

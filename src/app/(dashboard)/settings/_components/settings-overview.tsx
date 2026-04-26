@@ -17,8 +17,8 @@ import {
   Sparkles,
   Server,
   Upload,
-  Webhook,
   Activity,
+  Send,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +45,13 @@ const CATEGORIES: SettingsCategory[] = [
     description: "Configure automatic database backups and restore from backup.",
     href: "/settings/backup",
     icon: HardDrive,
+    requiredSuperAdmin: true,
+  },
+  {
+    title: "Telemetry",
+    description: "Opt in to anonymous usage telemetry that helps shape VectorFlow.",
+    href: "/settings/telemetry",
+    icon: Send,
     requiredSuperAdmin: true,
   },
   {
@@ -87,13 +94,6 @@ const CATEGORIES: SettingsCategory[] = [
     description: "Create API tokens for CI/CD pipelines and external integrations.",
     href: "/settings/service-accounts",
     icon: Bot,
-    requiredSuperAdmin: false,
-  },
-  {
-    title: "Outbound Webhooks",
-    description: "Configure webhooks to send events to external systems.",
-    href: "/settings/webhooks",
-    icon: Webhook,
     requiredSuperAdmin: false,
   },
   {

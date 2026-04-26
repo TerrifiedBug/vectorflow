@@ -203,16 +203,43 @@ describe("audit.list", () => {
     );
   });
 
-  it("uses empty where clause when no filters are provided", async () => {
+  it("excludes SCIM provisioning actions from the default view", async () => {
     prismaMock.auditLog.findMany.mockResolvedValue([]);
 
     await caller.list({});
 
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {},
+        where: {
+          AND: [{ NOT: { action: { startsWith: "scim." } } }],
+        },
       }),
     );
+  });
+
+  it("includes SCIM entries when filtering by a SCIM entity type", async () => {
+    prismaMock.auditLog.findMany.mockResolvedValue([]);
+
+    await caller.list({ entityTypes: ["ScimUser", "ScimGroup"] });
+
+    const call = prismaMock.auditLog.findMany.mock.calls[0]?.[0];
+    const conditions = (call as { where: { AND: unknown[] } }).where.AND;
+    // No NOT-startsWith-scim condition should be present
+    expect(conditions).not.toContainEqual({
+      NOT: { action: { startsWith: "scim." } },
+    });
+  });
+
+  it("includes SCIM entries when explicitly filtering by a scim.* action", async () => {
+    prismaMock.auditLog.findMany.mockResolvedValue([]);
+
+    await caller.list({ action: "scim.user_created" });
+
+    const call = prismaMock.auditLog.findMany.mock.calls[0]?.[0];
+    const conditions = (call as { where: { AND: unknown[] } }).where.AND;
+    expect(conditions).not.toContainEqual({
+      NOT: { action: { startsWith: "scim." } },
+    });
   });
 
   it("passes cursor for pagination", async () => {

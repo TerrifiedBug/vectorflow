@@ -1,3 +1,4 @@
+import { existsSync } from "fs";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { isDemoMode } from "@/lib/is-demo-mode";
@@ -14,10 +15,27 @@ export function _resetSenderState() {
 
 type DeploymentMode = "docker" | "helm" | "bare" | "unknown";
 
+// Detect deployment mode in this priority order:
+//   1. explicit override via VF_DEPLOYMENT_MODE
+//   2. Kubernetes (KUBERNETES_SERVICE_HOST is injected into every pod) → "helm"
+//      (we can't actually distinguish Helm from raw kubectl from the running
+//      process, so we report Kubernetes-shaped deployments as "helm")
+//   3. Docker (the docker engine creates /.dockerenv inside containers)
+//   4. fall back to "bare"; "unknown" is only returned if the override env
+//      var is set to a non-enum value
 function resolveDeploymentMode(): DeploymentMode {
-  const v = process.env.VF_DEPLOYMENT_MODE;
-  if (v === "docker" || v === "helm" || v === "bare") return v;
-  return "unknown";
+  const override = process.env.VF_DEPLOYMENT_MODE;
+  if (override) {
+    if (override === "docker" || override === "helm" || override === "bare") return override;
+    return "unknown";
+  }
+  if (process.env.KUBERNETES_SERVICE_HOST) return "helm";
+  try {
+    if (existsSync("/.dockerenv")) return "docker";
+  } catch {
+    // Filesystem probe failed (likely sandboxed) — fall through.
+  }
+  return "bare";
 }
 
 // Pipeline model uses isDraft (boolean) and deployedAt (DateTime?) — no status enum.
