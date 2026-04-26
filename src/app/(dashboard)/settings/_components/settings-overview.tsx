@@ -19,6 +19,7 @@ import {
   Upload,
   Webhook,
   Activity,
+  Send,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +46,13 @@ const CATEGORIES: SettingsCategory[] = [
     description: "Configure automatic database backups and restore from backup.",
     href: "/settings/backup",
     icon: HardDrive,
+    requiredSuperAdmin: true,
+  },
+  {
+    title: "Telemetry",
+    description: "Opt in to anonymous usage telemetry that helps shape VectorFlow.",
+    href: "/settings/telemetry",
+    icon: Send,
     requiredSuperAdmin: true,
   },
   {

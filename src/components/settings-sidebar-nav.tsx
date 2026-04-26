@@ -12,6 +12,7 @@ import {
   Sparkles,
   Webhook,
   Activity,
+  Send,
 } from "lucide-react";
 
 export const settingsNavGroups = [
@@ -20,6 +21,7 @@ export const settingsNavGroups = [
     items: [
       { title: "Version Check", href: "/settings/version", icon: RefreshCw, requiredSuperAdmin: true },
       { title: "Backup", href: "/settings/backup", icon: HardDrive, requiredSuperAdmin: true },
+      { title: "Telemetry", href: "/settings/telemetry", icon: Send, requiredSuperAdmin: true },
     ],
   },
   {
