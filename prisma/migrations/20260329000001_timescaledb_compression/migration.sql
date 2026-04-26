@@ -4,11 +4,19 @@
 -- Achieves 10-20x size reduction for time-series metric data.
 -- Safe no-op on plain PostgreSQL.
 --
--- Note on compress_orderby: every column of the hypertable's primary key
--- (changed to ("id", "timestamp") in the previous migration) must appear in
--- either compress_segmentby or compress_orderby. We put "id" in orderby —
--- segmenting by a high-cardinality cuid would create one segment per row and
--- destroy the compression ratio.
+-- Two case-sensitivity gotchas in the option-string format:
+--
+-- 1. TimescaleDB's parser for compress_segmentby / compress_orderby folds
+--    unquoted identifiers to lowercase, just like PostgreSQL's regclass
+--    parser. Columns like "pipelineId" / "nodeId" / "timestamp" / "id" must
+--    be wrapped in double quotes inside the string literal — otherwise we
+--    get "column pipelineid does not exist".
+--
+-- 2. Every column of the hypertable's primary key (changed to ("id",
+--    "timestamp") in the previous migration) must appear in either
+--    compress_segmentby or compress_orderby. We put "id" in orderby —
+--    segmenting by a high-cardinality cuid would create one segment per
+--    row and destroy the compression ratio.
 
 DO $$
 BEGIN
@@ -17,8 +25,8 @@ BEGIN
     -- ─── PipelineMetric compression ─────────────────────────────────────
     ALTER TABLE "PipelineMetric" SET (
       timescaledb.compress,
-      timescaledb.compress_segmentby = 'pipelineId',
-      timescaledb.compress_orderby = 'timestamp DESC, id'
+      timescaledb.compress_segmentby = '"pipelineId"',
+      timescaledb.compress_orderby = '"timestamp" DESC, "id"'
     );
 
     SELECT add_compression_policy(
@@ -30,8 +38,8 @@ BEGIN
     -- ─── NodeMetric compression ─────────────────────────────────────────
     ALTER TABLE "NodeMetric" SET (
       timescaledb.compress,
-      timescaledb.compress_segmentby = 'nodeId',
-      timescaledb.compress_orderby = 'timestamp DESC, id'
+      timescaledb.compress_segmentby = '"nodeId"',
+      timescaledb.compress_orderby = '"timestamp" DESC, "id"'
     );
 
     SELECT add_compression_policy(
@@ -43,8 +51,8 @@ BEGIN
     -- ─── PipelineLog compression ────────────────────────────────────────
     ALTER TABLE "PipelineLog" SET (
       timescaledb.compress,
-      timescaledb.compress_segmentby = 'pipelineId',
-      timescaledb.compress_orderby = 'timestamp DESC, id'
+      timescaledb.compress_segmentby = '"pipelineId"',
+      timescaledb.compress_orderby = '"timestamp" DESC, "id"'
     );
 
     SELECT add_compression_policy(
@@ -56,8 +64,8 @@ BEGIN
     -- ─── NodeStatusEvent compression ────────────────────────────────────
     ALTER TABLE "NodeStatusEvent" SET (
       timescaledb.compress,
-      timescaledb.compress_segmentby = 'nodeId',
-      timescaledb.compress_orderby = 'timestamp DESC, id'
+      timescaledb.compress_segmentby = '"nodeId"',
+      timescaledb.compress_orderby = '"timestamp" DESC, "id"'
     );
 
     SELECT add_compression_policy(
