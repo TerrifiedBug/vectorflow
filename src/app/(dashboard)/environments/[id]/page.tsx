@@ -58,6 +58,10 @@ import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { useTeamStore } from "@/stores/team-store";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { DemoDisabledNotice, DemoDisabledBadge } from "@/components/demo-disabled";
+import { isDemoMode } from "@/lib/is-demo-mode";
+
+const DEMO_EXAMPLE_ENROLL_TOKEN = "vf_enroll_demo_example_REPLACE_WHEN_SELF_HOSTED";
 
 export default function EnvironmentDetailPage({
   params,
@@ -547,13 +551,19 @@ export default function EnvironmentDetailPage({
         <TabsContent value="enrollment" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Agent Enrollment</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                Agent Enrollment
+                <DemoDisabledBadge className="ml-auto" />
+              </CardTitle>
               <CardDescription>
                 Generate a token for agents to enroll in this environment.
                 The token is shown once — save it immediately.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {isDemoMode() && (
+                <DemoDisabledNotice message="Agent enrollment is disabled in the public demo. The token shown below is an example and will not be accepted by the server. The /api/agent/enroll endpoint returns 403 in demo mode." />
+              )}
               {enrollmentToken && (
                 <div className="space-y-2">
                   <Label>Token (save this — it won&apos;t be shown again)</Label>
@@ -584,8 +594,8 @@ export default function EnvironmentDetailPage({
                 </div>
               )}
 
-              {/* Quick Start snippets — shown when a token exists */}
-              {env.hasEnrollmentToken && (
+              {/* Quick Start snippets — shown when a token exists, or always in demo with an example token */}
+              {(env.hasEnrollmentToken || isDemoMode()) && (
                 <div className="space-y-3 rounded-md border p-4">
                   <p className="text-sm font-medium">Quick Start</p>
 
@@ -598,7 +608,7 @@ export default function EnvironmentDetailPage({
                         className="h-6 w-6"
                         aria-label="Copy Linux install command"
                         onClick={async () => {
-                          const token = enrollmentToken || "<enrollment-token>";
+                          const token = enrollmentToken || (isDemoMode() ? DEMO_EXAMPLE_ENROLL_TOKEN : "<enrollment-token>");
                           const cmd = `curl -sSfL https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/agent/install.sh | sudo bash -s -- --url ${window.location.origin} --token ${token}`;
                           await copyToClipboard(cmd);
                           toast.success("Command copied");
@@ -609,7 +619,7 @@ export default function EnvironmentDetailPage({
                     </div>
                     <pre className="overflow-x-auto rounded bg-muted px-3 py-2 text-xs">
 {`curl -sSfL https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/agent/install.sh | \\
-  sudo bash -s -- --url ${typeof window !== "undefined" ? window.location.origin : "https://your-vectorflow-instance"} --token ${enrollmentToken || "<enrollment-token>"}`}
+  sudo bash -s -- --url ${typeof window !== "undefined" ? window.location.origin : "https://your-vectorflow-instance"} --token ${enrollmentToken || (isDemoMode() ? DEMO_EXAMPLE_ENROLL_TOKEN : "<enrollment-token>")}`}
                     </pre>
                   </div>
 
@@ -622,7 +632,7 @@ export default function EnvironmentDetailPage({
                         className="h-6 w-6"
                         aria-label="Copy Docker run command"
                         onClick={async () => {
-                          const token = enrollmentToken || "<enrollment-token>";
+                          const token = enrollmentToken || (isDemoMode() ? DEMO_EXAMPLE_ENROLL_TOKEN : "<enrollment-token>");
                           const cmd = `docker run -d --name vf-agent --restart unless-stopped \\\n  -e VF_URL=${window.location.origin} \\\n  -e VF_TOKEN=${token} \\\n  -v /var/lib/vf-agent:/var/lib/vf-agent \\\n  ghcr.io/terrifiedbug/vectorflow-agent:latest`;
                           await copyToClipboard(cmd);
                           toast.success("Command copied");
@@ -634,7 +644,7 @@ export default function EnvironmentDetailPage({
                     <pre className="overflow-x-auto rounded bg-muted px-3 py-2 text-xs">
 {`docker run -d --name vf-agent --restart unless-stopped \\
   -e VF_URL=${typeof window !== "undefined" ? window.location.origin : "https://your-vectorflow-instance"} \\
-  -e VF_TOKEN=${enrollmentToken || "<enrollment-token>"} \\
+  -e VF_TOKEN=${enrollmentToken || (isDemoMode() ? DEMO_EXAMPLE_ENROLL_TOKEN : "<enrollment-token>")} \\
   -v /var/lib/vf-agent:/var/lib/vf-agent \\
   ghcr.io/terrifiedbug/vectorflow-agent:latest`}
                     </pre>
@@ -654,7 +664,7 @@ export default function EnvironmentDetailPage({
               <div className="flex gap-2">
                 <Button
                   onClick={() => generateTokenMutation.mutate({ environmentId: id })}
-                  disabled={generateTokenMutation.isPending}
+                  disabled={generateTokenMutation.isPending || isDemoMode()}
                   size="sm"
                 >
                   {generateTokenMutation.isPending ? "Generating..." : env.hasEnrollmentToken ? "Regenerate Token" : "Generate Token"}
@@ -664,7 +674,7 @@ export default function EnvironmentDetailPage({
                     variant="destructive"
                     size="sm"
                     onClick={() => revokeTokenMutation.mutate({ environmentId: id })}
-                    disabled={revokeTokenMutation.isPending}
+                    disabled={revokeTokenMutation.isPending || isDemoMode()}
                   >
                     {revokeTokenMutation.isPending ? "Revoking..." : "Revoke Token"}
                   </Button>
