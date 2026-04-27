@@ -2,7 +2,7 @@ import { z } from "zod";
 import crypto from "crypto";
 import { TRPCError } from "@trpc/server";
 import { S3Client, HeadBucketCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { router, protectedProcedure, requireSuperAdmin } from "@/trpc/init";
+import { router, protectedProcedure, requireSuperAdmin, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { withAudit } from "@/server/middleware/audit";
@@ -115,6 +115,7 @@ export const settingsRouter = router({
     }),
 
   updateOidc: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(
       z.object({
@@ -149,6 +150,7 @@ export const settingsRouter = router({
     }),
 
   updateOidcRoleMapping: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(
       z.object({
@@ -174,6 +176,7 @@ export const settingsRouter = router({
     }),
 
   updateOidcTeamMappings: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(z.object({
       mappings: z.array(z.object({
@@ -257,6 +260,7 @@ export const settingsRouter = router({
     }),
 
   updateFleet: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(
       z.object({
@@ -282,6 +286,7 @@ export const settingsRouter = router({
     }),
 
   updateAnomalyConfig: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(
       z.object({
@@ -334,6 +339,7 @@ export const settingsRouter = router({
     }),
 
   testOidc: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(
       z.object({
@@ -403,6 +409,7 @@ export const settingsRouter = router({
   // ─── Backup & Restore ─────────────────────────────────────────────────────
 
   createBackup: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .use(withAudit("settings.backup_created", "SystemSettings"))
     .mutation(async () => {
@@ -418,6 +425,7 @@ export const settingsRouter = router({
     }),
 
   previewBackup: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(z.object({ filename: z.string().min(1) }))
     .query(async ({ input }) => {
@@ -425,6 +433,7 @@ export const settingsRouter = router({
     }),
 
   deleteBackup: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(z.object({ filename: z.string().min(1) }))
     .use(withAudit("settings.backup_deleted", "SystemSettings"))
@@ -434,6 +443,7 @@ export const settingsRouter = router({
     }),
 
   restoreBackup: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(z.object({ filename: z.string().min(1) }))
     .use(withAudit("settings.backup_restored", "SystemSettings"))
@@ -443,6 +453,7 @@ export const settingsRouter = router({
     }),
 
   updateBackupSchedule: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(
       z.object({
@@ -475,6 +486,7 @@ export const settingsRouter = router({
     }),
 
   testS3Connection: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(z.object({
       bucket: z.string().min(1),
@@ -518,6 +530,7 @@ export const settingsRouter = router({
     }),
 
   updateStorageBackend: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(z.object({
       backend: z.enum(["local", "s3"]),
@@ -558,6 +571,7 @@ export const settingsRouter = router({
   // ─── SCIM Provisioning ────────────────────────────────────────────────────
 
   updateScim: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(z.object({ enabled: z.boolean() }))
     .use(withAudit("settings.scim_updated", "SystemSettings"))
@@ -579,6 +593,7 @@ export const settingsRouter = router({
     }),
 
   generateScimToken: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .use(withAudit("settings.scim_token_generated", "SystemSettings"))
     .mutation(async () => {
