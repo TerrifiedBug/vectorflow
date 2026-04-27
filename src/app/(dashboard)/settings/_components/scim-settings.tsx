@@ -36,6 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DemoDisabledBadge, DemoDisabledFieldset } from "@/components/demo-disabled";
 
 // ─── SCIM Provisioning Section ──────────────────────────────────────────────
 
@@ -103,7 +104,10 @@ export function ScimSettings() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>SCIM Provisioning</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                SCIM Provisioning
+                <DemoDisabledBadge />
+              </CardTitle>
               <CardDescription>
                 Enable SCIM 2.0 to automatically provision and deprovision users
                 from your identity provider (Okta, Entra ID, etc.).
@@ -115,6 +119,7 @@ export function ScimSettings() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
+         <DemoDisabledFieldset message="SCIM provisioning is disabled in the public demo. The toggle, base URL, and token generator below cannot be used.">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label>Enable SCIM</Label>
@@ -208,6 +213,7 @@ export function ScimSettings() {
               </ol>
             </div>
           </div>
+         </DemoDisabledFieldset>
         </CardContent>
       </Card>
 

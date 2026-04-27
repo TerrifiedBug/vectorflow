@@ -49,6 +49,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { DemoDisabledBadge, DemoDisabledFieldset } from "@/components/demo-disabled";
 
 // ─── Auth Tab ──────────────────────────────────────────────────────────────────
 
@@ -246,7 +247,10 @@ export function AuthSettings() {
     <div className="space-y-6">
     <Card>
       <CardHeader>
-        <CardTitle>OIDC / SSO Configuration</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          OIDC / SSO Configuration
+          <DemoDisabledBadge className="ml-auto" />
+        </CardTitle>
         <CardDescription>
           Configure an OpenID Connect provider to enable single sign-on for your
           team.
@@ -258,6 +262,7 @@ export function AuthSettings() {
         </div>
       </CardHeader>
       <CardContent>
+       <DemoDisabledFieldset message="OIDC / SSO configuration is disabled in the public demo. The fields below cannot be edited or saved.">
         <form onSubmit={handleSave} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="oidc-issuer">Issuer URL <span className="text-destructive">*</span></Label>
@@ -395,17 +400,22 @@ export function AuthSettings() {
             </Button>
           </div>
         </form>
+       </DemoDisabledFieldset>
       </CardContent>
     </Card>
 
     <Card>
       <CardHeader>
-        <CardTitle>IdP Group Mappings</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          IdP Group Mappings
+          <DemoDisabledBadge className="ml-auto" />
+        </CardTitle>
         <CardDescription>
           Map identity provider groups to teams and roles. Used by both OIDC login (via groups claim) and SCIM sync (via group membership).
         </CardDescription>
       </CardHeader>
       <CardContent>
+       <DemoDisabledFieldset message="Group-to-team mappings are disabled in the public demo.">
         <form onSubmit={(e) => {
           e.preventDefault();
           updateTeamMappingMutation.mutate({
@@ -626,6 +636,7 @@ export function AuthSettings() {
             )}
           </Button>
         </form>
+       </DemoDisabledFieldset>
       </CardContent>
     </Card>
     </div>
