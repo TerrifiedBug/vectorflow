@@ -27,6 +27,7 @@ vi.mock("@/trpc/init", () => {
     router: t.router,
     protectedProcedure: t.procedure,
     withTeamAccess: passthrough,
+    denyInDemo: passthrough,
     middleware: t.middleware,
   };
 });

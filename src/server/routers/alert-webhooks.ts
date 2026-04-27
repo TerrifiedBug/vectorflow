@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { Prisma } from "@/generated/prisma";
-import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import crypto from "crypto";
@@ -123,6 +123,7 @@ export const alertWebhooksRouter = router({
 
   testWebhook: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("alertWebhook.tested", "AlertWebhook"))
     .mutation(async ({ input }) => {
