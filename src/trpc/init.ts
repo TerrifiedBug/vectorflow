@@ -3,6 +3,7 @@ import superjson from "superjson";
 import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { isDemoMode } from "@/lib/is-demo-mode";
 import type { Role } from "@/generated/prisma";
 
 export const createContext = async () => {
@@ -435,5 +436,22 @@ export const withTeamAccess = (minRole: Role) =>
   });
 
 export const middleware = t.middleware;
+
+/**
+ * Block a procedure when running in hosted demo mode (NEXT_PUBLIC_VF_DEMO_MODE=true).
+ * Apply to mutations that change identity surface (users, service accounts, OIDC,
+ * SCIM, backups, webhook endpoints) so the public demo cannot mint credentials,
+ * exfiltrate data, or escalate privileges.
+ */
+export const denyInDemo = () =>
+  t.middleware(({ next }) => {
+    if (isDemoMode()) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "This action is disabled in the public demo.",
+      });
+    }
+    return next();
+  });
 
 export { roleLevel };

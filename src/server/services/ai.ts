@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "./crypto";
 import { checkRateLimit } from "@/lib/ai/rate-limiter";
+import { isDemoMode } from "@/lib/is-demo-mode";
 
 const ENCRYPTED_PREFIX = "enc:";
 
@@ -106,6 +107,11 @@ export async function streamCompletion({
   onToken,
   signal,
 }: StreamCompletionParams): Promise<void> {
+  if (isDemoMode()) {
+    onToken("AI features are disabled in the public demo.");
+    return;
+  }
+
   const rateLimit = checkRateLimit(teamId);
   if (!rateLimit.allowed) {
     throw new Error(
@@ -178,6 +184,10 @@ export async function streamCompletion({
 }
 
 export async function testAiConnection(teamId: string): Promise<{ ok: boolean; error?: string }> {
+  if (isDemoMode()) {
+    return { ok: false, error: "AI features are disabled in the public demo." };
+  }
+
   try {
     const config = await getTeamAiConfig(teamId, { requireEnabled: false });
     validateBaseUrl(config.baseUrl);

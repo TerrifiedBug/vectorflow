@@ -1,6 +1,7 @@
 import { decrypt } from "@/server/services/crypto";
 import { getProvider } from "@/server/services/git-providers";
 import { toFilenameSlug } from "@/server/services/git-sync";
+import { isDemoMode } from "@/lib/is-demo-mode";
 
 // --- Types ---
 
@@ -44,6 +45,14 @@ export { parseGitHubOwnerRepo } from "@/server/services/git-providers/github";
 export async function createPromotionPR(
   opts: CreatePromotionPROptions,
 ): Promise<CreatePromotionPRResult> {
+  if (isDemoMode()) {
+    return {
+      prNumber: 0,
+      prUrl: "https://example.invalid/demo/pull/0",
+      prBranch: "vf-demo",
+    };
+  }
+
   const provider = getProvider({
     gitProvider: opts.gitProvider ?? null,
     gitRepoUrl: opts.repoUrl,

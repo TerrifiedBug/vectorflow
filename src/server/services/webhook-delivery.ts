@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 import { validatePublicUrl } from "@/server/services/url-validation";
-import { errorLog } from "@/lib/logger";
+import { errorLog, debugLog } from "@/lib/logger";
+import { isDemoMode } from "@/lib/is-demo-mode";
 
 export interface WebhookPayload {
   alertId: string;
@@ -58,6 +59,12 @@ export async function deliverSingleWebhook(
   },
   payload: WebhookPayload,
 ): Promise<SingleWebhookResult> {
+  // Demo mode: never make outbound HTTP calls.
+  if (isDemoMode()) {
+    debugLog("webhook-delivery", `Demo mode: skipping delivery to ${webhook.url}`);
+    return { success: true, statusCode: 200 };
+  }
+
   // SSRF protection: validate webhook URL resolves to a public IP
   try {
     await validatePublicUrl(webhook.url);

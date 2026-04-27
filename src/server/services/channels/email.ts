@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import type { ChannelDriver, ChannelPayload, ChannelDeliveryResult } from "./types";
 import { validateSmtpHost } from "@/server/services/url-validation";
+import { isDemoMode } from "@/lib/is-demo-mode";
 
 /** Escape user-controlled strings before interpolating into HTML. */
 function escapeHtml(s: string): string {
@@ -64,6 +65,10 @@ export const emailDriver: ChannelDriver = {
     config: Record<string, unknown>,
     payload: ChannelPayload,
   ): Promise<ChannelDeliveryResult> {
+    if (isDemoMode()) {
+      return { channelId: "", success: true };
+    }
+
     const smtpHost = config.smtpHost as string;
     const smtpPort = config.smtpPort as number;
     const smtpUser = config.smtpUser as string | undefined;

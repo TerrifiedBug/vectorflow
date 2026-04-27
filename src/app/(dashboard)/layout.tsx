@@ -92,8 +92,10 @@ export default function DashboardLayout({
   }, [me?.mustChangePassword]);
 
   // Redirect to dedicated 2FA setup page if required but not enabled
-  // Guard: wait for password change to complete first
+  // Guard: wait for password change to complete first.
+  // Skipped in demo mode — the seeded shared account does not enroll TOTP.
   useEffect(() => {
+    if (isDemoMode()) return;
     if (me && !me.mustChangePassword && me.twoFactorRequired && !me.totpEnabled && me.authMethod !== "OIDC") {
       router.push("/setup-2fa");
     }

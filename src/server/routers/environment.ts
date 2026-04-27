@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, requireSuperAdmin, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { generateEnrollmentToken } from "@/server/services/agent-token";
@@ -208,6 +208,7 @@ export const environmentRouter = router({
       branch: z.string().min(1).max(100).regex(/^[a-zA-Z0-9._\/-]+$/),
       token: z.string().min(1).optional(),
     }))
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("environment.gitConnection.tested", "Environment"))
     .mutation(async ({ input }) => {
