@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 
 export const gitSyncRouter = router({
@@ -84,6 +84,7 @@ export const gitSyncRouter = router({
   /** Retry all failed jobs for an environment. */
   retryAllFailed: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .mutation(async ({ input }) => {
       const now = new Date();
@@ -105,6 +106,7 @@ export const gitSyncRouter = router({
   /** Retry a single failed job. */
   retryJob: protectedProcedure
     .input(z.object({ jobId: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .mutation(async ({ input }) => {
       const job = await prisma.gitSyncJob.findUnique({

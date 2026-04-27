@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "@/trpc/init";
+import { router, protectedProcedure, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { withAudit } from "@/server/middleware/audit";
@@ -47,6 +47,7 @@ export const userRouter = router({
   }),
 
   changePassword: protectedProcedure
+    .use(denyInDemo())
     .use(withAudit("user.password_changed", "User"))
     .input(
       z.object({
@@ -102,6 +103,7 @@ export const userRouter = router({
     .input(z.object({
       name: z.string().min(1).max(100),
     }))
+    .use(denyInDemo())
     .use(withAudit("user.profile_updated", "User"))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user!.id!;
@@ -129,6 +131,7 @@ export const userRouter = router({
    * the user must verify a code via verifyAndEnableTotp first.
    */
   setupTotp: protectedProcedure
+    .use(denyInDemo())
     .use(withAudit("user.totp_setup_started", "User"))
     .mutation(async ({ ctx }) => {
       const userId = ctx.session.user!.id!;
@@ -173,6 +176,7 @@ export const userRouter = router({
    * Verify a TOTP code against the pending secret and enable 2FA.
    */
   verifyAndEnableTotp: protectedProcedure
+    .use(denyInDemo())
     .use(withAudit("user.totp_enabled", "User"))
     .input(z.object({ code: z.string().length(6) }))
     .mutation(async ({ ctx, input }) => {
@@ -215,6 +219,7 @@ export const userRouter = router({
    * Disable 2FA. Requires a valid TOTP code to confirm.
    */
   disableTotp: protectedProcedure
+    .use(denyInDemo())
     .use(withAudit("user.totp_disabled", "User"))
     .input(z.object({ code: z.string().min(6) }))
     .mutation(async ({ ctx, input }) => {

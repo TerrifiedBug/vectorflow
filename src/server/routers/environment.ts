@@ -86,6 +86,7 @@ export const environmentRouter = router({
         teamId: z.string(),
       })
     )
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("environment.created", "Environment"))
     .mutation(async ({ input }) => {
@@ -125,6 +126,7 @@ export const environmentRouter = router({
         costBudgetCents: z.number().int().min(0).max(1_000_000_00).nullable().optional(), // monthly budget in cents, null to disable
       })
     )
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("environment.updated", "Environment"))
     .mutation(async ({ input, ctx }) => {
@@ -264,6 +266,7 @@ export const environmentRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("environment.deleted", "Environment"))
     .mutation(async ({ input }) => {
@@ -295,6 +298,7 @@ export const environmentRouter = router({
 
   generateEnrollmentToken: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("environment.enrollmentToken.generated", "Environment"))
     .mutation(async ({ input }) => {
@@ -318,6 +322,7 @@ export const environmentRouter = router({
 
   revokeEnrollmentToken: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("environment.enrollmentToken.revoked", "Environment"))
     .mutation(async ({ input }) => {
