@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { withAudit } from "@/server/middleware/audit";
@@ -28,6 +28,7 @@ export const secretRouter = router({
         value: z.string().min(1),
       }),
     )
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("secret.created", "Secret"))
     .mutation(async ({ input }) => {
@@ -55,6 +56,7 @@ export const secretRouter = router({
         value: z.string().min(1),
       }),
     )
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("secret.updated", "Secret"))
     .mutation(async ({ input }) => {
@@ -71,6 +73,7 @@ export const secretRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string(), environmentId: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("secret.deleted", "Secret"))
     .mutation(async ({ input }) => {

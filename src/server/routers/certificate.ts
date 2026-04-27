@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { parseCertExpiry, daysUntilExpiry } from "@/server/services/cert-expiry-checker";
@@ -81,6 +81,7 @@ export const certificateRouter = router({
         dataBase64: z.string().min(1),
       }),
     )
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("certificate.uploaded", "Certificate"))
     .mutation(async ({ input }) => {
@@ -115,6 +116,7 @@ export const certificateRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string(), environmentId: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("certificate.deleted", "Certificate"))
     .mutation(async ({ input }) => {

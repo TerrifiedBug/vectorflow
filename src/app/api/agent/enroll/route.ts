@@ -6,6 +6,7 @@ import { fireEventAlert } from "@/server/services/event-alerts";
 import { debugLog, errorLog } from "@/lib/logger";
 import { nodeMatchesGroup } from "@/lib/node-group-utils";
 import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
+import { isDemoMode } from "@/lib/is-demo-mode";
 
 const enrollSchema = z.object({
   token: z.string().min(1),
@@ -17,6 +18,13 @@ const enrollSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  if (isDemoMode()) {
+    return NextResponse.json(
+      { error: "Agent enrollment is disabled in the public demo." },
+      { status: 403 },
+    );
+  }
+
   const rateLimited = checkIpRateLimit(request, "enroll", 10);
   if (rateLimited) return rateLimited;
 
