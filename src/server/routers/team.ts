@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, requireSuperAdmin, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
@@ -116,6 +116,7 @@ export const teamRouter = router({
     }),
 
   create: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .use(withAudit("team.created", "Team"))
     .input(z.object({ name: z.string().min(1).max(100) }))
@@ -133,6 +134,7 @@ export const teamRouter = router({
     }),
 
   delete: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .use(withAudit("team.deleted", "Team"))
     .input(z.object({ teamId: z.string() }))
@@ -170,6 +172,7 @@ export const teamRouter = router({
     }),
 
   rename: protectedProcedure
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.renamed", "Team"))
     .input(z.object({ teamId: z.string(), name: z.string().min(1).max(100) }))
@@ -185,6 +188,7 @@ export const teamRouter = router({
     }),
 
   addMember: protectedProcedure
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.member_added", "Team"))
     .input(
@@ -228,6 +232,7 @@ export const teamRouter = router({
     }),
 
   removeMember: protectedProcedure
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.member_removed", "Team"))
     .input(
@@ -255,6 +260,7 @@ export const teamRouter = router({
     }),
 
   updateMemberRole: protectedProcedure
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.member_role_updated", "Team"))
     .input(
@@ -283,6 +289,7 @@ export const teamRouter = router({
     }),
 
   lockMember: protectedProcedure
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.member_locked", "User"))
     .input(z.object({ teamId: z.string(), userId: z.string() }))
@@ -314,6 +321,7 @@ export const teamRouter = router({
     }),
 
   unlockMember: protectedProcedure
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.member_unlocked", "User"))
     .input(z.object({ teamId: z.string(), userId: z.string() }))
@@ -340,6 +348,7 @@ export const teamRouter = router({
     }),
 
   resetMemberPassword: protectedProcedure
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.member_password_reset", "User"))
     .input(z.object({ teamId: z.string(), userId: z.string() }))
@@ -370,6 +379,7 @@ export const teamRouter = router({
     }),
 
   updateRequireTwoFactor: protectedProcedure
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.require_2fa_updated", "Team"))
     .input(z.object({ teamId: z.string(), requireTwoFactor: z.boolean() }))
@@ -389,6 +399,7 @@ export const teamRouter = router({
         { message: "Duplicate tags are not allowed" },
       ),
     }))
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.updated", "Team"))
     .mutation(async ({ input }) => {
@@ -403,6 +414,7 @@ export const teamRouter = router({
       teamId: z.string(),
       defaultEnvironmentId: z.string().nullable(),
     }))
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.updated", "Team"))
     .mutation(async ({ input }) => {
@@ -436,6 +448,7 @@ export const teamRouter = router({
     }),
 
   linkMemberToOidc: protectedProcedure
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.member_linked_oidc", "User"))
     .input(z.object({ teamId: z.string(), userId: z.string() }))
@@ -499,6 +512,7 @@ export const teamRouter = router({
     }),
 
   updateAiConfig: protectedProcedure
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.ai_config_updated", "Team"))
     .input(
@@ -528,6 +542,7 @@ export const teamRouter = router({
     }),
 
   testAiConnection: protectedProcedure
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.ai_connection_tested", "Team"))
     .input(z.object({ teamId: z.string() }))

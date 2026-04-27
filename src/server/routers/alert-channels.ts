@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { Prisma } from "@/generated/prisma";
-import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { validatePublicUrl, validateSmtpHost } from "@/server/services/url-validation";
@@ -52,6 +52,7 @@ export const alertChannelsRouter = router({
         config: z.record(z.string(), z.unknown()),
       }),
     )
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("notificationChannel.created", "NotificationChannel"))
     .mutation(async ({ input }) => {
@@ -124,6 +125,7 @@ export const alertChannelsRouter = router({
         enabled: z.boolean().optional(),
       }),
     )
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("notificationChannel.updated", "NotificationChannel"))
     .mutation(async ({ input }) => {
@@ -205,6 +207,7 @@ export const alertChannelsRouter = router({
 
   deleteChannel: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("notificationChannel.deleted", "NotificationChannel"))
     .mutation(async ({ input }) => {
@@ -224,6 +227,7 @@ export const alertChannelsRouter = router({
 
   testChannel: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("notificationChannel.tested", "NotificationChannel"))
     .mutation(async ({ input }) => {

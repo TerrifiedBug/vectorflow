@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { AlertMetric } from "@/generated/prisma";
 import { withAudit } from "@/server/middleware/audit";
@@ -54,6 +54,7 @@ export const webhookEndpointRouter = router({
         secret: z.string().min(1).optional(),
       }),
     )
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("webhookEndpoint.created", "WebhookEndpoint"))
     .mutation(async ({ input }) => {
@@ -95,6 +96,7 @@ export const webhookEndpointRouter = router({
         secret: z.string().min(1).optional(),
       }),
     )
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("webhookEndpoint.updated", "WebhookEndpoint"))
     .mutation(async ({ input }) => {
@@ -129,6 +131,7 @@ export const webhookEndpointRouter = router({
    */
   delete: protectedProcedure
     .input(z.object({ id: z.string(), teamId: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("webhookEndpoint.deleted", "WebhookEndpoint"))
     .mutation(async ({ input }) => {
@@ -150,6 +153,7 @@ export const webhookEndpointRouter = router({
    */
   toggleEnabled: protectedProcedure
     .input(z.object({ id: z.string(), teamId: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("webhookEndpoint.toggled", "WebhookEndpoint"))
     .mutation(async ({ input }) => {
@@ -174,6 +178,7 @@ export const webhookEndpointRouter = router({
    */
   testDelivery: protectedProcedure
     .input(z.object({ id: z.string(), teamId: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("webhookEndpoint.testDelivery", "WebhookEndpoint"))
     .mutation(async ({ input }) => {
