@@ -12,7 +12,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "postinstall": "prisma generate",
-    "generate:openapi": "tsx scripts/generate-openapi.ts"
+    "generate:openapi": "tsx scripts/generate-openapi.ts",
+    "seed:demo": "tsx prisma/seed.demo.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
