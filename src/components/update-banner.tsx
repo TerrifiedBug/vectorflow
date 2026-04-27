@@ -59,8 +59,8 @@ export function UpdateBanner() {
     <div className="flex items-center gap-2 border-b border-status-info/30 bg-status-info-bg px-4 py-2 text-sm">
       <p className="flex-1">
         VectorFlow{" "}
-        <span className="font-semibold">{data.server.latestVersion}</span> is
-        available. You&apos;re running{" "}
+        <span className="font-semibold">{data.server.latestVersion}</span>{" "}
+        is available. You&apos;re running{" "}
         <span className="font-semibold">{data.server.currentVersion}</span>.
         {data.server.releaseUrl && (
           <>
