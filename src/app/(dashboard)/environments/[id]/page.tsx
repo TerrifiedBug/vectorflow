@@ -58,7 +58,7 @@ import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
 import { useTeamStore } from "@/stores/team-store";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
-import { DemoDisabledNotice, DemoDisabledFieldset, DemoDisabledBadge } from "@/components/demo-disabled";
+import { DemoDisabledNotice, DemoDisabledBadge } from "@/components/demo-disabled";
 import { isDemoMode } from "@/lib/is-demo-mode";
 
 const DEMO_EXAMPLE_ENROLL_TOKEN = "vf_enroll_demo_example_REPLACE_WHEN_SELF_HOSTED";
