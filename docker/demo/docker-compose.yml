@@ -1,0 +1,54 @@
+services:
+  postgres:
+    container_name: vectorflow-demo-postgres
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_DB: vectorflow
+      POSTGRES_USER: vectorflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vectorflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  vectorflow:
+    container_name: vectorflow-demo-server
+    image: ghcr.io/terrifiedbug/vectorflow-server:${VF_VERSION:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://vectorflow:${POSTGRES_PASSWORD}@postgres:5432/vectorflow
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: https://demo.vectorflow.sh
+      AUTH_TRUST_HOST: "true"
+      VF_DEMO_MODE: "true"
+    volumes:
+      - vfdata:/app/.vectorflow
+      - backups:/backups
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health/ready"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "2.0"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+    name: vectorflow-demo-pgdata
+  vfdata:
+    name: vectorflow-demo-data
+  backups:
+    name: vectorflow-demo-backups
