@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
@@ -162,5 +162,31 @@ describe("POST /api/agent/enroll -- NODE-03 label template auto-assignment", () 
 
     // Empty nodeGroups -> update should NOT be called
     expect(prismaMock.vectorNode.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/agent/enroll -- demo mode", () => {
+  const ORIGINAL_ENV = process.env.NEXT_PUBLIC_VF_DEMO_MODE;
+
+  beforeEach(() => {
+    mockReset(prismaMock);
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_ENV === undefined) delete process.env.NEXT_PUBLIC_VF_DEMO_MODE;
+    else process.env.NEXT_PUBLIC_VF_DEMO_MODE = ORIGINAL_ENV;
+  });
+
+  it("rejects with 403 when demo mode is active and never touches the database", async () => {
+    process.env.NEXT_PUBLIC_VF_DEMO_MODE = "true";
+
+    const req = makeRequest({ token: "vf_enroll_demo", hostname: "demo-host" });
+    const res = await POST(req);
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toMatch(/demo/i);
+    expect(prismaMock.environment.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.vectorNode.create).not.toHaveBeenCalled();
   });
 });
