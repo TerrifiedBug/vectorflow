@@ -218,10 +218,7 @@ export function BackupSettings() {
 
   if (settingsQuery.isError) return <QueryError message="Failed to load backup settings" onRetry={() => settingsQuery.refetch()} />;
   if (backupsQuery.isError) return <QueryError message="Failed to load backup history" onRetry={() => backupsQuery.refetch()} />;
-
-  return (
-    <div className="space-y-6">
-      <DemoDisabledNotice message="Backup creation, restore, and S3 storage configuration are disabled in the public demo. The buttons and inputs below are read-only." />
+      <DemoDisabledFieldset message="Backup creation, restore, and S3 storage configuration are disabled in the public demo. The buttons and inputs below are read-only.">
       <DemoDisabledFieldset>
       {/* Storage Backend */}
       <Card>
