@@ -11,6 +11,7 @@ import { writeAuditLog } from "@/server/services/audit";
 import { debugLog, infoLog, warnLog } from "@/lib/logger";
 import { headers } from "next/headers";
 import { env, isBuildPhase } from "@/lib/env";
+import { isDemoMode } from "@/lib/is-demo-mode";
 import {
   loginAttemptTracker,
   getRemainingLockSeconds,
@@ -151,8 +152,9 @@ const credentialsProvider = Credentials({
       return null;
     }
 
-    // TOTP 2FA check
-    if (user.totpEnabled && user.totpSecret) {
+    // TOTP 2FA check (bypassed in hosted demo mode so visitors can sign in
+    // with the seeded shared account regardless of its TOTP state).
+    if (!isDemoMode() && user.totpEnabled && user.totpSecret) {
       const raw = credentials.totpCode as string | undefined;
       const totpCode = raw && raw !== "undefined" ? raw.trim() : undefined;
 

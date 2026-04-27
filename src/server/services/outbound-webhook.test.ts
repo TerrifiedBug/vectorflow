@@ -210,6 +210,21 @@ describe("deliverOutboundWebhook", () => {
     expect(result.isPermanent).toBe(true);
     expect(result.error).toContain("SSRF");
   });
+
+  it("never calls fetch when NEXT_PUBLIC_VF_DEMO_MODE=true", async () => {
+    vi.stubEnv("NEXT_PUBLIC_VF_DEMO_MODE", "true");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const result = await deliverOutboundWebhook(makeEndpoint(), samplePayload);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(vi.mocked(urlValidation.validatePublicUrl)).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
 });
 
 describe("isPermanentFailure", () => {

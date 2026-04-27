@@ -5,6 +5,7 @@ import { validatePublicUrl } from "@/server/services/url-validation";
 import { getNextRetryAt } from "@/server/services/delivery-tracking";
 import type { AlertMetric } from "@/generated/prisma";
 import { debugLog } from "@/lib/logger";
+import { isDemoMode } from "@/lib/is-demo-mode";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,13 @@ export async function deliverOutboundWebhook(
   payload: OutboundPayload,
   msgId = crypto.randomUUID(),
 ): Promise<OutboundResult> {
+  // Demo mode: never make outbound HTTP calls. Return a non-retryable
+  // success-shaped result so the delivery record settles cleanly.
+  if (isDemoMode()) {
+    debugLog("outbound-webhook", `Demo mode: skipping delivery to ${endpoint.url}`);
+    return { success: true, statusCode: 200, isPermanent: false };
+  }
+
   // SSRF protection
   try {
     await validatePublicUrl(endpoint.url);

@@ -2,7 +2,7 @@ import { z } from "zod";
 import crypto from "crypto";
 import { TRPCError } from "@trpc/server";
 import bcrypt from "bcryptjs";
-import { router, protectedProcedure, requireSuperAdmin } from "@/trpc/init";
+import { router, protectedProcedure, requireSuperAdmin, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
@@ -37,6 +37,7 @@ export const adminRouter = router({
 
   /** Assign a user to a team with a specific role */
   assignToTeam: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .use(withAudit("admin.user_assigned_to_team", "User"))
     .input(z.object({
@@ -60,6 +61,7 @@ export const adminRouter = router({
 
   /** Delete a user and all their data */
   deleteUser: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .input(z.object({ userId: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -107,6 +109,7 @@ export const adminRouter = router({
 
   /** Toggle super admin status */
   toggleSuperAdmin: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .use(withAudit("admin.super_admin_toggled", "User"))
     .input(z.object({ userId: z.string(), isSuperAdmin: z.boolean() }))
@@ -134,6 +137,7 @@ export const adminRouter = router({
 
   /** Create a local user account */
   createUser: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .use(withAudit("admin.user_created", "User"))
     .input(z.object({
@@ -172,6 +176,7 @@ export const adminRouter = router({
 
   /** Remove a user from a specific team */
   removeFromTeam: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .use(withAudit("admin.user_removed_from_team", "User"))
     .input(z.object({ userId: z.string(), teamId: z.string() }))
@@ -188,6 +193,7 @@ export const adminRouter = router({
 
   /** Lock a user account */
   lockUser: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .use(withAudit("admin.user_locked", "User"))
     .input(z.object({ userId: z.string() }))
@@ -204,6 +210,7 @@ export const adminRouter = router({
 
   /** Unlock a user account */
   unlockUser: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .use(withAudit("admin.user_unlocked", "User"))
     .input(z.object({ userId: z.string() }))
@@ -217,6 +224,7 @@ export const adminRouter = router({
 
   /** Reset a user's password (generates temporary password) */
   resetPassword: protectedProcedure
+    .use(denyInDemo())
     .use(requireSuperAdmin())
     .use(withAudit("admin.password_reset", "User"))
     .input(z.object({ userId: z.string() }))
