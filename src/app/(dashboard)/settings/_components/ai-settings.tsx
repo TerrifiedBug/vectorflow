@@ -28,6 +28,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { QueryError } from "@/components/query-error";
+import { DemoDisabledBadge, DemoDisabledFieldset } from "@/components/demo-disabled";
 
 const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; placeholder: string }> = {
   openai: { baseUrl: "https://api.openai.com/v1", placeholder: "gpt-4o" },
@@ -118,6 +119,7 @@ function AiSettingsForm({ config, teamId }: { config: AiConfig; teamId: string }
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
             AI-Powered Suggestions
+            <DemoDisabledBadge className="ml-auto" />
           </CardTitle>
           <CardDescription>
             Configure an OpenAI-compatible AI provider for VRL code assistance and
@@ -125,6 +127,7 @@ function AiSettingsForm({ config, teamId }: { config: AiConfig; teamId: string }
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+         <DemoDisabledFieldset message="AI provider configuration is disabled in the public demo to prevent outbound calls to external LLM APIs.">
           {/* Enable/Disable Toggle */}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
@@ -243,6 +246,7 @@ function AiSettingsForm({ config, teamId }: { config: AiConfig; teamId: string }
               </Badge>
             )}
           </div>
+         </DemoDisabledFieldset>
         </CardContent>
       </Card>
     </div>

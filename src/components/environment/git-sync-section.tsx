@@ -24,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DemoDisabledBadge, DemoDisabledFieldset } from "@/components/demo-disabled";
 
 interface GitSyncSectionProps {
   environmentId: string;
@@ -166,7 +167,10 @@ export function GitSyncSection({
         <div className="flex items-center gap-2">
           <GitBranch className="h-5 w-5" />
           <div>
-            <CardTitle>Git Integration</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Git Integration
+              <DemoDisabledBadge />
+            </CardTitle>
             <CardDescription>
               Automatically commit pipeline YAML to a Git repository on deploy and delete.
             </CardDescription>
@@ -174,6 +178,7 @@ export function GitSyncSection({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+       <DemoDisabledFieldset message="Git repository configuration is disabled in the public demo. Self-host VectorFlow to connect a real GitHub, GitLab, or Bitbucket repository.">
         <div className="space-y-2">
           <Label htmlFor="git-repo-url">Repository URL</Label>
           <Input
@@ -464,6 +469,7 @@ export function GitSyncSection({
             </Button>
           )}
         </div>
+       </DemoDisabledFieldset>
       </CardContent>
     </Card>
   );

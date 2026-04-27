@@ -42,6 +42,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DemoDisabledNotice, DemoDisabledFieldset, DemoDisabledBadge } from "@/components/demo-disabled";
 import { Switch } from "@/components/ui/switch";
 import { EmptyState } from "@/components/empty-state";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -220,12 +221,15 @@ export function BackupSettings() {
 
   return (
     <div className="space-y-6">
+      <DemoDisabledNotice message="Backup creation, restore, and S3 storage configuration are disabled in the public demo. The buttons and inputs below are read-only." />
+      <DemoDisabledFieldset>
       {/* Storage Backend */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <HardDrive className="h-5 w-5" />
             Storage Backend
+            <DemoDisabledBadge className="ml-auto" />
           </CardTitle>
           <CardDescription>
             Choose where backup files are stored. S3-compatible storage works with AWS S3, MinIO, DigitalOcean Spaces, and Backblaze B2.
@@ -603,6 +607,7 @@ export function BackupSettings() {
           </div>
         </CardContent>
       </Card>
+      </DemoDisabledFieldset>
 
       {/* Restore Dialog */}
       <RestoreDialog
