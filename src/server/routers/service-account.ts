@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { z } from "zod";
-import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { TRPCError } from "@trpc/server";
@@ -55,6 +55,7 @@ export const serviceAccountRouter = router({
         expiresInDays: z.number().int().min(1).optional(),
       }),
     )
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("serviceAccount.created", "ServiceAccount"))
     .mutation(async ({ input, ctx }) => {
@@ -114,6 +115,7 @@ export const serviceAccountRouter = router({
 
   revoke: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("serviceAccount.revoked", "ServiceAccount"))
     .mutation(async ({ input }) => {
@@ -136,6 +138,7 @@ export const serviceAccountRouter = router({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
+    .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("serviceAccount.deleted", "ServiceAccount"))
     .mutation(async ({ input }) => {

@@ -4,6 +4,7 @@ import { buildCostRecommendationPrompt } from "@/lib/ai/cost-recommendation-prom
 import { parseAiReviewResponse } from "@/lib/ai/suggestion-validator";
 import { debugLog, errorLog } from "@/lib/logger";
 import { Prisma } from "@/generated/prisma";
+import { isDemoMode } from "@/lib/is-demo-mode";
 
 const TAG = "cost-optimizer-ai";
 
@@ -13,6 +14,12 @@ const TAG = "cost-optimizer-ai";
  * Returns the count of successfully enriched recommendations.
  */
 export async function generateAiRecommendations(): Promise<number> {
+  // Demo mode: do not call out to LLM providers (would drain operator API key).
+  if (isDemoMode()) {
+    debugLog(TAG, "Demo mode: skipping AI recommendation enrichment");
+    return 0;
+  }
+
   const recommendations = await prisma.costRecommendation.findMany({
     where: {
       status: "PENDING",

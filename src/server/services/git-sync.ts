@@ -3,7 +3,8 @@ import { mkdtemp, writeFile, rm, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { decrypt } from "@/server/services/crypto";
-import { errorLog } from "@/lib/logger";
+import { errorLog, debugLog } from "@/lib/logger";
+import { isDemoMode } from "@/lib/is-demo-mode";
 
 export interface GitSyncConfig {
   repoUrl: string;
@@ -68,6 +69,11 @@ export async function gitSyncCommitPipeline(
   commitMessage: string,
   gitPath?: string | null,
 ): Promise<GitSyncResult> {
+  if (isDemoMode()) {
+    debugLog("git-sync", `Demo mode: skipping commit for ${pipelineName}`);
+    return { success: true, commitSha: "demo-skipped" };
+  }
+
   let workdir: string | null = null;
 
   try {
@@ -129,6 +135,11 @@ export async function gitSyncDeletePipeline(
   author: GitAuthor,
   gitPath?: string | null,
 ): Promise<GitSyncResult> {
+  if (isDemoMode()) {
+    debugLog("git-sync", `Demo mode: skipping delete for ${pipelineName}`);
+    return { success: true, commitSha: "demo-skipped" };
+  }
+
   let workdir: string | null = null;
 
   try {
