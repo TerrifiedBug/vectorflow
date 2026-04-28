@@ -72,6 +72,15 @@ export class PipelineEditorPage {
     await this.page.getByRole("button", { name: /deploy/i }).click();
   }
 
+  async connectNodes(sourceLabel: string, targetLabel: string): Promise<void> {
+    const src = this.canvas.locator(".react-flow__node", { hasText: sourceLabel }).first();
+    const tgt = this.canvas.locator(".react-flow__node", { hasText: targetLabel }).first();
+    await src.locator(".react-flow__handle.source").dragTo(
+      tgt.locator(".react-flow__handle.target"),
+    );
+    await expect(this.canvas.locator(".react-flow__edge")).toHaveCount(1);
+  }
+
   getCanvasNodes(): Locator {
     return this.canvas.locator(".react-flow__node");
   }
