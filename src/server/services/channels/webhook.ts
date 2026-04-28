@@ -1,7 +1,30 @@
 import crypto from "crypto";
 import type { ChannelDriver, ChannelPayload, ChannelDeliveryResult } from "./types";
 import { validatePublicUrl } from "@/server/services/url-validation";
-import { formatWebhookMessage } from "@/server/services/webhook-delivery";
+
+/**
+ * Format a channel webhook payload as a human-readable message.
+ *
+ * This is included in the outgoing JSON body under `content` so destinations
+ * that expect a chat-style message (Discord, Mattermost, custom HTTP receivers)
+ * can render the alert without parsing structured fields.
+ */
+export function formatWebhookMessage(payload: ChannelPayload): string {
+  const icon = payload.status === "firing" ? "🚨" : "✅";
+  const status = payload.status === "firing" ? "FIRING" : "RESOLVED";
+  const lines = [
+    `${icon} **Alert ${status}: ${payload.ruleName}**`,
+    `> ${payload.message}`,
+    "",
+  ];
+  if (payload.node) lines.push(`**Node:** ${payload.node}`);
+  if (payload.pipeline) lines.push(`**Pipeline:** ${payload.pipeline}`);
+  lines.push(`**Environment:** ${payload.environment}`);
+  if (payload.team) lines.push(`**Team:** ${payload.team}`);
+  lines.push(`**Time:** ${payload.timestamp}`);
+  if (payload.dashboardUrl) lines.push(`**Dashboard:** ${payload.dashboardUrl}`);
+  return lines.join("\n");
+}
 
 export const webhookDriver: ChannelDriver = {
   async deliver(

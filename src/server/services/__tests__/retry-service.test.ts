@@ -15,10 +15,6 @@ vi.mock("@/lib/prisma", () => ({
   prisma: mockDeep<PrismaClient>(),
 }));
 
-vi.mock("@/server/services/webhook-delivery", () => ({
-  deliverSingleWebhook: vi.fn(),
-}));
-
 vi.mock("@/server/services/channels", () => ({
   getDriver: vi.fn(),
 }));
@@ -29,16 +25,6 @@ vi.mock("@/server/services/delivery-tracking", async (importOriginal) => {
   >();
   return {
     ...actual,
-    trackWebhookDelivery: vi.fn(
-      async (
-        _alertEventId: string,
-        _webhookId: string,
-        _webhookName: string,
-        deliverFn: () => Promise<{ success: boolean; error?: string }>,
-      ) => {
-        return deliverFn();
-      },
-    ),
     trackChannelDelivery: vi.fn(
       async (
         _alertEventId: string,
@@ -55,17 +41,11 @@ vi.mock("@/server/services/delivery-tracking", async (importOriginal) => {
 
 import { prisma } from "@/lib/prisma";
 import { RetryService } from "@/server/services/retry-service";
-import { deliverSingleWebhook } from "@/server/services/webhook-delivery";
 import { getDriver } from "@/server/services/channels";
-import {
-  trackWebhookDelivery,
-  trackChannelDelivery,
-} from "@/server/services/delivery-tracking";
+import { trackChannelDelivery } from "@/server/services/delivery-tracking";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
-const deliverSingleWebhookMock = vi.mocked(deliverSingleWebhook);
 const getDriverMock = vi.mocked(getDriver);
-const trackWebhookDeliveryMock = vi.mocked(trackWebhookDelivery);
 const trackChannelDeliveryMock = vi.mocked(trackChannelDelivery);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -77,15 +57,14 @@ function makeDueAttempt(overrides: Record<string, unknown> = {}) {
   return {
     id: "attempt-1",
     alertEventId: "evt-1",
-    channelType: "legacy_webhook",
-    channelName: "https://hooks.example.com",
+    channelType: "slack",
+    channelName: "#ops-alerts",
     status: "failed",
     statusCode: 503,
     errorMessage: "Service Unavailable",
     attemptNumber: 1,
     nextRetryAt: PAST,
-    webhookId: "wh-1",
-    channelId: null,
+    channelId: "ch-1",
     requestedAt: new Date("2025-06-01T11:58:00Z"),
     completedAt: new Date("2025-06-01T11:58:01Z"),
     ...overrides,
@@ -129,19 +108,6 @@ function makeAlertEvent() {
   };
 }
 
-function makeWebhook() {
-  return {
-    id: "wh-1",
-    environmentId: "env-1",
-    url: "https://hooks.example.com/alert",
-    headers: null,
-    hmacSecret: null,
-    enabled: true,
-    createdAt: NOW,
-    updatedAt: NOW,
-  };
-}
-
 function makeChannel() {
   return {
     id: "ch-1",
@@ -173,19 +139,21 @@ describe("RetryService", () => {
     vi.useRealTimers();
   });
 
-  // 1. processRetries finds due retries and creates new attempt records
-  it("finds due retries and re-executes delivery via trackWebhookDelivery", async () => {
+  // 1. processRetries finds due retries and re-executes via channel
+  it("finds due retries and re-executes delivery via trackChannelDelivery", async () => {
     const dueAttempt = makeDueAttempt();
+    const channel = makeChannel();
     prismaMock.deliveryAttempt.findMany.mockResolvedValue([dueAttempt]);
     prismaMock.deliveryAttempt.update.mockResolvedValue(dueAttempt as never);
     prismaMock.alertEvent.findUnique.mockResolvedValue(makeAlertEvent() as never);
-    prismaMock.alertWebhook.findUnique.mockResolvedValue(makeWebhook() as never);
+    prismaMock.notificationChannel.findUnique.mockResolvedValue(channel as never);
 
-    deliverSingleWebhookMock.mockResolvedValue({
-      success: true,
-      statusCode: 200,
-    });
-    trackWebhookDeliveryMock.mockResolvedValue({
+    const mockDriverDeliver = vi
+      .fn()
+      .mockResolvedValue({ channelId: "ch-1", success: true });
+    getDriverMock.mockReturnValue({ deliver: mockDriverDeliver, test: vi.fn() });
+
+    trackChannelDeliveryMock.mockResolvedValue({
       success: true,
       statusCode: 200,
     });
@@ -209,11 +177,12 @@ describe("RetryService", () => {
       data: { nextRetryAt: null },
     });
 
-    // Should have called trackWebhookDelivery with attemptNumber + 1
-    expect(trackWebhookDeliveryMock).toHaveBeenCalledWith(
+    // Should have called trackChannelDelivery with attemptNumber + 1
+    expect(trackChannelDeliveryMock).toHaveBeenCalledWith(
       "evt-1",
-      "wh-1",
-      "https://hooks.example.com/alert",
+      "ch-1",
+      "slack",
+      "#ops-alerts",
       expect.any(Function),
       2,
     );
@@ -222,12 +191,18 @@ describe("RetryService", () => {
   // 2. Successful retry — original record's nextRetryAt nulled, no further retries
   it("nulls nextRetryAt on original record and does not schedule further on success", async () => {
     const dueAttempt = makeDueAttempt();
+    const channel = makeChannel();
     prismaMock.deliveryAttempt.findMany.mockResolvedValue([dueAttempt]);
     prismaMock.deliveryAttempt.update.mockResolvedValue(dueAttempt as never);
     prismaMock.alertEvent.findUnique.mockResolvedValue(makeAlertEvent() as never);
-    prismaMock.alertWebhook.findUnique.mockResolvedValue(makeWebhook() as never);
+    prismaMock.notificationChannel.findUnique.mockResolvedValue(channel as never);
 
-    trackWebhookDeliveryMock.mockResolvedValue({
+    getDriverMock.mockReturnValue({
+      deliver: vi.fn().mockResolvedValue({ channelId: "ch-1", success: true }),
+      test: vi.fn(),
+    });
+
+    trackChannelDeliveryMock.mockResolvedValue({
       success: true,
       statusCode: 200,
     });
@@ -240,19 +215,29 @@ describe("RetryService", () => {
       data: { nextRetryAt: null },
     });
 
-    // trackWebhookDelivery called once — success means no further action
-    expect(trackWebhookDeliveryMock).toHaveBeenCalledTimes(1);
+    // trackChannelDelivery called once
+    expect(trackChannelDeliveryMock).toHaveBeenCalledTimes(1);
   });
 
   // 3. Failed retry — new attempt has nextRetryAt set per backoff (handled by trackDelivery)
-  it("creates a new attempt via trackWebhookDelivery when retry fails", async () => {
+  it("creates a new attempt via trackChannelDelivery when retry fails", async () => {
     const dueAttempt = makeDueAttempt();
+    const channel = makeChannel();
     prismaMock.deliveryAttempt.findMany.mockResolvedValue([dueAttempt]);
     prismaMock.deliveryAttempt.update.mockResolvedValue(dueAttempt as never);
     prismaMock.alertEvent.findUnique.mockResolvedValue(makeAlertEvent() as never);
-    prismaMock.alertWebhook.findUnique.mockResolvedValue(makeWebhook() as never);
+    prismaMock.notificationChannel.findUnique.mockResolvedValue(channel as never);
 
-    trackWebhookDeliveryMock.mockResolvedValue({
+    getDriverMock.mockReturnValue({
+      deliver: vi.fn().mockResolvedValue({
+        channelId: "ch-1",
+        success: false,
+        error: "Service Unavailable",
+      }),
+      test: vi.fn(),
+    });
+
+    trackChannelDeliveryMock.mockResolvedValue({
       success: false,
       statusCode: 503,
       error: "Service Unavailable",
@@ -260,12 +245,12 @@ describe("RetryService", () => {
 
     await service.processRetries();
 
-    // trackWebhookDelivery is called with attemptNumber 2
-    // The backoff scheduling for the new attempt is handled inside trackDelivery (T01)
-    expect(trackWebhookDeliveryMock).toHaveBeenCalledWith(
+    // trackChannelDelivery is called with attemptNumber 2
+    expect(trackChannelDeliveryMock).toHaveBeenCalledWith(
       "evt-1",
-      "wh-1",
-      "https://hooks.example.com/alert",
+      "ch-1",
+      "slack",
+      "#ops-alerts",
       expect.any(Function),
       2,
     );
@@ -287,7 +272,6 @@ describe("RetryService", () => {
     );
 
     // No delivery calls
-    expect(trackWebhookDeliveryMock).not.toHaveBeenCalled();
     expect(trackChannelDeliveryMock).not.toHaveBeenCalled();
   });
 
@@ -312,49 +296,9 @@ describe("RetryService", () => {
     expect(lteDate.getTime()).toBe(NOW.getTime());
   });
 
-  // 6. Webhook retry resolves target via webhookId and calls deliverSingleWebhook
-  it("resolves webhook target via webhookId and passes it to deliverSingleWebhook", async () => {
-    const dueAttempt = makeDueAttempt({ webhookId: "wh-1", channelId: null });
-    const webhook = makeWebhook();
-    prismaMock.deliveryAttempt.findMany.mockResolvedValue([dueAttempt]);
-    prismaMock.deliveryAttempt.update.mockResolvedValue(dueAttempt as never);
-    prismaMock.alertEvent.findUnique.mockResolvedValue(makeAlertEvent() as never);
-    prismaMock.alertWebhook.findUnique.mockResolvedValue(webhook as never);
-
-    // Make trackWebhookDelivery actually call the deliverFn
-    trackWebhookDeliveryMock.mockImplementation(
-      async (_alertEventId, _webhookId, _name, deliverFn) => {
-        return deliverFn();
-      },
-    );
-
-    deliverSingleWebhookMock.mockResolvedValue({
-      success: true,
-      statusCode: 200,
-    });
-
-    await service.processRetries();
-
-    // Should have looked up the webhook
-    expect(prismaMock.alertWebhook.findUnique).toHaveBeenCalledWith({
-      where: { id: "wh-1" },
-    });
-
-    // deliverSingleWebhook should have been called with the webhook and payload
-    expect(deliverSingleWebhookMock).toHaveBeenCalledWith(
-      webhook,
-      expect.objectContaining({
-        alertId: "evt-1",
-        ruleName: "High CPU",
-        environment: "production",
-      }),
-    );
-  });
-
-  // 7. Channel retry resolves target via channelId and calls channel driver
+  // 6. Channel retry resolves target via channelId and calls channel driver
   it("resolves channel target via channelId and calls the channel driver", async () => {
     const dueAttempt = makeDueAttempt({
-      webhookId: null,
       channelId: "ch-1",
       channelType: "slack",
       channelName: "#ops-alerts",
@@ -409,12 +353,12 @@ describe("RetryService", () => {
     );
   });
 
-  // 8. Individual retry errors don't crash the poll loop
+  // 7. Individual retry errors don't crash the poll loop
   it("catches errors in individual retries and continues processing", async () => {
-    const attempt1 = makeDueAttempt({ id: "attempt-1", webhookId: "wh-1" });
+    const attempt1 = makeDueAttempt({ id: "attempt-1", channelId: "ch-1" });
     const attempt2 = makeDueAttempt({
       id: "attempt-2",
-      webhookId: "wh-2",
+      channelId: "ch-2",
       alertEventId: "evt-2",
     });
 
@@ -426,8 +370,14 @@ describe("RetryService", () => {
       .mockRejectedValueOnce(new Error("DB connection lost"))
       .mockResolvedValueOnce(makeAlertEvent() as never);
 
-    prismaMock.alertWebhook.findUnique.mockResolvedValue(makeWebhook() as never);
-    trackWebhookDeliveryMock.mockResolvedValue({
+    prismaMock.notificationChannel.findUnique.mockResolvedValue(makeChannel() as never);
+
+    getDriverMock.mockReturnValue({
+      deliver: vi.fn().mockResolvedValue({ channelId: "ch-2", success: true }),
+      test: vi.fn(),
+    });
+
+    trackChannelDeliveryMock.mockResolvedValue({
       success: true,
       statusCode: 200,
     });
@@ -435,7 +385,6 @@ describe("RetryService", () => {
     // Should not throw
     await service.processRetries();
 
-    // Second attempt should still have been processed
     // Both attempts should have had their nextRetryAt claimed
     expect(prismaMock.deliveryAttempt.update).toHaveBeenCalledTimes(2);
   });
@@ -475,27 +424,11 @@ describe("RetryService", () => {
     await service.processRetries();
 
     // Should not attempt delivery
-    expect(trackWebhookDeliveryMock).not.toHaveBeenCalled();
     expect(trackChannelDeliveryMock).not.toHaveBeenCalled();
   });
 
-  it("skips retry when webhook target is not found (deleted)", async () => {
-    const dueAttempt = makeDueAttempt({ webhookId: "wh-deleted" });
-    prismaMock.deliveryAttempt.findMany.mockResolvedValue([dueAttempt]);
-    prismaMock.deliveryAttempt.update.mockResolvedValue(dueAttempt as never);
-    prismaMock.alertEvent.findUnique.mockResolvedValue(makeAlertEvent() as never);
-    prismaMock.alertWebhook.findUnique.mockResolvedValue(null);
-
-    await service.processRetries();
-
-    expect(trackWebhookDeliveryMock).not.toHaveBeenCalled();
-  });
-
   it("skips retry when channel target is not found (deleted)", async () => {
-    const dueAttempt = makeDueAttempt({
-      webhookId: null,
-      channelId: "ch-deleted",
-    });
+    const dueAttempt = makeDueAttempt({ channelId: "ch-deleted" });
     prismaMock.deliveryAttempt.findMany.mockResolvedValue([dueAttempt]);
     prismaMock.deliveryAttempt.update.mockResolvedValue(dueAttempt as never);
     prismaMock.alertEvent.findUnique.mockResolvedValue(makeAlertEvent() as never);

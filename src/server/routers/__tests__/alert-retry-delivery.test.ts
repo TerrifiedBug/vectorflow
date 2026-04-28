@@ -7,11 +7,8 @@ import { TRPCError } from "@trpc/server";
 
 const {
   t,
-  mockTrackWebhookDelivery,
   mockTrackChannelDelivery,
   mockGetNextRetryAt,
-  mockDeliverSingleWebhook,
-  mockFormatWebhookMessage,
   mockChannelDeliver,
 } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -19,11 +16,8 @@ const {
   const t = initTRPC.context().create();
   return {
     t,
-    mockTrackWebhookDelivery: vi.fn().mockResolvedValue({ success: true }),
     mockTrackChannelDelivery: vi.fn().mockResolvedValue({ success: true }),
     mockGetNextRetryAt: vi.fn().mockReturnValue(new Date()),
-    mockDeliverSingleWebhook: vi.fn().mockResolvedValue({ success: true }),
-    mockFormatWebhookMessage: vi.fn().mockReturnValue("test"),
     mockChannelDeliver: vi.fn().mockResolvedValue({ success: true }),
   };
 });
@@ -50,14 +44,8 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/server/services/delivery-tracking", () => ({
-  trackWebhookDelivery: mockTrackWebhookDelivery,
   trackChannelDelivery: mockTrackChannelDelivery,
   getNextRetryAt: mockGetNextRetryAt,
-}));
-
-vi.mock("@/server/services/webhook-delivery", () => ({
-  deliverSingleWebhook: mockDeliverSingleWebhook,
-  formatWebhookMessage: mockFormatWebhookMessage,
 }));
 
 vi.mock("@/server/services/channels", () => ({
@@ -96,10 +84,9 @@ function makeDeliveryAttempt(overrides: Record<string, unknown> = {}) {
     id: "da-1",
     status: "failed",
     alertEventId: "ae-1",
-    webhookId: "wh-1",
-    channelId: null,
-    channelType: "webhook",
-    channelName: "Test Webhook",
+    channelId: "ch-1",
+    channelType: "slack",
+    channelName: "Test Channel",
     attemptNumber: 1,
     statusCode: 500,
     errorMessage: "Connection refused",
@@ -162,48 +149,17 @@ describe("alert.retryDelivery", () => {
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
-  it("should retry a failed webhook delivery", async () => {
+  it("should retry a failed channel delivery", async () => {
     prismaMock.deliveryAttempt.findUnique.mockResolvedValue(
       makeDeliveryAttempt() as never,
     );
-    prismaMock.alertWebhook.findUnique.mockResolvedValue({
-      id: "wh-1",
-      url: "https://hooks.example.com/alert",
-      teamId: "team-1",
-      name: "Test Webhook",
-      encryptedSecret: null,
-      headers: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    } as never);
-
-    const result = await caller.retryDelivery({ deliveryAttemptId: "da-1" });
-
-    expect(result).toEqual({ success: true });
-    expect(mockTrackWebhookDelivery).toHaveBeenCalledWith(
-      "ae-1",
-      "wh-1",
-      "https://hooks.example.com/alert",
-      expect.any(Function),
-      2,
-    );
-  });
-
-  it("should retry a failed channel delivery", async () => {
-    prismaMock.deliveryAttempt.findUnique.mockResolvedValue(
-      makeDeliveryAttempt({
-        webhookId: null,
-        channelId: "ch-1",
-        channelType: "slack",
-        channelName: "Test Channel",
-      }) as never,
-    );
     prismaMock.notificationChannel.findUnique.mockResolvedValue({
       id: "ch-1",
-      teamId: "team-1",
+      environmentId: "env-1",
       name: "Test Channel",
       type: "slack",
       config: { webhookUrl: "https://hooks.slack.com/test" },
+      enabled: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     } as never);
@@ -221,20 +177,20 @@ describe("alert.retryDelivery", () => {
     );
   });
 
-  it("should throw NOT_FOUND if webhook target is not found", async () => {
+  it("should throw NOT_FOUND if channel target is not found", async () => {
     prismaMock.deliveryAttempt.findUnique.mockResolvedValue(
       makeDeliveryAttempt() as never,
     );
-    prismaMock.alertWebhook.findUnique.mockResolvedValue(null);
+    prismaMock.notificationChannel.findUnique.mockResolvedValue(null);
 
     await expect(
       caller.retryDelivery({ deliveryAttemptId: "da-1" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("should throw BAD_REQUEST if delivery has no target webhook or channel", async () => {
+  it("should throw BAD_REQUEST if delivery has no target channel", async () => {
     prismaMock.deliveryAttempt.findUnique.mockResolvedValue(
-      makeDeliveryAttempt({ webhookId: null, channelId: null }) as never,
+      makeDeliveryAttempt({ channelId: null }) as never,
     );
 
     await expect(
