@@ -184,9 +184,9 @@ export default function DashboardPage() {
           title="Welcome to VectorFlow"
           description="Get started by creating your first pipeline, registering fleet nodes, and reviewing your configuration."
         />
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardContent className="p-4 flex flex-col items-start gap-2">
+        <div className="grid auto-rows-fr gap-4 md:grid-cols-3">
+          <Card className="h-full">
+            <CardContent className="p-4 flex flex-col items-start gap-2 h-full">
               <Workflow className="h-8 w-8 text-muted-foreground" />
               <p className="text-sm font-semibold">Create a pipeline</p>
               <p className="text-xs text-muted-foreground">Build your first observability pipeline with the visual editor.</p>
@@ -195,8 +195,8 @@ export default function DashboardPage() {
               </Button>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 flex flex-col items-start gap-2">
+          <Card className="h-full">
+            <CardContent className="p-4 flex flex-col items-start gap-2 h-full">
               <Server className="h-8 w-8 text-muted-foreground" />
               <p className="text-sm font-semibold">Register a node</p>
               <p className="text-xs text-muted-foreground">Add fleet nodes to deploy and run your pipelines.</p>
@@ -205,8 +205,8 @@ export default function DashboardPage() {
               </Button>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 flex flex-col items-start gap-2">
+          <Card className="h-full">
+            <CardContent className="p-4 flex flex-col items-start gap-2 h-full">
               <Settings className="h-8 w-8 text-muted-foreground" />
               <p className="text-sm font-semibold">Open settings</p>
               <p className="text-xs text-muted-foreground">Configure teams, environments, and integrations.</p>
@@ -314,9 +314,9 @@ export default function DashboardPage() {
         <>
           {/* KPI Summary Cards */}
           {stats.isPending ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+            <div className="grid auto-rows-fr gap-4 md:grid-cols-2 lg:grid-cols-6">
               {Array.from({ length: 6 }).map((_, i) => (
-                <Card key={i}>
+                <Card key={i} className="h-full">
                   <CardContent className="p-4">
                     <Skeleton className="h-4 w-24 mb-2" />
                     <Skeleton className="h-8 w-16" />
@@ -325,10 +325,10 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-          <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-6" aria-live="polite" aria-atomic="false" aria-relevant="text">
+          <StaggerList className="grid auto-rows-fr gap-4 md:grid-cols-2 lg:grid-cols-6" aria-live="polite" aria-atomic="false" aria-relevant="text">
             {/* Total Nodes */}
-            <StaggerItem>
-            <Card>
+            <StaggerItem className="h-full">
+            <Card className="h-full">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-muted-foreground">Total Nodes</p>
@@ -342,8 +342,8 @@ export default function DashboardPage() {
             </StaggerItem>
 
             {/* Node Health */}
-            <StaggerItem>
-            <Card>
+            <StaggerItem className="h-full">
+            <Card className="h-full">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-muted-foreground">Node Health</p>
@@ -368,8 +368,8 @@ export default function DashboardPage() {
             </StaggerItem>
 
             {/* Total Pipelines */}
-            <StaggerItem>
-            <Card>
+            <StaggerItem className="h-full">
+            <Card className="h-full">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-muted-foreground">Pipelines</p>
@@ -383,8 +383,8 @@ export default function DashboardPage() {
             </StaggerItem>
 
             {/* Pipeline Status */}
-            <StaggerItem>
-            <Card>
+            <StaggerItem className="h-full">
+            <Card className="h-full">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-muted-foreground">Pipeline Status</p>
@@ -409,8 +409,8 @@ export default function DashboardPage() {
             </StaggerItem>
 
             {/* Log Reduction */}
-            <StaggerItem>
-            <Card>
+            <StaggerItem className="h-full">
+            <Card className="h-full">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-muted-foreground">Log Reduction</p>
@@ -443,8 +443,8 @@ export default function DashboardPage() {
             </StaggerItem>
 
             {/* Active Alerts */}
-            <StaggerItem>
-            <Card>
+            <StaggerItem className="h-full">
+            <Card className="h-full">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-muted-foreground">Active Alerts</p>
