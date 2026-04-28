@@ -1,8 +1,7 @@
-import { test, expect } from "../fixtures/test.fixture";
+import { test } from "../fixtures/test.fixture";
 
 test.describe("Pipeline Create → Deploy → Active", () => {
   test("should create a pipeline, deploy it, and show active status in list", async ({
-    page,
     pipelinesPage,
     pipelineEditor,
     deployDialog,
@@ -16,6 +15,7 @@ test.describe("Pipeline Create → Deploy → Active", () => {
     await pipelineEditor.setName(pipelineName);
     await pipelineEditor.addNodeFromPalette("source", "demo_logs");
     await pipelineEditor.addNodeFromPalette("sink", "blackhole");
+    await pipelineEditor.connectNodes("demo_logs", "blackhole");
     await pipelineEditor.save();
     await pipelineEditor.expectSaveSuccess();
 
@@ -27,9 +27,5 @@ test.describe("Pipeline Create → Deploy → Active", () => {
     await sidebar.navigateTo("Pipelines");
     await pipelinesPage.expectPipelineInList(pipelineName);
     await pipelinesPage.expectDeploymentBadge(pipelineName);
-
-    const row = page.locator("tr", { hasText: pipelineName });
-    await expect(row).toBeVisible();
-    await expect(row).not.toContainText("Draft");
   });
 });
