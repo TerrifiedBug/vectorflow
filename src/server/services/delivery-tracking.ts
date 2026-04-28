@@ -15,8 +15,6 @@ export interface TrackDeliveryParams {
   channelType: string;
   channelName: string;
   deliverFn: DeliveryFn;
-  /** Optional webhook ID for retry target resolution */
-  webhookId?: string;
   /** Optional notification channel ID for retry target resolution */
   channelId?: string;
   /** Attempt number (1 = first attempt, 2+ = retries). Defaults to 1. */
@@ -56,7 +54,6 @@ export async function trackDelivery({
   channelType,
   channelName,
   deliverFn,
-  webhookId,
   channelId,
   attemptNumber = 1,
 }: TrackDeliveryParams): Promise<DeliveryResult> {
@@ -67,7 +64,6 @@ export async function trackDelivery({
       channelName,
       status: "pending",
       requestedAt: new Date(),
-      webhookId: webhookId ?? null,
       channelId: channelId ?? null,
       attemptNumber,
     },
@@ -111,26 +107,6 @@ export async function trackDelivery({
 }
 
 // ─── Convenience wrappers ───────────────────────────────────────────────────
-
-/**
- * Track delivery for a legacy webhook (AlertWebhook).
- */
-export function trackWebhookDelivery(
-  alertEventId: string,
-  webhookId: string,
-  webhookName: string,
-  deliverFn: DeliveryFn,
-  attemptNumber = 1,
-): Promise<DeliveryResult> {
-  return trackDelivery({
-    alertEventId,
-    channelType: "legacy_webhook",
-    channelName: webhookName,
-    deliverFn,
-    webhookId,
-    attemptNumber,
-  });
-}
 
 /**
  * Track delivery for a notification channel.

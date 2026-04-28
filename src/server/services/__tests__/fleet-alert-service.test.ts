@@ -22,14 +22,6 @@ vi.mock("@/server/services/channels", () => ({
   deliverToChannels: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("@/server/services/webhook-delivery", () => ({
-  deliverSingleWebhook: vi.fn().mockResolvedValue({ success: true }),
-}));
-
-vi.mock("@/server/services/delivery-tracking", () => ({
-  trackWebhookDelivery: vi.fn().mockResolvedValue({ success: true }),
-}));
-
 vi.mock("@/server/services/drift-metrics", () => ({
   getVersionDrift: vi.fn(),
 }));
@@ -43,7 +35,6 @@ import {
   getNodeLoadImbalance,
 } from "@/server/services/fleet-metrics";
 import { deliverToChannels } from "@/server/services/channels";
-import { trackWebhookDelivery } from "@/server/services/delivery-tracking";
 import { getVersionDrift } from "@/server/services/drift-metrics";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -125,12 +116,8 @@ describe("FleetAlertService", () => {
     mockGetFleetThroughputDrop.mockReset();
     mockGetNodeLoadImbalance.mockReset();
     (deliverToChannels as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
-    (trackWebhookDelivery as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue({ success: true });
 
     service = new FleetAlertService();
-
-    // Default: no webhooks configured
-    prismaMock.alertWebhook.findMany.mockResolvedValue([] as never);
   });
 
   afterEach(() => {
@@ -466,7 +453,7 @@ describe("FleetAlertService", () => {
 
   // ── Delivers notifications for fired events ─────────────────────────────
 
-  it("delivers to webhooks and channels for fired events", async () => {
+  it("delivers to notification channels for fired events", async () => {
     const rule = makeRule({
       metric: "fleet_error_rate",
       condition: "gt",
@@ -481,20 +468,7 @@ describe("FleetAlertService", () => {
     const createdEvent = makeEvent({ id: "notify-event", value: 10 });
     prismaMock.alertEvent.create.mockResolvedValue(createdEvent as never);
 
-    // Webhooks exist
-    prismaMock.alertWebhook.findMany.mockResolvedValue([
-      { id: "wh-1", url: "https://hooks.example.com/alert", enabled: true },
-    ] as never);
-
     await service.evaluateFleetAlerts();
-
-    // Verify webhook delivery was called
-    expect(trackWebhookDelivery).toHaveBeenCalledWith(
-      "notify-event",
-      "wh-1",
-      "https://hooks.example.com/alert",
-      expect.any(Function),
-    );
 
     // Verify channel delivery was called
     expect(deliverToChannels).toHaveBeenCalledWith(
@@ -550,8 +524,6 @@ describe("FleetAlertService", () => {
         correlationGroupId: null,
         errorContext: null,
       });
-      prismaMock.alertWebhook.findMany.mockResolvedValue([]);
-
       const results = await service.evaluateFleetAlerts();
 
       expect(results).toHaveLength(1);
