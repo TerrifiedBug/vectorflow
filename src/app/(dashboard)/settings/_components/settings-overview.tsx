@@ -19,6 +19,7 @@ import {
   Upload,
   Activity,
   Send,
+  Webhook,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -123,6 +124,13 @@ const CATEGORIES: SettingsCategory[] = [
     href: "/settings/audit-shipping",
     icon: Upload,
     requiredSuperAdmin: true,
+  },
+  {
+    title: "Outbound Webhooks",
+    description: "Forward events (deploys, version changes, fleet activity) to external systems via HMAC-signed POSTs.",
+    href: "/settings/webhooks",
+    icon: Webhook,
+    requiredSuperAdmin: false,
   },
 ];
 
