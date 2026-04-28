@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { validatePublicUrl, validateSmtpHost } from "@/server/services/url-validation";
 import { getDriver } from "@/server/services/channels";
+import { encryptChannelConfig, decryptChannelConfig } from "@/server/services/channel-secrets";
 
 export const alertChannelsRouter = router({
   listChannels: protectedProcedure
@@ -27,12 +28,17 @@ export const alertChannelsRouter = router({
         orderBy: { createdAt: "desc" },
       });
 
-      // Redact sensitive config fields before sending to the client
+      // Decrypt sensitive fields, then redact the truly-secret ones before
+      // returning. The edit-form needs plaintext for non-redacted fields
+      // (slack webhookUrl, webhook headers); redacted fields are masked here
+      // and PRESERVE_IF_ABSENT carries them forward on save.
       return channels.map((ch) => {
-        const config = ch.config as Record<string, unknown>;
-        const safeConfig = { ...config };
+        const decrypted = decryptChannelConfig(
+          ch.type,
+          ch.config as Record<string, unknown>,
+        );
+        const safeConfig = { ...decrypted };
 
-        // Redact passwords and secrets
         if ("smtpPass" in safeConfig) safeConfig.smtpPass = "••••••••";
         if ("hmacSecret" in safeConfig && safeConfig.hmacSecret)
           safeConfig.hmacSecret = "••••••••";
@@ -111,7 +117,7 @@ export const alertChannelsRouter = router({
           environmentId: input.environmentId,
           name: input.name,
           type: input.type,
-          config: input.config as Prisma.InputJsonValue,
+          config: encryptChannelConfig(input.type, input.config) as Prisma.InputJsonValue,
         },
       });
     }),
@@ -194,12 +200,15 @@ export const alertChannelsRouter = router({
         }
       }
 
+      const encryptedConfig =
+        config !== undefined ? encryptChannelConfig(existing.type, config) : undefined;
+
       return prisma.notificationChannel.update({
         where: { id },
         data: {
           ...rest,
-          ...(config !== undefined
-            ? { config: config as Prisma.InputJsonValue }
+          ...(encryptedConfig !== undefined
+            ? { config: encryptedConfig as Prisma.InputJsonValue }
             : {}),
         },
       });
@@ -243,9 +252,11 @@ export const alertChannelsRouter = router({
 
       try {
         const driver = getDriver(channel.type);
-        const result = await driver.test(
+        const decrypted = decryptChannelConfig(
+          channel.type,
           channel.config as Record<string, unknown>,
         );
+        const result = await driver.test(decrypted);
         return {
           success: result.success,
           error: result.error,

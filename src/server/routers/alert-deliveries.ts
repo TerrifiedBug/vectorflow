@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import type { ChannelPayload } from "@/server/services/channels/types";
 import { getDriver } from "@/server/services/channels";
+import { decryptChannelConfig } from "@/server/services/channel-secrets";
 
 export const alertDeliveriesRouter = router({
   listDeliveries: protectedProcedure
@@ -134,7 +135,10 @@ export const alertDeliveriesRouter = router({
         channel.type,
         channel.name,
         async () => {
-          const result = await channelDriver.deliver(channel.config as Record<string, unknown>, payload);
+          const result = await channelDriver.deliver(
+            decryptChannelConfig(channel.type, channel.config as Record<string, unknown>),
+            payload,
+          );
           return { success: result.success, error: result.error };
         },
         nextAttemptNumber,
