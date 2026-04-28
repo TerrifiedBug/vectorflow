@@ -308,6 +308,43 @@ describe("alertChannelsRouter", () => {
 
       expect(mockValidatePublicUrl).toHaveBeenCalledWith("https://hooks.slack.com/new");
     });
+
+    it("re-encrypts hmacSecret when rotated via update", async () => {
+      const existing = makeChannel({
+        type: "webhook",
+        config: { url: "https://x", hmacSecret: "v2:OLDCIPHERTEXT" },
+      });
+      prismaMock.notificationChannel.findUnique.mockResolvedValue(existing as never);
+      prismaMock.notificationChannel.update.mockResolvedValue(existing as never);
+
+      await caller.updateChannel({
+        id: "ch-1",
+        config: { url: "https://x", hmacSecret: "new-raw" },
+      });
+
+      const updateCall = prismaMock.notificationChannel.update.mock.calls[0][0];
+      const persisted = (updateCall as { data: { config: Record<string, unknown> } }).data.config;
+      expect(persisted.hmacSecret).toMatch(/^v2:/);
+      expect(persisted.hmacSecret).not.toBe("v2:OLDCIPHERTEXT");
+    });
+
+    it("preserves existing encrypted hmacSecret when not in input", async () => {
+      const existing = makeChannel({
+        type: "webhook",
+        config: { url: "https://x", hmacSecret: "v2:OLDCIPHERTEXT" },
+      });
+      prismaMock.notificationChannel.findUnique.mockResolvedValue(existing as never);
+      prismaMock.notificationChannel.update.mockResolvedValue(existing as never);
+
+      await caller.updateChannel({
+        id: "ch-1",
+        config: { url: "https://newurl" },
+      });
+
+      const updateCall = prismaMock.notificationChannel.update.mock.calls[0][0];
+      const persisted = (updateCall as { data: { config: Record<string, unknown> } }).data.config;
+      expect(persisted.hmacSecret).toBe("v2:OLDCIPHERTEXT");
+    });
   });
 
   // ─── deleteChannel ─────────────────────────────────────────────────────────

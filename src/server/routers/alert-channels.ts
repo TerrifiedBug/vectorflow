@@ -195,12 +195,15 @@ export const alertChannelsRouter = router({
         }
       }
 
+      const encryptedConfig =
+        config !== undefined ? encryptChannelConfig(existing.type, config) : undefined;
+
       return prisma.notificationChannel.update({
         where: { id },
         data: {
           ...rest,
-          ...(config !== undefined
-            ? { config: config as Prisma.InputJsonValue }
+          ...(encryptedConfig !== undefined
+            ? { config: encryptedConfig as Prisma.InputJsonValue }
             : {}),
         },
       });
