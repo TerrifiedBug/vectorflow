@@ -7,6 +7,7 @@ import { pagerdutyDriver } from "./pagerduty";
 import { webhookDriver } from "./webhook";
 import { trackChannelDelivery } from "@/server/services/delivery-tracking";
 import { isDemoMode } from "@/lib/is-demo-mode";
+import { decryptChannelConfig } from "@/server/services/channel-secrets";
 
 export type { ChannelPayload, ChannelDeliveryResult, ChannelDriver };
 
@@ -103,10 +104,11 @@ export async function deliverToChannels(
         channel.name,
         async () => {
           const driver = getDriver(channel.type);
-          const result = await driver.deliver(
+          const decrypted = decryptChannelConfig(
+            channel.type,
             channel.config as Record<string, unknown>,
-            payload,
           );
+          const result = await driver.deliver(decrypted, payload);
           return { success: result.success, error: result.error };
         },
       );
@@ -115,10 +117,11 @@ export async function deliverToChannels(
       // Untracked delivery (no alertEventId context)
       try {
         const driver = getDriver(channel.type);
-        const result = await driver.deliver(
+        const decrypted = decryptChannelConfig(
+          channel.type,
           channel.config as Record<string, unknown>,
-          payload,
         );
+        const result = await driver.deliver(decrypted, payload);
         results.push({ ...result, channelId: channel.id });
       } catch (err) {
         errorLog("channels", `Channel delivery error (${channel.type} / ${channel.id})`, err);
