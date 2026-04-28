@@ -237,6 +237,25 @@ describe("alertChannelsRouter", () => {
         }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
+
+    it("encrypts hmacSecret before persisting webhook channel", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.notificationChannel.create.mockResolvedValue(
+        makeChannel({ type: "webhook" }) as never,
+      );
+
+      await caller.createChannel({
+        environmentId: "env-1",
+        name: "Webhook With Secret",
+        type: "webhook",
+        config: { url: "https://example.com/hook", hmacSecret: "raw-secret" },
+      });
+
+      const createCall = prismaMock.notificationChannel.create.mock.calls[0][0];
+      const persisted = (createCall as { data: { config: Record<string, unknown> } }).data.config;
+      expect(persisted.hmacSecret).toMatch(/^v2:/);
+      expect(persisted.url).toBe("https://example.com/hook");
+    });
   });
 
   // ─── updateChannel ─────────────────────────────────────────────────────────
