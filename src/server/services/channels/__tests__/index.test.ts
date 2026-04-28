@@ -87,7 +87,7 @@ describe("deliverToChannels — secret decryption at driver boundary", () => {
           hmacSecret: encryptedSecret,
         },
       },
-      // biome-ignore lint/suspicious/noExplicitAny: select returns partial rows
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ] as any);
 
     await deliverToChannels("env-1", null, makePayload());
@@ -120,7 +120,7 @@ describe("deliverToChannels — secret decryption at driver boundary", () => {
           hmacSecret: encryptedSecret,
         },
       },
-      // biome-ignore lint/suspicious/noExplicitAny: select returns partial rows
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ] as any);
 
     await deliverToChannels("env-1", null, makePayload(), "alert-event-1");
