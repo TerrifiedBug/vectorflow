@@ -72,7 +72,6 @@ export function FailedDeliveriesSection({ environmentId }: FailedDeliveriesSecti
     email: "📧",
     webhook: "🌐",
     pagerduty: "🚨",
-    legacy_webhook: "🌐",
   };
 
   return (

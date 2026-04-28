@@ -20,7 +20,6 @@ const CHANNEL_ICONS: Record<string, string> = {
   email: "📧",
   webhook: "🌐",
   pagerduty: "🚨",
-  legacy_webhook: "🌐",
 };
 
 function channelIcon(type: string): string {

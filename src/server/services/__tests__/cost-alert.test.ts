@@ -18,14 +18,6 @@ vi.mock("@/server/services/channels", () => ({
   deliverToChannels: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("@/server/services/webhook-delivery", () => ({
-  deliverSingleWebhook: vi.fn().mockResolvedValue({ success: true }),
-}));
-
-vi.mock("@/server/services/delivery-tracking", () => ({
-  trackWebhookDelivery: vi.fn().mockResolvedValue({ success: true }),
-}));
-
 import { prisma } from "@/lib/prisma";
 import { getCurrentMonthCostCents } from "@/server/services/cost-attribution";
 import { evaluateCostAlerts } from "@/server/services/cost-alert";
@@ -78,8 +70,7 @@ describe("evaluateCostAlerts", () => {
       firedAt: new Date(),
     } as never);
 
-    // Mock webhook/channel queries
-    prismaMock.alertWebhook.findMany.mockResolvedValue([]);
+    // Mock channel queries
     prismaMock.alertRuleChannel.findMany.mockResolvedValue([]);
 
     const results = await evaluateCostAlerts();

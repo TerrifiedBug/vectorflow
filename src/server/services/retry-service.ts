@@ -1,14 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import {
-  trackWebhookDelivery,
   trackChannelDelivery,
   getNextRetryAt,
 } from "@/server/services/delivery-tracking";
-import {
-  deliverSingleWebhook,
-  type WebhookPayload,
-} from "@/server/services/webhook-delivery";
 import { getDriver } from "@/server/services/channels";
+import type { ChannelPayload } from "@/server/services/channels/types";
 import { deliverOutboundWebhook, isPermanentFailure } from "@/server/services/outbound-webhook";
 import { infoLog, errorLog } from "@/lib/logger";
 
@@ -91,15 +87,8 @@ export class RetryService {
 
         const nextAttemptNumber = attempt.attemptNumber + 1;
 
-        // Re-execute based on delivery target type
-        if (attempt.webhookId) {
-          await this.retryWebhook(
-            attempt.webhookId,
-            attempt.alertEventId,
-            payload,
-            nextAttemptNumber,
-          );
-        } else if (attempt.channelId) {
+        // Re-execute via the notification channel
+        if (attempt.channelId) {
           await this.retryChannel(
             attempt.channelId,
             attempt.alertEventId,
@@ -107,7 +96,7 @@ export class RetryService {
             nextAttemptNumber,
           );
         } else {
-          errorLog("retry-service", `Attempt ${attempt.id} has no webhookId or channelId — skipping`);
+          errorLog("retry-service", `Attempt ${attempt.id} has no channelId — skipping`);
         }
       } catch (err) {
         // Individual retry errors must never crash the poll loop
@@ -219,12 +208,12 @@ export class RetryService {
   }
 
   /**
-   * Reconstruct a WebhookPayload from an AlertEvent and its AlertRule.
+   * Reconstruct a ChannelPayload from an AlertEvent and its AlertRule.
    * Returns null if the event or rule has been deleted.
    */
   private async buildPayload(
     alertEventId: string,
-  ): Promise<WebhookPayload | null> {
+  ): Promise<ChannelPayload | null> {
     const event = await prisma.alertEvent.findUnique({
       where: { id: alertEventId },
       include: {
@@ -263,45 +252,12 @@ export class RetryService {
   }
 
   /**
-   * Retry a legacy webhook delivery.
-   */
-  private async retryWebhook(
-    webhookId: string,
-    alertEventId: string,
-    payload: WebhookPayload,
-    attemptNumber: number,
-  ): Promise<void> {
-    const webhook = await prisma.alertWebhook.findUnique({
-      where: { id: webhookId },
-    });
-
-    if (!webhook) {
-      errorLog("retry-service", `Webhook ${webhookId} not found — skipping retry`);
-      return;
-    }
-
-    const result = await trackWebhookDelivery(
-      alertEventId,
-      webhookId,
-      webhook.url,
-      () => deliverSingleWebhook(webhook, payload),
-      attemptNumber,
-    );
-
-    if (result.success) {
-      infoLog("retry-service", `Webhook retry succeeded (webhook=${webhookId}, attempt=${attemptNumber})`);
-    } else {
-      infoLog("retry-service", `Webhook retry failed (webhook=${webhookId}, attempt=${attemptNumber}): ${result.error}`);
-    }
-  }
-
-  /**
    * Retry a notification channel delivery.
    */
   private async retryChannel(
     channelId: string,
     alertEventId: string,
-    payload: WebhookPayload,
+    payload: ChannelPayload,
     attemptNumber: number,
   ): Promise<void> {
     const channel = await prisma.notificationChannel.findUnique({
