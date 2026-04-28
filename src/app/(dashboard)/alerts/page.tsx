@@ -20,7 +20,6 @@ import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertRulesSection } from "./_components/alert-rules-section";
 import { NotificationChannelsSection } from "./_components/notification-channels-section";
-import { OutboundWebhooksSection } from "./_components/outbound-webhooks-section";
 import { AlertHistorySection } from "./_components/alert-history-section";
 import { AnomalyHistorySection } from "./_components/anomaly-history-section";
 import { CorrelatedAlertHistory } from "./_components/correlated-alert-history";
@@ -130,16 +129,9 @@ export default function AlertsPage() {
 
         {/* ── Channels Tab ──────────────────────────────────── */}
         <TabsContent value="channels">
-          <div className="space-y-6">
-            <NotificationChannelsSection
-              environmentId={selectedEnvironmentId}
-            />
-            {/* Team-scoped subscription firehose for events outside the
-                AlertRule → channel routing model. Lives here (rather than
-                under global settings) so all webhook configuration is in
-                one place. */}
-            <OutboundWebhooksSection />
-          </div>
+          <NotificationChannelsSection
+            environmentId={selectedEnvironmentId}
+          />
         </TabsContent>
 
         {/* ── History Tab ───────────────────────────────────── */}
