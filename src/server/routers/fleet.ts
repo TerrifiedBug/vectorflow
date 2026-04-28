@@ -415,7 +415,7 @@ export const fleetRouter = router({
       }
       if (node.status === "UNREACHABLE") {
         throw new TRPCError({
-          code: "FAILED_PRECONDITION",
+          code: "PRECONDITION_FAILED",
           message:
             "Cannot update an unreachable agent — wait for it to reconnect before retrying",
         });
