@@ -372,6 +372,20 @@ export default function FleetPage() {
                           </TooltipTrigger>
                           <TooltipContent>Update via Docker image pull</TooltipContent>
                         </Tooltip>
+                      ) : node.status === "UNREACHABLE" ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge
+                              variant="outline"
+                              className="text-amber-600 opacity-50 cursor-not-allowed"
+                            >
+                              Update available
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Agent is unreachable — wait for it to reconnect before updating
+                          </TooltipContent>
+                        </Tooltip>
                       ) : (
                         <Badge
                           variant="outline"

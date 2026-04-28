@@ -413,6 +413,13 @@ export const fleetRouter = router({
           message: "Cannot auto-update Docker agents",
         });
       }
+      if (node.status === "UNREACHABLE") {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            "Cannot update an unreachable agent — wait for it to reconnect before retrying",
+        });
+      }
 
       const { downloadUrl } = input;
       let { targetVersion, checksum } = input;
