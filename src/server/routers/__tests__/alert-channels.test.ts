@@ -50,6 +50,8 @@ vi.mock("@/server/services/channels", () => ({
 
 import { prisma } from "@/lib/prisma";
 import { alertChannelsRouter } from "@/server/routers/alert-channels";
+import { encrypt, ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import { ENCRYPTED_MARKER } from "@/server/services/channel-secrets";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(alertChannelsRouter)({
@@ -109,6 +111,44 @@ describe("alertChannelsRouter", () => {
       const result = await caller.listChannels({ environmentId: "env-1" });
 
       expect(result).toEqual([]);
+    });
+
+    it("decrypts non-redacted fields so the edit form receives plaintext", async () => {
+      const encryptedUrl = ENCRYPTED_MARKER + encrypt(
+        "https://hooks.slack.com/services/T/B/SECRETTOKEN",
+        ENCRYPTION_DOMAINS.SECRETS,
+      );
+
+      prismaMock.notificationChannel.findMany.mockResolvedValue([
+        makeChannel({
+          type: "slack",
+          config: { webhookUrl: encryptedUrl },
+        }),
+      ] as never);
+
+      const result = await caller.listChannels({ environmentId: "env-1" });
+
+      const config = result[0].config as Record<string, unknown>;
+      expect(config.webhookUrl).toBe("https://hooks.slack.com/services/T/B/SECRETTOKEN");
+    });
+
+    it("decrypts encrypted webhook headers and surfaces them as an object", async () => {
+      const encryptedHeaders = ENCRYPTED_MARKER + encrypt(
+        JSON.stringify({ Authorization: "Bearer abc" }),
+        ENCRYPTION_DOMAINS.SECRETS,
+      );
+
+      prismaMock.notificationChannel.findMany.mockResolvedValue([
+        makeChannel({
+          type: "webhook",
+          config: { url: "https://x.test", headers: encryptedHeaders },
+        }),
+      ] as never);
+
+      const result = await caller.listChannels({ environmentId: "env-1" });
+
+      const config = result[0].config as Record<string, unknown>;
+      expect(config.headers).toEqual({ Authorization: "Bearer abc" });
     });
   });
 
@@ -237,6 +277,25 @@ describe("alertChannelsRouter", () => {
         }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
+
+    it("encrypts hmacSecret before persisting webhook channel", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.notificationChannel.create.mockResolvedValue(
+        makeChannel({ type: "webhook" }) as never,
+      );
+
+      await caller.createChannel({
+        environmentId: "env-1",
+        name: "Webhook With Secret",
+        type: "webhook",
+        config: { url: "https://example.com/hook", hmacSecret: "raw-secret" },
+      });
+
+      const createCall = prismaMock.notificationChannel.create.mock.calls[0][0];
+      const persisted = (createCall as { data: { config: Record<string, unknown> } }).data.config;
+      expect(persisted.hmacSecret).toMatch(/^vfenc1:/);
+      expect(persisted.url).toBe("https://example.com/hook");
+    });
   });
 
   // ─── updateChannel ─────────────────────────────────────────────────────────
@@ -288,6 +347,43 @@ describe("alertChannelsRouter", () => {
       });
 
       expect(mockValidatePublicUrl).toHaveBeenCalledWith("https://hooks.slack.com/new");
+    });
+
+    it("re-encrypts hmacSecret when rotated via update", async () => {
+      const existing = makeChannel({
+        type: "webhook",
+        config: { url: "https://x", hmacSecret: "vfenc1:v2:OLDCIPHERTEXT" },
+      });
+      prismaMock.notificationChannel.findUnique.mockResolvedValue(existing as never);
+      prismaMock.notificationChannel.update.mockResolvedValue(existing as never);
+
+      await caller.updateChannel({
+        id: "ch-1",
+        config: { url: "https://x", hmacSecret: "new-raw" },
+      });
+
+      const updateCall = prismaMock.notificationChannel.update.mock.calls[0][0];
+      const persisted = (updateCall as { data: { config: Record<string, unknown> } }).data.config;
+      expect(persisted.hmacSecret).toMatch(/^vfenc1:/);
+      expect(persisted.hmacSecret).not.toBe("vfenc1:v2:OLDCIPHERTEXT");
+    });
+
+    it("preserves existing encrypted hmacSecret when not in input", async () => {
+      const existing = makeChannel({
+        type: "webhook",
+        config: { url: "https://x", hmacSecret: "vfenc1:v2:OLDCIPHERTEXT" },
+      });
+      prismaMock.notificationChannel.findUnique.mockResolvedValue(existing as never);
+      prismaMock.notificationChannel.update.mockResolvedValue(existing as never);
+
+      await caller.updateChannel({
+        id: "ch-1",
+        config: { url: "https://newurl" },
+      });
+
+      const updateCall = prismaMock.notificationChannel.update.mock.calls[0][0];
+      const persisted = (updateCall as { data: { config: Record<string, unknown> } }).data.config;
+      expect(persisted.hmacSecret).toBe("vfenc1:v2:OLDCIPHERTEXT");
     });
   });
 
@@ -351,6 +447,31 @@ describe("alertChannelsRouter", () => {
       await expect(
         caller.testChannel({ id: "ch-missing" }),
       ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+
+    it("decrypts hmacSecret before passing config to driver.test", async () => {
+      const encryptedSecret = ENCRYPTED_MARKER + encrypt("raw-secret", ENCRYPTION_DOMAINS.SECRETS);
+      expect(encryptedSecret.startsWith("vfenc1:")).toBe(true);
+
+      prismaMock.notificationChannel.findUnique.mockResolvedValue(
+        makeChannel({
+          type: "webhook",
+          config: {
+            url: "https://hooks.example.com/x",
+            hmacSecret: encryptedSecret,
+          },
+        }) as never,
+      );
+      mockChannelTest.mockResolvedValue({ success: true });
+
+      await caller.testChannel({ id: "ch-1" });
+
+      expect(mockChannelTest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "https://hooks.example.com/x",
+          hmacSecret: "raw-secret",
+        }),
+      );
     });
   });
 });

@@ -4,6 +4,7 @@ import {
   getNextRetryAt,
 } from "@/server/services/delivery-tracking";
 import { getDriver } from "@/server/services/channels";
+import { decryptChannelConfig } from "@/server/services/channel-secrets";
 import type { ChannelPayload } from "@/server/services/channels/types";
 import { deliverOutboundWebhook, isPermanentFailure } from "@/server/services/outbound-webhook";
 import { infoLog, errorLog } from "@/lib/logger";
@@ -277,7 +278,7 @@ export class RetryService {
       async () => {
         const driver = getDriver(channel.type);
         const driverResult = await driver.deliver(
-          channel.config as Record<string, unknown>,
+          decryptChannelConfig(channel.type, channel.config as Record<string, unknown>),
           payload,
         );
         return { success: driverResult.success, error: driverResult.error };
