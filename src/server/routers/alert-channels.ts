@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { validatePublicUrl, validateSmtpHost } from "@/server/services/url-validation";
 import { getDriver } from "@/server/services/channels";
-import { encryptChannelConfig } from "@/server/services/channel-secrets";
+import { encryptChannelConfig, decryptChannelConfig } from "@/server/services/channel-secrets";
 
 export const alertChannelsRouter = router({
   listChannels: protectedProcedure
@@ -247,9 +247,11 @@ export const alertChannelsRouter = router({
 
       try {
         const driver = getDriver(channel.type);
-        const result = await driver.test(
+        const decrypted = decryptChannelConfig(
+          channel.type,
           channel.config as Record<string, unknown>,
         );
+        const result = await driver.test(decrypted);
         return {
           success: result.success,
           error: result.error,

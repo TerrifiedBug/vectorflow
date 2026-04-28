@@ -50,6 +50,7 @@ vi.mock("@/server/services/channels", () => ({
 
 import { prisma } from "@/lib/prisma";
 import { alertChannelsRouter } from "@/server/routers/alert-channels";
+import { encrypt, ENCRYPTION_DOMAINS } from "@/server/services/crypto";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(alertChannelsRouter)({
@@ -407,6 +408,31 @@ describe("alertChannelsRouter", () => {
       await expect(
         caller.testChannel({ id: "ch-missing" }),
       ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+
+    it("decrypts hmacSecret before passing config to driver.test", async () => {
+      const encryptedSecret = encrypt("raw-secret", ENCRYPTION_DOMAINS.SECRETS);
+      expect(encryptedSecret.startsWith("v2:")).toBe(true);
+
+      prismaMock.notificationChannel.findUnique.mockResolvedValue(
+        makeChannel({
+          type: "webhook",
+          config: {
+            url: "https://hooks.example.com/x",
+            hmacSecret: encryptedSecret,
+          },
+        }) as never,
+      );
+      mockChannelTest.mockResolvedValue({ success: true });
+
+      await caller.testChannel({ id: "ch-1" });
+
+      expect(mockChannelTest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "https://hooks.example.com/x",
+          hmacSecret: "raw-secret",
+        }),
+      );
     });
   });
 });
