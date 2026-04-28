@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
-import { type WebhookPayload } from "@/server/services/webhook-delivery";
+import type { ChannelPayload } from "@/server/services/channels/types";
 import { getDriver } from "@/server/services/channels";
 
 export const alertDeliveriesRouter = router({
@@ -99,7 +99,7 @@ export const alertDeliveriesRouter = router({
       }
 
       const rule = event.alertRule;
-      const payload: WebhookPayload = {
+      const payload: ChannelPayload = {
         alertId: event.id,
         status: event.status === "resolved" ? "resolved" : "firing",
         ruleName: rule.name,
@@ -118,41 +118,27 @@ export const alertDeliveriesRouter = router({
 
       const nextAttemptNumber = attempt.attemptNumber + 1;
 
-      if (attempt.webhookId) {
-        const webhook = await prisma.alertWebhook.findUnique({ where: { id: attempt.webhookId } });
-        if (!webhook) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Webhook not found" });
-        }
-        const { trackWebhookDelivery } = await import("@/server/services/delivery-tracking");
-        const { deliverSingleWebhook } = await import("@/server/services/webhook-delivery");
-        await trackWebhookDelivery(
-          event.id,
-          webhook.id,
-          webhook.url,
-          () => deliverSingleWebhook(webhook, payload),
-          nextAttemptNumber,
-        );
-      } else if (attempt.channelId) {
-        const channel = await prisma.notificationChannel.findUnique({ where: { id: attempt.channelId } });
-        if (!channel) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Notification channel not found" });
-        }
-        const { trackChannelDelivery } = await import("@/server/services/delivery-tracking");
-        const channelDriver = getDriver(channel.type);
-        await trackChannelDelivery(
-          event.id,
-          channel.id,
-          channel.type,
-          channel.name,
-          async () => {
-            const result = await channelDriver.deliver(channel.config as Record<string, unknown>, payload);
-            return { success: result.success, error: result.error };
-          },
-          nextAttemptNumber,
-        );
-      } else {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Delivery attempt has no target webhook or channel" });
+      if (!attempt.channelId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Delivery attempt has no target channel" });
       }
+
+      const channel = await prisma.notificationChannel.findUnique({ where: { id: attempt.channelId } });
+      if (!channel) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Notification channel not found" });
+      }
+      const { trackChannelDelivery } = await import("@/server/services/delivery-tracking");
+      const channelDriver = getDriver(channel.type);
+      await trackChannelDelivery(
+        event.id,
+        channel.id,
+        channel.type,
+        channel.name,
+        async () => {
+          const result = await channelDriver.deliver(channel.config as Record<string, unknown>, payload);
+          return { success: result.success, error: result.error };
+        },
+        nextAttemptNumber,
+      );
 
       return { success: true };
     }),

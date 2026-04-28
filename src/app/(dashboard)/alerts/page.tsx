@@ -20,7 +20,6 @@ import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertRulesSection } from "./_components/alert-rules-section";
 import { NotificationChannelsSection } from "./_components/notification-channels-section";
-import { WebhooksSection } from "./_components/webhooks-section";
 import { OutboundWebhooksSection } from "./_components/outbound-webhooks-section";
 import { AlertHistorySection } from "./_components/alert-history-section";
 import { AnomalyHistorySection } from "./_components/anomaly-history-section";
@@ -135,7 +134,6 @@ export default function AlertsPage() {
             <NotificationChannelsSection
               environmentId={selectedEnvironmentId}
             />
-            <WebhooksSection environmentId={selectedEnvironmentId} />
             {/* Team-scoped subscription firehose for events outside the
                 AlertRule → channel routing model. Lives here (rather than
                 under global settings) so all webhook configuration is in

@@ -3,8 +3,6 @@ import { prisma } from "@/lib/prisma";
 import type { AlertEvent } from "@/generated/prisma";
 import { getCurrentMonthCostCents } from "@/server/services/cost-attribution";
 import { deliverToChannels } from "@/server/services/channels";
-import { deliverSingleWebhook } from "@/server/services/webhook-delivery";
-import { trackWebhookDelivery } from "@/server/services/delivery-tracking";
 import type { ChannelPayload } from "@/server/services/channels/types";
 
 interface CostAlertResult {
@@ -128,18 +126,4 @@ async function deliverCostAlertNotifications(
 
   // Deliver to notification channels
   await deliverToChannels(rule.environmentId, rule.id, payload, event.id);
-
-  // Deliver to webhooks
-  const webhooks = await prisma.alertWebhook.findMany({
-    where: { environmentId: rule.environmentId, enabled: true },
-  });
-
-  for (const webhook of webhooks) {
-    await trackWebhookDelivery(
-      event.id,
-      webhook.id,
-      webhook.url,
-      () => deliverSingleWebhook(webhook, payload),
-    );
-  }
 }

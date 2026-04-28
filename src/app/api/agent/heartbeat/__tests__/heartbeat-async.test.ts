@@ -36,16 +36,12 @@ vi.mock("@/server/services/heartbeat-batch", () => ({
   batchUpsertPipelineStatuses: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/server/services/webhook-delivery", () => ({
-  deliverSingleWebhook: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("@/server/services/channels", () => ({
   deliverToChannels: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/server/services/delivery-tracking", () => ({
-  trackWebhookDelivery: vi.fn().mockResolvedValue(undefined),
+  trackChannelDelivery: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/server/services/metric-store", () => ({

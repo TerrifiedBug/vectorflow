@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import type { AlertMetric } from "@/generated/prisma";
 import { errorLog } from "@/lib/logger";
 import { deliverToChannels } from "@/server/services/channels";
-import { deliverWebhooks } from "@/server/services/webhook-delivery";
 import { fireOutboundWebhooks } from "@/server/services/outbound-webhook";
 
 // Re-export from the shared (client-safe) module so existing server imports
@@ -100,9 +99,8 @@ export async function fireEventAlert(
           dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/alerts`,
         };
 
-        // 4. Deliver to legacy webhooks and notification channels
-        await deliverWebhooks(rule.environmentId, payload);
-        await deliverToChannels(rule.environmentId, rule.id, payload);
+        // 4. Deliver to notification channels
+        await deliverToChannels(rule.environmentId, rule.id, payload, event.id);
 
         // 4b. Deliver to outbound webhook subscriptions (team-scoped)
         // void — never blocks the calling operation
