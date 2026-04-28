@@ -3,8 +3,6 @@ import type { AlertRule, AlertEvent } from "@/generated/prisma";
 import { checkCondition, FLEET_METRICS } from "@/server/services/alert-evaluator";
 import type { ChannelPayload } from "@/server/services/channels/types";
 import { deliverToChannels } from "@/server/services/channels";
-import { deliverSingleWebhook } from "@/server/services/webhook-delivery";
-import { trackWebhookDelivery } from "@/server/services/delivery-tracking";
 import {
   getFleetErrorRate,
   getFleetEventVolume,
@@ -318,21 +316,6 @@ export class FleetAlertService {
           timestamp: event.firedAt.toISOString(),
           dashboardUrl: `${process.env.NEXTAUTH_URL ?? ""}/alerts`,
         };
-
-        // Deliver to legacy webhooks with delivery tracking
-        const webhooks = await prisma.alertWebhook.findMany({
-          where: { environmentId: rule.environmentId, enabled: true },
-        });
-        for (const webhook of webhooks) {
-          trackWebhookDelivery(
-            event.id,
-            webhook.id,
-            webhook.url,
-            () => deliverSingleWebhook(webhook, payload),
-          ).catch((err) =>
-            errorLog("fleet-alert", `Webhook delivery error for ${webhook.url}`, err),
-          );
-        }
 
         // Deliver to notification channels with delivery tracking
         deliverToChannels(

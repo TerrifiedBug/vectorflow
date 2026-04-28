@@ -10,7 +10,6 @@ vi.mock("@/lib/prisma", () => ({
 import { prisma } from "@/lib/prisma";
 import {
   trackDelivery,
-  trackWebhookDelivery,
   trackChannelDelivery,
   getNextRetryAt,
   BACKOFF_DELAYS,
@@ -35,7 +34,6 @@ function mockCreateAttempt(overrides: Record<string, unknown> = {}) {
     errorMessage: null,
     attemptNumber: 1,
     nextRetryAt: null,
-    webhookId: null,
     channelId: null,
     requestedAt: new Date("2025-06-01T12:00:00Z"),
     completedAt: null,
@@ -54,7 +52,6 @@ function mockUpdateAttempt(overrides: Record<string, unknown> = {}) {
     errorMessage: null,
     attemptNumber: 1,
     nextRetryAt: null,
-    webhookId: null,
     channelId: null,
     requestedAt: new Date("2025-06-01T12:00:00Z"),
     completedAt: new Date("2025-06-01T12:00:01Z"),
@@ -99,7 +96,6 @@ describe("trackDelivery", () => {
         channelName: "#alerts",
         status: "pending",
         attemptNumber: 1,
-        webhookId: null,
         channelId: null,
       }),
     });
@@ -376,8 +372,8 @@ describe("trackDelivery", () => {
     );
   });
 
-  it("persists webhookId and channelId when provided", async () => {
-    mockCreateAttempt({ webhookId: "wh-123" });
+  it("persists channelId when provided", async () => {
+    mockCreateAttempt({ channelId: "ch-123" });
     mockUpdateAttempt();
 
     const deliverFn = vi.fn<() => Promise<DeliveryResult>>().mockResolvedValue({
@@ -387,16 +383,15 @@ describe("trackDelivery", () => {
 
     await trackDelivery({
       alertEventId: ALERT_EVENT_ID,
-      channelType: "legacy_webhook",
-      channelName: "https://hooks.example.com",
+      channelType: "slack",
+      channelName: "#alerts",
       deliverFn,
-      webhookId: "wh-123",
+      channelId: "ch-123",
     });
 
     expect(prismaMock.deliveryAttempt.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        webhookId: "wh-123",
-        channelId: null,
+        channelId: "ch-123",
       }),
     });
   });
@@ -458,63 +453,6 @@ describe("BACKOFF_DELAYS", () => {
 });
 
 // ─── Convenience wrappers ───────────────────────────────────────────────────
-
-describe("trackWebhookDelivery", () => {
-  beforeEach(() => {
-    mockReset(prismaMock);
-  });
-
-  it("delegates to trackDelivery with channelType 'legacy_webhook' and persists webhookId", async () => {
-    mockCreateAttempt();
-    mockUpdateAttempt();
-
-    const deliverFn = vi.fn<() => Promise<DeliveryResult>>().mockResolvedValue({
-      success: true,
-      statusCode: 200,
-    });
-
-    await trackWebhookDelivery(
-      ALERT_EVENT_ID,
-      "webhook-1",
-      "https://hooks.example.com",
-      deliverFn,
-    );
-
-    expect(prismaMock.deliveryAttempt.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        channelType: "legacy_webhook",
-        channelName: "https://hooks.example.com",
-        webhookId: "webhook-1",
-      }),
-    });
-
-    expect(deliverFn).toHaveBeenCalledOnce();
-  });
-
-  it("passes attemptNumber through when specified", async () => {
-    mockCreateAttempt({ attemptNumber: 2 });
-    mockUpdateAttempt();
-
-    const deliverFn = vi.fn<() => Promise<DeliveryResult>>().mockResolvedValue({
-      success: true,
-      statusCode: 200,
-    });
-
-    await trackWebhookDelivery(
-      ALERT_EVENT_ID,
-      "webhook-1",
-      "https://hooks.example.com",
-      deliverFn,
-      2,
-    );
-
-    expect(prismaMock.deliveryAttempt.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        attemptNumber: 2,
-      }),
-    });
-  });
-});
 
 describe("trackChannelDelivery", () => {
   beforeEach(() => {

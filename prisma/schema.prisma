@@ -150,7 +150,6 @@ model Environment {
   gitWebhookSecret    String?       // HMAC secret for validating incoming git webhooks
   requireDeployApproval   Boolean       @default(false)
   alertRules              AlertRule[]
-  alertWebhooks           AlertWebhook[]
   notificationChannels    NotificationChannel[]
   serviceAccounts         ServiceAccount[]
   deployRequests          DeployRequest[]
@@ -1012,20 +1011,6 @@ model AlertRule {
   @@index([teamId])
 }
 
-model AlertWebhook {
-  id            String      @id @default(cuid())
-  environmentId String
-  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  url           String
-  headers       Json?
-  hmacSecret    String?
-  enabled       Boolean     @default(true)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-
-  @@index([environmentId])
-}
-
 model WebhookEndpoint {
   id              String            @id @default(cuid())
   teamId          String
@@ -1106,14 +1091,13 @@ model DeliveryAttempt {
   id            String      @id @default(cuid())
   alertEventId  String
   alertEvent    AlertEvent  @relation(fields: [alertEventId], references: [id], onDelete: Cascade)
-  channelType   String      // 'webhook' | 'slack' | 'email' | 'pagerduty' | 'legacy_webhook'
+  channelType   String      // 'webhook' | 'slack' | 'email' | 'pagerduty'
   channelName   String
   status        String      // 'pending' | 'success' | 'failed'
   statusCode    Int?
   errorMessage  String?
   attemptNumber Int         @default(1)
   nextRetryAt   DateTime?
-  webhookId     String?
   channelId     String?
   requestedAt   DateTime    @default(now())
   completedAt   DateTime?
