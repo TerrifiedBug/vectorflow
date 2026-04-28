@@ -28,12 +28,17 @@ export const alertChannelsRouter = router({
         orderBy: { createdAt: "desc" },
       });
 
-      // Redact sensitive config fields before sending to the client
+      // Decrypt sensitive fields, then redact the truly-secret ones before
+      // returning. The edit-form needs plaintext for non-redacted fields
+      // (slack webhookUrl, webhook headers); redacted fields are masked here
+      // and PRESERVE_IF_ABSENT carries them forward on save.
       return channels.map((ch) => {
-        const config = ch.config as Record<string, unknown>;
-        const safeConfig = { ...config };
+        const decrypted = decryptChannelConfig(
+          ch.type,
+          ch.config as Record<string, unknown>,
+        );
+        const safeConfig = { ...decrypted };
 
-        // Redact passwords and secrets
         if ("smtpPass" in safeConfig) safeConfig.smtpPass = "••••••••";
         if ("hmacSecret" in safeConfig && safeConfig.hmacSecret)
           safeConfig.hmacSecret = "••••••••";

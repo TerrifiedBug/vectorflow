@@ -6,14 +6,21 @@ beforeAll(() => {
 });
 
 describe("encryptChannelConfig", () => {
-  it("encrypts webhook hmacSecret as v2:-prefixed ciphertext", () => {
+  it("encrypts webhook hmacSecret as vfenc1:-prefixed ciphertext", () => {
     const out = encryptChannelConfig("webhook", {
       url: "https://example.com/hook",
       hmacSecret: "raw-hmac-secret",
     });
     expect(out.url).toBe("https://example.com/hook");
     expect(typeof out.hmacSecret).toBe("string");
-    expect(out.hmacSecret as string).toMatch(/^v2:/);
+    expect(out.hmacSecret as string).toMatch(/^vfenc1:/);
+  });
+
+  it("does not treat user-supplied secrets that begin with v2: as already encrypted", () => {
+    const out = encryptChannelConfig("webhook", { hmacSecret: "v2:user-token" });
+    expect(out.hmacSecret as string).toMatch(/^vfenc1:/);
+    const round = decryptChannelConfig("webhook", out);
+    expect(round.hmacSecret).toBe("v2:user-token");
   });
 });
 
@@ -31,7 +38,7 @@ describe("encrypt+decrypt round trip", () => {
 });
 
 describe("idempotency", () => {
-  it("does not re-encrypt already v2-prefixed values", () => {
+  it("does not re-encrypt already vfenc1-prefixed values", () => {
     const once  = encryptChannelConfig("webhook", { hmacSecret: "raw" });
     const twice = encryptChannelConfig("webhook", once);
     expect(twice.hmacSecret).toBe(once.hmacSecret);

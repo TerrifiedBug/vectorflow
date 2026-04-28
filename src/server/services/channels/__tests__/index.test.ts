@@ -41,6 +41,7 @@ import { prisma } from "@/lib/prisma";
 import { deliverToChannels } from "@/server/services/channels";
 import type { ChannelPayload } from "@/server/services/channels/types";
 import { encrypt, ENCRYPTION_DOMAINS } from "@/server/services/crypto";
+import { ENCRYPTED_MARKER } from "@/server/services/channel-secrets";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -74,8 +75,8 @@ describe("deliverToChannels — secret decryption at driver boundary", () => {
       success: true,
     });
 
-    const encryptedSecret = encrypt("raw-secret", ENCRYPTION_DOMAINS.SECRETS);
-    expect(encryptedSecret.startsWith("v2:")).toBe(true);
+    const encryptedSecret = ENCRYPTED_MARKER + encrypt("raw-secret", ENCRYPTION_DOMAINS.SECRETS);
+    expect(encryptedSecret.startsWith("vfenc1:")).toBe(true);
 
     prismaMock.notificationChannel.findMany.mockResolvedValue([
       {
@@ -108,7 +109,7 @@ describe("deliverToChannels — secret decryption at driver boundary", () => {
       success: true,
     });
 
-    const encryptedSecret = encrypt("tracked-secret", ENCRYPTION_DOMAINS.SECRETS);
+    const encryptedSecret = ENCRYPTED_MARKER + encrypt("tracked-secret", ENCRYPTION_DOMAINS.SECRETS);
 
     prismaMock.notificationChannel.findMany.mockResolvedValue([
       {
