@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { NodeMetricsData } from "@/stores/flow-store";
 import {
@@ -193,13 +193,14 @@ function PromotionHistory({ pipelineId }: { pipelineId: string }) {
 function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const trpc = useTRPC();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [deployOpen, setDeployOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [undeployOpen, setUndeployOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [metricsOpen, setMetricsOpen] = useState(false);
-  const [logsOpen, setLogsOpen] = useState(false);
+  const [logsOpen, setLogsOpen] = useState(() => searchParams.get("logs") === "1");
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
 
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
