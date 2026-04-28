@@ -10,7 +10,9 @@ export interface MatrixFilters {
 
 // Default status filter applied when the URL has no `status` param at all.
 // An explicit empty `?status=` overrides the default (means "show all").
-const DEFAULT_STATUS_FILTER: readonly string[] = ["running"] as const;
+// Casing matches MATRIX_STATUS_OPTIONS in DeploymentMatrixToolbar so the
+// chip renders as selected on initial load.
+const DEFAULT_STATUS_FILTER: readonly string[] = ["Running"] as const;
 
 /** URL-synced filter state hook for the deployment matrix. */
 export function useMatrixFilters() {
