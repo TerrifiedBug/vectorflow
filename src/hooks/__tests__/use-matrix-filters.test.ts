@@ -19,10 +19,10 @@ describe("useMatrixFilters", () => {
     mockReplace.mockClear();
   });
 
-  it("defaults the status filter to 'running' when no URL params exist", () => {
+  it("defaults the status filter to 'Running' when no URL params exist", () => {
     const { result } = renderHook(() => useMatrixFilters());
     expect(result.current.search).toBe("");
-    expect(result.current.statusFilter).toEqual(["running"]);
+    expect(result.current.statusFilter).toEqual(["Running"]);
     expect(result.current.tagFilter).toEqual([]);
     // The default isn't considered an "active" filter so the
     // clear-filters chip stays hidden until the user actually changes
