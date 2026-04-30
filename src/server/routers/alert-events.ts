@@ -5,6 +5,28 @@ import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 
+function withMixedTimeline<
+  T extends {
+    events: Array<{ firedAt: Date }>;
+    anomalyEvents: Array<{ detectedAt: Date }>;
+  },
+>(group: T) {
+  const timeline = [
+    ...group.events.map((event) => ({
+      ...event,
+      kind: "alert" as const,
+      timestamp: event.firedAt,
+    })),
+    ...group.anomalyEvents.map((event) => ({
+      ...event,
+      kind: "anomaly" as const,
+      timestamp: event.detectedAt,
+    })),
+  ].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+  return { ...group, timeline };
+}
+
 export const alertEventsRouter = router({
   listEvents: protectedProcedure
     .input(
@@ -204,6 +226,13 @@ export const alertEventsRouter = router({
             take: 3, // Preview: first 3 events for the summary row
             orderBy: { firedAt: "asc" },
           },
+          anomalyEvents: {
+            include: {
+              pipeline: { select: { id: true, name: true } },
+            },
+            take: 3,
+            orderBy: { detectedAt: "asc" },
+          },
         },
         orderBy: { openedAt: "desc" },
         take: limit + 1,
@@ -216,7 +245,7 @@ export const alertEventsRouter = router({
         nextCursor = nextItem?.id;
       }
 
-      return { items, nextCursor };
+      return { items: items.map(withMixedTimeline), nextCursor };
     }),
 
   getCorrelationGroup: protectedProcedure
@@ -242,6 +271,12 @@ export const alertEventsRouter = router({
             },
             orderBy: { firedAt: "asc" },
           },
+          anomalyEvents: {
+            include: {
+              pipeline: { select: { id: true, name: true } },
+            },
+            orderBy: { detectedAt: "asc" },
+          },
         },
       });
 
@@ -252,7 +287,7 @@ export const alertEventsRouter = router({
         });
       }
 
-      return group;
+      return withMixedTimeline(group);
     }),
 
   acknowledgeGroup: protectedProcedure

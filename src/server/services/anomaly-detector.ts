@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
 import { infoLog, errorLog } from "@/lib/logger";
 import { queryErrorContext } from "@/server/services/error-context";
+import { correlateAnomalyEvent } from "@/server/services/alert-correlator";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -562,7 +563,7 @@ export async function evaluatePipeline(
         : null;
 
       // Persist the anomaly event
-      await prisma.anomalyEvent.create({
+      const anomalyEvent = await prisma.anomalyEvent.create({
         data: {
           pipelineId: pipeline.id,
           environmentId: pipeline.environmentId,
@@ -579,6 +580,16 @@ export async function evaluatePipeline(
           ...(errorContext ? { errorContext: errorContext as unknown as Prisma.InputJsonValue } : {}),
         },
       });
+
+      try {
+        await correlateAnomalyEvent(anomalyEvent);
+      } catch (error) {
+        errorLog(
+          "anomaly-detector",
+          `failed to correlate anomaly ${anomalyEvent.id}`,
+          error,
+        );
+      }
 
       allResults.push(result);
     }

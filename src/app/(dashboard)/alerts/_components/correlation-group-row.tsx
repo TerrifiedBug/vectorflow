@@ -30,6 +30,28 @@ interface CorrelationGroupEvent {
   node: { id: string; host: string } | null;
 }
 
+interface CorrelationGroupAnomalyEvent {
+  id: string;
+  status: string;
+  anomalyType: string;
+  severity: string;
+  metricName: string;
+  currentValue: number;
+  message: string;
+  detectedAt: Date;
+  pipeline: { id: string; name: string };
+}
+
+type CorrelationGroupTimelineEvent =
+  | (CorrelationGroupEvent & {
+      kind: "alert";
+      timestamp: Date;
+    })
+  | (CorrelationGroupAnomalyEvent & {
+      kind: "anomaly";
+      timestamp: Date;
+    });
+
 interface CorrelationGroupSummary {
   id: string;
   status: string;
@@ -38,6 +60,8 @@ interface CorrelationGroupSummary {
   openedAt: Date;
   closedAt: Date | null;
   events: CorrelationGroupEvent[];
+  anomalyEvents: CorrelationGroupAnomalyEvent[];
+  timeline: CorrelationGroupTimelineEvent[];
 }
 
 interface CorrelationGroupRowProps {
@@ -55,9 +79,24 @@ export function CorrelationGroupRow({
   onToggleExpand,
   formatTimestamp,
 }: CorrelationGroupRowProps) {
-  const previewEvents = group.events;
-  const firstEvent = previewEvents[0];
-  const firingCount = previewEvents.filter((e) => e.status === "firing").length;
+  const firstSignal = group.timeline[0];
+  const alertCount = group.events.length;
+  const anomalyCount = group.anomalyEvents.length;
+  const anomalyLabel = anomalyCount === 1 ? "anomaly" : "anomalies";
+  const firingCount =
+    group.events.filter((e) => e.status === "firing").length +
+    group.anomalyEvents.filter((e) => e.status === "open").length;
+  const groupName =
+    firstSignal?.kind === "alert"
+      ? firstSignal.alertRule.name
+      : firstSignal
+        ? formatAnomalyType(firstSignal.anomalyType)
+        : "Correlated Signals";
+  const nodeHost = firstSignal?.kind === "alert" ? firstSignal.node?.host : null;
+  const pipelineName =
+    firstSignal?.kind === "alert"
+      ? firstSignal.alertRule.pipeline?.name
+      : firstSignal?.pipeline.name;
 
   return (
     <Fragment>
@@ -79,18 +118,23 @@ export function CorrelationGroupRow({
           <div className="flex items-center gap-2">
             <Layers className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium">
-              {firstEvent?.alertRule.name ?? "Correlated Alerts"}
+              {groupName}
             </span>
             <Badge variant="secondary" size="sm" className="tabular-nums">
-              {group.eventCount} alert{group.eventCount !== 1 ? "s" : ""}
+              {group.eventCount} signal{group.eventCount !== 1 ? "s" : ""}
             </Badge>
+            {anomalyCount > 0 && (
+              <Badge variant="outline" size="sm" className="tabular-nums">
+                {alertCount} alert{alertCount !== 1 ? "s" : ""} / {anomalyCount} {anomalyLabel}
+              </Badge>
+            )}
           </div>
         </TableCell>
         <TableCell className="text-muted-foreground">
-          {firstEvent?.node?.host ?? "-"}
+          {nodeHost ?? "-"}
         </TableCell>
         <TableCell className="text-muted-foreground">
-          {firstEvent?.alertRule.pipeline?.name ?? "-"}
+          {pipelineName ?? "-"}
         </TableCell>
         <TableCell>
           <StatusBadge
@@ -124,4 +168,16 @@ export function CorrelationGroupRow({
   );
 }
 
-export type { CorrelationGroupSummary, CorrelationGroupEvent };
+function formatAnomalyType(type: string) {
+  return type
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+export type {
+  CorrelationGroupSummary,
+  CorrelationGroupEvent,
+  CorrelationGroupAnomalyEvent,
+  CorrelationGroupTimelineEvent,
+};

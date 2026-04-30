@@ -67,6 +67,33 @@ function makeAlertEvent(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeAnomalyEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "anomaly-1",
+    pipelineId: "pipe-1",
+    environmentId: "env-1",
+    teamId: "team-1",
+    anomalyType: "latency_spike",
+    severity: "warning",
+    metricName: "latencyMeanMs",
+    currentValue: 500,
+    baselineMean: 100,
+    baselineStddev: 25,
+    deviationFactor: 4,
+    message: "Latency spike detected",
+    status: "open",
+    detectedAt: new Date("2025-01-01T12:01:00Z"),
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+    dismissedAt: null,
+    dismissedBy: null,
+    errorContext: null,
+    correlationGroupId: "group-1",
+    pipeline: { id: "pipe-1", name: "Checkout" },
+    ...overrides,
+  };
+}
+
 describe("alertEventsRouter", () => {
   beforeEach(() => {
     mockReset(prismaMock);
@@ -218,6 +245,7 @@ describe("alertEventsRouter", () => {
           openedAt: new Date("2025-01-01"),
           closedAt: null,
           events: [makeAlertEvent()],
+          anomalyEvents: [makeAnomalyEvent()],
         },
       ];
       prismaMock.alertCorrelationGroup.findMany.mockResolvedValue(groups as never);
@@ -226,6 +254,11 @@ describe("alertEventsRouter", () => {
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0].events).toHaveLength(1);
+      expect(result.items[0].anomalyEvents).toHaveLength(1);
+      expect(result.items[0].timeline).toEqual([
+        expect.objectContaining({ kind: "alert", id: "evt-1" }),
+        expect.objectContaining({ kind: "anomaly", id: "anomaly-1" }),
+      ]);
     });
 
     it("filters by status", async () => {
@@ -253,6 +286,7 @@ describe("alertEventsRouter", () => {
         openedAt: new Date(),
         closedAt: null,
         events: [],
+        anomalyEvents: [],
       }));
       prismaMock.alertCorrelationGroup.findMany.mockResolvedValue(groups as never);
 
@@ -279,7 +313,19 @@ describe("alertEventsRouter", () => {
         eventCount: 2,
         openedAt: new Date("2025-01-01"),
         closedAt: null,
-        events: [makeAlertEvent(), makeAlertEvent({ id: "evt-2" })],
+        events: [
+          makeAlertEvent(),
+          makeAlertEvent({
+            id: "evt-2",
+            firedAt: new Date("2025-01-01T12:02:00Z"),
+          }),
+        ],
+        anomalyEvents: [
+          makeAnomalyEvent({
+            id: "anomaly-1",
+            detectedAt: new Date("2025-01-01T12:00:30Z"),
+          }),
+        ],
       };
       prismaMock.alertCorrelationGroup.findUnique.mockResolvedValue(group as never);
 
@@ -287,6 +333,12 @@ describe("alertEventsRouter", () => {
 
       expect(result.id).toBe("group-1");
       expect(result.events).toHaveLength(2);
+      expect(result.anomalyEvents).toHaveLength(1);
+      expect(result.timeline.map((event: { kind: string }) => event.kind)).toEqual([
+        "alert",
+        "anomaly",
+        "alert",
+      ]);
     });
 
     it("throws NOT_FOUND for missing group", async () => {
