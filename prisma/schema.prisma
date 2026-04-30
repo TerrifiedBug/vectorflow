@@ -1082,6 +1082,7 @@ model AlertCorrelationGroup {
   openedAt            DateTime     @default(now())
   closedAt            DateTime?
   events              AlertEvent[]
+  anomalyEvents       AnomalyEvent[]
 
   @@index([environmentId, status])
   @@index([openedAt])
@@ -1253,6 +1254,8 @@ model AnomalyEvent {
   dismissedAt     DateTime?
   dismissedBy     String?
   errorContext    Json?            // { lines: Array<{timestamp, message}>, truncated }
+  correlationGroupId String?
+  correlationGroup   AlertCorrelationGroup? @relation(fields: [correlationGroupId], references: [id], onDelete: SetNull)
   createdAt       DateTime         @default(now())
 
   @@index([pipelineId])
@@ -1260,4 +1263,5 @@ model AnomalyEvent {
   @@index([teamId])
   @@index([status])
   @@index([detectedAt])
+  @@index([correlationGroupId])
 }

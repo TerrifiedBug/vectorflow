@@ -67,6 +67,33 @@ function makeAlertEvent(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeAnomalyEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "anomaly-1",
+    pipelineId: "pipe-1",
+    environmentId: "env-1",
+    teamId: "team-1",
+    anomalyType: "latency_spike",
+    severity: "warning",
+    metricName: "latencyMeanMs",
+    currentValue: 500,
+    baselineMean: 100,
+    baselineStddev: 25,
+    deviationFactor: 4,
+    message: "Latency spike detected",
+    status: "open",
+    detectedAt: new Date("2025-01-01T12:01:00Z"),
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+    dismissedAt: null,
+    dismissedBy: null,
+    errorContext: null,
+    correlationGroupId: "group-1",
+    pipeline: { id: "pipe-1", name: "Checkout" },
+    ...overrides,
+  };
+}
+
 describe("alertEventsRouter", () => {
   beforeEach(() => {
     mockReset(prismaMock);
@@ -218,6 +245,8 @@ describe("alertEventsRouter", () => {
           openedAt: new Date("2025-01-01"),
           closedAt: null,
           events: [makeAlertEvent()],
+          anomalyEvents: [makeAnomalyEvent()],
+          _count: { events: 1, anomalyEvents: 1 },
         },
       ];
       prismaMock.alertCorrelationGroup.findMany.mockResolvedValue(groups as never);
@@ -226,6 +255,44 @@ describe("alertEventsRouter", () => {
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0].events).toHaveLength(1);
+      expect(result.items[0].anomalyEvents).toHaveLength(1);
+      expect(result.items[0].timeline).toEqual([
+        expect.objectContaining({ kind: "alert", id: "evt-1" }),
+        expect.objectContaining({ kind: "anomaly", id: "anomaly-1" }),
+      ]);
+    });
+
+    it("returns full alert and anomaly counts instead of preview lengths", async () => {
+      const groups = [
+        {
+          id: "group-1",
+          environmentId: "env-1",
+          status: "firing",
+          rootCauseEventId: "evt-1",
+          rootCauseSuggestion: null,
+          eventCount: 12,
+          openedAt: new Date("2025-01-01"),
+          closedAt: null,
+          events: [
+            makeAlertEvent({ id: "evt-1" }),
+            makeAlertEvent({ id: "evt-2" }),
+            makeAlertEvent({ id: "evt-3" }),
+          ],
+          anomalyEvents: [
+            makeAnomalyEvent({ id: "anomaly-1" }),
+            makeAnomalyEvent({ id: "anomaly-2" }),
+            makeAnomalyEvent({ id: "anomaly-3" }),
+          ],
+          _count: { events: 8, anomalyEvents: 4 },
+        },
+      ];
+      prismaMock.alertCorrelationGroup.findMany.mockResolvedValue(groups as never);
+
+      const result = await caller.listCorrelationGroups({ environmentId: "env-1" });
+
+      expect(result.items[0].alertCount).toBe(8);
+      expect(result.items[0].anomalyCount).toBe(4);
+      expect(result.items[0].signalCount).toBe(12);
     });
 
     it("filters by status", async () => {
@@ -253,6 +320,8 @@ describe("alertEventsRouter", () => {
         openedAt: new Date(),
         closedAt: null,
         events: [],
+        anomalyEvents: [],
+        _count: { events: 0, anomalyEvents: 0 },
       }));
       prismaMock.alertCorrelationGroup.findMany.mockResolvedValue(groups as never);
 
@@ -279,7 +348,19 @@ describe("alertEventsRouter", () => {
         eventCount: 2,
         openedAt: new Date("2025-01-01"),
         closedAt: null,
-        events: [makeAlertEvent(), makeAlertEvent({ id: "evt-2" })],
+        events: [
+          makeAlertEvent(),
+          makeAlertEvent({
+            id: "evt-2",
+            firedAt: new Date("2025-01-01T12:02:00Z"),
+          }),
+        ],
+        anomalyEvents: [
+          makeAnomalyEvent({
+            id: "anomaly-1",
+            detectedAt: new Date("2025-01-01T12:00:30Z"),
+          }),
+        ],
       };
       prismaMock.alertCorrelationGroup.findUnique.mockResolvedValue(group as never);
 
@@ -287,6 +368,12 @@ describe("alertEventsRouter", () => {
 
       expect(result.id).toBe("group-1");
       expect(result.events).toHaveLength(2);
+      expect(result.anomalyEvents).toHaveLength(1);
+      expect(result.timeline.map((event: { kind: string }) => event.kind)).toEqual([
+        "alert",
+        "anomaly",
+        "alert",
+      ]);
     });
 
     it("throws NOT_FOUND for missing group", async () => {
@@ -310,6 +397,7 @@ describe("alertEventsRouter", () => {
         closedAt: null,
       } as never);
       prismaMock.alertEvent.updateMany.mockResolvedValue({ count: 3 } as never);
+      prismaMock.anomalyEvent.updateMany.mockResolvedValue({ count: 0 } as never);
 
       const result = await caller.acknowledgeGroup({ groupId: "group-1" });
 
@@ -319,6 +407,48 @@ describe("alertEventsRouter", () => {
           where: {
             correlationGroupId: "group-1",
             status: "firing",
+          },
+          data: expect.objectContaining({
+            status: "acknowledged",
+            acknowledgedBy: "test@test.com",
+          }),
+        }),
+      );
+      expect(prismaMock.anomalyEvent.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            correlationGroupId: "group-1",
+            status: "open",
+          },
+          data: expect.objectContaining({
+            status: "acknowledged",
+            acknowledgedBy: "test@test.com",
+          }),
+        }),
+      );
+    });
+
+    it("acknowledges open anomalies in an anomaly-only group", async () => {
+      prismaMock.alertCorrelationGroup.findUnique.mockResolvedValue({
+        id: "group-anomaly-only",
+        environmentId: "env-1",
+        status: "firing",
+        openedAt: new Date(),
+        closedAt: null,
+      } as never);
+      prismaMock.alertEvent.updateMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.anomalyEvent.updateMany.mockResolvedValue({ count: 2 } as never);
+
+      const result = await caller.acknowledgeGroup({
+        groupId: "group-anomaly-only",
+      });
+
+      expect(result).toEqual({ success: true });
+      expect(prismaMock.anomalyEvent.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            correlationGroupId: "group-anomaly-only",
+            status: "open",
           },
           data: expect.objectContaining({
             status: "acknowledged",
