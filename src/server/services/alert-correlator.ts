@@ -4,6 +4,7 @@ import type {
   AlertEvent,
   AlertRule,
   AlertCorrelationGroup,
+  AnomalyEvent,
 } from "@/generated/prisma";
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,61 @@ export async function correlateEvent(
   });
 
   await prisma.alertEvent.update({
+    where: { id: event.id },
+    data: { correlationGroupId: newGroup.id },
+  });
+
+  return newGroup;
+}
+
+// ---------------------------------------------------------------------------
+// correlateAnomalyEvent
+// ---------------------------------------------------------------------------
+
+/**
+ * Assign a newly detected AnomalyEvent to a correlation group.
+ *
+ * Anomalies use the same environment and time-window grouping rule as alert
+ * events so the incident timeline can show all signals that fired together.
+ */
+export async function correlateAnomalyEvent(
+  event: AnomalyEvent,
+): Promise<AlertCorrelationGroup> {
+  const windowStart = new Date(event.detectedAt.getTime() - CORRELATION_WINDOW_MS);
+
+  const existingGroup = await prisma.alertCorrelationGroup.findFirst({
+    where: {
+      environmentId: event.environmentId,
+      status: "firing",
+      openedAt: { gte: windowStart },
+    },
+    orderBy: { openedAt: "desc" },
+  });
+
+  if (existingGroup) {
+    await prisma.alertCorrelationGroup.update({
+      where: { id: existingGroup.id },
+      data: { eventCount: { increment: 1 } },
+    });
+
+    await prisma.anomalyEvent.update({
+      where: { id: event.id },
+      data: { correlationGroupId: existingGroup.id },
+    });
+
+    return { ...existingGroup, eventCount: existingGroup.eventCount + 1 };
+  }
+
+  const newGroup = await prisma.alertCorrelationGroup.create({
+    data: {
+      environmentId: event.environmentId,
+      status: "firing",
+      rootCauseEventId: null,
+      eventCount: 1,
+    },
+  });
+
+  await prisma.anomalyEvent.update({
     where: { id: event.id },
     data: { correlationGroupId: newGroup.id },
   });
@@ -179,15 +235,21 @@ export async function closeResolvedGroups(
   let closedCount = 0;
 
   for (const group of openGroups) {
-    // Count events in this group that are still firing or acknowledged
-    const activeCount = await prisma.alertEvent.count({
+    // Count signals in this group that are still active.
+    const activeAlertCount = await prisma.alertEvent.count({
       where: {
         correlationGroupId: group.id,
         status: { in: ["firing", "acknowledged"] },
       },
     });
+    const activeAnomalyCount = await prisma.anomalyEvent.count({
+      where: {
+        correlationGroupId: group.id,
+        status: { in: ["open", "acknowledged"] },
+      },
+    });
 
-    if (activeCount === 0) {
+    if (activeAlertCount + activeAnomalyCount === 0) {
       await prisma.alertCorrelationGroup.update({
         where: { id: group.id },
         data: {

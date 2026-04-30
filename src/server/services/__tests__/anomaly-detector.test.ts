@@ -8,10 +8,16 @@ vi.mock("@/lib/prisma", () => ({
   prisma: mockDeep<PrismaClient>(),
 }));
 
+vi.mock("@/server/services/alert-correlator", () => ({
+  correlateAnomalyEvent: vi.fn().mockResolvedValue({ id: "group-1" }),
+}));
+
 import { prisma } from "@/lib/prisma";
+import { correlateAnomalyEvent } from "@/server/services/alert-correlator";
 import {
   computeBaseline,
   detectAnomalies,
+  evaluatePipeline,
   evaluateAllPipelines,
   invalidateBaselineCache,
   type MetricDataPoint,
@@ -342,6 +348,73 @@ describe("fetchBaselineSql (via evaluateAllPipelines integration)", () => {
 
     // Should return array (anomalies if any detected, or empty if within normal range)
     expect(Array.isArray(results)).toBe(true);
+  });
+});
+
+describe("evaluatePipeline correlation", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.mocked(correlateAnomalyEvent).mockClear();
+    invalidateBaselineCache();
+  });
+
+  it("correlates each newly persisted anomaly event into an alert correlation group", async () => {
+    const pipeline = {
+      id: "pipe-1",
+      environmentId: "env-1",
+      environment: { teamId: "team-1" },
+    };
+    const anomalyEvent = {
+      id: "anomaly-1",
+      pipelineId: "pipe-1",
+      environmentId: "env-1",
+      teamId: "team-1",
+      anomalyType: "throughput_spike",
+      severity: "critical",
+      metricName: "eventsIn",
+      currentValue: 2000,
+      baselineMean: 1000,
+      baselineStddev: 100,
+      deviationFactor: 10,
+      message: "Throughput spike detected",
+      status: "open",
+      detectedAt: new Date("2026-04-30T12:00:00Z"),
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+      dismissedAt: null,
+      dismissedBy: null,
+      errorContext: null,
+      correlationGroupId: null,
+      createdAt: new Date("2026-04-30T12:00:00Z"),
+    };
+
+    prismaMock.systemSettings.findUnique.mockResolvedValue(null);
+    prismaMock.$queryRawUnsafe
+      .mockResolvedValueOnce([
+        {
+          pipelineId: "pipe-1",
+          eventsIn: BigInt(2000),
+          errorsTotal: BigInt(0),
+          latencyMeanMs: 50,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          eventsInMean: 1000,
+          eventsInStddev: 100,
+          errorsTotalMean: 0,
+          errorsTotalStddev: 1,
+          latencyMeanMsMean: 50,
+          latencyMeanMsStddev: 5,
+          sampleCount: 168,
+        },
+      ]);
+    prismaMock.anomalyEvent.findFirst.mockResolvedValue(null);
+    prismaMock.anomalyEvent.create.mockResolvedValue(anomalyEvent as never);
+
+    await evaluatePipeline(pipeline as never);
+
+    expect(correlateAnomalyEvent).toHaveBeenCalledWith(anomalyEvent);
   });
 });
 

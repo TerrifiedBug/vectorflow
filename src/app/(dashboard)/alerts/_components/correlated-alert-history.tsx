@@ -63,7 +63,7 @@ export function CorrelatedAlertHistory({
   );
 
   const items = useMemo(
-    () => (groupsQuery.data?.items ?? []) as CorrelationGroupSummary[],
+    () => (groupsQuery.data?.items ?? []) as unknown as CorrelationGroupSummary[],
     [groupsQuery.data?.items],
   );
   const nextCursor = groupsQuery.data?.nextCursor;
