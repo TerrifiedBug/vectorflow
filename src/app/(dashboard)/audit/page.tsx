@@ -41,14 +41,6 @@ import { getAuditActionLabel } from "@/lib/audit-actions";
 const ALL_VALUE = "__all__";
 const SCIM_VALUE = "__SCIM__";
 
-function truncate(value: unknown, maxLength = 80): string {
-  if (value === null || value === undefined) return "-";
-  const str =
-    typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  if (str.length <= maxLength) return str;
-  return str.slice(0, maxLength) + "...";
-}
-
 /** Color map for common action keywords */
 function getActionColor(action: string): string {
   if (action.includes("created") || action.includes("create"))
@@ -381,7 +373,6 @@ export default function AuditPage() {
                 <TableHead>Action</TableHead>
                 <TableHead>Entity Type</TableHead>
                 <TableHead className="hidden xl:table-cell max-w-[180px]">Entity ID</TableHead>
-                <TableHead className="hidden lg:table-cell">Details</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -436,13 +427,6 @@ export default function AuditPage() {
                       </TableCell>
                       <TableCell className="hidden xl:table-cell font-mono text-xs tabular-nums max-w-[180px] truncate" title={entry.entityId}>
                         {entry.entityId}
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground max-w-[300px] truncate">
-                        {truncate(
-                          entry.diff ??
-                          (entry.metadata as Record<string, unknown>)?.input ??
-                          entry.metadata
-                        )}
                       </TableCell>
                     </TableRow>
                     {isExpanded && hasDetails && (
