@@ -24,6 +24,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type {
+  CorrelationGroupSummary,
+  CorrelationGroupTimelineEvent,
+} from "./correlation-group-row";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -92,8 +96,12 @@ export function CorrelationGroupDetail({
     );
   }
 
-  const group = groupQuery.data;
-  const hasFiringEvents = group.events.some((e) => e.status === "firing");
+  const group = groupQuery.data as unknown as CorrelationGroupSummary & {
+    rootCauseEventId: string | null;
+  };
+  const activeSignalCount =
+    group.events.filter((e) => e.status === "firing").length +
+    group.anomalyEvents.filter((e) => e.status === "open").length;
 
   return (
     <div className="space-y-4 p-4">
@@ -125,7 +133,7 @@ export function CorrelationGroupDetail({
             </span>
           )}
         </div>
-        {hasFiringEvents && (
+        {activeSignalCount > 0 && (
           <Button
             variant="outline"
             size="sm"
@@ -138,7 +146,7 @@ export function CorrelationGroupDetail({
             ) : (
               <CheckCircle2 className="h-3.5 w-3.5" />
             )}
-            Acknowledge All ({group.events.filter((e) => e.status === "firing").length})
+            Acknowledge All ({activeSignalCount})
           </Button>
         )}
       </div>
@@ -149,7 +157,7 @@ export function CorrelationGroupDetail({
           <TableHeader>
             <TableRow>
               <TableHead>Timestamp</TableHead>
-              <TableHead>Rule Name</TableHead>
+              <TableHead>Signal</TableHead>
               <TableHead>Node</TableHead>
               <TableHead>Pipeline</TableHead>
               <TableHead>Status</TableHead>
@@ -158,11 +166,24 @@ export function CorrelationGroupDetail({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {group.events.map((event) => {
-              const isRootCause = event.id === group.rootCauseEventId;
+            {group.timeline.map((event: CorrelationGroupTimelineEvent) => {
+              const isRootCause =
+                event.kind === "alert" && event.id === group.rootCauseEventId;
+              const status =
+                event.kind === "alert"
+                  ? event.status
+                  : event.status === "open"
+                    ? "firing"
+                    : event.status;
+              const pipelineName =
+                event.kind === "alert"
+                  ? event.alertRule.pipeline?.name
+                  : event.pipeline.name;
+              const nodeHost = event.kind === "alert" ? event.node?.host : null;
+
               return (
                 <TableRow
-                  key={event.id}
+                  key={`${event.kind}-${event.id}`}
                   className={
                     isRootCause
                       ? "bg-amber-50/30 dark:bg-amber-950/10"
@@ -174,44 +195,53 @@ export function CorrelationGroupDetail({
                       {isRootCause && (
                         <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
                       )}
-                      {formatTimestamp(event.firedAt)}
+                      {formatTimestamp(event.timestamp)}
                     </div>
                   </TableCell>
                   <TableCell className="font-medium">
-                    {event.alertRule.name}
+                    {event.kind === "alert"
+                      ? event.alertRule.name
+                      : formatAnomalyType(event.anomalyType)}
                     {isRootCause && (
                       <span className="ml-1.5 text-[10px] font-normal text-amber-600 dark:text-amber-400 uppercase">
                         Root Cause
                       </span>
                     )}
+                    {event.kind === "anomaly" && (
+                      <span className="ml-1.5 text-[10px] font-normal text-muted-foreground uppercase">
+                        Anomaly
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {event.node?.host ?? "-"}
+                    {nodeHost ?? "-"}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {event.alertRule.pipeline?.name ?? "-"}
+                    {pipelineName ?? "-"}
                   </TableCell>
                   <TableCell>
                     <StatusBadge
                       variant={
-                        event.status === "firing"
+                        status === "firing"
                           ? "error"
-                          : event.status === "acknowledged"
+                          : status === "acknowledged"
                             ? "degraded"
                             : "healthy"
                       }
                     >
-                      {event.status === "firing"
+                      {status === "firing"
                         ? "Firing"
-                        : event.status === "acknowledged"
+                        : status === "acknowledged"
                           ? "Acknowledged"
                           : "Resolved"}
                     </StatusBadge>
                   </TableCell>
                   <TableCell className="font-mono tabular-nums">
-                    {typeof event.value === "number"
+                    {event.kind === "alert" && typeof event.value === "number"
                       ? event.value.toFixed(2)
-                      : event.value}
+                      : event.kind === "anomaly"
+                        ? event.currentValue.toFixed(2)
+                        : event.value}
                   </TableCell>
                   <TableCell className="max-w-[300px] truncate text-muted-foreground">
                     {event.message || "-"}
@@ -224,4 +254,11 @@ export function CorrelationGroupDetail({
       </div>
     </div>
   );
+}
+
+function formatAnomalyType(type: string) {
+  return type
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }

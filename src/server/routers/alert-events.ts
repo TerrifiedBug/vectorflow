@@ -5,6 +5,40 @@ import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 
+function withMixedTimeline<
+  T extends {
+    events: Array<{ firedAt: Date }>;
+    anomalyEvents: Array<{ detectedAt: Date }>;
+    _count?: {
+      events: number;
+      anomalyEvents: number;
+    };
+  },
+>(group: T) {
+  const alertCount = group._count?.events ?? group.events.length;
+  const anomalyCount = group._count?.anomalyEvents ?? group.anomalyEvents.length;
+  const timeline = [
+    ...group.events.map((event) => ({
+      ...event,
+      kind: "alert" as const,
+      timestamp: event.firedAt,
+    })),
+    ...group.anomalyEvents.map((event) => ({
+      ...event,
+      kind: "anomaly" as const,
+      timestamp: event.detectedAt,
+    })),
+  ].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+  return {
+    ...group,
+    alertCount,
+    anomalyCount,
+    signalCount: alertCount + anomalyCount,
+    timeline,
+  };
+}
+
 export const alertEventsRouter = router({
   listEvents: protectedProcedure
     .input(
@@ -204,6 +238,19 @@ export const alertEventsRouter = router({
             take: 3, // Preview: first 3 events for the summary row
             orderBy: { firedAt: "asc" },
           },
+          anomalyEvents: {
+            include: {
+              pipeline: { select: { id: true, name: true } },
+            },
+            take: 3,
+            orderBy: { detectedAt: "asc" },
+          },
+          _count: {
+            select: {
+              events: true,
+              anomalyEvents: true,
+            },
+          },
         },
         orderBy: { openedAt: "desc" },
         take: limit + 1,
@@ -216,7 +263,7 @@ export const alertEventsRouter = router({
         nextCursor = nextItem?.id;
       }
 
-      return { items, nextCursor };
+      return { items: items.map(withMixedTimeline), nextCursor };
     }),
 
   getCorrelationGroup: protectedProcedure
@@ -242,6 +289,12 @@ export const alertEventsRouter = router({
             },
             orderBy: { firedAt: "asc" },
           },
+          anomalyEvents: {
+            include: {
+              pipeline: { select: { id: true, name: true } },
+            },
+            orderBy: { detectedAt: "asc" },
+          },
         },
       });
 
@@ -252,7 +305,7 @@ export const alertEventsRouter = router({
         });
       }
 
-      return group;
+      return withMixedTimeline(group);
     }),
 
   acknowledgeGroup: protectedProcedure
@@ -274,11 +327,22 @@ export const alertEventsRouter = router({
       const acknowledgedBy =
         user?.email || user?.name || user?.id || "unknown";
 
-      // Acknowledge all firing events in the group
+      // Acknowledge all active signals in the group.
       await prisma.alertEvent.updateMany({
         where: {
           correlationGroupId: input.groupId,
           status: "firing",
+        },
+        data: {
+          status: "acknowledged",
+          acknowledgedAt: new Date(),
+          acknowledgedBy,
+        },
+      });
+      await prisma.anomalyEvent.updateMany({
+        where: {
+          correlationGroupId: input.groupId,
+          status: "open",
         },
         data: {
           status: "acknowledged",

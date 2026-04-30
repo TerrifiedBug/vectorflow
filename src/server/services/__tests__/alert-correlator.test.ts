@@ -6,6 +6,7 @@ import type {
   AlertEvent,
   AlertRule,
   AlertCorrelationGroup,
+  AnomalyEvent,
 } from "@/generated/prisma";
 
 vi.mock("@/lib/prisma", () => ({
@@ -14,6 +15,7 @@ vi.mock("@/lib/prisma", () => ({
 
 import { prisma } from "@/lib/prisma";
 import {
+  correlateAnomalyEvent,
   correlateEvent,
   suggestRootCause,
   closeResolvedGroups,
@@ -78,6 +80,32 @@ function makeCorrelationGroup(
     eventCount: overrides.eventCount ?? 1,
     openedAt: overrides.openedAt ?? NOW,
     closedAt: overrides.closedAt ?? null,
+  };
+}
+
+function makeAnomalyEvent(overrides: Partial<AnomalyEvent> = {}): AnomalyEvent {
+  return {
+    id: overrides.id ?? "anomaly-1",
+    pipelineId: overrides.pipelineId ?? "pipe-1",
+    environmentId: overrides.environmentId ?? "env-1",
+    teamId: overrides.teamId ?? "team-1",
+    anomalyType: overrides.anomalyType ?? "latency_spike",
+    severity: overrides.severity ?? "warning",
+    metricName: overrides.metricName ?? "latencyMeanMs",
+    currentValue: overrides.currentValue ?? 500,
+    baselineMean: overrides.baselineMean ?? 100,
+    baselineStddev: overrides.baselineStddev ?? 25,
+    deviationFactor: overrides.deviationFactor ?? 4,
+    message: overrides.message ?? "Latency spike detected",
+    status: overrides.status ?? "open",
+    detectedAt: overrides.detectedAt ?? NOW,
+    acknowledgedAt: overrides.acknowledgedAt ?? null,
+    acknowledgedBy: overrides.acknowledgedBy ?? null,
+    dismissedAt: overrides.dismissedAt ?? null,
+    dismissedBy: overrides.dismissedBy ?? null,
+    errorContext: overrides.errorContext ?? null,
+    correlationGroupId: overrides.correlationGroupId ?? null,
+    createdAt: overrides.createdAt ?? NOW,
   };
 }
 
@@ -157,6 +185,81 @@ describe("correlateEvent", () => {
 
   it("uses the correct 5-minute correlation window", () => {
     expect(CORRELATION_WINDOW_MS).toBe(5 * 60 * 1000);
+  });
+});
+
+describe("correlateAnomalyEvent", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+  });
+
+  it("assigns anomaly to an existing open correlation group within the 5-min window", async () => {
+    const anomaly = makeAnomalyEvent({ id: "anomaly-2" });
+    const existingGroup = makeCorrelationGroup({
+      id: "group-existing",
+      eventCount: 3,
+    });
+
+    prismaMock.alertCorrelationGroup.findFirst.mockResolvedValue(existingGroup);
+    prismaMock.alertCorrelationGroup.update.mockResolvedValue({
+      ...existingGroup,
+      eventCount: 4,
+    });
+    prismaMock.anomalyEvent.update.mockResolvedValue({
+      ...anomaly,
+      correlationGroupId: "group-existing",
+    });
+
+    const result = await correlateAnomalyEvent(anomaly);
+
+    expect(prismaMock.alertCorrelationGroup.findFirst).toHaveBeenCalledWith({
+      where: {
+        environmentId: "env-1",
+        status: "firing",
+        openedAt: { gte: expect.any(Date) },
+      },
+      orderBy: { openedAt: "desc" },
+    });
+    expect(prismaMock.alertCorrelationGroup.update).toHaveBeenCalledWith({
+      where: { id: "group-existing" },
+      data: { eventCount: { increment: 1 } },
+    });
+    expect(prismaMock.anomalyEvent.update).toHaveBeenCalledWith({
+      where: { id: "anomaly-2" },
+      data: { correlationGroupId: "group-existing" },
+    });
+    expect(result.id).toBe("group-existing");
+  });
+
+  it("creates a new group for an anomaly when no open group exists within the window", async () => {
+    const anomaly = makeAnomalyEvent({ id: "anomaly-new" });
+    const newGroup = makeCorrelationGroup({
+      id: "group-new",
+      rootCauseEventId: null,
+    });
+
+    prismaMock.alertCorrelationGroup.findFirst.mockResolvedValue(null);
+    prismaMock.alertCorrelationGroup.create.mockResolvedValue(newGroup);
+    prismaMock.anomalyEvent.update.mockResolvedValue({
+      ...anomaly,
+      correlationGroupId: "group-new",
+    });
+
+    const result = await correlateAnomalyEvent(anomaly);
+
+    expect(prismaMock.alertCorrelationGroup.create).toHaveBeenCalledWith({
+      data: {
+        environmentId: "env-1",
+        status: "firing",
+        rootCauseEventId: null,
+        eventCount: 1,
+      },
+    });
+    expect(prismaMock.anomalyEvent.update).toHaveBeenCalledWith({
+      where: { id: "anomaly-new" },
+      data: { correlationGroupId: "group-new" },
+    });
+    expect(result.id).toBe("group-new");
   });
 });
 
@@ -298,6 +401,7 @@ describe("closeResolvedGroups", () => {
 
     prismaMock.alertCorrelationGroup.findMany.mockResolvedValue([group]);
     prismaMock.alertEvent.count.mockResolvedValue(0);
+    prismaMock.anomalyEvent.count.mockResolvedValue(0);
     prismaMock.alertCorrelationGroup.update.mockResolvedValue({
       ...group,
       status: "resolved",
@@ -324,10 +428,33 @@ describe("closeResolvedGroups", () => {
 
     prismaMock.alertCorrelationGroup.findMany.mockResolvedValue([group]);
     prismaMock.alertEvent.count.mockResolvedValue(2);
+    prismaMock.anomalyEvent.count.mockResolvedValue(0);
 
     const closed = await closeResolvedGroups("env-1");
 
     expect(closed).toBe(0);
+    expect(prismaMock.alertCorrelationGroup.update).not.toHaveBeenCalled();
+  });
+
+  it("does not close groups that still have open anomalies", async () => {
+    const group = makeCorrelationGroup({
+      id: "group-open-anomaly",
+      status: "firing",
+    });
+
+    prismaMock.alertCorrelationGroup.findMany.mockResolvedValue([group]);
+    prismaMock.alertEvent.count.mockResolvedValue(0);
+    prismaMock.anomalyEvent.count.mockResolvedValue(1);
+
+    const closed = await closeResolvedGroups("env-1");
+
+    expect(closed).toBe(0);
+    expect(prismaMock.anomalyEvent.count).toHaveBeenCalledWith({
+      where: {
+        correlationGroupId: "group-open-anomaly",
+        status: { in: ["open", "acknowledged"] },
+      },
+    });
     expect(prismaMock.alertCorrelationGroup.update).not.toHaveBeenCalled();
   });
 });
