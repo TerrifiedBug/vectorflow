@@ -21,7 +21,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertRulesSection } from "./_components/alert-rules-section";
 import { NotificationChannelsSection } from "./_components/notification-channels-section";
 import { AlertHistorySection } from "./_components/alert-history-section";
-import { AnomalyHistorySection } from "./_components/anomaly-history-section";
 import { CorrelatedAlertHistory } from "./_components/correlated-alert-history";
 import { FailedDeliveriesSection } from "./_components/failed-deliveries-section";
 
@@ -157,13 +156,6 @@ export default function AlertsPage() {
               <TabsContent value="grouped">
                 <div className="space-y-6">
                   <CorrelatedAlertHistory
-                    environmentId={selectedEnvironmentId}
-                  />
-                  {/* Anomalies aren't part of AlertCorrelationGroup yet, but
-                      they're peer signals during incident triage — surface them
-                      directly under the grouped alerts so this view answers the
-                      "what fired together" question for both alert types. */}
-                  <AnomalyHistorySection
                     environmentId={selectedEnvironmentId}
                   />
                 </div>

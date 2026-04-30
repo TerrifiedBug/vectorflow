@@ -235,6 +235,7 @@ describe("Smart Alerting Integration", () => {
       const openGroup = makeGroup({ id: "group-closing", status: "firing" });
       prismaMock.alertCorrelationGroup.findMany.mockResolvedValue([openGroup]);
       prismaMock.alertEvent.count.mockResolvedValue(0); // no active events
+      prismaMock.anomalyEvent.count.mockResolvedValue(0); // no active anomalies
       prismaMock.alertCorrelationGroup.update.mockResolvedValue({
         ...openGroup,
         status: "resolved",
@@ -252,6 +253,7 @@ describe("Smart Alerting Integration", () => {
       });
       prismaMock.alertCorrelationGroup.findMany.mockResolvedValue([openGroup]);
       prismaMock.alertEvent.count.mockResolvedValue(1); // 1 still firing
+      prismaMock.anomalyEvent.count.mockResolvedValue(0);
 
       const closedCount = await closeResolvedGroups("env-1");
       expect(closedCount).toBe(0);
