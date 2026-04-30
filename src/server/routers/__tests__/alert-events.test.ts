@@ -246,6 +246,7 @@ describe("alertEventsRouter", () => {
           closedAt: null,
           events: [makeAlertEvent()],
           anomalyEvents: [makeAnomalyEvent()],
+          _count: { events: 1, anomalyEvents: 1 },
         },
       ];
       prismaMock.alertCorrelationGroup.findMany.mockResolvedValue(groups as never);
@@ -259,6 +260,39 @@ describe("alertEventsRouter", () => {
         expect.objectContaining({ kind: "alert", id: "evt-1" }),
         expect.objectContaining({ kind: "anomaly", id: "anomaly-1" }),
       ]);
+    });
+
+    it("returns full alert and anomaly counts instead of preview lengths", async () => {
+      const groups = [
+        {
+          id: "group-1",
+          environmentId: "env-1",
+          status: "firing",
+          rootCauseEventId: "evt-1",
+          rootCauseSuggestion: null,
+          eventCount: 12,
+          openedAt: new Date("2025-01-01"),
+          closedAt: null,
+          events: [
+            makeAlertEvent({ id: "evt-1" }),
+            makeAlertEvent({ id: "evt-2" }),
+            makeAlertEvent({ id: "evt-3" }),
+          ],
+          anomalyEvents: [
+            makeAnomalyEvent({ id: "anomaly-1" }),
+            makeAnomalyEvent({ id: "anomaly-2" }),
+            makeAnomalyEvent({ id: "anomaly-3" }),
+          ],
+          _count: { events: 8, anomalyEvents: 4 },
+        },
+      ];
+      prismaMock.alertCorrelationGroup.findMany.mockResolvedValue(groups as never);
+
+      const result = await caller.listCorrelationGroups({ environmentId: "env-1" });
+
+      expect(result.items[0].alertCount).toBe(8);
+      expect(result.items[0].anomalyCount).toBe(4);
+      expect(result.items[0].signalCount).toBe(12);
     });
 
     it("filters by status", async () => {
@@ -287,6 +321,7 @@ describe("alertEventsRouter", () => {
         closedAt: null,
         events: [],
         anomalyEvents: [],
+        _count: { events: 0, anomalyEvents: 0 },
       }));
       prismaMock.alertCorrelationGroup.findMany.mockResolvedValue(groups as never);
 
@@ -362,6 +397,7 @@ describe("alertEventsRouter", () => {
         closedAt: null,
       } as never);
       prismaMock.alertEvent.updateMany.mockResolvedValue({ count: 3 } as never);
+      prismaMock.anomalyEvent.updateMany.mockResolvedValue({ count: 0 } as never);
 
       const result = await caller.acknowledgeGroup({ groupId: "group-1" });
 
@@ -371,6 +407,48 @@ describe("alertEventsRouter", () => {
           where: {
             correlationGroupId: "group-1",
             status: "firing",
+          },
+          data: expect.objectContaining({
+            status: "acknowledged",
+            acknowledgedBy: "test@test.com",
+          }),
+        }),
+      );
+      expect(prismaMock.anomalyEvent.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            correlationGroupId: "group-1",
+            status: "open",
+          },
+          data: expect.objectContaining({
+            status: "acknowledged",
+            acknowledgedBy: "test@test.com",
+          }),
+        }),
+      );
+    });
+
+    it("acknowledges open anomalies in an anomaly-only group", async () => {
+      prismaMock.alertCorrelationGroup.findUnique.mockResolvedValue({
+        id: "group-anomaly-only",
+        environmentId: "env-1",
+        status: "firing",
+        openedAt: new Date(),
+        closedAt: null,
+      } as never);
+      prismaMock.alertEvent.updateMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.anomalyEvent.updateMany.mockResolvedValue({ count: 2 } as never);
+
+      const result = await caller.acknowledgeGroup({
+        groupId: "group-anomaly-only",
+      });
+
+      expect(result).toEqual({ success: true });
+      expect(prismaMock.anomalyEvent.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            correlationGroupId: "group-anomaly-only",
+            status: "open",
           },
           data: expect.objectContaining({
             status: "acknowledged",

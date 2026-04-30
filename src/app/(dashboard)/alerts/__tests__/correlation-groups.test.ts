@@ -25,6 +25,13 @@ describe("alert correlation group UI", () => {
     expect(rowSource).toContain("anomalyEvents");
     expect(rowSource).toContain("timeline");
     expect(rowSource).toContain("signal");
+    expect(rowSource).toContain("group.alertCount");
+    expect(rowSource).toContain("group.anomalyCount");
+    expect(rowSource).toContain("group.signalCount");
+    expect(rowSource).not.toContain("const alertCount = group.events.length");
+    expect(rowSource).not.toContain(
+      "const anomalyCount = group.anomalyEvents.length",
+    );
   });
 
   it("renders group detail rows from the mixed timeline", () => {
@@ -32,5 +39,11 @@ describe("alert correlation group UI", () => {
     expect(detailSource).toContain('event.kind === "alert"');
     expect(detailSource).toContain('event.kind === "anomaly"');
     expect(detailSource).toContain("formatAnomalyType");
+  });
+
+  it("shows group actions for open anomaly-only groups", () => {
+    expect(detailSource).toContain("activeSignalCount");
+    expect(detailSource).toContain('group.anomalyEvents.filter((e) => e.status === "open").length');
+    expect(detailSource).not.toContain("const hasFiringEvents = group.events.some");
   });
 });

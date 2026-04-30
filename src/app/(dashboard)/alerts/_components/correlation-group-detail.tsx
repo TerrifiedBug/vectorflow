@@ -99,7 +99,9 @@ export function CorrelationGroupDetail({
   const group = groupQuery.data as unknown as CorrelationGroupSummary & {
     rootCauseEventId: string | null;
   };
-  const hasFiringEvents = group.events.some((e) => e.status === "firing");
+  const activeSignalCount =
+    group.events.filter((e) => e.status === "firing").length +
+    group.anomalyEvents.filter((e) => e.status === "open").length;
 
   return (
     <div className="space-y-4 p-4">
@@ -131,7 +133,7 @@ export function CorrelationGroupDetail({
             </span>
           )}
         </div>
-        {hasFiringEvents && (
+        {activeSignalCount > 0 && (
           <Button
             variant="outline"
             size="sm"
@@ -144,7 +146,7 @@ export function CorrelationGroupDetail({
             ) : (
               <CheckCircle2 className="h-3.5 w-3.5" />
             )}
-            Acknowledge All ({group.events.filter((e) => e.status === "firing").length})
+            Acknowledge All ({activeSignalCount})
           </Button>
         )}
       </div>

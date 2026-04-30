@@ -57,6 +57,9 @@ interface CorrelationGroupSummary {
   status: string;
   rootCauseSuggestion: string | null;
   eventCount: number;
+  alertCount: number;
+  anomalyCount: number;
+  signalCount: number;
   openedAt: Date;
   closedAt: Date | null;
   events: CorrelationGroupEvent[];
@@ -80,9 +83,7 @@ export function CorrelationGroupRow({
   formatTimestamp,
 }: CorrelationGroupRowProps) {
   const firstSignal = group.timeline[0];
-  const alertCount = group.events.length;
-  const anomalyCount = group.anomalyEvents.length;
-  const anomalyLabel = anomalyCount === 1 ? "anomaly" : "anomalies";
+  const anomalyLabel = group.anomalyCount === 1 ? "anomaly" : "anomalies";
   const firingCount =
     group.events.filter((e) => e.status === "firing").length +
     group.anomalyEvents.filter((e) => e.status === "open").length;
@@ -121,11 +122,11 @@ export function CorrelationGroupRow({
               {groupName}
             </span>
             <Badge variant="secondary" size="sm" className="tabular-nums">
-              {group.eventCount} signal{group.eventCount !== 1 ? "s" : ""}
+              {group.signalCount} signal{group.signalCount !== 1 ? "s" : ""}
             </Badge>
-            {anomalyCount > 0 && (
+            {group.anomalyCount > 0 && (
               <Badge variant="outline" size="sm" className="tabular-nums">
-                {alertCount} alert{alertCount !== 1 ? "s" : ""} / {anomalyCount} {anomalyLabel}
+                {group.alertCount} alert{group.alertCount !== 1 ? "s" : ""} / {group.anomalyCount} {anomalyLabel}
               </Badge>
             )}
           </div>

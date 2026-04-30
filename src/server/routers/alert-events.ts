@@ -9,8 +9,14 @@ function withMixedTimeline<
   T extends {
     events: Array<{ firedAt: Date }>;
     anomalyEvents: Array<{ detectedAt: Date }>;
+    _count?: {
+      events: number;
+      anomalyEvents: number;
+    };
   },
 >(group: T) {
+  const alertCount = group._count?.events ?? group.events.length;
+  const anomalyCount = group._count?.anomalyEvents ?? group.anomalyEvents.length;
   const timeline = [
     ...group.events.map((event) => ({
       ...event,
@@ -24,7 +30,13 @@ function withMixedTimeline<
     })),
   ].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
-  return { ...group, timeline };
+  return {
+    ...group,
+    alertCount,
+    anomalyCount,
+    signalCount: alertCount + anomalyCount,
+    timeline,
+  };
 }
 
 export const alertEventsRouter = router({
@@ -233,6 +245,12 @@ export const alertEventsRouter = router({
             take: 3,
             orderBy: { detectedAt: "asc" },
           },
+          _count: {
+            select: {
+              events: true,
+              anomalyEvents: true,
+            },
+          },
         },
         orderBy: { openedAt: "desc" },
         take: limit + 1,
@@ -309,11 +327,22 @@ export const alertEventsRouter = router({
       const acknowledgedBy =
         user?.email || user?.name || user?.id || "unknown";
 
-      // Acknowledge all firing events in the group
+      // Acknowledge all active signals in the group.
       await prisma.alertEvent.updateMany({
         where: {
           correlationGroupId: input.groupId,
           status: "firing",
+        },
+        data: {
+          status: "acknowledged",
+          acknowledgedAt: new Date(),
+          acknowledgedBy,
+        },
+      });
+      await prisma.anomalyEvent.updateMany({
+        where: {
+          correlationGroupId: input.groupId,
+          status: "open",
         },
         data: {
           status: "acknowledged",
