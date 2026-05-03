@@ -50,7 +50,7 @@ export const governanceRouter = router({
         }),
         prisma.auditLog.count({ where: { teamId: input.teamId } }),
         prisma.pipeline.findFirst({
-          where: { isSystem: true },
+          where: { isSystem: true, isDraft: false, deployedAt: { not: null } },
           select: { id: true },
         }),
         prisma.teamMember.findMany({

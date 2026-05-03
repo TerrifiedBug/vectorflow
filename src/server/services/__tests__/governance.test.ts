@@ -86,6 +86,32 @@ describe("buildComplianceReport", () => {
     ]);
   });
 
+  it("does not mark a sink protected when a bypass path skips DLP", () => {
+    // source-1 feeds both through DLP and directly to sink-1; the bypass path means sink-1 is unprotected
+    const report = buildComplianceReport({
+      pipelines: [
+        {
+          id: "pipeline-bypass",
+          name: "Bypass test",
+          tags: [],
+          nodes: [
+            { id: "source-1", componentKey: "src", displayName: null, componentType: "file", kind: "SOURCE" as const, config: {} },
+            { id: "dlp-1", componentKey: "redact", displayName: null, componentType: "dlp_email_redaction", kind: "TRANSFORM" as const, config: {} },
+            { id: "sink-1", componentKey: "sink", displayName: null, componentType: "s3", kind: "SINK" as const, config: {} },
+          ],
+          edges: [
+            { sourceNodeId: "source-1", targetNodeId: "dlp-1" },
+            { sourceNodeId: "dlp-1", targetNodeId: "sink-1" },
+            { sourceNodeId: "source-1", targetNodeId: "sink-1" }, // bypass
+          ],
+        },
+      ],
+    });
+
+    expect(report.summary.protectedSinks).toBe(0);
+    expect(report.pipelines[0].sinks[0].protected).toBe(false);
+  });
+
   it("uses template defaults when a DLP node has only VRL source config", () => {
     const report = buildComplianceReport({
       pipelines: [

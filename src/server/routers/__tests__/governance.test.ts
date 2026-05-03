@@ -74,7 +74,7 @@ describe("governanceRouter", () => {
     ] as never);
     prismaMock.systemSettings.findUnique.mockResolvedValue({ scimEnabled: true, oidcGroupSyncEnabled: false } as never);
     prismaMock.auditLog.count.mockResolvedValue(3);
-    prismaMock.pipeline.findFirst.mockResolvedValue({ id: "system-pipeline" } as never);
+    prismaMock.pipeline.findFirst.mockResolvedValue({ id: "system-pipeline", isDraft: false, deployedAt: new Date("2026-01-01") } as never);
     prismaMock.teamMember.findMany.mockResolvedValue([
       { role: "ADMIN", user: { scimExternalId: "scim-1", authMethod: "OIDC" } },
       { role: "VIEWER", user: { scimExternalId: null, authMethod: "PASSWORD" } },
@@ -89,6 +89,21 @@ describe("governanceRouter", () => {
         where: { environment: { teamId: "team-1" } },
       }),
     );
+  });
+
+  it("reports audit shipping not configured when system pipeline is a draft", async () => {
+    prismaMock.pipeline.findMany.mockResolvedValue([] as never);
+    prismaMock.systemSettings.findUnique.mockResolvedValue({ scimEnabled: false, oidcGroupSyncEnabled: false } as never);
+    prismaMock.auditLog.count.mockResolvedValue(5);
+    prismaMock.pipeline.findFirst.mockResolvedValue(null as never); // draft pipeline filtered out
+    prismaMock.teamMember.findMany.mockResolvedValue([
+      { role: "ADMIN", user: { scimExternalId: null, authMethod: "PASSWORD" } },
+    ] as never);
+
+    const result = await caller.report({ teamId: "team-1" });
+
+    const auditSignal = result.posture.signals.find((s: { id: string }) => s.id === "audit");
+    expect(auditSignal?.status).toBe("warning");
   });
 
   it("previews destination policy decisions for a pipeline", async () => {

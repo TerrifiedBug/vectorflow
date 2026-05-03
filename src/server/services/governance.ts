@@ -102,6 +102,43 @@ function describeDlpTransform(node: GovernanceNode) {
   };
 }
 
+// A sink is protected only when every path from every source passes through at least one DLP transform.
+// Forward taint analysis: sources are tainted; DLP transforms clear taint; everything else propagates it.
+function isSinkFullyProtected(sinkId: string, nodes: GovernanceNode[], edges: GovernanceEdge[]): boolean {
+  const nodesById = new Map(nodes.map((n) => [n.id, n]));
+  const byTarget = new Map<string, string[]>();
+  for (const edge of edges) {
+    const list = byTarget.get(edge.targetNodeId) ?? [];
+    list.push(edge.sourceNodeId);
+    byTarget.set(edge.targetNodeId, list);
+  }
+
+  const memo = new Map<string, boolean>();
+
+  function tainted(nodeId: string, visiting: Set<string>): boolean {
+    if (memo.has(nodeId)) return memo.get(nodeId)!;
+    if (visiting.has(nodeId)) return false;
+    const node = nodesById.get(nodeId);
+    if (!node) return false;
+    if (node.kind === "SOURCE") {
+      memo.set(nodeId, true);
+      return true;
+    }
+    if (node.kind === "TRANSFORM" && node.componentType.startsWith("dlp_")) {
+      memo.set(nodeId, false);
+      return false;
+    }
+    const next = new Set(visiting);
+    next.add(nodeId);
+    const parents = byTarget.get(nodeId) ?? [];
+    const result = parents.some((id) => tainted(id, next));
+    memo.set(nodeId, result);
+    return result;
+  }
+
+  return !tainted(sinkId, new Set());
+}
+
 export function buildComplianceReport(input: { pipelines: GovernancePipeline[] }) {
   const pipelines = input.pipelines.map((pipeline) => {
     const dlpTransforms = pipeline.nodes
@@ -123,7 +160,7 @@ export function buildComplianceReport(input: { pipelines: GovernancePipeline[] }
           componentKey: sink.componentKey,
           displayName: sink.displayName,
           componentType: sink.componentType,
-          protected: upstreamDlpTransforms.length > 0,
+          protected: isSinkFullyProtected(sink.id, pipeline.nodes, pipeline.edges),
           dlpTransforms: upstreamDlpTransforms,
           redactedFields,
         };
