@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, formatCost } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { PipelineCostRow } from "@/server/services/cost-attribution";
 
@@ -22,11 +22,6 @@ type SortDir = "asc" | "desc";
 interface CostTableProps {
   rows: PipelineCostRow[];
   isLoading: boolean;
-}
-
-function formatCost(cents: number): string {
-  if (cents === 0) return "--";
-  return `$${(cents / 100).toFixed(2)}`;
 }
 
 export function CostTable({ rows, isLoading }: CostTableProps) {
