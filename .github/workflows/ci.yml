@@ -95,6 +95,8 @@ jobs:
             --set config.token=ci-enrollment-token
 
       - name: Validate Docker Compose deployment files
+        env:
+          NEXTAUTH_URL: http://localhost:3000
         run: |
           docker compose --env-file docker/server/.env.example -f docker/server/docker-compose.yml config
           docker compose --env-file docker/server/.env.example -f docker/server/docker-compose.ha.yml config
