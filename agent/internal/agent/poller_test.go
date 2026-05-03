@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
+	"github.com/TerrifiedBug/vectorflow/agent/internal/selfmetrics"
 )
 
 type mockConfigFetcher struct {
@@ -116,5 +118,108 @@ func TestPoll_EmptyResponseCleansAllFiles(t *testing.T) {
 		if strings.HasSuffix(e.Name(), ".yaml") {
 			t.Errorf("expected all yaml files deleted, found: %s", e.Name())
 		}
+	}
+}
+
+func TestPoll_InvalidConfigDoesNotReplaceActiveConfigOrAdvanceKnownState(t *testing.T) {
+	tmpDir := t.TempDir()
+	pipelinesDir := filepath.Join(tmpDir, "pipelines")
+	if err := os.MkdirAll(pipelinesDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	configPath := filepath.Join(pipelinesDir, "pipeline-a.yaml")
+	oldConfig := "sources: {}\nsinks: {}\n"
+	if err := os.WriteFile(configPath, []byte(oldConfig), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &poller{
+		cfg: &config.Config{DataDir: tmpDir},
+		client: &mockConfigFetcher{resp: &client.ConfigResponse{
+			Pipelines: []client.PipelineConfig{{
+				PipelineID:   "pipeline-a",
+				PipelineName: "Pipeline A",
+				ConfigYaml:   "sources: [",
+				Checksum:     "new-checksum",
+				Version:      2,
+			}},
+		}},
+		known: map[string]pipelineState{
+			"pipeline-a": {checksum: "old-checksum", version: 1},
+		},
+	}
+
+	if _, err := p.Poll(); err == nil {
+		t.Fatal("expected invalid YAML error")
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != oldConfig {
+		t.Fatalf("active config was replaced: got %q", string(data))
+	}
+	if got := p.known["pipeline-a"]; got.checksum != "old-checksum" || got.version != 1 {
+		t.Fatalf("known state advanced after validation failure: %+v", got)
+	}
+}
+
+func TestAgentPollAndApply_RestartFailureRetriesSameChecksumAndPreservesConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	pipelinesDir := filepath.Join(tmpDir, "pipelines")
+	if err := os.MkdirAll(pipelinesDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	configPath := filepath.Join(pipelinesDir, "pipeline-a.yaml")
+	oldConfig := "sources: {}\nsinks: {}\n"
+	if err := os.WriteFile(configPath, []byte(oldConfig), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	fetcher := &mockConfigFetcher{resp: &client.ConfigResponse{
+		Pipelines: []client.PipelineConfig{{
+			PipelineID:   "pipeline-a",
+			PipelineName: "Pipeline A",
+			ConfigYaml:   "sources:\n  demo:\n    type: demo_logs\nsinks: {}\n",
+			Checksum:     "new-checksum",
+			Version:      2,
+		}},
+	}}
+	p := &poller{
+		cfg:    &config.Config{DataDir: tmpDir},
+		client: fetcher,
+		known: map[string]pipelineState{
+			"pipeline-a": {checksum: "old-checksum", version: 1},
+		},
+	}
+	sup := &mockSupervisor{restartErr: fmt.Errorf("start vector: boom")}
+	a := &Agent{
+		poller:     p,
+		supervisor: sup,
+		metrics:    selfmetrics.New(func() int { return 0 }),
+	}
+
+	a.pollAndApply()
+	a.pollAndApply()
+
+	sup.mu.Lock()
+	restartCount := sup.restartCount
+	sup.mu.Unlock()
+
+	if restartCount != 2 {
+		t.Fatalf("expected same checksum to be retried after failed restart, got %d restarts", restartCount)
+	}
+	if got := p.known["pipeline-a"]; got.checksum != "old-checksum" || got.version != 1 {
+		t.Fatalf("known state advanced after restart failure: %+v", got)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != oldConfig {
+		t.Fatalf("active config was not restored after restart failure: got %q", string(data))
 	}
 }
