@@ -170,12 +170,17 @@ describe("pipelineObservabilityRouter", () => {
       });
 
       expect(result).toEqual({ requestId: "req-1", status: "PENDING" });
+      // Binding must be persisted BEFORE the push so a fast agent response
+      // doesn't get dropped (request.nodeId would otherwise still be null).
       expect(prismaMock.eventSampleRequest.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "req-1" },
           data: { nodeId: "node-1" },
         }),
       );
+      const updateCall = prismaMock.eventSampleRequest.update.mock.invocationCallOrder[0];
+      const pushCall = vi.mocked(relayPush).mock.invocationCallOrder[0];
+      expect(updateCall).toBeLessThan(pushCall);
       expect(relayPush).toHaveBeenCalledTimes(1);
       expect(relayPush).toHaveBeenCalledWith(
         "node-1",

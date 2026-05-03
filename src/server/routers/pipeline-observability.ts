@@ -192,11 +192,16 @@ export const pipelineObservabilityRouter = router({
         },
       });
 
-      // Try running nodes in order; bind the request to the first one we can
-      // reach. Avoids a stale "deployed but disconnected" node silently swallowing
-      // the request until expiry.
+      // Try running nodes in order; persist the binding BEFORE pushing so
+      // that if the agent responds immediately, the ingestion endpoint
+      // (which compares request.nodeId === agent.nodeId) doesn't drop the
+      // result as misrouted.
       let assignedNodeId: string | null = null;
       for (const { nodeId } of statuses) {
+        await prisma.eventSampleRequest.update({
+          where: { id: request.id },
+          data: { nodeId },
+        });
         const delivered = relayPush(nodeId, {
           type: "sample_request",
           requestId: request.id,
@@ -217,11 +222,6 @@ export const pipelineObservabilityRouter = router({
           message: "No reachable nodes for this pipeline",
         });
       }
-
-      await prisma.eventSampleRequest.update({
-        where: { id: request.id },
-        data: { nodeId: assignedNodeId },
-      });
 
       return { requestId: request.id, status: "PENDING" };
     }),
