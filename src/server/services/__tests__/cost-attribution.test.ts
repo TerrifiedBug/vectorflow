@@ -135,6 +135,31 @@ describe("getCostSummary", () => {
 
     expect(result.current.costCents).toBe(0);
   });
+
+  it("uses only aggregate pipeline metric rows so per-node rows are not double counted", async () => {
+    prismaMock.pipelineMetric.aggregate.mockResolvedValue({
+      _sum: { bytesIn: BigInt(0), bytesOut: BigInt(0) },
+      _count: { id: 0 },
+      _avg: {},
+      _min: {},
+      _max: {},
+    } as never);
+
+    await getCostSummary({
+      environmentId: "env-1",
+      range: "1d",
+      costPerGbCents: 100,
+    });
+
+    expect(prismaMock.pipelineMetric.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          componentId: null,
+          nodeId: null,
+        }),
+      }),
+    );
+  });
 });
 
 describe("getCostByPipeline", () => {
@@ -233,6 +258,26 @@ describe("getCostByPipeline", () => {
     });
 
     expect(result).toEqual([]);
+  });
+
+  it("groups only aggregate pipeline metric rows when per-node rows also exist", async () => {
+    // @ts-expect-error - groupBy mock typing is complex
+    prismaMock.pipelineMetric.groupBy.mockResolvedValue([] as never);
+
+    await getCostByPipeline({
+      environmentId: "env-1",
+      range: "1d",
+      costPerGbCents: 100,
+    });
+
+    expect(prismaMock.pipelineMetric.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          componentId: null,
+          nodeId: null,
+        }),
+      }),
+    );
   });
 });
 
