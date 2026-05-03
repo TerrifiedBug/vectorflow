@@ -8,12 +8,27 @@ import {
 } from "../helpers/scenario-utils";
 import { generateNodeToken } from "../../src/server/services/agent-token";
 
-test.use({ storageState: { cookies: [], origins: [] } });
-
 test.describe("PR smoke e2e", () => {
-  test("authenticates, creates, deploys, and observes fleet health", async ({
-    page,
-    loginPage,
+  test.describe("authentication", () => {
+    test.use({ storageState: { cookies: [], origins: [] } });
+
+    test("authenticates and reaches protected routes", async ({
+      page,
+      loginPage,
+    }) => {
+      await loginPage.goto();
+      await loginPage.login(TEST_USER.email, TEST_USER.password);
+      await loginPage.expectRedirectedToDashboard();
+
+      await page.goto("/pipelines");
+      await expect(page).toHaveURL(/\/pipelines/);
+      await expect(
+        page.getByRole("link", { name: "E2E Test Pipeline" }),
+      ).toBeVisible();
+    });
+  });
+
+  test("creates, deploys, and observes fleet health", async ({
     pipelinesPage,
     pipelineEditor,
     deployDialog,
@@ -21,12 +36,8 @@ test.describe("PR smoke e2e", () => {
   }) => {
     const pipelineName = `PR Smoke ${Date.now()}`;
 
-    await loginPage.goto();
-    await loginPage.login(TEST_USER.email, TEST_USER.password);
-    await loginPage.expectRedirectedToDashboard();
-
-    await page.goto("/pipelines/new");
-    await page.locator(".react-flow").waitFor({ state: "visible" });
+    await pipelinesPage.goto();
+    await pipelinesPage.clickNewPipeline();
 
     await pipelineEditor.setName(pipelineName);
     await pipelineEditor.addNodeFromPalette("source", "demo_logs");
@@ -51,17 +62,21 @@ test.describe("PR smoke e2e", () => {
     await fleetPage.expectNodeStatus(TEST_NODE.name, "Healthy");
   });
 
-  test("enforces settings RBAC for non-admin users", async ({
-    loginPage,
-    sidebar,
-  }) => {
-    const viewer = await createUserWithRole("VIEWER");
+  test.describe("settings RBAC", () => {
+    test.use({ storageState: { cookies: [], origins: [] } });
 
-    await loginPage.goto();
-    await loginPage.login(viewer.email, viewer.password);
-    await loginPage.expectRedirectedToDashboard();
+    test("enforces settings RBAC for non-admin users", async ({
+      loginPage,
+      sidebar,
+    }) => {
+      const viewer = await createUserWithRole("VIEWER");
 
-    await expect(sidebar.getNavLink("Settings")).not.toBeVisible();
+      await loginPage.goto();
+      await loginPage.login(viewer.email, viewer.password);
+      await loginPage.expectRedirectedToDashboard();
+
+      await expect(sidebar.getNavLink("Settings")).not.toBeVisible();
+    });
   });
 
   test("serves agent config and accepts heartbeat updates", async ({
