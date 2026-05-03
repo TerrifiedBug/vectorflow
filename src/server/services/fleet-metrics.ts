@@ -124,6 +124,69 @@ export async function getFleetThroughputDrop(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Pipeline-scoped SLI readers used by latency_mean and throughput_floor
+// alert rules. These aggregate the cross-node PipelineMetric rollups
+// (nodeId IS NULL AND componentId IS NULL) over a recent window.
+// ---------------------------------------------------------------------------
+
+const SLI_WINDOW_MINUTES = 5;
+
+/**
+ * Compute the mean latency across a pipeline's recent rollup rows.
+ *
+ * Returns the average of `latencyMeanMs` over the last 5 minutes, in ms.
+ * Returns `null` if no rollup rows with latency data exist in the window.
+ */
+export async function getPipelineLatencyMean(
+  pipelineId: string,
+): Promise<number | null> {
+  const since = new Date(Date.now() - SLI_WINDOW_MINUTES * 60_000);
+
+  const agg = await prisma.pipelineMetric.aggregate({
+    where: {
+      pipelineId,
+      nodeId: null,
+      componentId: null,
+      timestamp: { gte: since },
+      latencyMeanMs: { not: null },
+    },
+    _avg: { latencyMeanMs: true },
+    _count: true,
+  });
+
+  if (agg._count === 0) return null;
+  return agg._avg.latencyMeanMs ?? null;
+}
+
+/**
+ * Compute the throughput floor (events per second) for a pipeline based on
+ * the cross-node rollups over the last 5 minutes.
+ *
+ * Returns total `eventsIn` divided by the window in seconds. When no rollup
+ * rows exist in the window, returns `0` (i.e. "no traffic observed") rather
+ * than `null` so a `< 1` threshold can fire — matches `evaluatePipelineHealth`
+ * semantics for the same metric.
+ */
+export async function getPipelineThroughputFloor(
+  pipelineId: string,
+): Promise<number> {
+  const since = new Date(Date.now() - SLI_WINDOW_MINUTES * 60_000);
+
+  const agg = await prisma.pipelineMetric.aggregate({
+    where: {
+      pipelineId,
+      nodeId: null,
+      componentId: null,
+      timestamp: { gte: since },
+    },
+    _sum: { eventsIn: true },
+  });
+
+  const total = Number(agg._sum.eventsIn ?? 0);
+  return total / (SLI_WINDOW_MINUTES * 60);
+}
+
 /**
  * Result from the load imbalance computation that includes which node is
  * most imbalanced.
