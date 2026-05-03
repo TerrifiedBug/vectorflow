@@ -107,10 +107,11 @@ const DraggableItem = memo(function DraggableItem({
       <button
         type="button"
         onClick={() => onAdd(def)}
-        aria-label={`Add ${def.displayName} ${def.kind} to canvas`}
+        tabIndex={-1}
+        aria-hidden="true"
         className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <Plus className="h-4 w-4" />
+        <Plus className="h-4 w-4" aria-hidden="true" />
       </button>
     </div>
   );
@@ -467,10 +468,11 @@ export function ComponentPalette() {
                       type="button"
                       onClick={addSharedComponent}
                       disabled={!componentDef}
-                      aria-label={`Add ${sc.name} ${kindKey} to canvas`}
+                      tabIndex={-1}
+                      aria-hidden="true"
                       className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <Plus className="h-4 w-4" />
+                      <Plus className="h-4 w-4" aria-hidden="true" />
                     </button>
                   </div>
                 );
