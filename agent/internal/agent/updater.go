@@ -22,6 +22,7 @@ var updateRetryBackoff = 5 * time.Minute
 var updateHTTPClient = &http.Client{
 	Timeout: 30 * time.Second,
 	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
 			Timeout:   10 * time.Second,
 			KeepAlive: 30 * time.Second,

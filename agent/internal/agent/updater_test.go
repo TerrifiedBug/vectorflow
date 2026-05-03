@@ -3,6 +3,7 @@ package agent
 import (
 	"errors"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -26,6 +27,9 @@ func TestUpdateHTTPClientHasExplicitTimeouts(t *testing.T) {
 	}
 	if transport.DialContext == nil {
 		t.Fatal("expected explicit dial timeout")
+	}
+	if transport.Proxy == nil {
+		t.Fatal("expected proxy support via environment variables")
 	}
 }
 
@@ -62,5 +66,15 @@ func TestHandlePendingActionRetriesFailedUpdateAfterBackoff(t *testing.T) {
 func TestUpdateHTTPClientCanReachNonRoutableHostWithoutHangingForever(t *testing.T) {
 	if updateHTTPClient.Timeout > 35*time.Second {
 		t.Fatalf("update timeout should be bounded near 30s, got %s", updateHTTPClient.Timeout)
+	}
+}
+
+func TestUpdateHTTPClientUsesProxyFromEnvironment(t *testing.T) {
+	transport, ok := updateHTTPClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", updateHTTPClient.Transport)
+	}
+	if reflect.ValueOf(transport.Proxy).Pointer() != reflect.ValueOf(http.ProxyFromEnvironment).Pointer() {
+		t.Fatal("expected self-update client to use http.ProxyFromEnvironment")
 	}
 }
