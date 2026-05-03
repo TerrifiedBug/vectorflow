@@ -72,13 +72,29 @@ Every deployment creates an immutable version snapshot with a changelog. Browse 
 - OIDC SSO with Okta, Auth0, Keycloak, or any OIDC provider, with group-to-role mapping
 - TOTP 2FA, optional per-user and enforceable per-team
 - RBAC with Viewer, Editor, Admin roles scoped per team
-- Encrypted secrets using AES-256-GCM at rest, with HashiCorp Vault and AWS Secrets Manager backends
+- Encrypted secrets at rest using AES-256-GCM, referenced from pipeline configs as `SECRET[name]`
 - TLS cert storage referenced directly in pipeline configs
 - Immutable audit log of every action with before/after diffs
 
-### Alerting and webhooks
+### Alerting and notifications
 
-Set threshold-based alert rules on CPU, memory, disk, error rates, and more. Deliver notifications via HMAC-signed webhooks to Slack, Discord, PagerDuty, or any HTTP endpoint.
+Threshold-based alert rules on CPU, memory, disk, error rates, throughput drops, deploy events, version drift, certificate expiry, and more. Notifications deliver to native Slack, email, and PagerDuty channels, plus HMAC-signed generic webhooks for anything else (Discord, Teams, custom HTTP endpoints).
+
+### Anomaly detection
+
+Statistical baselines per pipeline detect throughput, error-rate, and latency anomalies without manual thresholds. Anomalies feed the same alert correlation groups as rule-based alerts so a single incident doesn't fan out into noise.
+
+### Cost attribution and optimization
+
+Per-pipeline, per-team, and per-environment cost rollups based on event volume. The optimizer flags low-reduction transforms, high-error pipelines, and stale configs, with one-click apply (or dismiss) of recommendations.
+
+### GitOps and automation
+
+Sync pipeline definitions from Git (GitHub, GitLab, Bitbucket) with PR-based promotion between environments. Bearer-token REST API and SCIM 2.0 user provisioning for platform-team workflows.
+
+### AI debugging
+
+Optional AI suggestions for failing pipelines: feed pipeline metrics, recent deploys, and SLI breaches into a model to surface likely causes. Bring your own OpenAI/Anthropic key.
 
 ## Architecture
 
@@ -89,7 +105,7 @@ graph LR
     end
     subgraph Server
         Next["Next.js + tRPC"]
-        DB[("PostgreSQL")]
+        DB[("PostgreSQL / TimescaleDB")]
     end
     subgraph Fleet
         A1["vf-agent + Vector"]
@@ -104,7 +120,7 @@ graph LR
     A3 -->|"poll · heartbeat"| Next
 ```
 
-The server is a Next.js app with tRPC for the API, Prisma ORM with PostgreSQL, and NextAuth for authentication. It bundles a local Vector binary for config validation and VRL testing.
+The server is a Next.js app with tRPC for the API, Prisma ORM with PostgreSQL-compatible databases, and NextAuth for authentication. The Docker Compose stack uses TimescaleDB on PostgreSQL 16 so metrics hypertables are available; plain PostgreSQL is also supported with slower retention cleanup. The server bundles a local Vector binary for config validation and VRL testing.
 
 The agent (`vf-agent`) is a single Go binary that runs alongside Vector on each managed host. It polls the server for config updates, manages per-pipeline Vector processes, and reports health via heartbeats. No external dependencies beyond Vector itself.
 
@@ -168,6 +184,8 @@ Run the VectorFlow server with Docker Compose:
 cd vectorflow/docker/server
 docker compose up -d
 ```
+
+The Compose stack starts `timescale/timescaledb:latest-pg16`. Keep the `postgres` service name in `DATABASE_URL`; it is the Compose hostname for the TimescaleDB/PostgreSQL container.
 
 See [Configuration → Server](#configuration) for all available environment variables.
 
@@ -239,6 +257,10 @@ VF_URL=http://your-server:3000 VF_TOKEN=<token> ./vf-agent
 
 See [Configuration → Agent](#configuration) for all available environment variables.
 
+### API documentation
+
+Logged-in users can view the Swagger UI at `/api/v1/docs`. The machine-readable OpenAPI 3.1 document is served from `/api/v1/openapi.json` and requires a valid NextAuth session; unauthenticated requests return `401 Unauthorized`.
+
 ## Tech stack
 
 | Layer | Technology |
@@ -247,10 +269,10 @@ See [Configuration → Agent](#configuration) for all available environment vari
 | Flow Editor | React Flow (@xyflow/react) |
 | Code Editor | Monaco Editor (VRL syntax) |
 | API | tRPC 11 (end-to-end type safety) |
-| Database | PostgreSQL 17 + Prisma 7 |
+| Database | PostgreSQL-compatible database + Prisma 7; Docker Compose uses TimescaleDB on PostgreSQL 16 |
 | Auth | NextAuth 5 (credentials + OIDC) |
 | Agent | Go 1.22 (zero dependencies, single binary) |
-| Data Engine | Vector 0.44.0 |
+| Data Engine | Vector 0.54.0 |
 
 ## Configuration
 
@@ -258,7 +280,7 @@ See [Configuration → Agent](#configuration) for all available environment vari
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | — | PostgreSQL connection string |
+| `DATABASE_URL` | Yes | — | PostgreSQL-compatible connection string |
 | `NEXTAUTH_SECRET` | Yes | — | Session and encryption key (32+ chars) |
 | `NEXTAUTH_URL` | No | — | Canonical server URL |
 | `PORT` | No | `3000` | HTTP listen port |
@@ -271,8 +293,11 @@ See [Configuration → Agent](#configuration) for all available environment vari
 | `VF_TOKEN` | First run | — | One-time enrollment token |
 | `VF_DATA_DIR` | No | `/var/lib/vf-agent` | Data directory |
 | `VF_VECTOR_BIN` | No | `vector` | Path to Vector binary |
-| `VF_POLL_INTERVAL` | No | `15s` | Config poll frequency |
+| `VF_POLL_INTERVAL` | No | `5s` | Config poll frequency before server fleet settings load |
+| `VF_LOG_FLUSH_INTERVAL` | No | `2s` | Buffered log flush frequency |
 | `VF_LOG_LEVEL` | No | `info` | Logging level |
+| `VF_NODE_LABELS` | No | — | Node labels as comma-separated `key=value` pairs |
+| `VF_METRICS_PORT` | No | `9090` | Agent self-metrics Prometheus port; set `0` to disable |
 
 ### Fleet settings (admin UI)
 
@@ -288,7 +313,7 @@ See [Configuration → Agent](#configuration) for all available environment vari
 ### Prerequisites
 
 - Node.js 22+ and pnpm
-- PostgreSQL 17
+- PostgreSQL 16+ or TimescaleDB on PostgreSQL 16
 - Go 1.22+ (agent only)
 
 ### Server
@@ -297,6 +322,12 @@ See [Configuration → Agent](#configuration) for all available environment vari
 pnpm install
 pnpm dev
 ```
+
+### E2E release gate
+
+See [docs/e2e-release-gate.md](docs/e2e-release-gate.md) for the Docker-backed
+Playwright gate covering setup, browser authentication, pipeline creation,
+deploy flow, and fleet health.
 
 ### Agent
 

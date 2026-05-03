@@ -114,6 +114,11 @@ function escapeCsvField(value: string): string {
   return value;
 }
 
+const AGGREGATE_PIPELINE_METRIC_FILTER = {
+  componentId: null,
+  nodeId: null,
+} as const;
+
 // ─── Service functions ─────────────────────────────────────────────────────
 
 /** Get aggregated cost summary for an environment over a time range. */
@@ -129,7 +134,7 @@ export async function getCostSummary(
     prisma.pipelineMetric.aggregate({
       where: {
         pipeline: { environmentId },
-        componentId: null,
+        ...AGGREGATE_PIPELINE_METRIC_FILTER,
         timestamp: { gte: since },
       },
       _sum: { bytesIn: true, bytesOut: true },
@@ -137,7 +142,7 @@ export async function getCostSummary(
     prisma.pipelineMetric.aggregate({
       where: {
         pipeline: { environmentId },
-        componentId: null,
+        ...AGGREGATE_PIPELINE_METRIC_FILTER,
         timestamp: { gte: prevSince, lt: since },
       },
       _sum: { bytesIn: true, bytesOut: true },
@@ -220,7 +225,7 @@ export async function getCostByPipeline(
     by: ["pipelineId"],
     where: {
       pipeline: { environmentId },
-      componentId: null,
+      ...AGGREGATE_PIPELINE_METRIC_FILTER,
       timestamp: { gte: since },
     },
     _sum: { bytesIn: true, bytesOut: true },
@@ -282,7 +287,7 @@ export async function getCostByTeam(
       pipeline: {
         environment: { teamId: { in: teamIds } },
       },
-      componentId: null,
+      ...AGGREGATE_PIPELINE_METRIC_FILTER,
       timestamp: { gte: since },
     },
     _sum: { bytesIn: true, bytesOut: true },
@@ -360,7 +365,7 @@ export async function getCostByEnvironment(
     const agg = await prisma.pipelineMetric.aggregate({
       where: {
         pipeline: { environmentId: env.id },
-        componentId: null,
+        ...AGGREGATE_PIPELINE_METRIC_FILTER,
         timestamp: { gte: since },
       },
       _sum: { bytesIn: true, bytesOut: true },
@@ -393,7 +398,7 @@ export async function getCostTimeSeries(
   const rawMetrics = await prisma.pipelineMetric.findMany({
     where: {
       pipeline: { environmentId },
-      componentId: null,
+      ...AGGREGATE_PIPELINE_METRIC_FILTER,
       timestamp: { gte: since },
     },
     select: {
@@ -493,7 +498,7 @@ export async function getCurrentMonthCostCents(
   const agg = await prisma.pipelineMetric.aggregate({
     where: {
       pipeline: { environmentId },
-      componentId: null,
+      ...AGGREGATE_PIPELINE_METRIC_FILTER,
       timestamp: { gte: monthStart },
     },
     _sum: { bytesIn: true },

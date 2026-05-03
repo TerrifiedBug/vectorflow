@@ -4,6 +4,7 @@ import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { undeployAgent } from "@/server/services/deploy-agent";
+import { assertPipelineBatchAccess } from "@/server/authz";
 
 export const pipelineDeployRouter = router({
   deploymentStatus: protectedProcedure
@@ -72,6 +73,8 @@ export const pipelineDeployRouter = router({
       const userId = ctx.session.user?.id;
       if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
 
+      await assertPipelineBatchAccess(input.pipelineIds, userId, "EDITOR");
+
       const { deployBatch: deployBatchFn } = await import(
         "@/server/services/deploy-agent"
       );
@@ -85,7 +88,11 @@ export const pipelineDeployRouter = router({
       }),
     )
     .use(withTeamAccess("EDITOR"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user?.id;
+      if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
+      await assertPipelineBatchAccess(input.pipelineIds, userId, "EDITOR");
+
       const results: Array<{ pipelineId: string; success: boolean; error?: string }> = [];
 
       for (const pipelineId of input.pipelineIds) {

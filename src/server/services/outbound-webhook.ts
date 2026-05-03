@@ -98,6 +98,7 @@ export async function deliverOutboundWebhook(
       method: "POST",
       headers,
       body,
+      redirect: "manual",
       signal: AbortSignal.timeout(15_000),
     });
 
