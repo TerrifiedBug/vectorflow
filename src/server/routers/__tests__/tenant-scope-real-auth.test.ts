@@ -96,6 +96,7 @@ import { dashboardRouter } from "@/server/routers/dashboard";
 import { auditRouter } from "@/server/routers/audit";
 import { pipelineRouter } from "@/server/routers/pipeline";
 import { pipelineObservabilityRouter } from "@/server/routers/pipeline-observability";
+import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -238,6 +239,30 @@ describe("tenant scoping with real authorization middleware", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
 
     expect(prismaMock.eventSample.findMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects mixed-team batch health reads before evaluating unauthorized pipelines", async () => {
+    prismaMock.pipeline.findUnique.mockResolvedValue({
+      environment: { teamId: "team-1" },
+    } as never);
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.teamMember.findUnique.mockResolvedValue({ role: "VIEWER" } as never);
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "pipe-1", environment: { teamId: "team-1" } },
+      { id: "pipe-2", environment: { teamId: "team-2" } },
+    ] as never);
+    vi.mocked(batchEvaluatePipelineHealth).mockResolvedValue({
+      "pipe-1": { status: "healthy", slis: [] },
+      "pipe-2": { status: "degraded", slis: [] },
+    } as never);
+
+    await expect(
+      pipelineObservabilityCaller.batchHealth({
+        pipelineIds: ["pipe-1", "pipe-2"],
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    expect(batchEvaluatePipelineHealth).not.toHaveBeenCalled();
   });
 
   it("rejects mixed-team pipeline batches before deploy mutation side effects", async () => {
