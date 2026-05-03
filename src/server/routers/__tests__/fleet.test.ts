@@ -679,6 +679,7 @@ describe("fleet.triggerAgentUpdates", () => {
     prismaMock.vectorNode.updateMany.mockResolvedValue({ count: 2 } as never);
 
     const result = await caller.triggerAgentUpdates({
+      environmentId: "env-1",
       nodeIds: ["node-1", "node-2"],
       targetVersion: "2.0.0",
       downloadUrl: "https://releases.example.com/vf-agent-linux-amd64",
@@ -687,6 +688,11 @@ describe("fleet.triggerAgentUpdates", () => {
 
     expect(result.triggeredNodeIds).toEqual(["node-1", "node-2"]);
     expect(result.skipped).toEqual([]);
+    expect(prismaMock.vectorNode.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["node-1", "node-2"] }, environmentId: "env-1" },
+      }),
+    );
     expect(prismaMock.vectorNode.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: { in: ["node-1", "node-2"] } },
@@ -701,6 +707,38 @@ describe("fleet.triggerAgentUpdates", () => {
     expect(relayPush).toHaveBeenCalledTimes(2);
   });
 
+  it("refreshes dev metadata and uses fresh version/checksum for dev- targets", async () => {
+    prismaMock.vectorNode.findMany.mockResolvedValue([
+      makeNode({ id: "node-1", agentVersion: "dev-old" }),
+    ] as never);
+    prismaMock.vectorNode.updateMany.mockResolvedValue({ count: 1 } as never);
+    vi.mocked(checkDevAgentVersion).mockResolvedValue({
+      latestVersion: "dev-20260503",
+      checksums: { "vf-agent-linux-amd64": "freshchecksum" },
+    } as never);
+
+    const result = await caller.triggerAgentUpdates({
+      environmentId: "env-1",
+      nodeIds: ["node-1"],
+      targetVersion: "dev-20260101",
+      downloadUrl: "https://releases.example.com/vf-agent-linux-amd64",
+      checksum: "sha256:stale",
+    });
+
+    expect(result.triggeredNodeIds).toEqual(["node-1"]);
+    expect(checkDevAgentVersion).toHaveBeenCalledWith(true);
+    expect(prismaMock.vectorNode.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          pendingAction: expect.objectContaining({
+            targetVersion: "dev-20260503",
+            checksum: "sha256:freshchecksum",
+          }),
+        },
+      }),
+    );
+  });
+
   it("skips Docker, unreachable, pending, and already-current nodes", async () => {
     prismaMock.vectorNode.findMany.mockResolvedValue([
       makeNode({ id: "node-1", agentVersion: "1.0.0", deploymentMode: "DOCKER" }),
@@ -710,6 +748,7 @@ describe("fleet.triggerAgentUpdates", () => {
     ] as never);
 
     const result = await caller.triggerAgentUpdates({
+      environmentId: "env-1",
       nodeIds: ["node-1", "node-2", "node-3", "node-4"],
       targetVersion: "2.0.0",
       downloadUrl: "https://releases.example.com/vf-agent-linux-amd64",

@@ -763,6 +763,7 @@ export const fleetRouter = router({
   triggerAgentUpdates: protectedProcedure
     .input(
       z.object({
+        environmentId: z.string(),
         nodeIds: z.array(z.string()).min(1).max(500),
         targetVersion: z.string().min(1),
         downloadUrl: z.string().url(),
@@ -773,7 +774,7 @@ export const fleetRouter = router({
     .use(withAudit("fleet.agent_updates_triggered", "VectorNode"))
     .mutation(async ({ input }) => {
       const nodes = await prisma.vectorNode.findMany({
-        where: { id: { in: input.nodeIds } },
+        where: { id: { in: input.nodeIds }, environmentId: input.environmentId },
         select: {
           id: true,
           name: true,
@@ -810,11 +811,34 @@ export const fleetRouter = router({
         };
       }
 
+      const { downloadUrl } = input;
+      let { targetVersion, checksum } = input;
+
+      if (targetVersion.startsWith("dev-")) {
+        const fresh = await checkDevAgentVersion(true);
+        if (!fresh.latestVersion) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Unable to fetch current dev release info — retry the update",
+          });
+        }
+        const binaryName = downloadUrl.split("/").pop() ?? "vf-agent-linux-amd64";
+        const freshChecksum = fresh.checksums[binaryName];
+        if (!freshChecksum) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to retrieve fresh checksum for ${binaryName} — retry the update`,
+          });
+        }
+        targetVersion = fresh.latestVersion;
+        checksum = `sha256:${freshChecksum}`;
+      }
+
       const pendingAction = {
         type: "self_update",
-        targetVersion: input.targetVersion,
-        downloadUrl: input.downloadUrl,
-        checksum: input.checksum,
+        targetVersion,
+        downloadUrl,
+        checksum,
       };
 
       const updated = await prisma.vectorNode.updateMany({
@@ -826,9 +850,9 @@ export const fleetRouter = router({
         relayPush(nodeId, {
           type: "action",
           action: "self_update",
-          targetVersion: input.targetVersion,
-          downloadUrl: input.downloadUrl,
-          checksum: input.checksum,
+          targetVersion,
+          downloadUrl,
+          checksum,
         });
       }
 
