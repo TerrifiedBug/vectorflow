@@ -136,6 +136,7 @@ cd vectorflow/docker/server
 cat > .env << 'EOF'
 POSTGRES_PASSWORD=changeme
 NEXTAUTH_SECRET=generate-a-random-32-char-string-here
+NEXTAUTH_URL=http://localhost:3000
 EOF
 
 docker compose up -d
@@ -282,7 +283,7 @@ Logged-in users can view the Swagger UI at `/api/v1/docs`. The machine-readable 
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | — | PostgreSQL-compatible connection string |
 | `NEXTAUTH_SECRET` | Yes | — | Session and encryption key (32+ chars) |
-| `NEXTAUTH_URL` | No | — | Canonical server URL |
+| `NEXTAUTH_URL` | Yes | `http://localhost:3000` in the Compose example | Canonical server URL |
 | `PORT` | No | `3000` | HTTP listen port |
 
 ### Agent
