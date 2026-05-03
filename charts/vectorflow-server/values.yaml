@@ -105,6 +105,11 @@ dataDir: "/app/.vectorflow"
 # Set to "true" when running behind an ingress/load balancer.
 authTrustHost: "true"
 
+# -- Trust X-Forwarded-For/X-Real-IP for IP-keyed rate limits.
+# Enable only when an ingress/load balancer overwrites client-supplied
+# forwarded headers before traffic reaches VectorFlow.
+trustProxyHeaders: "false"
+
 # ------------------------------------------------------------------
 # Secrets
 # ------------------------------------------------------------------

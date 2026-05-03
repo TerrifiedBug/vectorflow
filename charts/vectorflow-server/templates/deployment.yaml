@@ -53,6 +53,8 @@ spec:
             {{- include "vectorflow-server.redisUrlEnv" . | nindent 12 }}
             - name: AUTH_TRUST_HOST
               value: {{ .Values.authTrustHost | quote }}
+            - name: VF_TRUST_PROXY_HEADERS
+              value: {{ .Values.trustProxyHeaders | quote }}
             - name: NODE_ENV
               value: "production"
             {{- if or .Values.secret.encryptionKeyV2 .Values.existingSecret }}

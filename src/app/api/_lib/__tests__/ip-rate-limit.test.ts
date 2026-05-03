@@ -13,9 +13,11 @@ function makeRequest(
 describe("checkIpRateLimit", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubEnv("VF_TRUST_PROXY_HEADERS", "true");
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.useRealTimers();
   });
 
@@ -49,7 +51,19 @@ describe("checkIpRateLimit", () => {
     expect(checkIpRateLimit(makeRequest("10.0.0.2"), "enroll", 10)).toBeNull();
   });
 
-  it("extracts IP from x-forwarded-for (rightmost entry)", () => {
+  it("ignores forwarded IP headers unless trusted proxy headers are enabled", () => {
+    vi.stubEnv("VF_TRUST_PROXY_HEADERS", "false");
+    const req = makeRequest("203.0.113.50");
+    for (let i = 0; i < 10; i++) {
+      checkIpRateLimit(req, "untrusted-enroll", 10);
+    }
+
+    expect(checkIpRateLimit(makeRequest("203.0.113.50"), "untrusted-enroll-other", 10)).toBeNull();
+    expect(checkIpRateLimit(new Request("http://localhost/api/test"), "untrusted-enroll", 10)).not.toBeNull();
+  });
+
+  it("extracts IP from x-forwarded-for (rightmost entry) when trusted proxy headers are enabled", () => {
+    vi.stubEnv("VF_TRUST_PROXY_HEADERS", "true");
     const req = makeRequest(undefined, {
       "x-forwarded-for": "203.0.113.50, 70.41.3.18, 150.172.238.178",
     });
@@ -65,7 +79,8 @@ describe("checkIpRateLimit", () => {
     expect(blocked).not.toBeNull();
   });
 
-  it("falls back to x-real-ip when x-forwarded-for missing", () => {
+  it("falls back to x-real-ip when trusted proxy headers are enabled and x-forwarded-for is missing", () => {
+    vi.stubEnv("VF_TRUST_PROXY_HEADERS", "true");
     const req = new Request("http://localhost/api/test", {
       headers: { "x-real-ip": "192.168.1.1" },
     });

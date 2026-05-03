@@ -1,6 +1,11 @@
 import { rateLimiter } from "@/app/api/v1/_lib/rate-limiter";
+import crypto from "crypto";
 
 function getClientIp(request: Request): string {
+  if (process.env.VF_TRUST_PROXY_HEADERS !== "true") {
+    return "unknown";
+  }
+
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
     const parts = forwarded.split(",");
@@ -70,7 +75,8 @@ export function checkTokenRateLimit(
     });
   }
 
-  const key = `token:${endpoint}:${token}`;
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const key = `token:${endpoint}:${tokenHash}`;
   const result = rateLimiter.checkKey(key, limit);
 
   if (!result.allowed) {
