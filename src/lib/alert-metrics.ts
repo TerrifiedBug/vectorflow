@@ -38,6 +38,9 @@ export const FLEET_METRIC_VALUES = [
   "node_load_imbalance",
   "version_drift",
   "cost_threshold_exceeded",
+  // Pipeline-scoped metrics evaluated by FleetAlertService (require pipelineId).
+  "latency_mean",
+  "throughput_floor",
 ] as const;
 
 export const FLEET_METRICS_SET: ReadonlySet<string> = new Set(FLEET_METRIC_VALUES);

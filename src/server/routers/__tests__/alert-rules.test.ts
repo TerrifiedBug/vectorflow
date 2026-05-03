@@ -39,7 +39,13 @@ vi.mock("@/server/services/event-alerts", () => ({
 }));
 
 vi.mock("@/server/services/alert-evaluator", () => ({
-  FLEET_METRICS: new Set(["fleet_error_rate", "fleet_throughput_drop"]),
+  FLEET_METRICS: new Set([
+    "fleet_error_rate",
+    "fleet_throughput_drop",
+    "latency_mean",
+    "throughput_floor",
+  ]),
+  PIPELINE_FLEET_METRICS: new Set(["latency_mean", "throughput_floor"]),
 }));
 
 import { prisma } from "@/lib/prisma";
@@ -197,6 +203,49 @@ describe("alertRulesRouter", () => {
           teamId: "team-1",
         }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    });
+
+    it("throws BAD_REQUEST for pipeline-scoped fleet metric without pipelineId", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+
+      await expect(
+        caller.createRule({
+          name: "Latency Rule",
+          environmentId: "env-1",
+          metric: "latency_mean" as never,
+          condition: "gt" as never,
+          threshold: 500,
+          teamId: "team-1",
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    });
+
+    it("creates a pipeline-scoped fleet metric rule when pipelineId is provided", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.pipeline.findUnique.mockResolvedValue({ id: "pipe-1", environmentId: "env-1" } as never);
+      prismaMock.alertRule.create.mockResolvedValue(
+        makeAlertRule({ metric: "latency_mean", pipelineId: "pipe-1" }) as never,
+      );
+
+      await caller.createRule({
+        name: "Pipeline Latency",
+        environmentId: "env-1",
+        pipelineId: "pipe-1",
+        metric: "latency_mean" as never,
+        condition: "gt" as never,
+        threshold: 500,
+        durationSeconds: 120,
+        teamId: "team-1",
+      });
+
+      expect(prismaMock.alertRule.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            metric: "latency_mean",
+            pipelineId: "pipe-1",
+          }),
+        }),
+      );
     });
 
     it("nullifies condition/threshold for event metrics", async () => {
