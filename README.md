@@ -331,9 +331,9 @@ deploy flow, fleet health, and the activation-path smoke.
 
 ### Maintainer docs
 
-- [Deploy state machine](docs/deploy-state-machine.md) covers deploy approvals,
-  version snapshots, rollback, concurrent deploy resolution, agent config
-  delivery, and heartbeat status transitions.
+- [Deploy state machine](https://vectorflow.sh/docs/operations/deploy-state-machine)
+  covers deploy approvals, version snapshots, rollback, concurrent deploy
+  resolution, agent config delivery, and heartbeat status transitions.
 
 ### Agent
 
