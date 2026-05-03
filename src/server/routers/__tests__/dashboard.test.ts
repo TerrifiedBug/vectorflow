@@ -418,3 +418,30 @@ describe("dashboard.deleteView", () => {
     expect(prismaMock.dashboardView.delete).not.toHaveBeenCalled();
   });
 });
+
+// ── dashboard.pipelineCards ────────────────────────────────────────────────────
+
+describe("dashboard.pipelineCards", () => {
+  beforeEach(() => {
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+  });
+
+  it("returns an empty array when the environment is unknown (stale id)", async () => {
+    prismaMock.environment.findUnique.mockResolvedValue(null);
+
+    const result = await caller.pipelineCards({ environmentId: "env-missing" });
+
+    expect(result).toEqual([]);
+    expect(prismaMock.pipeline.findMany).not.toHaveBeenCalled();
+  });
+
+  it("forbids non-member access when the environment belongs to another team", async () => {
+    prismaMock.environment.findUnique.mockResolvedValue({ teamId: "team-other" } as never);
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.teamMember.findUnique.mockResolvedValue(null);
+
+    await expect(
+      caller.pipelineCards({ environmentId: "env-1" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});

@@ -124,6 +124,12 @@ function makeTeam(overrides: Record<string, unknown> = {}) {
 describe("bulk tag operations", () => {
   beforeEach(() => {
     mockReset(prismaMock);
+    prismaMock.pipeline.findMany.mockImplementation((async (args: unknown) => {
+      const where = (args as { where?: { id?: { in?: string[] } } } | undefined)?.where;
+      const ids = where?.id?.in ?? [];
+      return ids.map((id) => ({ id, environment: { teamId: "team-1" } }));
+    }) as never);
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
   });
 
   // ── bulkAddTags ──────────────────────────────────────────────────────────
@@ -175,24 +181,19 @@ describe("bulk tag operations", () => {
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
-    it("handles partial failure when some pipelines are not found", async () => {
-      prismaMock.pipeline.findUnique
-        .mockResolvedValueOnce(makePipeline({ id: "p1" }) as never) // first pipeline (team lookup)
-        .mockResolvedValueOnce(makePipeline({ id: "p1", tags: [] }) as never) // loop: p1 found
-        .mockResolvedValueOnce(null); // loop: p2 not found
-      prismaMock.team.findUnique.mockResolvedValue(makeTeam({ availableTags: [] }) as never);
-      prismaMock.pipeline.update.mockResolvedValue({} as never);
+    it("rejects before mutation when some pipelines are not found", async () => {
+      prismaMock.pipeline.findMany.mockResolvedValueOnce([
+        { id: "p1", environment: { teamId: "team-1" } },
+      ] as never);
 
-      const result = await caller.bulkAddTags({
-        pipelineIds: ["p1", "p2"],
-        tags: ["tag-a"],
-      });
+      await expect(
+        caller.bulkAddTags({
+          pipelineIds: ["p1", "p2"],
+          tags: ["tag-a"],
+        }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
 
-      expect(result.total).toBe(2);
-      expect(result.succeeded).toBe(1);
-      const failedResult = result.results.find((r: { pipelineId: string }) => r.pipelineId === "p2");
-      expect(failedResult?.success).toBe(false);
-      expect(failedResult?.error).toBe("Pipeline not found");
+      expect(prismaMock.pipeline.update).not.toHaveBeenCalled();
     });
 
     it("deduplicates tags — adding an existing tag does not create duplicates", async () => {
