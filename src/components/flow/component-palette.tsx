@@ -1,11 +1,11 @@
 "use client";
 
 import { memo, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Search, PackageOpen, Link2 as LinkIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, PackageOpen, Link2 as LinkIcon, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { getVectorCatalog } from "@/lib/vector/catalog";
+import { findComponentDef, getVectorCatalog } from "@/lib/vector/catalog";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import { NODE_KIND_META } from "@/lib/node-kind-colors";
 import { getIcon } from "./node-icon";
@@ -13,6 +13,7 @@ import { StaggerList, StaggerItem } from "@/components/motion";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
+import { useFlowStore } from "@/stores/flow-store";
 
 const kindMeta: Record<
   VectorComponentDef["kind"],
@@ -35,7 +36,18 @@ const kindMeta: Record<
   },
 };
 
-const DraggableItem = memo(function DraggableItem({ def }: { def: VectorComponentDef }) {
+function keyboardAddPosition(nodeCount: number) {
+  const offset = nodeCount * 32;
+  return { x: 120 + offset, y: 120 + offset };
+}
+
+const DraggableItem = memo(function DraggableItem({
+  def,
+  onAdd,
+}: {
+  def: VectorComponentDef;
+  onAdd: (def: VectorComponentDef) => void;
+}) {
   const Icon = useMemo(() => getIcon(def.icon), [def.icon]);
   const meta = kindMeta[def.kind];
 
@@ -45,6 +57,13 @@ const DraggableItem = memo(function DraggableItem({ def }: { def: VectorComponen
       `${def.kind}:${def.type}`
     );
     event.dataTransfer.effectAllowed = "move";
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onAdd(def);
+    }
   }
 
   return (
@@ -66,7 +85,13 @@ const DraggableItem = memo(function DraggableItem({ def }: { def: VectorComponen
         {/* eslint-disable-next-line react-hooks/static-components */}
         <Icon className="h-4 w-4" />
       </div>
-      <div className="min-w-0 flex-1">
+      <button
+        type="button"
+        onClick={() => onAdd(def)}
+        onKeyDown={handleKeyDown}
+        aria-label={`${def.displayName} ${def.kind} component. Press Enter or Space to add to canvas.`}
+        className="min-w-0 flex-1 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-foreground">
             {def.displayName}
@@ -78,7 +103,15 @@ const DraggableItem = memo(function DraggableItem({ def }: { def: VectorComponen
         <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
           {def.description}
         </p>
-      </div>
+      </button>
+      <button
+        type="button"
+        onClick={() => onAdd(def)}
+        aria-label={`Add ${def.displayName} ${def.kind} to canvas`}
+        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Plus className="h-4 w-4" />
+      </button>
     </div>
   );
 });
@@ -86,9 +119,11 @@ const DraggableItem = memo(function DraggableItem({ def }: { def: VectorComponen
 const CategoryGroup = memo(function CategoryGroup({
   category,
   items,
+  onAdd,
 }: {
   category: string;
   items: VectorComponentDef[];
+  onAdd: (def: VectorComponentDef) => void;
 }) {
   const [open, setOpen] = useState(true);
 
@@ -113,7 +148,7 @@ const CategoryGroup = memo(function CategoryGroup({
         <StaggerList className="space-y-1.5 pb-1 pl-1">
           {items.map((def) => (
             <StaggerItem key={def.type}>
-              <DraggableItem def={def} />
+              <DraggableItem def={def} onAdd={onAdd} />
             </StaggerItem>
           ))}
         </StaggerList>
@@ -125,9 +160,11 @@ const CategoryGroup = memo(function CategoryGroup({
 function CollapsibleSection({
   kind,
   items,
+  onAdd,
 }: {
   kind: VectorComponentDef["kind"];
   items: VectorComponentDef[];
+  onAdd: (def: VectorComponentDef) => void;
 }) {
   const [open, setOpen] = useState(true);
   const meta = kindMeta[kind];
@@ -169,13 +206,14 @@ function CollapsibleSection({
                   key={category}
                   category={category}
                   items={defs}
+                  onAdd={onAdd}
                 />
               ))
             : (
               <StaggerList>
                 {items.map((def) => (
                   <StaggerItem key={def.type}>
-                    <DraggableItem def={def} />
+                    <DraggableItem def={def} onAdd={onAdd} />
                   </StaggerItem>
                 ))}
               </StaggerList>
@@ -192,6 +230,9 @@ export function ComponentPalette() {
   const [sharedKindFilter, setSharedKindFilter] = useState<"all" | "source" | "transform" | "sink">("all");
   const trpc = useTRPC();
   const { selectedEnvironmentId } = useEnvironmentStore();
+  const addNode = useFlowStore((s) => s.addNode);
+  const patchNodeSharedData = useFlowStore((s) => s.patchNodeSharedData);
+  const nodeCount = useFlowStore((s) => s.nodes.length);
 
   const sharedComponentsQuery = useQuery(
     trpc.sharedComponent.list.queryOptions(
@@ -239,6 +280,10 @@ export function ComponentPalette() {
     [filtered]
   );
 
+  function handleAdd(def: VectorComponentDef) {
+    addNode(def, keyboardAddPosition(nodeCount));
+  }
+
   return (
     <aside className="flex h-full w-[280px] shrink-0 flex-col overflow-hidden border-r bg-background">
       {/* Search */}
@@ -255,10 +300,13 @@ export function ComponentPalette() {
       </div>
 
       {/* Tab switcher */}
-      <div className="flex border-b px-3">
+      <div className="flex border-b px-3" role="tablist" aria-label="Component palette source">
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "catalog"}
           className={cn(
-            "flex-1 border-b-2 px-2 py-2 text-xs font-medium transition-colors",
+            "flex-1 border-b-2 px-2 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
             activeTab === "catalog"
               ? "border-foreground text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -268,8 +316,11 @@ export function ComponentPalette() {
           Catalog
         </button>
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "shared"}
           className={cn(
-            "flex-1 border-b-2 px-2 py-2 text-xs font-medium transition-colors",
+            "flex-1 border-b-2 px-2 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
             activeTab === "shared"
               ? "border-purple-400 text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -287,9 +338,9 @@ export function ComponentPalette() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         {activeTab === "catalog" && (
           <div className="space-y-1 p-3">
-            <CollapsibleSection kind="source" items={sources} />
-            <CollapsibleSection kind="transform" items={transforms} />
-            <CollapsibleSection kind="sink" items={sinks} />
+            <CollapsibleSection kind="source" items={sources} onAdd={handleAdd} />
+            <CollapsibleSection kind="transform" items={transforms} onAdd={handleAdd} />
+            <CollapsibleSection kind="sink" items={sinks} onAdd={handleAdd} />
 
             {filtered.length === 0 && (
               <div className="flex flex-col items-center justify-center p-8">
@@ -308,8 +359,10 @@ export function ComponentPalette() {
               {(["all", "source", "transform", "sink"] as const).map((kind) => (
                 <button
                   key={kind}
+                  type="button"
+                  aria-pressed={sharedKindFilter === kind}
                   className={cn(
-                    "rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors",
+                    "rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     sharedKindFilter === kind
                       ? "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300"
                       : "text-muted-foreground hover:bg-muted"
@@ -333,9 +386,28 @@ export function ComponentPalette() {
               filteredShared.map((sc) => {
                 const kindKey = sc.kind.toLowerCase() as VectorComponentDef["kind"];
                 const meta = kindMeta[kindKey] ?? kindMeta.transform;
-                const Icon = getIcon(
-                  getVectorCatalog().find((d) => d.type === sc.componentType)?.icon
-                );
+                const componentDef = findComponentDef(sc.componentType, kindKey);
+                const Icon = getIcon(componentDef?.icon);
+                const addSharedComponent = () => {
+                  if (!componentDef) return;
+                  addNode(componentDef, keyboardAddPosition(nodeCount));
+                  const newNode = useFlowStore.getState().nodes.at(-1);
+                  if (newNode) {
+                    patchNodeSharedData(newNode.id, {
+                      config: sc.config as Record<string, unknown>,
+                      sharedComponentId: sc.id,
+                      sharedComponentVersion: sc.version,
+                      sharedComponentName: sc.name,
+                      sharedComponentLatestVersion: sc.version,
+                    });
+                  }
+                };
+                const onSharedKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    addSharedComponent();
+                  }
+                };
                 return (
                   <div
                     key={sc.id}
@@ -363,7 +435,14 @@ export function ComponentPalette() {
                     <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-purple-500/20 text-purple-400">
                       <Icon className="h-4 w-4" />
                     </div>
-                    <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={addSharedComponent}
+                      onKeyDown={onSharedKeyDown}
+                      disabled={!componentDef}
+                      aria-label={`${sc.name} ${kindKey} shared component. Press Enter or Space to add to canvas.`}
+                      className="min-w-0 flex-1 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+                    >
                       <div className="flex items-center gap-1.5">
                         <span className="truncate text-sm font-medium text-foreground">
                           {sc.name}
@@ -383,7 +462,16 @@ export function ComponentPalette() {
                           </Badge>
                         )}
                       </div>
-                    </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={addSharedComponent}
+                      disabled={!componentDef}
+                      aria-label={`Add ${sc.name} ${kindKey} to canvas`}
+                      className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
                   </div>
                 );
               })

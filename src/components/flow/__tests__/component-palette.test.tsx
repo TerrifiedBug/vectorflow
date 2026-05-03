@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import React from "react";
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import type { VectorComponentDef } from "@/lib/vector/types";
 
 afterEach(cleanup);
+
+const mockAddNode = vi.fn();
+let mockNodesLength = 0;
 
 // ── External dependency mocks ──────────────────────────────────────────────
 
@@ -29,6 +32,11 @@ vi.mock("@/trpc/client", () => ({
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({ data: undefined, isLoading: false }),
+}));
+
+vi.mock("@/stores/flow-store", () => ({
+  useFlowStore: (selector: (state: { addNode: typeof mockAddNode; nodes: unknown[] }) => unknown) =>
+    selector({ addNode: mockAddNode, nodes: Array.from({ length: mockNodesLength }) }),
 }));
 
 // ── Catalog mock ───────────────────────────────────────────────────────────
@@ -82,6 +90,11 @@ import { ComponentPalette } from "../component-palette";
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe("ComponentPalette", () => {
+  beforeEach(() => {
+    mockAddNode.mockClear();
+    mockNodesLength = 0;
+  });
+
   describe("search filtering", () => {
     it("renders all catalog components when search is empty", () => {
       const { getByText } = render(<ComponentPalette />);
@@ -129,6 +142,19 @@ describe("ComponentPalette", () => {
       expect(getByText("Shared")).toBeTruthy();
     });
 
+    it("marks the selected palette tab semantically", () => {
+      const { getByRole } = render(<ComponentPalette />);
+
+      expect(getByRole("tab", { name: "Catalog" })).toHaveAttribute(
+        "aria-selected",
+        "true"
+      );
+      expect(getByRole("tab", { name: /Shared/ })).toHaveAttribute(
+        "aria-selected",
+        "false"
+      );
+    });
+
     it("switches to Shared tab when clicked", () => {
       const { getByText, queryByText } = render(<ComponentPalette />);
       fireEvent.click(getByText("Shared"));
@@ -165,6 +191,37 @@ describe("ComponentPalette", () => {
       expect(dataTransferData["application/vectorflow-component"]).toBe(
         "source:kafka"
       );
+    });
+  });
+
+  describe("keyboard add", () => {
+    it("focuses a catalog component and adds it with Enter", () => {
+      const { getByRole } = render(<ComponentPalette />);
+      const item = getByRole("button", { name: /Apache Kafka source component/i });
+
+      item.focus();
+      expect(item).toHaveFocus();
+      fireEvent.keyDown(item, { key: "Enter" });
+
+      expect(mockAddNode).toHaveBeenCalledWith(MOCK_CATALOG[0], { x: 120, y: 120 });
+    });
+
+    it("adds a focused catalog component with Space and offsets from existing nodes", () => {
+      mockNodesLength = 2;
+      const { getByRole } = render(<ComponentPalette />);
+      const item = getByRole("button", { name: /Apache Kafka source component/i });
+
+      fireEvent.keyDown(item, { key: " " });
+
+      expect(mockAddNode).toHaveBeenCalledWith(MOCK_CATALOG[0], { x: 184, y: 184 });
+    });
+
+    it("exposes an explicit add button for catalog components", () => {
+      const { getByRole } = render(<ComponentPalette />);
+
+      fireEvent.click(getByRole("button", { name: "Add Apache Kafka source to canvas" }));
+
+      expect(mockAddNode).toHaveBeenCalledWith(MOCK_CATALOG[0], { x: 120, y: 120 });
     });
   });
 });
