@@ -7,6 +7,7 @@ on:
       - "src/**"
       - "agent/**"
       - "prisma/**"
+      - "charts/**"
       - "docker/**"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -63,6 +64,42 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Add Helm chart repositories
+        run: helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
+
+      - name: Build server chart dependencies
+        run: helm dependency build charts/vectorflow-server
+
+      - name: Lint Helm charts
+        run: |
+          helm lint charts/vectorflow-server \
+            --set nextauthUrl=http://localhost:3000 \
+            --set secret.nextauthSecret=ci-nextauth-secret-32-characters \
+            --set secret.databaseUrl=postgresql://vectorflow:password@postgres:5432/vectorflow
+          helm lint charts/vectorflow-agent \
+            --set config.serverUrl=http://vectorflow.vectorflow.svc.cluster.local:3000 \
+            --set config.token=ci-enrollment-token
+
+      - name: Render Helm charts
+        run: |
+          helm template vectorflow-server charts/vectorflow-server \
+            --set nextauthUrl=http://localhost:3000 \
+            --set secret.nextauthSecret=ci-nextauth-secret-32-characters \
+            --set secret.databaseUrl=postgresql://vectorflow:password@postgres:5432/vectorflow
+          helm template vectorflow-agent charts/vectorflow-agent \
+            --set config.serverUrl=http://vectorflow.vectorflow.svc.cluster.local:3000 \
+            --set config.token=ci-enrollment-token
+
+      - name: Validate Docker Compose deployment files
+        env:
+          NEXTAUTH_URL: http://localhost:3000
+        run: |
+          docker compose --env-file docker/server/.env.example -f docker/server/docker-compose.yml config
+          docker compose --env-file docker/server/.env.example -f docker/server/docker-compose.ha.yml config
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
