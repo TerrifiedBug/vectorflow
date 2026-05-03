@@ -15,12 +15,17 @@ vi.mock("@/server/services/sse-broadcast", () => ({
   broadcastSSE: vi.fn(),
 }));
 
+vi.mock("@/server/services/active-taps", () => ({
+  activeTaps: new Map(),
+}));
+
 vi.mock("@/lib/logger", () => ({
   errorLog: vi.fn(),
 }));
 
 import { authenticateAgent } from "@/server/services/agent-auth";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
+import { activeTaps } from "@/server/services/active-taps";
 
 function makeRequest(body: unknown): Request {
   return new Request("http://localhost/api/agent/tap-events", {
@@ -36,6 +41,7 @@ function makeRequest(body: unknown): Request {
 describe("POST /api/agent/tap-events", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    activeTaps.clear();
   });
 
   it("returns 401 when unauthenticated", async () => {
@@ -50,6 +56,13 @@ describe("POST /api/agent/tap-events", () => {
   });
 
   it("broadcasts tap events via SSE when events array is present", async () => {
+    activeTaps.set("req-1", {
+      nodeId: "node-1",
+      pipelineId: "pipe-1",
+      componentId: "comp-1",
+      startedAt: Date.now(),
+    });
+
     const { POST } = await import("@/app/api/agent/tap-events/route");
 
     const body = {
@@ -79,6 +92,13 @@ describe("POST /api/agent/tap-events", () => {
   });
 
   it("broadcasts tap_stopped when status is 'stopped'", async () => {
+    activeTaps.set("req-2", {
+      nodeId: "node-1",
+      pipelineId: "pipe-1",
+      componentId: "comp-1",
+      startedAt: Date.now(),
+    });
+
     const { POST } = await import("@/app/api/agent/tap-events/route");
 
     const body = {
@@ -120,5 +140,53 @@ describe("POST /api/agent/tap-events", () => {
     expect(response.status).toBe(400);
     const json = await response.json();
     expect(json.error).toBe("Invalid payload");
+  });
+
+  it("rejects tap events for a request assigned to a different node", async () => {
+    activeTaps.set("req-foreign-node", {
+      nodeId: "node-2",
+      pipelineId: "pipe-1",
+      componentId: "comp-1",
+      startedAt: Date.now(),
+    });
+
+    const { POST } = await import("@/app/api/agent/tap-events/route");
+
+    const response = await POST(
+      makeRequest({
+        requestId: "req-foreign-node",
+        pipelineId: "pipe-1",
+        componentId: "comp-1",
+        events: [{ message: "wrong node" }],
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Forbidden" });
+    expect(broadcastSSE).not.toHaveBeenCalled();
+  });
+
+  it("rejects tap events when pipeline or component does not match the request context", async () => {
+    activeTaps.set("req-1", {
+      nodeId: "node-1",
+      pipelineId: "pipe-1",
+      componentId: "comp-1",
+      startedAt: Date.now(),
+    });
+
+    const { POST } = await import("@/app/api/agent/tap-events/route");
+
+    const response = await POST(
+      makeRequest({
+        requestId: "req-1",
+        pipelineId: "pipe-1",
+        componentId: "comp-other",
+        events: [{ message: "wrong component" }],
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Forbidden" });
+    expect(broadcastSSE).not.toHaveBeenCalled();
   });
 });

@@ -62,6 +62,14 @@ export async function POST(request: Request) {
       if (sampleRequest.pipeline.environmentId !== agent.environmentId) {
         continue;
       }
+      if (sampleRequest.nodeId !== agent.nodeId) {
+        continue;
+      }
+
+      const componentKeys = sampleRequest.componentKeys as string[];
+      if (!componentKeys.includes(result.componentKey)) {
+        continue;
+      }
 
       // Write the EventSample (success or error)
       try {
@@ -81,7 +89,6 @@ export async function POST(request: Request) {
       }
 
       // Check if all components now have samples (success or error)
-      const componentKeys = sampleRequest.componentKeys as string[];
       const samples = await prisma.eventSample.findMany({
         where: { requestId: result.requestId },
         select: { componentKey: true, error: true },

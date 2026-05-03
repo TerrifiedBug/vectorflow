@@ -8,17 +8,10 @@ import { withAudit } from "@/server/middleware/audit";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
 import { relayPush } from "@/server/services/push-broadcast";
+export { activeTaps } from "@/server/services/active-taps";
+import { activeTaps } from "@/server/services/active-taps";
 
 // ── Active tap tracking ────────────────────────────────────────────────────
-
-interface ActiveTap {
-  nodeId: string;
-  pipelineId: string;
-  componentId: string;
-  startedAt: number;
-}
-
-export const activeTaps = new Map<string, ActiveTap>();
 const TAP_TTL_MS = 5 * 60 * 1000;
 
 export function startTapHandler(
@@ -184,29 +177,35 @@ export const pipelineObservabilityRouter = router({
         });
       }
 
+      const statuses = await prisma.nodePipelineStatus.findMany({
+        where: { pipelineId: input.pipelineId, status: "RUNNING" },
+        select: { nodeId: true },
+      });
+      if (statuses.length === 0) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "No running nodes found for this pipeline",
+        });
+      }
+      const assignedNodeId = statuses[0].nodeId;
+
       const request = await prisma.eventSampleRequest.create({
         data: {
           pipelineId: input.pipelineId,
           componentKeys: input.componentKeys,
           limit: input.limit,
+          nodeId: assignedNodeId,
           expiresAt: new Date(Date.now() + 2 * 60 * 1000),
         },
       });
 
-      // Push sample request to connected agents running this pipeline
-      const statuses = await prisma.nodePipelineStatus.findMany({
-        where: { pipelineId: input.pipelineId, status: "RUNNING" },
-        select: { nodeId: true },
+      relayPush(assignedNodeId, {
+        type: "sample_request",
+        requestId: request.id,
+        pipelineId: input.pipelineId,
+        componentKeys: input.componentKeys,
+        limit: input.limit,
       });
-      for (const { nodeId } of statuses) {
-        relayPush(nodeId, {
-          type: "sample_request",
-          requestId: request.id,
-          pipelineId: input.pipelineId,
-          componentKeys: input.componentKeys,
-          limit: input.limit,
-        });
-      }
 
       return { requestId: request.id, status: "PENDING" };
     }),
