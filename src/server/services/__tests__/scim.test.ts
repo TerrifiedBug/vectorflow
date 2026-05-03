@@ -61,7 +61,7 @@ describe("SCIM audit status logging", () => {
     );
   });
 
-  it("logs failed SCIM user creation audit events before rethrowing", async () => {
+  it("logs local-account SCIM adoption conflicts before rethrowing", async () => {
     prismaMock.user.findUnique.mockResolvedValue({
       id: "user-1",
       email: "ada@example.com",
@@ -82,7 +82,7 @@ describe("SCIM audit status logging", () => {
 
     expect(writeAuditLogMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        action: "scim.user_created",
+        action: "scim.user_adopted",
         entityType: "ScimUser",
         entityId: "ada@example.com",
         metadata: expect.objectContaining({
@@ -90,6 +90,41 @@ describe("SCIM audit status logging", () => {
           scimExternalId: "ext-1",
           status: "failure",
           error: expect.stringContaining("cannot be adopted via SCIM"),
+        }),
+      }),
+    );
+  });
+
+  it("preserves the adoption action when a SCIM user adoption fails", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      email: "ada@example.com",
+      name: "Ada Lovelace",
+      scimExternalId: null,
+      lockedAt: null,
+      authMethod: "OIDC",
+    } as never);
+    prismaMock.user.update.mockRejectedValue(new Error("adoption failed") as never);
+
+    await expect(
+      scimCreateUser({
+        schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"],
+        userName: "ada@example.com",
+        externalId: "ext-1",
+        emails: [{ value: "ada@example.com", primary: true, type: "work" }],
+      }),
+    ).rejects.toThrow("adoption failed");
+
+    expect(writeAuditLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "scim.user_adopted",
+        entityType: "ScimUser",
+        entityId: "ada@example.com",
+        metadata: expect.objectContaining({
+          email: "ada@example.com",
+          scimExternalId: "ext-1",
+          status: "failure",
+          error: "adoption failed",
         }),
       }),
     );

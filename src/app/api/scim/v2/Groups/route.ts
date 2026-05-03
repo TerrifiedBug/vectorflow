@@ -94,6 +94,10 @@ export async function POST(req: NextRequest) {
   }
 
   let displayNameForAudit = "unknown";
+  let failureAction:
+    | "scim.group_created"
+    | "scim.group_adopted"
+    | "scim.group_updated" = "scim.group_created";
 
   try {
     const body = await req.json();
@@ -114,6 +118,10 @@ export async function POST(req: NextRequest) {
 
       if (existing) {
         scimGroup = existing;
+        failureAction =
+          body.externalId && body.externalId !== existing.externalId
+            ? "scim.group_adopted"
+            : "scim.group_updated";
         if (body.externalId && body.externalId !== existing.externalId) {
           scimGroup = await tx.scimGroup.update({
             where: { id: existing.id },
@@ -155,7 +163,7 @@ export async function POST(req: NextRequest) {
     const message =
       error instanceof Error ? error.message : "Failed to create group";
     await writeScimAuditLog({
-      action: "scim.group_created",
+      action: failureAction,
       entityType: "ScimGroup",
       entityId: displayNameForAudit,
       metadata: { displayName: displayNameForAudit },

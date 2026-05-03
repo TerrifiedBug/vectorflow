@@ -129,6 +129,7 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
     scimUser.name?.formatted ??
     scimUser.name?.givenName ??
     email.split("@")[0];
+  let failureAction: "scim.user_created" | "scim.user_adopted" = "scim.user_created";
 
   try {
     // Check if user already exists (e.g. created via OIDC login before SCIM provisioning)
@@ -138,6 +139,7 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
     });
 
     if (existing) {
+      failureAction = "scim.user_adopted";
       // Only adopt users already created via SSO or previously SCIM-linked.
       // Local-credential accounts require explicit admin action to link.
       if (existing.authMethod !== "OIDC" && !existing.scimExternalId) {
@@ -197,7 +199,7 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
     return { user: toScimUser(user), adopted: false };
   } catch (error) {
     await writeScimAuditLog({
-      action: "scim.user_created",
+      action: failureAction,
       entityType: "ScimUser",
       entityId: email,
       metadata: { email, scimExternalId: scimUser.externalId },
