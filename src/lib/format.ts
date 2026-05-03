@@ -90,6 +90,12 @@ export function formatLatency(ms: number): string {
   return `${ms.toFixed(3)}ms`;
 }
 
+/** Format a cost in cents as a USD string. Returns "--" when zero. */
+export function formatCost(cents: number): string {
+  if (cents === 0) return "--";
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
 /** Format a date/string to HH:MM (locale-aware, 2-digit hour and minute). */
 export function formatTime(date: Date | string): string {
   return new Date(date).toLocaleTimeString([], {
