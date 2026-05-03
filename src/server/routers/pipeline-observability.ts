@@ -8,24 +8,20 @@ import { withAudit } from "@/server/middleware/audit";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
 import { relayPush } from "@/server/services/push-broadcast";
-export { activeTaps } from "@/server/services/active-taps";
-import { activeTaps } from "@/server/services/active-taps";
+import {
+  setActiveTap,
+  deleteActiveTap,
+  expireStaleTaps,
+  TAP_TTL_MS,
+} from "@/server/services/active-taps";
 
-// ── Active tap tracking ────────────────────────────────────────────────────
-const TAP_TTL_MS = 5 * 60 * 1000;
-
-export function startTapHandler(
+export async function startTapHandler(
   nodeId: string,
   pipelineId: string,
   componentId: string,
-): string {
+): Promise<string> {
   const requestId = nanoid();
-  activeTaps.set(requestId, {
-    nodeId,
-    pipelineId,
-    componentId,
-    startedAt: Date.now(),
-  });
+  await setActiveTap(requestId, { nodeId, pipelineId, componentId });
   relayPush(nodeId, {
     type: "tap_start" as const,
     requestId,
@@ -35,30 +31,28 @@ export function startTapHandler(
   return requestId;
 }
 
-export function stopTapHandler(requestId: string): void {
-  const tap = activeTaps.get(requestId);
+export async function stopTapHandler(requestId: string): Promise<void> {
+  const tap = await deleteActiveTap(requestId);
   if (!tap) return;
-  activeTaps.delete(requestId);
   relayPush(tap.nodeId, {
     type: "tap_stop" as const,
     requestId,
   });
 }
 
-export function cleanupStaleTaps(): void {
-  const now = Date.now();
-  for (const [requestId, tap] of activeTaps) {
-    if (now - tap.startedAt > TAP_TTL_MS) {
-      activeTaps.delete(requestId);
-      relayPush(tap.nodeId, {
-        type: "tap_stop" as const,
-        requestId,
-      });
-    }
+export async function cleanupStaleTaps(): Promise<void> {
+  const stale = await expireStaleTaps();
+  for (const { requestId, nodeId } of stale) {
+    relayPush(nodeId, {
+      type: "tap_stop" as const,
+      requestId,
+    });
   }
 }
 
-const sweepTimer = setInterval(cleanupStaleTaps, TAP_TTL_MS);
+const sweepTimer = setInterval(() => {
+  void cleanupStaleTaps();
+}, TAP_TTL_MS);
 if (typeof sweepTimer === "object" && "unref" in sweepTimer) {
   sweepTimer.unref();
 }
@@ -187,24 +181,46 @@ export const pipelineObservabilityRouter = router({
           message: "No running nodes found for this pipeline",
         });
       }
-      const assignedNodeId = statuses[0].nodeId;
 
       const request = await prisma.eventSampleRequest.create({
         data: {
           pipelineId: input.pipelineId,
           componentKeys: input.componentKeys,
           limit: input.limit,
-          nodeId: assignedNodeId,
+          // Bound to the first reachable node below
           expiresAt: new Date(Date.now() + 2 * 60 * 1000),
         },
       });
 
-      relayPush(assignedNodeId, {
-        type: "sample_request",
-        requestId: request.id,
-        pipelineId: input.pipelineId,
-        componentKeys: input.componentKeys,
-        limit: input.limit,
+      // Try running nodes in order; bind the request to the first one we can
+      // reach. Avoids a stale "deployed but disconnected" node silently swallowing
+      // the request until expiry.
+      let assignedNodeId: string | null = null;
+      for (const { nodeId } of statuses) {
+        const delivered = relayPush(nodeId, {
+          type: "sample_request",
+          requestId: request.id,
+          pipelineId: input.pipelineId,
+          componentKeys: input.componentKeys,
+          limit: input.limit,
+        });
+        if (delivered) {
+          assignedNodeId = nodeId;
+          break;
+        }
+      }
+
+      if (!assignedNodeId) {
+        await prisma.eventSampleRequest.delete({ where: { id: request.id } });
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "No reachable nodes for this pipeline",
+        });
+      }
+
+      await prisma.eventSampleRequest.update({
+        where: { id: request.id },
+        data: { nodeId: assignedNodeId },
       });
 
       return { requestId: request.id, status: "PENDING" };
@@ -371,7 +387,7 @@ export const pipelineObservabilityRouter = router({
           message: "No running nodes found for this pipeline",
         });
       }
-      const requestId = startTapHandler(
+      const requestId = await startTapHandler(
         statuses[0].nodeId,
         input.pipelineId,
         input.componentId,
@@ -382,8 +398,8 @@ export const pipelineObservabilityRouter = router({
   stopTap: protectedProcedure
     .input(z.object({ requestId: z.string() }))
     .use(withAudit("pipeline.tap_stopped", "Pipeline"))
-    .mutation(({ input }) => {
-      stopTapHandler(input.requestId);
+    .mutation(async ({ input }) => {
+      await stopTapHandler(input.requestId);
       return { ok: true };
     }),
 });
