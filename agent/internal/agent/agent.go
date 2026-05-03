@@ -244,8 +244,13 @@ func (a *Agent) pollAndApply() {
 			if err := a.supervisor.Start(action.PipelineID, action.ConfigPath, action.Version, action.LogLevel, action.Secrets); err != nil {
 				rollback()
 				slog.Error("failed to start pipeline", "pipeline", action.PipelineID, "error", err)
-			} else if action.Checksum != "" {
-				a.supervisor.SetConfigChecksum(action.PipelineID, action.Checksum)
+			} else {
+				// Always advance poller state on a successful Start so we don't
+				// re-issue the same Start on every poll. Checksum is best-effort
+				// (older/partial server responses may omit it).
+				if action.Checksum != "" {
+					a.supervisor.SetConfigChecksum(action.PipelineID, action.Checksum)
+				}
 				a.poller.MarkApplied(action)
 			}
 		case ActionRestart:
@@ -258,8 +263,10 @@ func (a *Agent) pollAndApply() {
 			if err := a.supervisor.Restart(action.PipelineID, action.ConfigPath, action.Version, action.LogLevel, action.Secrets); err != nil {
 				rollback()
 				slog.Error("failed to restart pipeline", "pipeline", action.PipelineID, "error", err)
-			} else if action.Checksum != "" {
-				a.supervisor.SetConfigChecksum(action.PipelineID, action.Checksum)
+			} else {
+				if action.Checksum != "" {
+					a.supervisor.SetConfigChecksum(action.PipelineID, action.Checksum)
+				}
 				a.poller.MarkApplied(action)
 			}
 		case ActionStop:
