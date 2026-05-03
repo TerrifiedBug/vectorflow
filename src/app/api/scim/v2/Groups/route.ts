@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { writeAuditLog } from "@/server/services/audit";
-import { fireScimSyncFailedAlert } from "@/server/services/scim";
+import { fireScimSyncFailedAlert, writeScimAuditLog } from "@/server/services/scim";
 import { debugLog } from "@/lib/logger";
 import { authenticateScim } from "../auth";
 import {
@@ -94,10 +93,13 @@ export async function POST(req: NextRequest) {
     return scimError("Unauthorized", 401);
   }
 
+  let displayNameForAudit = "unknown";
+
   try {
     const body = await req.json();
     debugLog("scim", `POST /Groups`, { displayName: body.displayName, memberCount: Array.isArray(body.members) ? body.members.length : 0 });
     const displayName = body.displayName;
+    displayNameForAudit = typeof displayName === "string" ? displayName : "unknown";
     if (!displayName || typeof displayName !== "string") {
       return scimError("displayName is required", 400);
     }
@@ -136,12 +138,12 @@ export async function POST(req: NextRequest) {
     });
 
     if (auditAction) {
-      await writeAuditLog({
-        userId: null,
+      await writeScimAuditLog({
         action: auditAction,
         entityType: "ScimGroup",
         entityId: group.id,
         metadata: { displayName },
+        status: "success",
       });
     }
 
@@ -152,6 +154,14 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to create group";
+    await writeScimAuditLog({
+      action: "scim.group_created",
+      entityType: "ScimGroup",
+      entityId: displayNameForAudit,
+      metadata: { displayName: displayNameForAudit },
+      status: "failure",
+      error,
+    });
     void fireScimSyncFailedAlert(message);
     return scimError(message, 400);
   }

@@ -50,6 +50,36 @@ const USER_SELECT = {
   lockedAt: true,
 } as const;
 
+type ScimAuditStatus = "success" | "failure";
+
+export async function writeScimAuditLog(params: {
+  action: string;
+  entityType: "ScimUser" | "ScimGroup";
+  entityId: string;
+  metadata?: Record<string, unknown>;
+  status: ScimAuditStatus;
+  error?: unknown;
+}) {
+  const errorMessage =
+    params.error instanceof Error
+      ? params.error.message
+      : typeof params.error === "string"
+        ? params.error
+        : undefined;
+
+  await writeAuditLog({
+    userId: null,
+    action: params.action,
+    entityType: params.entityType,
+    entityId: params.entityId,
+    metadata: {
+      ...params.metadata,
+      status: params.status,
+      ...(errorMessage ? { error: errorMessage } : {}),
+    },
+  });
+}
+
 export async function scimListUsers(
   filter?: string,
   startIndex = 1,
@@ -100,70 +130,82 @@ export async function scimCreateUser(scimUser: ScimUser): Promise<{ user: ScimUs
     scimUser.name?.givenName ??
     email.split("@")[0];
 
-  // Check if user already exists (e.g. created via OIDC login before SCIM provisioning)
-  const existing = await prisma.user.findUnique({
-    where: { email },
-    select: { ...USER_SELECT, authMethod: true },
-  });
+  try {
+    // Check if user already exists (e.g. created via OIDC login before SCIM provisioning)
+    const existing = await prisma.user.findUnique({
+      where: { email },
+      select: { ...USER_SELECT, authMethod: true },
+    });
 
-  if (existing) {
-    // Only adopt users already created via SSO or previously SCIM-linked.
-    // Local-credential accounts require explicit admin action to link.
-    if (existing.authMethod !== "OIDC" && !existing.scimExternalId) {
-      const err = new Error(
-        `User ${email} exists as a local account and cannot be adopted via SCIM. ` +
-        "An administrator must link or convert the account first.",
-      );
-      (err as Error & { scimConflict: boolean }).scimConflict = true;
-      throw err;
+    if (existing) {
+      // Only adopt users already created via SSO or previously SCIM-linked.
+      // Local-credential accounts require explicit admin action to link.
+      if (existing.authMethod !== "OIDC" && !existing.scimExternalId) {
+        const err = new Error(
+          `User ${email} exists as a local account and cannot be adopted via SCIM. ` +
+          "An administrator must link or convert the account first.",
+        );
+        (err as Error & { scimConflict: boolean }).scimConflict = true;
+        throw err;
+      }
+
+      // Adopt: link the SCIM externalId to the existing SSO user
+      const updated = await prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          scimExternalId: scimUser.externalId ?? existing.scimExternalId,
+        },
+        select: USER_SELECT,
+      });
+
+      await writeScimAuditLog({
+        action: "scim.user_adopted",
+        entityType: "ScimUser",
+        entityId: updated.id,
+        metadata: { email, scimExternalId: scimUser.externalId },
+        status: "success",
+      });
+
+      return { user: toScimUser(updated), adopted: true };
     }
 
-    // Adopt: link the SCIM externalId to the existing SSO user
-    const updated = await prisma.user.update({
-      where: { id: existing.id },
+    // Generate random password (SCIM users authenticate via SSO, not local credentials)
+    const tempPassword = crypto.randomBytes(32).toString("hex");
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+    const user = await prisma.user.create({
       data: {
-        scimExternalId: scimUser.externalId ?? existing.scimExternalId,
+        email,
+        name,
+        passwordHash,
+        authMethod: "OIDC",
+        scimExternalId: scimUser.externalId,
+        lockedAt: scimUser.active === false ? new Date() : null,
+        lockedBy: scimUser.active === false ? "SCIM" : null,
       },
       select: USER_SELECT,
     });
 
-    await writeAuditLog({
-      userId: null,
-      action: "scim.user_adopted",
+    await writeScimAuditLog({
+      action: "scim.user_created",
       entityType: "ScimUser",
-      entityId: updated.id,
+      entityId: user.id,
       metadata: { email, scimExternalId: scimUser.externalId },
+      status: "success",
     });
 
-    return { user: toScimUser(updated), adopted: true };
+    return { user: toScimUser(user), adopted: false };
+  } catch (error) {
+    await writeScimAuditLog({
+      action: "scim.user_created",
+      entityType: "ScimUser",
+      entityId: email,
+      metadata: { email, scimExternalId: scimUser.externalId },
+      status: "failure",
+      error,
+    });
+    throw error;
   }
-
-  // Generate random password (SCIM users authenticate via SSO, not local credentials)
-  const tempPassword = crypto.randomBytes(32).toString("hex");
-  const passwordHash = await bcrypt.hash(tempPassword, 12);
-
-  const user = await prisma.user.create({
-    data: {
-      email,
-      name,
-      passwordHash,
-      authMethod: "OIDC",
-      scimExternalId: scimUser.externalId,
-      lockedAt: scimUser.active === false ? new Date() : null,
-      lockedBy: scimUser.active === false ? "SCIM" : null,
-    },
-    select: USER_SELECT,
-  });
-
-  await writeAuditLog({
-    userId: null,
-    action: "scim.user_created",
-    entityType: "ScimUser",
-    entityId: user.id,
-    metadata: { email, scimExternalId: scimUser.externalId },
-  });
-
-  return { user: toScimUser(user), adopted: false };
 }
 
 export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
@@ -201,21 +243,33 @@ export async function scimUpdateUser(id: string, scimUser: Partial<ScimUser>) {
     return existingUser ? toScimUser(existingUser) : null;
   }
 
-  const user = await prisma.user.update({
-    where: { id },
-    data,
-    select: USER_SELECT,
-  });
+  try {
+    const user = await prisma.user.update({
+      where: { id },
+      data,
+      select: USER_SELECT,
+    });
 
-  await writeAuditLog({
-    userId: null,
-    action: "scim.user_updated",
-    entityType: "ScimUser",
-    entityId: id,
-    metadata: { fields: Object.keys(data) },
-  });
+    await writeScimAuditLog({
+      action: "scim.user_updated",
+      entityType: "ScimUser",
+      entityId: id,
+      metadata: { fields: Object.keys(data) },
+      status: "success",
+    });
 
-  return toScimUser(user);
+    return toScimUser(user);
+  } catch (error) {
+    await writeScimAuditLog({
+      action: "scim.user_updated",
+      entityType: "ScimUser",
+      entityId: id,
+      metadata: { fields: Object.keys(data) },
+      status: "failure",
+      error,
+    });
+    throw error;
+  }
 }
 
 export async function scimPatchUser(
@@ -284,21 +338,33 @@ export async function scimPatchUser(
   }
 
   if (Object.keys(data).length > 0) {
-    const user = await prisma.user.update({
-      where: { id },
-      data,
-      select: USER_SELECT,
-    });
+    try {
+      const user = await prisma.user.update({
+        where: { id },
+        data,
+        select: USER_SELECT,
+      });
 
-    await writeAuditLog({
-      userId: null,
-      action: "scim.user_patched",
-      entityType: "ScimUser",
-      entityId: id,
-      metadata: { fields: Object.keys(data), operations: operations.map((o) => o.op) },
-    });
+      await writeScimAuditLog({
+        action: "scim.user_patched",
+        entityType: "ScimUser",
+        entityId: id,
+        metadata: { fields: Object.keys(data), operations: operations.map((o) => o.op) },
+        status: "success",
+      });
 
-    return toScimUser(user);
+      return toScimUser(user);
+    } catch (error) {
+      await writeScimAuditLog({
+        action: "scim.user_patched",
+        entityType: "ScimUser",
+        entityId: id,
+        metadata: { fields: Object.keys(data), operations: operations.map((o) => o.op) },
+        status: "failure",
+        error,
+      });
+      throw error;
+    }
   }
 
   const user = await prisma.user.findUnique({
@@ -327,19 +393,30 @@ export async function fireScimSyncFailedAlert(errorMessage: string): Promise<voi
 
 export async function scimDeleteUser(id: string) {
   debugLog("scim", `DELETE /Users/${id}`);
-  // Don't actually delete -- lock the account
-  // Only claim SCIM ownership if not already locked by another source
-  const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
-  const lockedBy = (!existing?.lockedBy || existing.lockedBy === "SCIM") ? "SCIM" : existing.lockedBy;
-  await prisma.user.update({
-    where: { id },
-    data: { lockedAt: new Date(), lockedBy },
-  });
+  try {
+    // Don't actually delete -- lock the account
+    // Only claim SCIM ownership if not already locked by another source
+    const existing = await prisma.user.findUnique({ where: { id }, select: { lockedBy: true } });
+    const lockedBy = (!existing?.lockedBy || existing.lockedBy === "SCIM") ? "SCIM" : existing.lockedBy;
+    await prisma.user.update({
+      where: { id },
+      data: { lockedAt: new Date(), lockedBy },
+    });
 
-  await writeAuditLog({
-    userId: null,
-    action: "scim.user_deactivated",
-    entityType: "ScimUser",
-    entityId: id,
-  });
+    await writeScimAuditLog({
+      action: "scim.user_deactivated",
+      entityType: "ScimUser",
+      entityId: id,
+      status: "success",
+    });
+  } catch (error) {
+    await writeScimAuditLog({
+      action: "scim.user_deactivated",
+      entityType: "ScimUser",
+      entityId: id,
+      status: "failure",
+      error,
+    });
+    throw error;
+  }
 }
