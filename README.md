@@ -327,7 +327,7 @@ pnpm dev
 
 See [docs/e2e-release-gate.md](docs/e2e-release-gate.md) for the Docker-backed
 Playwright gate covering setup, browser authentication, pipeline creation,
-deploy flow, and fleet health.
+deploy flow, fleet health, and the activation-path smoke.
 
 ### Agent
 
