@@ -177,12 +177,31 @@ describe("metrics.getComponentLatencyHistory", () => {
 // ── metrics.getComponentMetrics ────────────────────────────────────────────────
 
 describe("metrics.getComponentMetrics", () => {
+  beforeEach(() => {
+    // Super admin bypass for inline auth (membership not exercised here)
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+  });
+
   it("returns empty components when pipeline does not exist", async () => {
     prismaMock.pipeline.findUnique.mockResolvedValue(null);
 
     const result = await caller.getComponentMetrics({ pipelineId: "missing-pipe" });
 
     expect(result.components).toEqual({});
+  });
+
+  it("forbids non-member access when pipeline belongs to another team", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.pipeline.findUnique.mockResolvedValue({
+      id: "pipe-x",
+      nodes: [],
+      environment: { teamId: "team-other", nodes: [] },
+    } as never);
+    prismaMock.teamMember.findUnique.mockResolvedValue(null);
+
+    await expect(
+      caller.getComponentMetrics({ pipelineId: "pipe-x" }),
+    ).rejects.toThrow();
   });
 
   it("returns components from metricStore for each vector node", async () => {

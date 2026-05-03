@@ -93,8 +93,14 @@ export const metricsRouter = router({
         minutes: z.number().int().min(1).max(60).default(5),
       }),
     )
-    .use(withTeamAccess("VIEWER"))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      const userId = ctx.session?.user?.id;
+      if (!userId) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+
+      // Soft-fail for stale/deleted pipelines so the flow-editor overlay
+      // tolerates a brief polling window after a delete.
       const pipeline = await prisma.pipeline.findUnique({
         where: { id: input.pipelineId },
         include: {
@@ -104,6 +110,26 @@ export const metricsRouter = router({
       });
 
       if (!pipeline) return { components: {} };
+
+      // Inline auth: super admin bypasses; otherwise must be a member of the
+      // pipeline's environment team.
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { isSuperAdmin: true },
+      });
+      if (!user?.isSuperAdmin) {
+        const teamId = pipeline.environment.teamId;
+        if (!teamId) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+        const membership = await prisma.teamMember.findUnique({
+          where: { userId_teamId: { userId, teamId } },
+          select: { role: true },
+        });
+        if (!membership) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+      }
 
       const vectorNodes = pipeline.environment.nodes;
 
