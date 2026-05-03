@@ -151,7 +151,6 @@ async function processSampleResults(
     });
     if (!request || request.status !== "PENDING") continue;
     if (request.pipeline.environmentId !== environmentId) continue;
-    if (request.nodeId !== nodeId) continue;
     if (
       result.componentKey &&
       Array.isArray(request.componentKeys) &&
@@ -159,6 +158,19 @@ async function processSampleResults(
     ) {
       continue;
     }
+    // Atomically claim the request: succeeds when nodeId is null (fan-out
+    // path — no local SSE was confirmed at request time) or already bound
+    // to this agent. Mirrors the samples-route claim semantics so heartbeat
+    // results from a Redis fan-out winner are no longer dropped.
+    const claim = await prisma.eventSampleRequest.updateMany({
+      where: {
+        id: result.requestId,
+        status: "PENDING",
+        OR: [{ nodeId: null }, { nodeId: nodeId }],
+      },
+      data: { nodeId },
+    });
+    if (claim.count === 0) continue;
 
     try {
       await prisma.eventSample.create({

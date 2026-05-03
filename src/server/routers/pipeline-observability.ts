@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
-import { deliverPush, relayPush } from "@/server/services/push-broadcast";
+import { tryLocalPush, relayPush } from "@/server/services/push-broadcast";
 import {
   setActiveTap,
   deleteActiveTap,
@@ -207,15 +207,16 @@ export const pipelineObservabilityRouter = router({
 
       // Strategy:
       // 1. Probe each running node for LOCAL SSE delivery (confirmed receipt)
-      //    in order. If any succeeds, bind the request to that node and return.
-      // 2. Otherwise fan out via Redis to every running node and leave nodeId
-      //    NULL so whichever agent picks it up first can atomically claim it
-      //    in samples-route. This avoids the Codex-flagged failure mode where
-      //    a fire-and-forget Redis "delivered" return strands the request on
-      //    a stale node while other RUNNING nodes are never tried.
+      //    in order using tryLocalPush — this MUST NOT fall through to Redis,
+      //    otherwise an earlier non-local node could be published to and
+      //    start processing before we bind a later local node, leaving the
+      //    request bound to the wrong owner.
+      // 2. If no local node responded, fan out via Redis to every running
+      //    node and leave nodeId NULL so whichever agent picks it up first
+      //    atomically claims it in samples-route.
       let localBinding: string | null = null;
       for (const { nodeId } of statuses) {
-        if (deliverPush(nodeId, message) === "local") {
+        if (tryLocalPush(nodeId, message)) {
           localBinding = nodeId;
           break;
         }

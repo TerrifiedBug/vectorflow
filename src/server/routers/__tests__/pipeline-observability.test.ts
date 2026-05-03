@@ -42,13 +42,14 @@ vi.mock("@/server/services/batch-health", () => ({
 vi.mock("@/server/services/push-broadcast", () => ({
   relayPush: vi.fn(() => true),
   deliverPush: vi.fn(() => "local"),
+  tryLocalPush: vi.fn(() => true),
 }));
 
 import { prisma } from "@/lib/prisma";
 import { pipelineObservabilityRouter } from "@/server/routers/pipeline-observability";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
-import { relayPush, deliverPush } from "@/server/services/push-broadcast";
+import { relayPush, tryLocalPush } from "@/server/services/push-broadcast";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(pipelineObservabilityRouter)({
@@ -163,7 +164,7 @@ describe("pipelineObservabilityRouter", () => {
         { nodeId: "node-1" },
         { nodeId: "node-2" },
       ] as never);
-      vi.mocked(deliverPush).mockReturnValue("local");
+      vi.mocked(tryLocalPush).mockReturnValue(true);
 
       const result = await caller.requestSamples({
         pipelineId: "p-1",
@@ -190,9 +191,9 @@ describe("pipelineObservabilityRouter", () => {
         { nodeId: "node-1" },
         { nodeId: "node-2" },
       ] as never);
-      vi.mocked(deliverPush)
-        .mockReturnValueOnce("redis")
-        .mockReturnValueOnce("local");
+      vi.mocked(tryLocalPush)
+        .mockReturnValueOnce(false)
+        .mockReturnValueOnce(true);
 
       const result = await caller.requestSamples({
         pipelineId: "p-1",
@@ -217,8 +218,8 @@ describe("pipelineObservabilityRouter", () => {
         { nodeId: "node-1" },
         { nodeId: "node-2" },
       ] as never);
-      // Both nodes go via Redis (not confirmed local)
-      vi.mocked(deliverPush).mockReturnValue("redis");
+      // No node has a local SSE connection — fan-out via Redis
+      vi.mocked(tryLocalPush).mockReturnValue(false);
       vi.mocked(relayPush).mockReturnValue(true);
 
       const result = await caller.requestSamples({
@@ -241,7 +242,7 @@ describe("pipelineObservabilityRouter", () => {
       prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
         { nodeId: "node-1" },
       ] as never);
-      vi.mocked(deliverPush).mockReturnValue("unreachable");
+      vi.mocked(tryLocalPush).mockReturnValue(false);
       vi.mocked(relayPush).mockReturnValue(false);
 
       await expect(

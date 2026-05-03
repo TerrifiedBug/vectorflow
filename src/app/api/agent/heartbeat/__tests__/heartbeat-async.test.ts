@@ -243,8 +243,11 @@ describe("heartbeat async decomposition", () => {
       pipelineId: "pipe-1",
       status: "PENDING",
       nodeId: "node-2",
+      componentKeys: ["src-1"],
       pipeline: { environmentId: "env-1" },
     } as never);
+    // Atomic claim fails — request is bound to node-2, this agent is node-1
+    prismaMock.eventSampleRequest.updateMany.mockResolvedValue({ count: 0 } as never);
 
     prismaMock.$transaction.mockResolvedValue([]);
 
@@ -264,6 +267,44 @@ describe("heartbeat async decomposition", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(prismaMock.eventSample.create).not.toHaveBeenCalled();
     expect(prismaMock.eventSampleRequest.update).not.toHaveBeenCalled();
+  });
+
+  it("atomically claims an unassigned request from heartbeat (fan-out path)", async () => {
+    prismaMock.eventSampleRequest.findUnique.mockResolvedValue({
+      pipelineId: "pipe-1",
+      status: "PENDING",
+      nodeId: null, // fan-out: nobody bound yet
+      componentKeys: ["src-1"],
+      pipeline: { environmentId: "env-1" },
+    } as never);
+    prismaMock.eventSampleRequest.updateMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.eventSample.create.mockResolvedValue({ id: "es-1" } as never);
+    prismaMock.eventSampleRequest.update.mockResolvedValue({} as never);
+    prismaMock.$transaction.mockResolvedValue([]);
+
+    const response = await POST(
+      makeRequest({
+        sampleResults: [
+          {
+            requestId: "sample-fanout",
+            componentKey: "src-1",
+            events: [{ ok: true }],
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(prismaMock.eventSampleRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ nodeId: null }, { nodeId: "node-1" }],
+        }),
+        data: { nodeId: "node-1" },
+      }),
+    );
+    expect(prismaMock.eventSample.create).toHaveBeenCalled();
   });
 
   it("returns 200 while component latency $transaction is still pending (fire-and-forget)", async () => {
