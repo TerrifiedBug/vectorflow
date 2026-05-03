@@ -214,8 +214,40 @@ export const dashboardRouter = router({
 
   pipelineCards: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
-    .use(withTeamAccess("VIEWER"))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+    const userId = ctx.session?.user?.id;
+    if (!userId) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+
+    // Soft-fail for stale/deleted environments so polling clients tolerate
+    // a brief window after a delete instead of getting a hard NOT_FOUND.
+    const env = await prisma.environment.findUnique({
+      where: { id: input.environmentId },
+      select: { teamId: true },
+    });
+    if (!env) return [];
+
+    // Inline auth: super admin bypasses; otherwise must be a member of the
+    // environment team.
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+    if (!user?.isSuperAdmin) {
+      const teamId = env.teamId;
+      if (!teamId) {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
+      const membership = await prisma.teamMember.findUnique({
+        where: { userId_teamId: { userId, teamId } },
+        select: { role: true },
+      });
+      if (!membership) {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
+    }
+
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
     const pipelines = await prisma.pipeline.findMany({
