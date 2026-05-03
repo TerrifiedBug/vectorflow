@@ -1,6 +1,7 @@
 services:
   postgres:
     container_name: vectorflow-postgres
+    # PostgreSQL-compatible TimescaleDB image used for metrics hypertables.
     image: timescale/timescaledb:latest-pg16
     environment:
       POSTGRES_DB: vectorflow
