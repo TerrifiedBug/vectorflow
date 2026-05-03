@@ -20,6 +20,9 @@ export function bigIntToNumber(val: bigint): number {
 
 export class PrometheusMetricsService {
   private registry: Registry;
+  // Single-flight coalescing: overlapping scrapes share one in-flight collection
+  // so concurrent reset()/inc() loops never interleave on the same registry.
+  private inflight: Promise<string> | null = null;
 
   // Node-level gauges
   private nodeStatus: Gauge;
@@ -135,8 +138,20 @@ export class PrometheusMetricsService {
   /**
    * Collect all metrics from database tables and populate the registry.
    * Resets all gauges first so removed nodes/pipelines disappear.
+   *
+   * Concurrent callers (e.g. overlapping Prometheus scrapes from an HA pair)
+   * share a single in-flight collection so reset()/inc() loops cannot
+   * interleave on the shared registry and double-count counter totals.
    */
-  async collectMetrics(): Promise<string> {
+  collectMetrics(): Promise<string> {
+    if (this.inflight) return this.inflight;
+    this.inflight = this.doCollect().finally(() => {
+      this.inflight = null;
+    });
+    return this.inflight;
+  }
+
+  private async doCollect(): Promise<string> {
     try {
       // Reset all gauges so stale labels are cleared
       this.nodeStatus.reset();
