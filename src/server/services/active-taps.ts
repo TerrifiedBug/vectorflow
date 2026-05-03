@@ -56,6 +56,9 @@ export async function getActiveTap(requestId: string): Promise<ActiveTap | null>
 }
 
 export async function deleteActiveTap(requestId: string): Promise<ActiveTap | null> {
+  // Use deleteMany so concurrent stops are idempotent — the second caller
+  // gets count: 0 instead of a P2025 NotFound error. Read the row first so
+  // we can echo the tap_stop push back to the agent.
   const existing = await prisma.activeTap.findUnique({
     where: { requestId },
     select: {
@@ -66,7 +69,8 @@ export async function deleteActiveTap(requestId: string): Promise<ActiveTap | nu
     },
   });
   if (!existing) return null;
-  await prisma.activeTap.delete({ where: { requestId } });
+  const { count } = await prisma.activeTap.deleteMany({ where: { requestId } });
+  if (count === 0) return null;
   return {
     nodeId: existing.nodeId,
     pipelineId: existing.pipelineId,
