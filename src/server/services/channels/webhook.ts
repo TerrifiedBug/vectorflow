@@ -21,6 +21,8 @@ export function formatWebhookMessage(payload: ChannelPayload): string {
   if (payload.pipeline) lines.push(`**Pipeline:** ${payload.pipeline}`);
   lines.push(`**Environment:** ${payload.environment}`);
   if (payload.team) lines.push(`**Team:** ${payload.team}`);
+  if (payload.ownerHint) lines.push(`**Owner:** ${payload.ownerHint}`);
+  if (payload.suggestedAction) lines.push(`**Suggested action:** ${payload.suggestedAction}`);
   lines.push(`**Time:** ${payload.timestamp}`);
   if (payload.dashboardUrl) lines.push(`**Dashboard:** ${payload.dashboardUrl}`);
   return lines.join("\n");

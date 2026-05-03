@@ -69,6 +69,9 @@ function makeAlertRule(overrides: Record<string, unknown> = {}) {
     condition: "gt",
     threshold: 90,
     durationSeconds: 60,
+    severity: "warning",
+    ownerHint: "platform-ops",
+    suggestedAction: "Review the alert context.",
     cooldownMinutes: 5,
     enabled: true,
     snoozedUntil: null,
@@ -126,7 +129,50 @@ describe("alertRulesRouter", () => {
       });
 
       expect(result.name).toBe("High CPU");
-      expect(prismaMock.alertRule.create).toHaveBeenCalled();
+      expect(prismaMock.alertRule.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            severity: "warning",
+            ownerHint: "platform-ops",
+            suggestedAction:
+              "Review the alert context, then inspect the affected pipeline, node, and recent deployment changes.",
+          }),
+        }),
+      );
+    });
+
+    it("creates a rule with operational metadata", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.alertRule.create.mockResolvedValue(
+        makeAlertRule({
+          severity: "critical",
+          ownerHint: "pipeline-owner",
+          suggestedAction: "Roll back the last deployment if crashes continue.",
+        }) as never,
+      );
+
+      await caller.createRule({
+        name: "Pipeline Crashed",
+        environmentId: "env-1",
+        metric: "pipeline_crashed" as never,
+        condition: "eq" as never,
+        threshold: 1,
+        durationSeconds: 60,
+        severity: "critical",
+        ownerHint: "pipeline-owner",
+        suggestedAction: "Roll back the last deployment if crashes continue.",
+        teamId: "team-1",
+      });
+
+      expect(prismaMock.alertRule.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            severity: "critical",
+            ownerHint: "pipeline-owner",
+            suggestedAction: "Roll back the last deployment if crashes continue.",
+          }),
+        }),
+      );
     });
 
     it("creates a rule with channelIds", async () => {
@@ -317,6 +363,36 @@ describe("alertRulesRouter", () => {
       const result = await caller.updateRule({ id: "rule-1", name: "Renamed" });
 
       expect(result.name).toBe("Renamed");
+    });
+
+    it("updates operational metadata", async () => {
+      const existing = makeAlertRule();
+      prismaMock.alertRule.findUnique.mockResolvedValue(existing as never);
+      prismaMock.alertRule.update.mockResolvedValue(
+        {
+          ...existing,
+          severity: "critical",
+          ownerHint: "platform-ops",
+          suggestedAction: "Page the platform operator.",
+        } as never,
+      );
+
+      await caller.updateRule({
+        id: "rule-1",
+        severity: "critical",
+        ownerHint: "platform-ops",
+        suggestedAction: "Page the platform operator.",
+      });
+
+      expect(prismaMock.alertRule.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            severity: "critical",
+            ownerHint: "platform-ops",
+            suggestedAction: "Page the platform operator.",
+          }),
+        }),
+      );
     });
 
     it("replaces channel links when channelIds provided", async () => {
