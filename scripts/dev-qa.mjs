@@ -2,6 +2,9 @@
 
 import { spawnSync } from "node:child_process";
 
+// Internal QA runner: starts the e2e PostgreSQL Compose service, applies Prisma
+// migrations, seeds deterministic QA data, then launches Next.js with the local
+// dev auth bypass. Keep setup notes in PR context rather than public docs.
 const DATABASE_URL =
   process.env.DATABASE_URL ??
   "postgresql://vectorflow_e2e:e2e_test_password@127.0.0.1:5433/vectorflow_e2e?schema=public";
