@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LiveTailPanel } from "@/components/flow/live-tail-panel";
+import { FieldLineagePanel } from "@/components/flow/field-lineage-panel";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import type { Node, Edge } from "@xyflow/react";
 
@@ -346,6 +347,7 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
       <Tabs defaultValue="config" className="flex min-h-0 flex-1 flex-col">
         <TabsList variant="line" className="w-full shrink-0 justify-start border-b px-2">
           <TabsTrigger value="config" className="text-xs">Config</TabsTrigger>
+          <TabsTrigger value="lineage" className="text-xs">Lineage</TabsTrigger>
           <TabsTrigger value="live-tail" className="text-xs">Live Tail</TabsTrigger>
         </TabsList>
 
@@ -595,6 +597,14 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
               )}
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="lineage" className="min-h-0 flex-1 overflow-y-auto">
+          <FieldLineagePanel
+            selectedNodeId={selectedNode.id}
+            nodes={nodes}
+            edges={edges}
+          />
         </TabsContent>
 
         <TabsContent value="live-tail" className="min-h-0 flex-1 overflow-y-auto">
