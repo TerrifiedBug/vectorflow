@@ -194,8 +194,11 @@ export async function getPipelineCostSnapshot(
 
   const bytesIn = Number(agg._sum.bytesIn ?? 0);
   const bytesOut = Number(agg._sum.bytesOut ?? 0);
+  // Clamp to 0 when the pipeline expands payload (bytesOut > bytesIn) so
+  // the deploy dialog doesn't render a negative "reduction". Matches
+  // getCostByPipeline, which already treats reduction as non-negative.
   const reductionPercent =
-    bytesIn === 0 ? null : (1 - bytesOut / bytesIn) * 100;
+    bytesIn === 0 ? null : Math.max(0, (1 - bytesOut / bytesIn) * 100);
 
   return {
     bytesIn,
