@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { generateVectorYaml } from "../yaml-generator";
 import { importVectorConfig } from "../importer";
 
 const YAML_BASIC = `
@@ -73,5 +74,55 @@ describe("importVectorConfig", () => {
     const auth = (sink?.data as { config: { auth?: { strategy: string } } })
       .config.auth;
     expect(auth?.strategy).toBe("basic");
+  });
+
+  it("returns parser warnings for orphaned components", () => {
+    const result = importVectorConfig(`
+      sources:
+        orphan_source:
+          type: demo_logs
+      sinks:
+        orphan_sink:
+          type: console
+    `);
+
+    expect(result.warnings).toEqual([
+      'Orphan source "orphan_source": no downstream consumers reference it',
+      'Orphan sink "orphan_sink": no upstream inputs are defined or connected',
+    ]);
+  });
+
+  it("resolves wildcard inputs so generated YAML keeps sink inputs", () => {
+    const result = importVectorConfig(`
+      sources:
+        demo:
+          type: demo_logs
+      sinks:
+        out:
+          type: console
+          inputs: ["*"]
+        audit:
+          type: console
+          inputs: ["*"]
+    `);
+
+    expect(result.warnings).toEqual([]);
+    expect(result.edges).toHaveLength(2);
+
+    const sourceNode = result.nodes.find((node) => node.type === "source");
+    const sinkNodes = result.nodes.filter((node) => node.type === "sink");
+    for (const sinkNode of sinkNodes) {
+      expect(result.edges).toContainEqual(
+        expect.objectContaining({
+          source: sourceNode?.id,
+          target: sinkNode.id,
+        }),
+      );
+    }
+
+    const generatedYaml = generateVectorYaml(result.nodes, result.edges, result.globalConfig);
+    expect(generatedYaml).toContain("inputs:\n      - demo");
+    expect(generatedYaml).not.toContain("- out");
+    expect(generatedYaml).not.toContain("- audit");
   });
 });
