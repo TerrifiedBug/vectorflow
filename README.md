@@ -329,6 +329,12 @@ See [docs/e2e-release-gate.md](docs/e2e-release-gate.md) for the Docker-backed
 Playwright gate covering setup, browser authentication, pipeline creation,
 deploy flow, fleet health, and the activation-path smoke.
 
+### Maintainer docs
+
+- [Deploy state machine](docs/deploy-state-machine.md) covers deploy approvals,
+  version snapshots, rollback, concurrent deploy resolution, agent config
+  delivery, and heartbeat status transitions.
+
 ### Agent
 
 ```bash

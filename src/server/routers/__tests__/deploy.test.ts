@@ -426,6 +426,76 @@ describe("deploy router", () => {
         caller.approveDeployRequest({ requestId: "nonexistent" }),
       ).rejects.toThrow("not found or not pending");
     });
+
+    it("serializes approved deploy execution and supports rollback from a historical version", async () => {
+      const approvedRequest = {
+        id: "req-1",
+        pipelineId: "pipeline-1",
+        environmentId: "env-1",
+        status: "DEPLOYED",
+        requestedById: "user-2",
+        changelog: "reviewed deploy",
+        configYaml: "sources:\n  reviewed_source:\n    type: stdin\n",
+        nodeSelector: { region: "us-east" },
+      };
+
+      prismaMock.deployRequest.updateMany
+        .mockResolvedValueOnce({ count: 1 } as never)
+        .mockResolvedValueOnce({ count: 0 } as never);
+      prismaMock.deployRequest.findUnique.mockResolvedValueOnce(approvedRequest as never);
+      vi.mocked(deployAgentModule.deployAgent).mockResolvedValueOnce({
+        success: true,
+        versionId: "v2",
+        versionNumber: 2,
+        pushedNodeIds: ["agent-1"],
+      } as never);
+      prismaMock.pipeline.update.mockResolvedValue({} as never);
+      prismaMock.pipeline.findUnique
+        .mockResolvedValueOnce({ name: "My Pipeline" } as never)
+        .mockResolvedValueOnce(makePipeline() as never);
+      vi.mocked(pipelineVersionModule.deployFromVersion).mockResolvedValueOnce({
+        version: { id: "v3", version: 3 },
+        pushedNodeIds: ["agent-1"],
+      } as never);
+
+      const executed = await caller.executeApprovedRequest({ requestId: "req-1" });
+
+      expect(executed.success).toBe(true);
+      expect(deployAgentModule.deployAgent).toHaveBeenCalledWith(
+        "pipeline-1",
+        "user-2",
+        "reviewed deploy",
+        "sources:\n  reviewed_source:\n    type: stdin\n",
+      );
+      expect(prismaMock.pipeline.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "pipeline-1" },
+          data: { nodeSelector: { region: "us-east" } },
+        }),
+      );
+
+      await expect(
+        caller.executeApprovedRequest({ requestId: "req-1" }),
+      ).rejects.toThrow("Request is not in APPROVED state");
+
+      const rollback = await caller.deployFromVersion({
+        pipelineId: "pipeline-1",
+        sourceVersionId: "v1",
+        changelog: "Rollback to version 1",
+      });
+
+      expect(rollback).toMatchObject({
+        success: true,
+        version: { id: "v3", version: 3 },
+        pushedNodeIds: ["agent-1"],
+      });
+      expect(pipelineVersionModule.deployFromVersion).toHaveBeenCalledWith(
+        "pipeline-1",
+        "v1",
+        "user-1",
+        "Rollback to version 1",
+      );
+    });
   });
 
   // ─── rejectDeployRequest ──────────────────────────────────────────────────
