@@ -314,6 +314,12 @@ pnpm install
 pnpm dev
 ```
 
+### E2E release gate
+
+See [docs/e2e-release-gate.md](docs/e2e-release-gate.md) for the Docker-backed
+Playwright gate covering setup, browser authentication, pipeline creation,
+deploy flow, and fleet health.
+
 ### Agent
 
 ```bash
