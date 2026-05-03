@@ -49,6 +49,8 @@ const caller = t.createCallerFactory(auditRouter)({
 
 beforeEach(() => {
   mockReset(prismaMock);
+  prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+  prismaMock.teamMember.findMany.mockResolvedValue([]);
   vi.clearAllMocks();
 });
 
@@ -144,7 +146,7 @@ describe("audit.list", () => {
     );
   });
 
-  it("applies teamId OR clause filter when teamId is provided", async () => {
+  it("applies teamId filter when teamId is provided", async () => {
     prismaMock.auditLog.findMany.mockResolvedValue([]);
 
     await caller.list({ teamId: "team-1" });
@@ -152,9 +154,7 @@ describe("audit.list", () => {
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          AND: expect.arrayContaining([
-            { OR: [{ teamId: "team-1" }, { teamId: null }] },
-          ]),
+          AND: expect.arrayContaining([{ teamId: "team-1" }]),
         }),
       }),
     );
@@ -375,7 +375,7 @@ describe("audit.users", () => {
 
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: { not: null } },
+        where: { AND: [{ userId: { not: null } }] },
         distinct: ["userId"],
       }),
     );
