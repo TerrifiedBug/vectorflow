@@ -175,34 +175,34 @@ type PipelineStatus struct {
 
 // ComponentMetric holds per-component metrics for editor node overlays.
 type ComponentMetric struct {
-	ComponentID     string `json:"componentId"`
-	ComponentKind   string `json:"componentKind"`
-	ReceivedEvents  int64  `json:"receivedEvents"`
-	SentEvents      int64  `json:"sentEvents"`
-	ReceivedBytes   int64  `json:"receivedBytes,omitempty"`
-	SentBytes       int64  `json:"sentBytes,omitempty"`
-	ErrorsTotal     int64  `json:"errorsTotal,omitempty"`
+	ComponentID        string  `json:"componentId"`
+	ComponentKind      string  `json:"componentKind"`
+	ReceivedEvents     int64   `json:"receivedEvents"`
+	SentEvents         int64   `json:"sentEvents"`
+	ReceivedBytes      int64   `json:"receivedBytes,omitempty"`
+	SentBytes          int64   `json:"sentBytes,omitempty"`
+	ErrorsTotal        int64   `json:"errorsTotal,omitempty"`
 	DiscardedEvents    int64   `json:"discardedEvents,omitempty"`
 	LatencyMeanSeconds float64 `json:"latencyMeanSeconds,omitempty"`
 }
 
 // HostMetrics holds system-level metrics from the Vector host
 type HostMetrics struct {
-	MemoryTotalBytes  int64   `json:"memoryTotalBytes"`
-	MemoryUsedBytes   int64   `json:"memoryUsedBytes"`
-	MemoryFreeBytes   int64   `json:"memoryFreeBytes"`
-	CpuSecondsTotal   float64 `json:"cpuSecondsTotal"`
-	CpuSecondsIdle    float64 `json:"cpuSecondsIdle"`
-	LoadAvg1          float64 `json:"loadAvg1"`
-	LoadAvg5          float64 `json:"loadAvg5"`
-	LoadAvg15         float64 `json:"loadAvg15"`
-	FsTotalBytes      int64   `json:"fsTotalBytes"`
-	FsUsedBytes       int64   `json:"fsUsedBytes"`
-	FsFreeBytes       int64   `json:"fsFreeBytes"`
-	DiskReadBytes     int64   `json:"diskReadBytes"`
-	DiskWrittenBytes  int64   `json:"diskWrittenBytes"`
-	NetRxBytes        int64   `json:"netRxBytes"`
-	NetTxBytes        int64   `json:"netTxBytes"`
+	MemoryTotalBytes int64   `json:"memoryTotalBytes"`
+	MemoryUsedBytes  int64   `json:"memoryUsedBytes"`
+	MemoryFreeBytes  int64   `json:"memoryFreeBytes"`
+	CpuSecondsTotal  float64 `json:"cpuSecondsTotal"`
+	CpuSecondsIdle   float64 `json:"cpuSecondsIdle"`
+	LoadAvg1         float64 `json:"loadAvg1"`
+	LoadAvg5         float64 `json:"loadAvg5"`
+	LoadAvg15        float64 `json:"loadAvg15"`
+	FsTotalBytes     int64   `json:"fsTotalBytes"`
+	FsUsedBytes      int64   `json:"fsUsedBytes"`
+	FsFreeBytes      int64   `json:"fsFreeBytes"`
+	DiskReadBytes    int64   `json:"diskReadBytes"`
+	DiskWrittenBytes int64   `json:"diskWrittenBytes"`
+	NetRxBytes       int64   `json:"netRxBytes"`
+	NetTxBytes       int64   `json:"netTxBytes"`
 }
 
 // AgentHealth carries key self-health indicators from the agent process,

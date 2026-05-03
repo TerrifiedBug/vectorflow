@@ -1,0 +1,35 @@
+[
+  {
+    "type": "config_changed",
+    "pipelineId": "pipe-1",
+    "reason": "deploy"
+  },
+  {
+    "type": "sample_request",
+    "requestId": "sample-1",
+    "pipelineId": "pipe-1",
+    "componentKeys": ["demo"],
+    "limit": 25
+  },
+  {
+    "type": "action",
+    "action": "self_update",
+    "targetVersion": "2.0.1",
+    "downloadUrl": "https://updates.example.test/vf-agent",
+    "checksum": "sha256:abc123"
+  },
+  {
+    "type": "poll_interval",
+    "intervalMs": 15000
+  },
+  {
+    "type": "tap_start",
+    "requestId": "tap-1",
+    "pipelineId": "pipe-1",
+    "componentId": "demo"
+  },
+  {
+    "type": "tap_stop",
+    "requestId": "tap-1"
+  }
+]
