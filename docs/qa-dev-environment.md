@@ -75,9 +75,9 @@ Guardrails:
 
 - The bypass is disabled unless `DEV_AUTH_BYPASS=1` is explicitly set.
 - The bypass throws and refuses to run when `NODE_ENV=production`.
-- The bypass only returns the seeded QA session for localhost request hosts by
-  default. If you intentionally expose the dev server through a devcontainer,
-  tunnel, or non-local bind, you must also set `DEV_AUTH_BYPASS_ALLOW_NETWORK=1`.
+- Bypassed sessions are served only for localhost requests by default. If a
+  remote devcontainer, tunnel, or shared QA host truly needs this bypass, set
+  `DEV_AUTH_BYPASS_ALLOW_NETWORK=1` as a second explicit opt-in.
 - `pnpm dev:qa` logs a startup warning before launching Next.js.
 - The server-side auth path logs a warning the first time it serves the bypassed
   session.

@@ -3,6 +3,7 @@ import {
   getDevAuthBypassSession,
   isDevAuthBypassEnabled,
   isDevAuthBypassEnabledForRequest,
+  isDevAuthBypassRequestAllowed,
 } from "../dev-auth-bypass";
 
 describe("dev auth bypass", () => {
@@ -12,13 +13,16 @@ describe("dev auth bypass", () => {
   });
 
   it("returns the seeded QA user session when enabled outside production", () => {
-    const session = getDevAuthBypassSession({
-      NODE_ENV: "development",
-      DEV_AUTH_BYPASS: "1",
-      DEV_AUTH_BYPASS_USER_ID: "qa-user-id",
-      DEV_AUTH_BYPASS_USER_EMAIL: "qa@example.test",
-      DEV_AUTH_BYPASS_USER_NAME: "QA User",
-    }, { requestHost: "localhost:3000" });
+    const session = getDevAuthBypassSession(
+      {
+        NODE_ENV: "development",
+        DEV_AUTH_BYPASS: "1",
+        DEV_AUTH_BYPASS_USER_ID: "qa-user-id",
+        DEV_AUTH_BYPASS_USER_EMAIL: "qa@example.test",
+        DEV_AUTH_BYPASS_USER_NAME: "QA User",
+      },
+      { requestHost: "localhost:3000" },
+    );
 
     expect(session?.user).toEqual({
       id: "qa-user-id",
@@ -26,6 +30,52 @@ describe("dev auth bypass", () => {
       name: "QA User",
       image: null,
     });
+  });
+
+  it("only allows localhost requests unless network bypass is explicitly enabled", () => {
+    const env = {
+      NODE_ENV: "development",
+      DEV_AUTH_BYPASS: "1",
+    };
+
+    expect(isDevAuthBypassRequestAllowed(new Request("http://localhost:3000/api/auth/session"), env)).toBe(true);
+    expect(
+      isDevAuthBypassRequestAllowed(
+        new Request("http://127.0.0.1:3000/api/auth/session", {
+          headers: { "x-forwarded-for": "127.0.0.1" },
+        }),
+        env,
+      ),
+    ).toBe(true);
+    expect(isDevAuthBypassRequestAllowed(new Request("http://192.168.1.50:3000/api/auth/session"), env)).toBe(
+      false,
+    );
+    expect(
+      isDevAuthBypassRequestAllowed(
+        new Request("http://localhost:3000/api/auth/session", {
+          headers: { "x-forwarded-for": "203.0.113.10" },
+        }),
+        env,
+      ),
+    ).toBe(false);
+    expect(
+      isDevAuthBypassRequestAllowed(new Request("http://192.168.1.50:3000/api/auth/session"), {
+        ...env,
+        DEV_AUTH_BYPASS_ALLOW_NETWORK: "1",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not return a bypass session for remote requests by default", () => {
+    const session = getDevAuthBypassSession(
+      {
+        NODE_ENV: "development",
+        DEV_AUTH_BYPASS: "1",
+      },
+      new Request("http://192.168.1.50:3000/api/auth/session"),
+    );
+
+    expect(session).toBeNull();
   });
 
   it("refuses to run in production", () => {
