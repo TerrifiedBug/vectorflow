@@ -18,6 +18,8 @@ type mockSupervisor struct {
 
 	restartInPlaceCalled string
 	restartInPlaceErr    error
+	restartCount         int
+	restartErr           error
 
 	statuses []supervisor.ProcessInfo
 }
@@ -34,12 +36,15 @@ func (m *mockSupervisor) Start(pipelineID, configPath string, version int, logLe
 }
 func (m *mockSupervisor) Stop(pipelineID string) error { return nil }
 func (m *mockSupervisor) Restart(pipelineID, configPath string, version int, logLevel string, secrets map[string]string) error {
-	return nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.restartCount++
+	return m.restartErr
 }
-func (m *mockSupervisor) UpdateVersion(pipelineID string, version int)     {}
-func (m *mockSupervisor) SetConfigChecksum(pipelineID, checksum string)    {}
-func (m *mockSupervisor) GetRecentLogs(pipelineID string) []string         { return nil }
-func (m *mockSupervisor) ShutdownAll()                                     {}
+func (m *mockSupervisor) UpdateVersion(pipelineID string, version int)  {}
+func (m *mockSupervisor) SetConfigChecksum(pipelineID, checksum string) {}
+func (m *mockSupervisor) GetRecentLogs(pipelineID string) []string      { return nil }
+func (m *mockSupervisor) ShutdownAll()                                  {}
 func (m *mockSupervisor) Statuses() []supervisor.ProcessInfo {
 	m.mu.Lock()
 	defer m.mu.Unlock()
