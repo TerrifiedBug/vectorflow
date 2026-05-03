@@ -14,6 +14,7 @@ import {
   getCostByTeam,
   getCostByEnvironment,
   getCostTimeSeries,
+  getPipelineCostSnapshot,
   formatCostCsv,
   computeCostCents,
 } from "@/server/services/cost-attribution";
@@ -464,5 +465,59 @@ describe("formatCostCsv", () => {
     const csv = formatCostCsv([]);
     const lines = csv.split("\n").filter(Boolean);
     expect(lines).toHaveLength(1);
+  });
+});
+
+describe("getPipelineCostSnapshot", () => {
+  beforeEach(() => mockReset(prismaMock));
+
+  it("returns aggregated bytes and cost for a single pipeline", async () => {
+    prismaMock.pipelineMetric.aggregate.mockResolvedValue({
+      _sum: { bytesIn: BigInt(2_000_000_000), bytesOut: BigInt(500_000_000) },
+    } as never);
+
+    const result = await getPipelineCostSnapshot("pipe-1", 100, "1d");
+
+    expect(result.bytesIn).toBe(2_000_000_000);
+    expect(result.bytesOut).toBe(500_000_000);
+    expect(result.reductionPercent).toBeCloseTo(75, 1);
+    // 2_000_000_000 bytes = ~1.86 GB; 1.86 * 100 cents ≈ 186
+    expect(result.costCents).toBeGreaterThan(180);
+    expect(result.costCents).toBeLessThan(200);
+    expect(result.periodHours).toBe(24);
+  });
+
+  it("returns zero bytes and null reductionPercent when no metrics exist", async () => {
+    prismaMock.pipelineMetric.aggregate.mockResolvedValue({
+      _sum: { bytesIn: null, bytesOut: null },
+    } as never);
+
+    const result = await getPipelineCostSnapshot("pipe-1", 100, "1d");
+
+    expect(result.bytesIn).toBe(0);
+    expect(result.bytesOut).toBe(0);
+    expect(result.reductionPercent).toBeNull();
+    expect(result.costCents).toBe(0);
+  });
+
+  it("returns zero cost when costPerGbCents is 0 even with bytes processed", async () => {
+    prismaMock.pipelineMetric.aggregate.mockResolvedValue({
+      _sum: { bytesIn: BigInt(5_000_000_000), bytesOut: BigInt(5_000_000_000) },
+    } as never);
+
+    const result = await getPipelineCostSnapshot("pipe-1", 0, "1d");
+
+    expect(result.costCents).toBe(0);
+    expect(result.bytesIn).toBe(5_000_000_000);
+  });
+
+  it("clamps reductionPercent to 0 when bytesOut exceeds bytesIn (expansion pipeline)", async () => {
+    prismaMock.pipelineMetric.aggregate.mockResolvedValue({
+      _sum: { bytesIn: BigInt(1_000), bytesOut: BigInt(2_000) },
+    } as never);
+
+    const result = await getPipelineCostSnapshot("pipe-1", 100, "1d");
+
+    expect(result.reductionPercent).toBe(0);
   });
 });

@@ -7,8 +7,9 @@ import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
-import { Rocket, CheckCircle, CheckCircle2, XCircle, Loader2, Radio, ChevronsUpDown, Check, X, ShieldCheck, ShieldX, Clock, AlertTriangle, GitBranch } from "lucide-react";
+import { Rocket, CheckCircle, CheckCircle2, XCircle, Loader2, Radio, ChevronsUpDown, Check, X, ShieldCheck, ShieldX, Clock, AlertTriangle, DollarSign, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatBytes, formatCost } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -80,6 +81,12 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     enabled: open,
   });
   const deployWarningsData = deployWarningsQuery.data;
+
+  const costSnapshotQuery = useQuery({
+    ...trpc.analytics.pipelineCostSnapshot.queryOptions({ pipelineId }),
+    enabled: open,
+  });
+  const costSnapshot = costSnapshotQuery.data;
 
   const deploymentImpactQuery = useQuery({
     ...trpc.pipelineDependency.deploymentImpact.queryOptions({ pipelineId }),
@@ -563,6 +570,43 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                 <p className="text-xs text-amber-700 dark:text-amber-300">
                   This environment requires deploy approval for editors. As an admin, your deploy will proceed immediately.
                 </p>
+              </div>
+            )}
+
+            {costSnapshot && costSnapshot.costPerGbCents > 0 && costSnapshot.bytesIn > 0 && (
+              <div className="flex items-start gap-2 rounded-md border p-3">
+                <DollarSign className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                <div className="text-xs space-y-1.5 flex-1">
+                  <p className="font-medium">
+                    Cost snapshot — last {costSnapshot.periodHours}h
+                  </p>
+                  <div className="grid grid-cols-3 gap-3 text-muted-foreground">
+                    <div>
+                      <div className="text-foreground font-medium">
+                        {formatBytes(costSnapshot.bytesIn)}
+                      </div>
+                      <div>processed</div>
+                    </div>
+                    <div>
+                      <div className="text-foreground font-medium">
+                        {formatCost(costSnapshot.costCents)}
+                      </div>
+                      <div>at ${(costSnapshot.costPerGbCents / 100).toFixed(2)}/GB</div>
+                    </div>
+                    <div>
+                      <div className="text-foreground font-medium">
+                        {costSnapshot.reductionPercent === null
+                          ? "—"
+                          : `${costSnapshot.reductionPercent.toFixed(0)}%`}
+                      </div>
+                      <div>reduction</div>
+                    </div>
+                  </div>
+                  <p className="text-muted-foreground italic">
+                    This deploy will change what runs going forward; the projection
+                    above is the recent baseline.
+                  </p>
+                </div>
               </div>
             )}
 

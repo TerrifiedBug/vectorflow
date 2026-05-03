@@ -9,6 +9,7 @@ import {
   getCostByTeam,
   getCostByEnvironment,
   getCostTimeSeries,
+  getPipelineCostSnapshot,
   formatCostCsv,
 } from "@/server/services/cost-attribution";
 
@@ -215,5 +216,36 @@ export const analyticsRouter = router({
       });
 
       return { csv: formatCostCsv(rows) };
+    }),
+
+  /**
+   * Cost snapshot for a single pipeline over the trailing 24 hours. Used by
+   * the deploy dialog to surface what the pipeline currently costs before the
+   * user confirms a deploy.
+   */
+  pipelineCostSnapshot: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        select: {
+          environmentId: true,
+          environment: { select: { costPerGbCents: true } },
+        },
+      });
+      if (!pipeline) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+
+      const snapshot = await getPipelineCostSnapshot(
+        input.pipelineId,
+        pipeline.environment.costPerGbCents,
+        "1d",
+      );
+      return {
+        ...snapshot,
+        costPerGbCents: pipeline.environment.costPerGbCents,
+      };
     }),
 });
