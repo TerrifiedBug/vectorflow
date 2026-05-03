@@ -12,6 +12,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe("PR smoke e2e", () => {
   test("authenticates, creates, deploys, and observes fleet health", async ({
+    page,
     loginPage,
     pipelinesPage,
     pipelineEditor,
@@ -24,8 +25,8 @@ test.describe("PR smoke e2e", () => {
     await loginPage.login(TEST_USER.email, TEST_USER.password);
     await loginPage.expectRedirectedToDashboard();
 
-    await pipelinesPage.goto();
-    await pipelinesPage.clickNewPipeline();
+    await page.goto("/pipelines/new");
+    await page.locator(".react-flow").waitFor({ state: "visible" });
 
     await pipelineEditor.setName(pipelineName);
     await pipelineEditor.addNodeFromPalette("source", "demo_logs");
