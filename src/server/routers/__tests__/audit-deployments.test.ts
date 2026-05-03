@@ -274,9 +274,9 @@ describe("audit.deploymentPipelines", () => {
     await caller.deploymentPipelines();
 
     const findManyCall = prismaMock.auditLog.findMany.mock.calls[0][0] as Record<string, unknown>;
-    const where = findManyCall.where as Record<string, unknown>;
-    expect(where.action).toEqual({ in: [...DEPLOYMENT_ACTIONS] });
-    expect(where.entityType).toBe("Pipeline");
+    const where = findManyCall.where as { AND: Record<string, unknown>[] };
+    expect(where.AND).toContainEqual({ action: { in: [...DEPLOYMENT_ACTIONS] } });
+    expect(where.AND).toContainEqual({ entityType: "Pipeline" });
   });
 });
 
@@ -333,12 +333,15 @@ describe("audit.deploymentSummary", () => {
     await caller.deploymentSummary();
 
     const findManyCall = prismaMock.auditLog.findMany.mock.calls[0][0] as Record<string, unknown>;
-    const where = findManyCall.where as { action: unknown; createdAt: { gte: Date } };
-    expect(where.action).toEqual({ in: [...DEPLOYMENT_ACTIONS] });
+    const where = findManyCall.where as { AND: Record<string, unknown>[] };
+    expect(where.AND).toContainEqual({ action: { in: [...DEPLOYMENT_ACTIONS] } });
     // The gte date should be approximately 24 hours ago
+    const createdAtCondition = where.AND.find((condition) => "createdAt" in condition) as {
+      createdAt: { gte: Date };
+    };
     const expectedGte = new Date(before - 24 * 60 * 60 * 1000);
-    expect(where.createdAt.gte.getTime()).toBeGreaterThanOrEqual(expectedGte.getTime() - 1000);
-    expect(where.createdAt.gte.getTime()).toBeLessThanOrEqual(before);
+    expect(createdAtCondition.createdAt.gte.getTime()).toBeGreaterThanOrEqual(expectedGte.getTime() - 1000);
+    expect(createdAtCondition.createdAt.gte.getTime()).toBeLessThanOrEqual(before);
   });
 
   it("counts pipelines from DeployRequest metadata", async () => {

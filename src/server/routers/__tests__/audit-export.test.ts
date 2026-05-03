@@ -155,7 +155,7 @@ describe("audit.exportAuditLog", () => {
     expect(searchCondition.OR).toHaveLength(3);
   });
 
-  it("applies teamId filter with OR null", async () => {
+  it("applies teamId filter", async () => {
     prismaMock.auditLog.findMany.mockResolvedValueOnce([] as never);
     prismaMock.auditLog.count.mockResolvedValueOnce(0);
 
@@ -163,9 +163,7 @@ describe("audit.exportAuditLog", () => {
 
     const findManyCall = prismaMock.auditLog.findMany.mock.calls[0][0];
     const andConditions = (findManyCall as Record<string, unknown>).where as { AND: Record<string, unknown>[] };
-    expect(andConditions.AND).toContainEqual({
-      OR: [{ teamId: "team-5" }, { teamId: null }],
-    });
+    expect(andConditions.AND).toContainEqual({ teamId: "team-5" });
   });
 
   it("includes user relation in results", async () => {

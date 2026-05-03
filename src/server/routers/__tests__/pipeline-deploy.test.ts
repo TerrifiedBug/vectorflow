@@ -63,6 +63,12 @@ const caller = t.createCallerFactory(pipelineDeployRouter)({
 beforeEach(() => {
   mockReset(prismaMock);
   vi.clearAllMocks();
+  prismaMock.pipeline.findMany.mockImplementation((async (args: unknown) => {
+    const where = (args as { where?: { id?: { in?: string[] } } } | undefined)?.where;
+    const ids = where?.id?.in ?? [];
+    return ids.map((id) => ({ id, environment: { teamId: "team-1" } }));
+  }) as never);
+  prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
 });
 
 // ── pipeline.deploymentStatus ─────────────────────────────────────────────────

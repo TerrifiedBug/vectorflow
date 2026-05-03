@@ -16,6 +16,7 @@ export const metricsRouter = router({
         minutes: z.number().int().min(1).max(10080).default(60), // max 7 days (was 1440)
       }),
     )
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return queryPipelineMetricsAggregated({
         pipelineId: input.pipelineId,
@@ -91,6 +92,7 @@ export const metricsRouter = router({
         minutes: z.number().int().min(1).max(60).default(5),
       }),
     )
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const pipeline = await prisma.pipeline.findUnique({
         where: { id: input.pipelineId },
@@ -139,6 +141,7 @@ export const metricsRouter = router({
    */
   getNodePipelineRates: protectedProcedure
     .input(z.object({ nodeId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const node = await prisma.vectorNode.findUnique({
         where: { id: input.nodeId },
