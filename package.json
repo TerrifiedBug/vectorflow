@@ -12,6 +12,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "dev:qa": "node scripts/dev-qa.mjs",
+    "dev:qa:local-pg": "node scripts/dev-qa.mjs --local-pg",
     "seed:qa": "tsx prisma/seed.qa.ts",
     "test:e2e:qa": "playwright test e2e/tests/qa-seeded-pipeline.spec.ts --project=qa-chromium",
     "postinstall": "prisma generate",
