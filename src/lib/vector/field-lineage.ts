@@ -172,10 +172,12 @@ function inferType(expression: string, previousType?: string): string {
 function parseRemapChanges(source: string, node: Node, fields: Map<string, LineageField>): LineageChange[] {
   const changes: LineageChange[] = [];
   const removed = new Set<string>();
+  const deletionTargets = new Set<string>();
   const removeRegex = new RegExp(`\\b(?:del|remove)!?\\(\\s*(${FIELD_PATH_PATTERN})`, "g");
 
   for (const match of source.matchAll(removeRegex)) {
     const path = fieldPath(match[1]);
+    deletionTargets.add(path);
     const existing = fields.get(path);
     if (!existing) continue;
 
@@ -241,6 +243,19 @@ function parseRemapChanges(source: string, node: Node, fields: Map<string, Linea
     });
   }
 
+  for (const path of deletionTargets) {
+    if (removed.has(path)) continue;
+    const field = fields.get(path);
+    if (field && field.lastChangedBy === node.id) {
+      fields.set(path, { ...field, status: "removed", lastChangedBy: node.id });
+      changes.push({
+        path,
+        status: "removed",
+        description: `Removed by ${nodeLabel(node)}`,
+      });
+    }
+  }
+
   return changes;
 }
 
@@ -255,10 +270,24 @@ function transformChanges(node: Node, fields: Map<string, LineageField>): Lineag
   }
 
   if (componentDef.type.startsWith("dlp_")) {
+    const dlpPath = ".message";
+    const existing = fields.get(dlpPath);
+    const dlpStatus = existing ? "type_changed" : "added";
+    fields.set(dlpPath, {
+      path: dlpPath,
+      type: existing?.type ?? "string",
+      description: "DLP template may redact or mask message content",
+      always: existing?.always ?? true,
+      status: dlpStatus,
+      sourceNodeId: existing?.sourceNodeId ?? node.id,
+      sourceComponent: existing?.sourceComponent ?? nodeLabel(node),
+      lastChangedBy: node.id,
+      previousPath: existing?.previousPath,
+    });
     return [
       {
-        path: ".message",
-        status: fields.has(".message") ? "type_changed" : "added",
+        path: dlpPath,
+        status: dlpStatus,
         description: "DLP template may redact or mask message content",
       },
     ];

@@ -66,6 +66,37 @@ describe("buildFieldLineage", () => {
     expect(result.steps.map((step) => step.nodeId)).toEqual(["source", "remap", "sink"]);
   });
 
+  it("marks fields removed when del targets a field created in the same remap", () => {
+    const nodes = [
+      node("source", "source", "file"),
+      node("remap", "transform", "remap", {
+        source: `
+          .tmp = "transient"
+          del(.tmp)
+        `,
+      }),
+      node("sink", "sink", "elasticsearch"),
+    ];
+
+    const result = buildFieldLineage(nodes, [edge("source", "remap"), edge("remap", "sink")], "sink");
+
+    expect(result.fields.find((f) => f.path === ".tmp")?.status).toBe("removed");
+  });
+
+  it("persists DLP transform effects into the lineage field map", () => {
+    const nodes = [
+      node("source", "source", "file"),
+      node("dlp", "transform", "dlp_masking"),
+      node("sink", "sink", "elasticsearch"),
+    ];
+
+    const result = buildFieldLineage(nodes, [edge("source", "dlp"), edge("dlp", "sink")], "sink");
+
+    const messageField = result.fields.find((f) => f.path === ".message");
+    expect(messageField?.status).toBe("type_changed");
+    expect(messageField?.lastChangedBy).toBe("dlp");
+  });
+
   it("reports missing sink expectations from sink configuration", () => {
     const nodes = [
       node("source", "source", "file"),
