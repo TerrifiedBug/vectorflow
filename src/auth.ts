@@ -440,11 +440,7 @@ export function invalidateAuthCache() {
 export const handlers = {
   GET: async (...args: unknown[]) => {
     const request = args[0] instanceof Request ? args[0] : null;
-    const requestHost =
-      request?.headers.get("x-forwarded-host") ??
-      request?.headers.get("host") ??
-      (request ? new URL(request.url).host : null);
-    const devSession = getDevAuthBypassSession(process.env, { requestHost });
+    const devSession = getDevAuthBypassSession(process.env, request ?? undefined);
     if (devSession && request && new URL(request.url).pathname.endsWith("/api/auth/session")) {
       logDevAuthBypassWarning();
       return Response.json(devSession);
@@ -461,7 +457,11 @@ export const handlers = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function auth(...args: any[]) {
-  const devSession = getDevAuthBypassSession(process.env, { requestHost: await getRequestHost() });
+  const request = args[0] instanceof Request ? args[0] : undefined;
+  const devSession = getDevAuthBypassSession(
+    process.env,
+    request ?? { requestHost: await getRequestHost(), clientAddress: await getClientIp() },
+  );
   if (devSession) {
     logDevAuthBypassWarning();
     return devSession;
