@@ -1,7 +1,8 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Search, PackageOpen, Link2 as LinkIcon } from "lucide-react";
+import { memo, useCallback, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, Search, PackageOpen, Link2 as LinkIcon, Plus } from "lucide-react";
+import { useReactFlow } from "@xyflow/react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,8 @@ import { StaggerList, StaggerItem } from "@/components/motion";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
+import { useFlowStore } from "@/stores/flow-store";
+import { DLP_VRL_SOURCES } from "@/lib/vector/dlp-vrl-sources";
 
 const kindMeta: Record<
   VectorComponentDef["kind"],
@@ -35,7 +38,27 @@ const kindMeta: Record<
   },
 };
 
-const DraggableItem = memo(function DraggableItem({ def }: { def: VectorComponentDef }) {
+interface SharedComponentListItem {
+  id: string;
+  name: string;
+  componentType: string;
+  kind: string;
+  config: Record<string, unknown>;
+  version: number;
+  linkedPipelineCount: number;
+}
+
+function formatFilterLabel(kind: "all" | VectorComponentDef["kind"]) {
+  return kind[0].toUpperCase() + kind.slice(1);
+}
+
+const DraggableItem = memo(function DraggableItem({
+  def,
+  onAdd,
+}: {
+  def: VectorComponentDef;
+  onAdd: (def: VectorComponentDef) => void;
+}) {
   const Icon = useMemo(() => getIcon(def.icon), [def.icon]);
   const meta = kindMeta[def.kind];
 
@@ -79,6 +102,14 @@ const DraggableItem = memo(function DraggableItem({ def }: { def: VectorComponen
           {def.description}
         </p>
       </div>
+      <button
+        type="button"
+        aria-label={`Add ${def.displayName} to canvas`}
+        onClick={() => onAdd(def)}
+        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+      </button>
     </div>
   );
 });
@@ -86,9 +117,11 @@ const DraggableItem = memo(function DraggableItem({ def }: { def: VectorComponen
 const CategoryGroup = memo(function CategoryGroup({
   category,
   items,
+  onAdd,
 }: {
   category: string;
   items: VectorComponentDef[];
+  onAdd: (def: VectorComponentDef) => void;
 }) {
   const [open, setOpen] = useState(true);
 
@@ -97,6 +130,7 @@ const CategoryGroup = memo(function CategoryGroup({
       <button
         type="button"
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
         className="flex w-full cursor-pointer items-center gap-1 px-1 py-1 text-[11px] font-medium text-muted-foreground/70 transition-colors hover:text-muted-foreground"
       >
         {open ? (
@@ -113,7 +147,7 @@ const CategoryGroup = memo(function CategoryGroup({
         <StaggerList className="space-y-1.5 pb-1 pl-1">
           {items.map((def) => (
             <StaggerItem key={def.type}>
-              <DraggableItem def={def} />
+              <DraggableItem def={def} onAdd={onAdd} />
             </StaggerItem>
           ))}
         </StaggerList>
@@ -125,9 +159,11 @@ const CategoryGroup = memo(function CategoryGroup({
 function CollapsibleSection({
   kind,
   items,
+  onAdd,
 }: {
   kind: VectorComponentDef["kind"];
   items: VectorComponentDef[];
+  onAdd: (def: VectorComponentDef) => void;
 }) {
   const [open, setOpen] = useState(true);
   const meta = kindMeta[kind];
@@ -151,6 +187,7 @@ function CollapsibleSection({
       <button
         type="button"
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
         className="flex w-full cursor-pointer items-center gap-1.5 px-1 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
       >
         {open ? (
@@ -169,13 +206,14 @@ function CollapsibleSection({
                   key={category}
                   category={category}
                   items={defs}
+                  onAdd={onAdd}
                 />
               ))
             : (
               <StaggerList>
                 {items.map((def) => (
                   <StaggerItem key={def.type}>
-                    <DraggableItem def={def} />
+                    <DraggableItem def={def} onAdd={onAdd} />
                   </StaggerItem>
                 ))}
               </StaggerList>
@@ -192,6 +230,57 @@ export function ComponentPalette() {
   const [sharedKindFilter, setSharedKindFilter] = useState<"all" | "source" | "transform" | "sink">("all");
   const trpc = useTRPC();
   const { selectedEnvironmentId } = useEnvironmentStore();
+  const reactFlowInstance = useReactFlow();
+  const addNode = useFlowStore((s) => s.addNode);
+
+  const getCanvasCenterPosition = useCallback(() => {
+    const canvas = document.querySelector(".react-flow");
+    const rect = canvas?.getBoundingClientRect();
+    const screenPosition =
+      rect && rect.width > 0 && rect.height > 0
+        ? {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+          }
+        : { x: 0, y: 0 };
+
+    return reactFlowInstance.screenToFlowPosition(screenPosition);
+  }, [reactFlowInstance]);
+
+  const addComponentToCanvas = useCallback(
+    (componentDef: VectorComponentDef, sharedComponent?: SharedComponentListItem) => {
+      addNode(componentDef, getCanvasCenterPosition());
+
+      if (componentDef.type.startsWith("dlp_")) {
+        const dlpVrlSource = DLP_VRL_SOURCES[componentDef.type];
+        if (dlpVrlSource) {
+          const nodes = useFlowStore.getState().nodes;
+          const newNode = nodes[nodes.length - 1];
+          if (newNode) {
+            useFlowStore.getState().updateNodeConfig(newNode.id, {
+              ...(newNode.data.config as Record<string, unknown>),
+              source: dlpVrlSource,
+            });
+          }
+        }
+      }
+
+      if (sharedComponent) {
+        const nodes = useFlowStore.getState().nodes;
+        const newNode = nodes[nodes.length - 1];
+        if (newNode) {
+          useFlowStore.getState().patchNodeSharedData(newNode.id, {
+            config: sharedComponent.config,
+            sharedComponentId: sharedComponent.id,
+            sharedComponentVersion: sharedComponent.version,
+            sharedComponentName: sharedComponent.name,
+            sharedComponentLatestVersion: sharedComponent.version,
+          });
+        }
+      }
+    },
+    [addNode, getCanvasCenterPosition]
+  );
 
   const sharedComponentsQuery = useQuery(
     trpc.sharedComponent.list.queryOptions(
@@ -255,8 +344,11 @@ export function ComponentPalette() {
       </div>
 
       {/* Tab switcher */}
-      <div className="flex border-b px-3">
+      <div className="flex border-b px-3" role="tablist" aria-label="Component palette sections">
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "catalog"}
           className={cn(
             "flex-1 border-b-2 px-2 py-2 text-xs font-medium transition-colors",
             activeTab === "catalog"
@@ -268,6 +360,9 @@ export function ComponentPalette() {
           Catalog
         </button>
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "shared"}
           className={cn(
             "flex-1 border-b-2 px-2 py-2 text-xs font-medium transition-colors",
             activeTab === "shared"
@@ -287,9 +382,9 @@ export function ComponentPalette() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         {activeTab === "catalog" && (
           <div className="space-y-1 p-3">
-            <CollapsibleSection kind="source" items={sources} />
-            <CollapsibleSection kind="transform" items={transforms} />
-            <CollapsibleSection kind="sink" items={sinks} />
+            <CollapsibleSection kind="source" items={sources} onAdd={addComponentToCanvas} />
+            <CollapsibleSection kind="transform" items={transforms} onAdd={addComponentToCanvas} />
+            <CollapsibleSection kind="sink" items={sinks} onAdd={addComponentToCanvas} />
 
             {filtered.length === 0 && (
               <div className="flex flex-col items-center justify-center p-8">
@@ -308,6 +403,8 @@ export function ComponentPalette() {
               {(["all", "source", "transform", "sink"] as const).map((kind) => (
                 <button
                   key={kind}
+                  type="button"
+                  aria-pressed={sharedKindFilter === kind}
                   className={cn(
                     "rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors",
                     sharedKindFilter === kind
@@ -316,7 +413,7 @@ export function ComponentPalette() {
                   )}
                   onClick={() => setSharedKindFilter(kind)}
                 >
-                  {kind}
+                  {formatFilterLabel(kind)}
                 </button>
               ))}
             </div>
@@ -335,6 +432,9 @@ export function ComponentPalette() {
                 const meta = kindMeta[kindKey] ?? kindMeta.transform;
                 const Icon = getIcon(
                   getVectorCatalog().find((d) => d.type === sc.componentType)?.icon
+                );
+                const componentDef = getVectorCatalog().find(
+                  (d) => d.type === sc.componentType && d.kind === kindKey
                 );
                 return (
                   <div
@@ -384,6 +484,15 @@ export function ComponentPalette() {
                         )}
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      aria-label={`Add ${sc.name} to canvas`}
+                      disabled={!componentDef}
+                      onClick={() => componentDef && addComponentToCanvas(componentDef, sc)}
+                      className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      <Plus className="h-4 w-4" aria-hidden="true" />
+                    </button>
                   </div>
                 );
               })
