@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { authenticateAgent } from "@/server/services/agent-auth";
+import { getActiveTap } from "@/server/services/active-taps";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { errorLog } from "@/lib/logger";
 import type { TapEventSSE, TapStoppedSSE } from "@/lib/sse/types";
@@ -36,6 +37,16 @@ export async function POST(request: Request) {
 
     const { requestId, pipelineId, componentId, events, status, reason } =
       parsed.data;
+
+    const tap = await getActiveTap(requestId);
+    if (
+      !tap ||
+      tap.nodeId !== agent.nodeId ||
+      tap.pipelineId !== pipelineId ||
+      tap.componentId !== componentId
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     if (status === "stopped") {
       const event: TapStoppedSSE = {

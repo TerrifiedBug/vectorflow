@@ -3,30 +3,44 @@ import { pushRegistry } from "@/server/services/push-registry";
 import { publishPush } from "@/server/services/redis-pubsub";
 import { getRedis } from "@/lib/redis";
 
-/**
- * Attempt to deliver a push message to a specific agent node.
- *
- * 1. Try local delivery via pushRegistry.send() — if the agent is connected
- *    to this instance, the message is delivered immediately.
- * 2. If local delivery fails and Redis is available, publish via Redis pub/sub
- *    so another instance can deliver it.
- * 3. If local delivery fails and Redis is unavailable, return false —
- *    the agent is not reachable (it will pick up changes on next heartbeat).
- *
- * @returns true if delivered locally or relayed via Redis, false if unreachable
- */
-export function relayPush(nodeId: string, message: PushMessage): boolean {
-  // Try local delivery first
-  if (pushRegistry.send(nodeId, message)) {
-    return true;
-  }
+export type DeliveryMode = "local" | "redis" | "unreachable";
 
-  // Local delivery failed — relay via Redis if available
+/**
+ * Attempt to deliver a push message to a specific agent node and report HOW it
+ * was delivered.
+ *
+ * - "local"      — agent is SSE-connected to this instance; delivered now.
+ * - "redis"      — agent is on another instance; published, but receipt is not
+ *                  confirmed.
+ * - "unreachable" — no local connection and Redis is unavailable.
+ */
+export function deliverPush(nodeId: string, message: PushMessage): DeliveryMode {
+  if (pushRegistry.send(nodeId, message)) {
+    return "local";
+  }
   if (getRedis()) {
     publishPush(nodeId, message);
-    return true;
+    return "redis";
   }
+  return "unreachable";
+}
 
-  // Agent not reachable on any instance
-  return false;
+/**
+ * Try LOCAL SSE delivery only, without falling through to Redis. Use this when
+ * you need to probe whether an agent is reachable on this instance before
+ * deciding whether to bind a request to a single node or fan out via Redis —
+ * the caller doesn't want a probe to side-effect a Redis publish that another
+ * instance might pick up and act on.
+ */
+export function tryLocalPush(nodeId: string, message: PushMessage): boolean {
+  return pushRegistry.send(nodeId, message);
+}
+
+/**
+ * Backwards-compatible boolean wrapper. NOTE: a `true` return only means
+ * "we tried" — Redis publication is fire-and-forget. Callers that need
+ * confirmed delivery should use `deliverPush` and branch on `"local"`.
+ */
+export function relayPush(nodeId: string, message: PushMessage): boolean {
+  return deliverPush(nodeId, message) !== "unreachable";
 }

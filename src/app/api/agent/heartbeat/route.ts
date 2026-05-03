@@ -132,14 +132,45 @@ type SampleResult = {
   error?: string;
 };
 
-async function processSampleResults(results: SampleResult[], nodeId: string): Promise<void> {
+async function processSampleResults(
+  results: SampleResult[],
+  nodeId: string,
+  environmentId: string,
+): Promise<void> {
   for (const result of results) {
     if (!result.requestId) continue;
     const request = await prisma.eventSampleRequest.findUnique({
       where: { id: result.requestId },
-      select: { pipelineId: true, status: true },
+      select: {
+        pipelineId: true,
+        status: true,
+        nodeId: true,
+        componentKeys: true,
+        pipeline: { select: { environmentId: true } },
+      },
     });
     if (!request || request.status !== "PENDING") continue;
+    if (request.pipeline.environmentId !== environmentId) continue;
+    if (
+      result.componentKey &&
+      Array.isArray(request.componentKeys) &&
+      !request.componentKeys.includes(result.componentKey)
+    ) {
+      continue;
+    }
+    // Atomically claim the request: succeeds when nodeId is null (fan-out
+    // path — no local SSE was confirmed at request time) or already bound
+    // to this agent. Mirrors the samples-route claim semantics so heartbeat
+    // results from a Redis fan-out winner are no longer dropped.
+    const claim = await prisma.eventSampleRequest.updateMany({
+      where: {
+        id: result.requestId,
+        status: "PENDING",
+        OR: [{ nodeId: null }, { nodeId: nodeId }],
+      },
+      data: { nodeId },
+    });
+    if (claim.count === 0) continue;
 
     try {
       await prisma.eventSample.create({
@@ -519,7 +550,7 @@ export async function POST(request: Request) {
     const sampleResults = parsed.data.sampleResults;
 
     if (Array.isArray(sampleResults) && sampleResults.length > 0) {
-      processSampleResults(sampleResults, agent.nodeId).catch((err) =>
+      processSampleResults(sampleResults, agent.nodeId, agent.environmentId).catch((err) =>
         errorLog("agent-heartbeat", "Sample processing error", err),
       );
     }

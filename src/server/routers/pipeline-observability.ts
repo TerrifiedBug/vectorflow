@@ -7,32 +7,22 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
-import { relayPush } from "@/server/services/push-broadcast";
+import { tryLocalPush, relayPush } from "@/server/services/push-broadcast";
+import { pushRegistry } from "@/server/services/push-registry";
+import {
+  setActiveTap,
+  deleteActiveTap,
+  expireStaleTaps,
+  TAP_TTL_MS,
+} from "@/server/services/active-taps";
 
-// ── Active tap tracking ────────────────────────────────────────────────────
-
-interface ActiveTap {
-  nodeId: string;
-  pipelineId: string;
-  componentId: string;
-  startedAt: number;
-}
-
-export const activeTaps = new Map<string, ActiveTap>();
-const TAP_TTL_MS = 5 * 60 * 1000;
-
-export function startTapHandler(
+export async function startTapHandler(
   nodeId: string,
   pipelineId: string,
   componentId: string,
-): string {
+): Promise<string> {
   const requestId = nanoid();
-  activeTaps.set(requestId, {
-    nodeId,
-    pipelineId,
-    componentId,
-    startedAt: Date.now(),
-  });
+  await setActiveTap(requestId, { nodeId, pipelineId, componentId });
   relayPush(nodeId, {
     type: "tap_start" as const,
     requestId,
@@ -42,30 +32,33 @@ export function startTapHandler(
   return requestId;
 }
 
-export function stopTapHandler(requestId: string): void {
-  const tap = activeTaps.get(requestId);
+export async function stopTapHandler(requestId: string): Promise<void> {
+  const tap = await deleteActiveTap(requestId);
   if (!tap) return;
-  activeTaps.delete(requestId);
   relayPush(tap.nodeId, {
     type: "tap_stop" as const,
     requestId,
   });
 }
 
-export function cleanupStaleTaps(): void {
-  const now = Date.now();
-  for (const [requestId, tap] of activeTaps) {
-    if (now - tap.startedAt > TAP_TTL_MS) {
-      activeTaps.delete(requestId);
-      relayPush(tap.nodeId, {
-        type: "tap_stop" as const,
-        requestId,
-      });
-    }
+export async function cleanupStaleTaps(): Promise<void> {
+  const stale = await expireStaleTaps();
+  for (const { requestId, nodeId } of stale) {
+    relayPush(nodeId, {
+      type: "tap_stop" as const,
+      requestId,
+    });
   }
 }
 
-const sweepTimer = setInterval(cleanupStaleTaps, TAP_TTL_MS);
+const sweepTimer = setInterval(() => {
+  // Catch DB errors so a transient failure during the sweep doesn't surface
+  // as an unhandled rejection (which can terminate the process).
+  cleanupStaleTaps().catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error("cleanupStaleTaps failed", err);
+  });
+}, TAP_TTL_MS);
 if (typeof sweepTimer === "object" && "unref" in sweepTimer) {
   sweepTimer.unref();
 }
@@ -184,27 +177,92 @@ export const pipelineObservabilityRouter = router({
         });
       }
 
+      const statuses = await prisma.nodePipelineStatus.findMany({
+        where: { pipelineId: input.pipelineId, status: "RUNNING" },
+        select: { nodeId: true },
+      });
+      if (statuses.length === 0) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "No running nodes found for this pipeline",
+        });
+      }
+
       const request = await prisma.eventSampleRequest.create({
         data: {
           pipelineId: input.pipelineId,
           componentKeys: input.componentKeys,
           limit: input.limit,
+          // Bound below (or left null for fan-out claim — see below).
           expiresAt: new Date(Date.now() + 2 * 60 * 1000),
         },
       });
 
-      // Push sample request to connected agents running this pipeline
-      const statuses = await prisma.nodePipelineStatus.findMany({
-        where: { pipelineId: input.pipelineId, status: "RUNNING" },
-        select: { nodeId: true },
-      });
+      const message = {
+        type: "sample_request" as const,
+        requestId: request.id,
+        pipelineId: input.pipelineId,
+        componentKeys: input.componentKeys,
+        limit: input.limit,
+      };
+
+      // Strategy:
+      // 1. For each running node connected via local SSE: atomically bind the
+      //    request BEFORE pushing. The conditional update (nodeId: null)
+      //    guarantees that an agent racing through the /api/agent/config poll
+      //    cannot claim this request between probe and bind — once the
+      //    binding is set, the heartbeat-claim path's
+      //    `OR: [{ nodeId: null }, { nodeId: agent }]` predicate rejects any
+      //    other node's claim attempt.
+      // 2. If no local node was reachable (or all SSE writes raced and
+      //    failed), fan out via Redis to every running node and leave nodeId
+      //    NULL so whichever agent picks it up first atomically claims it.
+      let localBinding: string | null = null;
       for (const { nodeId } of statuses) {
-        relayPush(nodeId, {
-          type: "sample_request",
-          requestId: request.id,
-          pipelineId: input.pipelineId,
-          componentKeys: input.componentKeys,
-          limit: input.limit,
+        if (!pushRegistry.isConnected(nodeId)) continue;
+
+        const claim = await prisma.eventSampleRequest.updateMany({
+          where: { id: request.id, status: "PENDING", nodeId: null },
+          data: { nodeId },
+        });
+        if (claim.count === 0) {
+          // An agent that polled /api/agent/config in the gap between create
+          // and bind has already claimed this request via heartbeat. Leave
+          // their binding intact and surface the request as PENDING.
+          return { requestId: request.id, status: "PENDING" };
+        }
+
+        if (tryLocalPush(nodeId, message)) {
+          localBinding = nodeId;
+          break;
+        }
+
+        // SSE connection dropped between isConnected() and send(). Release
+        // the binding so the next loop iteration (or fan-out below) can claim.
+        await prisma.eventSampleRequest.updateMany({
+          where: { id: request.id, status: "PENDING", nodeId },
+          data: { nodeId: null },
+        });
+      }
+
+      if (localBinding) {
+        return { requestId: request.id, status: "PENDING" };
+      }
+
+      // No local delivery — fan out via Redis to every running node. Any of
+      // them on another instance can claim the request via atomic update.
+      let anyReachable = false;
+      for (const { nodeId } of statuses) {
+        if (relayPush(nodeId, message)) {
+          anyReachable = true;
+        }
+      }
+
+      if (!anyReachable) {
+        await prisma.eventSampleRequest.delete({ where: { id: request.id } });
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "No reachable nodes for this pipeline",
         });
       }
 
@@ -372,7 +430,7 @@ export const pipelineObservabilityRouter = router({
           message: "No running nodes found for this pipeline",
         });
       }
-      const requestId = startTapHandler(
+      const requestId = await startTapHandler(
         statuses[0].nodeId,
         input.pipelineId,
         input.componentId,
@@ -383,8 +441,8 @@ export const pipelineObservabilityRouter = router({
   stopTap: protectedProcedure
     .input(z.object({ requestId: z.string() }))
     .use(withAudit("pipeline.tap_stopped", "Pipeline"))
-    .mutation(({ input }) => {
-      stopTapHandler(input.requestId);
+    .mutation(async ({ input }) => {
+      await stopTapHandler(input.requestId);
       return { ok: true };
     }),
 });
