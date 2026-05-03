@@ -78,6 +78,8 @@ describe("POST /api/agent/samples", () => {
 
   it("does not store sample results from a node that was not assigned the request", async () => {
     setupPendingRequest({ nodeId: "node-2" });
+    // Atomic claim fails — request is bound to node-2, this agent is node-1.
+    prismaMock.eventSampleRequest.updateMany.mockResolvedValueOnce({ count: 0 } as never);
 
     const response = await POST(
       makeRequest({
@@ -88,7 +90,30 @@ describe("POST /api/agent/samples", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
     expect(prismaMock.eventSample.create).not.toHaveBeenCalled();
-    expect(prismaMock.eventSampleRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("atomically claims an unassigned request (fan-out path) and stores the sample", async () => {
+    setupPendingRequest({ nodeId: null });
+    prismaMock.eventSampleRequest.updateMany.mockResolvedValueOnce({ count: 1 } as never);
+
+    const response = await POST(
+      makeRequest({
+        results: [{ requestId: "req-1", componentKey: "src-1", events: [{ ok: true }] }],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.eventSampleRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "req-1",
+          status: "PENDING",
+          OR: [{ nodeId: null }, { nodeId: "node-1" }],
+        }),
+        data: { nodeId: "node-1" },
+      }),
+    );
+    expect(prismaMock.eventSample.create).toHaveBeenCalled();
   });
 
   it("does not store sample results for a component outside the request context", async () => {
@@ -101,6 +126,8 @@ describe("POST /api/agent/samples", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
     expect(prismaMock.eventSample.create).not.toHaveBeenCalled();
+    // Component check runs before the atomic claim so we don't bind the
+    // request to this agent just to drop the sample.
     expect(prismaMock.eventSampleRequest.updateMany).not.toHaveBeenCalled();
   });
 });

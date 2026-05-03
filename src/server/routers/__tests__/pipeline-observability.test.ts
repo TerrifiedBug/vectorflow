@@ -41,13 +41,14 @@ vi.mock("@/server/services/batch-health", () => ({
 
 vi.mock("@/server/services/push-broadcast", () => ({
   relayPush: vi.fn(() => true),
+  deliverPush: vi.fn(() => "local"),
 }));
 
 import { prisma } from "@/lib/prisma";
 import { pipelineObservabilityRouter } from "@/server/routers/pipeline-observability";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
-import { relayPush } from "@/server/services/push-broadcast";
+import { relayPush, deliverPush } from "@/server/services/push-broadcast";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(pipelineObservabilityRouter)({
@@ -154,7 +155,7 @@ describe("pipelineObservabilityRouter", () => {
   // ── requestSamples ────────────────────────────────────────────────────────
 
   describe("requestSamples", () => {
-    it("creates a sample request assigned to one running agent", async () => {
+    it("binds to the first node confirmed by local SSE delivery", async () => {
       const pipeline = { id: "p-1", isDraft: false, deployedAt: new Date() };
       prismaMock.pipeline.findUnique.mockResolvedValue(pipeline as never);
       prismaMock.eventSampleRequest.create.mockResolvedValue({ id: "req-1" } as never);
@@ -162,6 +163,7 @@ describe("pipelineObservabilityRouter", () => {
         { nodeId: "node-1" },
         { nodeId: "node-2" },
       ] as never);
+      vi.mocked(deliverPush).mockReturnValue("local");
 
       const result = await caller.requestSamples({
         pipelineId: "p-1",
@@ -170,25 +172,17 @@ describe("pipelineObservabilityRouter", () => {
       });
 
       expect(result).toEqual({ requestId: "req-1", status: "PENDING" });
-      // Binding must be persisted BEFORE the push so a fast agent response
-      // doesn't get dropped (request.nodeId would otherwise still be null).
       expect(prismaMock.eventSampleRequest.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "req-1" },
           data: { nodeId: "node-1" },
         }),
       );
-      const updateCall = prismaMock.eventSampleRequest.update.mock.invocationCallOrder[0];
-      const pushCall = vi.mocked(relayPush).mock.invocationCallOrder[0];
-      expect(updateCall).toBeLessThan(pushCall);
-      expect(relayPush).toHaveBeenCalledTimes(1);
-      expect(relayPush).toHaveBeenCalledWith(
-        "node-1",
-        expect.objectContaining({ type: "sample_request", requestId: "req-1" }),
-      );
+      // No Redis fan-out when local delivery succeeded.
+      expect(relayPush).not.toHaveBeenCalled();
     });
 
-    it("falls through to the next running node when the first is unreachable", async () => {
+    it("falls through to the next node when the first has no local connection", async () => {
       const pipeline = { id: "p-1", isDraft: false, deployedAt: new Date() };
       prismaMock.pipeline.findUnique.mockResolvedValue(pipeline as never);
       prismaMock.eventSampleRequest.create.mockResolvedValue({ id: "req-2" } as never);
@@ -196,9 +190,9 @@ describe("pipelineObservabilityRouter", () => {
         { nodeId: "node-1" },
         { nodeId: "node-2" },
       ] as never);
-      vi.mocked(relayPush)
-        .mockReturnValueOnce(false)
-        .mockReturnValueOnce(true);
+      vi.mocked(deliverPush)
+        .mockReturnValueOnce("redis")
+        .mockReturnValueOnce("local");
 
       const result = await caller.requestSamples({
         pipelineId: "p-1",
@@ -207,7 +201,6 @@ describe("pipelineObservabilityRouter", () => {
       });
 
       expect(result).toEqual({ requestId: "req-2", status: "PENDING" });
-      expect(relayPush).toHaveBeenCalledTimes(2);
       expect(prismaMock.eventSampleRequest.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "req-2" },
@@ -216,13 +209,39 @@ describe("pipelineObservabilityRouter", () => {
       );
     });
 
-    it("deletes the request and throws when no nodes are reachable", async () => {
+    it("fans out via Redis and leaves nodeId null when no local delivery is possible", async () => {
+      const pipeline = { id: "p-1", isDraft: false, deployedAt: new Date() };
+      prismaMock.pipeline.findUnique.mockResolvedValue(pipeline as never);
+      prismaMock.eventSampleRequest.create.mockResolvedValue({ id: "req-fanout" } as never);
+      prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+        { nodeId: "node-1" },
+        { nodeId: "node-2" },
+      ] as never);
+      // Both nodes go via Redis (not confirmed local)
+      vi.mocked(deliverPush).mockReturnValue("redis");
+      vi.mocked(relayPush).mockReturnValue(true);
+
+      const result = await caller.requestSamples({
+        pipelineId: "p-1",
+        componentKeys: ["source_1"],
+        limit: 5,
+      });
+
+      expect(result).toEqual({ requestId: "req-fanout", status: "PENDING" });
+      // No nodeId binding — first agent to respond will atomically claim
+      expect(prismaMock.eventSampleRequest.update).not.toHaveBeenCalled();
+      // Redis broadcast went to BOTH running nodes
+      expect(relayPush).toHaveBeenCalledTimes(2);
+    });
+
+    it("deletes the request and throws when no nodes are reachable at all", async () => {
       const pipeline = { id: "p-1", isDraft: false, deployedAt: new Date() };
       prismaMock.pipeline.findUnique.mockResolvedValue(pipeline as never);
       prismaMock.eventSampleRequest.create.mockResolvedValue({ id: "req-3" } as never);
       prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
         { nodeId: "node-1" },
       ] as never);
+      vi.mocked(deliverPush).mockReturnValue("unreachable");
       vi.mocked(relayPush).mockReturnValue(false);
 
       await expect(
