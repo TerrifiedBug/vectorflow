@@ -5,7 +5,7 @@ import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { isEventMetric } from "@/server/services/event-alerts";
-import { FLEET_METRICS } from "@/server/services/alert-evaluator";
+import { FLEET_METRICS, PIPELINE_FLEET_METRICS } from "@/server/services/alert-evaluator";
 
 export const alertRulesRouter = router({
   listRules: protectedProcedure
@@ -83,11 +83,23 @@ export const alertRulesRouter = router({
         }
       }
 
-      // Fleet metrics apply to the entire environment — reject if pipelineId is set
-      if (FLEET_METRICS.has(input.metric) && input.pipelineId) {
+      // Environment-scoped fleet metrics: reject pipelineId.
+      if (
+        FLEET_METRICS.has(input.metric) &&
+        !PIPELINE_FLEET_METRICS.has(input.metric) &&
+        input.pipelineId
+      ) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Fleet metrics apply to the entire environment and cannot be scoped to a specific pipeline",
+        });
+      }
+
+      // Pipeline-scoped fleet metrics (latency_mean, throughput_floor): require pipelineId.
+      if (PIPELINE_FLEET_METRICS.has(input.metric) && !input.pipelineId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This metric requires selecting a specific pipeline",
         });
       }
 

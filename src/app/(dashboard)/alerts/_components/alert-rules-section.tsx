@@ -65,6 +65,7 @@ import {
   CONDITION_LABELS,
   BINARY_METRICS,
   GLOBAL_METRICS,
+  PIPELINE_REQUIRED_METRICS,
   CHANNEL_TYPE_LABELS,
 } from "./constants";
 import { AlertTemplatePicker } from "./alert-template-picker";
@@ -288,8 +289,14 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
     metric: !form.metric ? "Select a metric." : null,
     threshold: !isBinaryOrEvent && form.metric !== "log_keyword" && !form.threshold ? "Enter a numeric threshold value." : null,
     keyword: form.metric === "log_keyword" && !form.keyword.trim() ? "Keyword is required." : null,
+    pipelineId: PIPELINE_REQUIRED_METRICS.has(form.metric) && !form.pipelineId ? "Select a pipeline for this metric." : null,
   };
-  const isFormValid = !formErrors.name && !formErrors.metric && !formErrors.threshold && !formErrors.keyword;
+  const isFormValid =
+    !formErrors.name &&
+    !formErrors.metric &&
+    !formErrors.threshold &&
+    !formErrors.keyword &&
+    !formErrors.pipelineId;
 
   const handleSubmit = () => {
     setTouched({ name: true, metric: true, threshold: true });
@@ -302,6 +309,10 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
     }
     if (isKeyword && !form.keyword.trim()) {
       toast.error("Please fill in all required fields", { duration: 6000 });
+      return;
+    }
+    if (PIPELINE_REQUIRED_METRICS.has(form.metric) && !form.pipelineId) {
+      toast.error("Select a pipeline for this metric", { duration: 6000 });
       return;
     }
 
@@ -639,7 +650,13 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
 
                 {!GLOBAL_METRICS.has(form.metric) && (
                   <div className="space-y-2">
-                    <Label htmlFor="rule-pipeline">Pipeline (optional)</Label>
+                    <Label htmlFor="rule-pipeline">
+                      Pipeline {PIPELINE_REQUIRED_METRICS.has(form.metric) ? (
+                        <span className="text-destructive">*</span>
+                      ) : (
+                        <span className="text-muted-foreground">(optional)</span>
+                      )}
+                    </Label>
                     <Select
                       value={form.pipelineId}
                       onValueChange={(v) =>
@@ -650,10 +667,18 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                       }
                     >
                       <SelectTrigger id="rule-pipeline">
-                        <SelectValue placeholder="All pipelines" />
+                        <SelectValue
+                          placeholder={
+                            PIPELINE_REQUIRED_METRICS.has(form.metric)
+                              ? "Select a pipeline"
+                              : "All pipelines"
+                          }
+                        />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__">All pipelines</SelectItem>
+                        {!PIPELINE_REQUIRED_METRICS.has(form.metric) && (
+                          <SelectItem value="__none__">All pipelines</SelectItem>
+                        )}
                         {pipelines.map((p) => (
                           <SelectItem key={p.id} value={p.id}>
                             {p.name}
@@ -661,6 +686,9 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                         ))}
                       </SelectContent>
                     </Select>
+                    {formErrors.pipelineId && (
+                      <p className="text-xs text-destructive mt-1">{formErrors.pipelineId}</p>
+                    )}
                   </div>
                 )}
               </>
