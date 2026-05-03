@@ -9,7 +9,14 @@ on:
       - "prisma/**"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "eslint.config.mjs"
+      - "next.config.ts"
       - "playwright.config.ts"
+      - "postcss.config.mjs"
+      - "prisma.config.ts"
+      - "sentry.*.config.ts"
+      - "tsconfig.json"
+      - "tsconfig.*.json"
       - ".github/workflows/smoke-e2e.yml"
   workflow_dispatch:
 
