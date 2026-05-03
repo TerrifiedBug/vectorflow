@@ -129,6 +129,7 @@ export async function getCostSummary(
     prisma.pipelineMetric.aggregate({
       where: {
         pipeline: { environmentId },
+        nodeId: null,
         componentId: null,
         timestamp: { gte: since },
       },
@@ -137,6 +138,7 @@ export async function getCostSummary(
     prisma.pipelineMetric.aggregate({
       where: {
         pipeline: { environmentId },
+        nodeId: null,
         componentId: null,
         timestamp: { gte: prevSince, lt: since },
       },
@@ -174,6 +176,7 @@ export async function getCostByPipeline(
     by: ["pipelineId"],
     where: {
       pipeline: { environmentId },
+      nodeId: null,
       componentId: null,
       timestamp: { gte: since },
     },
@@ -236,6 +239,7 @@ export async function getCostByTeam(
       pipeline: {
         environment: { teamId: { in: teamIds } },
       },
+      nodeId: null,
       componentId: null,
       timestamp: { gte: since },
     },
@@ -314,6 +318,7 @@ export async function getCostByEnvironment(
     const agg = await prisma.pipelineMetric.aggregate({
       where: {
         pipeline: { environmentId: env.id },
+        nodeId: null,
         componentId: null,
         timestamp: { gte: since },
       },
@@ -347,6 +352,7 @@ export async function getCostTimeSeries(
   const rawMetrics = await prisma.pipelineMetric.findMany({
     where: {
       pipeline: { environmentId },
+      nodeId: null,
       componentId: null,
       timestamp: { gte: since },
     },
@@ -447,6 +453,7 @@ export async function getCurrentMonthCostCents(
   const agg = await prisma.pipelineMetric.aggregate({
     where: {
       pipeline: { environmentId },
+      nodeId: null,
       componentId: null,
       timestamp: { gte: monthStart },
     },

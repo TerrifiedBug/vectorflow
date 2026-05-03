@@ -126,7 +126,23 @@ describe("PrometheusMetricsService", () => {
     expect(output).toMatch(/node_id="n4"[^}]*\} 0/);
   });
 
-  it("populates pipeline status and counter gauges", async () => {
+  it("exports pipeline totals as Prometheus counters", async () => {
+    prismaMock.vectorNode.findMany.mockResolvedValue([]);
+    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+      nps({ nodeId: "n1", pipelineId: "p1", eventsIn: 1000 }) as never,
+    ]);
+    prismaMock.$queryRaw.mockResolvedValue([]);
+
+    const output = await service.collectMetrics();
+    expect(output).toContain("# TYPE vectorflow_pipeline_events_in_total counter");
+    expect(output).toContain("# TYPE vectorflow_pipeline_events_out_total counter");
+    expect(output).toContain("# TYPE vectorflow_pipeline_errors_total counter");
+    expect(output).toContain("# TYPE vectorflow_pipeline_events_discarded_total counter");
+    expect(output).toContain("# TYPE vectorflow_pipeline_bytes_in_total counter");
+    expect(output).toContain("# TYPE vectorflow_pipeline_bytes_out_total counter");
+  });
+
+  it("populates pipeline status gauges and counters", async () => {
     prismaMock.vectorNode.findMany.mockResolvedValue([]);
     prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
       nps({
