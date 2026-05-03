@@ -195,6 +195,14 @@ describe("ComponentPalette", () => {
   });
 
   describe("keyboard add", () => {
+    it("exposes one focusable add control per catalog component", () => {
+      const { getAllByRole } = render(<ComponentPalette />);
+
+      expect(getAllByRole("button", { name: /Apache Kafka/i })).toHaveLength(1);
+      expect(getAllByRole("button", { name: /Remap/i })).toHaveLength(1);
+      expect(getAllByRole("button", { name: /Datadog Logs/i })).toHaveLength(1);
+    });
+
     it("focuses a catalog component and adds it with Enter", () => {
       const { getByRole } = render(<ComponentPalette />);
       const item = getByRole("button", { name: /Apache Kafka source component/i });
@@ -216,10 +224,12 @@ describe("ComponentPalette", () => {
       expect(mockAddNode).toHaveBeenCalledWith(MOCK_CATALOG[0], { x: 184, y: 184 });
     });
 
-    it("exposes an explicit add button for catalog components", () => {
-      const { getByRole } = render(<ComponentPalette />);
+    it("keeps the visible plus affordance out of the tab order", () => {
+      const { container, getByRole } = render(<ComponentPalette />);
 
-      fireEvent.click(getByRole("button", { name: "Add Apache Kafka source to canvas" }));
+      expect(container.querySelectorAll('button[aria-hidden="true"][tabindex="-1"]')).toHaveLength(3);
+
+      fireEvent.click(getByRole("button", { name: /Apache Kafka source component/i }));
 
       expect(mockAddNode).toHaveBeenCalledWith(MOCK_CATALOG[0], { x: 120, y: 120 });
     });
