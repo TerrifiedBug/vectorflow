@@ -7,6 +7,76 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
+import {
+  getPipelineCostSnapshot,
+  computeCostCents,
+} from "@/server/services/cost-attribution";
+
+const ANOMALY_SEVERITY_RANK = ["critical", "warning", "info"] as const;
+type AnomalySeverity = (typeof ANOMALY_SEVERITY_RANK)[number];
+
+function pickMaxSeverity(
+  severities: ReadonlyArray<{ severity: string }>,
+): AnomalySeverity | null {
+  for (const rank of ANOMALY_SEVERITY_RANK) {
+    if (severities.some((s) => s.severity === rank)) return rank;
+  }
+  return null;
+}
+
+interface ScorecardRecommendedAction {
+  kind:
+    | "investigate_sli"
+    | "review_anomaly"
+    | "ack_alerts"
+    | "review_error_spike"
+    | "apply_cost_recommendation";
+  message: string;
+}
+
+function deriveRecommendedAction(input: {
+  health: { status: string; slis: Array<{ metric: string; status: string }> };
+  anomalies: { openCount: number; maxSeverity: AnomalySeverity | null };
+  alerts: { firingCount: number };
+  errorRateRatio: number | null;
+  recommendations: Array<{ title: string }>;
+}): ScorecardRecommendedAction | null {
+  if (input.health.status === "degraded") {
+    const breached = input.health.slis.find((s) => s.status === "breached");
+    return {
+      kind: "investigate_sli",
+      message: breached
+        ? `Investigate breached SLI: ${breached.metric}`
+        : "Investigate breached SLI",
+    };
+  }
+  if (input.anomalies.openCount > 0) {
+    const sev = input.anomalies.maxSeverity ?? "open";
+    return {
+      kind: "review_anomaly",
+      message: `Review ${input.anomalies.openCount} ${sev} anomaly event${input.anomalies.openCount === 1 ? "" : "s"}`,
+    };
+  }
+  if (input.alerts.firingCount > 0) {
+    return {
+      kind: "ack_alerts",
+      message: `Acknowledge ${input.alerts.firingCount} firing alert${input.alerts.firingCount === 1 ? "" : "s"}`,
+    };
+  }
+  if (input.errorRateRatio !== null && input.errorRateRatio >= 2) {
+    return {
+      kind: "review_error_spike",
+      message: `Error rate is ${input.errorRateRatio.toFixed(1)}× the 7-day baseline`,
+    };
+  }
+  if (input.recommendations.length > 0) {
+    return {
+      kind: "apply_cost_recommendation",
+      message: `Apply cost recommendation: ${input.recommendations[0].title}`,
+    };
+  }
+  return null;
+}
 import { tryLocalPush, relayPush } from "@/server/services/push-broadcast";
 import { pushRegistry } from "@/server/services/push-registry";
 import {
@@ -408,6 +478,187 @@ export const pipelineObservabilityRouter = router({
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return batchEvaluatePipelineHealth(input.pipelineIds);
+    }),
+
+  scorecard: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        select: {
+          id: true,
+          name: true,
+          isDraft: true,
+          deployedAt: true,
+          environmentId: true,
+          environment: { select: { costPerGbCents: true } },
+        },
+      });
+      if (!pipeline) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Pipeline not found",
+        });
+      }
+
+      const now = Date.now();
+      const since24h = new Date(now - 24 * 60 * 60 * 1000);
+      const since48h = new Date(now - 48 * 60 * 60 * 1000);
+      const since7d = new Date(now - 7 * 24 * 60 * 60 * 1000);
+      const costPerGbCents = pipeline.environment.costPerGbCents;
+
+      const [
+        health,
+        firingAlerts,
+        openAnomalyCount,
+        anomalySeverities,
+        last24h,
+        prior24hAgg,
+        current24hAgg,
+        sevenDayAgg,
+        recommendations,
+      ] = await Promise.all([
+        evaluatePipelineHealth(input.pipelineId),
+        prisma.alertEvent.count({
+          where: {
+            alertRule: { pipelineId: input.pipelineId },
+            status: "firing",
+          },
+        }),
+        prisma.anomalyEvent.count({
+          where: { pipelineId: input.pipelineId, status: "open" },
+        }),
+        prisma.anomalyEvent.findMany({
+          where: { pipelineId: input.pipelineId, status: "open" },
+          select: { severity: true },
+          distinct: ["severity"],
+        }),
+        getPipelineCostSnapshot(input.pipelineId, costPerGbCents, "1d"),
+        prisma.pipelineMetric.aggregate({
+          where: {
+            pipelineId: input.pipelineId,
+            componentId: null,
+            timestamp: { gte: since48h, lt: since24h },
+          },
+          _sum: { bytesIn: true, bytesOut: true },
+        }),
+        prisma.pipelineMetric.aggregate({
+          where: {
+            pipelineId: input.pipelineId,
+            componentId: null,
+            timestamp: { gte: since24h },
+          },
+          _sum: { eventsIn: true, errorsTotal: true },
+        }),
+        prisma.pipelineMetric.aggregate({
+          where: {
+            pipelineId: input.pipelineId,
+            componentId: null,
+            timestamp: { gte: since7d },
+          },
+          _sum: { eventsIn: true, errorsTotal: true },
+        }),
+        prisma.costRecommendation.findMany({
+          where: { pipelineId: input.pipelineId, status: "PENDING" },
+          orderBy: { estimatedSavingsBytes: "desc" },
+          take: 5,
+          select: {
+            id: true,
+            title: true,
+            type: true,
+            estimatedSavingsBytes: true,
+          },
+        }),
+      ]);
+
+      const priorBytesIn = Number(prior24hAgg._sum.bytesIn ?? 0);
+      const priorBytesOut = Number(prior24hAgg._sum.bytesOut ?? 0);
+      const prior24h = {
+        bytesIn: priorBytesIn,
+        bytesOut: priorBytesOut,
+        costCents: computeCostCents(priorBytesIn, costPerGbCents),
+      };
+
+      const deltaPercent =
+        priorBytesIn === 0
+          ? null
+          : ((last24h.bytesIn - priorBytesIn) / priorBytesIn) * 100;
+
+      const currentEventsIn = Number(current24hAgg._sum.eventsIn ?? 0);
+      const currentErrors = Number(current24hAgg._sum.errorsTotal ?? 0);
+      const sevenDayEventsIn = Number(sevenDayAgg._sum.eventsIn ?? 0);
+      const sevenDayErrors = Number(sevenDayAgg._sum.errorsTotal ?? 0);
+
+      const currentErrorRate =
+        currentEventsIn === 0 ? null : currentErrors / currentEventsIn;
+      const baselineErrorRate =
+        sevenDayEventsIn === 0 ? null : sevenDayErrors / sevenDayEventsIn;
+      const errorRateRatio =
+        currentErrorRate === null ||
+        baselineErrorRate === null ||
+        baselineErrorRate === 0
+          ? null
+          : currentErrorRate / baselineErrorRate;
+
+      const currentThroughput = currentEventsIn / (24 * 60 * 60);
+      const baselineThroughput = sevenDayEventsIn / (7 * 24 * 60 * 60);
+      const throughputRatio =
+        baselineThroughput === 0 ? null : currentThroughput / baselineThroughput;
+
+      const maxSeverity = pickMaxSeverity(anomalySeverities);
+
+      const recommendedAction = deriveRecommendedAction({
+        health,
+        anomalies: { openCount: openAnomalyCount, maxSeverity },
+        alerts: { firingCount: firingAlerts },
+        errorRateRatio,
+        recommendations,
+      });
+
+      return {
+        pipeline: {
+          id: pipeline.id,
+          name: pipeline.name,
+          isDraft: pipeline.isDraft,
+          deployedAt: pipeline.deployedAt,
+          environmentId: pipeline.environmentId,
+        },
+        health,
+        alerts: { firingCount: firingAlerts },
+        anomalies: { openCount: openAnomalyCount, maxSeverity },
+        cost: {
+          last24h,
+          prior24h,
+          deltaPercent,
+          costPerGbCents,
+        },
+        trend: {
+          errorRate:
+            currentErrorRate === null && baselineErrorRate === null
+              ? null
+              : {
+                  current: currentErrorRate,
+                  baseline7d: baselineErrorRate,
+                  deltaRatio: errorRateRatio,
+                },
+          throughput: {
+            currentEventsPerSec: currentThroughput,
+            baseline7dEventsPerSec: baselineThroughput,
+            deltaRatio: throughputRatio,
+          },
+        },
+        recommendations: recommendations.map((r) => ({
+          id: r.id,
+          title: r.title,
+          type: r.type,
+          estimatedSavingsBytes:
+            r.estimatedSavingsBytes === null
+              ? null
+              : Number(r.estimatedSavingsBytes),
+        })),
+        recommendedAction,
+      };
     }),
 
   startTap: protectedProcedure
