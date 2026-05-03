@@ -6,6 +6,7 @@ import {
   addDependency,
   removeDependency,
   getUpstreams,
+  getDownstreams,
   getUndeployedUpstreams,
   getDeployedDownstreams,
   getDependencyGraph,
@@ -83,5 +84,36 @@ export const pipelineDependencyRouter = router({
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return getDependencyGraph(input.environmentId);
+    }),
+
+  /**
+   * Deployment impact: downstream pipelines that depend on this one,
+   * separated by whether they are currently deployed. Used by the deploy
+   * dialog to show blast radius beyond just the affected node count.
+   */
+  deploymentImpact: protectedProcedure
+    .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const downstreams = await getDownstreams(input.pipelineId);
+      // "Deployed" is `!isDraft && deployedAt != null` — same definition used
+      // by telemetry-sender and the flow toolbar. A non-draft pipeline whose
+      // deployedAt is null has been paused/undeployed and isn't immediate
+      // blast radius, so it goes in the draft bucket.
+      const isDeployed = (d: (typeof downstreams)[number]) =>
+        !d.downstream.isDraft && d.downstream.deployedAt != null;
+      return {
+        deployed: downstreams
+          .filter(isDeployed)
+          .map((d) => ({
+            id: d.downstream.id,
+            name: d.downstream.name,
+            deployedAt: d.downstream.deployedAt,
+          })),
+        draft: downstreams
+          .filter((d) => !isDeployed(d))
+          .map((d) => ({ id: d.downstream.id, name: d.downstream.name })),
+        total: downstreams.length,
+      };
     }),
 });

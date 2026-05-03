@@ -7,7 +7,7 @@ import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
-import { Rocket, CheckCircle, CheckCircle2, XCircle, Loader2, Radio, ChevronsUpDown, Check, X, ShieldCheck, ShieldX, Clock, AlertTriangle } from "lucide-react";
+import { Rocket, CheckCircle, CheckCircle2, XCircle, Loader2, Radio, ChevronsUpDown, Check, X, ShieldCheck, ShieldX, Clock, AlertTriangle, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -80,6 +80,12 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
     enabled: open,
   });
   const deployWarningsData = deployWarningsQuery.data;
+
+  const deploymentImpactQuery = useQuery({
+    ...trpc.pipelineDependency.deploymentImpact.queryOptions({ pipelineId }),
+    enabled: open,
+  });
+  const deploymentImpact = deploymentImpactQuery.data;
 
   const environmentId = envQuery.data?.environmentId;
 
@@ -570,6 +576,48 @@ export function DeployDialog({ pipelineId, open, onOpenChange }: DeployDialogPro
                       <li key={dep.upstream.id}>{dep.upstream.name}</li>
                     ))}
                   </ul>
+                </div>
+              </div>
+            )}
+
+            {deploymentImpact && deploymentImpact.total > 0 && (
+              <div className="flex items-start gap-2 rounded-md border p-3">
+                <GitBranch className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                <div className="text-xs space-y-1.5 flex-1">
+                  <p className="font-medium">
+                    {deploymentImpact.total} downstream pipeline{deploymentImpact.total !== 1 ? "s" : ""} depend{deploymentImpact.total === 1 ? "s" : ""} on this
+                  </p>
+                  {deploymentImpact.deployed.length > 0 && (
+                    <div className="text-muted-foreground">
+                      <span className="font-medium text-foreground">Deployed:</span>{" "}
+                      {deploymentImpact.deployed.slice(0, 5).map((p, i) => (
+                        <span key={p.id}>
+                          {i > 0 && ", "}
+                          <span className="text-foreground">{p.name}</span>
+                        </span>
+                      ))}
+                      {deploymentImpact.deployed.length > 5 && (
+                        <span> and {deploymentImpact.deployed.length - 5} more</span>
+                      )}
+                    </div>
+                  )}
+                  {deploymentImpact.draft.length > 0 && (
+                    <div className="text-muted-foreground">
+                      <span className="font-medium text-foreground">Draft (not yet deployed):</span>{" "}
+                      {deploymentImpact.draft.slice(0, 5).map((p, i) => (
+                        <span key={p.id}>
+                          {i > 0 && ", "}
+                          {p.name}
+                        </span>
+                      ))}
+                      {deploymentImpact.draft.length > 5 && (
+                        <span> and {deploymentImpact.draft.length - 5} more</span>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-muted-foreground italic">
+                    Schema or routing changes here may affect these pipelines.
+                  </p>
                 </div>
               </div>
             )}
