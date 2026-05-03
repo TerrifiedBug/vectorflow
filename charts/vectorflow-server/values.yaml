@@ -129,6 +129,9 @@ migrations:
 #    NEXTAUTH_SECRET, DATABASE_URL (and REDIS_URL if using external Redis).
 # When set, the secret.* values below are ignored.
 existingSecret: ""
+# -- Set true only when existingSecret contains REDIS_URL. Required for HA
+# installs that use existingSecret instead of redis.enabled or secret.redisUrl.
+existingSecretContainsRedisUrl: false
 
 secret:
   # -- NextAuth signing secret (required). Generate with: openssl rand -base64 32

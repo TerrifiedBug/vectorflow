@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -21,10 +21,10 @@ beforeAll(() => {
     recursive: true,
     filter: (src) => !src.endsWith("/charts") && !src.includes("/charts/"),
   });
-  execFileSync("helm", ["dependency", "build", chart, "--skip-refresh"], {
-    cwd: process.cwd(),
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+
+  const chartYamlPath = join(chart, "Chart.yaml");
+  const chartYaml = readFileSync(chartYamlPath, "utf8");
+  writeFileSync(chartYamlPath, chartYaml.replace(/\ndependencies:\n(?:  .+\n)+/m, "\n"));
 }, 30_000);
 
 afterAll(() => {
@@ -82,6 +82,8 @@ describe("vectorflow-server Helm HA contract", () => {
       "persistence.backups.enabled=true",
       "--set",
       "persistence.backups.accessMode=ReadWriteMany",
+      "--set",
+      "imagePullSecrets[0].name=private-registry",
     ]);
 
     expect(rendered).toContain("name: VF_REDIS_REQUIRED");
@@ -89,6 +91,22 @@ describe("vectorflow-server Helm HA contract", () => {
     expect(rendered).toContain("name: VF_RUN_MIGRATIONS");
     expect(rendered).toContain('value: "false"');
     expect(rendered).toContain("kind: Job");
+    expect(rendered).toContain('"helm.sh/hook": post-install,post-upgrade');
+    expect(rendered).toContain("imagePullSecrets:");
+    expect(rendered).toContain("name: private-registry");
     expect(rendered).toContain("prisma migrate deploy");
+  });
+
+  it("rejects HA existingSecret values unless REDIS_URL presence is asserted", () => {
+    const error = helmTemplateError([
+      "--set",
+      "replicaCount=2",
+      "--set",
+      "existingSecret=vectorflow-secrets",
+      "--set",
+      "persistence.data.accessMode=ReadWriteMany",
+    ]);
+
+    expect(error).toContain("existingSecretContainsRedisUrl=true");
   });
 });

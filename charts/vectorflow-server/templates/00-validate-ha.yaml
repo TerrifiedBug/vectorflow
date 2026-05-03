@@ -1,6 +1,6 @@
 {{- $ha := eq (include "vectorflow-server.haEnabled" .) "true" -}}
 {{- if and $ha (ne (include "vectorflow-server.redisConfigured" .) "true") -}}
-{{- fail "HA requires Redis: set redis.enabled=true, existingSecret with REDIS_URL, or secret.redisUrl when replicaCount > 1 or autoscaling.maxReplicas > 1" -}}
+{{- fail "HA requires Redis: set redis.enabled=true, secret.redisUrl, or existingSecret with existingSecretContainsRedisUrl=true when replicaCount > 1 or autoscaling.maxReplicas > 1" -}}
 {{- end -}}
 {{- if and $ha (not .Values.persistence.data.enabled) -}}
 {{- fail "HA requires persistence.data.enabled=true with shared storage for /app/.vectorflow" -}}
