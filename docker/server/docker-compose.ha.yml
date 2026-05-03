@@ -99,13 +99,23 @@ services:
   nginx:
     container_name: vectorflow-ha-nginx
     image: nginx:alpine
-    # Start nginx as soon as both replicas have been scheduled — do NOT
-    # gate on `service_healthy`. In an HA stack we want nginx up even if
-    # one replica is still booting or unhealthy; nginx's own health checks
-    # (max_fails / fail_timeout in nginx-ha.conf) handle replica liveness.
+    # Compose cannot express "start after either replica is healthy", so nginx
+    # waits for at least one ready app before it accepts traffic.
     depends_on:
-      - vf1
-      - vf2
+      vf1:
+        condition: service_started
+      vf2:
+        condition: service_started
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        until wget --no-verbose --tries=1 --spider http://vf1:3000/api/health/ready \
+          || wget --no-verbose --tries=1 --spider http://vf2:3000/api/health/ready; do
+          echo "Waiting for at least one VectorFlow replica to become ready..."
+          sleep 2
+        done
+        exec nginx -g 'daemon off;'
     ports:
       - "3000:3000"
     volumes:
