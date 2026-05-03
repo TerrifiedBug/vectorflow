@@ -143,10 +143,12 @@ persistence is disabled, backups are not durable across pod restarts.
 #### HA migrations and readiness
 
 Single-replica installs run `prisma migrate deploy` in the server container
-entrypoint by default. HA installs render a Helm pre-install/pre-upgrade Job
-named `<release>-vectorflow-server-migrate` and set
+entrypoint by default. HA installs render a Helm post-install/post-upgrade Job
+named `<release>-vectorflow-server-migrate` after chart-managed Secrets and
+ServiceAccounts exist, and set
 `VF_RUN_MIGRATIONS=false` on server pods so migrations are not started once per
-replica. The migration Job must complete before Helm rolls the Deployment.
+replica. Use Helm `--wait` for HA installs and upgrades so the migration Job
+failure is surfaced by the release command.
 
 Readiness probes use `/api/health/ready`. The endpoint always checks database
 connectivity. In HA, the chart sets `VF_REDIS_REQUIRED=true`, so readiness also
@@ -169,6 +171,14 @@ Then install with:
 ```yaml
 existingSecret: "vectorflow-secrets"
 nextauthUrl: "https://vectorflow.example.com"
+```
+
+For HA with an existing Secret, the Secret must contain `REDIS_URL` and values
+must set:
+
+```yaml
+existingSecret: "vectorflow-secrets"
+existingSecretContainsRedisUrl: true
 ```
 
 #### Ingress
