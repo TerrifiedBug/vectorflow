@@ -6,14 +6,15 @@ function makeRequest(
   headers?: Record<string, string>,
 ): Request {
   const h: Record<string, string> = { ...headers };
-  if (ip) h["x-forwarded-for"] = ip;
+  if (ip) h["x-forwarded-for"] = ip.includes(",") ? ip : `${ip}, 10.0.0.10`;
   return new Request("http://localhost/api/test", { headers: h });
 }
 
 describe("checkIpRateLimit", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.stubEnv("VF_TRUST_PROXY_HEADERS", "true");
+    vi.stubEnv("VF_TRUSTED_PROXIES", "10.0.0.10");
+    vi.advanceTimersByTime(61_000);
   });
 
   afterEach(() => {
@@ -21,90 +22,104 @@ describe("checkIpRateLimit", () => {
     vi.useRealTimers();
   });
 
-  it("returns null when under the limit", () => {
-    const result = checkIpRateLimit(makeRequest("1.2.3.4"), "enroll", 10);
+  it("returns null when under the limit", async () => {
+    const result = await checkIpRateLimit(makeRequest("1.2.3.4"), "enroll", 10);
     expect(result).toBeNull();
   });
 
-  it("returns 429 response when limit exceeded", () => {
+  it("returns 429 response when limit exceeded", async () => {
     for (let i = 0; i < 10; i++) {
-      checkIpRateLimit(makeRequest("5.6.7.8"), "enroll", 10);
+      await checkIpRateLimit(makeRequest("5.6.7.8"), "enroll", 10);
     }
-    const result = checkIpRateLimit(makeRequest("5.6.7.8"), "enroll", 10);
+    const result = await checkIpRateLimit(makeRequest("5.6.7.8"), "enroll", 10);
     expect(result).not.toBeNull();
     expect(result!.status).toBe(429);
   });
 
-  it("includes Retry-After header on 429", () => {
+  it("includes Retry-After header on 429", async () => {
     for (let i = 0; i < 5; i++) {
-      checkIpRateLimit(makeRequest("9.0.1.2"), "setup", 5);
+      await checkIpRateLimit(makeRequest("9.0.1.2"), "setup", 5);
     }
-    const result = checkIpRateLimit(makeRequest("9.0.1.2"), "setup", 5);
+    const result = await checkIpRateLimit(makeRequest("9.0.1.2"), "setup", 5);
     expect(result!.headers.get("Retry-After")).toBeTruthy();
   });
 
-  it("isolates limits between different IPs", () => {
+  it("isolates limits between different IPs", async () => {
     for (let i = 0; i < 10; i++) {
-      checkIpRateLimit(makeRequest("10.0.0.1"), "enroll", 10);
+      await checkIpRateLimit(makeRequest("10.0.0.1"), "enroll", 10);
     }
-    expect(checkIpRateLimit(makeRequest("10.0.0.1"), "enroll", 10)).not.toBeNull();
-    expect(checkIpRateLimit(makeRequest("10.0.0.2"), "enroll", 10)).toBeNull();
+    expect(await checkIpRateLimit(makeRequest("10.0.0.1"), "enroll", 10)).not.toBeNull();
+    expect(await checkIpRateLimit(makeRequest("10.0.0.2"), "enroll", 10)).toBeNull();
   });
 
-  it("ignores forwarded IP headers unless trusted proxy headers are enabled", () => {
-    vi.stubEnv("VF_TRUST_PROXY_HEADERS", "false");
+  it("ignores forwarded IP headers unless trusted proxies are configured", async () => {
+    vi.stubEnv("VF_TRUSTED_PROXIES", "");
     const req = makeRequest("203.0.113.50");
     for (let i = 0; i < 10; i++) {
-      checkIpRateLimit(req, "untrusted-enroll", 10);
+      await checkIpRateLimit(req, "untrusted-enroll", 10);
     }
 
-    expect(checkIpRateLimit(makeRequest("203.0.113.50"), "untrusted-enroll-other", 10)).toBeNull();
-    expect(checkIpRateLimit(new Request("http://localhost/api/test"), "untrusted-enroll", 10)).not.toBeNull();
+    expect(await checkIpRateLimit(makeRequest("203.0.113.50"), "untrusted-enroll-other", 10)).toBeNull();
+    expect(await checkIpRateLimit(new Request("http://localhost/api/test"), "untrusted-enroll", 10)).not.toBeNull();
   });
 
-  it("extracts IP from x-forwarded-for (rightmost entry) when trusted proxy headers are enabled", () => {
-    vi.stubEnv("VF_TRUST_PROXY_HEADERS", "true");
+  it("extracts the client IP from x-forwarded-for only behind a trusted proxy", async () => {
+    vi.stubEnv("VF_TRUSTED_PROXIES", "10.0.0.10");
     const req = makeRequest(undefined, {
-      "x-forwarded-for": "203.0.113.50, 70.41.3.18, 150.172.238.178",
+      "x-forwarded-for": "203.0.113.50, 10.0.0.10",
     });
     for (let i = 0; i < 10; i++) {
-      checkIpRateLimit(req, "enroll", 10);
+      await checkIpRateLimit(req, "enroll", 10);
     }
-    // Rightmost entry is the proxy-appended IP
-    const blocked = checkIpRateLimit(
-      makeRequest("150.172.238.178"),
+    const blocked = await checkIpRateLimit(
+      makeRequest("203.0.113.50, 10.0.0.10"),
       "enroll",
       10,
     );
     expect(blocked).not.toBeNull();
   });
 
-  it("falls back to x-real-ip when trusted proxy headers are enabled and x-forwarded-for is missing", () => {
-    vi.stubEnv("VF_TRUST_PROXY_HEADERS", "true");
-    const req = new Request("http://localhost/api/test", {
-      headers: { "x-real-ip": "192.168.1.1" },
+  it("ignores spoofed x-forwarded-for chains that do not end at a trusted proxy", async () => {
+    vi.stubEnv("VF_TRUSTED_PROXIES", "10.0.0.10");
+    const req = makeRequest(undefined, {
+      "x-forwarded-for": "203.0.113.50, 198.51.100.7",
     });
     for (let i = 0; i < 5; i++) {
-      checkIpRateLimit(req, "setup", 5);
+      await checkIpRateLimit(req, "setup", 5);
     }
-    const result = checkIpRateLimit(req, "setup", 5);
+    const result = await checkIpRateLimit(
+      makeRequest("203.0.113.50, 10.0.0.10"),
+      "setup",
+      5,
+    );
+    expect(result).toBeNull();
+    expect(await checkIpRateLimit(new Request("http://localhost/api/test"), "setup", 5)).not.toBeNull();
+  });
+
+  it("supports trusted proxy CIDR ranges", async () => {
+    vi.stubEnv("VF_TRUSTED_PROXIES", "10.0.0.0/24");
+    const req = makeRequest("192.0.2.55, 10.0.0.42");
+    for (let i = 0; i < 5; i++) {
+      await checkIpRateLimit(req, "setup", 5);
+    }
+    const result = await checkIpRateLimit(req, "setup", 5);
     expect(result).not.toBeNull();
   });
 
-  it("uses 'unknown' key when no IP headers present", () => {
+  it("uses 'unknown' key when no IP headers present", async () => {
     const req = new Request("http://localhost/api/test");
-    const result = checkIpRateLimit(req, "enroll", 10);
+    const result = await checkIpRateLimit(req, "enroll", 10);
     expect(result).toBeNull();
   });
 
-  it("resets after window expires", () => {
+  it("resets after window expires", async () => {
     for (let i = 0; i < 10; i++) {
-      checkIpRateLimit(makeRequest("1.1.1.1"), "enroll", 10);
+      await checkIpRateLimit(makeRequest("1.1.1.1"), "enroll", 10);
     }
-    expect(checkIpRateLimit(makeRequest("1.1.1.1"), "enroll", 10)).not.toBeNull();
+    expect(await checkIpRateLimit(makeRequest("1.1.1.1"), "enroll", 10)).not.toBeNull();
 
     vi.advanceTimersByTime(61_000);
 
-    expect(checkIpRateLimit(makeRequest("1.1.1.1"), "enroll", 10)).toBeNull();
+    expect(await checkIpRateLimit(makeRequest("1.1.1.1"), "enroll", 10)).toBeNull();
   });
 });

@@ -10,7 +10,7 @@ import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { warnLog, errorLog } from "@/lib/logger";
 
 export async function GET(request: Request) {
-  const rateLimited = checkTokenRateLimit(request, "config", 30);
+  const rateLimited = await checkTokenRateLimit(request, "config", 30);
   if (rateLimited) return rateLimited;
 
   const agent = await authenticateAgent(request);

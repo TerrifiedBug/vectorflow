@@ -5,7 +5,7 @@ import { errorLog } from "@/lib/logger";
 import { sendTelemetryHeartbeat } from "@/server/services/telemetry-sender";
 
 export async function GET(request: Request) {
-  const rateLimited = checkIpRateLimit(request, "setup", 5);
+  const rateLimited = await checkIpRateLimit(request, "setup", 5);
   if (rateLimited) return rateLimited;
 
   try {
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const rateLimited = checkIpRateLimit(request, "setup", 5);
+  const rateLimited = await checkIpRateLimit(request, "setup", 5);
   if (rateLimited) return rateLimited;
 
   try {

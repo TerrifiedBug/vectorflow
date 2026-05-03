@@ -217,7 +217,7 @@ async function processSampleResults(
 
 
 export async function POST(request: Request) {
-  const rateLimited = checkTokenRateLimit(request, "heartbeat", 30);
+  const rateLimited = await checkTokenRateLimit(request, "heartbeat", 30);
   if (rateLimited) return rateLimited;
 
   const agent = await authenticateAgent(request);
