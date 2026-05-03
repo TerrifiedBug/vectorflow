@@ -37,6 +37,7 @@ vi.mock("@/server/services/pipeline-dependency", () => ({
   addDependency: vi.fn(),
   removeDependency: vi.fn(),
   getUpstreams: vi.fn(),
+  getDownstreams: vi.fn(),
   getUndeployedUpstreams: vi.fn(),
   getDeployedDownstreams: vi.fn(),
   getDependencyGraph: vi.fn(),
@@ -194,6 +195,42 @@ describe("pipeline-dependency router", () => {
       expect(result.nodes).toHaveLength(1);
       expect(result.edges).toHaveLength(1);
       expect(depService.getDependencyGraph).toHaveBeenCalledWith("env-1");
+    });
+  });
+
+  // ─── deploymentImpact ─────────────────────────────────────────────────────
+
+  describe("deploymentImpact", () => {
+    it("splits downstreams into deployed and draft buckets", async () => {
+      vi.mocked(depService.getDownstreams).mockResolvedValue([
+        {
+          id: "dep-1",
+          downstream: { id: "p-deployed-1", name: "Deployed One", isDraft: false, deployedAt: new Date("2026-04-01") },
+        },
+        {
+          id: "dep-2",
+          downstream: { id: "p-deployed-2", name: "Deployed Two", isDraft: false, deployedAt: new Date("2026-04-02") },
+        },
+        {
+          id: "dep-3",
+          downstream: { id: "p-draft", name: "Draft Pipe", isDraft: true, deployedAt: null },
+        },
+      ] as never);
+
+      const result = await caller.deploymentImpact({ pipelineId: "p-1" });
+
+      expect(result.total).toBe(3);
+      expect(result.deployed).toHaveLength(2);
+      expect(result.draft).toHaveLength(1);
+      expect(result.deployed.map((p) => p.name)).toEqual(["Deployed One", "Deployed Two"]);
+      expect(result.draft[0].name).toBe("Draft Pipe");
+      expect(depService.getDownstreams).toHaveBeenCalledWith("p-1");
+    });
+
+    it("returns empty buckets when there are no downstreams", async () => {
+      vi.mocked(depService.getDownstreams).mockResolvedValue([] as never);
+      const result = await caller.deploymentImpact({ pipelineId: "p-1" });
+      expect(result).toEqual({ deployed: [], draft: [], total: 0 });
     });
   });
 });
