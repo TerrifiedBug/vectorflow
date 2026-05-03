@@ -791,25 +791,6 @@ export const fleetRouter = router({
       const skipped: Array<{ nodeId: string; reason: SkipReason | "not_found" }> = input.nodeIds
         .filter((id) => !foundIds.has(id))
         .map((id) => ({ nodeId: id, reason: "not_found" as const }));
-      const eligible: UpgradeNode[] = [];
-
-      for (const node of nodes) {
-        const reason = getUpdateSkipReason(node, input.targetVersion);
-        if (reason) {
-          skipped.push({ nodeId: node.id, reason });
-          continue;
-        }
-        eligible.push(node);
-      }
-
-      const triggeredNodeIds = eligible.map((node) => node.id);
-      if (triggeredNodeIds.length === 0) {
-        return {
-          updatedCount: 0,
-          triggeredNodeIds,
-          skipped,
-        };
-      }
 
       const { downloadUrl } = input;
       let { targetVersion, checksum } = input;
@@ -832,6 +813,25 @@ export const fleetRouter = router({
         }
         targetVersion = fresh.latestVersion;
         checksum = `sha256:${freshChecksum}`;
+      }
+
+      const eligible: UpgradeNode[] = [];
+      for (const node of nodes) {
+        const reason = getUpdateSkipReason(node, targetVersion);
+        if (reason) {
+          skipped.push({ nodeId: node.id, reason });
+          continue;
+        }
+        eligible.push(node);
+      }
+
+      const triggeredNodeIds = eligible.map((node) => node.id);
+      if (triggeredNodeIds.length === 0) {
+        return {
+          updatedCount: 0,
+          triggeredNodeIds,
+          skipped,
+        };
       }
 
       const pendingAction = {
