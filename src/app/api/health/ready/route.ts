@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { isRedisAvailable } from "@/lib/redis";
 
 export async function GET() {
   const checks: Record<string, "ok" | "error"> = {
@@ -10,6 +11,10 @@ export async function GET() {
     checks.database = "ok";
   } catch {
     // database unreachable
+  }
+
+  if (process.env.VF_REDIS_REQUIRED === "true") {
+    checks.redis = isRedisAvailable() ? "ok" : "error";
   }
 
   const allOk = Object.values(checks).every((v) => v === "ok");

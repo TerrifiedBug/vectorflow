@@ -110,6 +110,14 @@ authTrustHost: "true"
 # forwarded headers before traffic reaches VectorFlow.
 trustProxyHeaders: "false"
 
+# -- Database migration behavior. Single-replica installs run migrations in the
+# container entrypoint by default. HA installs always render a one-shot Helm hook
+# Job and set VF_RUN_MIGRATIONS=false on server pods.
+migrations:
+  runAtStartup: true
+  job:
+    enabled: false
+
 # ------------------------------------------------------------------
 # Secrets
 # ------------------------------------------------------------------
