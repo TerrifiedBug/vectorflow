@@ -15,8 +15,16 @@ vi.mock("@/server/services/sse-broadcast", () => ({
   broadcastSSE: vi.fn(),
 }));
 
+// Use a Map to simulate the persistent store. The route only calls getActiveTap,
+// so we expose only what's needed.
+const taps = new Map<string, {
+  nodeId: string;
+  pipelineId: string;
+  componentId: string;
+  startedAt: number;
+}>();
 vi.mock("@/server/services/active-taps", () => ({
-  activeTaps: new Map(),
+  getActiveTap: vi.fn(async (requestId: string) => taps.get(requestId) ?? null),
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -25,7 +33,6 @@ vi.mock("@/lib/logger", () => ({
 
 import { authenticateAgent } from "@/server/services/agent-auth";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
-import { activeTaps } from "@/server/services/active-taps";
 
 function makeRequest(body: unknown): Request {
   return new Request("http://localhost/api/agent/tap-events", {
@@ -41,7 +48,7 @@ function makeRequest(body: unknown): Request {
 describe("POST /api/agent/tap-events", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    activeTaps.clear();
+    taps.clear();
   });
 
   it("returns 401 when unauthenticated", async () => {
@@ -56,7 +63,7 @@ describe("POST /api/agent/tap-events", () => {
   });
 
   it("broadcasts tap events via SSE when events array is present", async () => {
-    activeTaps.set("req-1", {
+    taps.set("req-1", {
       nodeId: "node-1",
       pipelineId: "pipe-1",
       componentId: "comp-1",
@@ -92,7 +99,7 @@ describe("POST /api/agent/tap-events", () => {
   });
 
   it("broadcasts tap_stopped when status is 'stopped'", async () => {
-    activeTaps.set("req-2", {
+    taps.set("req-2", {
       nodeId: "node-1",
       pipelineId: "pipe-1",
       componentId: "comp-1",
@@ -143,7 +150,7 @@ describe("POST /api/agent/tap-events", () => {
   });
 
   it("rejects tap events for a request assigned to a different node", async () => {
-    activeTaps.set("req-foreign-node", {
+    taps.set("req-foreign-node", {
       nodeId: "node-2",
       pipelineId: "pipe-1",
       componentId: "comp-1",
@@ -167,7 +174,7 @@ describe("POST /api/agent/tap-events", () => {
   });
 
   it("rejects tap events when pipeline or component does not match the request context", async () => {
-    activeTaps.set("req-1", {
+    taps.set("req-1", {
       nodeId: "node-1",
       pipelineId: "pipe-1",
       componentId: "comp-1",

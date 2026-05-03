@@ -40,7 +40,7 @@ vi.mock("@/server/services/batch-health", () => ({
 }));
 
 vi.mock("@/server/services/push-broadcast", () => ({
-  relayPush: vi.fn(),
+  relayPush: vi.fn(() => true),
 }));
 
 import { prisma } from "@/lib/prisma";
@@ -170,18 +170,65 @@ describe("pipelineObservabilityRouter", () => {
       });
 
       expect(result).toEqual({ requestId: "req-1", status: "PENDING" });
-      expect(prismaMock.eventSampleRequest.create).toHaveBeenCalledWith(
+      expect(prismaMock.eventSampleRequest.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            pipelineId: "p-1",
-            nodeId: "node-1",
-          }),
+          where: { id: "req-1" },
+          data: { nodeId: "node-1" },
         }),
       );
       expect(relayPush).toHaveBeenCalledTimes(1);
       expect(relayPush).toHaveBeenCalledWith(
         "node-1",
         expect.objectContaining({ type: "sample_request", requestId: "req-1" }),
+      );
+    });
+
+    it("falls through to the next running node when the first is unreachable", async () => {
+      const pipeline = { id: "p-1", isDraft: false, deployedAt: new Date() };
+      prismaMock.pipeline.findUnique.mockResolvedValue(pipeline as never);
+      prismaMock.eventSampleRequest.create.mockResolvedValue({ id: "req-2" } as never);
+      prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+        { nodeId: "node-1" },
+        { nodeId: "node-2" },
+      ] as never);
+      vi.mocked(relayPush)
+        .mockReturnValueOnce(false)
+        .mockReturnValueOnce(true);
+
+      const result = await caller.requestSamples({
+        pipelineId: "p-1",
+        componentKeys: ["source_1"],
+        limit: 5,
+      });
+
+      expect(result).toEqual({ requestId: "req-2", status: "PENDING" });
+      expect(relayPush).toHaveBeenCalledTimes(2);
+      expect(prismaMock.eventSampleRequest.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "req-2" },
+          data: { nodeId: "node-2" },
+        }),
+      );
+    });
+
+    it("deletes the request and throws when no nodes are reachable", async () => {
+      const pipeline = { id: "p-1", isDraft: false, deployedAt: new Date() };
+      prismaMock.pipeline.findUnique.mockResolvedValue(pipeline as never);
+      prismaMock.eventSampleRequest.create.mockResolvedValue({ id: "req-3" } as never);
+      prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+        { nodeId: "node-1" },
+      ] as never);
+      vi.mocked(relayPush).mockReturnValue(false);
+
+      await expect(
+        caller.requestSamples({
+          pipelineId: "p-1",
+          componentKeys: ["source_1"],
+          limit: 5,
+        }),
+      ).rejects.toThrow(/No reachable nodes/);
+      expect(prismaMock.eventSampleRequest.delete).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "req-3" } }),
       );
     });
 
