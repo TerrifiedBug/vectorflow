@@ -163,6 +163,49 @@ export async function getCostSummary(
   };
 }
 
+/**
+ * Single-pipeline cost snapshot used by the deploy dialog to show what this
+ * pipeline currently costs before the user confirms a deploy. Aggregates
+ * cross-node PipelineMetric rollups (componentId IS NULL) over the requested
+ * range.
+ */
+export async function getPipelineCostSnapshot(
+  pipelineId: string,
+  costPerGbCents: number,
+  range: string = "24h",
+): Promise<{
+  bytesIn: number;
+  bytesOut: number;
+  reductionPercent: number | null;
+  costCents: number;
+  periodHours: number;
+}> {
+  const hours = RANGE_HOURS[range] ?? 24;
+  const since = rangeToSince(range);
+
+  const agg = await prisma.pipelineMetric.aggregate({
+    where: {
+      pipelineId,
+      componentId: null,
+      timestamp: { gte: since },
+    },
+    _sum: { bytesIn: true, bytesOut: true },
+  });
+
+  const bytesIn = Number(agg._sum.bytesIn ?? 0);
+  const bytesOut = Number(agg._sum.bytesOut ?? 0);
+  const reductionPercent =
+    bytesIn === 0 ? null : (1 - bytesOut / bytesIn) * 100;
+
+  return {
+    bytesIn,
+    bytesOut,
+    reductionPercent,
+    costCents: computeCostCents(bytesIn, costPerGbCents),
+    periodHours: hours,
+  };
+}
+
 /** Get per-pipeline cost breakdown. */
 export async function getCostByPipeline(
   input: CostSummaryInput
