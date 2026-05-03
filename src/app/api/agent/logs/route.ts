@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
+import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
@@ -31,6 +32,26 @@ export async function POST(request: Request) {
         { error: "Invalid payload", details: parsed.error.issues },
         { status: 400 },
       );
+    }
+
+    const requestedPipelineIds = [
+      ...new Set(parsed.data.map((batch) => batch.pipelineId)),
+    ];
+    if (requestedPipelineIds.length > 0) {
+      const pipelines = await prisma.pipeline.findMany({
+        where: {
+          id: { in: requestedPipelineIds },
+          environmentId: agent.environmentId,
+        },
+        select: { id: true },
+      });
+      const allowedPipelineIds = new Set(pipelines.map((pipeline) => pipeline.id));
+      if (
+        pipelines.length !== requestedPipelineIds.length ||
+        requestedPipelineIds.some((pipelineId) => !allowedPipelineIds.has(pipelineId))
+      ) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
     }
 
     for (const batch of parsed.data) {

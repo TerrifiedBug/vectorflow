@@ -502,6 +502,20 @@ model EventSampleRequest {
   samples       EventSample[]
 }
 
+/// Live tap authorization state. Persisted (rather than in-memory) so authorization
+/// survives across server instances in HA deployments.
+model ActiveTap {
+  requestId   String   @id
+  nodeId      String
+  pipelineId  String
+  componentId String
+  startedAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  @@index([expiresAt])
+  @@index([nodeId])
+}
+
 model EventSample {
   id            String              @id @default(cuid())
   requestId     String
