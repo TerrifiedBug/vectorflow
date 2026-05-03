@@ -5,10 +5,12 @@
 #   cp .env.example .env   # fill in secrets
 #   docker compose -f docker/server/docker-compose.ha.yml up -d
 #
-# Required env vars:
+# Required env vars (Compose will refuse to start if any are missing):
 #   POSTGRES_PASSWORD   — PostgreSQL password
 #   NEXTAUTH_SECRET     — NextAuth session signing secret
-#   NEXTAUTH_URL        — Public URL (default: http://localhost:3000)
+#   NEXTAUTH_URL        — Externally reachable URL of this deployment
+#                          (used by alert/dashboard links, OAuth callbacks).
+#                          No localhost fallback — set it explicitly.
 #
 # Optional:
 #   VF_VERSION          — VectorFlow image tag (default: latest)
@@ -55,7 +57,7 @@ services:
       DATABASE_URL: postgresql://vectorflow:${POSTGRES_PASSWORD}@postgres:5432/vectorflow
       REDIS_URL: redis://redis:6379
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:?NEXTAUTH_URL must be set to the externally reachable URL of this deployment}
       AUTH_TRUST_HOST: "true"
     volumes:
       - vfdata1:/app/.vectorflow
@@ -80,7 +82,7 @@ services:
       DATABASE_URL: postgresql://vectorflow:${POSTGRES_PASSWORD}@postgres:5432/vectorflow
       REDIS_URL: redis://redis:6379
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:?NEXTAUTH_URL must be set to the externally reachable URL of this deployment}
       AUTH_TRUST_HOST: "true"
     volumes:
       - vfdata2:/app/.vectorflow
