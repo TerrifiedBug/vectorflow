@@ -4,8 +4,26 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import type { VectorComponentDef } from "@/lib/vector/types";
+import { useFlowStore } from "@/stores/flow-store";
 
-afterEach(cleanup);
+vi.hoisted(() => {
+  Object.defineProperty(globalThis, "localStorage", {
+    value: {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    },
+    configurable: true,
+  });
+});
+
+afterEach(() => {
+  cleanup();
+  useFlowStore.getState().clearGraph();
+  mockSharedComponents = [];
+  document.querySelectorAll(".react-flow").forEach((node) => node.remove());
+});
 
 // ── External dependency mocks ──────────────────────────────────────────────
 
@@ -27,8 +45,27 @@ vi.mock("@/trpc/client", () => ({
   }),
 }));
 
+let mockSharedComponents: Array<{
+  id: string;
+  name: string;
+  componentType: string;
+  kind: string;
+  config: Record<string, unknown>;
+  version: number;
+  linkedPipelineCount: number;
+}> = [];
+
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({ data: undefined, isLoading: false }),
+  useQuery: () => ({ data: mockSharedComponents, isLoading: false }),
+}));
+
+vi.mock("@xyflow/react", () => ({
+  useReactFlow: () => ({
+    screenToFlowPosition: ({ x, y }: { x: number; y: number }) => ({
+      x: x - 280,
+      y: y - 40,
+    }),
+  }),
 }));
 
 // ── Catalog mock ───────────────────────────────────────────────────────────
@@ -129,6 +166,30 @@ describe("ComponentPalette", () => {
       expect(getByText("Shared")).toBeTruthy();
     });
 
+    it("exposes selected state for palette tabs", () => {
+      const { getByRole } = render(<ComponentPalette />);
+
+      expect(getByRole("tab", { name: "Catalog" })).toHaveAttribute(
+        "aria-selected",
+        "true"
+      );
+      expect(getByRole("tab", { name: "Shared" })).toHaveAttribute(
+        "aria-selected",
+        "false"
+      );
+
+      fireEvent.click(getByRole("tab", { name: "Shared" }));
+
+      expect(getByRole("tab", { name: "Catalog" })).toHaveAttribute(
+        "aria-selected",
+        "false"
+      );
+      expect(getByRole("tab", { name: "Shared" })).toHaveAttribute(
+        "aria-selected",
+        "true"
+      );
+    });
+
     it("switches to Shared tab when clicked", () => {
       const { getByText, queryByText } = render(<ComponentPalette />);
       fireEvent.click(getByText("Shared"));
@@ -165,6 +226,76 @@ describe("ComponentPalette", () => {
       expect(dataTransferData["application/vectorflow-component"]).toBe(
         "source:kafka"
       );
+    });
+  });
+
+  describe("keyboard add actions", () => {
+    it("adds a catalog component to the canvas center via the flow store", () => {
+      const { getByRole } = render(<ComponentPalette />);
+      document.querySelector(".react-flow")?.remove();
+      const canvas = document.createElement("div");
+      canvas.className = "react-flow";
+      canvas.getBoundingClientRect = () =>
+        ({
+          left: 280,
+          top: 40,
+          width: 800,
+          height: 600,
+          right: 1080,
+          bottom: 640,
+          x: 280,
+          y: 40,
+          toJSON: () => ({}),
+        }) as DOMRect;
+      document.body.appendChild(canvas);
+
+      fireEvent.click(getByRole("button", { name: "Add Apache Kafka to canvas" }));
+
+      const node = useFlowStore.getState().nodes[0];
+      expect(node.data.componentDef).toMatchObject({
+        kind: "source",
+        type: "kafka",
+      });
+      expect(node.position).toEqual({ x: 400, y: 300 });
+
+      canvas.remove();
+    });
+
+    it("adds a shared component with link metadata and filter pressed state", () => {
+      mockSharedComponents = [
+        {
+          id: "shared-1",
+          name: "Shared Kafka",
+          componentType: "kafka",
+          kind: "SOURCE",
+          config: { topic: "logs" },
+          version: 3,
+          linkedPipelineCount: 2,
+        },
+      ];
+      const { getByRole } = render(<ComponentPalette />);
+
+      fireEvent.click(getByRole("tab", { name: "Shared" }));
+      expect(getByRole("button", { name: "All" })).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      );
+      fireEvent.click(getByRole("button", { name: "Source" }));
+      expect(getByRole("button", { name: "Source" })).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      );
+
+      fireEvent.click(getByRole("button", { name: "Add Shared Kafka to canvas" }));
+
+      const node = useFlowStore.getState().nodes[0];
+      expect(node.data).toMatchObject({
+        sharedComponentId: "shared-1",
+        sharedComponentName: "Shared Kafka",
+        sharedComponentVersion: 3,
+        sharedComponentLatestVersion: 3,
+        config: { topic: "logs" },
+      });
     });
   });
 });
