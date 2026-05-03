@@ -8,6 +8,7 @@ import { withAudit } from "@/server/middleware/audit";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
 import { tryLocalPush, relayPush } from "@/server/services/push-broadcast";
+import { pushRegistry } from "@/server/services/push-registry";
 import {
   setActiveTap,
   deleteActiveTap,
@@ -206,27 +207,45 @@ export const pipelineObservabilityRouter = router({
       };
 
       // Strategy:
-      // 1. Probe each running node for LOCAL SSE delivery (confirmed receipt)
-      //    in order using tryLocalPush — this MUST NOT fall through to Redis,
-      //    otherwise an earlier non-local node could be published to and
-      //    start processing before we bind a later local node, leaving the
-      //    request bound to the wrong owner.
-      // 2. If no local node responded, fan out via Redis to every running
-      //    node and leave nodeId NULL so whichever agent picks it up first
-      //    atomically claims it in samples-route.
+      // 1. For each running node connected via local SSE: atomically bind the
+      //    request BEFORE pushing. The conditional update (nodeId: null)
+      //    guarantees that an agent racing through the /api/agent/config poll
+      //    cannot claim this request between probe and bind — once the
+      //    binding is set, the heartbeat-claim path's
+      //    `OR: [{ nodeId: null }, { nodeId: agent }]` predicate rejects any
+      //    other node's claim attempt.
+      // 2. If no local node was reachable (or all SSE writes raced and
+      //    failed), fan out via Redis to every running node and leave nodeId
+      //    NULL so whichever agent picks it up first atomically claims it.
       let localBinding: string | null = null;
       for (const { nodeId } of statuses) {
+        if (!pushRegistry.isConnected(nodeId)) continue;
+
+        const claim = await prisma.eventSampleRequest.updateMany({
+          where: { id: request.id, status: "PENDING", nodeId: null },
+          data: { nodeId },
+        });
+        if (claim.count === 0) {
+          // An agent that polled /api/agent/config in the gap between create
+          // and bind has already claimed this request via heartbeat. Leave
+          // their binding intact and surface the request as PENDING.
+          return { requestId: request.id, status: "PENDING" };
+        }
+
         if (tryLocalPush(nodeId, message)) {
           localBinding = nodeId;
           break;
         }
+
+        // SSE connection dropped between isConnected() and send(). Release
+        // the binding so the next loop iteration (or fan-out below) can claim.
+        await prisma.eventSampleRequest.updateMany({
+          where: { id: request.id, status: "PENDING", nodeId },
+          data: { nodeId: null },
+        });
       }
 
       if (localBinding) {
-        await prisma.eventSampleRequest.update({
-          where: { id: request.id },
-          data: { nodeId: localBinding },
-        });
         return { requestId: request.id, status: "PENDING" };
       }
 
