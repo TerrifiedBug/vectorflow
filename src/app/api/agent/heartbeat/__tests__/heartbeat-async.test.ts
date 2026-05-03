@@ -210,6 +210,62 @@ describe("heartbeat async decomposition", () => {
     );
   });
 
+  it("does not accept sample results for a request in another environment", async () => {
+    prismaMock.eventSampleRequest.findUnique.mockResolvedValue({
+      pipelineId: "pipe-other-env",
+      status: "PENDING",
+      nodeId: "node-1",
+      pipeline: { environmentId: "env-2" },
+    } as never);
+
+    prismaMock.$transaction.mockResolvedValue([]);
+
+    const response = await POST(
+      makeRequest({
+        sampleResults: [
+          {
+            requestId: "sample-foreign-env",
+            componentKey: "src-1",
+            events: [{ secret: true }],
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(prismaMock.eventSample.create).not.toHaveBeenCalled();
+    expect(prismaMock.eventSampleRequest.update).not.toHaveBeenCalled();
+  });
+
+  it("does not accept sample results from a node that was not assigned the request", async () => {
+    prismaMock.eventSampleRequest.findUnique.mockResolvedValue({
+      pipelineId: "pipe-1",
+      status: "PENDING",
+      nodeId: "node-2",
+      pipeline: { environmentId: "env-1" },
+    } as never);
+
+    prismaMock.$transaction.mockResolvedValue([]);
+
+    const response = await POST(
+      makeRequest({
+        sampleResults: [
+          {
+            requestId: "sample-wrong-node",
+            componentKey: "src-1",
+            events: [{ secret: true }],
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(prismaMock.eventSample.create).not.toHaveBeenCalled();
+    expect(prismaMock.eventSampleRequest.update).not.toHaveBeenCalled();
+  });
+
   it("returns 200 while component latency $transaction is still pending (fire-and-forget)", async () => {
     // Alert eval resolves immediately
     evaluateAlertsMock.mockResolvedValue([]);

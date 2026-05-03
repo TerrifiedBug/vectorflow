@@ -154,7 +154,7 @@ describe("pipelineObservabilityRouter", () => {
   // ── requestSamples ────────────────────────────────────────────────────────
 
   describe("requestSamples", () => {
-    it("creates a sample request and pushes to running agents", async () => {
+    it("creates a sample request assigned to one running agent", async () => {
       const pipeline = { id: "p-1", isDraft: false, deployedAt: new Date() };
       prismaMock.pipeline.findUnique.mockResolvedValue(pipeline as never);
       prismaMock.eventSampleRequest.create.mockResolvedValue({ id: "req-1" } as never);
@@ -170,7 +170,15 @@ describe("pipelineObservabilityRouter", () => {
       });
 
       expect(result).toEqual({ requestId: "req-1", status: "PENDING" });
-      expect(relayPush).toHaveBeenCalledTimes(2);
+      expect(prismaMock.eventSampleRequest.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            pipelineId: "p-1",
+            nodeId: "node-1",
+          }),
+        }),
+      );
+      expect(relayPush).toHaveBeenCalledTimes(1);
       expect(relayPush).toHaveBeenCalledWith(
         "node-1",
         expect.objectContaining({ type: "sample_request", requestId: "req-1" }),
