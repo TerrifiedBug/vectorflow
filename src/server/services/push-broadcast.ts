@@ -26,6 +26,17 @@ export function deliverPush(nodeId: string, message: PushMessage): DeliveryMode 
 }
 
 /**
+ * Try LOCAL SSE delivery only, without falling through to Redis. Use this when
+ * you need to probe whether an agent is reachable on this instance before
+ * deciding whether to bind a request to a single node or fan out via Redis —
+ * the caller doesn't want a probe to side-effect a Redis publish that another
+ * instance might pick up and act on.
+ */
+export function tryLocalPush(nodeId: string, message: PushMessage): boolean {
+  return pushRegistry.send(nodeId, message);
+}
+
+/**
  * Backwards-compatible boolean wrapper. NOTE: a `true` return only means
  * "we tried" — Redis publication is fire-and-forget. Callers that need
  * confirmed delivery should use `deliverPush` and branch on `"local"`.
