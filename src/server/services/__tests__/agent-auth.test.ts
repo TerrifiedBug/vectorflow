@@ -46,13 +46,41 @@ describe("authenticateAgent", () => {
     expect(prismaMock.vectorNode.findUnique).not.toHaveBeenCalled();
   });
 
-  it("returns null when token has no stable lookup identifier", async () => {
-    extractBearerTokenMock.mockReturnValue("vf_node_legacy");
+  it("falls back to legacy scan when token has no stable lookup identifier", async () => {
+    extractBearerTokenMock.mockReturnValue("vf_node_oldformat64hex");
     getNodeTokenIdentifierMock.mockReturnValue(null);
+    prismaMock.vectorNode.findMany.mockResolvedValue([
+      {
+        id: "legacy-node-1",
+        environmentId: "env-legacy",
+        nodeTokenHash: "legacy-hash",
+      },
+    ] as never);
+    verifyNodeTokenMock.mockResolvedValue(true);
 
-    const result = await authenticateAgent(makeRequest("Bearer vf_node_legacy"));
-    expect(result).toBeNull();
+    const result = await authenticateAgent(makeRequest("Bearer vf_node_oldformat64hex"));
+    expect(result).toEqual({ nodeId: "legacy-node-1", environmentId: "env-legacy" });
     expect(prismaMock.vectorNode.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.vectorNode.findMany).toHaveBeenCalledWith({
+      where: { nodeTokenHash: { not: null }, nodeTokenId: null },
+      select: { id: true, environmentId: true, nodeTokenHash: true },
+    });
+  });
+
+  it("returns null for legacy token when no un-migrated nodes match", async () => {
+    extractBearerTokenMock.mockReturnValue("vf_node_oldformat64hex");
+    getNodeTokenIdentifierMock.mockReturnValue(null);
+    prismaMock.vectorNode.findMany.mockResolvedValue([
+      {
+        id: "legacy-node-1",
+        environmentId: "env-legacy",
+        nodeTokenHash: "legacy-hash",
+      },
+    ] as never);
+    verifyNodeTokenMock.mockResolvedValue(false);
+
+    const result = await authenticateAgent(makeRequest("Bearer vf_node_oldformat64hex"));
+    expect(result).toBeNull();
   });
 
   it("returns null when token id matches no node", async () => {

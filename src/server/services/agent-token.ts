@@ -73,9 +73,6 @@ export async function verifyNodeToken(
   if (!token.startsWith(NODE_PREFIX)) {
     return false;
   }
-  if (!getNodeTokenIdentifier(token)) {
-    return false;
-  }
   return bcrypt.compare(token, hash);
 }
 
