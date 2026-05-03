@@ -29,8 +29,10 @@ Environment variables:
   VF_TOKEN          Enrollment token
   VF_DATA_DIR       Data directory (default: /var/lib/vf-agent)
   VF_VECTOR_BIN     Path to Vector binary (default: vector)
-  VF_POLL_INTERVAL  Poll interval duration (default: 15s)
+  VF_POLL_INTERVAL  Poll interval duration before server settings load (default: 5s)
+  VF_LOG_FLUSH_INTERVAL  Log flush interval duration (default: 2s)
   VF_LOG_LEVEL      Log level: debug|info|warn|error (default: info)
+  VF_NODE_LABELS    Node labels as comma-separated key=value pairs
   VF_METRICS_PORT   Port for agent self-metrics Prometheus endpoint (default: 9090, 0 = disabled)
 `)
 			os.Exit(0)
