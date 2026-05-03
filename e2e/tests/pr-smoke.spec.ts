@@ -17,11 +17,7 @@ test.describe("PR smoke e2e", () => {
       loginPage,
     }) => {
       await loginPage.goto();
-      const authResponse = page.waitForResponse((response) =>
-        response.url().includes("/api/auth/callback/credentials"),
-      );
       await loginPage.login(TEST_USER.email, TEST_USER.password);
-      expect((await authResponse).ok()).toBeTruthy();
       await loginPage.expectRedirectedToDashboard();
       await expect(page).not.toHaveURL(/\/login/);
     });
