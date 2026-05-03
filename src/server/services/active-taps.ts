@@ -43,8 +43,11 @@ export async function getActiveTap(requestId: string): Promise<ActiveTap | null>
   });
   if (!row) return null;
   if (row.expiresAt.getTime() <= Date.now()) {
-    // Lazily clean an expired entry; treat as missing for the caller.
-    await prisma.activeTap.deleteMany({ where: { requestId } });
+    // Treat as missing for the caller, but DON'T delete the row here —
+    // the periodic sweeper (expireStaleTaps + cleanupStaleTaps) is the only
+    // path that emits the tap_stop push back to the agent. Deleting eagerly
+    // here would leave the agent tapping forever while every event POST 403s
+    // until manual intervention.
     return null;
   }
   return {
