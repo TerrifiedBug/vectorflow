@@ -264,6 +264,8 @@ describe("metrics.getComponentMetrics", () => {
 describe("metrics.getNodePipelineRates", () => {
   beforeEach(() => {
     prismaMock.vectorNode.findUnique.mockResolvedValue({ environmentId: "env-1" } as never);
+    // Super admin bypass for inline auth (membership not exercised in these tests)
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
   });
 
   it("returns empty rates when metricStore has no data for node", async () => {
@@ -273,6 +275,22 @@ describe("metrics.getNodePipelineRates", () => {
     const result = await caller.getNodePipelineRates({ nodeId: "vnode-1" });
 
     expect(result.rates).toEqual({});
+  });
+
+  it("returns empty rates when node is unknown (stale or deleted)", async () => {
+    prismaMock.vectorNode.findUnique.mockResolvedValue(null);
+
+    const result = await caller.getNodePipelineRates({ nodeId: "vnode-missing" });
+
+    expect(result).toEqual({ rates: {} });
+  });
+
+  it("forbids non-member access when node belongs to another team", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.environment.findUnique.mockResolvedValue({ teamId: "team-other" } as never);
+    prismaMock.teamMember.findUnique.mockResolvedValue(null);
+
+    await expect(caller.getNodePipelineRates({ nodeId: "vnode-1" })).rejects.toThrow();
   });
 
   it("accumulates SOURCE eventsInRate and SINK eventsOutRate per pipeline", async () => {
