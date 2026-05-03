@@ -16,6 +16,9 @@ export const METRIC_LABELS: Record<string, string> = {
   error_rate: "Error Rate",
   discarded_rate: "Discarded Rate",
   pipeline_crashed: "Pipeline Crashed",
+  // Pipeline-scoped SLI metrics (require selecting a pipeline)
+  latency_mean: "Pipeline Mean Latency (ms)",
+  throughput_floor: "Pipeline Throughput Floor (events/sec)",
   // Events (fire on occurrence)
   deploy_requested: "Deploy Requested",
   deploy_completed: "Deploy Completed",
@@ -46,6 +49,9 @@ export const CONDITION_LABELS: Record<string, string> = {
 };
 
 export const BINARY_METRICS = new Set(["node_unreachable", "pipeline_crashed"]);
+
+/** Metrics that require selecting a specific pipeline (mirror of PIPELINE_FLEET_METRICS on the server). */
+export const PIPELINE_REQUIRED_METRICS = new Set(["latency_mean", "throughput_floor"]);
 
 /** Metrics that cannot be scoped to a specific pipeline. */
 export const GLOBAL_METRICS = new Set([
