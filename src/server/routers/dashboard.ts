@@ -214,6 +214,7 @@ export const dashboardRouter = router({
 
   pipelineCards: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
