@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/base64"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
 	"github.com/TerrifiedBug/vectorflow/agent/internal/config"
+	"gopkg.in/yaml.v3"
 )
 
 type configFetcher interface {
@@ -60,6 +62,7 @@ type PipelineAction struct {
 	LogLevel   string
 	Secrets    map[string]string
 	Checksum   string
+	ConfigYaml string
 }
 
 // Poll fetches config from VectorFlow and returns actions to take.
@@ -105,11 +108,11 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 
 		prev, exists := p.known[pc.PipelineID]
 		if !exists {
-			// New pipeline — write config and start
-			if err := os.WriteFile(configPath, []byte(pc.ConfigYaml), 0600); err != nil {
-				return nil, fmt.Errorf("write config %s: %w", configPath, err)
+			// New pipeline — validate config and start. The active file is
+			// replaced only by the apply path once the supervisor is ready.
+			if err := validateVectorYAML(pc.ConfigYaml); err != nil {
+				return nil, fmt.Errorf("validate config for pipeline %s: %w", pc.PipelineID, err)
 			}
-			p.known[pc.PipelineID] = pipelineState{checksum: pc.Checksum, version: pc.Version}
 			actions = append(actions, PipelineAction{
 				Action:     ActionStart,
 				PipelineID: pc.PipelineID,
@@ -119,13 +122,14 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 				LogLevel:   pc.LogLevel,
 				Secrets:    pc.Secrets,
 				Checksum:   pc.Checksum,
+				ConfigYaml: pc.ConfigYaml,
 			})
 		} else if prev.checksum != pc.Checksum {
-			// Config changed — rewrite and restart
-			if err := os.WriteFile(configPath, []byte(pc.ConfigYaml), 0600); err != nil {
-				return nil, fmt.Errorf("write config %s: %w", configPath, err)
+			// Config changed — validate config and restart. Known state is
+			// advanced after the restart succeeds so failed applies are retried.
+			if err := validateVectorYAML(pc.ConfigYaml); err != nil {
+				return nil, fmt.Errorf("validate config for pipeline %s: %w", pc.PipelineID, err)
 			}
-			p.known[pc.PipelineID] = pipelineState{checksum: pc.Checksum, version: pc.Version}
 			actions = append(actions, PipelineAction{
 				Action:     ActionRestart,
 				PipelineID: pc.PipelineID,
@@ -135,15 +139,16 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 				LogLevel:   pc.LogLevel,
 				Secrets:    pc.Secrets,
 				Checksum:   pc.Checksum,
+				ConfigYaml: pc.ConfigYaml,
 			})
 		} else if prev.version != pc.Version {
 			// Version bumped but config unchanged — update version without restart
-			p.known[pc.PipelineID] = pipelineState{checksum: pc.Checksum, version: pc.Version}
 			actions = append(actions, PipelineAction{
 				Action:     ActionUpdateVersion,
 				PipelineID: pc.PipelineID,
 				Name:       pc.PipelineName,
 				Version:    pc.Version,
+				Checksum:   pc.Checksum,
 			})
 		}
 	}
@@ -203,6 +208,30 @@ func (p *poller) Poll() ([]PipelineAction, error) {
 	}
 
 	return actions, nil
+}
+
+func validateVectorYAML(configYaml string) error {
+	dec := yaml.NewDecoder(strings.NewReader(configYaml))
+	for {
+		var node yaml.Node
+		err := dec.Decode(&node)
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (p *poller) MarkApplied(action PipelineAction) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	switch action.Action {
+	case ActionStart, ActionRestart, ActionUpdateVersion:
+		p.known[action.PipelineID] = pipelineState{checksum: action.Checksum, version: action.Version}
+	}
 }
 
 // SampleRequests returns the sample requests from the last poll response.

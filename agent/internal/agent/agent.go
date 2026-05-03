@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"os/user"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -235,17 +236,38 @@ func (a *Agent) pollAndApply() {
 		switch action.Action {
 		case ActionStart:
 			slog.Info("starting pipeline", "name", action.Name, "version", action.Version)
+			rollback, err := activateConfigFile(action.ConfigPath, action.ConfigYaml)
+			if err != nil {
+				slog.Error("failed to activate pipeline config", "pipeline", action.PipelineID, "error", err)
+				continue
+			}
 			if err := a.supervisor.Start(action.PipelineID, action.ConfigPath, action.Version, action.LogLevel, action.Secrets); err != nil {
+				rollback()
 				slog.Error("failed to start pipeline", "pipeline", action.PipelineID, "error", err)
-			} else if action.Checksum != "" {
-				a.supervisor.SetConfigChecksum(action.PipelineID, action.Checksum)
+			} else {
+				// Always advance poller state on a successful Start so we don't
+				// re-issue the same Start on every poll. Checksum is best-effort
+				// (older/partial server responses may omit it).
+				if action.Checksum != "" {
+					a.supervisor.SetConfigChecksum(action.PipelineID, action.Checksum)
+				}
+				a.poller.MarkApplied(action)
 			}
 		case ActionRestart:
 			slog.Info("restarting pipeline", "name", action.Name, "version", action.Version, "reason", "config changed")
+			rollback, err := activateConfigFile(action.ConfigPath, action.ConfigYaml)
+			if err != nil {
+				slog.Error("failed to activate pipeline config", "pipeline", action.PipelineID, "error", err)
+				continue
+			}
 			if err := a.supervisor.Restart(action.PipelineID, action.ConfigPath, action.Version, action.LogLevel, action.Secrets); err != nil {
+				rollback()
 				slog.Error("failed to restart pipeline", "pipeline", action.PipelineID, "error", err)
-			} else if action.Checksum != "" {
-				a.supervisor.SetConfigChecksum(action.PipelineID, action.Checksum)
+			} else {
+				if action.Checksum != "" {
+					a.supervisor.SetConfigChecksum(action.PipelineID, action.Checksum)
+				}
+				a.poller.MarkApplied(action)
 			}
 		case ActionStop:
 			slog.Info("stopping pipeline", "pipeline", action.PipelineID, "reason", "removed from config")
@@ -255,6 +277,7 @@ func (a *Agent) pollAndApply() {
 		case ActionUpdateVersion:
 			slog.Debug("updating pipeline version", "name", action.Name, "version", action.Version)
 			a.supervisor.UpdateVersion(action.PipelineID, action.Version)
+			a.poller.MarkApplied(action)
 		}
 	}
 
@@ -267,6 +290,69 @@ func (a *Agent) pollAndApply() {
 	if action := a.poller.PendingAction(); action != nil {
 		a.handlePendingAction(action)
 	}
+}
+
+func activateConfigFile(path, contents string) (func(), error) {
+	previous, readErr := os.ReadFile(path)
+	hadPrevious := readErr == nil
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return nil, fmt.Errorf("read existing config %s: %w", path, readErr)
+	}
+
+	if err := writeAtomicFile(path, []byte(contents), 0600); err != nil {
+		return nil, err
+	}
+
+	return func() {
+		var err error
+		if hadPrevious {
+			err = writeAtomicFile(path, previous, 0600)
+		} else {
+			err = os.Remove(path)
+			if os.IsNotExist(err) {
+				err = nil
+			}
+		}
+		if err != nil {
+			slog.Error("failed to roll back pipeline config", "path", path, "error", err)
+		}
+	}, nil
+}
+
+func writeAtomicFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("create config dir %s: %w", dir, err)
+	}
+
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*")
+	if err != nil {
+		return fmt.Errorf("create temp config %s: %w", dir, err)
+	}
+	tmpPath := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			os.Remove(tmpPath) //nolint:errcheck
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close() //nolint:errcheck
+		return fmt.Errorf("write temp config %s: %w", tmpPath, err)
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close() //nolint:errcheck
+		return fmt.Errorf("chmod temp config %s: %w", tmpPath, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp config %s: %w", tmpPath, err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("replace config %s: %w", path, err)
+	}
+	cleanup = false
+	return nil
 }
 
 func (a *Agent) handlePendingAction(action *client.PendingAction) {
