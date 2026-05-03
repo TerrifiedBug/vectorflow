@@ -72,13 +72,29 @@ Every deployment creates an immutable version snapshot with a changelog. Browse 
 - OIDC SSO with Okta, Auth0, Keycloak, or any OIDC provider, with group-to-role mapping
 - TOTP 2FA, optional per-user and enforceable per-team
 - RBAC with Viewer, Editor, Admin roles scoped per team
-- Encrypted secrets using AES-256-GCM at rest, with HashiCorp Vault and AWS Secrets Manager backends
+- Encrypted secrets at rest using AES-256-GCM, referenced from pipeline configs as `SECRET[name]`
 - TLS cert storage referenced directly in pipeline configs
 - Immutable audit log of every action with before/after diffs
 
-### Alerting and webhooks
+### Alerting and notifications
 
-Set threshold-based alert rules on CPU, memory, disk, error rates, and more. Deliver notifications via HMAC-signed webhooks to Slack, Discord, PagerDuty, or any HTTP endpoint.
+Threshold-based alert rules on CPU, memory, disk, error rates, throughput drops, deploy events, version drift, certificate expiry, and more. Notifications deliver to native Slack, email, and PagerDuty channels, plus HMAC-signed generic webhooks for anything else (Discord, Teams, custom HTTP endpoints).
+
+### Anomaly detection
+
+Statistical baselines per pipeline detect throughput, error-rate, and latency anomalies without manual thresholds. Anomalies feed the same alert correlation groups as rule-based alerts so a single incident doesn't fan out into noise.
+
+### Cost attribution and optimization
+
+Per-pipeline, per-team, and per-environment cost rollups based on event volume. The optimizer flags low-reduction transforms, high-error pipelines, and stale configs, with one-click apply (or dismiss) of recommendations.
+
+### GitOps and automation
+
+Sync pipeline definitions from Git (GitHub, GitLab, Bitbucket) with PR-based promotion between environments. Bearer-token REST API and SCIM 2.0 user provisioning for platform-team workflows.
+
+### AI debugging
+
+Optional AI suggestions for failing pipelines: feed pipeline metrics, recent deploys, and SLI breaches into a model to surface likely causes. Bring your own OpenAI/Anthropic key.
 
 ## Architecture
 
@@ -250,7 +266,7 @@ See [Configuration → Agent](#configuration) for all available environment vari
 | Database | PostgreSQL 17 + Prisma 7 |
 | Auth | NextAuth 5 (credentials + OIDC) |
 | Agent | Go 1.22 (zero dependencies, single binary) |
-| Data Engine | Vector 0.44.0 |
+| Data Engine | Vector 0.54.0 |
 
 ## Configuration
 
