@@ -1,9 +1,13 @@
 import { prisma } from "@/lib/prisma";
-import { extractBearerToken, verifyNodeToken } from "./agent-token";
+import {
+  extractBearerToken,
+  getNodeTokenIdentifier,
+  verifyNodeToken,
+} from "./agent-token";
 
 /**
- * Authenticate an incoming agent request by verifying its Bearer token
- * against all node tokens.
+ * Authenticate an incoming agent request by using the token's stable
+ * identifier to fetch one candidate node, then verifying that node's hash.
  *
  * Returns the matching node and environment IDs, or null if authentication fails.
  */
@@ -15,10 +19,13 @@ export async function authenticateAgent(
     return null;
   }
 
-  const nodes = await prisma.vectorNode.findMany({
-    where: {
-      nodeTokenHash: { not: null },
-    },
+  const tokenId = getNodeTokenIdentifier(token);
+  if (!tokenId) {
+    return null;
+  }
+
+  const node = await prisma.vectorNode.findUnique({
+    where: { nodeTokenId: tokenId },
     select: {
       id: true,
       environmentId: true,
@@ -26,14 +33,10 @@ export async function authenticateAgent(
     },
   });
 
-  for (const node of nodes) {
-    if (!node.nodeTokenHash) continue;
-
-    const valid = await verifyNodeToken(token, node.nodeTokenHash);
-    if (valid) {
-      return { nodeId: node.id, environmentId: node.environmentId };
-    }
+  if (!node?.nodeTokenHash) {
+    return null;
   }
 
-  return null;
+  const valid = await verifyNodeToken(token, node.nodeTokenHash);
+  return valid ? { nodeId: node.id, environmentId: node.environmentId } : null;
 }

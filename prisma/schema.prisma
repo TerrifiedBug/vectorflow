@@ -181,6 +181,7 @@ model VectorNode {
   lastSeen         DateTime?
   metadata         Json?
   nodeTokenHash    String?
+  nodeTokenId      String?              @unique
   enrolledAt       DateTime?
   lastHeartbeat    DateTime?
   agentVersion     String?

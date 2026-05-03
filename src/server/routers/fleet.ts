@@ -384,6 +384,7 @@ export const fleetRouter = router({
         where: { id: input.id },
         data: {
           nodeTokenHash: null,
+          nodeTokenId: null,
           status: "UNREACHABLE",
         },
       });
