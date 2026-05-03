@@ -235,6 +235,7 @@ curl -sSfL https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/agent/
 ```
 
 Existing configuration at `/etc/vectorflow/agent.env` is preserved during upgrades.
+The installer also accepts `--channel stable` or `--channel dev` when selecting the release channel. That is an installer option, not a `vf-agent` runtime flag; configure the running agent with environment variables instead.
 
 Uninstalling:
 
@@ -293,7 +294,7 @@ Logged-in users can view the Swagger UI at `/api/v1/docs`. The machine-readable 
 | `VF_TOKEN` | First run | — | One-time enrollment token |
 | `VF_DATA_DIR` | No | `/var/lib/vf-agent` | Data directory |
 | `VF_VECTOR_BIN` | No | `vector` | Path to Vector binary |
-| `VF_POLL_INTERVAL` | No | `5s` | Config poll frequency before server fleet settings load |
+| `VF_POLL_INTERVAL` | No | `5s` | Bootstrap config poll frequency before server fleet settings load |
 | `VF_LOG_FLUSH_INTERVAL` | No | `2s` | Buffered log flush frequency |
 | `VF_LOG_LEVEL` | No | `info` | Logging level |
 | `VF_NODE_LABELS` | No | — | Node labels as comma-separated `key=value` pairs |
@@ -307,6 +308,8 @@ Logged-in users can view the Swagger UI at `/api/v1/docs`. The machine-readable 
 | Unhealthy threshold | 3 missed | Heartbeats before marking node unhealthy |
 | Metrics retention | 7 days | Time-series data retention |
 | Logs retention | 3 days | Pipeline log retention |
+
+The agent uses `VF_POLL_INTERVAL` only until it receives fleet settings from the server. After that, the fleet poll interval above controls the steady-state config check frequency.
 
 ## Development
 
