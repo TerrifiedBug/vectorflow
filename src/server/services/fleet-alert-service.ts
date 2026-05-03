@@ -8,6 +8,8 @@ import {
   getFleetEventVolume,
   getFleetThroughputDrop,
   getNodeLoadImbalance,
+  getPipelineLatencyMean,
+  getPipelineThroughputFloor,
 } from "@/server/services/fleet-metrics";
 import type { LoadImbalanceResult } from "@/server/services/fleet-metrics";
 import { getVersionDrift } from "@/server/services/drift-metrics";
@@ -28,6 +30,7 @@ interface FiredFleetAlertEvent {
   event: AlertEvent;
   rule: AlertRule & {
     environment: { name: string; team: { name: string } | null };
+    pipeline: { name: string } | null;
   };
   /** For node_load_imbalance: the host of the most imbalanced node */
   nodeHost?: string;
@@ -87,6 +90,9 @@ export class FleetAlertService {
           environment: {
             select: { name: true, team: { select: { name: true } } },
           },
+          pipeline: {
+            select: { name: true },
+          },
         },
       });
 
@@ -130,6 +136,7 @@ export class FleetAlertService {
   private async evaluateRule(
     rule: AlertRule & {
       environment: { name: string; team: { name: string } | null };
+      pipeline: { name: string } | null;
     },
   ): Promise<FiredFleetAlertEvent | null> {
     if (!rule.condition || rule.threshold == null) return null;
@@ -138,6 +145,7 @@ export class FleetAlertService {
     const metricResult = await this.readFleetMetric(
       rule.metric as (typeof FLEET_METRICS extends Set<infer T> ? T : never),
       rule.environmentId,
+      rule.pipelineId,
     );
 
     // Extract numeric value and optional nodeId
@@ -248,6 +256,7 @@ export class FleetAlertService {
   private async readFleetMetric(
     metric: string,
     environmentId: string,
+    pipelineId: string | null,
   ): Promise<number | LoadImbalanceResult | null> {
     switch (metric) {
       case "fleet_error_rate":
@@ -263,6 +272,12 @@ export class FleetAlertService {
         if (drift === null) return null;
         return drift.value;
       }
+      case "latency_mean":
+        if (!pipelineId) return null;
+        return getPipelineLatencyMean(pipelineId);
+      case "throughput_floor":
+        if (!pipelineId) return null;
+        return getPipelineThroughputFloor(pipelineId);
       default:
         return null;
     }
@@ -278,6 +293,8 @@ export class FleetAlertService {
       fleet_event_volume: "Fleet event volume",
       node_load_imbalance: "Node load imbalance",
       version_drift: "Version drift",
+      latency_mean: "Pipeline mean latency",
+      throughput_floor: "Pipeline throughput floor",
     };
 
     const CONDITION_LABELS: Record<string, string> = {
@@ -308,7 +325,7 @@ export class FleetAlertService {
           environment: rule.environment.name,
           team: rule.environment.team?.name,
           node: nodeHost,
-          pipeline: undefined,
+          pipeline: rule.pipeline?.name,
           metric: rule.metric,
           value: event.value,
           threshold: rule.threshold ?? 0,

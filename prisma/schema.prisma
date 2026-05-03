@@ -956,6 +956,11 @@ enum AlertMetric {
   discarded_rate
   pipeline_crashed
 
+  // Pipeline-scoped SLI metrics (threshold-based, per-pipeline aggregate)
+  // Evaluated by FleetAlertService against PipelineMetric rollups.
+  latency_mean
+  throughput_floor
+
   // Fleet-wide (threshold-based, per-environment)
   fleet_error_rate
   fleet_throughput_drop
