@@ -1,5 +1,7 @@
 // src/app/api/_lib/__tests__/token-rate-limit.test.ts
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import crypto from "crypto";
+import { rateLimiter } from "@/app/api/v1/_lib/rate-limiter";
 import { checkTokenRateLimit } from "../ip-rate-limit";
 
 function makeRequest(token?: string): Request {
@@ -45,6 +47,18 @@ describe("checkTokenRateLimit", () => {
     }
     expect(checkTokenRateLimit(makeRequest("token-a"), "heartbeat", 30)).not.toBeNull();
     expect(checkTokenRateLimit(makeRequest("token-b"), "heartbeat", 30)).toBeNull();
+  });
+
+  it("hashes bearer tokens before using them as rate-limit keys", () => {
+    const spy = vi.spyOn(rateLimiter, "checkKey");
+    const rawToken = "vf_agent_secret_token";
+
+    checkTokenRateLimit(makeRequest(rawToken), "heartbeat", 30);
+
+    const [key] = spy.mock.calls[0] as [string, number];
+    const expectedHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    expect(key).toBe(`token:heartbeat:${expectedHash}`);
+    expect(key).not.toContain(rawToken);
   });
 
   it("isolates limits between different endpoints for the same token", () => {
