@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
-import { isFleetMetric, getAlertCategory } from "@/lib/alert-metrics";
+import { isClusterFleetMetric, getAlertCategory } from "@/lib/alert-metrics";
 import type { Prisma } from "@/generated/prisma";
 import {
   Table,
@@ -193,7 +193,7 @@ function AlertEventContent({
                       {event.alertRule.name}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {event.node?.host ?? (isFleetMetric(event.alertRule.metric) ? "Fleet" : "-")}
+                      {event.node?.host ?? (isClusterFleetMetric(event.alertRule.metric) ? "Fleet" : "-")}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {event.alertRule.pipeline?.name ?? "-"}

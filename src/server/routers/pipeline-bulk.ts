@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { assertPipelineBatchAccess } from "@/server/authz";
 
 export const pipelineBulkRouter = router({
   bulkDelete: protectedProcedure
@@ -11,7 +12,11 @@ export const pipelineBulkRouter = router({
       }),
     )
     .use(withTeamAccess("ADMIN"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user?.id;
+      if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
+      await assertPipelineBatchAccess(input.pipelineIds, userId, "ADMIN");
+
       const results: Array<{ pipelineId: string; success: boolean; error?: string }> = [];
 
       for (const pipelineId of input.pipelineIds) {
@@ -61,17 +66,14 @@ export const pipelineBulkRouter = router({
       }),
     )
     .use(withTeamAccess("EDITOR"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user?.id;
+      if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const { teamId } = await assertPipelineBatchAccess(input.pipelineIds, userId, "EDITOR");
+
       // Validate tags against team.availableTags ONCE before the loop
-      const firstPipeline = await prisma.pipeline.findUnique({
-        where: { id: input.pipelineIds[0] },
-        select: { environment: { select: { teamId: true } } },
-      });
-      if (!firstPipeline?.environment.teamId) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline or team not found" });
-      }
       const team = await prisma.team.findUnique({
-        where: { id: firstPipeline.environment.teamId },
+        where: { id: teamId },
         select: { availableTags: true },
       });
       if (!team) {
@@ -127,7 +129,11 @@ export const pipelineBulkRouter = router({
       }),
     )
     .use(withTeamAccess("EDITOR"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user?.id;
+      if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
+      await assertPipelineBatchAccess(input.pipelineIds, userId, "EDITOR");
+
       const results: Array<{ pipelineId: string; success: boolean; error?: string }> = [];
 
       for (const pipelineId of input.pipelineIds) {

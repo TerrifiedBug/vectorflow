@@ -116,6 +116,19 @@ describe("deliverOutboundWebhook", () => {
     expect(headers["webhook-signature"]).toBe(`v1,${expectedSig}`);
   });
 
+  it("disables automatic redirects so redirected targets cannot bypass validation", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await deliverOutboundWebhook(makeEndpoint(), samplePayload);
+
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(init.redirect).toBe("manual");
+  });
+
   it("uses same body string for signing and fetch", async () => {
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,

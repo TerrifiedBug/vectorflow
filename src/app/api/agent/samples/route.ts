@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
+import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { z } from "zod";
 import { errorLog } from "@/lib/logger";
 
@@ -32,6 +33,9 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 export async function POST(request: Request) {
+  const rateLimited = checkTokenRateLimit(request, "agent-samples", 60);
+  if (rateLimited) return rateLimited;
+
   const agent = await authenticateAgent(request);
   if (!agent) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -62,6 +66,26 @@ export async function POST(request: Request) {
       if (sampleRequest.pipeline.environmentId !== agent.environmentId) {
         continue;
       }
+      const componentKeys = sampleRequest.componentKeys as string[];
+      if (!componentKeys.includes(result.componentKey)) {
+        continue;
+      }
+      // Atomically claim the request: succeeds if it was unassigned (fan-out
+      // over Redis path) or already bound to this agent. If another agent
+      // claimed it first, count is 0 and we drop the result. We claim AFTER
+      // the cheap shape checks above so we don't bind a request to a node
+      // that is going to drop the sample anyway.
+      const claim = await prisma.eventSampleRequest.updateMany({
+        where: {
+          id: result.requestId,
+          status: "PENDING",
+          OR: [{ nodeId: null }, { nodeId: agent.nodeId }],
+        },
+        data: { nodeId: agent.nodeId },
+      });
+      if (claim.count === 0) {
+        continue;
+      }
 
       // Write the EventSample (success or error)
       try {
@@ -81,7 +105,6 @@ export async function POST(request: Request) {
       }
 
       // Check if all components now have samples (success or error)
-      const componentKeys = sampleRequest.componentKeys as string[];
       const samples = await prisma.eventSample.findMany({
         where: { requestId: result.requestId },
         select: { componentKey: true, error: true },

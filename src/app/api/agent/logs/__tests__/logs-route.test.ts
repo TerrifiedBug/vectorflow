@@ -15,6 +15,19 @@ vi.mock("@/server/services/log-ingest", () => ({
   ingestLogs: vi.fn(() => Promise.resolve()),
 }));
 
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    pipeline: {
+      findMany: vi.fn(() =>
+        Promise.resolve([
+          { id: "pipe-1" },
+          { id: "pipe-2" },
+        ]),
+      ),
+    },
+  },
+}));
+
 vi.mock("@/server/services/sse-broadcast", () => ({
   broadcastSSE: vi.fn(),
 }));
@@ -24,6 +37,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 import { authenticateAgent } from "@/server/services/agent-auth";
+import { prisma } from "@/lib/prisma";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 
@@ -148,5 +162,22 @@ describe("POST /api/agent/logs", () => {
       },
       "env-1",
     );
+  });
+
+  it("rejects log batches for pipelines outside the authenticated agent environment", async () => {
+    vi.mocked(prisma.pipeline.findMany).mockResolvedValueOnce([
+      { id: "pipe-1" },
+    ] as never);
+
+    const { POST } = await import("@/app/api/agent/logs/route");
+
+    const response = await POST(
+      makeRequest([{ pipelineId: "pipe-other-env", lines: ["stolen log"] }]),
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Forbidden" });
+    expect(ingestLogs).not.toHaveBeenCalled();
+    expect(broadcastSSE).not.toHaveBeenCalled();
   });
 });
