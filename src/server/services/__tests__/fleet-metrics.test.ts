@@ -299,18 +299,16 @@ describe("getPipelineLatencyMean", () => {
 // ─── getPipelineThroughputFloor ─────────────────────────────────────────────
 
 describe("getPipelineThroughputFloor", () => {
-  it("returns null when no rollup rows exist", async () => {
+  it("returns 0 when no rollup rows exist (so a `< 1` floor still fires)", async () => {
     prismaMock.pipelineMetric.aggregate.mockResolvedValue({
-      _count: 0,
       _sum: { eventsIn: null },
     } as never);
-    expect(await getPipelineThroughputFloor("pipe-1")).toBeNull();
+    expect(await getPipelineThroughputFloor("pipe-1")).toBe(0);
   });
 
   it("converts total events into events per second across the 5-minute window", async () => {
     // 5 min window = 300 sec. 3000 events / 300s = 10 events/sec.
     prismaMock.pipelineMetric.aggregate.mockResolvedValue({
-      _count: 5,
       _sum: { eventsIn: BigInt(3000) },
     } as never);
     expect(await getPipelineThroughputFloor("pipe-1")).toBe(10);
@@ -318,7 +316,6 @@ describe("getPipelineThroughputFloor", () => {
 
   it("returns 0 when rows exist but eventsIn is zero", async () => {
     prismaMock.pipelineMetric.aggregate.mockResolvedValue({
-      _count: 5,
       _sum: { eventsIn: BigInt(0) },
     } as never);
     expect(await getPipelineThroughputFloor("pipe-1")).toBe(0);

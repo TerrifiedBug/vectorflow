@@ -163,12 +163,14 @@ export async function getPipelineLatencyMean(
  * Compute the throughput floor (events per second) for a pipeline based on
  * the cross-node rollups over the last 5 minutes.
  *
- * Returns total `eventsIn` divided by the window in seconds.
- * Returns `null` if no rollup rows exist in the window.
+ * Returns total `eventsIn` divided by the window in seconds. When no rollup
+ * rows exist in the window, returns `0` (i.e. "no traffic observed") rather
+ * than `null` so a `< 1` threshold can fire — matches `evaluatePipelineHealth`
+ * semantics for the same metric.
  */
 export async function getPipelineThroughputFloor(
   pipelineId: string,
-): Promise<number | null> {
+): Promise<number> {
   const since = new Date(Date.now() - SLI_WINDOW_MINUTES * 60_000);
 
   const agg = await prisma.pipelineMetric.aggregate({
@@ -179,10 +181,7 @@ export async function getPipelineThroughputFloor(
       timestamp: { gte: since },
     },
     _sum: { eventsIn: true },
-    _count: true,
   });
-
-  if (agg._count === 0) return null;
 
   const total = Number(agg._sum.eventsIn ?? 0);
   return total / (SLI_WINDOW_MINUTES * 60);
