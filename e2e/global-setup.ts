@@ -1,13 +1,13 @@
 import { test as setup } from "@playwright/test";
-import { PrismaClient } from "../src/generated/prisma";
 import { seed } from "./helpers/seed";
 import { cleanup } from "./helpers/cleanup";
 import { TEST_USER } from "./helpers/constants";
+import { createE2ePrismaClient } from "./helpers/prisma";
 
 const authFile = "e2e/.auth/user.json";
 
 setup("seed database and authenticate", async ({ page }) => {
-  const prisma = new PrismaClient();
+  const prisma = createE2ePrismaClient();
 
   try {
     await cleanup(prisma);
