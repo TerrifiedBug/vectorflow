@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import {
   Save,
   Undo2,
@@ -16,6 +17,7 @@ import {
   BookTemplate,
   History,
   BarChart3,
+  Gauge,
   ScrollText,
   Settings,
   Info,
@@ -585,6 +587,23 @@ export function FlowToolbar({
             <TooltipContent>{logsOpen ? "Hide logs" : "Show logs"}</TooltipContent>
           </Tooltip>
         )}
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              asChild
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              aria-label="Open pipeline scorecard"
+            >
+              <Link href={`/pipelines/${pipelineId}/scorecard`}>
+                <Gauge className="h-4 w-4" />
+              </Link>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Pipeline scorecard</TooltipContent>
+        </Tooltip>
 
         <Popover>
           <Tooltip>

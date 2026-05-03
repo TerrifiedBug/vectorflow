@@ -191,7 +191,7 @@ export async function getPipelineCostSnapshot(
   const agg = await prisma.pipelineMetric.aggregate({
     where: {
       pipelineId,
-      componentId: null,
+      ...AGGREGATE_PIPELINE_METRIC_FILTER,
       timestamp: { gte: since },
     },
     _sum: { bytesIn: true, bytesOut: true },
