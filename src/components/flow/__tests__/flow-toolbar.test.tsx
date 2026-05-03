@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, fireEvent, cleanup } from "@testing-library/react";
+import { render, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import type { FlowState } from "@/stores/flow-store";
 
@@ -15,6 +15,7 @@ const mockAutoLayout = vi.fn();
 const mockRemoveNode = vi.fn();
 const mockRemoveEdge = vi.fn();
 const mockLoadGraph = vi.fn();
+const mockMutate = vi.fn();
 const mockSetCanvasSearchTerm = vi.fn();
 const mockCycleCanvasSearchMatch = vi.fn();
 const mockClearCanvasSearch = vi.fn();
@@ -82,7 +83,7 @@ vi.mock("next-auth/react", () => ({
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({ data: undefined, isLoading: false }),
   useMutation: (opts: unknown) => ({
-    mutate: vi.fn(),
+    mutate: mockMutate,
     isPending: false,
     ...((opts as { onSuccess?: unknown }) ?? {}),
   }),
@@ -92,7 +93,7 @@ vi.mock("@tanstack/react-query", () => ({
 vi.mock("@/lib/config-generator", () => ({
   generateVectorYaml: vi.fn(() => "sources: {}"),
   generateVectorToml: vi.fn(() => '[sources]\n'),
-  importVectorConfig: vi.fn(() => ({ nodes: [], edges: [], globalConfig: null })),
+  importVectorConfig: vi.fn(() => ({ nodes: [], edges: [], globalConfig: null, warnings: [] })),
 }));
 
 vi.mock("@/components/pipeline/version-history-dialog", () => ({
@@ -112,6 +113,7 @@ vi.mock("sonner", () => ({
 }));
 
 import { FlowToolbar } from "../flow-toolbar";
+import { generateVectorYaml, importVectorConfig } from "@/lib/config-generator";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -131,6 +133,190 @@ function renderToolbar(overrides: Partial<FlowState> = {}, propOverrides: Partia
 describe("FlowToolbar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe("import config", () => {
+    it("imports pasted YAML into the builder and shows parser warnings", async () => {
+      const importedNodes = [{ id: "source-1" }] as never;
+      const importedEdges = [{ id: "edge-1" }] as never;
+      vi.mocked(importVectorConfig).mockReturnValueOnce({
+        nodes: importedNodes,
+        edges: importedEdges,
+        globalConfig: { api: { enabled: true } },
+        warnings: ["Source orphan_source has no downstream consumers"],
+      });
+
+      const { getByLabelText, getByText } = renderToolbar();
+
+      fireEvent.click(getByLabelText("Import config"));
+      fireEvent.change(getByLabelText("Vector config"), {
+        target: { value: "sources:\n  orphan_source:\n    type: demo_logs" },
+      });
+      fireEvent.click(getByText("Import YAML"));
+
+      await waitFor(() => {
+        expect(mockLoadGraph).toHaveBeenCalledWith(
+          importedNodes,
+          importedEdges,
+          { api: { enabled: true } },
+        );
+      });
+      expect(importVectorConfig).toHaveBeenCalledWith(
+        "sources:\n  orphan_source:\n    type: demo_logs",
+        "yaml",
+      );
+      expect(getByText("Source orphan_source has no downstream consumers")).toBeTruthy();
+    });
+
+    it("validates the imported graph and shows actionable validation feedback", async () => {
+      const importedNodes = [{ id: "bad_source" }] as never;
+      const importedEdges = [] as never;
+      vi.mocked(importVectorConfig).mockReturnValueOnce({
+        nodes: importedNodes,
+        edges: importedEdges,
+        globalConfig: null,
+        warnings: [],
+      });
+      vi.mocked(generateVectorYaml).mockReturnValueOnce("sources:\n  bad_source:\n    type: bad_source");
+      mockMutate.mockImplementationOnce((_vars, callbacks) => {
+        callbacks?.onSuccess?.({
+          valid: false,
+          errors: [{ message: "Unknown source type", componentKey: "bad_source" }],
+          warnings: [{ message: "Transforms require at least one downstream sink" }],
+        });
+      });
+
+      const { getByLabelText, getByText } = renderToolbar();
+
+      fireEvent.click(getByLabelText("Import config"));
+      fireEvent.change(getByLabelText("Vector config"), {
+        target: { value: "sources:\n  bad_source:\n    type: bad_source" },
+      });
+      fireEvent.click(getByText("Import YAML"));
+
+      await waitFor(() => {
+        expect(mockMutate).toHaveBeenCalledWith(
+          { yaml: "sources:\n  bad_source:\n    type: bad_source" },
+          expect.objectContaining({
+            onSuccess: expect.any(Function),
+            onError: expect.any(Function),
+          }),
+        );
+      });
+      expect(generateVectorYaml).toHaveBeenCalledWith(importedNodes, importedEdges, null);
+      expect(getByText("1 validation error")).toBeTruthy();
+      expect(getByText("bad_source: Unknown source type")).toBeTruthy();
+      expect(getByText("Transforms require at least one downstream sink")).toBeTruthy();
+    });
+
+    it("shows validation unavailable when the Vector binary is missing", async () => {
+      vi.mocked(importVectorConfig).mockReturnValueOnce({
+        nodes: [],
+        edges: [],
+        globalConfig: null,
+        warnings: [],
+      });
+      mockMutate.mockImplementationOnce((_vars, callbacks) => {
+        callbacks?.onSuccess?.({
+          valid: false,
+          errors: ["Vector binary not found at /usr/local/bin/vector"],
+          warnings: [],
+        });
+      });
+
+      const { getByLabelText, getByText, queryByText } = renderToolbar();
+
+      fireEvent.click(getByLabelText("Import config"));
+      fireEvent.change(getByLabelText("Vector config"), {
+        target: { value: "sources:\n  demo:\n    type: demo_logs" },
+      });
+      fireEvent.click(getByText("Import YAML"));
+
+      await waitFor(() => {
+        expect(getByText("Validation unavailable")).toBeTruthy();
+      });
+      expect(getByText("Vector binary not found at /usr/local/bin/vector")).toBeTruthy();
+      expect(queryByText("1 validation error")).not.toBeInTheDocument();
+    });
+
+    it("clears parser warnings when a later import fails", async () => {
+      vi.mocked(importVectorConfig)
+        .mockReturnValueOnce({
+          nodes: [],
+          edges: [],
+          globalConfig: null,
+          warnings: ["Source orphan_source has no downstream consumers"],
+        })
+        .mockImplementationOnce(() => {
+          throw new Error("Invalid config");
+        });
+
+      const { getByLabelText, getByText, queryByText } = renderToolbar();
+
+      fireEvent.click(getByLabelText("Import config"));
+      fireEvent.change(getByLabelText("Vector config"), {
+        target: { value: "sources:\n  orphan_source:\n    type: demo_logs" },
+      });
+      fireEvent.click(getByText("Import YAML"));
+
+      expect(getByText("Source orphan_source has no downstream consumers")).toBeTruthy();
+
+      fireEvent.change(getByLabelText("Vector config"), {
+        target: { value: "not: [valid" },
+      });
+      fireEvent.click(getByText("Import YAML"));
+
+      expect(queryByText("Source orphan_source has no downstream consumers")).not.toBeInTheDocument();
+    });
+
+    it("ignores stale validation results from earlier imports", async () => {
+      let firstImportSuccess: ((result: { valid: true; warnings: [] }) => void) | undefined;
+      vi.mocked(importVectorConfig)
+        .mockReturnValueOnce({
+          nodes: [{ id: "first" }] as never,
+          edges: [],
+          globalConfig: null,
+          warnings: [],
+        })
+        .mockReturnValueOnce({
+          nodes: [{ id: "second" }] as never,
+          edges: [],
+          globalConfig: null,
+          warnings: [],
+        });
+      mockMutate
+        .mockImplementationOnce((_vars, callbacks) => {
+          firstImportSuccess = callbacks?.onSuccess;
+        })
+        .mockImplementationOnce((_vars, callbacks) => {
+          callbacks?.onSuccess?.({
+            valid: false,
+            errors: [{ message: "Second import error", componentKey: "second" }],
+            warnings: [],
+          });
+        });
+
+      const { getByLabelText, getByText, queryByText } = renderToolbar();
+
+      fireEvent.click(getByLabelText("Import config"));
+      fireEvent.change(getByLabelText("Vector config"), {
+        target: { value: "sources:\n  first:\n    type: demo_logs" },
+      });
+      fireEvent.click(getByText("Import YAML"));
+      fireEvent.change(getByLabelText("Vector config"), {
+        target: { value: "sources:\n  second:\n    type: bad_source" },
+      });
+      fireEvent.click(getByText("Import YAML"));
+
+      expect(getByText("second: Second import error")).toBeTruthy();
+
+      await act(async () => {
+        firstImportSuccess?.({ valid: true, warnings: [] });
+      });
+
+      expect(getByText("second: Second import error")).toBeTruthy();
+      expect(queryByText("Imported config is valid")).not.toBeInTheDocument();
+    });
   });
 
   describe("undo / redo buttons", () => {

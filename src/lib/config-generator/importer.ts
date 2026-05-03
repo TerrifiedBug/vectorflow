@@ -27,6 +27,10 @@ const FIELD_RENAMES: Record<string, { newName: string; kinds: Set<string> }> = {
   fingerprinting: { newName: "fingerprint", kinds: new Set(["source"]) },
 };
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Convert request.headers.Authorization bearer/basic tokens into Vector's
  * canonical `auth` structure so the GUI auth fields are populated correctly.
@@ -87,6 +91,7 @@ export interface ImportResult {
   nodes: Node[];
   edges: Edge[];
   globalConfig: Record<string, unknown> | null;
+  warnings: string[];
 }
 
 /**
@@ -126,8 +131,10 @@ export function importVectorConfig(
   }
 
   const nodes: Node[] = [];
-  const edges: Edge[] = [];
-  const nodeMap = new Map<string, string>(); // componentKey -> nodeId
+  const edgeInputs: Array<{ input: string; targetKey: string; targetId: string }> = [];
+  const nodeMap = new Map<string, string>();
+  const componentKinds = new Map<string, "source" | "transform" | "sink">();
+  const componentInputs = new Map<string, string[]>();
 
   const sections: Array<[string, "source" | "transform" | "sink"]> = [
     ["sources", "source"],
@@ -173,30 +180,60 @@ export function importVectorConfig(
         data: { componentDef, componentKey: key, config: nodeConfig },
       });
 
-      // Collect edges (source field is a componentKey for now; resolved below)
-      if (value.inputs) {
-        const inputList: string[] = Array.isArray(value.inputs)
+      const inputList: string[] = value.inputs
+        ? Array.isArray(value.inputs)
           ? (value.inputs as string[])
-          : [value.inputs as string];
+          : [value.inputs as string]
+        : [];
+      componentKinds.set(key, kind);
+      componentInputs.set(key, inputList);
 
-        for (const input of inputList) {
-          edges.push({
-            id: generateId(),
-            source: input, // temporary — componentKey, resolved after all nodes parsed
-            target: nodeId,
-          });
-        }
+      for (const input of inputList) {
+        edgeInputs.push({ input, targetKey: key, targetId: nodeId });
       }
     }
   }
 
-  // Resolve edge sources from componentKey to nodeId
-  for (const edge of edges) {
-    const resolvedSource = nodeMap.get(edge.source);
-    if (resolvedSource) {
-      edge.source = resolvedSource;
+  const allComponentKeys = Array.from(componentKinds.keys());
+  const producerComponentKeys = allComponentKeys.filter((componentKey) => componentKinds.get(componentKey) !== "sink");
+  const inputMatchesComponent = (input: string, componentKey: string) => {
+    if (input === componentKey) return true;
+    if (!input.includes("*")) return false;
+
+    const pattern = new RegExp(`^${input.split("*").map(escapeRegExp).join(".*")}$`);
+    return pattern.test(componentKey);
+  };
+  const matchingProducerKeys = (input: string, targetKey: string) =>
+    producerComponentKeys.filter(
+      (componentKey) => componentKey !== targetKey && inputMatchesComponent(input, componentKey),
+    );
+  const componentHasConsumer = (componentKey: string) =>
+    Array.from(componentInputs.values()).some((inputs) =>
+      inputs.some((input) => inputMatchesComponent(input, componentKey)),
+    );
+  const warnings = Array.from(componentKinds.entries()).flatMap(([key, kind]) => {
+    if (kind === "source" && !componentHasConsumer(key)) {
+      return [`Orphan source "${key}": no downstream consumers reference it`];
     }
-  }
+
+    if (kind === "sink") {
+      const inputs = componentInputs.get(key) ?? [];
+      const hasValidInput = inputs.some((input) => matchingProducerKeys(input, key).length > 0);
+      if (!hasValidInput) {
+        return [`Orphan sink "${key}": no upstream inputs are defined or connected`];
+      }
+    }
+
+    return [];
+  });
+
+  const edges: Edge[] = edgeInputs.flatMap(({ input, targetKey, targetId }) =>
+    matchingProducerKeys(input, targetKey).map((componentKey) => ({
+      id: generateId(),
+      source: nodeMap.get(componentKey)!,
+      target: targetId,
+    })),
+  );
 
   // ── Auto-layout with dagre ────────────────────────────────────────────
   const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
@@ -220,5 +257,6 @@ export function importVectorConfig(
     nodes,
     edges,
     globalConfig: Object.keys(globalConfig).length > 0 ? globalConfig : null,
+    warnings,
   };
 }
