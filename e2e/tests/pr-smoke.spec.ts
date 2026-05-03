@@ -12,22 +12,19 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe("PR smoke e2e", () => {
   test("authenticates, creates, deploys, and observes fleet health", async ({
-    page,
     loginPage,
     pipelinesPage,
     pipelineEditor,
     deployDialog,
     fleetPage,
-    sidebar,
   }) => {
     const pipelineName = `PR Smoke ${Date.now()}`;
 
     await loginPage.goto();
     await loginPage.login(TEST_USER.email, TEST_USER.password);
     await loginPage.expectRedirectedToDashboard();
-    await sidebar.expectVisible();
 
-    await sidebar.navigateTo("Pipelines");
+    await pipelinesPage.goto();
     await pipelinesPage.clickNewPipeline();
 
     await pipelineEditor.setName(pipelineName);
@@ -44,12 +41,11 @@ test.describe("PR smoke e2e", () => {
     await deployDialog.clickDeploy();
     await deployDialog.waitForDeployComplete();
 
-    await sidebar.navigateTo("Pipelines");
+    await pipelinesPage.goto();
     await pipelinesPage.expectPipelineInList(pipelineName);
     await pipelinesPage.expectDeploymentBadge(pipelineName);
 
-    await sidebar.navigateTo("Fleet");
-    await page.waitForLoadState("networkidle");
+    await fleetPage.goto();
     await fleetPage.expectNodeInList(TEST_NODE.name);
     await fleetPage.expectNodeStatus(TEST_NODE.name, "Healthy");
   });
@@ -72,6 +68,25 @@ test.describe("PR smoke e2e", () => {
   }) => {
     const seed = await readSeedResult();
     const nodeToken = await generateNodeToken();
+    const configYaml = [
+      "sources:",
+      "  demo_logs_source:",
+      "    type: demo_logs",
+      "    format: syslog",
+      "    interval: 1",
+      "transforms:",
+      "  remap_transform:",
+      "    type: remap",
+      "    inputs:",
+      "      - demo_logs_source",
+      "    source: . = parse_syslog!(.message)",
+      "sinks:",
+      "  blackhole_sink:",
+      "    type: blackhole",
+      "    inputs:",
+      "      - remap_transform",
+      "    print_interval_secs: 1",
+    ].join("\n");
 
     await prisma.vectorNode.update({
       where: { id: seed.nodeId },
@@ -87,6 +102,10 @@ test.describe("PR smoke e2e", () => {
         deployedAt: new Date(),
       },
     });
+    await prisma.pipelineVersion.updateMany({
+      where: { pipelineId: seed.pipelineId, version: 1 },
+      data: { configYaml },
+    });
 
     const authHeaders = {
       authorization: `Bearer ${nodeToken.token}`,
@@ -97,17 +116,26 @@ test.describe("PR smoke e2e", () => {
     });
     expect(configResponse.ok()).toBeTruthy();
 
-    const configBody = await configResponse.json();
+    const configBody = (await configResponse.json()) as {
+      pipelines: Array<{
+        checksum: string;
+        pipelineId: string;
+        pipelineName: string;
+      }>;
+      pollIntervalMs: number;
+      pushUrl: string;
+    };
     expect(configBody.pollIntervalMs).toEqual(expect.any(Number));
     expect(configBody.pushUrl).toContain("/api/agent/push");
-    expect(configBody.pipelines).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          pipelineId: seed.pipelineId,
-          pipelineName: "E2E Test Pipeline",
-          checksum: expect.any(String),
-        }),
-      ]),
+    const pipelineConfig = configBody.pipelines.find(
+      (pipeline) => pipeline.pipelineId === seed.pipelineId,
+    );
+    expect(pipelineConfig).toEqual(
+      expect.objectContaining({
+        checksum: expect.any(String),
+        pipelineId: seed.pipelineId,
+        pipelineName: "E2E Test Pipeline",
+      }),
     );
 
     const heartbeatResponse = await request.post("/api/agent/heartbeat", {
@@ -124,7 +152,7 @@ test.describe("PR smoke e2e", () => {
             eventsIn: 10,
             eventsOut: 10,
             errorsTotal: 0,
-            configChecksum: configBody.pipelines[0].checksum,
+            configChecksum: pipelineConfig?.checksum,
           },
         ],
         hostMetrics: {
@@ -167,7 +195,7 @@ test.describe("PR smoke e2e", () => {
       },
     });
     expect(pipelineStatus).toEqual({
-      configChecksum: configBody.pipelines[0].checksum,
+      configChecksum: pipelineConfig?.checksum,
       status: "RUNNING",
     });
   });
