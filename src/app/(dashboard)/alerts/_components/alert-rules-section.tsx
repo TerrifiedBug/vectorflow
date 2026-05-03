@@ -518,7 +518,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
           if (!open) setEditingRuleId(null);
         }}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingRuleId ? "Edit Alert Rule" : "Create Alert Rule"}
