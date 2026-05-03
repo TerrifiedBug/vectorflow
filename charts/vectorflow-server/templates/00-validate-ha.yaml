@@ -1,0 +1,13 @@
+{{- $ha := eq (include "vectorflow-server.haEnabled" .) "true" -}}
+{{- if and $ha (ne (include "vectorflow-server.redisConfigured" .) "true") -}}
+{{- fail "HA requires Redis: set redis.enabled=true, existingSecret with REDIS_URL, or secret.redisUrl when replicaCount > 1 or autoscaling.maxReplicas > 1" -}}
+{{- end -}}
+{{- if and $ha (not .Values.persistence.data.enabled) -}}
+{{- fail "HA requires persistence.data.enabled=true with shared storage for /app/.vectorflow" -}}
+{{- end -}}
+{{- if and $ha .Values.persistence.data.enabled (not .Values.persistence.data.existingClaim) (ne .Values.persistence.data.accessMode "ReadWriteMany") -}}
+{{- fail "HA requires persistence.data.accessMode=ReadWriteMany or persistence.data.existingClaim backed by shared RWX storage" -}}
+{{- end -}}
+{{- if and $ha .Values.persistence.backups.enabled (not .Values.persistence.backups.existingClaim) (ne .Values.persistence.backups.accessMode "ReadWriteMany") -}}
+{{- fail "HA requires persistence.backups.accessMode=ReadWriteMany or persistence.backups.existingClaim backed by shared RWX storage when backups persistence is enabled" -}}
+{{- end -}}

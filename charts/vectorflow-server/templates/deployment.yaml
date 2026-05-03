@@ -55,6 +55,10 @@ spec:
               value: {{ .Values.authTrustHost | quote }}
             - name: VF_TRUST_PROXY_HEADERS
               value: {{ .Values.trustProxyHeaders | quote }}
+            - name: VF_REDIS_REQUIRED
+              value: {{ eq (include "vectorflow-server.haEnabled" .) "true" | quote }}
+            - name: VF_RUN_MIGRATIONS
+              value: {{ ternary "false" (toString .Values.migrations.runAtStartup) (eq (include "vectorflow-server.haEnabled" .) "true") | quote }}
             - name: NODE_ENV
               value: "production"
             {{- if or .Values.secret.encryptionKeyV2 .Values.existingSecret }}
