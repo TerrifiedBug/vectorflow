@@ -58,7 +58,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { isEventMetric, isFleetMetric } from "@/lib/alert-metrics";
+import { isEventMetric, isClusterFleetMetric } from "@/lib/alert-metrics";
 
 import {
   METRIC_LABELS,
@@ -423,7 +423,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                   {BINARY_METRICS.has(rule.metric) || rule.durationSeconds == null ? "—" : `${rule.durationSeconds}s`}
                 </TableCell>
                 <TableCell>
-                  {isFleetMetric(rule.metric) ? (
+                  {isClusterFleetMetric(rule.metric) ? (
                     <Badge variant="secondary">Fleet</Badge>
                   ) : GLOBAL_METRICS.has(rule.metric) ? (
                     <span className="text-muted-foreground">—</span>

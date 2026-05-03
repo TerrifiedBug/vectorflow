@@ -45,9 +45,30 @@ export const FLEET_METRIC_VALUES = [
 
 export const FLEET_METRICS_SET: ReadonlySet<string> = new Set(FLEET_METRIC_VALUES);
 
-/** Returns true if the given metric string is a fleet-scoped metric. */
+/**
+ * Subset of FLEET_METRIC_VALUES that are pipeline-scoped. Evaluated by
+ * FleetAlertService (so they share the dispatch path) but each rule must
+ * be bound to a specific pipelineId — they are NOT cluster-wide.
+ *
+ * The UI uses this to avoid mislabeling per-pipeline rules as "Fleet" scope.
+ */
+export const PIPELINE_BOUND_FLEET_METRICS: ReadonlySet<string> = new Set([
+  "latency_mean",
+  "throughput_floor",
+]);
+
+/** Returns true if the given metric is dispatched by FleetAlertService. */
 export function isFleetMetric(metric: string): boolean {
   return FLEET_METRICS_SET.has(metric);
+}
+
+/**
+ * Returns true only for cluster-wide fleet metrics — i.e. metrics dispatched
+ * by FleetAlertService AND not pipeline-scoped. Use this for UI scope labeling
+ * so latency_mean / throughput_floor (per-pipeline) don't show as "Fleet".
+ */
+export function isClusterFleetMetric(metric: string): boolean {
+  return FLEET_METRICS_SET.has(metric) && !PIPELINE_BOUND_FLEET_METRICS.has(metric);
 }
 
 /**
