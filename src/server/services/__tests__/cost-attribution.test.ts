@@ -410,4 +410,14 @@ describe("getPipelineCostSnapshot", () => {
     expect(result.costCents).toBe(0);
     expect(result.bytesIn).toBe(5_000_000_000);
   });
+
+  it("clamps reductionPercent to 0 when bytesOut exceeds bytesIn (expansion pipeline)", async () => {
+    prismaMock.pipelineMetric.aggregate.mockResolvedValue({
+      _sum: { bytesIn: BigInt(1_000), bytesOut: BigInt(2_000) },
+    } as never);
+
+    const result = await getPipelineCostSnapshot("pipe-1", 100, "1d");
+
+    expect(result.reductionPercent).toBe(0);
+  });
 });
