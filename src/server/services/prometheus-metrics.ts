@@ -1,4 +1,4 @@
-import { Registry, Gauge } from "prom-client";
+import { Registry, Gauge, Counter } from "prom-client";
 import { prisma } from "@/lib/prisma";
 import { metricStore } from "@/server/services/metric-store";
 import { errorLog } from "@/lib/logger";
@@ -20,18 +20,21 @@ export function bigIntToNumber(val: bigint): number {
 
 export class PrometheusMetricsService {
   private registry: Registry;
+  // Single-flight coalescing: overlapping scrapes share one in-flight collection
+  // so concurrent reset()/inc() loops never interleave on the same registry.
+  private inflight: Promise<string> | null = null;
 
   // Node-level gauges
   private nodeStatus: Gauge;
 
   // Pipeline-level gauges (from NodePipelineStatus)
   private pipelineStatus: Gauge;
-  private pipelineEventsIn: Gauge;
-  private pipelineEventsOut: Gauge;
-  private pipelineErrorsTotal: Gauge;
-  private pipelineEventsDiscarded: Gauge;
-  private pipelineBytesIn: Gauge;
-  private pipelineBytesOut: Gauge;
+  private pipelineEventsIn: Counter;
+  private pipelineEventsOut: Counter;
+  private pipelineErrorsTotal: Counter;
+  private pipelineEventsDiscarded: Counter;
+  private pipelineBytesIn: Counter;
+  private pipelineBytesOut: Counter;
   private pipelineUtilization: Gauge;
 
   // PipelineMetric-level gauges (latest snapshot)
@@ -58,42 +61,42 @@ export class PrometheusMetricsService {
       registers: [this.registry],
     });
 
-    this.pipelineEventsIn = new Gauge({
+    this.pipelineEventsIn = new Counter({
       name: "vectorflow_pipeline_events_in_total",
       help: "Total events received by the pipeline",
       labelNames: ["node_id", "pipeline_id"],
       registers: [this.registry],
     });
 
-    this.pipelineEventsOut = new Gauge({
+    this.pipelineEventsOut = new Counter({
       name: "vectorflow_pipeline_events_out_total",
       help: "Total events sent by the pipeline",
       labelNames: ["node_id", "pipeline_id"],
       registers: [this.registry],
     });
 
-    this.pipelineErrorsTotal = new Gauge({
+    this.pipelineErrorsTotal = new Counter({
       name: "vectorflow_pipeline_errors_total",
       help: "Total errors in the pipeline",
       labelNames: ["node_id", "pipeline_id"],
       registers: [this.registry],
     });
 
-    this.pipelineEventsDiscarded = new Gauge({
+    this.pipelineEventsDiscarded = new Counter({
       name: "vectorflow_pipeline_events_discarded_total",
       help: "Total events discarded by the pipeline",
       labelNames: ["node_id", "pipeline_id"],
       registers: [this.registry],
     });
 
-    this.pipelineBytesIn = new Gauge({
+    this.pipelineBytesIn = new Counter({
       name: "vectorflow_pipeline_bytes_in_total",
       help: "Total bytes received by the pipeline",
       labelNames: ["node_id", "pipeline_id"],
       registers: [this.registry],
     });
 
-    this.pipelineBytesOut = new Gauge({
+    this.pipelineBytesOut = new Counter({
       name: "vectorflow_pipeline_bytes_out_total",
       help: "Total bytes sent by the pipeline",
       labelNames: ["node_id", "pipeline_id"],
@@ -135,8 +138,20 @@ export class PrometheusMetricsService {
   /**
    * Collect all metrics from database tables and populate the registry.
    * Resets all gauges first so removed nodes/pipelines disappear.
+   *
+   * Concurrent callers (e.g. overlapping Prometheus scrapes from an HA pair)
+   * share a single in-flight collection so reset()/inc() loops cannot
+   * interleave on the shared registry and double-count counter totals.
    */
-  async collectMetrics(): Promise<string> {
+  collectMetrics(): Promise<string> {
+    if (this.inflight) return this.inflight;
+    this.inflight = this.doCollect().finally(() => {
+      this.inflight = null;
+    });
+    return this.inflight;
+  }
+
+  private async doCollect(): Promise<string> {
     try {
       // Reset all gauges so stale labels are cleared
       this.nodeStatus.reset();
@@ -219,15 +234,15 @@ export class PrometheusMetricsService {
       for (const ps of pipelineStatuses) {
         const labels = { node_id: ps.nodeId, pipeline_id: ps.pipelineId };
         this.pipelineStatus.set(labels, processStatusMap[ps.status] ?? 0);
-        this.pipelineEventsIn.set(labels, bigIntToNumber(ps.eventsIn));
-        this.pipelineEventsOut.set(labels, bigIntToNumber(ps.eventsOut));
-        this.pipelineErrorsTotal.set(labels, bigIntToNumber(ps.errorsTotal));
-        this.pipelineEventsDiscarded.set(
+        this.pipelineEventsIn.inc(labels, bigIntToNumber(ps.eventsIn));
+        this.pipelineEventsOut.inc(labels, bigIntToNumber(ps.eventsOut));
+        this.pipelineErrorsTotal.inc(labels, bigIntToNumber(ps.errorsTotal));
+        this.pipelineEventsDiscarded.inc(
           labels,
           bigIntToNumber(ps.eventsDiscarded),
         );
-        this.pipelineBytesIn.set(labels, bigIntToNumber(ps.bytesIn));
-        this.pipelineBytesOut.set(labels, bigIntToNumber(ps.bytesOut));
+        this.pipelineBytesIn.inc(labels, bigIntToNumber(ps.bytesIn));
+        this.pipelineBytesOut.inc(labels, bigIntToNumber(ps.bytesOut));
         this.pipelineUtilization.set(labels, ps.utilization);
       }
 

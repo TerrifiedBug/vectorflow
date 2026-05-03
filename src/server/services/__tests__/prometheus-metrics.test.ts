@@ -126,7 +126,23 @@ describe("PrometheusMetricsService", () => {
     expect(output).toMatch(/node_id="n4"[^}]*\} 0/);
   });
 
-  it("populates pipeline status and counter gauges", async () => {
+  it("exports pipeline totals as Prometheus counters", async () => {
+    prismaMock.vectorNode.findMany.mockResolvedValue([]);
+    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+      nps({ nodeId: "n1", pipelineId: "p1", eventsIn: 1000 }) as never,
+    ]);
+    prismaMock.$queryRaw.mockResolvedValue([]);
+
+    const output = await service.collectMetrics();
+    expect(output).toContain("# TYPE vectorflow_pipeline_events_in_total counter");
+    expect(output).toContain("# TYPE vectorflow_pipeline_events_out_total counter");
+    expect(output).toContain("# TYPE vectorflow_pipeline_errors_total counter");
+    expect(output).toContain("# TYPE vectorflow_pipeline_events_discarded_total counter");
+    expect(output).toContain("# TYPE vectorflow_pipeline_bytes_in_total counter");
+    expect(output).toContain("# TYPE vectorflow_pipeline_bytes_out_total counter");
+  });
+
+  it("populates pipeline status gauges and counters", async () => {
     prismaMock.vectorNode.findMany.mockResolvedValue([]);
     prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
       nps({
@@ -368,5 +384,42 @@ describe("PrometheusMetricsService", () => {
     const registry = service.getRegistry();
     expect(registry).toBeDefined();
     expect(typeof registry.metrics).toBe("function");
+  });
+
+  it("coalesces concurrent collectMetrics calls into a single in-flight collection", async () => {
+    // Block the DB queries on a controllable promise so we can fire two
+    // concurrent collectMetrics calls and verify they share one collection.
+    let resolveQuery: (value: unknown[]) => void = () => {};
+    const queryGate = new Promise<unknown[]>((resolve) => {
+      resolveQuery = resolve;
+    });
+
+    prismaMock.vectorNode.findMany.mockReturnValue(queryGate as never);
+    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+      nps({ eventsIn: 1000, eventsOut: 800 }),
+    ] as never);
+    prismaMock.$queryRaw.mockResolvedValue([]);
+
+    const first = service.collectMetrics();
+    const second = service.collectMetrics();
+
+    // Same in-flight promise — concurrent callers share one collection.
+    expect(first).toBe(second);
+
+    resolveQuery([]);
+    const [firstOut, secondOut] = await Promise.all([first, second]);
+
+    // Both responses identical and counters reflect a SINGLE inc() pass,
+    // not double-counted (otherwise we'd see 2000 / 1600).
+    expect(firstOut).toBe(secondOut);
+    expect(firstOut).toMatch(
+      /vectorflow_pipeline_events_in_total\{node_id="node-1",pipeline_id="pipe-1"\} 1000/,
+    );
+    expect(firstOut).toMatch(
+      /vectorflow_pipeline_events_out_total\{node_id="node-1",pipeline_id="pipe-1"\} 800/,
+    );
+    // DB was queried only once for the coalesced pair.
+    expect(prismaMock.vectorNode.findMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.nodePipelineStatus.findMany).toHaveBeenCalledTimes(1);
   });
 });
