@@ -374,6 +374,7 @@ export const pipelineObservabilityRouter = router({
 
   eventSchemas: protectedProcedure
     .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const samples = await prisma.eventSample.findMany({
         where: {
