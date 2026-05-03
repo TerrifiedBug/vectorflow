@@ -22,6 +22,20 @@ export const FLEET_METRICS = new Set<AlertMetric>([
   "node_load_imbalance",
   "version_drift",
   "cost_threshold_exceeded",
+  // Pipeline-scoped SLI metrics: routed through FleetAlertService since the
+  // value is a cross-node aggregate, but require AlertRule.pipelineId to
+  // identify which pipeline to evaluate.
+  "latency_mean",
+  "throughput_floor",
+]);
+
+/**
+ * Subset of FLEET_METRICS that are scoped to a single pipeline (require
+ * AlertRule.pipelineId) instead of the whole environment.
+ */
+export const PIPELINE_FLEET_METRICS = new Set<AlertMetric>([
+  "latency_mean",
+  "throughput_floor",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -399,6 +413,8 @@ const METRIC_LABELS: Record<AlertMetric, string> = {
   error_rate: "Error rate",
   discarded_rate: "Discarded event rate",
   pipeline_crashed: "Pipeline crashed",
+  latency_mean: "Pipeline mean latency",
+  throughput_floor: "Pipeline throughput floor",
   fleet_error_rate: "Fleet error rate",
   fleet_throughput_drop: "Fleet throughput drop",
   fleet_event_volume: "Fleet event volume",
