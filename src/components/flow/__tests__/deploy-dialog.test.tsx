@@ -78,6 +78,7 @@ vi.mock("@/trpc/client", () => ({
     },
     pipelineDependency: {
       deployWarnings: { queryOptions: makeQueryOptions([]) },
+      deploymentImpact: { queryOptions: makeQueryOptions({ deployed: [], draft: [], total: 0 }) },
     },
     stagedRollout: {
       create: { mutationOptions: vi.fn((opts) => opts) },
