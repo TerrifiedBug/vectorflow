@@ -82,6 +82,41 @@ describe("getCostSummary", () => {
     expect(result.previous.bytesOut).toBe(1_400_000_000);
   });
 
+  it("queries aggregate pipeline rows only so per-node rows are not double counted", async () => {
+    prismaMock.pipelineMetric.aggregate.mockResolvedValue({
+      _sum: { bytesIn: BigInt(2_000_000_000), bytesOut: BigInt(1_500_000_000) },
+      _count: { id: 10 },
+      _avg: {},
+      _min: {},
+      _max: {},
+    } as never);
+
+    await getCostSummary({
+      environmentId: "env-1",
+      range: "1d",
+      costPerGbCents: 100,
+    });
+
+    expect(prismaMock.pipelineMetric.aggregate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          componentId: null,
+          nodeId: null,
+        }),
+      }),
+    );
+    expect(prismaMock.pipelineMetric.aggregate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          componentId: null,
+          nodeId: null,
+        }),
+      }),
+    );
+  });
+
   it("returns zero cost when costPerGbCents is 0", async () => {
     prismaMock.pipelineMetric.aggregate.mockResolvedValue({
       _sum: { bytesIn: BigInt(2_000_000_000), bytesOut: BigInt(1_500_000_000) },
@@ -149,6 +184,40 @@ describe("getCostByPipeline", () => {
     expect(result[0].costCents).toBeGreaterThan(0);
     expect(result[0].teamName).toBe("Platform");
     expect(result[0].environmentName).toBe("Production");
+  });
+
+  it("groups only aggregate pipeline rows for cost breakdown", async () => {
+    // @ts-expect-error - groupBy mock typing is complex
+    prismaMock.pipelineMetric.groupBy.mockResolvedValue([
+      {
+        pipelineId: "p1",
+        _sum: { bytesIn: BigInt(1_000_000_000), bytesOut: BigInt(800_000_000) },
+      },
+    ] as never);
+
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      {
+        id: "p1",
+        name: "Logs Pipeline",
+        environmentId: "env-1",
+        environment: { id: "env-1", name: "Production", teamId: "team-1", team: { id: "team-1", name: "Platform" } },
+      },
+    ] as never);
+
+    await getCostByPipeline({
+      environmentId: "env-1",
+      range: "1d",
+      costPerGbCents: 100,
+    });
+
+    expect(prismaMock.pipelineMetric.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          componentId: null,
+          nodeId: null,
+        }),
+      }),
+    );
   });
 
   it("returns empty array when no metrics exist", async () => {
@@ -309,6 +378,37 @@ describe("getCostTimeSeries", () => {
     expect(result[0]).toHaveProperty("bucket");
     // Should have per-pipeline series
     expect(result[0]).toHaveProperty("series");
+  });
+
+  it("reads only aggregate pipeline rows for cost time series buckets", async () => {
+    prismaMock.pipelineMetric.findMany.mockResolvedValue([
+      {
+        pipelineId: "p1",
+        timestamp: new Date("2026-03-28T00:00:00Z"),
+        bytesIn: BigInt(500_000_000),
+        bytesOut: BigInt(400_000_000),
+      },
+    ] as never);
+
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "p1", name: "Logs", environment: { team: { name: "Platform" } } },
+    ] as never);
+
+    await getCostTimeSeries({
+      environmentId: "env-1",
+      range: "1d",
+      costPerGbCents: 100,
+      groupBy: "pipeline",
+    });
+
+    expect(prismaMock.pipelineMetric.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          componentId: null,
+          nodeId: null,
+        }),
+      }),
+    );
   });
 });
 
