@@ -75,7 +75,7 @@ const DraggableItem = memo(function DraggableItem({
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
-    if (!isActivationKey(event)) return;
+    if (!isActivationKey(event) || event.repeat) return;
     event.preventDefault();
     onAdd(def);
   }
@@ -474,7 +474,7 @@ export function ComponentPalette() {
                     }}
                     onClick={() => componentDef && addComponentToCanvas(componentDef, sc)}
                     onKeyDown={(event) => {
-                      if (!componentDef || !isActivationKey(event)) return;
+                      if (!componentDef || !isActivationKey(event) || event.repeat) return;
                       event.preventDefault();
                       addComponentToCanvas(componentDef, sc);
                     }}
