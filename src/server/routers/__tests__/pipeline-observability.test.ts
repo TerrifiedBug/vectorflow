@@ -663,6 +663,25 @@ describe("pipelineObservabilityRouter", () => {
       expect(result.recommendedAction?.kind).toBe("review_anomaly");
     });
 
+    it("filters metric aggregates to cross-node rollup rows (nodeId: null, componentId: null)", async () => {
+      setupHappyPathMocks();
+
+      await caller.scorecard({ pipelineId: "p-1" });
+
+      // Every pipelineMetric.aggregate call must constrain on both nodeId: null
+      // AND componentId: null. Without nodeId: null the sum double-counts because
+      // ingest writes both per-node rows and a separate aggregated row.
+      const aggCalls = prismaMock.pipelineMetric.aggregate.mock.calls;
+      expect(aggCalls.length).toBeGreaterThanOrEqual(3);
+      for (const [args] of aggCalls) {
+        expect(args.where).toMatchObject({
+          pipelineId: "p-1",
+          nodeId: null,
+          componentId: null,
+        });
+      }
+    });
+
     it("recommends applying cost recommendation when one exists and nothing else fires", async () => {
       setupHappyPathMocks({
         recommendations: [

@@ -538,6 +538,7 @@ export const pipelineObservabilityRouter = router({
         prisma.pipelineMetric.aggregate({
           where: {
             pipelineId: input.pipelineId,
+            nodeId: null,
             componentId: null,
             timestamp: { gte: since48h, lt: since24h },
           },
@@ -546,6 +547,7 @@ export const pipelineObservabilityRouter = router({
         prisma.pipelineMetric.aggregate({
           where: {
             pipelineId: input.pipelineId,
+            nodeId: null,
             componentId: null,
             timestamp: { gte: since24h },
           },
@@ -554,6 +556,7 @@ export const pipelineObservabilityRouter = router({
         prisma.pipelineMetric.aggregate({
           where: {
             pipelineId: input.pipelineId,
+            nodeId: null,
             componentId: null,
             timestamp: { gte: since7d },
           },
