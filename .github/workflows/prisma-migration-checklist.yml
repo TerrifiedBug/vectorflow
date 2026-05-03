@@ -1,0 +1,38 @@
+name: Prisma Migration Checklist
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+    paths:
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+      - ".github/scripts/check-prisma-migration-checklist.mjs"
+      - ".github/workflows/prisma-migration-checklist.yml"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  checklist:
+    name: Require migration checklist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          git diff --name-only "$MERGE_BASE" "$HEAD_SHA" > "$RUNNER_TEMP/changed-files.txt"
+          cat "$RUNNER_TEMP/changed-files.txt"
+
+      - name: Validate Prisma migration checklist
+        env:
+          CHANGED_FILES_PATH: ${{ runner.temp }}/changed-files.txt
+        run: node .github/scripts/check-prisma-migration-checklist.mjs
