@@ -51,6 +51,11 @@ vi.mock("@/server/services/deploy-agent", () => ({
   deployBatch: (...args: unknown[]) => mockDeployBatch(...args),
 }));
 
+const mockBatchEvaluatePipelineHealth = vi.fn();
+vi.mock("@/server/services/batch-health", () => ({
+  batchEvaluatePipelineHealth: (...args: unknown[]) => mockBatchEvaluatePipelineHealth(...args),
+}));
+
 vi.mock("@/server/middleware/audit", () => ({
   withAudit: () =>
     testT.middleware(({ next, ctx }: { next: (opts: { ctx: unknown }) => unknown; ctx: unknown }) =>
@@ -63,6 +68,7 @@ import { metricsRouter } from "@/server/routers/metrics";
 import { dashboardRouter } from "@/server/routers/dashboard";
 import { auditRouter } from "@/server/routers/audit";
 import { pipelineRouter } from "@/server/routers/pipeline";
+import { pipelineObservabilityRouter } from "@/server/routers/pipeline-observability";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -71,6 +77,7 @@ const metricsCaller = metricsRouter.createCaller(testContext);
 const dashboardCaller = dashboardRouter.createCaller(testContext);
 const auditCaller = auditRouter.createCaller(testContext);
 const pipelineCaller = pipelineRouter.createCaller(testContext);
+const pipelineObservabilityCaller = pipelineObservabilityRouter.createCaller(testContext);
 
 beforeEach(() => {
   mockReset(prismaMock);
@@ -166,5 +173,23 @@ describe("tenant scoping with real authorization middleware", () => {
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
 
     expect(mockDeployBatch).not.toHaveBeenCalled();
+  });
+
+  it("rejects mixed-team pipeline batches in team access middleware before query side effects", async () => {
+    prismaMock.pipeline.findUnique.mockResolvedValue({
+      environment: { teamId: "team-1" },
+    } as never);
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.teamMember.findUnique.mockResolvedValue({ role: "VIEWER" } as never);
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "pipe-1", environment: { teamId: "team-1" } },
+      { id: "pipe-2", environment: { teamId: "team-2" } },
+    ] as never);
+
+    await expect(
+      pipelineObservabilityCaller.batchHealth({ pipelineIds: ["pipe-1", "pipe-2"] }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    expect(mockBatchEvaluatePipelineHealth).not.toHaveBeenCalled();
   });
 });

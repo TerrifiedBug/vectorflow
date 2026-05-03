@@ -44,6 +44,31 @@ const roleLevel: Record<Role, number> = {
   ADMIN: 2,
 };
 
+async function resolvePipelineBatchTeamId(pipelineIds: string[]) {
+  const uniquePipelineIds = [...new Set(pipelineIds)];
+  const pipelines = await prisma.pipeline.findMany({
+    where: { id: { in: uniquePipelineIds } },
+    select: {
+      id: true,
+      environment: { select: { teamId: true } },
+    },
+  });
+
+  if (pipelines.length !== uniquePipelineIds.length) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+  }
+
+  const teamIds = new Set(pipelines.map((pipeline) => pipeline.environment.teamId));
+  if (teamIds.size !== 1 || teamIds.has(null)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Pipeline batch must contain pipelines from exactly one team",
+    });
+  }
+
+  return [...teamIds][0]!;
+}
+
 export const requireRole = (minRole: Role) =>
   t.middleware(async ({ ctx, next }) => {
     if (!ctx.session?.user) {
@@ -156,16 +181,9 @@ export const withTeamAccess = (minRole: Role) =>
       teamId = pipeline.environment.teamId ?? undefined;
     }
 
-    // Resolve teamId from pipelineIds array (batch endpoints — uses first ID for team resolution)
+    // Resolve teamId from pipelineIds array and reject mixed-team batches before handlers run.
     if (!teamId && Array.isArray(rawInput?.pipelineIds) && (rawInput.pipelineIds as string[]).length > 0) {
-      const pipeline = await prisma.pipeline.findUnique({
-        where: { id: (rawInput.pipelineIds as string[])[0] },
-        select: { environment: { select: { teamId: true } } },
-      });
-      if (!pipeline) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
-      }
-      teamId = pipeline.environment.teamId ?? undefined;
+      teamId = await resolvePipelineBatchTeamId(rawInput.pipelineIds as string[]);
     }
 
     // Resolve teamId from upstreamId (pipeline dependency endpoints)
