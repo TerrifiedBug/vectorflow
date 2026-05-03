@@ -12,6 +12,7 @@ import { debugLog, infoLog, warnLog } from "@/lib/logger";
 import { headers } from "next/headers";
 import { env, isBuildPhase } from "@/lib/env";
 import { isDemoMode } from "@/lib/is-demo-mode";
+import { getDevAuthBypassSession, logDevAuthBypassWarning } from "@/lib/dev-auth-bypass";
 import {
   loginAttemptTracker,
   getRemainingLockSeconds,
@@ -23,6 +24,15 @@ async function getClientIp(): Promise<string | null> {
   try {
     const hdrs = await headers();
     return hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || hdrs.get("x-real-ip") || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getRequestHost(): Promise<string | null> {
+  try {
+    const hdrs = await headers();
+    return hdrs.get("x-forwarded-host") ?? hdrs.get("host");
   } catch {
     return null;
   }
@@ -429,6 +439,17 @@ export function invalidateAuthCache() {
 // Proxy exports — delegate to the lazily-cached NextAuth instance
 export const handlers = {
   GET: async (...args: unknown[]) => {
+    const request = args[0] instanceof Request ? args[0] : null;
+    const requestHost =
+      request?.headers.get("x-forwarded-host") ??
+      request?.headers.get("host") ??
+      (request ? new URL(request.url).host : null);
+    const devSession = getDevAuthBypassSession(process.env, { requestHost });
+    if (devSession && request && new URL(request.url).pathname.endsWith("/api/auth/session")) {
+      logDevAuthBypassWarning();
+      return Response.json(devSession);
+    }
+
     const instance = await getAuthInstance();
     return instance!.handlers.GET(...(args as Parameters<typeof instance.handlers.GET>));
   },
@@ -440,6 +461,12 @@ export const handlers = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function auth(...args: any[]) {
+  const devSession = getDevAuthBypassSession(process.env, { requestHost: await getRequestHost() });
+  if (devSession) {
+    logDevAuthBypassWarning();
+    return devSession;
+  }
+
   const instance = await getAuthInstance();
   return instance!.auth(...args);
 }

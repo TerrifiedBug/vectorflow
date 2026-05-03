@@ -29,5 +29,12 @@ export default defineConfig({
       },
       dependencies: ["setup"],
     },
+    {
+      name: "qa-chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: { cookies: [], origins: [] },
+      },
+    },
   ],
 });
