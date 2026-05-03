@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
-import { relayPush } from "@/server/services/push-broadcast";
+import { deliverPush, relayPush } from "@/server/services/push-broadcast";
 import {
   setActiveTap,
   deleteActiveTap,
@@ -51,7 +51,12 @@ export async function cleanupStaleTaps(): Promise<void> {
 }
 
 const sweepTimer = setInterval(() => {
-  void cleanupStaleTaps();
+  // Catch DB errors so a transient failure during the sweep doesn't surface
+  // as an unhandled rejection (which can terminate the process).
+  cleanupStaleTaps().catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error("cleanupStaleTaps failed", err);
+  });
 }, TAP_TTL_MS);
 if (typeof sweepTimer === "object" && "unref" in sweepTimer) {
   sweepTimer.unref();
@@ -187,35 +192,53 @@ export const pipelineObservabilityRouter = router({
           pipelineId: input.pipelineId,
           componentKeys: input.componentKeys,
           limit: input.limit,
-          // Bound to the first reachable node below
+          // Bound below (or left null for fan-out claim — see below).
           expiresAt: new Date(Date.now() + 2 * 60 * 1000),
         },
       });
 
-      // Try running nodes in order; persist the binding BEFORE pushing so
-      // that if the agent responds immediately, the ingestion endpoint
-      // (which compares request.nodeId === agent.nodeId) doesn't drop the
-      // result as misrouted.
-      let assignedNodeId: string | null = null;
+      const message = {
+        type: "sample_request" as const,
+        requestId: request.id,
+        pipelineId: input.pipelineId,
+        componentKeys: input.componentKeys,
+        limit: input.limit,
+      };
+
+      // Strategy:
+      // 1. Probe each running node for LOCAL SSE delivery (confirmed receipt)
+      //    in order. If any succeeds, bind the request to that node and return.
+      // 2. Otherwise fan out via Redis to every running node and leave nodeId
+      //    NULL so whichever agent picks it up first can atomically claim it
+      //    in samples-route. This avoids the Codex-flagged failure mode where
+      //    a fire-and-forget Redis "delivered" return strands the request on
+      //    a stale node while other RUNNING nodes are never tried.
+      let localBinding: string | null = null;
       for (const { nodeId } of statuses) {
-        await prisma.eventSampleRequest.update({
-          where: { id: request.id },
-          data: { nodeId },
-        });
-        const delivered = relayPush(nodeId, {
-          type: "sample_request",
-          requestId: request.id,
-          pipelineId: input.pipelineId,
-          componentKeys: input.componentKeys,
-          limit: input.limit,
-        });
-        if (delivered) {
-          assignedNodeId = nodeId;
+        if (deliverPush(nodeId, message) === "local") {
+          localBinding = nodeId;
           break;
         }
       }
 
-      if (!assignedNodeId) {
+      if (localBinding) {
+        await prisma.eventSampleRequest.update({
+          where: { id: request.id },
+          data: { nodeId: localBinding },
+        });
+        return { requestId: request.id, status: "PENDING" };
+      }
+
+      // No local delivery — fan out via Redis to every running node. Any of
+      // them on another instance can claim the request via atomic update.
+      let anyReachable = false;
+      for (const { nodeId } of statuses) {
+        if (relayPush(nodeId, message)) {
+          anyReachable = true;
+        }
+      }
+
+      if (!anyReachable) {
         await prisma.eventSampleRequest.delete({ where: { id: request.id } });
         throw new TRPCError({
           code: "PRECONDITION_FAILED",

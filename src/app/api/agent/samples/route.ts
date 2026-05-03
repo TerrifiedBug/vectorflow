@@ -62,12 +62,24 @@ export async function POST(request: Request) {
       if (sampleRequest.pipeline.environmentId !== agent.environmentId) {
         continue;
       }
-      if (sampleRequest.nodeId !== agent.nodeId) {
-        continue;
-      }
-
       const componentKeys = sampleRequest.componentKeys as string[];
       if (!componentKeys.includes(result.componentKey)) {
+        continue;
+      }
+      // Atomically claim the request: succeeds if it was unassigned (fan-out
+      // over Redis path) or already bound to this agent. If another agent
+      // claimed it first, count is 0 and we drop the result. We claim AFTER
+      // the cheap shape checks above so we don't bind a request to a node
+      // that is going to drop the sample anyway.
+      const claim = await prisma.eventSampleRequest.updateMany({
+        where: {
+          id: result.requestId,
+          status: "PENDING",
+          OR: [{ nodeId: null }, { nodeId: agent.nodeId }],
+        },
+        data: { nodeId: agent.nodeId },
+      });
+      if (claim.count === 0) {
         continue;
       }
 
