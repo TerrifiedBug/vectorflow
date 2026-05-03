@@ -25,6 +25,7 @@ import {
   Keyboard,
   Search,
   LayoutGrid,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -56,10 +57,33 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { VersionHistoryDialog } from "@/components/pipeline/version-history-dialog";
 import { KeyboardShortcutsDialog } from "@/components/flow/keyboard-shortcuts-dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useCanvasSearch } from "@/hooks/use-canvas-search";
 import { PressableScale } from "@/components/motion";
 
 type ProcessStatusValue = "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING";
+type ImportValidationIssue = string | { message: string; componentKey?: string };
+type ImportValidationWarning = { message: string };
+type ImportValidationState =
+  | { status: "idle" }
+  | { status: "validating" }
+  | { status: "valid"; warnings: ImportValidationWarning[] }
+  | { status: "invalid"; errors: ImportValidationIssue[]; warnings: ImportValidationWarning[] }
+  | { status: "error"; message: string };
+
+function getImportValidationIssueMessage(issue: ImportValidationIssue) {
+  return typeof issue === "string" ? issue : issue.message;
+}
+
+function getImportValidationIssueComponent(issue: ImportValidationIssue) {
+  return typeof issue === "string" ? undefined : issue.componentKey;
+}
+
+function isValidationUnavailable(errors: ImportValidationIssue[]) {
+  return errors.some((error) =>
+    getImportValidationIssueMessage(error).toLowerCase().includes("vector binary not found"),
+  );
+}
 
 interface FlowToolbarProps {
   pipelineId?: string;
@@ -140,8 +164,13 @@ export function FlowToolbar({
   const clearCanvasSearch = useFlowStore((s) => s.clearCanvasSearch);
   useCanvasSearch();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importRequestIdRef = useRef(0);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  const [importValidation, setImportValidation] = useState<ImportValidationState>({ status: "idle" });
 
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -167,7 +196,7 @@ export function FlowToolbar({
     })
   );
 
-  const validateMutation = useMutation(trpc.validator.validate.mutationOptions({
+  const validateWithToastMutation = useMutation(trpc.validator.validate.mutationOptions({
     onSuccess: (result) => {
       if (result.valid) {
         toast.success("Pipeline is valid!");
@@ -180,6 +209,7 @@ export function FlowToolbar({
       toast.error("Validation error", { description: err.message , duration: 6000 });
     },
   }));
+  const importValidateMutation = useMutation(trpc.validator.validate.mutationOptions());
 
   const handleExportYaml = () => {
     const yaml = generateVectorYaml(nodes, edges, globalConfig);
@@ -193,7 +223,56 @@ export function FlowToolbar({
     toast.success("Exported as TOML");
   };
 
-  const handleImport = () => {
+  const runImport = (content: string, format?: "yaml" | "toml", sourceName = "config") => {
+    const requestId = importRequestIdRef.current + 1;
+    importRequestIdRef.current = requestId;
+
+    try {
+      const {
+        nodes: newNodes,
+        edges: newEdges,
+        globalConfig: importedGlobalConfig,
+        warnings,
+      } = importVectorConfig(content, format);
+      loadGraph(newNodes, newEdges, importedGlobalConfig);
+      setImportWarnings(warnings);
+      setImportValidation({ status: "validating" });
+      setImportText(content);
+      const yaml = generateVectorYaml(newNodes, newEdges, importedGlobalConfig);
+      importValidateMutation.mutate(
+        { yaml },
+        {
+          onSuccess: (result) => {
+            if (importRequestIdRef.current !== requestId) return;
+
+            setImportValidation(
+              result.valid
+                ? { status: "valid", warnings: result.warnings ?? [] }
+                : isValidationUnavailable(result.errors)
+                  ? { status: "error", message: result.errors.map(getImportValidationIssueMessage).join("\n") }
+                  : { status: "invalid", errors: result.errors, warnings: result.warnings ?? [] },
+            );
+          },
+          onError: (err) => {
+            if (importRequestIdRef.current !== requestId) return;
+
+            setImportValidation({ status: "error", message: err.message });
+          },
+        },
+      );
+      toast.success(`Imported ${newNodes.length} components from ${sourceName}`);
+    } catch (err) {
+      setImportWarnings([]);
+      setImportValidation({ status: "idle" });
+      toast.error("Import failed", { description: String(err) , duration: 6000 });
+    }
+  };
+
+  const handlePasteImport = (format?: "yaml" | "toml") => {
+    runImport(importText, format, format ? `pasted ${format.toUpperCase()}` : "pasted config");
+  };
+
+  const handleUploadImport = () => {
     fileInputRef.current?.click();
   };
 
@@ -203,15 +282,9 @@ export function FlowToolbar({
 
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const content = reader.result as string;
-        const format = file.name.endsWith(".toml") ? "toml" as const : file.name.endsWith(".yaml") || file.name.endsWith(".yml") ? "yaml" as const : undefined;
-        const { nodes: newNodes, edges: newEdges, globalConfig: importedGlobalConfig } = importVectorConfig(content, format);
-        loadGraph(newNodes, newEdges, importedGlobalConfig);
-        toast.success(`Imported ${newNodes.length} components from ${file.name}`);
-      } catch (err) {
-        toast.error("Import failed", { description: String(err) , duration: 6000 });
-      }
+      const content = reader.result as string;
+      const format = file.name.endsWith(".toml") ? "toml" as const : file.name.endsWith(".yaml") || file.name.endsWith(".yml") ? "yaml" as const : undefined;
+      runImport(content, format, file.name);
     };
     reader.readAsText(file);
     e.target.value = "";
@@ -219,7 +292,7 @@ export function FlowToolbar({
 
   const handleValidate = () => {
     const yaml = generateVectorYaml(nodes, edges, globalConfig);
-    validateMutation.mutate({ yaml });
+    validateWithToastMutation.mutate({ yaml });
   };
 
   return (
@@ -250,7 +323,7 @@ export function FlowToolbar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={handleValidate} disabled={validateMutation.isPending} className="h-7 w-7 p-0" aria-label="Validate pipeline">
+            <Button variant="ghost" size="sm" onClick={handleValidate} disabled={validateWithToastMutation.isPending} className="h-7 w-7 p-0" aria-label="Validate pipeline">
               <CheckCircle className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -298,14 +371,101 @@ export function FlowToolbar({
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={handleImport} className="h-7 w-7 p-0" aria-label="Import config">
-              <Upload className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Import config (Cmd+I)</TooltipContent>
-        </Tooltip>
+        <Popover open={importOpen} onOpenChange={setImportOpen}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Import config">
+                  <Upload className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Import config (Cmd+I)</TooltipContent>
+          </Tooltip>
+          <PopoverContent align="start" className="w-[420px] space-y-3">
+            <div className="space-y-1">
+              <div className="text-sm font-medium">Import Vector config</div>
+              <div className="text-xs text-muted-foreground">Paste YAML/TOML or upload a config file.</div>
+            </div>
+            <Textarea
+              aria-label="Vector config"
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder="sources:\n  demo:\n    type: demo_logs"
+              className="min-h-[180px] font-mono text-xs"
+            />
+            <div className="flex items-center justify-between gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={handleUploadImport}>
+                <Upload className="mr-2 h-4 w-4" />
+                Upload
+              </Button>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={() => handlePasteImport("toml")} disabled={!importText.trim()}>
+                  Import TOML
+                </Button>
+                <Button type="button" size="sm" onClick={() => handlePasteImport("yaml")} disabled={!importText.trim()}>
+                  Import YAML
+                </Button>
+              </div>
+            </div>
+            {importWarnings.length > 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+                <div className="mb-1 flex items-center gap-1.5 font-medium">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {importWarnings.length} parser warning{importWarnings.length > 1 ? "s" : ""}
+                </div>
+                <ul className="space-y-1">
+                  {importWarnings.map((warning, index) => (
+                    <li key={`${warning}-${index}`}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {importValidation.status !== "idle" && (
+              <div
+                className={cn(
+                  "rounded-md border p-2 text-xs",
+                  importValidation.status === "invalid" || importValidation.status === "error"
+                    ? "border-red-200 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200",
+                )}
+              >
+                <div className="mb-1 flex items-center gap-1.5 font-medium">
+                  {importValidation.status === "invalid" || importValidation.status === "error" ? (
+                    <CircleX className="h-3.5 w-3.5" />
+                  ) : (
+                    <CircleCheck className="h-3.5 w-3.5" />
+                  )}
+                  {importValidation.status === "validating" && "Validating imported config..."}
+                  {importValidation.status === "valid" && "Imported config is valid"}
+                  {importValidation.status === "invalid" && `${importValidation.errors.length} validation error${importValidation.errors.length > 1 ? "s" : ""}`}
+                  {importValidation.status === "error" && "Validation unavailable"}
+                </div>
+                {importValidation.status === "invalid" && (
+                  <ul className="space-y-1">
+                    {importValidation.errors.map((error, index) => (
+                      <li key={`${getImportValidationIssueComponent(error) ?? "config"}-${getImportValidationIssueMessage(error)}-${index}`}>
+                        {getImportValidationIssueComponent(error)
+                          ? `${getImportValidationIssueComponent(error)}: ${getImportValidationIssueMessage(error)}`
+                          : getImportValidationIssueMessage(error)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {importValidation.status === "error" && (
+                  <div>{importValidation.message}</div>
+                )}
+                {(importValidation.status === "valid" || importValidation.status === "invalid") && importValidation.warnings.length > 0 && (
+                  <ul className="mt-1 space-y-1">
+                    {importValidation.warnings.map((warning, index) => (
+                      <li key={`${warning.message}-${index}`}>{warning.message}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
 
         <input
           ref={fileInputRef}

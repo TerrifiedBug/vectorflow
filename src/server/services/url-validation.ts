@@ -9,8 +9,15 @@ export async function validatePublicUrl(url: string): Promise<void> {
   let hostname: string;
   try {
     const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "URL scheme must be http or https",
+      });
+    }
     hostname = parsed.hostname;
-  } catch {
+  } catch (err) {
+    if (err instanceof TRPCError) throw err;
     throw new TRPCError({
       code: "BAD_REQUEST",
       message: "Invalid URL",
