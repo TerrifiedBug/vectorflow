@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 
@@ -26,9 +27,9 @@ type AuditScope = {
 
 const emptyAuditScope = { id: { in: [] } };
 
-async function getAuditScope(userId: string): Promise<AuditScope> {
+async function getAuditScope(userId: string | undefined | null): Promise<AuditScope> {
   if (!userId) {
-    return { isSuperAdmin: true, teamIds: [] };
+    throw new TRPCError({ code: "UNAUTHORIZED" });
   }
 
   const [user, memberships] = await Promise.all([
@@ -84,7 +85,7 @@ export const auditRouter = router({
     )
     .query(async ({ input, ctx }) => {
       const userIdFromSession = ctx.session?.user?.id;
-      const scope = await getAuditScope(userIdFromSession!);
+      const scope = await getAuditScope(userIdFromSession);
       const {
         action,
         userId,
@@ -186,7 +187,7 @@ export const auditRouter = router({
   /** Distinct action values for filter dropdown */
   actions: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session?.user?.id;
-    const scope = await getAuditScope(userId!);
+    const scope = await getAuditScope(userId);
     const scopeCondition = auditScopeCondition(scope);
     const results = await prisma.auditLog.findMany({
       ...(scopeCondition ? { where: scopeCondition } : {}),
@@ -200,7 +201,7 @@ export const auditRouter = router({
   /** Distinct entity type values for filter dropdown */
   entityTypes: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session?.user?.id;
-    const scope = await getAuditScope(userId!);
+    const scope = await getAuditScope(userId);
     const scopeCondition = auditScopeCondition(scope);
     const results = await prisma.auditLog.findMany({
       ...(scopeCondition ? { where: scopeCondition } : {}),
@@ -214,7 +215,7 @@ export const auditRouter = router({
   /** Distinct users who have audit log entries */
   users: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session?.user?.id;
-    const scope = await getAuditScope(userId!);
+    const scope = await getAuditScope(userId);
     const scopeCondition = auditScopeCondition(scope);
     const results = await prisma.auditLog.findMany({
       where: {
@@ -243,7 +244,7 @@ export const auditRouter = router({
     )
     .query(async ({ input, ctx }) => {
       const userId = ctx.session?.user?.id;
-      const scope = await getAuditScope(userId!);
+      const scope = await getAuditScope(userId);
       const { pipelineId, startDate, endDate, cursor } = input;
       const take = 50;
 
@@ -394,7 +395,7 @@ export const auditRouter = router({
   /** Distinct pipelines that have deployment audit entries, for filter dropdown */
   deploymentPipelines: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session?.user?.id;
-    const scope = await getAuditScope(userId!);
+    const scope = await getAuditScope(userId);
     const scopeCondition = auditScopeCondition(scope);
     // Get distinct entityIds from deployment audit logs for Pipeline entity type
     const pipelineAudits = await prisma.auditLog.findMany({
@@ -429,7 +430,7 @@ export const auditRouter = router({
   /** Summary stats for deployment activity in the last 24 hours */
   deploymentSummary: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session?.user?.id;
-    const scope = await getAuditScope(userId!);
+    const scope = await getAuditScope(userId);
     const scopeCondition = auditScopeCondition(scope);
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
@@ -485,7 +486,7 @@ export const auditRouter = router({
     )
     .query(async ({ input, ctx }) => {
       const userId = ctx.session?.user?.id;
-      const scope = await getAuditScope(userId!);
+      const scope = await getAuditScope(userId);
       const { pipelineId, startDate, endDate } = input;
       const maxExportRows = 10_000;
 
@@ -635,7 +636,7 @@ export const auditRouter = router({
     .use(withTeamAccess("ADMIN"))
     .query(async ({ input, ctx }) => {
       const userIdFromSession = ctx.session?.user?.id;
-      const scope = await getAuditScope(userIdFromSession!);
+      const scope = await getAuditScope(userIdFromSession);
       const {
         action,
         userId,

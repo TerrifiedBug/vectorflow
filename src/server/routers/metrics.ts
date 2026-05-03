@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { metricStore } from "@/server/services/metric-store";
 import { prisma } from "@/lib/prisma";
@@ -141,13 +142,43 @@ export const metricsRouter = router({
    */
   getNodePipelineRates: protectedProcedure
     .input(z.object({ nodeId: z.string() }))
-    .use(withTeamAccess("VIEWER"))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      const userId = ctx.session?.user?.id;
+      if (!userId) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+
+      // Soft-fail for stale/deleted nodes so polling clients get a tolerable
+      // empty payload instead of an error.
       const node = await prisma.vectorNode.findUnique({
         where: { id: input.nodeId },
         select: { environmentId: true },
       });
       if (!node) return { rates: {} };
+
+      // Inline auth: super admin bypasses; otherwise must be a member of the
+      // node's environment team.
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { isSuperAdmin: true },
+      });
+      if (!user?.isSuperAdmin) {
+        const env = await prisma.environment.findUnique({
+          where: { id: node.environmentId },
+          select: { teamId: true },
+        });
+        const teamId = env?.teamId;
+        if (!teamId) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+        const membership = await prisma.teamMember.findUnique({
+          where: { userId_teamId: { userId, teamId } },
+          select: { role: true },
+        });
+        if (!membership) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+      }
 
       const nodeMetrics = metricStore.getAllForNode(input.nodeId, 5);
 
