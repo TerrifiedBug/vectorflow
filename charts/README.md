@@ -15,19 +15,19 @@ Helm charts for deploying VectorFlow on Kubernetes.
 
 ## Quick Start
 
-### 1. Add the Bitnami chart repository (required for bundled PostgreSQL / Redis)
+### 1. Optional: refresh bundled chart dependencies
+
+The server chart vendors its PostgreSQL and Redis subchart archives so installs work from a fresh checkout. Run this only when intentionally updating those pinned dependencies:
 
 ```bash
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
+helm dependency update charts/vectorflow-server
 ```
 
 ### 2. Install the server
 
 ```bash
-# Download subchart dependencies first
-helm dependency update charts/vectorflow-server
-
 # Install with an external PostgreSQL database
 helm install vectorflow ./charts/vectorflow-server \
   --namespace vectorflow \
