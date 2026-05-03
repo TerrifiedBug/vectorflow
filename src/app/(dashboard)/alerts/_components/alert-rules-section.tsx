@@ -638,6 +638,11 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                         <SelectItem value="node_load_imbalance">Node Load Imbalance</SelectItem>
                       </SelectGroup>
                       <SelectGroup>
+                        <SelectLabel>Pipeline SLI</SelectLabel>
+                        <SelectItem value="latency_mean">Latency Mean</SelectItem>
+                        <SelectItem value="throughput_floor">Throughput Floor</SelectItem>
+                      </SelectGroup>
+                      <SelectGroup>
                         <SelectLabel>Logs</SelectLabel>
                         <SelectItem value="log_keyword">Log Keyword</SelectItem>
                       </SelectGroup>
