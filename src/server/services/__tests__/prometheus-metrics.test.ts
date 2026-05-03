@@ -1,5 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
+import { Counter } from "prom-client";
 import type { PrismaClient } from "@/generated/prisma";
 
 vi.mock("@/lib/prisma", () => ({
@@ -140,6 +141,39 @@ describe("PrometheusMetricsService", () => {
     expect(output).toContain("# TYPE vectorflow_pipeline_events_discarded_total counter");
     expect(output).toContain("# TYPE vectorflow_pipeline_bytes_in_total counter");
     expect(output).toContain("# TYPE vectorflow_pipeline_bytes_out_total counter");
+  });
+
+  it("increments pipeline counters by deltas instead of resetting each scrape", async () => {
+    const counterResetSpy = vi.spyOn(Counter.prototype, "reset");
+    prismaMock.vectorNode.findMany.mockResolvedValue([]);
+    prismaMock.$queryRaw.mockResolvedValue([]);
+
+    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+      nps({ nodeId: "n1", pipelineId: "p1", eventsIn: 100 }) as never,
+    ]);
+    let output = await service.collectMetrics();
+    expect(output).toMatch(
+      /vectorflow_pipeline_events_in_total\{node_id="n1",pipeline_id="p1"\} 100/,
+    );
+
+    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+      nps({ nodeId: "n1", pipelineId: "p1", eventsIn: 150 }) as never,
+    ]);
+    output = await service.collectMetrics();
+    expect(output).toMatch(
+      /vectorflow_pipeline_events_in_total\{node_id="n1",pipeline_id="p1"\} 150/,
+    );
+    expect(counterResetSpy).not.toHaveBeenCalled();
+
+    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+      nps({ nodeId: "n1", pipelineId: "p1", eventsIn: 120 }) as never,
+    ]);
+    output = await service.collectMetrics();
+    expect(output).toMatch(
+      /vectorflow_pipeline_events_in_total\{node_id="n1",pipeline_id="p1"\} 120/,
+    );
+
+    counterResetSpy.mockRestore();
   });
 
   it("populates pipeline status gauges and counters", async () => {
