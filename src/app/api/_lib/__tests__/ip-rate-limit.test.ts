@@ -122,4 +122,33 @@ describe("checkIpRateLimit", () => {
 
     expect(await checkIpRateLimit(makeRequest("1.1.1.1"), "enroll", 10)).toBeNull();
   });
+
+  it("supports single-hop X-Forwarded-For chains", async () => {
+    vi.stubEnv("VF_TRUSTED_PROXIES", "10.0.0.10");
+    const req = makeRequest(undefined, { "x-forwarded-for": "192.0.2.99" });
+    for (let i = 0; i < 5; i++) {
+      await checkIpRateLimit(req, "single-hop", 5);
+    }
+    const blocked = await checkIpRateLimit(req, "single-hop", 5);
+    expect(blocked).not.toBeNull();
+    expect(blocked!.status).toBe(429);
+
+    const otherReq = makeRequest(undefined, { "x-forwarded-for": "192.0.2.100" });
+    expect(await checkIpRateLimit(otherReq, "single-hop", 5)).toBeNull();
+  });
+
+  it("falls back to legacy VF_TRUST_PROXY_HEADERS behavior", async () => {
+    vi.stubEnv("VF_TRUSTED_PROXIES", "");
+    vi.stubEnv("VF_TRUST_PROXY_HEADERS", "true");
+    const req = makeRequest(undefined, { "x-forwarded-for": "203.0.113.7, 10.0.0.1" });
+    for (let i = 0; i < 5; i++) {
+      await checkIpRateLimit(req, "legacy-endpoint", 5);
+    }
+    const blocked = await checkIpRateLimit(req, "legacy-endpoint", 5);
+    expect(blocked).not.toBeNull();
+    expect(blocked!.status).toBe(429);
+
+    const otherReq = makeRequest(undefined, { "x-forwarded-for": "203.0.113.8, 10.0.0.1" });
+    expect(await checkIpRateLimit(otherReq, "legacy-endpoint", 5)).toBeNull();
+  });
 });

@@ -77,16 +77,23 @@ export class RateLimiter {
   private async checkRedisKey(key: string, limit: number): Promise<RateLimitResult> {
     const now = Date.now();
     const cutoff = now - WINDOW_MS;
-    const result = await this.redis!.eval(
-      REDIS_SLIDING_WINDOW_SCRIPT,
-      1,
-      `rate-limit:${key}`,
-      String(now),
-      String(cutoff),
-      String(limit),
-      String(WINDOW_MS),
-      `${now}:${randomUUID()}`,
-    );
+
+    let result: unknown;
+    try {
+      result = await this.redis!.eval(
+        REDIS_SLIDING_WINDOW_SCRIPT,
+        1,
+        `rate-limit:${key}`,
+        String(now),
+        String(cutoff),
+        String(limit),
+        String(WINDOW_MS),
+        `${now}:${randomUUID()}`,
+      );
+    } catch {
+      return this.checkMemoryKey(key, limit);
+    }
+
     const [allowedFlag, count, oldest] = parseRedisResult(result);
 
     if (!allowedFlag) {

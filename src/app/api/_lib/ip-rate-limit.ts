@@ -3,7 +3,10 @@ import crypto from "crypto";
 
 function getClientIp(request: Request): string {
   const trustedProxies = parseTrustedProxies();
-  if (trustedProxies.length === 0) {
+  const legacyMode =
+    trustedProxies.length === 0 && process.env.VF_TRUST_PROXY_HEADERS === "true";
+
+  if (trustedProxies.length === 0 && !legacyMode) {
     return "unknown";
   }
 
@@ -13,7 +16,15 @@ function getClientIp(request: Request): string {
       .split(",")
       .map((part) => part.trim())
       .filter(Boolean);
-    if (parts.length < 2) return "unknown";
+    if (parts.length === 0) return "unknown";
+
+    if (legacyMode) {
+      return parts[0];
+    }
+
+    if (parts.length === 1) {
+      return parts[0];
+    }
 
     let index = parts.length - 1;
     if (!isTrustedProxy(parts[index], trustedProxies)) {

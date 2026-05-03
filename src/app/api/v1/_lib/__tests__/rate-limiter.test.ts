@@ -95,6 +95,24 @@ describe("RateLimiter", () => {
     expect(blocked.allowed).toBe(false);
     expect(blocked.retryAfter).toBeGreaterThan(0);
   });
+
+  it("falls back to local memory when Redis eval fails", async () => {
+    const failingRedis = {
+      async eval(): Promise<unknown> {
+        throw new Error("READONLY You can't write against a read only replica");
+      },
+    };
+
+    const limiter = new RateLimiter({ redis: failingRedis as never });
+    const result = await limiter.checkKey("ip:enroll:10.0.0.5", 3);
+    expect(result.allowed).toBe(true);
+    expect(result.remaining).toBe(2);
+
+    await limiter.checkKey("ip:enroll:10.0.0.5", 3);
+    await limiter.checkKey("ip:enroll:10.0.0.5", 3);
+    const blocked = await limiter.checkKey("ip:enroll:10.0.0.5", 3);
+    expect(blocked.allowed).toBe(false);
+  });
 });
 
 function createSharedRedis() {
