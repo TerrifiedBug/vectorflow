@@ -1,20 +1,29 @@
-name: E2E Tests
+name: Smoke E2E
 
 on:
-  push:
-    tags: ["v*"]
-  schedule:
-    - cron: "17 3 * * *"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "e2e/**"
+      - "prisma/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "playwright.config.ts"
+      - ".github/workflows/smoke-e2e.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: e2e-${{ github.ref }}
+  group: smoke-e2e-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  e2e:
+  smoke-e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 12
 
     services:
       postgres:
@@ -65,14 +74,14 @@ jobs:
       - name: Wait for server
         run: npx wait-on http://localhost:3000 --timeout 60000
 
-      - name: Run E2E tests
-        run: pnpm test:e2e
+      - name: Run smoke E2E tests
+        run: pnpm test:e2e:smoke
 
       - name: Upload test artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: smoke-e2e-playwright-report
           path: |
             playwright-report/
             test-results/
