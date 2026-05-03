@@ -39,11 +39,61 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 1g
-          cpus: "2.0"
+    mem_limit: 1g
+    cpus: 2.0
+    restart: unless-stopped
+
+  opensearch:
+    profiles: ["opensearch"]
+    container_name: vectorflow-opensearch
+    image: opensearchproject/opensearch:2.19.3
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      bootstrap.memory_lock: "false"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "127.0.0.1:9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+    mem_limit: 1g
+    cpus: 2.0
+    restart: unless-stopped
+
+  opensearch-dashboards:
+    profiles: ["opensearch"]
+    container_name: vectorflow-opensearch-dashboards
+    image: opensearchproject/opensearch-dashboards:2.19.3
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+    ports:
+      - "127.0.0.1:5601:5601"
+    mem_limit: 512m
+    cpus: 1.0
+    restart: unless-stopped
+
+  opensearch-demo-pipeline:
+    profiles: ["opensearch"]
+    container_name: vectorflow-opensearch-demo-pipeline
+    image: timberio/vector:0.54.0-alpine
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    command: ["--config", "/etc/vector/vector-demo-opensearch.yaml"]
+    volumes:
+      - ../../examples/opensearch-demo/vector-demo-opensearch.yaml:/etc/vector/vector-demo-opensearch.yaml:ro
+    mem_limit: 128m
+    cpus: 0.5
     restart: unless-stopped
 
 volumes:
@@ -53,3 +103,5 @@ volumes:
     name: vectorflow-data
   backups:
     name: vectorflow-backups
+  opensearch-data:
+    name: vectorflow-opensearch-data

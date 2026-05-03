@@ -1,0 +1,28 @@
+sources:
+  demo_logs:
+    type: demo_logs
+    format: json
+    interval: 1
+
+transforms:
+  add_vectorflow_fields:
+    type: remap
+    inputs:
+      - demo_logs
+    source: |
+      .service = "vectorflow-demo"
+      .environment = "compose-opensearch"
+      .ingested_at = now()
+
+sinks:
+  local_opensearch:
+    type: elasticsearch
+    inputs:
+      - add_vectorflow_fields
+    endpoints:
+      - http://opensearch:9200
+    mode: bulk
+    api_version: auto
+    opensearch_service_type: managed
+    bulk:
+      index: vectorflow-demo-%Y.%m.%d
