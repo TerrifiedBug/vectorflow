@@ -314,6 +314,10 @@ pnpm install
 pnpm dev
 ```
 
+### E2E smoke
+
+Run the activation-path smoke against the Docker-backed e2e database with `docker compose -f e2e/docker-compose.e2e.yml up -d`, then export `DATABASE_URL=postgresql://vectorflow_e2e:e2e_test_password@localhost:5433/vectorflow_e2e`, `NEXTAUTH_URL=http://localhost:3000`, `NEXTAUTH_SECRET=e2e-test-secret-key-at-least-32-chars`, and `ENCRYPTION_KEY=e2e-test-encryption-key-32chars!!`; run `npx prisma migrate deploy`, `pnpm build`, `pnpm start`, and in another shell `pnpm test:e2e -- activation-smoke.spec.ts`. This exercises login, minimal pipeline creation, deployment to the seeded e2e environment/node, and the healthy fleet signal; failures usually point to auth regressions, Prisma e2e setup issues, pipeline editor save/deploy breaks, or missing node health data.
+
 ### Agent
 
 ```bash
