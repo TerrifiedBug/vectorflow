@@ -100,6 +100,7 @@ function makeNode(overrides: Partial<Record<string, unknown>> = {}) {
     agentVersion: "1.2.0",
     vectorVersion: "0.40.0",
     os: "linux",
+    runningUser: null,
     deploymentMode: "STANDALONE",
     pendingAction: null,
     lastUpdateError: null,
@@ -538,6 +539,222 @@ describe("fleet.triggerAgentUpdate", () => {
         }),
       }),
     );
+  });
+});
+
+// ── fleet bulk agent upgrades ────────────────────────────────────────────────
+
+describe("fleet.previewAgentUpgrade", () => {
+  it("builds a staged upgrade plan with risk and blocked-node counts", async () => {
+    prismaMock.nodeGroup.findUnique.mockResolvedValue({
+      id: "group-1",
+      name: "Edge collectors",
+      environmentId: "env-1",
+      criteria: { tier: "edge" },
+    } as never);
+    prismaMock.vectorNode.findMany.mockResolvedValue([
+      makeNode({ id: "node-1", name: "alpha", agentVersion: "1.0.0", labels: { tier: "edge", zone: "a" } }),
+      makeNode({ id: "node-2", name: "bravo", agentVersion: "1.1.0", status: "DEGRADED", labels: { tier: "edge", zone: "b" } }),
+      makeNode({ id: "node-3", name: "charlie", agentVersion: "1.0.0", deploymentMode: "DOCKER", labels: { tier: "edge" } }),
+      makeNode({ id: "node-4", name: "delta", agentVersion: "2.0.0", labels: { tier: "edge" } }),
+      makeNode({ id: "node-5", name: "echo", agentVersion: "1.0.0", pendingAction: { type: "self_update" }, labels: { tier: "edge" } }),
+    ] as never);
+
+    const result = await caller.previewAgentUpgrade({
+      environmentId: "env-1",
+      targetVersion: "2.0.0",
+      selector: { nodeGroupId: "group-1" },
+      canaryNodeIds: ["node-2"],
+      waveSize: 1,
+    });
+
+    expect(result.summary).toMatchObject({
+      totalMatched: 5,
+      eligible: 2,
+      blockedDocker: 1,
+      blockedAlreadyCurrent: 1,
+      blockedPendingAction: 1,
+      blockedUnreachable: 0,
+      risk: "medium",
+    });
+    expect(result.waves).toEqual([
+      expect.objectContaining({ stage: "canary", nodeIds: ["node-2"] }),
+      expect.objectContaining({ stage: "wave", nodeIds: ["node-1"] }),
+    ]);
+  });
+
+  it("marks maintenance windows that are not currently open", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-03T10:00:00.000Z"));
+    prismaMock.vectorNode.findMany.mockResolvedValue([
+      makeNode({ id: "node-1", agentVersion: "1.0.0" }),
+    ] as never);
+
+    const result = await caller.previewAgentUpgrade({
+      environmentId: "env-1",
+      targetVersion: "2.0.0",
+      maintenanceWindow: {
+        startAt: "2026-05-03T11:00:00.000Z",
+        endAt: "2026-05-03T12:00:00.000Z",
+      },
+    });
+
+    expect(result.maintenanceWindow?.status).toBe("scheduled");
+    vi.useRealTimers();
+  });
+});
+
+describe("fleet.triggerBulkAgentUpdate", () => {
+  const baseInput = {
+    environmentId: "env-1",
+    targetVersion: "2.0.0",
+    downloadUrl: "https://releases.example.com/vf-agent-linux-amd64",
+    checksum: "sha256:abc123",
+    waveSize: 2,
+  };
+
+  it("rejects updates outside the requested maintenance window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-03T10:00:00.000Z"));
+
+    await expect(
+      caller.triggerBulkAgentUpdate({
+        ...baseInput,
+        maintenanceWindow: {
+          startAt: "2026-05-03T11:00:00.000Z",
+          endAt: "2026-05-03T12:00:00.000Z",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+
+    expect(prismaMock.vectorNode.updateMany).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("updates only the canary wave and returns remaining waves", async () => {
+    prismaMock.vectorNode.findMany.mockResolvedValue([
+      makeNode({ id: "node-1", name: "alpha", agentVersion: "1.0.0" }),
+      makeNode({ id: "node-2", name: "bravo", agentVersion: "1.0.0" }),
+      makeNode({ id: "node-3", name: "charlie", agentVersion: "1.0.0" }),
+    ] as never);
+    prismaMock.vectorNode.updateMany.mockResolvedValue({ count: 1 } as never);
+
+    const result = await caller.triggerBulkAgentUpdate({
+      ...baseInput,
+      canaryNodeIds: ["node-2"],
+    });
+
+    expect(result.triggeredNodeIds).toEqual(["node-2"]);
+    expect(result.remainingNodeIds).toEqual(["node-1", "node-3"]);
+    expect(prismaMock.vectorNode.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["node-2"] } },
+        data: {
+          pendingAction: expect.objectContaining({
+            type: "self_update",
+            targetVersion: "2.0.0",
+            orchestration: expect.objectContaining({
+              environmentId: "env-1",
+              stage: "canary",
+              waveIndex: 0,
+              totalWaves: 2,
+            }),
+          }),
+        },
+      }),
+    );
+    expect(relayPush).toHaveBeenCalledWith(
+      "node-2",
+      expect.objectContaining({ type: "action", action: "self_update", targetVersion: "2.0.0" }),
+    );
+  });
+});
+
+describe("fleet.triggerAgentUpdates", () => {
+  it("triggers self_update for every eligible node ID in the request", async () => {
+    prismaMock.vectorNode.findMany.mockResolvedValue([
+      makeNode({ id: "node-1", agentVersion: "1.0.0" }),
+      makeNode({ id: "node-2", agentVersion: "1.1.0" }),
+    ] as never);
+    prismaMock.vectorNode.updateMany.mockResolvedValue({ count: 2 } as never);
+
+    const result = await caller.triggerAgentUpdates({
+      nodeIds: ["node-1", "node-2"],
+      targetVersion: "2.0.0",
+      downloadUrl: "https://releases.example.com/vf-agent-linux-amd64",
+      checksum: "sha256:abc123",
+    });
+
+    expect(result.triggeredNodeIds).toEqual(["node-1", "node-2"]);
+    expect(result.skipped).toEqual([]);
+    expect(prismaMock.vectorNode.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["node-1", "node-2"] } },
+        data: {
+          pendingAction: expect.objectContaining({
+            type: "self_update",
+            targetVersion: "2.0.0",
+          }),
+        },
+      }),
+    );
+    expect(relayPush).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips Docker, unreachable, pending, and already-current nodes", async () => {
+    prismaMock.vectorNode.findMany.mockResolvedValue([
+      makeNode({ id: "node-1", agentVersion: "1.0.0", deploymentMode: "DOCKER" }),
+      makeNode({ id: "node-2", agentVersion: "1.0.0", status: "UNREACHABLE" }),
+      makeNode({ id: "node-3", agentVersion: "1.0.0", pendingAction: { type: "self_update" } }),
+      makeNode({ id: "node-4", agentVersion: "2.0.0" }),
+    ] as never);
+
+    const result = await caller.triggerAgentUpdates({
+      nodeIds: ["node-1", "node-2", "node-3", "node-4"],
+      targetVersion: "2.0.0",
+      downloadUrl: "https://releases.example.com/vf-agent-linux-amd64",
+      checksum: "sha256:abc123",
+    });
+
+    expect(result.triggeredNodeIds).toEqual([]);
+    expect(result.skipped.map((item: { reason: string }) => item.reason)).toEqual([
+      "docker",
+      "unreachable",
+      "pending_action",
+      "already_current",
+    ]);
+    expect(prismaMock.vectorNode.updateMany).not.toHaveBeenCalled();
+    expect(relayPush).not.toHaveBeenCalled();
+  });
+});
+
+describe("fleet.agentDriftReport", () => {
+  it("reports fleet-wide agent version drift for an environment", async () => {
+    prismaMock.vectorNode.findMany.mockResolvedValue([
+      makeNode({ id: "node-1", name: "alpha", agentVersion: "1.0.0" }),
+      makeNode({ id: "node-2", name: "bravo", agentVersion: "2.0.0" }),
+      makeNode({ id: "node-3", name: "charlie", agentVersion: null }),
+      makeNode({ id: "node-4", name: "delta", agentVersion: "1.0.0", deploymentMode: "DOCKER" }),
+    ] as never);
+
+    const result = await caller.agentDriftReport({
+      environmentId: "env-1",
+      targetVersion: "2.0.0",
+    });
+
+    expect(result.summary).toEqual({
+      total: 4,
+      behind: 2,
+      current: 1,
+      unknown: 1,
+      docker: 1,
+    });
+    expect(result.nodes.map((node: { id: string; drift: string }) => ({ id: node.id, drift: node.drift }))).toEqual([
+      { id: "node-1", drift: "behind" },
+      { id: "node-2", drift: "current" },
+      { id: "node-3", drift: "unknown" },
+      { id: "node-4", drift: "behind" },
+    ]);
   });
 });
 
