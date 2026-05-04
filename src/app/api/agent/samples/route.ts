@@ -33,7 +33,7 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 export async function POST(request: Request) {
-  const rateLimited = checkTokenRateLimit(request, "agent-samples", 60);
+  const rateLimited = await checkTokenRateLimit(request, "agent-samples", 60);
   if (rateLimited) return rateLimited;
 
   const agent = await authenticateAgent(request);

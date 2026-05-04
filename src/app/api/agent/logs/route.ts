@@ -16,7 +16,7 @@ const logBatchSchema = z.array(
 );
 
 export async function POST(request: Request) {
-  const rateLimited = checkTokenRateLimit(request, "agent-logs", 60);
+  const rateLimited = await checkTokenRateLimit(request, "agent-logs", 60);
   if (rateLimited) return rateLimited;
 
   const agent = await authenticateAgent(request);
