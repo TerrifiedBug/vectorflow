@@ -39,11 +39,7 @@ func loadOrEnroll(cfg *config.Config, c *client.Client, labels map[string]string
 	hostname, _ := os.Hostname()
 	vectorVersion := detectVectorVersion(cfg.VectorBin)
 
-	prefix := cfg.Token
-	if len(cfg.Token) > 24 {
-		prefix = cfg.Token[:24] + "..."
-	}
-	slog.Debug("enrolling", "hostname", hostname, "os", runtime.GOOS+"/"+runtime.GOARCH, "tokenPrefix", prefix)
+	slog.Debug("enrolling", "hostname", hostname, "os", runtime.GOOS+"/"+runtime.GOARCH)
 
 	resp, err := c.Enroll(client.EnrollRequest{
 		Token:         cfg.Token,
