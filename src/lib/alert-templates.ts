@@ -40,6 +40,9 @@ export interface AlertRuleTemplate {
     condition: string;
     threshold: string;
     durationSeconds: string;
+    severity: "info" | "warning" | "critical";
+    ownerHint: string;
+    suggestedAction: string;
   };
 }
 
@@ -47,161 +50,213 @@ export const ALERT_RULE_TEMPLATES: AlertRuleTemplate[] = [
   {
     id: "high-cpu",
     name: "High CPU Usage",
-    description: "Alert when CPU utilisation exceeds 90% for 60 seconds.",
+    description: "Alert when CPU utilisation exceeds 90% for 10 minutes.",
     icon: Cpu,
     defaults: {
       metric: "cpu_usage",
       condition: "gt",
       threshold: "90",
-      durationSeconds: "60",
+      durationSeconds: "600",
+      severity: "warning",
+      ownerHint: "platform-ops",
+      suggestedAction:
+        "Check node CPU saturation, noisy pipelines, and recent deploys; scale or move workloads if sustained.",
     },
   },
   {
     id: "high-memory",
     name: "High Memory Usage",
-    description: "Alert when memory utilisation exceeds 85% for 60 seconds.",
+    description: "Alert when memory utilisation exceeds 85% for 10 minutes.",
     icon: MemoryStick,
     defaults: {
       metric: "memory_usage",
       condition: "gt",
       threshold: "85",
-      durationSeconds: "60",
+      durationSeconds: "600",
+      severity: "warning",
+      ownerHint: "platform-ops",
+      suggestedAction:
+        "Inspect memory pressure and pipeline buffers on the node; restart or scale only after confirming growth is sustained.",
     },
   },
   {
     id: "high-disk",
     name: "High Disk Usage",
-    description: "Alert when disk utilisation exceeds 90% for 2 minutes.",
+    description: "Alert when disk utilisation exceeds 90% for 15 minutes.",
     icon: HardDrive,
     defaults: {
       metric: "disk_usage",
       condition: "gt",
       threshold: "90",
-      durationSeconds: "120",
+      durationSeconds: "900",
+      severity: "warning",
+      ownerHint: "platform-ops",
+      suggestedAction:
+        "Free disk space or expand storage, then check Vector data directories and retained logs.",
     },
   },
   {
     id: "high-error-rate",
     name: "High Error Rate",
-    description: "Alert when the error rate exceeds 5% for 30 seconds.",
+    description: "Alert when the error rate exceeds 5% for 5 minutes.",
     icon: AlertTriangle,
     defaults: {
       metric: "error_rate",
       condition: "gt",
       threshold: "5",
-      durationSeconds: "30",
+      durationSeconds: "300",
+      severity: "warning",
+      ownerHint: "pipeline-owner",
+      suggestedAction:
+        "Inspect pipeline error logs, sink connectivity, and upstream payload changes before increasing thresholds.",
     },
   },
   {
     id: "node-offline",
     name: "Node Offline",
-    description: "Alert immediately when a node becomes unreachable.",
+    description: "Alert when a node stays unreachable for 2 minutes.",
     icon: ServerOff,
     defaults: {
       metric: "node_unreachable",
       condition: "eq",
       threshold: "1",
-      durationSeconds: "0",
+      durationSeconds: "120",
+      severity: "critical",
+      ownerHint: "platform-ops",
+      suggestedAction:
+        "Check host reachability, agent health, and network policy for the affected node.",
     },
   },
   {
     id: "pipeline-crashed",
     name: "Pipeline Crashed",
-    description: "Alert immediately when a pipeline process crashes.",
+    description: "Alert when a pipeline process stays crashed for 1 minute.",
     icon: CircleX,
     defaults: {
       metric: "pipeline_crashed",
       condition: "eq",
       threshold: "1",
-      durationSeconds: "0",
+      durationSeconds: "60",
+      severity: "critical",
+      ownerHint: "pipeline-owner",
+      suggestedAction:
+        "Inspect Vector process logs on the node, compare with the last deployed config, and roll back if needed.",
     },
   },
   {
     id: "high-discard-rate",
     name: "High Discard Rate",
-    description: "Alert when the discard rate exceeds 10% for 60 seconds.",
+    description: "Alert when the discard rate exceeds 10% for 5 minutes.",
     icon: Trash2,
     defaults: {
       metric: "discarded_rate",
       condition: "gt",
       threshold: "10",
-      durationSeconds: "60",
+      durationSeconds: "300",
+      severity: "warning",
+      ownerHint: "pipeline-owner",
+      suggestedAction:
+        "Review dropped-event reasons and sink backpressure; confirm whether sampling or filters changed.",
     },
   },
   {
     id: "high-pipeline-latency",
     name: "High Pipeline Latency",
-    description: "Alert when a pipeline's mean latency exceeds 500ms for 2 minutes.",
+    description: "Alert when a pipeline's mean latency exceeds 2000ms for 5 minutes.",
     icon: Timer,
     defaults: {
       metric: "latency_mean",
       condition: "gt",
-      threshold: "500",
-      durationSeconds: "120",
+      threshold: "2000",
+      durationSeconds: "300",
+      severity: "warning",
+      ownerHint: "pipeline-owner",
+      suggestedAction:
+        "Check downstream sink latency and buffering; reduce ingest or scale the pipeline if backpressure persists.",
     },
   },
   {
     id: "low-pipeline-throughput",
     name: "Pipeline Throughput Floor",
-    description: "Alert when a pipeline's throughput drops below 1 event/sec for 2 minutes.",
+    description: "Alert when a pipeline's throughput drops below 1 event/sec for 5 minutes.",
     icon: Gauge,
     defaults: {
       metric: "throughput_floor",
       condition: "lt",
       threshold: "1",
-      durationSeconds: "120",
+      durationSeconds: "300",
+      severity: "warning",
+      ownerHint: "pipeline-owner",
+      suggestedAction:
+        "Verify upstream traffic, recent deploys, and node health before treating this as an ingestion outage.",
     },
   },
   {
     id: "fleet-error-rate",
     name: "Fleet Error Rate",
     description:
-      "Alert when total error rate across all pipelines exceeds 5% for 60 seconds.",
+      "Alert when total error rate across all pipelines exceeds 5% for 5 minutes.",
     icon: AlertTriangle,
     defaults: {
       metric: "fleet_error_rate",
       condition: "gt",
       threshold: "5",
-      durationSeconds: "60",
+      durationSeconds: "300",
+      severity: "warning",
+      ownerHint: "platform-ops",
+      suggestedAction:
+        "Identify top contributing pipelines and nodes, then inspect shared sinks or upstream format changes.",
     },
   },
   {
     id: "fleet-throughput-drop",
     name: "Fleet Throughput Drop",
     description:
-      "Alert when total throughput drops by 20% compared to previous period for 2 minutes.",
+      "Alert when total throughput drops by 20% compared to previous period for 5 minutes.",
     icon: TrendingDown,
     defaults: {
       metric: "fleet_throughput_drop",
       condition: "gt",
       threshold: "20",
-      durationSeconds: "120",
+      durationSeconds: "300",
+      severity: "warning",
+      ownerHint: "platform-ops",
+      suggestedAction:
+        "Compare current ingest against historical baselines and check shared source, network, or deploy changes.",
     },
   },
   {
     id: "fleet-event-volume",
     name: "Fleet Event Volume",
     description:
-      "Alert when total event volume drops below 1000 events for 60 seconds.",
+      "Alert when total event volume drops below 1000 events for 5 minutes.",
     icon: Activity,
     defaults: {
       metric: "fleet_event_volume",
       condition: "lt",
       threshold: "1000",
-      durationSeconds: "60",
+      durationSeconds: "300",
+      severity: "warning",
+      ownerHint: "platform-ops",
+      suggestedAction:
+        "Verify expected traffic patterns, source availability, and ingestion gaps across the fleet.",
     },
   },
   {
     id: "node-load-imbalance",
     name: "Node Load Imbalance",
     description:
-      "Alert when any node deviates from fleet average by more than 30% for 2 minutes.",
+      "Alert when any node deviates from fleet average by more than 30% for 5 minutes.",
     icon: Scale,
     defaults: {
       metric: "node_load_imbalance",
       condition: "gt",
       threshold: "30",
-      durationSeconds: "120",
+      durationSeconds: "300",
+      severity: "warning",
+      ownerHint: "platform-ops",
+      suggestedAction:
+        "Inspect node assignment and capacity; rebalance pipelines if one node is carrying disproportionate load.",
     },
   },
   {
@@ -214,7 +269,11 @@ export const ALERT_RULE_TEMPLATES: AlertRuleTemplate[] = [
       metric: "version_drift",
       condition: "gt",
       threshold: "0",
-      durationSeconds: "0",
+      durationSeconds: "300",
+      severity: "warning",
+      ownerHint: "release-owner",
+      suggestedAction:
+        "Compare deployed versions across nodes and complete, roll back, or reconcile the rollout.",
     },
   },
   {
@@ -227,7 +286,11 @@ export const ALERT_RULE_TEMPLATES: AlertRuleTemplate[] = [
       metric: "config_drift",
       condition: "gt",
       threshold: "0",
-      durationSeconds: "60",
+      durationSeconds: "300",
+      severity: "warning",
+      ownerHint: "release-owner",
+      suggestedAction:
+        "Compare running config against the server config and redeploy or investigate unauthorized local changes.",
     },
   },
   {
@@ -240,6 +303,10 @@ export const ALERT_RULE_TEMPLATES: AlertRuleTemplate[] = [
       condition: "gt",
       threshold: "3",
       durationSeconds: "",
+      severity: "warning",
+      ownerHint: "pipeline-owner",
+      suggestedAction:
+        "Review matching log samples, tune the keyword if noisy, and route to the owning pipeline team.",
     },
   },
 ];

@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const rateLimited = checkIpRateLimit(request, "enroll", 10);
+  const rateLimited = await checkIpRateLimit(request, "enroll", 10);
   if (rateLimited) return rateLimited;
 
   try {
@@ -89,6 +89,7 @@ export async function POST(request: Request) {
         environmentId: matchedEnv.id,
         status: "HEALTHY",
         nodeTokenHash: nodeToken.hash,
+        nodeTokenId: nodeToken.identifier,
         enrolledAt: new Date(),
         lastHeartbeat: new Date(),
         agentVersion: agentVersion ?? null,

@@ -4,20 +4,13 @@ import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/i
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { TRPCError } from "@trpc/server";
+import {
+  SERVICE_ACCOUNT_PERMISSIONS,
+  type ServiceAccountPermission,
+} from "@/lib/service-account-permissions";
 
-export const PERMISSIONS = [
-  "pipelines.read",
-  "pipelines.deploy",
-  "nodes.read",
-  "nodes.manage",
-  "secrets.read",
-  "secrets.manage",
-  "alerts.read",
-  "alerts.manage",
-  "audit.read",
-] as const;
-
-export type Permission = (typeof PERMISSIONS)[number];
+export const PERMISSIONS = SERVICE_ACCOUNT_PERMISSIONS;
+export type Permission = ServiceAccountPermission;
 
 export const serviceAccountRouter = router({
   list: protectedProcedure

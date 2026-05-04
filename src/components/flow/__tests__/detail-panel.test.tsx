@@ -192,5 +192,14 @@ describe("DetailPanel", () => {
       });
       expect(getByTestId("schema-form")).toBeTruthy();
     });
+
+    it("shows a lineage tab for selected nodes", () => {
+      const node = makeNode("n1");
+      const { getByRole } = renderPanel({
+        selectedNodeId: "n1",
+        nodes: [node],
+      });
+      expect(getByRole("tab", { name: "Lineage" })).toBeTruthy();
+    });
   });
 });

@@ -7,7 +7,7 @@ import {
   formatCostCsv,
 } from "@/server/services/cost-attribution";
 
-export const GET = apiRoute("read", async (req: NextRequest, ctx) => {
+export const GET = apiRoute("metrics.read", async (req: NextRequest, ctx) => {
   const { searchParams } = new URL(req.url);
   const environmentId = searchParams.get("environmentId");
   const range = searchParams.get("range") ?? "30d";
