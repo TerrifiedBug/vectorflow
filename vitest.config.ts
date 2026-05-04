@@ -15,6 +15,7 @@ export default defineConfig({
       "src/**/*.test.tsx",
       "docker/**/*.test.ts",
       "contracts/**/*.test.ts",
+      "scripts/**/*.test.mjs",
     ],
     environment: "node",
     env: {
