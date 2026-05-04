@@ -136,13 +136,13 @@ cd vectorflow/docker/server
 cat > .env << 'EOF'
 POSTGRES_PASSWORD=changeme
 NEXTAUTH_SECRET=generate-a-random-32-char-string-here
-NEXTAUTH_URL=http://localhost:3000
 EOF
 
 docker compose up -d
 ```
 
 Open [http://localhost:3000](http://localhost:3000). The setup wizard creates your admin account.
+Set `NEXTAUTH_URL` in `.env` before any non-local deployment so OAuth callbacks and generated links use your public URL.
 
 ### 2. Enroll your first agent
 
@@ -283,7 +283,8 @@ Logged-in users can view the Swagger UI at `/api/v1/docs`. The machine-readable 
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | — | PostgreSQL-compatible connection string |
 | `NEXTAUTH_SECRET` | Yes | — | Session and encryption key (32+ chars) |
-| `NEXTAUTH_URL` | Yes | `http://localhost:3000` in the Compose example | Canonical server URL |
+| `NEXTAUTH_URL` | Recommended | — | Canonical server URL for OAuth callbacks and generated external links |
+| `AUTH_TRUST_HOST` | Compose default | `true` in Docker Compose | Allows NextAuth to infer the host from trusted request headers when `NEXTAUTH_URL` is unset |
 | `PORT` | No | `3000` | HTTP listen port |
 
 ### Agent
