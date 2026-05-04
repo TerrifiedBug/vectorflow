@@ -89,6 +89,7 @@ export async function POST(request: Request) {
         environmentId: matchedEnv.id,
         status: "HEALTHY",
         nodeTokenHash: nodeToken.hash,
+        nodeTokenId: nodeToken.identifier,
         enrolledAt: new Date(),
         lastHeartbeat: new Date(),
         agentVersion: agentVersion ?? null,
