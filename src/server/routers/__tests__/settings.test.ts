@@ -376,4 +376,220 @@ describe("settingsRouter", () => {
       );
     });
   });
+
+  // ─── productionReadiness ─────────────────────────────────────────────────
+
+  describe("productionReadiness", () => {
+    type ReadinessSignal = { id: string; status: string; label: string; detail: string; href?: string };
+
+    function setupReadinessMocks(overrides: Record<string, unknown> = {}) {
+      mockSettings(overrides);
+      // @ts-expect-error - groupBy mock typing is complex
+      prismaMock.vectorNode.groupBy.mockResolvedValue([]);
+      prismaMock.webhookEndpoint.count.mockResolvedValue(0);
+      prismaMock.pipeline.findFirst.mockResolvedValue(null);
+      prismaMock.$queryRaw.mockResolvedValue([{ "?column?": 1 }] as never);
+    }
+
+    it("returns signals and checkedAt when database is healthy", async () => {
+      setupReadinessMocks({
+        backupEnabled: true,
+        lastBackupAt: new Date(),
+        lastBackupStatus: "success",
+        oidcIssuer: "https://sso.example.com",
+        scimEnabled: true,
+      });
+      // @ts-expect-error - groupBy mock typing is complex
+      prismaMock.vectorNode.groupBy.mockResolvedValue([
+        { status: "HEALTHY", _count: { id: 3 } },
+      ]);
+      prismaMock.webhookEndpoint.count.mockResolvedValue(2);
+      prismaMock.pipeline.findFirst.mockResolvedValue({
+        isDraft: false,
+        deployedAt: new Date(),
+      } as never);
+
+      const result = await caller.productionReadiness();
+
+      expect(result.signals).toHaveLength(9);
+      expect(result.checkedAt).toBeDefined();
+      const signals = result.signals as ReadinessSignal[];
+      const dbSignal = signals.find((s) => s.id === "database");
+      expect(dbSignal?.status).toBe("ok");
+      const backupSignal = signals.find((s) => s.id === "backup");
+      expect(backupSignal?.status).toBe("ok");
+      const fleetSignal = signals.find((s) => s.id === "fleet");
+      expect(fleetSignal?.status).toBe("ok");
+    });
+
+    it("sets database signal to error when DB query fails", async () => {
+      setupReadinessMocks();
+      prismaMock.$queryRaw.mockRejectedValue(new Error("connection refused"));
+
+      const result = await caller.productionReadiness();
+
+      const signals = result.signals as ReadinessSignal[];
+      const dbSignal = signals.find((s) => s.id === "database");
+      expect(dbSignal?.status).toBe("error");
+    });
+
+    it("warns when backup is disabled", async () => {
+      setupReadinessMocks({ backupEnabled: false });
+
+      const result = await caller.productionReadiness();
+
+      const signals = result.signals as ReadinessSignal[];
+      const backupSignal = signals.find((s) => s.id === "backup");
+      expect(backupSignal?.status).toBe("warn");
+    });
+
+    it("errors when last backup failed", async () => {
+      setupReadinessMocks({
+        backupEnabled: true,
+        lastBackupAt: new Date(),
+        lastBackupStatus: "failed",
+        lastBackupError: "disk full",
+      });
+
+      const result = await caller.productionReadiness();
+
+      const signals = result.signals as ReadinessSignal[];
+      const backupSignal = signals.find((s) => s.id === "backup");
+      expect(backupSignal?.status).toBe("error");
+    });
+
+    it("warns for unhealthy fleet nodes", async () => {
+      setupReadinessMocks();
+      // @ts-expect-error - groupBy mock typing is complex
+      prismaMock.vectorNode.groupBy.mockResolvedValue([
+        { status: "HEALTHY", _count: { id: 2 } },
+        { status: "UNREACHABLE", _count: { id: 1 } },
+      ]);
+
+      const result = await caller.productionReadiness();
+
+      const signals = result.signals as ReadinessSignal[];
+      const fleetSignal = signals.find((s) => s.id === "fleet");
+      expect(fleetSignal?.status).toBe("warn");
+    });
+
+    it("warns for UNKNOWN fleet nodes (not treated as healthy)", async () => {
+      setupReadinessMocks();
+      // @ts-expect-error - groupBy mock typing is complex
+      prismaMock.vectorNode.groupBy.mockResolvedValue([
+        { status: "UNKNOWN", _count: { id: 3 } },
+      ]);
+
+      const result = await caller.productionReadiness();
+
+      const signals = result.signals as ReadinessSignal[];
+      const fleetSignal = signals.find((s) => s.id === "fleet");
+      expect(fleetSignal?.status).toBe("warn");
+    });
+
+    it("returns unknown version status when no release data fetched", async () => {
+      const originalVfVersion = process.env.VF_VERSION;
+      process.env.VF_VERSION = "1.2.3";
+      try {
+        setupReadinessMocks({ latestServerRelease: null });
+
+        const result = await caller.productionReadiness();
+
+        const signals = result.signals as ReadinessSignal[];
+        const versionSignal = signals.find((s) => s.id === "version");
+        expect(versionSignal?.status).toBe("unknown");
+      } finally {
+        if (originalVfVersion === undefined) {
+          delete process.env.VF_VERSION;
+        } else {
+          process.env.VF_VERSION = originalVfVersion;
+        }
+      }
+    });
+
+    it("warns when OIDC not configured", async () => {
+      setupReadinessMocks({ oidcIssuer: null });
+
+      const result = await caller.productionReadiness();
+
+      const signals = result.signals as ReadinessSignal[];
+      const oidcSignal = signals.find((s) => s.id === "oidc");
+      expect(oidcSignal?.status).toBe("warn");
+    });
+
+    it("reports audit shipping as ok when system pipeline deployed", async () => {
+      setupReadinessMocks();
+      prismaMock.pipeline.findFirst.mockResolvedValue({
+        isDraft: false,
+        deployedAt: new Date(),
+      } as never);
+
+      const result = await caller.productionReadiness();
+
+      const signals = result.signals as ReadinessSignal[];
+      const auditSignal = signals.find((s) => s.id === "audit-shipping");
+      expect(auditSignal?.status).toBe("ok");
+    });
+
+    it("unknown signals count toward non-ok overall status", async () => {
+      const originalVfVersion = process.env.VF_VERSION;
+      process.env.VF_VERSION = "1.2.3";
+      try {
+        // latestServerRelease null + real VF_VERSION → version signal = "unknown"
+        setupReadinessMocks({
+          latestServerRelease: null,
+          backupEnabled: true,
+          lastBackupAt: new Date(),
+          lastBackupStatus: "success",
+          oidcIssuer: "https://sso.example.com",
+          scimEnabled: true,
+        });
+        // @ts-expect-error - groupBy mock typing is complex
+        prismaMock.vectorNode.groupBy.mockResolvedValue([
+          { status: "HEALTHY", _count: { id: 2 } },
+        ]);
+        prismaMock.webhookEndpoint.count.mockResolvedValue(1);
+        prismaMock.pipeline.findFirst.mockResolvedValue({
+          isDraft: false,
+          deployedAt: new Date(),
+        } as never);
+
+        const result = await caller.productionReadiness();
+
+        // version is "unknown" → overall must not be "ok"
+        expect(result.overallStatus).not.toBe("ok");
+        const signals = result.signals as ReadinessSignal[];
+        const versionSignal = signals.find((s) => s.id === "version");
+        expect(versionSignal?.status).toBe("unknown");
+      } finally {
+        if (originalVfVersion === undefined) {
+          delete process.env.VF_VERSION;
+        } else {
+          process.env.VF_VERSION = originalVfVersion;
+        }
+      }
+    });
+
+    it("DB outage returns database:error payload without throwing", async () => {
+      // Make the DB ping fail AND the config queries fail
+      prismaMock.$queryRaw.mockRejectedValue(new Error("connection refused"));
+      prismaMock.systemSettings.findUnique.mockRejectedValue(new Error("connection refused"));
+      prismaMock.systemSettings.create.mockRejectedValue(new Error("connection refused"));
+      // @ts-expect-error - groupBy mock typing is complex
+      prismaMock.vectorNode.groupBy.mockRejectedValue(new Error("connection refused"));
+      prismaMock.webhookEndpoint.count.mockRejectedValue(new Error("connection refused"));
+      prismaMock.pipeline.findFirst.mockRejectedValue(new Error("connection refused"));
+
+      // Should not throw — must return a structured payload
+      const result = await caller.productionReadiness();
+
+      const signals = result.signals as ReadinessSignal[];
+      const dbSignal = signals.find((s) => s.id === "database");
+      expect(dbSignal?.status).toBe("error");
+      // Config-dependent signals should all be unknown
+      const configSignals = signals.filter((s) => s.id !== "database" && s.id !== "sentry");
+      expect(configSignals.every((s) => s.status === "unknown")).toBe(true);
+      expect(result.overallStatus).not.toBe("ok");
+    });
+  });
 });

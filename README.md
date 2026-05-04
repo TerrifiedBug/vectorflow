@@ -141,7 +141,10 @@ EOF
 docker compose up -d
 ```
 
+The quick start uses convenience defaults. Before adapting it for production, review the [production hardening guide](https://vectorflow.sh/docs/operations/production-hardening).
+
 Open [http://localhost:3000](http://localhost:3000). The setup wizard creates your admin account.
+Set `NEXTAUTH_URL` in `.env` before any non-local deployment so OAuth callbacks and generated links use your public URL.
 
 ### 2. Enroll your first agent
 
@@ -186,6 +189,8 @@ docker compose up -d
 ```
 
 The Compose stack starts `timescale/timescaledb:latest-pg16`. Keep the `postgres` service name in `DATABASE_URL`; it is the Compose hostname for the TimescaleDB/PostgreSQL container.
+
+Before running Docker Compose in production, review the [production Docker and Helm hardening guide](https://vectorflow.sh/docs/operations/production-hardening). It covers the default all-interface server port, moving image tags, agent host networking, and host access settings.
 
 For a two-replica high-availability stack behind nginx, use the HA Compose file:
 
@@ -244,6 +249,7 @@ curl -sSfL https://raw.githubusercontent.com/TerrifiedBug/vectorflow/main/agent/
 ```
 
 Existing configuration at `/etc/vectorflow/agent.env` is preserved during upgrades.
+The installer also accepts `--channel stable` or `--channel dev` when selecting the release channel. That is an installer option, not a `vf-agent` runtime flag; configure the running agent with environment variables instead.
 
 Uninstalling:
 
@@ -265,6 +271,8 @@ VF_URL=http://your-server:3000 VF_TOKEN=<token> ./vf-agent
 ```
 
 See [Configuration → Agent](#configuration) for all available environment variables.
+
+For Kubernetes deployments, see the [Helm charts](charts/README.md) and review the [production hardening guide](https://vectorflow.sh/docs/operations/production-hardening) before keeping host networking, host log mounts, or elevated file-read capabilities enabled.
 
 ### API documentation
 
@@ -291,7 +299,8 @@ Logged-in users can view the Swagger UI at `/api/v1/docs`. The machine-readable 
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | — | PostgreSQL-compatible connection string |
 | `NEXTAUTH_SECRET` | Yes | — | Session and encryption key (32+ chars) |
-| `NEXTAUTH_URL` | No | — | Canonical server URL |
+| `NEXTAUTH_URL` | Recommended | — | Canonical server URL for OAuth callbacks and generated external links |
+| `AUTH_TRUST_HOST` | Compose default | `true` in Docker Compose | Allows NextAuth to infer the host from trusted request headers when `NEXTAUTH_URL` is unset |
 | `PORT` | No | `3000` | HTTP listen port |
 
 ### Agent
@@ -302,7 +311,7 @@ Logged-in users can view the Swagger UI at `/api/v1/docs`. The machine-readable 
 | `VF_TOKEN` | First run | — | One-time enrollment token |
 | `VF_DATA_DIR` | No | `/var/lib/vf-agent` | Data directory |
 | `VF_VECTOR_BIN` | No | `vector` | Path to Vector binary |
-| `VF_POLL_INTERVAL` | No | `5s` | Config poll frequency before server fleet settings load |
+| `VF_POLL_INTERVAL` | No | `5s` | Bootstrap config poll frequency before server fleet settings load |
 | `VF_LOG_FLUSH_INTERVAL` | No | `2s` | Buffered log flush frequency |
 | `VF_LOG_LEVEL` | No | `info` | Logging level |
 | `VF_NODE_LABELS` | No | — | Node labels as comma-separated `key=value` pairs |
@@ -316,6 +325,8 @@ Logged-in users can view the Swagger UI at `/api/v1/docs`. The machine-readable 
 | Unhealthy threshold | 3 missed | Heartbeats before marking node unhealthy |
 | Metrics retention | 7 days | Time-series data retention |
 | Logs retention | 3 days | Pipeline log retention |
+
+The agent uses `VF_POLL_INTERVAL` only until it receives fleet settings from the server. After that, the fleet poll interval above controls the steady-state config check frequency.
 
 ## Development
 
@@ -337,6 +348,12 @@ pnpm dev
 See [docs/e2e-release-gate.md](docs/e2e-release-gate.md) for the Docker-backed
 Playwright gate covering setup, browser authentication, pipeline creation,
 deploy flow, fleet health, and the activation-path smoke.
+
+### Maintainer docs
+
+- [Deploy state machine](https://vectorflow.sh/docs/operations/deploy-state-machine)
+  covers deploy approvals, version snapshots, rollback, concurrent deploy
+  resolution, agent config delivery, and heartbeat status transitions.
 
 ### Agent
 

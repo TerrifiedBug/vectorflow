@@ -368,6 +368,60 @@ describe("FlowToolbar", () => {
     });
   });
 
+  describe("toolbar grouping", () => {
+    it("groups export, template, and history actions under Config", () => {
+      const onSaveAsTemplate = vi.fn();
+      const { getByLabelText, getByText } = renderToolbar(
+        { nodes: [{ id: "n1" } as never] },
+        { pipelineId: "pipe-1", onSaveAsTemplate },
+      );
+
+      fireEvent.pointerDown(getByLabelText("Config actions"), { button: 0, ctrlKey: false });
+
+      expect(getByText("Download YAML")).toBeTruthy();
+      expect(getByText("Download TOML")).toBeTruthy();
+      expect(getByText("Version history")).toBeTruthy();
+      fireEvent.click(getByText("Save as template"));
+      expect(onSaveAsTemplate).toHaveBeenCalledOnce();
+    });
+
+    it("groups observability actions under View and keeps the error indicator discoverable", () => {
+      const onToggleMetrics = vi.fn();
+      const onToggleLogs = vi.fn();
+      const { getByLabelText, getByText } = renderToolbar(
+        {},
+        {
+          pipelineId: "pipe-1",
+          onToggleMetrics,
+          onToggleLogs,
+          hasRecentErrors: true,
+        },
+      );
+
+      fireEvent.pointerDown(getByLabelText("View actions"), { button: 0, ctrlKey: false });
+
+      expect(getByText("Show metrics")).toBeTruthy();
+      expect(getByText("Show logs")).toBeTruthy();
+      expect(getByText("Pipeline scorecard")).toBeTruthy();
+      fireEvent.click(getByText("Show metrics"));
+      expect(onToggleMetrics).toHaveBeenCalledOnce();
+    });
+
+    it("groups canvas tools under Tools", () => {
+      const { getByLabelText, getByText } = renderToolbar(
+        { nodes: [{ id: "n1" } as never], selectedNodeIds: new Set(["n1", "n2"]) },
+        { aiEnabled: true, onAiOpen: vi.fn() },
+      );
+
+      fireEvent.pointerDown(getByLabelText("Tools actions"), { button: 0, ctrlKey: false });
+      expect(getByText("AI assistant")).toBeTruthy();
+      expect(getByText("Keyboard shortcuts")).toBeTruthy();
+      fireEvent.click(getByText("Auto-layout selected"));
+
+      expect(mockAutoLayout).toHaveBeenCalledWith(true);
+    });
+  });
+
   describe("process status indicator", () => {
     it("shows 'Running' label when processStatus is RUNNING", () => {
       const { getByText } = renderToolbar({}, { processStatus: "RUNNING" });

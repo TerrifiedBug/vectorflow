@@ -1,5 +1,5 @@
 // src/server/services/__tests__/cost-attribution.test.ts
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
@@ -20,6 +20,66 @@ import {
 } from "@/server/services/cost-attribution";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+interface PipelineMetricFixture {
+  environmentId: string;
+  pipelineId: string;
+  nodeId: string | null;
+  componentId: string | null;
+  timestamp: Date;
+  bytesIn: bigint;
+  bytesOut: bigint;
+}
+
+function mockAggregateFromPipelineMetricFixtures(rows: PipelineMetricFixture[]) {
+  prismaMock.pipelineMetric.aggregate.mockImplementation((async (args: {
+    where?: {
+      pipeline?: { environmentId?: string };
+      pipelineId?: string;
+      nodeId?: string | null;
+      componentId?: string | null;
+      timestamp?: { gte?: Date; lt?: Date };
+    };
+  }) => {
+    const where = args.where ?? {};
+    const matchedRows = rows.filter((row) => {
+      if (where.pipeline?.environmentId && row.environmentId !== where.pipeline.environmentId) {
+        return false;
+      }
+      if (where.pipelineId && row.pipelineId !== where.pipelineId) {
+        return false;
+      }
+      if ("nodeId" in where && row.nodeId !== where.nodeId) {
+        return false;
+      }
+      if ("componentId" in where && row.componentId !== where.componentId) {
+        return false;
+      }
+      if (where.timestamp?.gte && row.timestamp < where.timestamp.gte) {
+        return false;
+      }
+      if (where.timestamp?.lt && row.timestamp >= where.timestamp.lt) {
+        return false;
+      }
+      return true;
+    });
+
+    return {
+      _sum: {
+        bytesIn: matchedRows.reduce((sum, row) => sum + row.bytesIn, BigInt(0)),
+        bytesOut: matchedRows.reduce((sum, row) => sum + row.bytesOut, BigInt(0)),
+      },
+      _count: { id: matchedRows.length },
+      _avg: {},
+      _min: {},
+      _max: {},
+    };
+  }) as never);
+}
 
 describe("computeCostCents", () => {
   it("returns 0 when costPerGbCents is 0", () => {
@@ -81,6 +141,69 @@ describe("getCostSummary", () => {
     expect(result.current.costCents).toBeGreaterThan(0);
     expect(result.previous.bytesIn).toBe(1_800_000_000);
     expect(result.previous.bytesOut).toBe(1_400_000_000);
+  });
+
+  it("uses aggregate rows only when fixture data includes both aggregate and per-node rows", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-10T12:00:00Z"));
+    mockAggregateFromPipelineMetricFixtures([
+      {
+        environmentId: "env-1",
+        pipelineId: "p1",
+        nodeId: null,
+        componentId: null,
+        timestamp: new Date("2026-04-10T11:30:00Z"),
+        bytesIn: BigInt(1_000_000_000),
+        bytesOut: BigInt(700_000_000),
+      },
+      {
+        environmentId: "env-1",
+        pipelineId: "p1",
+        nodeId: "node-a",
+        componentId: null,
+        timestamp: new Date("2026-04-10T11:30:00Z"),
+        bytesIn: BigInt(400_000_000),
+        bytesOut: BigInt(280_000_000),
+      },
+      {
+        environmentId: "env-1",
+        pipelineId: "p1",
+        nodeId: "node-b",
+        componentId: null,
+        timestamp: new Date("2026-04-10T11:30:00Z"),
+        bytesIn: BigInt(600_000_000),
+        bytesOut: BigInt(420_000_000),
+      },
+      {
+        environmentId: "env-1",
+        pipelineId: "p1",
+        nodeId: null,
+        componentId: null,
+        timestamp: new Date("2026-04-09T11:30:00Z"),
+        bytesIn: BigInt(500_000_000),
+        bytesOut: BigInt(350_000_000),
+      },
+      {
+        environmentId: "env-1",
+        pipelineId: "p1",
+        nodeId: "node-a",
+        componentId: null,
+        timestamp: new Date("2026-04-09T11:30:00Z"),
+        bytesIn: BigInt(500_000_000),
+        bytesOut: BigInt(350_000_000),
+      },
+    ]);
+
+    const result = await getCostSummary({
+      environmentId: "env-1",
+      range: "1d",
+      costPerGbCents: 100,
+    });
+
+    expect(result.current.bytesIn).toBe(1_000_000_000);
+    expect(result.current.bytesOut).toBe(700_000_000);
+    expect(result.previous.bytesIn).toBe(500_000_000);
+    expect(result.previous.bytesOut).toBe(350_000_000);
   });
 
   it("queries aggregate pipeline rows only so per-node rows are not double counted", async () => {

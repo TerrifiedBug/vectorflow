@@ -16,10 +16,10 @@ export async function POST(request: Request, context: unknown) {
   const { pathname } = new URL(request.url);
 
   if (pathname.endsWith("/callback/credentials")) {
-    const limited = checkIpRateLimit(request, "auth:credentials", 5);
+    const limited = await checkIpRateLimit(request, "auth:credentials", 5);
     if (limited) return limited;
   } else if (pathname.endsWith("/callback/oidc")) {
-    const limited = checkIpRateLimit(request, "auth:oidc", 20);
+    const limited = await checkIpRateLimit(request, "auth:oidc", 20);
     if (limited) return limited;
   }
 
