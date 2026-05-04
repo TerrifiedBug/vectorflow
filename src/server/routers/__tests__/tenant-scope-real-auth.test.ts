@@ -192,4 +192,27 @@ describe("tenant scoping with real authorization middleware", () => {
 
     expect(mockBatchEvaluatePipelineHealth).not.toHaveBeenCalled();
   });
+
+  it("rejects caller-supplied teamId injection when pipelineIds belong to a different team", async () => {
+    // Adversarial input: caller sends teamId for team-1 (where they are a member)
+    // but pipelineIds contains a pipeline that belongs to team-2.
+    // Middleware must resolve teamId from DB, not trust caller-supplied teamId.
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "pipe-team-2", environment: { teamId: "team-2" } },
+    ] as never);
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    // Even if the caller is a member of team-1, the resolved team from pipelineIds is team-2.
+    prismaMock.teamMember.findUnique.mockResolvedValue(null);
+
+    await expect(
+      pipelineObservabilityCaller.batchHealth({
+        pipelineIds: ["pipe-team-2"],
+        // Cast as never because the Zod schema may not expose teamId on this procedure;
+        // getRawInput() still sees the raw pre-parse payload.
+        ...({ teamId: "team-1" } as never),
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    expect(mockBatchEvaluatePipelineHealth).not.toHaveBeenCalled();
+  });
 });

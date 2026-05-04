@@ -156,8 +156,14 @@ export const withTeamAccess = (minRole: Role) =>
 
     const rawInput = (await getRawInput()) as Record<string, unknown> | undefined;
 
-    // Resolve teamId: directly from input, or via environmentId/pipelineId lookup
-    let teamId: string | undefined = rawInput?.teamId as string | undefined;
+    // When pipelineIds is present we must resolve teamId from DB — never trust the caller-supplied
+    // teamId because a caller could inject an authorized teamId while supplying pipeline IDs from a
+    // different team, bypassing the per-batch validation below.
+    const hasPipelineIds =
+      Array.isArray(rawInput?.pipelineIds) && (rawInput.pipelineIds as string[]).length > 0;
+    let teamId: string | undefined = hasPipelineIds
+      ? undefined
+      : (rawInput?.teamId as string | undefined);
 
     if (!teamId && rawInput?.environmentId) {
       const env = await prisma.environment.findUnique({
@@ -182,8 +188,9 @@ export const withTeamAccess = (minRole: Role) =>
     }
 
     // Resolve teamId from pipelineIds array and reject mixed-team batches before handlers run.
-    if (!teamId && Array.isArray(rawInput?.pipelineIds) && (rawInput.pipelineIds as string[]).length > 0) {
-      teamId = await resolvePipelineBatchTeamId(rawInput.pipelineIds as string[]);
+    // hasPipelineIds is always true here when pipelineIds were present (teamId was left undefined above).
+    if (hasPipelineIds && !teamId) {
+      teamId = await resolvePipelineBatchTeamId(rawInput!.pipelineIds as string[]);
     }
 
     // Resolve teamId from upstreamId (pipeline dependency endpoints)
