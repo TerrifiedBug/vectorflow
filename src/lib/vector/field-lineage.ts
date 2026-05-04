@@ -171,7 +171,7 @@ function inferType(expression: string, previousType?: string): string {
 
 function parseRemapChanges(source: string, node: Node, fields: Map<string, LineageField>): LineageChange[] {
   const changes: LineageChange[] = [];
-  const removeRegex = new RegExp(`\\b(?:del|remove)!?\\(\\s*(${FIELD_PATH_PATTERN})`, "g");
+  const removeRegex = new RegExp(`\\bdel!?\\(\\s*(${FIELD_PATH_PATTERN})`, "g");
   const assignmentRegex = new RegExp(`^\\s*(${FIELD_PATH_PATTERN})\\s*=\\s*(.+?)\\s*$`);
 
   for (const line of source.split("\n")) {
@@ -334,25 +334,53 @@ function sinkExpectations(node: Node, fields: Map<string, LineageField>, upstrea
   }));
 }
 
+function mergeBranchFields(branches: Map<string, LineageField>[]): Map<string, LineageField> {
+  if (branches.length === 0) return new Map();
+  if (branches.length === 1) return new Map([...branches[0]].map(([k, v]) => [k, { ...v }]));
+
+  const merged = new Map<string, LineageField>();
+  for (const branch of branches) {
+    for (const [path, field] of branch) {
+      const existing = merged.get(path);
+      if (!existing) {
+        merged.set(path, { ...field });
+      } else if (existing.status === "removed" && field.status !== "removed") {
+        merged.set(path, { ...field });
+      }
+    }
+  }
+  return merged;
+}
+
 export function buildFieldLineage(nodes: Node[], edges: Edge[], selectedNodeId: string): FieldLineageResult {
   const path = upstreamPath(nodes, edges, selectedNodeId);
-  const fields = new Map<string, LineageField>();
   const steps: LineageStep[] = [];
   const upstreamEventTypes = new Set<DataType>();
+  const nodeOutputFields = new Map<string, Map<string, LineageField>>();
 
   for (const node of path) {
     const data = nodeData(node);
     const componentDef = data.componentDef;
     if (!componentDef) continue;
 
+    const incomingEdges = edges.filter(
+      (e) => e.target === node.id && path.some((n) => n.id === e.source),
+    );
+    const branchMaps = incomingEdges
+      .map((e) => nodeOutputFields.get(e.source))
+      .filter((m): m is Map<string, LineageField> => !!m);
+    const nodeFields = mergeBranchFields(branchMaps);
+
     let changes: LineageChange[] = [];
     if (componentDef.kind === "source") {
       for (const type of componentDef.outputTypes) upstreamEventTypes.add(type);
-      changes = addSourceFields(node, fields);
+      changes = addSourceFields(node, nodeFields);
     } else if (componentDef.kind === "transform") {
       for (const type of componentDef.outputTypes) upstreamEventTypes.add(type);
-      changes = transformChanges(node, fields);
+      changes = transformChanges(node, nodeFields);
     }
+
+    nodeOutputFields.set(node.id, nodeFields);
 
     steps.push({
       nodeId: node.id,
@@ -364,10 +392,11 @@ export function buildFieldLineage(nodes: Node[], edges: Edge[], selectedNodeId: 
     });
   }
 
+  const finalFields = nodeOutputFields.get(selectedNodeId) ?? new Map<string, LineageField>();
   const selected = nodes.find((node) => node.id === selectedNodeId);
   return {
-    fields: [...fields.values()].map(cloneField).sort((a, b) => a.path.localeCompare(b.path)),
+    fields: [...finalFields.values()].map(cloneField).sort((a, b) => a.path.localeCompare(b.path)),
     steps,
-    expectations: selected ? sinkExpectations(selected, fields, upstreamEventTypes) : [],
+    expectations: selected ? sinkExpectations(selected, finalFields, upstreamEventTypes) : [],
   };
 }

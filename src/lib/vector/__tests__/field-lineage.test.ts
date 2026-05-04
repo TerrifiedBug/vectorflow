@@ -218,6 +218,58 @@ describe("buildFieldLineage", () => {
     expect(result.expectations.find((e) => e.path === ".kind")).toBeUndefined();
   });
 
+  it("does not mark field as removed when remove() modifies a nested key", () => {
+    const nodes = [
+      node("source", "source", "file"),
+      node("remap", "transform", "remap", {
+        source: `
+          .tags = ["env", "prod"]
+          remove!(.tags, ["env"])
+        `,
+      }),
+      node("sink", "sink", "elasticsearch"),
+    ];
+
+    const result = buildFieldLineage(nodes, [edge("source", "remap"), edge("remap", "sink")], "sink");
+
+    const tagsField = result.fields.find((f) => f.path === ".tags");
+    expect(tagsField?.status).toBe("added");
+  });
+
+  it("does not remove a field from one branch due to a transform del on a separate branch", () => {
+    // Branch A: source-a → remap-a → sink (passes .host through unchanged)
+    // Branch B: source-b → remap-b (del(.host)) → sink
+    // remap-b deletes .host from its branch; branch A still has .host as "source"
+    // merged result at sink must show .host as non-removed (branch A wins)
+    const nodes = [
+      node("source-a", "source", "file"),
+      node("remap-a", "transform", "remap", {
+        source: `.service = "api"`,
+      }),
+      node("source-b", "source", "file"),
+      node("remap-b", "transform", "remap", {
+        source: `del(.host)`,
+      }),
+      node("sink", "sink", "elasticsearch"),
+    ];
+
+    const result = buildFieldLineage(
+      nodes,
+      [
+        edge("source-a", "remap-a"),
+        edge("remap-a", "sink"),
+        edge("source-b", "remap-b"),
+        edge("remap-b", "sink"),
+      ],
+      "sink",
+    );
+
+    const hostField = result.fields.find((f) => f.path === ".host");
+    // .host comes from file source schema in branch A; remap-b's del must not erase it
+    expect(hostField?.status).not.toBe("removed");
+    expect(hostField?.status).toBe("source");
+  });
+
   it("reports missing sink expectations from sink configuration", () => {
     const nodes = [
       node("source", "source", "file"),
