@@ -70,6 +70,8 @@ export const POST = apiRoute(
     ];
     const validConditions = ["gt", "lt", "eq"];
     const validSeverities = ["info", "warning", "critical"];
+    const OWNER_HINT_MAX_LENGTH = 120;
+    const SUGGESTED_ACTION_MAX_LENGTH = 1000;
     const isNonEmptyString = (value: unknown): value is string =>
       typeof value === "string" && value.trim().length > 0;
 
@@ -104,6 +106,15 @@ export const POST = apiRoute(
         { status: 400 },
       );
     }
+    if (
+      body.ownerHint !== undefined &&
+      body.ownerHint.length > OWNER_HINT_MAX_LENGTH
+    ) {
+      return NextResponse.json(
+        { error: `ownerHint must be ${OWNER_HINT_MAX_LENGTH} characters or fewer` },
+        { status: 400 },
+      );
+    }
 
     if (
       body.suggestedAction !== undefined &&
@@ -111,6 +122,17 @@ export const POST = apiRoute(
     ) {
       return NextResponse.json(
         { error: "suggestedAction must be a non-empty string" },
+        { status: 400 },
+      );
+    }
+    if (
+      body.suggestedAction !== undefined &&
+      body.suggestedAction.length > SUGGESTED_ACTION_MAX_LENGTH
+    ) {
+      return NextResponse.json(
+        {
+          error: `suggestedAction must be ${SUGGESTED_ACTION_MAX_LENGTH} characters or fewer`,
+        },
         { status: 400 },
       );
     }

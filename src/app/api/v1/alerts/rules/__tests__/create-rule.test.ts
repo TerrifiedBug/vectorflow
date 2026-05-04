@@ -81,4 +81,50 @@ describe("POST /api/v1/alerts/rules", () => {
       error: "suggestedAction must be a non-empty string",
     });
   });
+
+  it("returns 400 when ownerHint exceeds 120 chars", async () => {
+    const req = new NextRequest("http://localhost/api/v1/alerts/rules", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer vf_test123",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "CPU hot",
+        metric: "cpu_usage",
+        condition: "gt",
+        threshold: 80,
+        ownerHint: "a".repeat(121),
+      }),
+    });
+
+    const res = await POST(req, { params: Promise.resolve({}) });
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "ownerHint must be 120 characters or fewer",
+    });
+  });
+
+  it("returns 400 when suggestedAction exceeds 1000 chars", async () => {
+    const req = new NextRequest("http://localhost/api/v1/alerts/rules", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer vf_test123",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "CPU hot",
+        metric: "cpu_usage",
+        condition: "gt",
+        threshold: 80,
+        suggestedAction: "a".repeat(1001),
+      }),
+    });
+
+    const res = await POST(req, { params: Promise.resolve({}) });
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "suggestedAction must be 1000 characters or fewer",
+    });
+  });
 });
