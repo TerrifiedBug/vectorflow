@@ -199,12 +199,13 @@ export function DeploymentMatrixToolbar({
       <div className="h-6 w-px bg-border" />
 
       {/* Status filter chips */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" role="group" aria-label="Deployment status filters">
         <span className="text-xs font-medium text-muted-foreground">Status</span>
         {MATRIX_STATUS_OPTIONS.map((opt) => (
           <button
             key={opt.id}
             type="button"
+            aria-pressed={statusFilter.includes(opt.id)}
             onClick={() => toggleStatus(opt.id)}
             className={cn(
               "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
@@ -238,6 +239,7 @@ export function DeploymentMatrixToolbar({
         <Button
           variant={exceptionsOnly ? "default" : "outline"}
           size="sm"
+          aria-pressed={exceptionsOnly}
           className="h-8 gap-1.5 text-xs"
           onClick={() => onExceptionsOnlyChange(!exceptionsOnly)}
         >
