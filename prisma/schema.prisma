@@ -739,6 +739,8 @@ model AuditLog {
   @@index([userId])
   @@index([createdAt])
   @@index([action])
+  @@index([teamId])
+  @@index([environmentId])
 }
 
 model SystemSettings {
