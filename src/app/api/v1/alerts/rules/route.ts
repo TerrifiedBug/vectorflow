@@ -70,6 +70,8 @@ export const POST = apiRoute(
     ];
     const validConditions = ["gt", "lt", "eq"];
     const validSeverities = ["info", "warning", "critical"];
+    const isNonEmptyString = (value: unknown): value is string =>
+      typeof value === "string" && value.trim().length > 0;
 
     if (!validMetrics.includes(body.metric)) {
       return NextResponse.json(
@@ -96,19 +98,19 @@ export const POST = apiRoute(
       );
     }
 
-    if (body.ownerHint !== undefined && body.ownerHint.trim().length === 0) {
+    if (body.ownerHint !== undefined && !isNonEmptyString(body.ownerHint)) {
       return NextResponse.json(
-        { error: "ownerHint cannot be empty" },
+        { error: "ownerHint must be a non-empty string" },
         { status: 400 },
       );
     }
 
     if (
       body.suggestedAction !== undefined &&
-      body.suggestedAction.trim().length === 0
+      !isNonEmptyString(body.suggestedAction)
     ) {
       return NextResponse.json(
-        { error: "suggestedAction cannot be empty" },
+        { error: "suggestedAction must be a non-empty string" },
         { status: 400 },
       );
     }
