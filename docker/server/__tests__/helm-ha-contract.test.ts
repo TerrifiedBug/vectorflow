@@ -54,7 +54,12 @@ function helmTemplateError(args: string[]) {
 
 describe("vectorflow-server Helm HA contract", () => {
   it("rejects multi-replica deployments without Redis", () => {
-    const error = helmTemplateError(["--set", "replicaCount=2"]);
+    const error = helmTemplateError([
+      "--set",
+      "replicaCount=2",
+      "--set",
+      "existingSecret=test-secret",
+    ]);
 
     expect(error).toContain("HA requires Redis");
   }, 30_000);
@@ -63,6 +68,8 @@ describe("vectorflow-server Helm HA contract", () => {
     const error = helmTemplateError([
       "--set",
       "replicaCount=2",
+      "--set",
+      "existingSecret=test-secret",
       "--set",
       "redis.enabled=true",
     ]);
@@ -74,6 +81,8 @@ describe("vectorflow-server Helm HA contract", () => {
     const rendered = helmTemplate([
       "--set",
       "replicaCount=2",
+      "--set",
+      "existingSecret=test-secret",
       "--set",
       "redis.enabled=true",
       "--set",
@@ -91,7 +100,7 @@ describe("vectorflow-server Helm HA contract", () => {
     expect(rendered).toContain("name: VF_RUN_MIGRATIONS");
     expect(rendered).toContain('value: "false"');
     expect(rendered).toContain("kind: Job");
-    expect(rendered).toContain('"helm.sh/hook": post-install,post-upgrade');
+    expect(rendered).toContain('"helm.sh/hook": post-install,pre-upgrade');
     expect(rendered).toContain("imagePullSecrets:");
     expect(rendered).toContain("name: private-registry");
     expect(rendered).toContain("prisma migrate deploy");
