@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
@@ -79,6 +80,9 @@ interface RuleFormState {
   condition: string;
   threshold: string;
   durationSeconds: string;
+  severity: "info" | "warning" | "critical";
+  ownerHint: string;
+  suggestedAction: string;
   cooldownMinutes: string;
   channelIds: string[];
   keyword: string;
@@ -93,6 +97,9 @@ const EMPTY_RULE_FORM: RuleFormState = {
   condition: "",
   threshold: "",
   durationSeconds: "60",
+  severity: "warning",
+  ownerHint: "platform-ops",
+  suggestedAction: "Review the alert context, then inspect the affected pipeline, node, and recent deployment changes.",
   cooldownMinutes: "",
   channelIds: [],
   keyword: "",
@@ -263,7 +270,12 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
       metric: rule.metric,
       condition: skipThreshold ? "" : (rule.condition ?? "gt"),
       threshold: skipThreshold ? "" : String(rule.threshold ?? ""),
-      durationSeconds: skipThreshold ? "" : String(rule.durationSeconds ?? ""),
+      durationSeconds: isEventMetric(rule.metric) ? "" : String(rule.durationSeconds ?? ""),
+      severity: (rule.severity as RuleFormState["severity"]) ?? "warning",
+      ownerHint: rule.ownerHint ?? "platform-ops",
+      suggestedAction:
+        rule.suggestedAction ??
+        "Review the alert context, then inspect the affected pipeline, node, and recent deployment changes.",
       cooldownMinutes: rule.cooldownMinutes != null ? String(rule.cooldownMinutes) : "",
       channelIds: rule.channels?.map((c) => c.channelId) ?? [],
       keyword: rule.keyword ?? "",
@@ -287,6 +299,9 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
   const formErrors = {
     name: !form.name.trim() ? "Name is required." : null,
     metric: !form.metric ? "Select a metric." : null,
+    severity: !form.severity ? "Select a severity." : null,
+    ownerHint: !form.ownerHint.trim() ? "Owner hint is required." : null,
+    suggestedAction: !form.suggestedAction.trim() ? "Suggested action is required." : null,
     threshold: !isBinaryOrEvent && form.metric !== "log_keyword" && !form.threshold ? "Enter a numeric threshold value." : null,
     keyword: form.metric === "log_keyword" && !form.keyword.trim() ? "Keyword is required." : null,
     pipelineId: PIPELINE_REQUIRED_METRICS.has(form.metric) && !form.pipelineId ? "Select a pipeline for this metric." : null,
@@ -294,16 +309,19 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
   const isFormValid =
     !formErrors.name &&
     !formErrors.metric &&
+    !formErrors.severity &&
+    !formErrors.ownerHint &&
+    !formErrors.suggestedAction &&
     !formErrors.threshold &&
     !formErrors.keyword &&
     !formErrors.pipelineId;
 
   const handleSubmit = () => {
-    setTouched({ name: true, metric: true, threshold: true });
+    setTouched({ name: true, metric: true, severity: true, ownerHint: true, suggestedAction: true, threshold: true });
     const isBinary = BINARY_METRICS.has(form.metric);
     const isEvent = isEventMetric(form.metric);
     const isKeyword = form.metric === "log_keyword";
-    if (!form.name || !form.metric || (!isBinary && !isEvent && !isKeyword && !form.threshold)) {
+    if (!form.name || !form.metric || !form.severity || !form.ownerHint.trim() || !form.suggestedAction.trim() || (!isBinary && !isEvent && !isKeyword && !form.threshold)) {
       toast.error("Please fill in all required fields", { duration: 6000 });
       return;
     }
@@ -316,18 +334,40 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
       return;
     }
 
-    const skipThreshold = isEvent || isBinary;
+    const skipThresholdForCreate = isEvent;
+    const trimmedDuration = form.durationSeconds.trim();
+    const parsedDuration = parseInt(form.durationSeconds, 10);
+    const normalizedDuration = Number.isFinite(parsedDuration)
+      ? (isBinary
+          ? Math.max(parsedDuration, 0)
+          : parsedDuration > 0
+            ? parsedDuration
+            : 60)
+      : 60;
+    const thresholdUpdates =
+      isEvent || isBinary
+        ? {}
+        : {
+            threshold: parseFloat(form.threshold),
+          };
+    const durationUpdates =
+      isEvent ||
+      isKeyword ||
+      (isBinary && trimmedDuration.length === 0)
+        ? {}
+        : {
+            durationSeconds: normalizedDuration,
+          };
 
     if (editingRuleId) {
       updateMutation.mutate({
         id: editingRuleId,
         name: form.name,
-        ...(skipThreshold
-          ? {}
-          : {
-              threshold: parseFloat(form.threshold),
-              durationSeconds: isKeyword ? undefined : (parseInt(form.durationSeconds, 10) || 60),
-            }),
+        severity: form.severity,
+        ownerHint: form.ownerHint,
+        suggestedAction: form.suggestedAction,
+        ...thresholdUpdates,
+        ...durationUpdates,
         cooldownMinutes: form.cooldownMinutes ? parseInt(form.cooldownMinutes, 10) : null,
         channelIds: form.channelIds,
       });
@@ -337,9 +377,12 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
         environmentId,
         pipelineId: form.pipelineId || undefined,
         metric: form.metric as AlertMetric,
-        condition: skipThreshold ? null : (form.condition as AlertCondition),
-        threshold: skipThreshold ? null : parseFloat(form.threshold),
-        durationSeconds: skipThreshold || isKeyword ? null : (parseInt(form.durationSeconds, 10) || 60),
+        condition: skipThresholdForCreate ? null : (form.condition as AlertCondition),
+        threshold: skipThresholdForCreate ? null : parseFloat(form.threshold),
+        durationSeconds: skipThresholdForCreate || isKeyword ? null : (parseInt(form.durationSeconds, 10) || 60),
+        severity: form.severity,
+        ownerHint: form.ownerHint,
+        suggestedAction: form.suggestedAction,
         cooldownMinutes: form.cooldownMinutes ? parseInt(form.cooldownMinutes, 10) : null,
         teamId: selectedTeamId!,
         channelIds: form.channelIds.length > 0 ? form.channelIds : undefined,
@@ -383,6 +426,8 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Metric</TableHead>
+              <TableHead>Severity</TableHead>
+              <TableHead>Owner</TableHead>
               <TableHead>Condition</TableHead>
               <TableHead>Threshold</TableHead>
               <TableHead>Duration</TableHead>
@@ -395,23 +440,39 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
             {rules.map((rule) => (
               <StaggerItem as="tr" key={rule.id} className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors">
                 <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    {rule.name}
-                    {(() => {
-                      const mins = snoozedMinutesLeft(rule.snoozedUntil);
-                      if (mins == null) return null;
-                      return (
-                        <Badge variant="secondary" className="text-xs whitespace-nowrap">
-                          Snoozed · {formatSnoozeRemaining(mins)}
-                        </Badge>
-                      );
-                    })()}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      {rule.name}
+                      {(() => {
+                        const mins = snoozedMinutesLeft(rule.snoozedUntil);
+                        if (mins == null) return null;
+                        return (
+                          <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                            Snoozed · {formatSnoozeRemaining(mins)}
+                          </Badge>
+                        );
+                      })()}
+                    </div>
+                    <p className="max-w-[28rem] text-xs font-normal text-muted-foreground">
+                      {rule.suggestedAction}
+                    </p>
                   </div>
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary">
                     {METRIC_LABELS[rule.metric] ?? rule.metric}
                   </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant={rule.severity === "critical" ? "destructive" : "outline"}
+                    className="capitalize"
+                  >
+                    {rule.severity}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {rule.ownerHint}
                 </TableCell>
                 <TableCell className="font-mono">
                   {BINARY_METRICS.has(rule.metric) || !rule.condition ? "—" : (CONDITION_LABELS[rule.condition] ?? rule.condition)}
@@ -551,6 +612,9 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                   condition: values.condition,
                   threshold: values.threshold,
                   durationSeconds: values.durationSeconds,
+                  severity: values.severity,
+                  ownerHint: values.ownerHint,
+                  suggestedAction: values.suggestedAction,
                   keyword: values.keyword ?? "",
                   keywordWindowMinutes: values.keywordWindowMinutes ?? "5",
                 }))
@@ -574,6 +638,69 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
               />
               {touched.name && formErrors.name && (
                 <p className="text-xs text-destructive mt-1">{formErrors.name}</p>
+              )}
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
+              <div className="space-y-2">
+                <Label htmlFor="rule-severity">
+                  Severity <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={form.severity}
+                  onValueChange={(v) => {
+                    markTouched("severity");
+                    setForm((f) => ({ ...f, severity: v as RuleFormState["severity"] }));
+                  }}
+                >
+                  <SelectTrigger id="rule-severity">
+                    <SelectValue placeholder="Select severity" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="info">Info</SelectItem>
+                    <SelectItem value="warning">Warning</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+                {touched.severity && formErrors.severity && (
+                  <p className="text-xs text-destructive mt-1">{formErrors.severity}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="rule-owner">
+                  Owner Hint <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="rule-owner"
+                  placeholder="pipeline-owner"
+                  value={form.ownerHint}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, ownerHint: e.target.value }))
+                  }
+                  onBlur={() => markTouched("ownerHint")}
+                />
+                {touched.ownerHint && formErrors.ownerHint && (
+                  <p className="text-xs text-destructive mt-1">{formErrors.ownerHint}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="rule-suggested-action">
+                Suggested Action <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="rule-suggested-action"
+                value={form.suggestedAction}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, suggestedAction: e.target.value }))
+                }
+                onBlur={() => markTouched("suggestedAction")}
+                className="min-h-20"
+              />
+              {touched.suggestedAction && formErrors.suggestedAction && (
+                <p className="text-xs text-destructive mt-1">{formErrors.suggestedAction}</p>
               )}
             </div>
 
@@ -756,30 +883,38 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
               </>
             )}
 
-            {isEventMetric(form.metric) || BINARY_METRICS.has(form.metric) ? (
+            {isEventMetric(form.metric) ? (
               <p className="text-sm text-muted-foreground py-2">
                 Notifications will be sent when this event occurs.
               </p>
             ) : (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="rule-threshold">
-                    Threshold <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="rule-threshold"
-                    type="number"
-                    placeholder="80"
-                    value={form.threshold}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, threshold: e.target.value }))
-                    }
-                    onBlur={() => markTouched("threshold")}
-                  />
-                  {touched.threshold && formErrors.threshold && (
-                    <p className="text-xs text-destructive mt-1">{formErrors.threshold}</p>
-                  )}
-                </div>
+                {!BINARY_METRICS.has(form.metric) && (
+                  <div className="space-y-2">
+                    <Label htmlFor="rule-threshold">
+                      Threshold <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="rule-threshold"
+                      type="number"
+                      placeholder="80"
+                      value={form.threshold}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, threshold: e.target.value }))
+                      }
+                      onBlur={() => markTouched("threshold")}
+                    />
+                    {touched.threshold && formErrors.threshold && (
+                      <p className="text-xs text-destructive mt-1">{formErrors.threshold}</p>
+                    )}
+                  </div>
+                )}
+
+                {BINARY_METRICS.has(form.metric) && (
+                  <p className="text-sm text-muted-foreground py-2">
+                    This rule fires when the condition remains active for the configured duration.
+                  </p>
+                )}
 
                 {form.metric !== "log_keyword" && (
                   <div className="space-y-2">
