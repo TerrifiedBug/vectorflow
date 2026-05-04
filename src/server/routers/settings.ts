@@ -643,30 +643,33 @@ export const settingsRouter = router({
         dbOk = false;
       }
 
-      // Config queries — wrapped so a DB outage degrades config signals to
-      // "unknown" instead of throwing and suppressing the database signal.
+      // Config queries — skipped entirely when DB ping already failed to avoid
+      // additional connection timeouts during an outage. When DB is up, wrapped
+      // in try/catch so an unexpected failure still degrades gracefully.
       type NodeStatRow = { status: string; _count: { id: number } };
       let settings: Awaited<ReturnType<typeof getOrCreateSettings>> | null = null;
       let nodeStats: NodeStatRow[] = [];
       let webhookCount = 0;
       let auditPipeline: { isDraft: boolean; deployedAt: Date | null } | null = null;
       let configAvailable = false;
-      try {
-        [settings, nodeStats, webhookCount, auditPipeline] = await Promise.all([
-          getOrCreateSettings(),
-          prisma.vectorNode.groupBy({
-            by: ["status"],
-            _count: { id: true },
-          }),
-          prisma.webhookEndpoint.count({ where: { enabled: true } }),
-          prisma.pipeline.findFirst({
-            where: { isSystem: true },
-            select: { isDraft: true, deployedAt: true },
-          }),
-        ]);
-        configAvailable = true;
-      } catch {
-        configAvailable = false;
+      if (dbOk) {
+        try {
+          [settings, nodeStats, webhookCount, auditPipeline] = await Promise.all([
+            getOrCreateSettings(),
+            prisma.vectorNode.groupBy({
+              by: ["status"],
+              _count: { id: true },
+            }),
+            prisma.webhookEndpoint.count({ where: { enabled: true } }),
+            prisma.pipeline.findFirst({
+              where: { isSystem: true },
+              select: { isDraft: true, deployedAt: true },
+            }),
+          ]);
+          configAvailable = true;
+        } catch {
+          configAvailable = false;
+        }
       }
 
       const totalNodes = nodeStats.reduce((sum, g) => sum + g._count.id, 0);

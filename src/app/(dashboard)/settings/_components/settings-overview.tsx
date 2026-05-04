@@ -187,6 +187,7 @@ export function SettingsOverview() {
         const { overallStatus, signals } = readinessQuery.data;
         const errorCount = signals.filter((s) => s.status === "error").length;
         const warnCount = signals.filter((s) => s.status === "warn").length;
+        const unknownCount = signals.filter((s) => s.status === "unknown").length;
         return (
           <div className="mt-1.5 flex items-center gap-2">
             {overallStatus === "ok" && (
@@ -197,6 +198,9 @@ export function SettingsOverview() {
             )}
             {warnCount > 0 && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-yellow-600 border-yellow-500">{warnCount} warning{warnCount !== 1 ? "s" : ""}</Badge>
+            )}
+            {unknownCount > 0 && errorCount === 0 && warnCount === 0 && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">{unknownCount} unknown</Badge>
             )}
           </div>
         );
