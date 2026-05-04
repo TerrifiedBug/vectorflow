@@ -98,6 +98,19 @@ export const PUT = apiRoute(
       );
     }
 
+    if (body.groupId !== undefined && body.groupId !== null) {
+      const group = await prisma.pipelineGroup.findUnique({
+        where: { id: body.groupId },
+        select: { environmentId: true },
+      });
+      if (!group || group.environmentId !== existing.environmentId) {
+        return NextResponse.json(
+          { error: "Pipeline group not found in this environment" },
+          { status: 400 },
+        );
+      }
+    }
+
     const pipeline = await prisma.pipeline.update({
       where: { id },
       data,
