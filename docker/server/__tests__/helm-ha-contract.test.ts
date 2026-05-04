@@ -91,7 +91,7 @@ describe("vectorflow-server Helm HA contract", () => {
     expect(rendered).toContain("name: VF_RUN_MIGRATIONS");
     expect(rendered).toContain('value: "false"');
     expect(rendered).toContain("kind: Job");
-    expect(rendered).toContain('"helm.sh/hook": post-install,post-upgrade');
+    expect(rendered).toContain('"helm.sh/hook": post-install,pre-upgrade');
     expect(rendered).toContain("imagePullSecrets:");
     expect(rendered).toContain("name: private-registry");
     expect(rendered).toContain("prisma migrate deploy");
@@ -108,6 +108,18 @@ describe("vectorflow-server Helm HA contract", () => {
     ]);
 
     expect(error).toContain("existingSecretContainsRedisUrl=true");
+  });
+
+  it("disables startup migrations when migration job is enabled on single-replica", () => {
+    const rendered = helmTemplate([
+      "--set",
+      "migrations.job.enabled=true",
+    ]);
+
+    expect(rendered).toContain("name: VF_RUN_MIGRATIONS");
+    expect(rendered).toContain('value: "false"');
+    expect(rendered).toContain("kind: Job");
+    expect(rendered).toContain("prisma migrate deploy");
   });
 
   it("rejects HA when existingSecret is set and inline redisUrl would bypass validation", () => {

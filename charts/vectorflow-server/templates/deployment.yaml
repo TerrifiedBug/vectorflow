@@ -58,7 +58,7 @@ spec:
             - name: VF_REDIS_REQUIRED
               value: {{ eq (include "vectorflow-server.haEnabled" .) "true" | quote }}
             - name: VF_RUN_MIGRATIONS
-              value: {{ ternary "false" (toString .Values.migrations.runAtStartup) (eq (include "vectorflow-server.haEnabled" .) "true") | quote }}
+              value: {{ ternary "false" (toString .Values.migrations.runAtStartup) (or (eq (include "vectorflow-server.haEnabled" .) "true") .Values.migrations.job.enabled) | quote }}
             - name: NODE_ENV
               value: "production"
             {{- if or .Values.secret.encryptionKeyV2 .Values.existingSecret }}
