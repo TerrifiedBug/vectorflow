@@ -3,16 +3,7 @@ import { PrismaClient } from "../src/generated/prisma";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { QA_DEV_USER } from "../src/lib/dev-auth-bypass";
 import { generateEnrollmentToken, generateNodeToken } from "../src/server/services/agent-token";
-
-const QA_IDS = {
-  user: QA_DEV_USER.id,
-  team: "qa-team",
-  environment: "qa-env",
-  pipeline: "qa-pipeline",
-  sourceNode: "qa-node-source",
-  sinkNode: "qa-node-sink",
-  vectorNode: "qa-vector-node",
-} as const;
+import { QA_IDS, resetQaSeed } from "../src/server/services/qa-seed";
 
 function createPrismaClient() {
   if (!process.env.DATABASE_URL) {
@@ -24,25 +15,6 @@ function createPrismaClient() {
   });
 
   return new PrismaClient({ adapter });
-}
-
-async function resetQaSeed(prisma: PrismaClient) {
-  await prisma.team.updateMany({
-    where: { id: QA_IDS.team },
-    data: { defaultEnvironmentId: null },
-  });
-
-  await prisma.pipelineEdge.deleteMany({ where: { pipelineId: QA_IDS.pipeline } });
-  await prisma.pipelineNode.deleteMany({ where: { pipelineId: QA_IDS.pipeline } });
-  await prisma.pipelineVersion.deleteMany({ where: { pipelineId: QA_IDS.pipeline } });
-  await prisma.nodePipelineStatus.deleteMany({ where: { pipelineId: QA_IDS.pipeline } });
-  await prisma.pipelineMetric.deleteMany({ where: { pipelineId: QA_IDS.pipeline } });
-  await prisma.pipeline.deleteMany({ where: { id: QA_IDS.pipeline } });
-  await prisma.vectorNode.deleteMany({ where: { id: QA_IDS.vectorNode } });
-  await prisma.teamMember.deleteMany({ where: { teamId: QA_IDS.team } });
-  await prisma.environment.deleteMany({ where: { id: QA_IDS.environment } });
-  await prisma.team.deleteMany({ where: { id: QA_IDS.team } });
-  await prisma.user.deleteMany({ where: { id: QA_IDS.user } });
 }
 
 async function seedQa(prisma: PrismaClient) {
