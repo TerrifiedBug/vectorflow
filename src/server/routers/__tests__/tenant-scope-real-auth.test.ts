@@ -205,12 +205,11 @@ describe("tenant scoping with real authorization middleware", () => {
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 
     await expect(
-      pipelineObservabilityCaller.batchHealth({
-        pipelineIds: ["pipe-team-2"],
-        // Cast as never because the Zod schema may not expose teamId on this procedure;
-        // getRawInput() still sees the raw pre-parse payload.
-        ...({ teamId: "team-1" } as any),
-      }),
+      pipelineObservabilityCaller.batchHealth(
+        // Inject extra field that the Zod schema strips; getRawInput() still sees it.
+        // Object.assign avoids `as any` while smuggling the adversarial teamId.
+        Object.assign({ pipelineIds: ["pipe-team-2"] }, { teamId: "team-1" }),
+      ),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
 
     expect(mockBatchEvaluatePipelineHealth).not.toHaveBeenCalled();
