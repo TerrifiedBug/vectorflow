@@ -40,11 +40,65 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 1g
-          cpus: "2.0"
+    mem_limit: 1g
+    cpus: 2.0
+    restart: unless-stopped
+
+  opensearch:
+    profiles: ["opensearch"]
+    container_name: vectorflow-opensearch
+    image: opensearchproject/opensearch:2.19.3
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      bootstrap.memory_lock: "false"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "127.0.0.1:9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+    mem_limit: 1g
+    cpus: 2.0
+    restart: unless-stopped
+
+  opensearch-dashboards:
+    profiles: ["opensearch"]
+    container_name: vectorflow-opensearch-dashboards
+    image: opensearchproject/opensearch-dashboards:2.19.3
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+    ports:
+      - "127.0.0.1:5601:5601"
+    mem_limit: 512m
+    cpus: 1.0
+    restart: unless-stopped
+
+  vf-agent:
+    profiles: ["opensearch"]
+    container_name: vectorflow-agent
+    image: ghcr.io/terrifiedbug/vectorflow-agent:${VF_VERSION:-latest}
+    depends_on:
+      vectorflow:
+        condition: service_healthy
+    environment:
+      # The agent polls the VectorFlow server on the internal Compose network.
+      VF_URL: http://vectorflow:3000
+      # Set to an enrollment token generated in the VectorFlow UI
+      # (Environments → Generate Enrollment Token).
+      VF_TOKEN: ${VF_ENROLLMENT_TOKEN:?VF_ENROLLMENT_TOKEN must be set to an enrollment token from the VectorFlow UI}
+    volumes:
+      - agent-data:/var/lib/vf-agent
+      - vector-data:/var/lib/vector
     restart: unless-stopped
 
 volumes:
@@ -54,3 +108,9 @@ volumes:
     name: vectorflow-data
   backups:
     name: vectorflow-backups
+  opensearch-data:
+    name: vectorflow-opensearch-data
+  agent-data:
+    name: vectorflow-agent-data
+  vector-data:
+    name: vectorflow-vector-data
