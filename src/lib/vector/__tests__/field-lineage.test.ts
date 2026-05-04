@@ -114,6 +114,83 @@ describe("buildFieldLineage", () => {
     expect(result.fields.find((f) => f.path === ".host")?.status).toBe("added");
   });
 
+  it("collects event types from transforms when deriving metric sink expectations", () => {
+    const metricTransform: Node = {
+      id: "convert",
+      position: { x: 0, y: 0 },
+      data: {
+        componentDef: {
+          kind: "transform",
+          type: "log_to_metric",
+          displayName: "log_to_metric",
+          description: "log_to_metric",
+          category: "test",
+          outputTypes: ["metric"],
+          inputTypes: ["log"],
+          configSchema: {},
+        },
+        componentKey: "log_to_metric_convert",
+        config: {},
+      },
+    };
+    const mixedSink: Node = {
+      id: "sink",
+      position: { x: 0, y: 0 },
+      data: {
+        componentDef: {
+          kind: "sink",
+          type: "http",
+          displayName: "http",
+          description: "http",
+          category: "test",
+          outputTypes: [],
+          inputTypes: ["log", "metric"],
+          configSchema: {},
+        },
+        componentKey: "http_sink",
+        config: {},
+      },
+    };
+    const nodes = [node("source", "source", "file"), metricTransform, mixedSink];
+
+    const result = buildFieldLineage(
+      nodes,
+      [edge("source", "convert"), edge("convert", "sink")],
+      "sink",
+    );
+
+    expect(result.expectations.find((e) => e.path === ".name")).toBeDefined();
+    expect(result.expectations.find((e) => e.path === ".kind")).toBeDefined();
+  });
+
+  it("applies DLP transform changes to configured fields instead of hard-coded .message", () => {
+    const dlpNode: Node = {
+      id: "dlp",
+      position: { x: 0, y: 0 },
+      data: {
+        componentDef: {
+          kind: "transform",
+          type: "dlp_masking",
+          displayName: "dlp_masking",
+          description: "dlp_masking",
+          category: "test",
+          outputTypes: ["log"],
+          inputTypes: ["log"],
+          configSchema: {},
+        },
+        componentKey: "dlp_masking_dlp",
+        config: { fields: ["user.email", "user.name"] },
+      },
+    };
+    const nodes = [node("source", "source", "file"), dlpNode, node("sink", "sink", "elasticsearch")];
+
+    const result = buildFieldLineage(nodes, [edge("source", "dlp"), edge("dlp", "sink")], "sink");
+
+    expect(result.fields.find((f) => f.path === ".user.email")?.lastChangedBy).toBe("dlp");
+    expect(result.fields.find((f) => f.path === ".user.name")?.lastChangedBy).toBe("dlp");
+    expect(result.fields.find((f) => f.path === ".message")?.status).toBe("source");
+  });
+
   it("does not add metric expectations for log-only pipelines to mixed-input sinks", () => {
     const mixedSink: Node = {
       id: "sink",

@@ -247,27 +247,31 @@ function transformChanges(node: Node, fields: Map<string, LineageField>): Lineag
   }
 
   if (componentDef.type.startsWith("dlp_")) {
-    const dlpPath = ".message";
-    const existing = fields.get(dlpPath);
-    const dlpStatus = existing ? "type_changed" : "added";
-    fields.set(dlpPath, {
-      path: dlpPath,
-      type: existing?.type ?? "string",
-      description: "DLP template may redact or mask message content",
-      always: existing?.always ?? true,
-      status: dlpStatus,
-      sourceNodeId: existing?.sourceNodeId ?? node.id,
-      sourceComponent: existing?.sourceComponent ?? nodeLabel(node),
-      lastChangedBy: node.id,
-      previousPath: existing?.previousPath,
-    });
-    return [
-      {
+    const configuredFields = Array.isArray(config.fields) && (config.fields as unknown[]).length > 0
+      ? (config.fields as string[]).map(fieldPath)
+      : [".message"];
+    const changes: LineageChange[] = [];
+    for (const dlpPath of configuredFields) {
+      const existing = fields.get(dlpPath);
+      const dlpStatus = existing ? "type_changed" : "added";
+      fields.set(dlpPath, {
+        path: dlpPath,
+        type: existing?.type ?? "string",
+        description: "DLP template may redact or mask message content",
+        always: existing?.always ?? true,
+        status: dlpStatus,
+        sourceNodeId: existing?.sourceNodeId ?? node.id,
+        sourceComponent: existing?.sourceComponent ?? nodeLabel(node),
+        lastChangedBy: node.id,
+        previousPath: existing?.previousPath,
+      });
+      changes.push({
         path: dlpPath,
         status: dlpStatus,
         description: "DLP template may redact or mask message content",
-      },
-    ];
+      });
+    }
+    return changes;
   }
 
   return [];
@@ -346,6 +350,7 @@ export function buildFieldLineage(nodes: Node[], edges: Edge[], selectedNodeId: 
       for (const type of componentDef.outputTypes) upstreamEventTypes.add(type);
       changes = addSourceFields(node, fields);
     } else if (componentDef.kind === "transform") {
+      for (const type of componentDef.outputTypes) upstreamEventTypes.add(type);
       changes = transformChanges(node, fields);
     }
 
