@@ -31,6 +31,7 @@ COPY prisma ./prisma
 COPY prisma.config.ts ./prisma.config.ts
 RUN pnpm exec prisma generate
 COPY src ./src
+COPY contracts ./contracts
 COPY public ./public
 ARG NEXT_PUBLIC_VF_DEMO_MODE
 ENV NEXT_PUBLIC_VF_DEMO_MODE=${NEXT_PUBLIC_VF_DEMO_MODE}
