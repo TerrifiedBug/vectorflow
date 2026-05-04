@@ -141,6 +141,8 @@ EOF
 docker compose up -d
 ```
 
+The quick start uses convenience defaults. Before adapting it for production, review the [production hardening guide](https://vectorflow.sh/docs/operations/production-hardening).
+
 Open [http://localhost:3000](http://localhost:3000). The setup wizard creates your admin account.
 
 ### 2. Enroll your first agent
@@ -186,6 +188,8 @@ docker compose up -d
 ```
 
 The Compose stack starts `timescale/timescaledb:latest-pg16`. Keep the `postgres` service name in `DATABASE_URL`; it is the Compose hostname for the TimescaleDB/PostgreSQL container.
+
+Before running Docker Compose in production, review the [production Docker and Helm hardening guide](https://vectorflow.sh/docs/operations/production-hardening). It covers the default all-interface server port, moving image tags, agent host networking, and host access settings.
 
 See [Configuration → Server](#configuration) for all available environment variables.
 
@@ -256,6 +260,8 @@ VF_URL=http://your-server:3000 VF_TOKEN=<token> ./vf-agent
 ```
 
 See [Configuration → Agent](#configuration) for all available environment variables.
+
+For Kubernetes deployments, see the [Helm charts](charts/README.md) and review the [production hardening guide](https://vectorflow.sh/docs/operations/production-hardening) before keeping host networking, host log mounts, or elevated file-read capabilities enabled.
 
 ### API documentation
 
