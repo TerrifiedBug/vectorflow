@@ -52,10 +52,6 @@ function formatFilterLabel(kind: "all" | VectorComponentDef["kind"]) {
   return kind[0].toUpperCase() + kind.slice(1);
 }
 
-function isActivationKey(event: React.KeyboardEvent<HTMLElement>) {
-  return event.key === "Enter" || event.key === " ";
-}
-
 const DraggableItem = memo(function DraggableItem({
   def,
   onAdd,
@@ -74,12 +70,6 @@ const DraggableItem = memo(function DraggableItem({
     event.dataTransfer.effectAllowed = "move";
   }
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
-    if (!isActivationKey(event) || event.repeat) return;
-    event.preventDefault();
-    onAdd(def);
-  }
-
   return (
     <button
       type="button"
@@ -87,7 +77,6 @@ const DraggableItem = memo(function DraggableItem({
       draggable
       onDragStart={handleDragStart}
       onClick={() => onAdd(def)}
-      onKeyDown={handleKeyDown}
       className={cn(
         "flex w-full cursor-grab items-start gap-3 rounded-md border border-l-[3px] bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         meta.borderClass
@@ -473,11 +462,6 @@ export function ComponentPalette() {
                       e.dataTransfer.effectAllowed = "move";
                     }}
                     onClick={() => componentDef && addComponentToCanvas(componentDef, sc)}
-                    onKeyDown={(event) => {
-                      if (!componentDef || !isActivationKey(event) || event.repeat) return;
-                      event.preventDefault();
-                      addComponentToCanvas(componentDef, sc);
-                    }}
                     className={cn(
                       "flex w-full cursor-grab items-start gap-3 rounded-md border border-l-[3px] bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
                       meta.borderClass
