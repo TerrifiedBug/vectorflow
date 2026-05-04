@@ -89,4 +89,30 @@ describe("PUT /api/v1/pipelines/{id}", () => {
     const res = await PUT(req, { params: Promise.resolve({ id: "bad-id" }) });
     expect(res.status).toBe(404);
   });
+
+  it("rejects groupId from a different environment", async () => {
+    prismaMock.pipeline.findUnique.mockResolvedValue({
+      id: "pipe-1",
+      environmentId: "env-1",
+    } as never);
+    prismaMock.pipelineGroup.findUnique.mockResolvedValue({
+      environmentId: "env-2",
+    } as never);
+
+    const req = new NextRequest("http://localhost/api/v1/pipelines/pipe-1", {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer vf_test123",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ groupId: "group-2" }),
+    });
+
+    const res = await PUT(req, { params: Promise.resolve({ id: "pipe-1" }) });
+    expect(res.status).toBe(400);
+
+    const body = await res.json();
+    expect(body.error).toBe("Pipeline group not found in this environment");
+    expect(prismaMock.pipeline.update).not.toHaveBeenCalled();
+  });
 });
