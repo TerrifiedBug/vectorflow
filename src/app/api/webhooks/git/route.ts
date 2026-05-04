@@ -13,7 +13,7 @@ import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { errorLog } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
-  const rateLimited = checkIpRateLimit(req, "webhook", 30);
+  const rateLimited = await checkIpRateLimit(req, "webhook", 30);
   if (rateLimited) return rateLimited;
 
   const body = await req.text();
