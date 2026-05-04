@@ -14,6 +14,7 @@ describe("env validation", () => {
     delete process.env.DATABASE_URL;
     delete process.env.NEXTAUTH_SECRET;
     delete process.env.NEXTAUTH_URL;
+    delete process.env.AUTH_TRUST_HOST;
     delete process.env.VF_LOG_LEVEL;
     delete process.env.LOG_LEVEL;
     delete process.env.DATABASE_POOL_MAX;
@@ -64,6 +65,16 @@ describe("env validation", () => {
     expect(env.DATABASE_URL).toBe("postgresql://user:pass@localhost:5432/vf");
     expect(env.NEXTAUTH_SECRET).toBe("test-secret-at-least-16-chars-long");
     expect(env.NEXTAUTH_URL).toBe("http://localhost:3000");
+  });
+
+  it("allows NEXTAUTH_URL to be omitted when AUTH_TRUST_HOST is enabled", async () => {
+    process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/vf";
+    process.env.NEXTAUTH_SECRET = "test-secret-at-least-16-chars-long";
+    process.env.AUTH_TRUST_HOST = "true";
+
+    const { env } = await import("@/lib/env");
+
+    expect(env.NEXTAUTH_URL).toBeUndefined();
   });
 
   it("applies defaults for optional vars", async () => {

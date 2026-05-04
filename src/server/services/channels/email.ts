@@ -22,6 +22,8 @@ function buildHtml(payload: ChannelPayload): string {
   const message = escapeHtml(payload.message);
   const metric = escapeHtml(payload.metric);
   const severity = escapeHtml(payload.severity);
+  const ownerHint = payload.ownerHint ? escapeHtml(payload.ownerHint) : "";
+  const suggestedAction = payload.suggestedAction ? escapeHtml(payload.suggestedAction) : "";
   const environment = escapeHtml(payload.environment);
   const node = payload.node ? escapeHtml(payload.node) : "";
   const pipeline = payload.pipeline ? escapeHtml(payload.pipeline) : "";
@@ -45,6 +47,8 @@ function buildHtml(payload: ChannelPayload): string {
         <tr><td style="padding: 8px 0; color: #6b7280;">Value</td><td style="padding: 8px 0; color: #111827;">${payload.value.toFixed(2)}</td></tr>
         <tr><td style="padding: 8px 0; color: #6b7280;">Threshold</td><td style="padding: 8px 0; color: #111827;">${payload.threshold}</td></tr>
         <tr><td style="padding: 8px 0; color: #6b7280;">Severity</td><td style="padding: 8px 0; color: #111827;">${severity}</td></tr>
+        ${ownerHint ? `<tr><td style="padding: 8px 0; color: #6b7280;">Owner</td><td style="padding: 8px 0; color: #111827;">${ownerHint}</td></tr>` : ""}
+        ${suggestedAction ? `<tr><td style="padding: 8px 0; color: #6b7280;">Suggested action</td><td style="padding: 8px 0; color: #111827;">${suggestedAction}</td></tr>` : ""}
         <tr><td style="padding: 8px 0; color: #6b7280;">Environment</td><td style="padding: 8px 0; color: #111827;">${environment}</td></tr>
         ${node ? `<tr><td style="padding: 8px 0; color: #6b7280;">Node</td><td style="padding: 8px 0; color: #111827;">${node}</td></tr>` : ""}
         ${pipeline ? `<tr><td style="padding: 8px 0; color: #6b7280;">Pipeline</td><td style="padding: 8px 0; color: #111827;">${pipeline}</td></tr>` : ""}

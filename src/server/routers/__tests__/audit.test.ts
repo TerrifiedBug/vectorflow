@@ -204,7 +204,7 @@ describe("audit.list", () => {
     );
   });
 
-  it("excludes SCIM provisioning actions from the default view", async () => {
+  it("excludes only successful SCIM provisioning actions from the default view", async () => {
     prismaMock.auditLog.findMany.mockResolvedValue([]);
 
     await caller.list({});
@@ -212,7 +212,16 @@ describe("audit.list", () => {
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          AND: [{ NOT: { action: { startsWith: "scim." } } }],
+          AND: [
+            {
+              NOT: {
+                AND: [
+                  { action: { startsWith: "scim." } },
+                  { metadata: { path: ["status"], equals: "success" } },
+                ],
+              },
+            },
+          ],
         },
       }),
     );
@@ -225,9 +234,14 @@ describe("audit.list", () => {
 
     const call = prismaMock.auditLog.findMany.mock.calls[0]?.[0];
     const conditions = (call as { where: { AND: unknown[] } }).where.AND;
-    // No NOT-startsWith-scim condition should be present
+    // No successful-SCIM exclusion should be present
     expect(conditions).not.toContainEqual({
-      NOT: { action: { startsWith: "scim." } },
+      NOT: {
+        AND: [
+          { action: { startsWith: "scim." } },
+          { metadata: { path: ["status"], equals: "success" } },
+        ],
+      },
     });
   });
 
@@ -239,7 +253,12 @@ describe("audit.list", () => {
     const call = prismaMock.auditLog.findMany.mock.calls[0]?.[0];
     const conditions = (call as { where: { AND: unknown[] } }).where.AND;
     expect(conditions).not.toContainEqual({
-      NOT: { action: { startsWith: "scim." } },
+      NOT: {
+        AND: [
+          { action: { startsWith: "scim." } },
+          { metadata: { path: ["status"], equals: "success" } },
+        ],
+      },
     });
   });
 
