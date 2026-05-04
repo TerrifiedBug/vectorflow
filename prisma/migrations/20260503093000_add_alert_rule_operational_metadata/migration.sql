@@ -1,3 +1,7 @@
+-- promotion_completed was declared in the Prisma schema but never added to
+-- the database enum. Add it before any statement that references it.
+ALTER TYPE "AlertMetric" ADD VALUE IF NOT EXISTS 'promotion_completed';
+
 -- Alert rules need explicit operational ownership and action guidance so
 -- delivered alerts are actionable without relying on template prose.
 ALTER TABLE "AlertRule"
