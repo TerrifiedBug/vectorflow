@@ -3,6 +3,8 @@ export interface ChannelPayload {
   status: "firing" | "resolved";
   ruleName: string;
   severity: string;
+  ownerHint?: string;
+  suggestedAction?: string;
   environment: string;
   team?: string;
   node?: string;

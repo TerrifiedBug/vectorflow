@@ -243,6 +243,7 @@ const AlertMetric = z
   .openapi("AlertMetric");
 
 const AlertCondition = z.enum(["gt", "lt", "eq"]).openapi("AlertCondition");
+const AlertSeverity = z.enum(["info", "warning", "critical"]).openapi("AlertSeverity");
 
 const AlertRuleSchema = z
   .object({
@@ -255,6 +256,12 @@ const AlertRuleSchema = z
     condition: AlertCondition,
     threshold: z.number().openapi({ example: 90 }),
     durationSeconds: z.number().openapi({ example: 60 }),
+    severity: AlertSeverity.openapi({ example: "warning" }),
+    ownerHint: z.string().openapi({ example: "platform-ops" }),
+    suggestedAction: z.string().openapi({
+      example:
+        "Check node CPU saturation, noisy pipelines, and recent deploys; scale or move workloads if sustained.",
+    }),
     createdAt: z.string().openapi({ format: "date-time" }),
     updatedAt: z.string().openapi({ format: "date-time" }),
     pipeline: z
@@ -847,6 +854,12 @@ registry.registerPath({
               .number()
               .optional()
               .openapi({ example: 60, description: "Duration the condition must persist before firing. Defaults to 60." }),
+            severity: AlertSeverity.optional().openapi({ example: "warning" }),
+            ownerHint: z.string().optional().openapi({ example: "platform-ops" }),
+            suggestedAction: z.string().optional().openapi({
+              example:
+                "Check node CPU saturation, noisy pipelines, and recent deploys; scale or move workloads if sustained.",
+            }),
           }),
         },
       },
