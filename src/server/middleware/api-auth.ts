@@ -1,5 +1,9 @@
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
+import {
+  SERVICE_ACCOUNT_PERMISSIONS,
+  type ServiceAccountPermission,
+} from "@/lib/service-account-permissions";
 
 export interface ServiceAccountContext {
   serviceAccountId: string;
@@ -46,26 +50,6 @@ export function hasPermission(
 }
 
 /** All valid service account permission strings. */
-export const VALID_PERMISSIONS = [
-  // Existing
-  "pipelines.read",
-  "pipelines.deploy",
-  "nodes.read",
-  "nodes.manage",
-  "secrets.read",
-  "secrets.manage",
-  "alerts.read",
-  "alerts.manage",
-  "audit.read",
-  "audit.export",
-  // New (API v1 completeness)
-  "pipelines.write",
-  "pipelines.promote",
-  "metrics.read",
-  "deploy-requests.manage",
-  "node-groups.read",
-  "node-groups.manage",
-  "environments.read",
-] as const;
+export const VALID_PERMISSIONS = SERVICE_ACCOUNT_PERMISSIONS;
 
-export type Permission = (typeof VALID_PERMISSIONS)[number];
+export type Permission = ServiceAccountPermission;
