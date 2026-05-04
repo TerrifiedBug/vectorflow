@@ -1,0 +1,10 @@
+{
+  "requestId": "tap-1",
+  "pipelineId": "pipe-1",
+  "componentId": "demo",
+  "events": [
+    {
+      "message": "live event"
+    }
+  ]
+}

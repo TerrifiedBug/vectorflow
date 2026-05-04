@@ -1,20 +1,11 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { authenticateAgent } from "@/server/services/agent-auth";
 import { getActiveTap } from "@/server/services/active-taps";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { errorLog } from "@/lib/logger";
 import type { TapEventSSE, TapStoppedSSE } from "@/lib/sse/types";
-
-const tapPayloadSchema = z.object({
-  requestId: z.string(),
-  pipelineId: z.string(),
-  componentId: z.string(),
-  events: z.array(z.unknown()).optional(),
-  status: z.enum(["stopped"]).optional(),
-  reason: z.string().optional(),
-});
+import { tapEventPayloadSchema } from "../../../../../contracts/agent/v1/payloads";
 
 export async function POST(request: Request) {
   const rateLimited = await checkTokenRateLimit(request, "agent-tap-events", 120);
@@ -27,7 +18,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const parsed = tapPayloadSchema.safeParse(body);
+    const parsed = tapEventPayloadSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid payload", details: parsed.error.issues },

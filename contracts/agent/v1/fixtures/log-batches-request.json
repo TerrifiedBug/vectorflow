@@ -1,0 +1,9 @@
+[
+  {
+    "pipelineId": "pipe-1",
+    "lines": [
+      "2026-05-03T15:00:00Z INFO pipeline started",
+      "2026-05-03T15:00:01Z INFO processed 10 events"
+    ]
+  }
+]
