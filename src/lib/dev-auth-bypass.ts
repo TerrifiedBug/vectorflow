@@ -58,6 +58,14 @@ function forwardedClientAddress(headers: Headers): string | null {
   return forwardedFor || headers.get("x-real-ip")?.trim() || null;
 }
 
+function hasForwardedProxyHeaders(headers: Headers): boolean {
+  return (
+    headers.has("x-forwarded-for") ||
+    headers.has("x-real-ip") ||
+    headers.has("x-forwarded-host")
+  );
+}
+
 export function isDevAuthBypassEnabledForRequest(
   env: EnvLike = process.env,
   options: RequestOptions = {},
@@ -72,10 +80,17 @@ export function isDevAuthBypassRequestAllowed(
   request: RequestLike,
   env: EnvLike = process.env,
 ): boolean {
-  const requestHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? new URL(request.url).host;
-  const clientAddress = forwardedClientAddress(request.headers);
+  if (!isDevAuthBypassEnabled(env)) return false;
+  if (env.DEV_AUTH_BYPASS_ALLOW_NETWORK === "1") return true;
 
-  return isDevAuthBypassEnabledForRequest(env, { requestHost, clientAddress });
+  const requestHost = new URL(request.url).host;
+  if (!isLocalAddress(requestHost)) return false;
+
+  if (env.VF_TRUST_PROXY_HEADERS === "true") {
+    return isLocalAddress(forwardedClientAddress(request.headers));
+  }
+
+  return !hasForwardedProxyHeaders(request.headers);
 }
 
 export function logDevAuthBypassWarning(env: EnvLike = process.env): void {

@@ -38,6 +38,7 @@ describe("dev auth bypass", () => {
       DEV_AUTH_BYPASS: "1",
     };
 
+    expect(isDevAuthBypassRequestAllowed(new Request("http://localhost:3000/api/auth/session"), env)).toBe(true);
     expect(
       isDevAuthBypassRequestAllowed(
         new Request("http://localhost:3000/api/auth/session", {
@@ -45,8 +46,7 @@ describe("dev auth bypass", () => {
         }),
         env,
       ),
-    ).toBe(true);
-    expect(isDevAuthBypassRequestAllowed(new Request("http://localhost:3000/api/auth/session"), env)).toBe(false);
+    ).toBe(false);
     expect(isDevAuthBypassRequestAllowed(new Request("http://192.168.1.50:3000/api/auth/session"), env)).toBe(
       false,
     );
@@ -114,13 +114,31 @@ describe("dev auth bypass", () => {
   it("does not enable the bypass when the client address is missing", () => {
     const env = { NODE_ENV: "development", DEV_AUTH_BYPASS: "1" };
 
+    expect(isDevAuthBypassEnabledForRequest(env, { requestHost: "localhost:3000" })).toBe(false);
+  });
+
+  it("rejects spoofable proxy headers unless trusted proxy headers are explicitly enabled", () => {
+    const env = { NODE_ENV: "development", DEV_AUTH_BYPASS: "1" };
+
     expect(
       isDevAuthBypassRequestAllowed(
         new Request("http://localhost:3000/api/auth/session", {
-          headers: { host: "localhost:3000" },
+          headers: {
+            "x-forwarded-for": "127.0.0.1",
+            "x-forwarded-host": "localhost:3000",
+          },
         }),
         env,
       ),
     ).toBe(false);
+
+    expect(
+      isDevAuthBypassRequestAllowed(
+        new Request("http://localhost:3000/api/auth/session", {
+          headers: { "x-forwarded-for": "127.0.0.1" },
+        }),
+        { ...env, VF_TRUST_PROXY_HEADERS: "true" },
+      ),
+    ).toBe(true);
   });
 });
