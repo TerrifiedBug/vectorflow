@@ -172,6 +172,10 @@ test.describe("PR smoke e2e", () => {
     const pipelineConfig = configBody.pipelines.find(
       (pipeline) => pipeline.pipelineId === seed.pipelineId,
     );
+    expect(
+      pipelineConfig,
+      `seeded pipeline ${seed.pipelineId} not found in /api/agent/config response`,
+    ).toBeDefined();
     expect(pipelineConfig).toEqual(
       expect.objectContaining({
         checksum: expect.any(String),
@@ -194,7 +198,7 @@ test.describe("PR smoke e2e", () => {
             eventsIn: 10,
             eventsOut: 10,
             errorsTotal: 0,
-            configChecksum: pipelineConfig?.checksum,
+            configChecksum: pipelineConfig!.checksum,
           },
         ],
         hostMetrics: {
@@ -237,7 +241,7 @@ test.describe("PR smoke e2e", () => {
       },
     });
     expect(pipelineStatus).toEqual({
-      configChecksum: pipelineConfig?.checksum,
+      configChecksum: pipelineConfig!.checksum,
       status: "RUNNING",
     });
   });
