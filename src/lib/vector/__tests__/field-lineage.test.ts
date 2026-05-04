@@ -275,9 +275,7 @@ describe("buildFieldLineage", () => {
       node("source", "source", "file"),
       node("sink", "sink", "elasticsearch", {
         id_key: "event_id",
-        data_stream: {
-          auto_routing: true,
-        },
+        // data_stream not configured — no auto_routing expectations
       }),
     ];
 
@@ -286,10 +284,91 @@ describe("buildFieldLineage", () => {
     expect(result.expectations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ path: ".event_id", status: "missing" }),
+      ]),
+    );
+  });
+
+  it("skips data_stream field expectations when sync_fields is not explicitly false", () => {
+    // sync_fields defaults to true — ES auto-fills these fields; no "missing" warning needed
+    const nodes = [
+      node("source", "source", "file"),
+      node("sink", "sink", "elasticsearch", {
+        data_stream: { auto_routing: true },
+      }),
+    ];
+
+    const result = buildFieldLineage(nodes, [edge("source", "sink")], "sink");
+
+    expect(result.expectations.find((e) => e.path === ".data_stream.type")).toBeUndefined();
+    expect(result.expectations.find((e) => e.path === ".data_stream.dataset")).toBeUndefined();
+    expect(result.expectations.find((e) => e.path === ".data_stream.namespace")).toBeUndefined();
+  });
+
+  it("flags data_stream fields as expectations when sync_fields is explicitly false", () => {
+    const nodes = [
+      node("source", "source", "file"),
+      node("sink", "sink", "elasticsearch", {
+        data_stream: { auto_routing: true, sync_fields: false },
+      }),
+    ];
+
+    const result = buildFieldLineage(nodes, [edge("source", "sink")], "sink");
+
+    expect(result.expectations).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({ path: ".data_stream.type", status: "missing" }),
         expect.objectContaining({ path: ".data_stream.dataset", status: "missing" }),
         expect.objectContaining({ path: ".data_stream.namespace", status: "missing" }),
       ]),
     );
+  });
+
+  it("seeds metric fields for type-changing transforms like log_to_metric", () => {
+    const logToMetric: Node = {
+      id: "convert",
+      position: { x: 0, y: 0 },
+      data: {
+        componentDef: {
+          kind: "transform",
+          type: "log_to_metric",
+          displayName: "Log to Metric",
+          description: "log_to_metric",
+          category: "test",
+          outputTypes: ["metric"],
+          inputTypes: ["log"],
+          configSchema: {},
+        },
+        componentKey: "log_to_metric_convert",
+        config: {},
+      },
+    };
+    const metricSink: Node = {
+      id: "sink",
+      position: { x: 0, y: 0 },
+      data: {
+        componentDef: {
+          kind: "sink",
+          type: "prometheus_exporter",
+          displayName: "prometheus_exporter",
+          description: "prometheus_exporter",
+          category: "test",
+          outputTypes: [],
+          inputTypes: ["metric"],
+          configSchema: {},
+        },
+        componentKey: "prom_sink",
+        config: {},
+      },
+    };
+    const nodes = [node("source", "source", "file"), logToMetric, metricSink];
+
+    const result = buildFieldLineage(
+      nodes,
+      [edge("source", "convert"), edge("convert", "sink")],
+      "sink",
+    );
+
+    expect(result.fields.find((f) => f.path === ".name")?.status).toBe("added");
+    expect(result.fields.find((f) => f.path === ".kind")?.status).toBe("added");
   });
 });

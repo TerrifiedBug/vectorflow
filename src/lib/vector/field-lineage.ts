@@ -274,6 +274,32 @@ function transformChanges(node: Node, fields: Map<string, LineageField>): Lineag
     return changes;
   }
 
+  // For transforms that change event type (e.g. log_to_metric), seed fallback fields
+  // for output types not present in input types so downstream expectations resolve correctly.
+  const inputTypeSet = new Set(componentDef.inputTypes ?? []);
+  const newOutputTypes = componentDef.outputTypes.filter((t) => !inputTypeSet.has(t));
+  if (newOutputTypes.length > 0) {
+    const changes: LineageChange[] = [];
+    for (const type of newOutputTypes) {
+      for (const field of fallbackFieldsForDataType(type)) {
+        const path = fieldPath(field.path);
+        if (fields.has(path)) continue;
+        fields.set(path, {
+          path,
+          type: field.type,
+          description: field.description,
+          always: field.always,
+          status: "added",
+          sourceNodeId: node.id,
+          sourceComponent: nodeLabel(node),
+          lastChangedBy: node.id,
+        });
+        changes.push({ path, status: "added", description: `Added by ${nodeLabel(node)}` });
+      }
+    }
+    return changes;
+  }
+
   return [];
 }
 
@@ -300,7 +326,9 @@ function sinkExpectations(node: Node, fields: Map<string, LineageField>, upstrea
   }
 
   const dataStream = readNestedObject(config.data_stream);
-  if (dataStream.auto_routing === true) {
+  // sync_fields defaults to true — ES auto-populates data_stream.* fields when enabled.
+  // Only flag missing data_stream fields when sync_fields is explicitly disabled.
+  if (dataStream.auto_routing === true && dataStream.sync_fields === false) {
     expectations.push(
       { path: ".data_stream.type", type: "string", reason: "Required for Elasticsearch data stream auto-routing" },
       { path: ".data_stream.dataset", type: "string", reason: "Required for Elasticsearch data stream auto-routing" },
