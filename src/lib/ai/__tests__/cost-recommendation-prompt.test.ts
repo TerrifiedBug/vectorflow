@@ -1,5 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { buildCostRecommendationPrompt } from "@/lib/ai/cost-recommendation-prompt";
+
+vi.mock("@/server/services/context7", () => ({
+  lookupVectorComponent: vi.fn().mockResolvedValue(""),
+  lookupVrlFunction: vi.fn().mockResolvedValue(""),
+  lookupPipelineComponents: vi.fn().mockResolvedValue(""),
+  isContext7Configured: vi.fn().mockReturnValue(false),
+}));
 
 describe("buildCostRecommendationPrompt", () => {
   it("includes pipeline suggestion schema for LOW_REDUCTION with nodes", async () => {
