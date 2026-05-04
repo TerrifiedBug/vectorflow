@@ -77,6 +77,12 @@ const DraggableItem = memo(function DraggableItem({
       draggable
       onDragStart={handleDragStart}
       onClick={() => onAdd(def)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onAdd(def);
+        }
+      }}
       className={cn(
         "flex w-full cursor-grab items-start gap-3 rounded-md border border-l-[3px] bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         meta.borderClass
@@ -462,6 +468,12 @@ export function ComponentPalette() {
                       e.dataTransfer.effectAllowed = "move";
                     }}
                     onClick={() => componentDef && addComponentToCanvas(componentDef, sc)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        if (componentDef) addComponentToCanvas(componentDef, sc);
+                      }
+                    }}
                     className={cn(
                       "flex w-full cursor-grab items-start gap-3 rounded-md border border-l-[3px] bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
                       meta.borderClass
