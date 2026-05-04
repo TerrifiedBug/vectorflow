@@ -20,40 +20,48 @@ on:
   schedule:
     - cron: "30 5 * * 1" # Monday 5:30 UTC
 
-permissions:
-  security-events: write
-  contents: read
+permissions: read-all
 
 jobs:
   analyze-javascript:
     name: Analyze TypeScript/JavaScript
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@53e96ec3b35fce51c141c0d6f0e31028a448722d # v3
         with:
           languages: javascript-typescript
           queries: security-extended
 
-      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/autobuild@53e96ec3b35fce51c141c0d6f0e31028a448722d # v3
 
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@53e96ec3b35fce51c141c0d6f0e31028a448722d # v3
         with:
           category: "/language:javascript-typescript"
 
   analyze-go:
     name: Analyze Go
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.22"
           cache-dependency-path: agent/go.sum
 
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@53e96ec3b35fce51c141c0d6f0e31028a448722d # v3
         with:
           languages: go
           queries: security-extended
@@ -62,6 +70,6 @@ jobs:
         working-directory: agent
         run: go build ./...
 
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@53e96ec3b35fce51c141c0d6f0e31028a448722d # v3
         with:
           category: "/language:go"
