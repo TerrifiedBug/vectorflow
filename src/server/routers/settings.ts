@@ -613,4 +613,227 @@ export const settingsRouter = router({
       // Return the plaintext token (shown once to the user)
       return { token };
     }),
+
+  // ─── Production Readiness ────────────────────────────────────────────────
+
+  productionReadiness: protectedProcedure
+    .use(requireSuperAdmin())
+    .query(async () => {
+      const checkedAt = new Date().toISOString();
+
+      type SignalStatus = "ok" | "warn" | "error" | "unknown";
+      type Signal = {
+        id: string;
+        label: string;
+        status: SignalStatus;
+        detail: string;
+        href?: string;
+      };
+
+      // Database latency check runs first and independently so a DB outage
+      // still produces a payload with database: error rather than a 500.
+      let dbLatencyMs: number | null = null;
+      let dbOk = false;
+      try {
+        const start = Date.now();
+        await prisma.$queryRaw`SELECT 1`;
+        dbLatencyMs = Date.now() - start;
+        dbOk = true;
+      } catch {
+        dbOk = false;
+      }
+
+      // Config queries — skipped entirely when DB ping already failed to avoid
+      // additional connection timeouts during an outage. When DB is up, wrapped
+      // in try/catch so an unexpected failure still degrades gracefully.
+      type NodeStatRow = { status: string; _count: { id: number } };
+      let settings: Awaited<ReturnType<typeof getOrCreateSettings>> | null = null;
+      let nodeStats: NodeStatRow[] = [];
+      let webhookCount = 0;
+      let auditPipeline: { isDraft: boolean; deployedAt: Date | null } | null = null;
+      let configAvailable = false;
+      if (dbOk) {
+        try {
+          [settings, nodeStats, webhookCount, auditPipeline] = await Promise.all([
+            getOrCreateSettings(),
+            prisma.vectorNode.groupBy({
+              by: ["status"],
+              _count: { id: true },
+            }),
+            prisma.webhookEndpoint.count({ where: { enabled: true } }),
+            prisma.pipeline.findFirst({
+              where: { isSystem: true },
+              select: { isDraft: true, deployedAt: true },
+            }),
+          ]);
+          configAvailable = true;
+        } catch {
+          configAvailable = false;
+        }
+      }
+
+      const totalNodes = nodeStats.reduce((sum, g) => sum + g._count.id, 0);
+      const unhealthyNodes = nodeStats
+        .filter((g) => g.status === "DEGRADED" || g.status === "UNREACHABLE" || g.status === "UNKNOWN")
+        .reduce((sum, g) => sum + g._count.id, 0);
+
+      const currentVersion = process.env.VF_VERSION ?? "dev";
+      const latestVersion = settings?.latestServerRelease ?? null;
+      const updateAvailable =
+        latestVersion &&
+        latestVersion !== currentVersion &&
+        currentVersion !== "dev";
+
+      const backupOk =
+        !!settings?.backupEnabled &&
+        !!settings?.lastBackupAt &&
+        settings?.lastBackupStatus !== "failed" &&
+        Date.now() - new Date(settings.lastBackupAt).getTime() < 48 * 60 * 60 * 1000;
+
+      const auditShippingActive =
+        !!auditPipeline && !auditPipeline.isDraft && !!auditPipeline.deployedAt;
+
+      const signals: Signal[] = [
+        // Database
+        {
+          id: "database",
+          label: "Database",
+          status: dbOk ? (dbLatencyMs !== null && dbLatencyMs < 200 ? "ok" : "warn") : "error",
+          detail: dbOk
+            ? `Connected — ${dbLatencyMs}ms`
+            : "Database unreachable",
+        },
+        // Backups
+        {
+          id: "backup",
+          label: "Backups",
+          status: !configAvailable
+            ? "unknown"
+            : !settings?.backupEnabled
+            ? "warn"
+            : backupOk
+            ? "ok"
+            : settings?.lastBackupStatus === "failed"
+            ? "error"
+            : "warn",
+          detail: !configAvailable
+            ? "Could not read backup configuration"
+            : !settings?.backupEnabled
+            ? "Scheduled backups disabled"
+            : settings?.lastBackupStatus === "failed"
+            ? `Last backup failed: ${settings?.lastBackupError ?? "unknown error"}`
+            : settings?.lastBackupAt
+            ? `Last backup ${new Date(settings.lastBackupAt).toLocaleDateString()}`
+            : "No backup recorded",
+          href: "/settings/backup",
+        },
+        // Version
+        {
+          id: "version",
+          label: "Server version",
+          status: !configAvailable
+            ? "unknown"
+            : !latestVersion && currentVersion !== "dev"
+            ? "unknown"
+            : updateAvailable
+            ? "warn"
+            : "ok",
+          detail: !configAvailable
+            ? "Could not read version data"
+            : updateAvailable
+            ? `Update available: ${latestVersion}`
+            : !latestVersion && currentVersion !== "dev"
+            ? `v${currentVersion} — no release data fetched yet`
+            : currentVersion === "dev"
+            ? "Development build"
+            : `v${currentVersion} is current`,
+          href: "/settings/version",
+        },
+        // OIDC / Auth
+        {
+          id: "oidc",
+          label: "SSO / OIDC",
+          status: !configAvailable ? "unknown" : settings?.oidcIssuer ? "ok" : "warn",
+          detail: !configAvailable
+            ? "Could not read auth configuration"
+            : settings?.oidcIssuer
+            ? `Configured (${settings.oidcDisplayName ?? "SSO"})`
+            : "No OIDC provider configured — using local auth only",
+          href: "/settings/auth",
+        },
+        // SCIM
+        {
+          id: "scim",
+          label: "SCIM provisioning",
+          status: !configAvailable ? "unknown" : settings?.scimEnabled ? "ok" : "warn",
+          detail: !configAvailable
+            ? "Could not read SCIM configuration"
+            : settings?.scimEnabled
+            ? "Enabled"
+            : "Disabled — user provisioning is manual",
+          href: "/settings/scim",
+        },
+        // Fleet
+        {
+          id: "fleet",
+          label: "Fleet",
+          status: !configAvailable
+            ? "unknown"
+            : totalNodes === 0
+            ? "warn"
+            : unhealthyNodes > 0
+            ? "warn"
+            : "ok",
+          detail: !configAvailable
+            ? "Could not read fleet data"
+            : totalNodes === 0
+            ? "No nodes registered"
+            : unhealthyNodes > 0
+            ? `${unhealthyNodes} of ${totalNodes} node${totalNodes !== 1 ? "s" : ""} unhealthy`
+            : `${totalNodes} node${totalNodes !== 1 ? "s" : ""} healthy`,
+          href: "/settings/fleet",
+        },
+        // Audit log shipping
+        {
+          id: "audit-shipping",
+          label: "Audit log shipping",
+          status: !configAvailable ? "unknown" : auditShippingActive ? "ok" : "warn",
+          detail: !configAvailable
+            ? "Could not read audit pipeline status"
+            : auditShippingActive
+            ? "Active — audit logs shipping to configured destination"
+            : "Not deployed — audit events stay local only",
+          href: "/settings/audit-shipping",
+        },
+        // Outbound webhooks
+        {
+          id: "webhooks",
+          label: "Outbound webhooks",
+          status: !configAvailable ? "unknown" : webhookCount > 0 ? "ok" : "warn",
+          detail: !configAvailable
+            ? "Could not read webhook configuration"
+            : webhookCount > 0
+            ? `${webhookCount} active webhook${webhookCount !== 1 ? "s" : ""}`
+            : "No outbound webhooks configured",
+          href: "/settings/webhooks",
+        },
+        // Sentry
+        {
+          id: "sentry",
+          label: "Error tracking (Sentry)",
+          status: process.env.SENTRY_DSN ? "ok" : "warn",
+          detail: process.env.SENTRY_DSN
+            ? "DSN configured"
+            : "SENTRY_DSN not set — frontend errors not tracked",
+        },
+      ];
+
+      const errorCount = signals.filter((s) => s.status === "error").length;
+      const warnCount = signals.filter((s) => s.status === "warn").length;
+      const unknownCount = signals.filter((s) => s.status === "unknown").length;
+      const overallStatus: SignalStatus =
+        errorCount > 0 ? "error" : warnCount > 0 || unknownCount > 0 ? "warn" : "ok";
+
+      return { checkedAt, overallStatus, signals };
+    }),
 });
