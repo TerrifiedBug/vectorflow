@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 
+const AGGREGATE_PIPELINE_METRIC_FILTER = {
+  componentId: null,
+  nodeId: null,
+} as const;
+
 export type SliStatus = "healthy" | "degraded" | "no_data";
 
 export interface SliResult {
@@ -27,7 +32,7 @@ export async function evaluatePipelineHealth(pipelineId: string): Promise<{
 
     // Use aggregate to avoid transferring all metric rows to the application
     const agg = await prisma.pipelineMetric.aggregate({
-      where: { pipelineId, componentId: null, timestamp: { gte: since } },
+      where: { pipelineId, ...AGGREGATE_PIPELINE_METRIC_FILTER, timestamp: { gte: since } },
       _sum: { eventsIn: true, errorsTotal: true, eventsDiscarded: true },
       _count: true,
     });
@@ -76,7 +81,12 @@ export async function evaluatePipelineHealth(pipelineId: string): Promise<{
       }
       case "latency_mean": {
         const latencyAgg = await prisma.pipelineMetric.aggregate({
-          where: { pipelineId, componentId: null, timestamp: { gte: since }, latencyMeanMs: { not: null } },
+          where: {
+            pipelineId,
+            ...AGGREGATE_PIPELINE_METRIC_FILTER,
+            timestamp: { gte: since },
+            latencyMeanMs: { not: null },
+          },
           _avg: { latencyMeanMs: true },
           _count: true,
         });
