@@ -194,6 +194,15 @@ The Compose stack starts `timescale/timescaledb:latest-pg16`. Keep the `postgres
 
 Before running Docker Compose in production, review the [production Docker and Helm hardening guide](https://vectorflow.sh/docs/operations/production-hardening). It covers the default all-interface server port, moving image tags, agent host networking, and host access settings.
 
+For a two-replica high-availability stack behind nginx, use the HA Compose file:
+
+```bash
+cd vectorflow/docker/server
+docker compose -f docker-compose.ha.yml up -d
+```
+
+The HA stack runs `vf1` and `vf2` behind nginx, with Redis for cross-instance coordination. Both app replicas and nginx expose Docker healthchecks against `/api/health/ready`; nginx waits for at least one app replica to report ready before it starts accepting traffic, then retries failed or unready upstreams against the other replica.
+
 See [Configuration → Server](#configuration) for all available environment variables.
 
 ### Agent

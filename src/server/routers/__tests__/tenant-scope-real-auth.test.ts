@@ -96,6 +96,7 @@ import { metricsRouter } from "@/server/routers/metrics";
 import { dashboardRouter } from "@/server/routers/dashboard";
 import { auditRouter } from "@/server/routers/audit";
 import { pipelineRouter } from "@/server/routers/pipeline";
+import { pipelineBulkRouter } from "@/server/routers/pipeline-bulk";
 import { pipelineObservabilityRouter } from "@/server/routers/pipeline-observability";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -105,6 +106,7 @@ const metricsCaller = metricsRouter.createCaller(testContext);
 const dashboardCaller = dashboardRouter.createCaller(testContext);
 const auditCaller = auditRouter.createCaller(testContext);
 const pipelineCaller = pipelineRouter.createCaller(testContext);
+const pipelineBulkCaller = pipelineBulkRouter.createCaller(testContext);
 const pipelineObservabilityCaller = pipelineObservabilityRouter.createCaller(testContext);
 
 const teamOneAuditScope = expect.objectContaining({
@@ -324,5 +326,41 @@ describe("tenant scoping with real authorization middleware", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
 
     expect(mockBatchEvaluatePipelineHealth).not.toHaveBeenCalled();
+  });
+
+  it("rejects mixed-team pipeline bulk tag updates before mutation side effects", async () => {
+    prismaMock.pipeline.findUnique.mockResolvedValue({
+      environment: { teamId: "team-1" },
+    } as never);
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.teamMember.findUnique.mockResolvedValue({ role: "EDITOR" } as never);
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "pipe-1", environment: { teamId: "team-1" } },
+      { id: "pipe-2", environment: { teamId: "team-2" } },
+    ] as never);
+
+    await expect(
+      pipelineBulkCaller.bulkAddTags({
+        pipelineIds: ["pipe-1", "pipe-2"],
+        tags: ["prod"],
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    expect(prismaMock.team.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.pipeline.update).not.toHaveBeenCalled();
+  });
+
+  it("blocks pipeline observability reads for pipelines outside the caller's teams", async () => {
+    prismaMock.pipeline.findUnique.mockResolvedValue({
+      environment: { teamId: "team-2" },
+    } as never);
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.teamMember.findUnique.mockResolvedValue(null);
+
+    await expect(
+      pipelineObservabilityCaller.metrics({ pipelineId: "pipe-team-2", hours: 24 }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    expect(prismaMock.pipelineMetric.findMany).not.toHaveBeenCalled();
   });
 });

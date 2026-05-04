@@ -1,5 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import { isDevAuthBypassRequestAllowed } from "@/lib/dev-auth-bypass";
 
 /**
  * Shared auth configuration used by both the full auth setup (auth.ts)
@@ -22,7 +23,8 @@ export const authConfig: NextAuthConfig = {
     }),
   ],
   callbacks: {
-    authorized({ auth, request: { nextUrl } }) {
+    authorized({ auth, request }) {
+      const { nextUrl } = request;
       const isLoggedIn = !!auth?.user;
       const isAuthPage =
         nextUrl.pathname.startsWith("/login") ||
@@ -38,6 +40,8 @@ export const authConfig: NextAuthConfig = {
       // REST API v1 (uses Bearer token auth), agent API (uses enrollment tokens),
       // and SCIM API (uses bearer token auth)
       if (isAuthPage || isApiAuth || isHealth || isSetupApi || isApiV1 || isAgentApi || isScimApi) return true;
+
+      if (isDevAuthBypassRequestAllowed(request)) return true;
 
       // Redirect unauthenticated users to login
       if (!isLoggedIn) return false;
