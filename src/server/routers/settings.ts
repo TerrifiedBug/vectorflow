@@ -648,7 +648,7 @@ export const settingsRouter = router({
 
       const totalNodes = nodeStats.reduce((sum, g) => sum + g._count.id, 0);
       const unhealthyNodes = nodeStats
-        .filter((g) => g.status === "DEGRADED" || g.status === "UNREACHABLE")
+        .filter((g) => g.status === "DEGRADED" || g.status === "UNREACHABLE" || g.status === "UNKNOWN")
         .reduce((sum, g) => sum + g._count.id, 0);
 
       const currentVersion = process.env.VF_VERSION ?? "dev";
@@ -710,10 +710,18 @@ export const settingsRouter = router({
         {
           id: "version",
           label: "Server version",
-          status: updateAvailable ? "warn" : "ok",
+          status: !latestVersion && currentVersion !== "dev"
+            ? "unknown"
+            : updateAvailable
+            ? "warn"
+            : "ok",
           detail: updateAvailable
             ? `Update available: ${latestVersion}`
-            : `${currentVersion === "dev" ? "Development build" : `v${currentVersion} is current`}`,
+            : !latestVersion && currentVersion !== "dev"
+            ? `v${currentVersion} — no release data fetched yet`
+            : currentVersion === "dev"
+            ? "Development build"
+            : `v${currentVersion} is current`,
           href: "/settings/version",
         },
         // OIDC / Auth

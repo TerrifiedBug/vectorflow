@@ -473,6 +473,40 @@ describe("settingsRouter", () => {
       expect(fleetSignal?.status).toBe("warn");
     });
 
+    it("warns for UNKNOWN fleet nodes (not treated as healthy)", async () => {
+      setupReadinessMocks();
+      // @ts-expect-error - groupBy mock typing is complex
+      prismaMock.vectorNode.groupBy.mockResolvedValue([
+        { status: "UNKNOWN", _count: { id: 3 } },
+      ]);
+
+      const result = await caller.productionReadiness();
+
+      const signals = result.signals as ReadinessSignal[];
+      const fleetSignal = signals.find((s) => s.id === "fleet");
+      expect(fleetSignal?.status).toBe("warn");
+    });
+
+    it("returns unknown version status when no release data fetched", async () => {
+      const originalVfVersion = process.env.VF_VERSION;
+      process.env.VF_VERSION = "1.2.3";
+      try {
+        setupReadinessMocks({ latestServerRelease: null });
+
+        const result = await caller.productionReadiness();
+
+        const signals = result.signals as ReadinessSignal[];
+        const versionSignal = signals.find((s) => s.id === "version");
+        expect(versionSignal?.status).toBe("unknown");
+      } finally {
+        if (originalVfVersion === undefined) {
+          delete process.env.VF_VERSION;
+        } else {
+          process.env.VF_VERSION = originalVfVersion;
+        }
+      }
+    });
+
     it("warns when OIDC not configured", async () => {
       setupReadinessMocks({ oidcIssuer: null });
 
