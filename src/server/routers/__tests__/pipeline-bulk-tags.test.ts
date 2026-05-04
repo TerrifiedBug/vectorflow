@@ -196,6 +196,23 @@ describe("bulk tag operations", () => {
       expect(prismaMock.pipeline.update).not.toHaveBeenCalled();
     });
 
+    it("rejects cross-team batches before adding tags", async () => {
+      prismaMock.pipeline.findMany.mockResolvedValueOnce([
+        { id: "p1", environment: { teamId: "team-1" } },
+        { id: "p2", environment: { teamId: "team-2" } },
+      ] as never);
+
+      await expect(
+        caller.bulkAddTags({
+          pipelineIds: ["p1", "p2"],
+          tags: ["tag-a"],
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+      expect(prismaMock.team.findUnique).not.toHaveBeenCalled();
+      expect(prismaMock.pipeline.update).not.toHaveBeenCalled();
+    });
+
     it("deduplicates tags — adding an existing tag does not create duplicates", async () => {
       prismaMock.pipeline.findUnique
         .mockResolvedValueOnce(makePipeline({ id: "p1" }) as never) // team lookup
@@ -317,6 +334,22 @@ describe("bulk tag operations", () => {
 
       expect(result.total).toBe(3);
       expect(result.succeeded).toBe(2);
+    });
+
+    it("rejects cross-team batches before removing tags", async () => {
+      prismaMock.pipeline.findMany.mockResolvedValueOnce([
+        { id: "p1", environment: { teamId: "team-1" } },
+        { id: "p2", environment: { teamId: "team-2" } },
+      ] as never);
+
+      await expect(
+        caller.bulkRemoveTags({
+          pipelineIds: ["p1", "p2"],
+          tags: ["tag-a"],
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+      expect(prismaMock.pipeline.update).not.toHaveBeenCalled();
     });
   });
 });

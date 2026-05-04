@@ -48,10 +48,6 @@ vi.mock("@/server/services/sli-evaluator", () => ({
   evaluatePipelineHealth: vi.fn(),
 }));
 
-vi.mock("@/server/services/batch-health", () => ({
-  batchEvaluatePipelineHealth: vi.fn(),
-}));
-
 vi.mock("@/server/services/cost-attribution", () => ({
   getPipelineCostSnapshot: vi.fn(),
   computeCostCents: vi.fn(() => 0),
@@ -83,6 +79,11 @@ vi.mock("@/server/services/deploy-agent", () => ({
   deployBatch: (...args: unknown[]) => mockDeployBatch(...args),
 }));
 
+const mockBatchEvaluatePipelineHealth = vi.fn();
+vi.mock("@/server/services/batch-health", () => ({
+  batchEvaluatePipelineHealth: (...args: unknown[]) => mockBatchEvaluatePipelineHealth(...args),
+}));
+
 vi.mock("@/server/middleware/audit", () => ({
   withAudit: () =>
     testT.middleware(({ next, ctx }: { next: (opts: { ctx: unknown }) => unknown; ctx: unknown }) =>
@@ -97,7 +98,6 @@ import { auditRouter } from "@/server/routers/audit";
 import { pipelineRouter } from "@/server/routers/pipeline";
 import { pipelineBulkRouter } from "@/server/routers/pipeline-bulk";
 import { pipelineObservabilityRouter } from "@/server/routers/pipeline-observability";
-import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -253,10 +253,10 @@ describe("tenant scoping with real authorization middleware", () => {
       { id: "pipe-1", environment: { teamId: "team-1" } },
       { id: "pipe-2", environment: { teamId: "team-2" } },
     ] as never);
-    vi.mocked(batchEvaluatePipelineHealth).mockResolvedValue({
+    mockBatchEvaluatePipelineHealth.mockResolvedValue({
       "pipe-1": { status: "healthy", slis: [] },
       "pipe-2": { status: "degraded", slis: [] },
-    } as never);
+    });
 
     await expect(
       pipelineObservabilityCaller.batchHealth({
@@ -264,7 +264,7 @@ describe("tenant scoping with real authorization middleware", () => {
       }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
 
-    expect(batchEvaluatePipelineHealth).not.toHaveBeenCalled();
+    expect(mockBatchEvaluatePipelineHealth).not.toHaveBeenCalled();
   });
 
   it("rejects mixed-team pipeline batches before deploy mutation side effects", async () => {
@@ -286,6 +286,46 @@ describe("tenant scoping with real authorization middleware", () => {
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
 
     expect(mockDeployBatch).not.toHaveBeenCalled();
+  });
+
+  it("rejects mixed-team pipeline batches in team access middleware before query side effects", async () => {
+    prismaMock.pipeline.findUnique.mockResolvedValue({
+      environment: { teamId: "team-1" },
+    } as never);
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.teamMember.findUnique.mockResolvedValue({ role: "VIEWER" } as never);
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "pipe-1", environment: { teamId: "team-1" } },
+      { id: "pipe-2", environment: { teamId: "team-2" } },
+    ] as never);
+
+    await expect(
+      pipelineObservabilityCaller.batchHealth({ pipelineIds: ["pipe-1", "pipe-2"] }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    expect(mockBatchEvaluatePipelineHealth).not.toHaveBeenCalled();
+  });
+
+  it("rejects caller-supplied teamId injection when pipelineIds belong to a different team", async () => {
+    // Adversarial input: caller sends teamId for team-1 (where they are a member)
+    // but pipelineIds contains a pipeline that belongs to team-2.
+    // Middleware must resolve teamId from DB, not trust caller-supplied teamId.
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "pipe-team-2", environment: { teamId: "team-2" } },
+    ] as never);
+    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    // Even if the caller is a member of team-1, the resolved team from pipelineIds is team-2.
+    prismaMock.teamMember.findUnique.mockResolvedValue(null);
+
+    await expect(
+      pipelineObservabilityCaller.batchHealth(
+        // Inject extra field that the Zod schema strips; getRawInput() still sees it.
+        // Object.assign avoids `as any` while smuggling the adversarial teamId.
+        Object.assign({ pipelineIds: ["pipe-team-2"] }, { teamId: "team-1" }),
+      ),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    expect(mockBatchEvaluatePipelineHealth).not.toHaveBeenCalled();
   });
 
   it("rejects mixed-team pipeline bulk tag updates before mutation side effects", async () => {
