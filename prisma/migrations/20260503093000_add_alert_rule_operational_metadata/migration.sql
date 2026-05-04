@@ -1,3 +1,6 @@
+-- Add enum value referenced by the backfill CASE below.
+ALTER TYPE "AlertMetric" ADD VALUE IF NOT EXISTS 'promotion_completed';
+
 -- Alert rules need explicit operational ownership and action guidance so
 -- delivered alerts are actionable without relying on template prose.
 ALTER TABLE "AlertRule"
