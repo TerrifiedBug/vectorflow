@@ -1016,6 +1016,9 @@ model AlertRule {
   condition       AlertCondition?
   threshold       Float?
   durationSeconds Int?
+  severity        String         @default("warning")
+  ownerHint       String         @default("platform-ops")
+  suggestedAction String         @default("Review the alert context, then inspect the affected pipeline, node, and recent deployment changes.")
   snoozedUntil    DateTime?
   cooldownMinutes       Int?
   keyword               String?

@@ -29,6 +29,9 @@ function buildSlackBlocks(payload: ChannelPayload) {
           { type: "mrkdwn", text: `*Value:*\n${payload.value.toFixed(2)}` },
           { type: "mrkdwn", text: `*Threshold:*\n${payload.threshold}` },
           { type: "mrkdwn", text: `*Severity:*\n${payload.severity}` },
+          ...(payload.ownerHint
+            ? [{ type: "mrkdwn", text: `*Owner:*\n${payload.ownerHint}` }]
+            : []),
           { type: "mrkdwn", text: `*Environment:*\n${payload.environment}` },
           ...(payload.node
             ? [{ type: "mrkdwn", text: `*Node:*\n${payload.node}` }]
@@ -41,6 +44,17 @@ function buildSlackBlocks(payload: ChannelPayload) {
             : []),
         ],
       },
+      ...(payload.suggestedAction
+        ? [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `*Suggested action:*\n${payload.suggestedAction}`,
+              },
+            },
+          ]
+        : []),
       {
         type: "context",
         elements: [
