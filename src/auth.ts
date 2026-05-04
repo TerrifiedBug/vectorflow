@@ -12,7 +12,12 @@ import { debugLog, infoLog, warnLog } from "@/lib/logger";
 import { headers } from "next/headers";
 import { env, isBuildPhase } from "@/lib/env";
 import { isDemoMode } from "@/lib/is-demo-mode";
-import { getDevAuthBypassSession, logDevAuthBypassWarning } from "@/lib/dev-auth-bypass";
+import {
+  getDevAuthBypassSession,
+  isDevAuthBypassEnabled,
+  isDevAuthBypassRequestAllowed,
+  logDevAuthBypassWarning,
+} from "@/lib/dev-auth-bypass";
 import {
   loginAttemptTracker,
   getRemainingLockSeconds,
@@ -440,10 +445,20 @@ export function invalidateAuthCache() {
 export const handlers = {
   GET: async (...args: unknown[]) => {
     const request = args[0] instanceof Request ? args[0] : null;
-    const devSession = getDevAuthBypassSession(process.env, request ?? undefined);
-    if (devSession && request && new URL(request.url).pathname.endsWith("/api/auth/session")) {
-      logDevAuthBypassWarning();
-      return Response.json(devSession);
+
+    // If DEV_AUTH_BYPASS is enabled, gate every request on localhost origin.
+    // A non-local request (tunnels, Codespaces, 0.0.0.0-bound dev servers) is
+    // rejected with 403 so the seeded QA session cannot leak to remote clients.
+    if (request && isDevAuthBypassEnabled(process.env)) {
+      if (isDevAuthBypassRequestAllowed(request, process.env)) {
+        if (new URL(request.url).pathname.endsWith("/api/auth/session")) {
+          logDevAuthBypassWarning();
+          const devSession = getDevAuthBypassSession(process.env, request);
+          if (devSession) return Response.json(devSession);
+        }
+      } else {
+        return new Response("Forbidden: DEV_AUTH_BYPASS is restricted to localhost", { status: 403 });
+      }
     }
 
     const instance = await getAuthInstance();

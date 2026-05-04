@@ -180,7 +180,12 @@ async function main() {
   try {
     await resetQaSeed(prisma);
     const result = await seedQa(prisma);
-    console.log(JSON.stringify(result, null, 2));
+
+    // Print only the known-safe summary fields. Credentials (hashes, tokens,
+    // secrets) must never appear in stdout — destructure explicitly so that
+    // any future field added to seedQa's return value does not leak.
+    const { userEmail, teamId, environmentId, pipelineId, pipelineUrl, enrollmentTokenHint, nodeEnrollmentStubbed } = result;
+    console.log(JSON.stringify({ userEmail, teamId, environmentId, pipelineId, pipelineUrl, enrollmentTokenHint, nodeEnrollmentStubbed }, null, 2));
   } finally {
     await prisma.$disconnect();
   }

@@ -141,4 +141,55 @@ describe("dev auth bypass", () => {
       ),
     ).toBe(true);
   });
+
+  // These tests document the cases that trigger a 403 in the auth handler:
+  // DEV_AUTH_BYPASS=1 is set, but the request originates from a non-local client.
+  // The handler must not fall through to NextAuth — it must actively reject.
+  describe("403 guard: non-local requests are denied when bypass is enabled", () => {
+    const env = { NODE_ENV: "development", DEV_AUTH_BYPASS: "1" };
+
+    it("blocks a request from a LAN IP (bypass enabled but not localhost)", () => {
+      expect(
+        isDevAuthBypassEnabled(env),
+      ).toBe(true);
+
+      expect(
+        isDevAuthBypassRequestAllowed(
+          new Request("http://192.168.1.100:3000/api/auth/session"),
+          env,
+        ),
+      ).toBe(false);
+    });
+
+    it("blocks a request from a public IP even with a localhost Host header", () => {
+      // A client behind a reverse proxy can set Host: localhost — the guard must
+      // still deny because the origin IP is non-local.
+      expect(
+        isDevAuthBypassRequestAllowed(
+          new Request("http://0.0.0.0:3000/api/auth/session", {
+            headers: { "x-forwarded-for": "203.0.113.42" },
+          }),
+          env,
+        ),
+      ).toBe(false);
+    });
+
+    it("blocks when the server is bound to 0.0.0.0 and request host is non-local", () => {
+      expect(
+        isDevAuthBypassRequestAllowed(
+          new Request("http://10.0.0.5:3000/api/auth/session"),
+          env,
+        ),
+      ).toBe(false);
+    });
+
+    it("allows a genuine localhost request (::1 loopback)", () => {
+      expect(
+        isDevAuthBypassRequestAllowed(
+          new Request("http://[::1]:3000/api/auth/session"),
+          env,
+        ),
+      ).toBe(true);
+    });
+  });
 });
