@@ -121,3 +121,25 @@ Redis URL env var — only injected when Redis is configured.
       optional: true
 {{- end }}
 {{- end }}
+
+{{/*
+True when more than one server pod can run concurrently.
+*/}}
+{{- define "vectorflow-server.haEnabled" -}}
+{{- if or (and (not .Values.autoscaling.enabled) (gt (int .Values.replicaCount) 1)) (and .Values.autoscaling.enabled (gt (int .Values.autoscaling.maxReplicas) 1)) -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{/*
+True when the chart has a Redis URL source for leader election and pub/sub.
+*/}}
+{{- define "vectorflow-server.redisConfigured" -}}
+{{- if or .Values.redis.enabled (and (not .Values.existingSecret) .Values.secret.redisUrl) (and .Values.existingSecret .Values.existingSecretContainsRedisUrl) -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}

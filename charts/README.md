@@ -93,7 +93,69 @@ topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: kubernetes.io/hostname
     whenUnsatisfiable: DoNotSchedule
+persistence:
+  data:
+    accessMode: ReadWriteMany
+  backups:
+    enabled: true
+    accessMode: ReadWriteMany
 ```
+
+#### HA coordination contract
+
+VectorFlow treats a server install as HA when `replicaCount > 1` or
+`autoscaling.enabled=true` with `autoscaling.maxReplicas > 1`.
+
+Leader election is required for all singleton background work. The server uses
+Redis key `vectorflow:leader` with `SET ... NX EX`, renews the lease every 5
+seconds, and uses a 15-second TTL. If the leader stops renewing, another replica
+can acquire the key and start singleton services. The following work is
+leader-only:
+
+| Work | Reason |
+|------|--------|
+| Legacy backup import | Avoid duplicate filesystem imports |
+| Backup scheduler and retention/orphan cleanup | Avoid duplicate backups and cleanup races |
+| Telemetry scheduler | Avoid duplicate telemetry sends |
+| Notification retry service | Avoid duplicate delivery attempts |
+| Auto-rollback monitor | Avoid competing rollback decisions |
+| Staged rollout health monitor | Avoid competing rollout state transitions |
+| Fleet alert evaluator | Avoid duplicate fleet alert events |
+| Git sync retry service | Avoid duplicate retry jobs |
+| Cost optimizer scheduler | Avoid duplicate recommendations |
+| Anomaly detection job | Avoid duplicate anomaly events |
+
+Redis pub/sub is not leader-only. It runs on every replica because any replica
+can hold browser SSE connections. System Vector boot is also per-replica rather
+than leader-only.
+
+#### HA storage contract
+
+Multi-replica installs require shared persistent storage for
+`/app/.vectorflow`, mounted from `persistence.data`. The chart rejects HA values
+that use `emptyDir` or a chart-created `ReadWriteOnce` data PVC. Set
+`persistence.data.accessMode=ReadWriteMany`, or provide
+`persistence.data.existingClaim` backed by RWX-capable storage.
+
+If backup persistence is enabled in HA, `/backups` must also be shared. Set
+`persistence.backups.accessMode=ReadWriteMany`, or provide
+`persistence.backups.existingClaim` backed by RWX-capable storage. When backup
+persistence is disabled, backups are not durable across pod restarts.
+
+#### HA migrations and readiness
+
+Single-replica installs run `prisma migrate deploy` in the server container
+entrypoint by default. HA installs render a Helm post-install/post-upgrade Job
+named `<release>-vectorflow-server-migrate` after chart-managed Secrets and
+ServiceAccounts exist, and set
+`VF_RUN_MIGRATIONS=false` on server pods so migrations are not started once per
+replica. Use Helm `--wait` for HA installs and upgrades so the migration Job
+failure is surfaced by the release command.
+
+Readiness probes use `/api/health/ready`. The endpoint always checks database
+connectivity. In HA, the chart sets `VF_REDIS_REQUIRED=true`, so readiness also
+requires Redis to be connected before a pod receives traffic. Liveness remains
+process-only at `/api/health/live`.
 
 #### Using an existing Secret
 
@@ -111,6 +173,14 @@ Then install with:
 ```yaml
 existingSecret: "vectorflow-secrets"
 nextauthUrl: "https://vectorflow.example.com"
+```
+
+For HA with an existing Secret, the Secret must contain `REDIS_URL` and values
+must set:
+
+```yaml
+existingSecret: "vectorflow-secrets"
+existingSecretContainsRedisUrl: true
 ```
 
 #### Ingress

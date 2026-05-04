@@ -110,6 +110,14 @@ authTrustHost: "true"
 # forwarded headers before traffic reaches VectorFlow.
 trustProxyHeaders: "false"
 
+# -- Database migration behavior. Single-replica installs run migrations in the
+# container entrypoint by default. HA installs always render a one-shot Helm hook
+# Job and set VF_RUN_MIGRATIONS=false on server pods.
+migrations:
+  runAtStartup: true
+  job:
+    enabled: false
+
 # ------------------------------------------------------------------
 # Secrets
 # ------------------------------------------------------------------
@@ -121,6 +129,9 @@ trustProxyHeaders: "false"
 #    NEXTAUTH_SECRET, DATABASE_URL (and REDIS_URL if using external Redis).
 # When set, the secret.* values below are ignored.
 existingSecret: ""
+# -- Set true only when existingSecret contains REDIS_URL. Required for HA
+# installs that use existingSecret instead of redis.enabled or secret.redisUrl.
+existingSecretContainsRedisUrl: false
 
 secret:
   # -- NextAuth signing secret (required). Generate with: openssl rand -base64 32
