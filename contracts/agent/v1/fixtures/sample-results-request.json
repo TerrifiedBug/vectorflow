@@ -1,0 +1,20 @@
+{
+  "results": [
+    {
+      "requestId": "sample-1",
+      "componentKey": "demo",
+      "events": [
+        {
+          "message": "hello"
+        }
+      ],
+      "schema": [
+        {
+          "path": "message",
+          "type": "string",
+          "sample": "hello"
+        }
+      ]
+    }
+  ]
+}

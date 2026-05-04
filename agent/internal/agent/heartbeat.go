@@ -61,7 +61,7 @@ func buildHeartbeat(sup pipelineSupervisor, sm *selfmetrics.Metrics, vectorVersi
 					MemoryUsedBytes:  sr.Host.MemoryUsedBytes,
 					MemoryFreeBytes:  sr.Host.MemoryFreeBytes,
 					CpuSecondsTotal:  sr.Host.CpuSecondsTotal,
-				CpuSecondsIdle:   sr.Host.CpuSecondsIdle,
+					CpuSecondsIdle:   sr.Host.CpuSecondsIdle,
 					LoadAvg1:         sr.Host.LoadAvg1,
 					LoadAvg5:         sr.Host.LoadAvg5,
 					LoadAvg15:        sr.Host.LoadAvg15,
