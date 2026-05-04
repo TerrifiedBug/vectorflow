@@ -399,7 +399,7 @@ export function ComponentPalette() {
 
         {activeTab === "shared" && (
           <div className="space-y-1.5 p-3">
-            <div className="flex gap-1 pb-1">
+            <div className="flex gap-1 pb-1" role="group" aria-label="Shared component kind filters">
               {(["all", "source", "transform", "sink"] as const).map((kind) => (
                 <button
                   key={kind}

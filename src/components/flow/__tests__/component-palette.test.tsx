@@ -276,6 +276,7 @@ describe("ComponentPalette", () => {
       const { getByRole } = render(<ComponentPalette />);
 
       fireEvent.click(getByRole("tab", { name: "Shared" }));
+      expect(getByRole("group", { name: "Shared component kind filters" })).toBeInTheDocument();
       expect(getByRole("button", { name: "All" })).toHaveAttribute(
         "aria-pressed",
         "true"
