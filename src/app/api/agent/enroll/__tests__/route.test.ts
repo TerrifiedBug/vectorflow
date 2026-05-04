@@ -70,7 +70,11 @@ describe("POST /api/agent/enroll -- NODE-03 label template auto-assignment", () 
   beforeEach(() => {
     mockReset(prismaMock);
     vi.mocked(verifyEnrollmentToken).mockResolvedValue(true);
-    vi.mocked(generateNodeToken).mockResolvedValue({ token: "vf_node_abc123", hash: "h-abc" });
+    vi.mocked(generateNodeToken).mockResolvedValue({
+      token: "vf_node_0123456789abcdef_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      hash: "h-abc",
+      identifier: "0123456789abcdef",
+    });
     prismaMock.environment.findMany.mockResolvedValue([mockEnv] as never);
     prismaMock.vectorNode.create.mockResolvedValue(mockNode as never);
     prismaMock.nodeStatusEvent.create.mockResolvedValue({} as never);

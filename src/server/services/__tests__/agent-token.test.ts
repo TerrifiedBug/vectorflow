@@ -3,6 +3,7 @@ import {
   generateEnrollmentToken,
   verifyEnrollmentToken,
   generateNodeToken,
+  getNodeTokenIdentifier,
   verifyNodeToken,
   extractBearerToken,
 } from "../agent-token";
@@ -44,10 +45,28 @@ describe("agent-token", () => {
   });
 
   describe("generateNodeToken", () => {
-    it("returns token with vf_node_ prefix", async () => {
-      const { token, hash } = await generateNodeToken();
-      expect(token).toMatch(/^vf_node_[a-f0-9]{64}$/);
+    it("returns token with stable lookup identifier", async () => {
+      const { token, hash, identifier } = await generateNodeToken();
+      expect(token).toMatch(/^vf_node_[a-f0-9]{16}_[a-f0-9]{64}$/);
+      expect(identifier).toMatch(/^[a-f0-9]{16}$/);
+      expect(getNodeTokenIdentifier(token)).toBe(identifier);
       expect(hash).toMatch(/^\$2[aby]\$/);
+    });
+  });
+
+  describe("getNodeTokenIdentifier", () => {
+    it("extracts the stable lookup identifier from a node token", () => {
+      expect(
+        getNodeTokenIdentifier(
+          "vf_node_0123456789abcdef_fedcba98765432100123456789abcdeffedcba98765432100123456789abcdef",
+        ),
+      ).toBe("0123456789abcdef");
+    });
+
+    it("returns null for legacy or malformed node tokens", () => {
+      expect(getNodeTokenIdentifier("vf_node_abc123")).toBeNull();
+      expect(getNodeTokenIdentifier("vf_enroll_0123456789abcdef")).toBeNull();
+      expect(getNodeTokenIdentifier("vf_node_0123456789abcdef")).toBeNull();
     });
   });
 

@@ -426,7 +426,7 @@ describe("fleet.nodeMetrics", () => {
 // ── fleet.revokeNode ──────────────────────────────────────────────────────────
 
 describe("fleet.revokeNode", () => {
-  it("clears nodeTokenHash and sets status to UNREACHABLE", async () => {
+  it("clears node token credentials and sets status to UNREACHABLE", async () => {
     prismaMock.vectorNode.findUnique.mockResolvedValue(makeNode() as never);
     prismaMock.vectorNode.update.mockResolvedValue(
       makeNode({ nodeTokenHash: null, status: "UNREACHABLE" }) as never,
@@ -437,7 +437,7 @@ describe("fleet.revokeNode", () => {
     expect(prismaMock.vectorNode.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "node-1" },
-        data: { nodeTokenHash: null, status: "UNREACHABLE" },
+        data: { nodeTokenHash: null, nodeTokenId: null, status: "UNREACHABLE" },
       }),
     );
   });

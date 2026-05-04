@@ -3,6 +3,9 @@ import bcrypt from "bcryptjs";
 
 const ENROLLMENT_PREFIX = "vf_enroll_";
 const NODE_PREFIX = "vf_node_";
+const NODE_TOKEN_IDENTIFIER_BYTES = 8;
+const NODE_TOKEN_SECRET_BYTES = 32;
+const NODE_TOKEN_PATTERN = /^vf_node_([a-f0-9]{16})_[a-f0-9]{64}$/;
 
 /**
  * Generate a random enrollment token for agent-based environments.
@@ -41,11 +44,23 @@ export async function verifyEnrollmentToken(
 export async function generateNodeToken(): Promise<{
   token: string;
   hash: string;
+  identifier: string;
 }> {
-  const raw = randomBytes(32).toString("hex");
-  const token = `${NODE_PREFIX}${raw}`;
+  const identifier = randomBytes(NODE_TOKEN_IDENTIFIER_BYTES).toString("hex");
+  const secret = randomBytes(NODE_TOKEN_SECRET_BYTES).toString("hex");
+  const token = `${NODE_PREFIX}${identifier}_${secret}`;
   const hash = await bcrypt.hash(token, 12);
-  return { token, hash };
+  return { token, hash, identifier };
+}
+
+/**
+ * Extract the stable indexed lookup identifier from a node token.
+ * Legacy tokens intentionally return null so they fail closed instead of
+ * falling back to a fleet-wide bcrypt scan.
+ */
+export function getNodeTokenIdentifier(token: string): string | null {
+  const match = NODE_TOKEN_PATTERN.exec(token);
+  return match?.[1] ?? null;
 }
 
 /**
