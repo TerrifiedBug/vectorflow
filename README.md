@@ -146,6 +146,8 @@ The quick start uses convenience defaults. Before adapting it for production, re
 Open [http://localhost:3000](http://localhost:3000). The setup wizard creates your admin account.
 Set `NEXTAUTH_URL` in `.env` before any non-local deployment so OAuth callbacks and generated links use your public URL.
 
+Need a local OpenSearch destination? Use the `--profile opensearch` flag to bring up VectorFlow, a VectorFlow agent, OpenSearch, and Dashboards together — no separate Vector config required. See the [OpenSearch Compose quickstart](https://vectorflow.sh/docs/getting-started/opensearch-quickstart) for the full walkthrough.
+
 ### 2. Enroll your first agent
 
 In the UI, go to **Environments → Generate Enrollment Token**, then on each target host:
