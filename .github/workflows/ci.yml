@@ -18,9 +18,7 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  packages: write
+permissions: read-all
 
 env:
   REGISTRY: ghcr.io
@@ -30,16 +28,16 @@ jobs:
     name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.22"
           cache-dependency-path: agent/go.sum
@@ -66,13 +64,10 @@ jobs:
         run: pnpm test
 
       - name: Set up Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@bf6a7d304bc2fdb57e0331155b7ebf2c504acf0a # v4
 
       - name: Add Helm chart repositories
         run: helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
-
-      - name: Build server chart dependencies
-        run: helm dependency build charts/vectorflow-server
 
       - name: Lint Helm charts
         run: |
@@ -84,12 +79,14 @@ jobs:
             --set config.serverUrl=http://vectorflow.vectorflow.svc.cluster.local:3000 \
             --set config.token=ci-enrollment-token
 
-      - name: Render Helm charts
+      - name: Build dependencies and render Helm charts
         run: |
+          helm dependency build charts/vectorflow-server
           helm template vectorflow-server charts/vectorflow-server \
             --set nextauthUrl=http://localhost:3000 \
             --set secret.nextauthSecret=ci-nextauth-secret-32-characters \
             --set secret.databaseUrl=postgresql://vectorflow:password@postgres:5432/vectorflow
+          helm dependency build charts/vectorflow-agent
           helm template vectorflow-agent charts/vectorflow-agent \
             --set config.serverUrl=http://vectorflow.vectorflow.svc.cluster.local:3000 \
             --set config.token=ci-enrollment-token
@@ -102,7 +99,7 @@ jobs:
           docker compose --env-file docker/server/.env.example -f docker/server/docker-compose.ha.yml config
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
           format: cyclonedx-json
@@ -110,7 +107,7 @@ jobs:
           upload-artifact: false
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom-${{ github.sha }}
           path: sbom.cdx.json
@@ -120,17 +117,20 @@ jobs:
     needs: check
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ env.REGISTRY }}/terrifiedbug/vectorflow-server
           tags: |
@@ -147,9 +147,9 @@ jobs:
             echo "value=dev" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: docker/server/Dockerfile
@@ -165,17 +165,20 @@ jobs:
     needs: check
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ env.REGISTRY }}/terrifiedbug/vectorflow-agent
           tags: |
@@ -192,9 +195,9 @@ jobs:
             echo "value=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: agent
           file: agent/Dockerfile
@@ -213,10 +216,12 @@ jobs:
     concurrency:
       group: dev-release
       cancel-in-progress: true
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.22"
           cache-dependency-path: agent/go.sum
@@ -257,12 +262,18 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.22"
           cache-dependency-path: agent/go.sum
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Add Helm chart repositories
+        run: helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
 
       - name: Build binaries
         working-directory: agent
@@ -275,31 +286,53 @@ jobs:
       - name: Generate checksums
         run: sha256sum vf-agent-linux-* > checksums.txt
 
-      - uses: actions/upload-artifact@v4
+      - name: Package release assets
+        run: |
+          mkdir -p release-assets
+          CHART_VERSION="${GITHUB_REF_NAME#v}"
+          helm dependency build charts/vectorflow-server
+          helm dependency build charts/vectorflow-agent
+          helm package charts/vectorflow-server \
+            --destination release-assets \
+            --version "${CHART_VERSION}" \
+            --app-version "${GITHUB_REF_NAME}"
+          helm package charts/vectorflow-agent \
+            --destination release-assets \
+            --version "${CHART_VERSION}" \
+            --app-version "${GITHUB_REF_NAME}"
+          tar -czf "release-assets/vectorflow-compose-${GITHUB_REF_NAME}.tar.gz" docker/server docker/agent
+          tar -czf "release-assets/vectorflow-dr-${GITHUB_REF_NAME}.tar.gz" scripts/dr-verify.sh docs/e2e-release-gate.md
+          sha256sum release-assets/* >> checksums.txt
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: agent-binaries
           path: |
             vf-agent-linux-amd64
             vf-agent-linux-arm64
             checksums.txt
+            release-assets
 
   release:
     name: GitHub Release
     needs: [server-image, agent-image, agent-binaries]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: agent-binaries
 
       - name: Make binaries executable
         run: chmod +x vf-agent-linux-*
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           generate_release_notes: true
           files: |
             vf-agent-linux-amd64
             vf-agent-linux-arm64
             checksums.txt
+            release-assets/*

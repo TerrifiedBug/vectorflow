@@ -22,6 +22,15 @@ Resolves #
 - [ ] New or changed behaviour has test coverage
 - [ ] Coverage did not drop below 80%
 
+## Prisma migration checklist
+
+Required when this PR changes `prisma/schema.prisma` or `prisma/migrations/**`.
+
+- [ ] Backfill or data migration plan is documented, or confirmed not needed.
+- [ ] Index impact is reviewed for new queries, changed filters, and high-churn tables.
+- [ ] TimescaleDB compatibility is reviewed for hypertables, compression, continuous aggregates, and plain PostgreSQL fallback.
+- [ ] Rollback plan is documented, including any manual SQL or data restoration steps.
+
 ## UI changes
 
 <!-- Attach screenshots or a short recording if this changes the UI. Delete if not applicable. -->

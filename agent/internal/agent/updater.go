@@ -6,14 +6,32 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/TerrifiedBug/vectorflow/agent/internal/client"
 )
+
+var updateRetryBackoff = 5 * time.Minute
+
+var updateHTTPClient = &http.Client{
+	Timeout: 30 * time.Second,
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+}
 
 // handleSelfUpdate downloads a new agent binary, verifies its checksum,
 // atomically replaces the current executable, and re-execs the process.
@@ -43,7 +61,7 @@ func (a *Agent) handleSelfUpdate(action *client.PendingAction) error {
 	}()
 
 	slog.Info("downloading update", "url", action.DownloadURL)
-	resp, err := http.Get(action.DownloadURL)
+	resp, err := updateHTTPClient.Get(action.DownloadURL)
 	if err != nil {
 		return fmt.Errorf("download binary: %w", err)
 	}

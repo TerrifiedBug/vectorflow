@@ -5,12 +5,13 @@
 #   cp .env.example .env   # fill in secrets
 #   docker compose -f docker/server/docker-compose.ha.yml up -d
 #
-# Required env vars (Compose will refuse to start if any are missing):
+# Required env vars:
 #   POSTGRES_PASSWORD   — PostgreSQL password
 #   NEXTAUTH_SECRET     — NextAuth session signing secret
+# Optional but strongly recommended:
 #   NEXTAUTH_URL        — Externally reachable URL of this deployment
 #                          (used by alert/dashboard links, OAuth callbacks).
-#                          No localhost fallback — set it explicitly.
+#                          If unset, auth trusts the incoming host header instead.
 #
 # Optional:
 #   VF_VERSION          — VectorFlow image tag (default: latest)
@@ -58,8 +59,8 @@ services:
       DATABASE_URL: postgresql://vectorflow:${POSTGRES_PASSWORD}@postgres:5432/vectorflow
       REDIS_URL: redis://redis:6379
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:?NEXTAUTH_URL must be set to the externally reachable URL of this deployment}
       AUTH_TRUST_HOST: "true"
+      NEXTAUTH_URL:
     volumes:
       - vfdata1:/app/.vectorflow
       - backups:/backups
@@ -83,8 +84,8 @@ services:
       DATABASE_URL: postgresql://vectorflow:${POSTGRES_PASSWORD}@postgres:5432/vectorflow
       REDIS_URL: redis://redis:6379
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:?NEXTAUTH_URL must be set to the externally reachable URL of this deployment}
       AUTH_TRUST_HOST: "true"
+      NEXTAUTH_URL:
     volumes:
       - vfdata2:/app/.vectorflow
       - backups:/backups
@@ -99,13 +100,23 @@ services:
   nginx:
     container_name: vectorflow-ha-nginx
     image: nginx:alpine
-    # Start nginx as soon as both replicas have been scheduled — do NOT
-    # gate on `service_healthy`. In an HA stack we want nginx up even if
-    # one replica is still booting or unhealthy; nginx's own health checks
-    # (max_fails / fail_timeout in nginx-ha.conf) handle replica liveness.
+    # Compose cannot express "start after either replica is healthy", so nginx
+    # waits for at least one ready app before it accepts traffic.
     depends_on:
-      - vf1
-      - vf2
+      vf1:
+        condition: service_started
+      vf2:
+        condition: service_started
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        until wget -q -T 2 -t 1 -O /dev/null http://vf1:3000/api/health/ready \
+          || wget -q -T 2 -t 1 -O /dev/null http://vf2:3000/api/health/ready; do
+          echo "Waiting for at least one VectorFlow replica to become ready..."
+          sleep 2
+        done
+        exec nginx -g 'daemon off;'
     ports:
       - "3000:3000"
     volumes:
