@@ -305,7 +305,7 @@ jobs:
             vf-agent-linux-amd64
             vf-agent-linux-arm64
             checksums.txt
-            release-assets/*
+            release-assets
 
   release:
     name: GitHub Release
