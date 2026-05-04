@@ -602,6 +602,32 @@ describe("fleet.previewAgentUpgrade", () => {
     expect(result.maintenanceWindow?.status).toBe("scheduled");
     vi.useRealTimers();
   });
+
+  it("treats empty selector nodeIds as no explicit ID filter", async () => {
+    prismaMock.vectorNode.findMany.mockResolvedValue([
+      makeNode({ id: "node-1", labels: { tier: "edge" }, agentVersion: "1.0.0" }),
+      makeNode({ id: "node-2", labels: { tier: "edge" }, agentVersion: "1.0.0" }),
+    ] as never);
+
+    const result = await caller.previewAgentUpgrade({
+      environmentId: "env-1",
+      targetVersion: "2.0.0",
+      selector: {
+        nodeIds: [],
+        labels: { tier: "edge" },
+      },
+    });
+
+    expect(prismaMock.vectorNode.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({
+          id: expect.anything(),
+        }),
+      }),
+    );
+    expect(result.summary.totalMatched).toBe(2);
+    expect(result.summary.eligible).toBe(2);
+  });
 });
 
 describe("fleet.triggerBulkAgentUpdate", () => {

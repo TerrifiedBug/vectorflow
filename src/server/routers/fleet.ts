@@ -117,7 +117,9 @@ async function buildAgentUpgradePlan(input: AgentUpgradeBaseInput) {
   const nodes = await prisma.vectorNode.findMany({
     where: {
       environmentId: input.environmentId,
-      ...(input.selector?.nodeIds ? { id: { in: input.selector.nodeIds } } : {}),
+      ...(input.selector?.nodeIds?.length
+        ? { id: { in: input.selector.nodeIds } }
+        : {}),
     },
     select: {
       id: true,
