@@ -689,7 +689,19 @@ export const fleetRouter = router({
     .input(agentUpgradeBaseInput)
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
-      return buildAgentUpgradePlan(input);
+      let targetVersion = input.targetVersion;
+      if (targetVersion.startsWith("dev-")) {
+        const fresh = await checkDevAgentVersion(true);
+        if (!fresh.latestVersion) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Unable to fetch current dev release info — retry the preview",
+          });
+        }
+        targetVersion = fresh.latestVersion;
+      }
+
+      return buildAgentUpgradePlan({ ...input, targetVersion });
     }),
 
   agentDriftReport: protectedProcedure

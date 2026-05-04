@@ -603,6 +603,26 @@ describe("fleet.previewAgentUpgrade", () => {
     vi.useRealTimers();
   });
 
+  it("refreshes dev target metadata before building the preview plan", async () => {
+    prismaMock.vectorNode.findMany.mockResolvedValue([
+      makeNode({ id: "node-1", agentVersion: "dev-old" }),
+    ] as never);
+    (checkDevAgentVersion as ReturnType<typeof vi.fn>).mockResolvedValue({
+      latestVersion: "dev-fresh999",
+      checksums: {},
+    });
+
+    const result = await caller.previewAgentUpgrade({
+      environmentId: "env-1",
+      targetVersion: "dev-old",
+    });
+
+    expect(checkDevAgentVersion).toHaveBeenCalledWith(true);
+    expect(result.summary.blockedAlreadyCurrent).toBe(0);
+    expect(result.summary.eligible).toBe(1);
+    expect(result.waves[0]?.nodes[0]?.agentVersion).toBe("dev-old");
+  });
+
   it("treats empty selector nodeIds as no explicit ID filter", async () => {
     prismaMock.vectorNode.findMany.mockResolvedValue([
       makeNode({ id: "node-1", labels: { tier: "edge" }, agentVersion: "1.0.0" }),
