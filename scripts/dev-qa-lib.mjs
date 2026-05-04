@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 
 export const DEFAULT_QA_DATABASE_URL =
   "postgresql://vectorflow_e2e:e2e_test_password@127.0.0.1:5433/vectorflow_e2e?schema=public";
+export const POSTGRES_REACHABILITY_TIMEOUT_MS = 5000;
 
 export function getQaDatabaseMode(env = process.env, argv = process.argv.slice(2)) {
   if (argv.includes("--local-pg") || env.QA_DATABASE_MODE === "local-pg") {

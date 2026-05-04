@@ -8,6 +8,7 @@ import {
   getQaDatabaseUrl,
   hasDocker,
   isTcpReachable,
+  POSTGRES_REACHABILITY_TIMEOUT_MS,
 } from "./dev-qa-lib.mjs";
 
 // Internal QA runner: starts the e2e PostgreSQL Compose service, applies Prisma
@@ -50,7 +51,10 @@ if (env.NODE_ENV === "production") {
 }
 
 const dockerAvailable = mode === "docker" ? hasDocker() : false;
-const localPostgresReachable = await isTcpReachable(getPostgresEndpoint(DATABASE_URL));
+const localPostgresReachable = await isTcpReachable(
+  getPostgresEndpoint(DATABASE_URL),
+  POSTGRES_REACHABILITY_TIMEOUT_MS,
+);
 
 if (mode === "docker" && !dockerAvailable) {
   console.error(

@@ -3,6 +3,7 @@ import {
   buildPrerequisiteFailureMessage,
   getQaDatabaseMode,
   getQaDatabaseUrl,
+  POSTGRES_REACHABILITY_TIMEOUT_MS,
 } from "./dev-qa-lib.mjs";
 
 describe("dev QA database mode", () => {
@@ -30,5 +31,9 @@ describe("dev QA database mode", () => {
         localPostgresReachable: false,
       }),
     ).toContain("Docker daemon is unreachable and no PostgreSQL server is reachable at 127.0.0.1:6543");
+  });
+
+  test("uses a longer Postgres reachability timeout for managed endpoints", () => {
+    expect(POSTGRES_REACHABILITY_TIMEOUT_MS).toBe(5000);
   });
 });
