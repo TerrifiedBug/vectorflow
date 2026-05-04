@@ -141,17 +141,21 @@ export const auditRouter = router({
         });
       }
 
-      // Hide noisy SCIM provisioning entries from the default view. Users can
-      // still see them by selecting a SCIM entity type from the entity filter
-      // or by searching for "scim". This keeps the default view focused on
-      // operator-actioned events. Failures (when SCIM logging captures them)
-      // can be opted into via the same entity-type filter.
+      // Hide noisy successful SCIM provisioning entries from the default view.
+      // Failed SCIM events stay visible so operators can debug IdP sync issues.
       const isScimFilter =
         action?.startsWith("scim.") ||
         entityTypes?.some((t) => t === "ScimUser" || t === "ScimGroup") ||
         search?.toLowerCase().includes("scim");
       if (!isScimFilter) {
-        conditions.push({ NOT: { action: { startsWith: "scim." } } });
+        conditions.push({
+          NOT: {
+            AND: [
+              { action: { startsWith: "scim." } },
+              { metadata: { path: ["status"], equals: "success" } },
+            ],
+          },
+        });
       }
 
       const where = conditions.length > 0 ? { AND: conditions } : {};
