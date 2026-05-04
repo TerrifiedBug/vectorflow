@@ -49,7 +49,7 @@ export function apiRoute(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     // Rate limiting (after auth, before permission check)
-    const rateResult = rateLimiter.check(ctx.serviceAccountId, tier, ctx.rateLimit);
+    const rateResult = await rateLimiter.check(ctx.serviceAccountId, tier, ctx.rateLimit);
     if (!rateResult.allowed) {
       return NextResponse.json(
         { error: "Too many requests" },

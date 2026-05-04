@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const rateLimited = checkIpRateLimit(request, "enroll", 10);
+  const rateLimited = await checkIpRateLimit(request, "enroll", 10);
   if (rateLimited) return rateLimited;
 
   try {

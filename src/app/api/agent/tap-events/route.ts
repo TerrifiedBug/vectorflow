@@ -17,7 +17,7 @@ const tapPayloadSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const rateLimited = checkTokenRateLimit(request, "agent-tap-events", 120);
+  const rateLimited = await checkTokenRateLimit(request, "agent-tap-events", 120);
   if (rateLimited) return rateLimited;
 
   const agent = await authenticateAgent(request);
