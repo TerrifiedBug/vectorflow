@@ -13,6 +13,12 @@ import { headers } from "next/headers";
 import { env, isBuildPhase } from "@/lib/env";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import {
+  getDevAuthBypassSession,
+  isDevAuthBypassEnabled,
+  isDevAuthBypassRequestAllowed,
+  logDevAuthBypassWarning,
+} from "@/lib/dev-auth-bypass";
+import {
   loginAttemptTracker,
   getRemainingLockSeconds,
   ACCOUNT_LOCKOUT_THRESHOLD,
@@ -23,6 +29,15 @@ async function getClientIp(): Promise<string | null> {
   try {
     const hdrs = await headers();
     return hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || hdrs.get("x-real-ip") || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getRequestHost(): Promise<string | null> {
+  try {
+    const hdrs = await headers();
+    return hdrs.get("x-forwarded-host") ?? hdrs.get("host");
   } catch {
     return null;
   }
@@ -429,6 +444,23 @@ export function invalidateAuthCache() {
 // Proxy exports — delegate to the lazily-cached NextAuth instance
 export const handlers = {
   GET: async (...args: unknown[]) => {
+    const request = args[0] instanceof Request ? args[0] : null;
+
+    // If DEV_AUTH_BYPASS is enabled, gate every request on localhost origin.
+    // A non-local request (tunnels, Codespaces, 0.0.0.0-bound dev servers) is
+    // rejected with 403 so the seeded QA session cannot leak to remote clients.
+    if (request && isDevAuthBypassEnabled(process.env)) {
+      if (isDevAuthBypassRequestAllowed(request, process.env)) {
+        if (new URL(request.url).pathname.endsWith("/api/auth/session")) {
+          logDevAuthBypassWarning();
+          const devSession = getDevAuthBypassSession(process.env, request);
+          if (devSession) return Response.json(devSession);
+        }
+      } else {
+        return new Response("Forbidden: DEV_AUTH_BYPASS is restricted to localhost", { status: 403 });
+      }
+    }
+
     const instance = await getAuthInstance();
     return instance!.handlers.GET(...(args as Parameters<typeof instance.handlers.GET>));
   },
@@ -440,6 +472,16 @@ export const handlers = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function auth(...args: any[]) {
+  const request = args[0] instanceof Request ? args[0] : undefined;
+  const devSession = getDevAuthBypassSession(
+    process.env,
+    request ?? { requestHost: await getRequestHost(), clientAddress: await getClientIp() },
+  );
+  if (devSession) {
+    logDevAuthBypassWarning();
+    return devSession;
+  }
+
   const instance = await getAuthInstance();
   return instance!.auth(...args);
 }

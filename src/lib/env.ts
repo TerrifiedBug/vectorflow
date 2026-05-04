@@ -44,6 +44,11 @@ const runtimeEnvSchema = z
     PORT: z.coerce.number().int().default(3000),
 
     VF_DISABLE_LOCAL_AUTH: z.string().optional(),
+    DEV_AUTH_BYPASS: z.string().optional(),
+    DEV_AUTH_BYPASS_ALLOW_NETWORK: z.string().optional(),
+    DEV_AUTH_BYPASS_USER_ID: z.string().optional(),
+    DEV_AUTH_BYPASS_USER_EMAIL: z.string().optional(),
+    DEV_AUTH_BYPASS_USER_NAME: z.string().optional(),
     TIMESCALEDB_ENABLED: z.string().optional(),
     VF_ENCRYPTION_KEY_V2: z.string().optional(),
     SENTRY_AUTH_TOKEN: z.string().optional(),
