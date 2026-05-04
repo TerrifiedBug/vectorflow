@@ -346,7 +346,7 @@ function sinkExpectations(node: Node, fields: Map<string, LineageField>, upstrea
     });
   }
 
-  if (upstreamEventTypes.has("metric")) {
+  if (upstreamEventTypes.has("metric") && componentDef.inputTypes?.includes("metric")) {
     expectations.push(
       { path: ".name", type: "string", reason: "Required metric event field" },
       { path: ".kind", type: "string", reason: "Required metric event field" },
@@ -374,6 +374,9 @@ function mergeBranchFields(branches: Map<string, LineageField>[]): Map<string, L
         merged.set(path, { ...field });
       } else if (existing.status === "removed" && field.status !== "removed") {
         merged.set(path, { ...field });
+      } else if (existing.status !== "removed" && field.status !== "removed" && existing.type !== field.type) {
+        // Both branches carry the field but with conflicting types — mark type as uncertain.
+        merged.set(path, { ...existing, type: UNKNOWN_FIELD_TYPE, status: "type_changed" });
       }
     }
   }
@@ -383,17 +386,18 @@ function mergeBranchFields(branches: Map<string, LineageField>[]): Map<string, L
 export function buildFieldLineage(nodes: Node[], edges: Edge[], selectedNodeId: string): FieldLineageResult {
   const path = upstreamPath(nodes, edges, selectedNodeId);
   const steps: LineageStep[] = [];
-  const upstreamEventTypes = new Set<DataType>();
   const nodeOutputFields = new Map<string, Map<string, LineageField>>();
+  const nodeOutputTypes = new Map<string, Set<DataType>>();
 
   for (const node of path) {
     const data = nodeData(node);
     const componentDef = data.componentDef;
     if (!componentDef) continue;
 
-    const incomingEdges = edges.filter(
-      (e) => e.target === node.id && path.some((n) => n.id === e.source),
-    );
+    // Sort by source ID for stable, edge-order-independent merge results.
+    const incomingEdges = edges
+      .filter((e) => e.target === node.id && path.some((n) => n.id === e.source))
+      .sort((a, b) => a.source.localeCompare(b.source));
     const branchMaps = incomingEdges
       .map((e) => nodeOutputFields.get(e.source))
       .filter((m): m is Map<string, LineageField> => !!m);
@@ -401,11 +405,19 @@ export function buildFieldLineage(nodes: Node[], edges: Edge[], selectedNodeId: 
 
     let changes: LineageChange[] = [];
     if (componentDef.kind === "source") {
-      for (const type of componentDef.outputTypes) upstreamEventTypes.add(type);
+      nodeOutputTypes.set(node.id, new Set(componentDef.outputTypes));
       changes = addSourceFields(node, nodeFields);
     } else if (componentDef.kind === "transform") {
-      for (const type of componentDef.outputTypes) upstreamEventTypes.add(type);
+      nodeOutputTypes.set(node.id, new Set(componentDef.outputTypes));
       changes = transformChanges(node, nodeFields);
+    } else {
+      // Sink — inherit event types from its direct inputs.
+      const inherited = new Set<DataType>();
+      for (const e of incomingEdges) {
+        const upstream = nodeOutputTypes.get(e.source);
+        if (upstream) for (const t of upstream) inherited.add(t);
+      }
+      nodeOutputTypes.set(node.id, inherited);
     }
 
     nodeOutputFields.set(node.id, nodeFields);
@@ -420,11 +432,27 @@ export function buildFieldLineage(nodes: Node[], edges: Edge[], selectedNodeId: 
     });
   }
 
+  // Use only the event types that reach the selected node from its direct upstream
+  // nodes — not all transitive types — so type-converting transforms are reflected.
+  const sinkInputEdges = edges.filter(
+    (e) => e.target === selectedNodeId && path.some((n) => n.id === e.source),
+  );
+  const sinkInputEventTypes = new Set<DataType>();
+  if (sinkInputEdges.length > 0) {
+    for (const e of sinkInputEdges) {
+      const upstream = nodeOutputTypes.get(e.source);
+      if (upstream) for (const t of upstream) sinkInputEventTypes.add(t);
+    }
+  } else {
+    const own = nodeOutputTypes.get(selectedNodeId);
+    if (own) for (const t of own) sinkInputEventTypes.add(t);
+  }
+
   const finalFields = nodeOutputFields.get(selectedNodeId) ?? new Map<string, LineageField>();
   const selected = nodes.find((node) => node.id === selectedNodeId);
   return {
     fields: [...finalFields.values()].map(cloneField).sort((a, b) => a.path.localeCompare(b.path)),
     steps,
-    expectations: selected ? sinkExpectations(selected, finalFields, upstreamEventTypes) : [],
+    expectations: selected ? sinkExpectations(selected, finalFields, sinkInputEventTypes) : [],
   };
 }
