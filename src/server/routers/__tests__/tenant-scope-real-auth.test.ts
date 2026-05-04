@@ -209,7 +209,7 @@ describe("tenant scoping with real authorization middleware", () => {
         pipelineIds: ["pipe-team-2"],
         // Cast as never because the Zod schema may not expose teamId on this procedure;
         // getRawInput() still sees the raw pre-parse payload.
-        ...({ teamId: "team-1" } as never),
+        ...({ teamId: "team-1" } as any),
       }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
 
