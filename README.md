@@ -143,7 +143,7 @@ docker compose up -d
 
 Open [http://localhost:3000](http://localhost:3000). The setup wizard creates your admin account.
 
-Need a local search destination for a first pipeline? See the [OpenSearch Compose quickstart](https://vectorflow.sh/docs/getting-started/opensearch-quickstart) to start VectorFlow, OpenSearch, Dashboards, and a demo Vector pipeline with one Compose profile.
+Need a local OpenSearch destination? Use the `--profile opensearch` flag to bring up VectorFlow, a VectorFlow agent, OpenSearch, and Dashboards together — no separate Vector config required. See the [OpenSearch Compose quickstart](https://vectorflow.sh/docs/getting-started/opensearch-quickstart) for the full walkthrough.
 
 ### 2. Enroll your first agent
 

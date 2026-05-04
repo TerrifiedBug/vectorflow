@@ -82,18 +82,22 @@ services:
     cpus: 1.0
     restart: unless-stopped
 
-  opensearch-demo-pipeline:
+  vf-agent:
     profiles: ["opensearch"]
-    container_name: vectorflow-opensearch-demo-pipeline
-    image: timberio/vector:0.54.0-alpine
+    container_name: vectorflow-agent
+    image: ghcr.io/terrifiedbug/vectorflow-agent:${VF_VERSION:-latest}
     depends_on:
-      opensearch:
+      vectorflow:
         condition: service_healthy
-    command: ["--config", "/etc/vector/vector-demo-opensearch.yaml"]
+    environment:
+      # The agent polls the VectorFlow server on the internal Compose network.
+      VF_URL: http://vectorflow:3000
+      # Set to an enrollment token generated in the VectorFlow UI
+      # (Environments → Generate Enrollment Token).
+      VF_TOKEN: ${VF_ENROLLMENT_TOKEN:?VF_ENROLLMENT_TOKEN must be set to an enrollment token from the VectorFlow UI}
     volumes:
-      - ../../examples/opensearch-demo/vector-demo-opensearch.yaml:/etc/vector/vector-demo-opensearch.yaml:ro
-    mem_limit: 128m
-    cpus: 0.5
+      - agent-data:/var/lib/vf-agent
+      - vector-data:/var/lib/vector
     restart: unless-stopped
 
 volumes:
@@ -105,3 +109,7 @@ volumes:
     name: vectorflow-backups
   opensearch-data:
     name: vectorflow-opensearch-data
+  agent-data:
+    name: vectorflow-agent-data
+  vector-data:
+    name: vectorflow-vector-data
