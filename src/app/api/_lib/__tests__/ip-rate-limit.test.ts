@@ -151,4 +151,18 @@ describe("checkIpRateLimit", () => {
     const otherReq = makeRequest(undefined, { "x-forwarded-for": "203.0.113.8, 10.0.0.1" });
     expect(await checkIpRateLimit(otherReq, "legacy-endpoint", 5)).toBeNull();
   });
+
+  it("uses X-Real-IP when proxy headers are trusted and X-Forwarded-For is absent", async () => {
+    vi.stubEnv("VF_TRUSTED_PROXIES", "10.0.0.10");
+    const req = makeRequest(undefined, { "x-real-ip": "198.51.100.77" });
+    for (let i = 0; i < 5; i++) {
+      await checkIpRateLimit(req, "real-ip", 5);
+    }
+    const blocked = await checkIpRateLimit(req, "real-ip", 5);
+    expect(blocked).not.toBeNull();
+    expect(blocked!.status).toBe(429);
+
+    const otherReq = makeRequest(undefined, { "x-real-ip": "198.51.100.78" });
+    expect(await checkIpRateLimit(otherReq, "real-ip", 5)).toBeNull();
+  });
 });

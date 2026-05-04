@@ -38,6 +38,9 @@ function getClientIp(request: Request): string {
     return parts[index] ?? "unknown";
   }
 
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+
   return "unknown";
 }
 
