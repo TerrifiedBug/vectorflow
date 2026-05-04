@@ -8,6 +8,7 @@ export interface SeedResult {
   teamId: string;
   environmentId: string;
   pipelineId: string;
+  nodeId: string;
 }
 
 export async function readSeedResult(): Promise<SeedResult> {

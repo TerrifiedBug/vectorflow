@@ -105,11 +105,12 @@ export function FleetListToolbar({
       <div className="h-6 w-px bg-border" />
 
       {/* Status filter chips */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1" role="group" aria-label="Fleet status filters">
         {STATUS_OPTIONS.map((opt) => (
           <button
             key={opt.id}
             type="button"
+            aria-pressed={statusFilter.includes(opt.id)}
             onClick={() => toggleStatus(opt.id)}
             className={cn(
               "rounded-full px-3 h-7 text-xs font-medium border transition-colors",

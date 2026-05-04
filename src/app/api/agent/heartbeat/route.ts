@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
@@ -16,6 +15,11 @@ import { DeploymentMode } from "@/generated/prisma";
 import { isVersionOlder } from "@/lib/version";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { warnLog, errorLog } from "@/lib/logger";
+import {
+  heartbeatRequestSchema,
+  type PipelineStatusPayload,
+  type SampleResultPayload,
+} from "../../../../../contracts/agent/v1/payloads";
 
 /** Compute pipeline-level weighted mean latency (ms) from per-component metrics. */
 function computeWeightedLatency(
@@ -34,106 +38,10 @@ function computeWeightedLatency(
   return weightedSum / totalEvents;
 }
 
-const heartbeatSchema = z.object({
-  agentVersion: z.string().max(100).optional(),
-  vectorVersion: z.string().max(100).optional(),
-  deploymentMode: z.nativeEnum(DeploymentMode).optional(),
-  pipelines: z.array(z.object({
-    pipelineId: z.string(),
-    version: z.number(),
-    status: z.enum(["RUNNING", "STARTING", "STOPPED", "CRASHED", "PENDING"]),
-    pid: z.number().optional(),
-    uptimeSeconds: z.number().optional(),
-    eventsIn: z.number().optional(),
-    eventsOut: z.number().optional(),
-    errorsTotal: z.number().optional(),
-    bytesIn: z.number().optional(),
-    bytesOut: z.number().optional(),
-    eventsDiscarded: z.number().optional(),
-    componentMetrics: z.array(z.object({
-      componentId: z.string(),
-      componentKind: z.string(),
-      receivedEvents: z.number(),
-      sentEvents: z.number(),
-      receivedBytes: z.number().optional(),
-      sentBytes: z.number().optional(),
-      errorsTotal: z.number().optional(),
-      discardedEvents: z.number().optional(),
-      latencyMeanSeconds: z.number().optional(), // NEW
-    })).optional(),
-    utilization: z.number().optional(),
-    configChecksum: z.string().max(128).optional(),
-    recentLogs: z.array(z.string()).optional(),
-  })),
-  hostMetrics: z.object({
-    memoryTotalBytes: z.number().optional(),
-    memoryUsedBytes: z.number().optional(),
-    memoryFreeBytes: z.number().optional(),
-    cpuSecondsTotal: z.number().optional(),
-    cpuSecondsIdle: z.number().optional(),
-    loadAvg1: z.number().optional(),
-    loadAvg5: z.number().optional(),
-    loadAvg15: z.number().optional(),
-    fsTotalBytes: z.number().optional(),
-    fsUsedBytes: z.number().optional(),
-    fsFreeBytes: z.number().optional(),
-    diskReadBytes: z.number().optional(),
-    diskWrittenBytes: z.number().optional(),
-    netRxBytes: z.number().optional(),
-    netTxBytes: z.number().optional(),
-  }).optional(),
-  sampleResults: z.array(z.object({
-    requestId: z.string(),
-    componentKey: z.string().optional(),
-    events: z.array(z.unknown()).nullable().optional(),
-    schema: z.array(z.object({ path: z.string(), type: z.string(), sample: z.string() })).nullable().optional(),
-    error: z.string().optional(),
-  })).nullable().optional(),
-  updateError: z.string().max(500).optional(),
-  labels: z.record(z.string(), z.string()).optional(),
-  runningAs: z.string().max(100).optional(),
-});
-
 let lastCleanup = 0;
 
-interface PipelineStatus {
-  pipelineId: string;
-  version: number;
-  status: "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING";
-  pid?: number;
-  uptimeSeconds?: number;
-  eventsIn?: number;
-  eventsOut?: number;
-  errorsTotal?: number;
-  bytesIn?: number;
-  bytesOut?: number;
-  eventsDiscarded?: number;
-  componentMetrics?: Array<{
-    componentId: string;
-    componentKind: string;
-    receivedEvents: number;
-    sentEvents: number;
-    receivedBytes?: number;
-    sentBytes?: number;
-    errorsTotal?: number;
-    discardedEvents?: number;
-    latencyMeanSeconds?: number; // NEW
-  }>;
-  utilization?: number;
-  configChecksum?: string;
-  recentLogs?: string[];
-}
-
-type SampleResult = {
-  requestId: string;
-  componentKey?: string;
-  events?: unknown[] | null;
-  schema?: Array<{ path: string; type: string; sample: string }> | null;
-  error?: string;
-};
-
 async function processSampleResults(
-  results: SampleResult[],
+  results: SampleResultPayload[],
   nodeId: string,
   environmentId: string,
 ): Promise<void> {
@@ -217,7 +125,7 @@ async function processSampleResults(
 
 
 export async function POST(request: Request) {
-  const rateLimited = checkTokenRateLimit(request, "heartbeat", 30);
+  const rateLimited = await checkTokenRateLimit(request, "heartbeat", 30);
   if (rateLimited) return rateLimited;
 
   const agent = await authenticateAgent(request);
@@ -227,7 +135,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const parsed = heartbeatSchema.safeParse(body);
+    const parsed = heartbeatRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid input", details: parsed.error.flatten().fieldErrors },
@@ -244,7 +152,7 @@ export async function POST(request: Request) {
     });
     const validPipelineIds = new Set(validPipelines.map((p) => p.id));
     const pipelineNameMap = new Map(validPipelines.map((p) => [p.id, p.name]));
-    const pipelines = rawPipelines.filter((p) => validPipelineIds.has(p.pipelineId)) as PipelineStatus[];
+    const pipelines = rawPipelines.filter((p) => validPipelineIds.has(p.pipelineId)) as PipelineStatusPayload[];
 
     const now = new Date();
 

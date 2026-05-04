@@ -25,6 +25,9 @@ export const POST = apiRoute(
       condition?: string;
       threshold?: number;
       durationSeconds?: number;
+      severity?: string;
+      ownerHint?: string;
+      suggestedAction?: string;
     };
     try {
       body = await req.json();
@@ -66,6 +69,11 @@ export const POST = apiRoute(
       "node_load_imbalance",
     ];
     const validConditions = ["gt", "lt", "eq"];
+    const validSeverities = ["info", "warning", "critical"];
+    const OWNER_HINT_MAX_LENGTH = 120;
+    const SUGGESTED_ACTION_MAX_LENGTH = 1000;
+    const isNonEmptyString = (value: unknown): value is string =>
+      typeof value === "string" && value.trim().length > 0;
 
     if (!validMetrics.includes(body.metric)) {
       return NextResponse.json(
@@ -78,6 +86,52 @@ export const POST = apiRoute(
       return NextResponse.json(
         {
           error: `Invalid condition. Must be one of: ${validConditions.join(", ")}`,
+        },
+        { status: 400 },
+      );
+    }
+
+    if (body.severity !== undefined && !validSeverities.includes(body.severity)) {
+      return NextResponse.json(
+        {
+          error: `Invalid severity. Must be one of: ${validSeverities.join(", ")}`,
+        },
+        { status: 400 },
+      );
+    }
+
+    if (body.ownerHint !== undefined && !isNonEmptyString(body.ownerHint)) {
+      return NextResponse.json(
+        { error: "ownerHint must be a non-empty string" },
+        { status: 400 },
+      );
+    }
+    if (
+      body.ownerHint !== undefined &&
+      body.ownerHint.length > OWNER_HINT_MAX_LENGTH
+    ) {
+      return NextResponse.json(
+        { error: `ownerHint must be ${OWNER_HINT_MAX_LENGTH} characters or fewer` },
+        { status: 400 },
+      );
+    }
+
+    if (
+      body.suggestedAction !== undefined &&
+      !isNonEmptyString(body.suggestedAction)
+    ) {
+      return NextResponse.json(
+        { error: "suggestedAction must be a non-empty string" },
+        { status: 400 },
+      );
+    }
+    if (
+      body.suggestedAction !== undefined &&
+      body.suggestedAction.length > SUGGESTED_ACTION_MAX_LENGTH
+    ) {
+      return NextResponse.json(
+        {
+          error: `suggestedAction must be ${SUGGESTED_ACTION_MAX_LENGTH} characters or fewer`,
         },
         { status: 400 },
       );
@@ -123,6 +177,11 @@ export const POST = apiRoute(
         condition: body.condition as "gt",
         threshold: body.threshold,
         durationSeconds: body.durationSeconds ?? 60,
+        severity: body.severity ?? "warning",
+        ownerHint: body.ownerHint ?? "platform-ops",
+        suggestedAction:
+          body.suggestedAction ??
+          "Review the alert context, then inspect the affected pipeline, node, and recent deployment changes.",
       },
     });
 

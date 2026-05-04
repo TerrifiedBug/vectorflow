@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/app/api/_lib/ip-rate-limit", () => ({
-  checkTokenRateLimit: vi.fn(() => null),
+  checkTokenRateLimit: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock("@/server/services/agent-auth", () => ({
@@ -37,7 +37,7 @@ describe("agent samples rate limiting", () => {
 
   it("returns the rate-limit response when the samples limit is exceeded", async () => {
     const rateLimitResponse = new Response("too many", { status: 429 });
-    vi.mocked(checkTokenRateLimit).mockReturnValueOnce(rateLimitResponse);
+    vi.mocked(checkTokenRateLimit).mockResolvedValueOnce(rateLimitResponse);
 
     const request = new Request("http://localhost/api/agent/samples", {
       method: "POST",

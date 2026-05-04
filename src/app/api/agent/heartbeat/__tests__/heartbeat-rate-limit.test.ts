@@ -16,7 +16,7 @@ vi.mock("@/lib/sse/types", () => ({}));
 vi.mock("@/app/api/_lib/ip-rate-limit", () => {
   let callCount = 0;
   return {
-    checkTokenRateLimit: vi.fn(() => {
+    checkTokenRateLimit: vi.fn(async () => {
       callCount++;
       // Return 429 on the 31st call
       if (callCount > 30) {
@@ -28,7 +28,7 @@ vi.mock("@/app/api/_lib/ip-rate-limit", () => {
       return null;
     }),
     // Keep checkIpRateLimit available in case other code references it
-    checkIpRateLimit: vi.fn(() => null),
+    checkIpRateLimit: vi.fn(() => Promise.resolve(null)),
   };
 });
 
@@ -122,7 +122,7 @@ describe("POST /api/agent/heartbeat — rate limiting", () => {
 
   it("returns 429 when rate limit is exceeded", async () => {
     // Force the mock to return 429
-    vi.mocked(checkTokenRateLimit).mockReturnValueOnce(
+    vi.mocked(checkTokenRateLimit).mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "Too many requests" }), {
         status: 429,
         headers: { "Content-Type": "application/json", "Retry-After": "60" },

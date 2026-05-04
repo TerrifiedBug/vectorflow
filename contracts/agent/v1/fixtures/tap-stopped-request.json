@@ -1,0 +1,7 @@
+{
+  "requestId": "tap-1",
+  "pipelineId": "pipe-1",
+  "componentId": "demo",
+  "status": "stopped",
+  "reason": "cancelled"
+}

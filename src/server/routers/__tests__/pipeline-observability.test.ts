@@ -19,6 +19,7 @@ vi.mock("@/trpc/init", () => {
     requireSuperAdmin: passthrough,
     denyInDemo: passthrough,
     middleware: t.middleware,
+    roleLevel: { VIEWER: 0, EDITOR: 1, ADMIN: 2 },
   };
 });
 
@@ -499,6 +500,12 @@ describe("pipelineObservabilityRouter", () => {
         "p-1": { status: "healthy", score: 100 },
         "p-2": { status: "degraded", score: 60 },
       };
+      prismaMock.pipeline.findMany.mockResolvedValue([
+        { id: "p-1", environment: { teamId: "team-1" } },
+        { id: "p-2", environment: { teamId: "team-1" } },
+      ] as never);
+      prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+      prismaMock.teamMember.findUnique.mockResolvedValue({ role: "VIEWER" } as never);
       vi.mocked(batchEvaluatePipelineHealth).mockResolvedValue(batchResult as never);
 
       const result = await caller.batchHealth({ pipelineIds: ["p-1", "p-2"] });

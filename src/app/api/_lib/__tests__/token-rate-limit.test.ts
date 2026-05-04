@@ -19,41 +19,41 @@ describe("checkTokenRateLimit", () => {
     vi.useRealTimers();
   });
 
-  it("returns null when under the limit", () => {
-    const result = checkTokenRateLimit(makeRequest("node-token-abc"), "heartbeat", 30);
+  it("returns null when under the limit", async () => {
+    const result = await checkTokenRateLimit(makeRequest("node-token-abc"), "heartbeat", 30);
     expect(result).toBeNull();
   });
 
-  it("returns 429 response when limit exceeded", () => {
+  it("returns 429 response when limit exceeded", async () => {
     for (let i = 0; i < 30; i++) {
-      checkTokenRateLimit(makeRequest("node-token-xyz"), "heartbeat", 30);
+      await checkTokenRateLimit(makeRequest("node-token-xyz"), "heartbeat", 30);
     }
-    const result = checkTokenRateLimit(makeRequest("node-token-xyz"), "heartbeat", 30);
+    const result = await checkTokenRateLimit(makeRequest("node-token-xyz"), "heartbeat", 30);
     expect(result).not.toBeNull();
     expect(result!.status).toBe(429);
   });
 
-  it("includes Retry-After header on 429", () => {
+  it("includes Retry-After header on 429", async () => {
     for (let i = 0; i < 30; i++) {
-      checkTokenRateLimit(makeRequest("node-token-retry"), "heartbeat", 30);
+      await checkTokenRateLimit(makeRequest("node-token-retry"), "heartbeat", 30);
     }
-    const result = checkTokenRateLimit(makeRequest("node-token-retry"), "heartbeat", 30);
+    const result = await checkTokenRateLimit(makeRequest("node-token-retry"), "heartbeat", 30);
     expect(result!.headers.get("Retry-After")).toBeTruthy();
   });
 
-  it("isolates limits between different tokens", () => {
+  it("isolates limits between different tokens", async () => {
     for (let i = 0; i < 30; i++) {
-      checkTokenRateLimit(makeRequest("token-a"), "heartbeat", 30);
+      await checkTokenRateLimit(makeRequest("token-a"), "heartbeat", 30);
     }
-    expect(checkTokenRateLimit(makeRequest("token-a"), "heartbeat", 30)).not.toBeNull();
-    expect(checkTokenRateLimit(makeRequest("token-b"), "heartbeat", 30)).toBeNull();
+    expect(await checkTokenRateLimit(makeRequest("token-a"), "heartbeat", 30)).not.toBeNull();
+    expect(await checkTokenRateLimit(makeRequest("token-b"), "heartbeat", 30)).toBeNull();
   });
 
-  it("hashes bearer tokens before using them as rate-limit keys", () => {
+  it("hashes bearer tokens before using them as rate-limit keys", async () => {
     const spy = vi.spyOn(rateLimiter, "checkKey");
     const rawToken = "vf_agent_secret_token";
 
-    checkTokenRateLimit(makeRequest(rawToken), "heartbeat", 30);
+    await checkTokenRateLimit(makeRequest(rawToken), "heartbeat", 30);
 
     const [key] = spy.mock.calls[0] as [string, number];
     const expectedHash = crypto.createHash("sha256").update(rawToken).digest("hex");
@@ -61,44 +61,44 @@ describe("checkTokenRateLimit", () => {
     expect(key).not.toContain(rawToken);
   });
 
-  it("isolates limits between different endpoints for the same token", () => {
+  it("isolates limits between different endpoints for the same token", async () => {
     for (let i = 0; i < 30; i++) {
-      checkTokenRateLimit(makeRequest("token-shared"), "heartbeat", 30);
+      await checkTokenRateLimit(makeRequest("token-shared"), "heartbeat", 30);
     }
-    expect(checkTokenRateLimit(makeRequest("token-shared"), "heartbeat", 30)).not.toBeNull();
-    expect(checkTokenRateLimit(makeRequest("token-shared"), "config", 30)).toBeNull();
+    expect(await checkTokenRateLimit(makeRequest("token-shared"), "heartbeat", 30)).not.toBeNull();
+    expect(await checkTokenRateLimit(makeRequest("token-shared"), "config", 30)).toBeNull();
   });
 
-  it("returns 401 when no Authorization header is present", () => {
-    const result = checkTokenRateLimit(makeRequest(), "heartbeat", 30);
+  it("returns 401 when no Authorization header is present", async () => {
+    const result = await checkTokenRateLimit(makeRequest(), "heartbeat", 30);
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);
   });
 
-  it("returns 401 when Authorization header is not Bearer format", () => {
+  it("returns 401 when Authorization header is not Bearer format", async () => {
     const req = new Request("http://localhost/api/agent/heartbeat", {
       headers: { authorization: "Basic abc123" },
     });
-    const result = checkTokenRateLimit(req, "heartbeat", 30);
+    const result = await checkTokenRateLimit(req, "heartbeat", 30);
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);
   });
 
-  it("resets after window expires", () => {
+  it("resets after window expires", async () => {
     for (let i = 0; i < 30; i++) {
-      checkTokenRateLimit(makeRequest("token-reset"), "heartbeat", 30);
+      await checkTokenRateLimit(makeRequest("token-reset"), "heartbeat", 30);
     }
-    expect(checkTokenRateLimit(makeRequest("token-reset"), "heartbeat", 30)).not.toBeNull();
+    expect(await checkTokenRateLimit(makeRequest("token-reset"), "heartbeat", 30)).not.toBeNull();
 
     vi.advanceTimersByTime(61_000);
 
-    expect(checkTokenRateLimit(makeRequest("token-reset"), "heartbeat", 30)).toBeNull();
+    expect(await checkTokenRateLimit(makeRequest("token-reset"), "heartbeat", 30)).toBeNull();
   });
 
-  it("allows normal 15s polling cadence (4 req/min) without throttling", () => {
+  it("allows normal 15s polling cadence (4 req/min) without throttling", async () => {
     // Simulate 4 requests per minute (one every 15 seconds) — typical agent polling
     for (let i = 0; i < 4; i++) {
-      const result = checkTokenRateLimit(makeRequest("token-polling"), "config", 30);
+      const result = await checkTokenRateLimit(makeRequest("token-polling"), "config", 30);
       expect(result).toBeNull();
       vi.advanceTimersByTime(15_000);
     }

@@ -8,6 +8,220 @@ import { checkDevAgentVersion } from "@/server/services/version-check";
 import { pushRegistry } from "@/server/services/push-registry";
 import { relayPush } from "@/server/services/push-broadcast";
 import { getFleetOverview, getVolumeTrend, getNodeThroughput, getNodeCapacity, getDataLoss, getMatrixThroughput } from "@/server/services/fleet-data";
+import { isVersionOlder } from "@/lib/version";
+
+const maintenanceWindowSchema = z.object({
+  startAt: z.string().datetime(),
+  endAt: z.string().datetime(),
+});
+
+const agentUpgradeSelectorSchema = z
+  .object({
+    nodeIds: z.array(z.string()).optional(),
+    labels: z.record(z.string(), z.string()).optional(),
+    nodeGroupId: z.string().optional(),
+  })
+  .optional();
+
+const agentUpgradeBaseInput = z.object({
+  environmentId: z.string(),
+  targetVersion: z.string().min(1),
+  selector: agentUpgradeSelectorSchema,
+  canaryNodeIds: z.array(z.string()).optional(),
+  waveSize: z.number().int().min(1).max(100).default(10),
+  maintenanceWindow: maintenanceWindowSchema.optional(),
+});
+
+type MaintenanceWindow = z.infer<typeof maintenanceWindowSchema>;
+type AgentUpgradeSelector = z.infer<typeof agentUpgradeSelectorSchema>;
+type AgentUpgradeBaseInput = z.infer<typeof agentUpgradeBaseInput>;
+
+type UpgradeNode = {
+  id: string;
+  name: string;
+  status: string;
+  labels: unknown;
+  agentVersion: string | null;
+  deploymentMode: string;
+  pendingAction: unknown;
+};
+
+type SkipReason = "docker" | "unreachable" | "pending_action" | "already_current";
+
+function getMaintenanceWindowStatus(window?: MaintenanceWindow) {
+  if (!window) return null;
+
+  const now = Date.now();
+  const start = new Date(window.startAt).getTime();
+  const end = new Date(window.endAt).getTime();
+
+  if (end <= start) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Maintenance window end must be after start",
+    });
+  }
+
+  if (now < start) return "scheduled" as const;
+  if (now > end) return "expired" as const;
+  return "open" as const;
+}
+
+function getUpdateSkipReason(node: UpgradeNode, targetVersion: string): SkipReason | null {
+  if (node.deploymentMode === "DOCKER") return "docker";
+  if (node.status === "UNREACHABLE") return "unreachable";
+  if (node.pendingAction) return "pending_action";
+  if (node.agentVersion === targetVersion) return "already_current";
+  return null;
+}
+
+function labelsMatch(nodeLabels: unknown, required: Record<string, string>) {
+  const labels = (nodeLabels as Record<string, string>) ?? {};
+  return Object.entries(required).every(([key, value]) => labels[key] === value);
+}
+
+function chunkNodes<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+async function getSelectorLabels(
+  environmentId: string,
+  selector: AgentUpgradeSelector,
+) {
+  const labels = { ...(selector?.labels ?? {}) };
+  if (!selector?.nodeGroupId) return labels;
+
+  const group = await prisma.nodeGroup.findUnique({
+    where: { id: selector.nodeGroupId },
+    select: { environmentId: true, criteria: true },
+  });
+  if (!group || group.environmentId !== environmentId) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Node group not found" });
+  }
+
+  const criteria = (group.criteria as Record<string, unknown>) ?? {};
+  for (const [key, value] of Object.entries(criteria)) {
+    if (typeof value === "string") {
+      labels[key] = value;
+    }
+  }
+  return labels;
+}
+
+async function buildAgentUpgradePlan(input: AgentUpgradeBaseInput) {
+  const selectorLabels = await getSelectorLabels(input.environmentId, input.selector);
+  const nodes = await prisma.vectorNode.findMany({
+    where: {
+      environmentId: input.environmentId,
+      ...(input.selector?.nodeIds?.length
+        ? { id: { in: input.selector.nodeIds } }
+        : {}),
+    },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      labels: true,
+      agentVersion: true,
+      deploymentMode: true,
+      pendingAction: true,
+    },
+    orderBy: { name: "asc" },
+  }) as UpgradeNode[];
+
+  const matched = nodes.filter((node) => labelsMatch(node.labels, selectorLabels));
+  const blocked = {
+    docker: 0,
+    unreachable: 0,
+    alreadyCurrent: 0,
+    pendingAction: 0,
+  };
+  const eligible: UpgradeNode[] = [];
+  const degraded: string[] = [];
+
+  for (const node of matched) {
+    const skipReason = getUpdateSkipReason(node, input.targetVersion);
+    if (skipReason === "docker") {
+      blocked.docker++;
+      continue;
+    }
+    if (skipReason === "unreachable") {
+      blocked.unreachable++;
+      continue;
+    }
+    if (skipReason === "pending_action") {
+      blocked.pendingAction++;
+      continue;
+    }
+    if (skipReason === "already_current") {
+      blocked.alreadyCurrent++;
+      continue;
+    }
+    if (node.status === "DEGRADED") {
+      degraded.push(node.id);
+    }
+    eligible.push(node);
+  }
+
+  const eligibleById = new Map(eligible.map((node) => [node.id, node]));
+  const canaryNodeIds = input.canaryNodeIds?.filter((id) => eligibleById.has(id)) ?? [];
+  const canarySet = new Set(canaryNodeIds);
+  const remaining = eligible.filter((node) => !canarySet.has(node.id));
+  const waves = [
+    ...(canaryNodeIds.length > 0
+      ? [{
+          index: 0,
+          stage: "canary" as const,
+          nodeIds: canaryNodeIds,
+          nodes: canaryNodeIds.map((id) => eligibleById.get(id)!).map((node) => ({
+            id: node.id,
+            name: node.name,
+            status: node.status,
+            agentVersion: node.agentVersion,
+          })),
+        }]
+      : []),
+    ...chunkNodes(remaining, input.waveSize).map((wave, index) => ({
+      index: canaryNodeIds.length > 0 ? index + 1 : index,
+      stage: "wave" as const,
+      nodeIds: wave.map((node) => node.id),
+      nodes: wave.map((node) => ({
+        id: node.id,
+        name: node.name,
+        status: node.status,
+        agentVersion: node.agentVersion,
+      })),
+    })),
+  ];
+
+  const risk = blocked.unreachable > 0 || degraded.length > 2
+    ? "high"
+    : degraded.length > 0 || eligible.length > 10 || waves.length > 1
+      ? "medium"
+      : "low";
+  const windowStatus = getMaintenanceWindowStatus(input.maintenanceWindow);
+
+  return {
+    summary: {
+      totalMatched: matched.length,
+      eligible: eligible.length,
+      blockedDocker: blocked.docker,
+      blockedUnreachable: blocked.unreachable,
+      blockedAlreadyCurrent: blocked.alreadyCurrent,
+      blockedPendingAction: blocked.pendingAction,
+      degradedEligibleNodeIds: degraded,
+      risk,
+    },
+    maintenanceWindow: input.maintenanceWindow
+      ? { ...input.maintenanceWindow, status: windowStatus }
+      : null,
+    waves,
+  };
+}
 
 export const fleetRouter = router({
   list: protectedProcedure
@@ -384,6 +598,7 @@ export const fleetRouter = router({
         where: { id: input.id },
         data: {
           nodeTokenHash: null,
+          nodeTokenId: null,
           status: "UNREACHABLE",
         },
       });
@@ -469,6 +684,292 @@ export const fleetRouter = router({
       });
 
       return updated;
+    }),
+
+  previewAgentUpgrade: protectedProcedure
+    .input(agentUpgradeBaseInput)
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      let targetVersion = input.targetVersion;
+      if (targetVersion.startsWith("dev-")) {
+        const fresh = await checkDevAgentVersion(true);
+        if (!fresh.latestVersion) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Unable to fetch current dev release info — retry the preview",
+          });
+        }
+        targetVersion = fresh.latestVersion;
+      }
+
+      return buildAgentUpgradePlan({ ...input, targetVersion });
+    }),
+
+  agentDriftReport: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        targetVersion: z.string().min(1),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const nodes = await prisma.vectorNode.findMany({
+        where: { environmentId: input.environmentId },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          labels: true,
+          agentVersion: true,
+          deploymentMode: true,
+          pendingAction: true,
+        },
+        orderBy: { name: "asc" },
+      }) as UpgradeNode[];
+
+      const summary = {
+        total: nodes.length,
+        behind: 0,
+        current: 0,
+        unknown: 0,
+        docker: 0,
+      };
+
+      const reportNodes = nodes.map((node) => {
+        let drift: "behind" | "current" | "unknown";
+        if (!node.agentVersion) {
+          drift = "unknown";
+          summary.unknown++;
+        } else if (isVersionOlder(node.agentVersion, input.targetVersion)) {
+          drift = "behind";
+          summary.behind++;
+        } else {
+          drift = "current";
+          summary.current++;
+        }
+
+        if (node.deploymentMode === "DOCKER") {
+          summary.docker++;
+        }
+
+        return {
+          id: node.id,
+          name: node.name,
+          status: node.status,
+          deploymentMode: node.deploymentMode,
+          agentVersion: node.agentVersion,
+          targetVersion: input.targetVersion,
+          drift,
+          pendingAction: Boolean(node.pendingAction),
+          autoUpdateEligible:
+            drift === "behind" &&
+            getUpdateSkipReason(node, input.targetVersion) === null,
+        };
+      });
+
+      return {
+        targetVersion: input.targetVersion,
+        summary,
+        nodes: reportNodes,
+      };
+    }),
+
+  triggerAgentUpdates: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        nodeIds: z.array(z.string()).min(1).max(500),
+        targetVersion: z.string().min(1),
+        downloadUrl: z.string().url(),
+        checksum: z.string(),
+      }),
+    )
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("fleet.agent_updates_triggered", "VectorNode"))
+    .mutation(async ({ input }) => {
+      const nodes = await prisma.vectorNode.findMany({
+        where: { id: { in: input.nodeIds }, environmentId: input.environmentId },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          labels: true,
+          agentVersion: true,
+          deploymentMode: true,
+          pendingAction: true,
+        },
+        orderBy: { name: "asc" },
+      }) as UpgradeNode[];
+
+      const foundIds = new Set(nodes.map((node) => node.id));
+      const skipped: Array<{ nodeId: string; reason: SkipReason | "not_found" }> = input.nodeIds
+        .filter((id) => !foundIds.has(id))
+        .map((id) => ({ nodeId: id, reason: "not_found" as const }));
+
+      const { downloadUrl } = input;
+      let { targetVersion, checksum } = input;
+
+      if (targetVersion.startsWith("dev-")) {
+        const fresh = await checkDevAgentVersion(true);
+        if (!fresh.latestVersion) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Unable to fetch current dev release info — retry the update",
+          });
+        }
+        const binaryName = downloadUrl.split("/").pop() ?? "vf-agent-linux-amd64";
+        const freshChecksum = fresh.checksums[binaryName];
+        if (!freshChecksum) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to retrieve fresh checksum for ${binaryName} — retry the update`,
+          });
+        }
+        targetVersion = fresh.latestVersion;
+        checksum = `sha256:${freshChecksum}`;
+      }
+
+      const eligible: UpgradeNode[] = [];
+      for (const node of nodes) {
+        const reason = getUpdateSkipReason(node, targetVersion);
+        if (reason) {
+          skipped.push({ nodeId: node.id, reason });
+          continue;
+        }
+        eligible.push(node);
+      }
+
+      const triggeredNodeIds = eligible.map((node) => node.id);
+      if (triggeredNodeIds.length === 0) {
+        return {
+          updatedCount: 0,
+          triggeredNodeIds,
+          skipped,
+        };
+      }
+
+      const pendingAction = {
+        type: "self_update",
+        targetVersion,
+        downloadUrl,
+        checksum,
+      };
+
+      const updated = await prisma.vectorNode.updateMany({
+        where: { id: { in: triggeredNodeIds } },
+        data: { pendingAction },
+      });
+
+      for (const nodeId of triggeredNodeIds) {
+        relayPush(nodeId, {
+          type: "action",
+          action: "self_update",
+          targetVersion,
+          downloadUrl,
+          checksum,
+        });
+      }
+
+      return {
+        updatedCount: updated.count,
+        triggeredNodeIds,
+        skipped,
+      };
+    }),
+
+  triggerBulkAgentUpdate: protectedProcedure
+    .input(
+      agentUpgradeBaseInput.extend({
+        downloadUrl: z.string().url(),
+        checksum: z.string(),
+      }),
+    )
+    .use(withTeamAccess("ADMIN"))
+    .use(withAudit("fleet.agent_bulk_update_triggered", "VectorNode"))
+    .mutation(async ({ input }) => {
+      const windowStatus = getMaintenanceWindowStatus(input.maintenanceWindow);
+      if (input.maintenanceWindow && windowStatus !== "open") {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            windowStatus === "scheduled"
+              ? "Maintenance window has not started"
+              : "Maintenance window has expired",
+        });
+      }
+
+      const { downloadUrl } = input;
+      let { targetVersion, checksum } = input;
+
+      if (targetVersion.startsWith("dev-")) {
+        const fresh = await checkDevAgentVersion(true);
+        if (!fresh.latestVersion) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Unable to fetch current dev release info — retry the update",
+          });
+        }
+        const binaryName = downloadUrl.split("/").pop() ?? "vf-agent-linux-amd64";
+        const freshChecksum = fresh.checksums[binaryName];
+        if (!freshChecksum) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to retrieve fresh checksum for ${binaryName} — retry the update`,
+          });
+        }
+        targetVersion = fresh.latestVersion;
+        checksum = `sha256:${freshChecksum}`;
+      }
+
+      const plan = await buildAgentUpgradePlan({ ...input, targetVersion });
+      const activeWave = plan.waves[0];
+      if (!activeWave) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No eligible agents matched the upgrade criteria",
+        });
+      }
+
+      const pendingAction = {
+        type: "self_update",
+        targetVersion,
+        downloadUrl,
+        checksum,
+        orchestration: {
+          environmentId: input.environmentId,
+          stage: activeWave.stage,
+          waveIndex: activeWave.index,
+          totalWaves: plan.waves.length,
+          selectedAt: new Date().toISOString(),
+        },
+      };
+
+      const updated = await prisma.vectorNode.updateMany({
+        where: { id: { in: activeWave.nodeIds } },
+        data: { pendingAction },
+      });
+
+      for (const nodeId of activeWave.nodeIds) {
+        relayPush(nodeId, {
+          type: "action",
+          action: "self_update",
+          targetVersion,
+          downloadUrl,
+          checksum,
+        });
+      }
+
+      const remainingNodeIds = plan.waves
+        .slice(1)
+        .flatMap((wave) => wave.nodeIds);
+
+      return {
+        updatedCount: updated.count,
+        triggeredNodeIds: activeWave.nodeIds,
+        remainingNodeIds,
+        plan,
+      };
     }),
 
   updateLabels: protectedProcedure

@@ -23,11 +23,20 @@ export default defineConfig({
     },
     {
       name: "chromium",
+      testIgnore: /qa-seeded-pipeline\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         storageState: "e2e/.auth/user.json",
       },
       dependencies: ["setup"],
+    },
+    {
+      name: "qa-chromium",
+      testMatch: /qa-seeded-pipeline\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: { cookies: [], origins: [] },
+      },
     },
   ],
 });
