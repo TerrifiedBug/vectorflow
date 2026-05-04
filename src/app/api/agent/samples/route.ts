@@ -3,29 +3,8 @@ import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
-import { z } from "zod";
 import { errorLog } from "@/lib/logger";
-
-const sampleResultSchema = z.object({
-  results: z.array(
-    z.object({
-      requestId: z.string(),
-      componentKey: z.string(),
-      events: z.array(z.unknown()).optional().default([]),
-      schema: z
-        .array(
-          z.object({
-            path: z.string(),
-            type: z.string(),
-            sample: z.string(),
-          }),
-        )
-        .optional()
-        .default([]),
-      error: z.string().optional(),
-    }),
-  ),
-});
+import { sampleResultsRequestSchema } from "../../../../../contracts/agent/v1/payloads";
 
 /** Returns true if this is a Prisma unique constraint violation (P2002). */
 function isUniqueViolation(err: unknown): boolean {
@@ -43,7 +22,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const parsed = sampleResultSchema.safeParse(body);
+    const parsed = sampleResultsRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid payload", details: parsed.error.issues },

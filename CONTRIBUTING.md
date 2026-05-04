@@ -113,6 +113,13 @@ vectorflow/
 
 See [docs/public/](./docs/public/) for the full user-facing documentation.
 
+### Server-Agent Contracts
+
+The JSON exchanged by the Next.js server and Go agent is versioned under
+[`contracts/agent/`](./contracts/agent/). Any change to config, heartbeat,
+pending action, sample, log, or push payloads must update the contract,
+fixtures, TypeScript validation tests, and Go round-trip tests in the same PR.
+
 ---
 
 ## Branch Workflow

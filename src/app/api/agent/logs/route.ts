@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
@@ -7,13 +6,7 @@ import { ingestLogs } from "@/server/services/log-ingest";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { errorLog } from "@/lib/logger";
 import type { LogEntryEvent } from "@/lib/sse/types";
-
-const logBatchSchema = z.array(
-  z.object({
-    pipelineId: z.string(),
-    lines: z.array(z.string()).max(500),
-  }),
-);
+import { logBatchesRequestSchema } from "../../../../../contracts/agent/v1/payloads";
 
 export async function POST(request: Request) {
   const rateLimited = await checkTokenRateLimit(request, "agent-logs", 60);
@@ -26,7 +19,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const parsed = logBatchSchema.safeParse(body);
+    const parsed = logBatchesRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid payload", details: parsed.error.issues },
