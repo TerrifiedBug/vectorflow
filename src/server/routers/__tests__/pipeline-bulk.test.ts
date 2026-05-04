@@ -270,5 +270,19 @@ describe("bulk operations", () => {
       expect(result.results[1]).toMatchObject({ pipelineId: "p2", success: false });
       expect(result.results[2]).toMatchObject({ pipelineId: "p3", success: false });
     });
+
+    it("rejects cross-team batches before deleting any pipeline", async () => {
+      prismaMock.pipeline.findMany.mockResolvedValueOnce([
+        { id: "p1", environment: { teamId: "team-1" } },
+        { id: "p2", environment: { teamId: "team-2" } },
+      ] as never);
+
+      await expect(caller.bulkDelete({ pipelineIds: ["p1", "p2"] })).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+      });
+
+      expect(prismaMock.pipeline.delete).not.toHaveBeenCalled();
+      expect(prismaMock.pipeline.update).not.toHaveBeenCalled();
+    });
   });
 });
