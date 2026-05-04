@@ -171,48 +171,38 @@ function inferType(expression: string, previousType?: string): string {
 
 function parseRemapChanges(source: string, node: Node, fields: Map<string, LineageField>): LineageChange[] {
   const changes: LineageChange[] = [];
-  const removed = new Set<string>();
-  const deletionTargets = new Set<string>();
   const removeRegex = new RegExp(`\\b(?:del|remove)!?\\(\\s*(${FIELD_PATH_PATTERN})`, "g");
-
-  for (const match of source.matchAll(removeRegex)) {
-    const path = fieldPath(match[1]);
-    deletionTargets.add(path);
-    const existing = fields.get(path);
-    if (!existing) continue;
-
-    fields.set(path, {
-      ...existing,
-      status: "removed",
-      lastChangedBy: node.id,
-    });
-    removed.add(path);
-    changes.push({
-      path,
-      status: "removed",
-      description: `Removed by ${nodeLabel(node)}`,
-    });
-  }
-
   const assignmentRegex = new RegExp(`^\\s*(${FIELD_PATH_PATTERN})\\s*=\\s*(.+?)\\s*$`);
+
   for (const line of source.split("\n")) {
     const cleanLine = line.replace(/#.*$/, "");
-    const match = cleanLine.match(assignmentRegex);
-    if (!match) continue;
 
-    const path = fieldPath(match[1]);
-    if (path === "." || removed.has(path)) continue;
+    for (const match of cleanLine.matchAll(removeRegex)) {
+      const path = fieldPath(match[1]);
+      const existing = fields.get(path);
+      if (!existing || existing.status === "removed") continue;
+      fields.set(path, { ...existing, status: "removed", lastChangedBy: node.id });
+      changes.push({ path, status: "removed", description: `Removed by ${nodeLabel(node)}` });
+    }
 
-    const expression = match[2];
-    const sourcePathMatch = expression.trim().match(new RegExp(`^(${FIELD_PATH_PATTERN})$`));
+    const assignMatch = cleanLine.match(assignmentRegex);
+    if (!assignMatch) continue;
+
+    const path = fieldPath(assignMatch[1]);
+    if (path === ".") continue;
+
     const previous = fields.get(path);
+    const activePrevious = previous?.status !== "removed" ? previous : undefined;
+    const expression = assignMatch[2];
+    const sourcePathMatch = expression.trim().match(new RegExp(`^(${FIELD_PATH_PATTERN})$`));
     const sourceField = sourcePathMatch ? fields.get(fieldPath(sourcePathMatch[1])) : undefined;
-    const nextType = inferType(expression, sourceField?.type ?? previous?.type);
-    const status: FieldLineageStatus = sourceField && sourceField.path !== path
+    const activeSourceField = sourceField?.status !== "removed" ? sourceField : undefined;
+    const nextType = inferType(expression, activeSourceField?.type ?? activePrevious?.type);
+    const status: FieldLineageStatus = activeSourceField && activeSourceField.path !== path
       ? "renamed"
-      : previous && previous.type !== nextType
+      : activePrevious && activePrevious.type !== nextType
         ? "type_changed"
-        : previous
+        : activePrevious
           ? "unchanged"
           : "added";
 
@@ -221,39 +211,26 @@ function parseRemapChanges(source: string, node: Node, fields: Map<string, Linea
     fields.set(path, {
       path,
       type: nextType,
-      description: sourceField
-        ? `Copied from ${sourceField.path}`
-        : previous?.description ?? `Created by ${nodeLabel(node)}`,
-      always: previous?.always ?? sourceField?.always ?? false,
+      description: activeSourceField
+        ? `Copied from ${activeSourceField.path}`
+        : activePrevious?.description ?? `Created by ${nodeLabel(node)}`,
+      always: activePrevious?.always ?? activeSourceField?.always ?? false,
       status,
-      sourceNodeId: sourceField?.sourceNodeId ?? previous?.sourceNodeId ?? node.id,
-      sourceComponent: sourceField?.sourceComponent ?? previous?.sourceComponent ?? nodeLabel(node),
+      sourceNodeId: activeSourceField?.sourceNodeId ?? activePrevious?.sourceNodeId ?? node.id,
+      sourceComponent: activeSourceField?.sourceComponent ?? activePrevious?.sourceComponent ?? nodeLabel(node),
       lastChangedBy: node.id,
-      previousPath: sourceField && sourceField.path !== path ? sourceField.path : previous?.previousPath,
+      previousPath: activeSourceField && activeSourceField.path !== path ? activeSourceField.path : activePrevious?.previousPath,
     });
 
     changes.push({
       path,
       status,
       description: status === "renamed"
-        ? `Copied from ${sourceField?.path}`
+        ? `Copied from ${activeSourceField?.path}`
         : status === "type_changed"
           ? `Type changed to ${nextType}`
           : `Added by ${nodeLabel(node)}`,
     });
-  }
-
-  for (const path of deletionTargets) {
-    if (removed.has(path)) continue;
-    const field = fields.get(path);
-    if (field && field.lastChangedBy === node.id) {
-      fields.set(path, { ...field, status: "removed", lastChangedBy: node.id });
-      changes.push({
-        path,
-        status: "removed",
-        description: `Removed by ${nodeLabel(node)}`,
-      });
-    }
   }
 
   return changes;
@@ -302,7 +279,7 @@ function readNestedObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function sinkExpectations(node: Node, fields: Map<string, LineageField>): SinkExpectation[] {
+function sinkExpectations(node: Node, fields: Map<string, LineageField>, upstreamEventTypes: Set<DataType>): SinkExpectation[] {
   const data = nodeData(node);
   const componentDef = data.componentDef;
   const config = data.config ?? {};
@@ -337,7 +314,7 @@ function sinkExpectations(node: Node, fields: Map<string, LineageField>): SinkEx
     });
   }
 
-  if (componentDef.inputTypes?.includes("metric")) {
+  if (upstreamEventTypes.has("metric")) {
     expectations.push(
       { path: ".name", type: "string", reason: "Required metric event field" },
       { path: ".kind", type: "string", reason: "Required metric event field" },
@@ -357,6 +334,7 @@ export function buildFieldLineage(nodes: Node[], edges: Edge[], selectedNodeId: 
   const path = upstreamPath(nodes, edges, selectedNodeId);
   const fields = new Map<string, LineageField>();
   const steps: LineageStep[] = [];
+  const upstreamEventTypes = new Set<DataType>();
 
   for (const node of path) {
     const data = nodeData(node);
@@ -365,6 +343,7 @@ export function buildFieldLineage(nodes: Node[], edges: Edge[], selectedNodeId: 
 
     let changes: LineageChange[] = [];
     if (componentDef.kind === "source") {
+      for (const type of componentDef.outputTypes) upstreamEventTypes.add(type);
       changes = addSourceFields(node, fields);
     } else if (componentDef.kind === "transform") {
       changes = transformChanges(node, fields);
@@ -384,6 +363,6 @@ export function buildFieldLineage(nodes: Node[], edges: Edge[], selectedNodeId: 
   return {
     fields: [...fields.values()].map(cloneField).sort((a, b) => a.path.localeCompare(b.path)),
     steps,
-    expectations: selected ? sinkExpectations(selected, fields) : [],
+    expectations: selected ? sinkExpectations(selected, fields, upstreamEventTypes) : [],
   };
 }

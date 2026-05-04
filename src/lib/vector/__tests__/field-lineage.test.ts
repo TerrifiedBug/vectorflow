@@ -97,6 +97,50 @@ describe("buildFieldLineage", () => {
     expect(messageField?.lastChangedBy).toBe("dlp");
   });
 
+  it("respects remap statement order: del then reassign makes field present", () => {
+    const nodes = [
+      node("source", "source", "file"),
+      node("remap", "transform", "remap", {
+        source: `
+          del(.host)
+          .host = "override"
+        `,
+      }),
+      node("sink", "sink", "elasticsearch"),
+    ];
+
+    const result = buildFieldLineage(nodes, [edge("source", "remap"), edge("remap", "sink")], "sink");
+
+    expect(result.fields.find((f) => f.path === ".host")?.status).toBe("added");
+  });
+
+  it("does not add metric expectations for log-only pipelines to mixed-input sinks", () => {
+    const mixedSink: Node = {
+      id: "sink",
+      position: { x: 0, y: 0 },
+      data: {
+        componentDef: {
+          kind: "sink",
+          type: "http",
+          displayName: "http",
+          description: "http",
+          category: "test",
+          outputTypes: [],
+          inputTypes: ["log", "metric"],
+          configSchema: {},
+        },
+        componentKey: "http_sink",
+        config: {},
+      },
+    };
+    const nodes = [node("source", "source", "file"), mixedSink];
+
+    const result = buildFieldLineage(nodes, [edge("source", "sink")], "sink");
+
+    expect(result.expectations.find((e) => e.path === ".name")).toBeUndefined();
+    expect(result.expectations.find((e) => e.path === ".kind")).toBeUndefined();
+  });
+
   it("reports missing sink expectations from sink configuration", () => {
     const nodes = [
       node("source", "source", "file"),
