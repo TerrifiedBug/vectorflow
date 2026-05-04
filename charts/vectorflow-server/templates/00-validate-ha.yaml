@@ -1,4 +1,7 @@
 {{- $ha := eq (include "vectorflow-server.haEnabled" .) "true" -}}
+{{- if and $ha (not .Values.existingSecret) -}}
+{{- fail "HA requires existingSecret: all replicas must share the same NEXTAUTH_SECRET and DATABASE_URL. Set existingSecret to the name of a pre-existing Kubernetes Secret containing the required keys." -}}
+{{- end -}}
 {{- if and $ha (ne (include "vectorflow-server.redisConfigured" .) "true") -}}
 {{- fail "HA requires Redis: set redis.enabled=true, secret.redisUrl, or existingSecret with existingSecretContainsRedisUrl=true when replicaCount > 1 or autoscaling.maxReplicas > 1" -}}
 {{- end -}}
