@@ -48,10 +48,6 @@ vi.mock("@/server/services/sli-evaluator", () => ({
   evaluatePipelineHealth: vi.fn(),
 }));
 
-vi.mock("@/server/services/batch-health", () => ({
-  batchEvaluatePipelineHealth: vi.fn(),
-}));
-
 vi.mock("@/server/services/cost-attribution", () => ({
   getPipelineCostSnapshot: vi.fn(),
   computeCostCents: vi.fn(() => 0),
@@ -101,7 +97,6 @@ import { dashboardRouter } from "@/server/routers/dashboard";
 import { auditRouter } from "@/server/routers/audit";
 import { pipelineRouter } from "@/server/routers/pipeline";
 import { pipelineObservabilityRouter } from "@/server/routers/pipeline-observability";
-import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -256,10 +251,10 @@ describe("tenant scoping with real authorization middleware", () => {
       { id: "pipe-1", environment: { teamId: "team-1" } },
       { id: "pipe-2", environment: { teamId: "team-2" } },
     ] as never);
-    vi.mocked(batchEvaluatePipelineHealth).mockResolvedValue({
+    mockBatchEvaluatePipelineHealth.mockResolvedValue({
       "pipe-1": { status: "healthy", slis: [] },
       "pipe-2": { status: "degraded", slis: [] },
-    } as never);
+    });
 
     await expect(
       pipelineObservabilityCaller.batchHealth({
@@ -267,7 +262,7 @@ describe("tenant scoping with real authorization middleware", () => {
       }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
 
-    expect(batchEvaluatePipelineHealth).not.toHaveBeenCalled();
+    expect(mockBatchEvaluatePipelineHealth).not.toHaveBeenCalled();
   });
 
   it("rejects mixed-team pipeline batches before deploy mutation side effects", async () => {
