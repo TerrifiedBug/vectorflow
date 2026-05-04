@@ -110,8 +110,8 @@ services:
       - /bin/sh
       - -ec
       - |
-        until wget --no-verbose --tries=1 --spider http://vf1:3000/api/health/ready \
-          || wget --no-verbose --tries=1 --spider http://vf2:3000/api/health/ready; do
+        until wget -q -T 2 -t 1 -O /dev/null http://vf1:3000/api/health/ready \
+          || wget -q -T 2 -t 1 -O /dev/null http://vf2:3000/api/health/ready; do
           echo "Waiting for at least one VectorFlow replica to become ready..."
           sleep 2
         done
