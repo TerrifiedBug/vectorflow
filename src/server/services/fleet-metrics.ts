@@ -65,8 +65,8 @@ export async function getFleetEventVolume(
 }
 
 /**
- * Compute the throughput drop percentage by comparing current live counters
- * against the aggregate PipelineMetric rows from 30–60 minutes ago.
+ * Compute the throughput drop percentage by comparing recent aggregate
+ * PipelineMetric rows against the aggregate rows from 30–60 minutes ago.
  *
  * Drop = `((previous − current) / previous) * 100`.
  * A positive value means throughput decreased; negative means it increased.
@@ -76,25 +76,21 @@ export async function getFleetEventVolume(
 export async function getFleetThroughputDrop(
   environmentId: string,
 ): Promise<number | null> {
-  // Current total from live pipeline status counters
-  const currentRows = await prisma.nodePipelineStatus.findMany({
-    where: {
-      node: { environmentId },
-    },
-    select: { eventsIn: true },
-  });
-
-  let currentTotal = BigInt(0);
-  for (const r of currentRows) {
-    currentTotal += r.eventsIn;
-  }
-
-  // Previous period: aggregate PipelineMetric rows (nodeId IS NULL AND
-  // componentId IS NULL) from 30–60 minutes ago, for pipelines in this
-  // environment.
   const now = new Date();
   const thirtyMinAgo = new Date(now.getTime() - 30 * 60 * 1000);
   const sixtyMinAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+  // Compare interval rollups with interval rollups. NodePipelineStatus.eventsIn
+  // is cumulative lifetime state and cannot be compared to 30-minute buckets.
+  const currentRows = await prisma.pipelineMetric.findMany({
+    where: {
+      nodeId: null,
+      componentId: null,
+      timestamp: { gte: thirtyMinAgo, lt: now },
+      pipeline: { environmentId },
+    },
+    select: { eventsIn: true },
+  });
 
   const previousRows = await prisma.pipelineMetric.findMany({
     where: {
@@ -107,6 +103,11 @@ export async function getFleetThroughputDrop(
   });
 
   if (previousRows.length === 0) return null;
+
+  let currentTotal = BigInt(0);
+  for (const r of currentRows) {
+    currentTotal += r.eventsIn;
+  }
 
   let previousTotal = BigInt(0);
   for (const r of previousRows) {
