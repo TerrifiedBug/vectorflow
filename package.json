@@ -10,6 +10,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test e2e/tests/pr-smoke.spec.ts",
     "test:e2e:ui": "playwright test --ui",
     "postinstall": "prisma generate",
     "generate:openapi": "tsx scripts/generate-openapi.ts",
