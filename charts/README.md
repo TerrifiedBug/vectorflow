@@ -2,6 +2,8 @@
 
 Helm charts for deploying VectorFlow on Kubernetes.
 
+Before using these charts in production, review the [production Docker and Helm hardening guide](https://vectorflow.sh/docs/operations/production-hardening). The agent chart intentionally defaults to broad node observability coverage, including host networking, host log access, and an added file-read capability.
+
 | Chart | Description |
 |-------|-------------|
 | [vectorflow-server](./vectorflow-server/) | Next.js control plane — Deployment, Service, Ingress, PDB |
@@ -141,6 +143,24 @@ config:
   serverUrl: "http://vectorflow.vectorflow.svc.cluster.local:3000"
   token: "<enrollment-token>"
 ```
+
+For production, explicitly decide whether to keep the default host access settings:
+
+```yaml
+hostNetwork: false
+dnsPolicy: ClusterFirst
+mountHostLogs: false
+mountDockerContainers: false
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false
+  capabilities:
+    add: []
+    drop:
+      - NET_RAW
+```
+
+Keep the broader defaults only for agents that need host-level listeners or host log collection.
 
 #### Node labels and selectors
 
