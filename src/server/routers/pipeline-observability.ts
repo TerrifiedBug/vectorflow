@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import { LogLevel } from "@/generated/prisma";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
+import { assertPipelineBatchAccess } from "@/server/authz";
 import { withAudit } from "@/server/middleware/audit";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
@@ -374,6 +375,7 @@ export const pipelineObservabilityRouter = router({
 
   eventSchemas: protectedProcedure
     .input(z.object({ pipelineId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const samples = await prisma.eventSample.findMany({
         where: {
@@ -476,7 +478,8 @@ export const pipelineObservabilityRouter = router({
   batchHealth: protectedProcedure
     .input(z.object({ pipelineIds: z.array(z.string()).max(200) }))
     .use(withTeamAccess("VIEWER"))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      await assertPipelineBatchAccess(input.pipelineIds, ctx.session.user.id, "VIEWER");
       return batchEvaluatePipelineHealth(input.pipelineIds);
     }),
 
