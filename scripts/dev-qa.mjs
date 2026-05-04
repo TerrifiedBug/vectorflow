@@ -8,6 +8,7 @@ import {
   getQaDatabaseUrl,
   hasDocker,
   isTcpReachable,
+  POSTGRES_REACHABILITY_TIMEOUT_MS,
 } from "./dev-qa-lib.mjs";
 
 const QA_DEV_USER = {
@@ -56,7 +57,10 @@ if (env.NODE_ENV === "production") {
 }
 
 const dockerAvailable = mode === "docker" ? hasDocker() : false;
-const localPostgresReachable = await isTcpReachable(getPostgresEndpoint(DATABASE_URL));
+const localPostgresReachable = await isTcpReachable(
+  getPostgresEndpoint(DATABASE_URL),
+  POSTGRES_REACHABILITY_TIMEOUT_MS,
+);
 
 if (mode === "docker" && !dockerAvailable) {
   console.error(
