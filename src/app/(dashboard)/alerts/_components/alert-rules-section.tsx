@@ -337,6 +337,13 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
     const skipThresholdForCreate = isEvent;
     const trimmedDuration = form.durationSeconds.trim();
     const parsedDuration = parseInt(form.durationSeconds, 10);
+    const normalizedDuration = Number.isFinite(parsedDuration)
+      ? (isBinary
+          ? Math.max(parsedDuration, 0)
+          : parsedDuration > 0
+            ? parsedDuration
+            : 60)
+      : 60;
     const thresholdUpdates =
       isEvent || isBinary
         ? {}
@@ -349,10 +356,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
       (isBinary && trimmedDuration.length === 0)
         ? {}
         : {
-            durationSeconds:
-              Number.isFinite(parsedDuration) && parsedDuration > 0
-                ? parsedDuration
-                : 60,
+            durationSeconds: normalizedDuration,
           };
 
     if (editingRuleId) {
