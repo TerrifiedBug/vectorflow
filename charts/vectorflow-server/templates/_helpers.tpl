@@ -137,7 +137,7 @@ false
 True when the chart has a Redis URL source for leader election and pub/sub.
 */}}
 {{- define "vectorflow-server.redisConfigured" -}}
-{{- if or .Values.redis.enabled .Values.secret.redisUrl (and .Values.existingSecret .Values.existingSecretContainsRedisUrl) -}}
+{{- if or .Values.redis.enabled (and (not .Values.existingSecret) .Values.secret.redisUrl) (and .Values.existingSecret .Values.existingSecretContainsRedisUrl) -}}
 true
 {{- else -}}
 false
