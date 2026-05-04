@@ -13,12 +13,14 @@ import {
   Activity,
   Send,
   Webhook,
+  ClipboardCheck,
 } from "lucide-react";
 
 export const settingsNavGroups = [
   {
     label: "System",
     items: [
+      { title: "Production Readiness", href: "/settings/readiness", icon: ClipboardCheck, requiredSuperAdmin: true },
       { title: "Version Check", href: "/settings/version", icon: RefreshCw, requiredSuperAdmin: true },
       { title: "Backup", href: "/settings/backup", icon: HardDrive, requiredSuperAdmin: true },
       { title: "Telemetry", href: "/settings/telemetry", icon: Send, requiredSuperAdmin: true, demoHidden: true },
