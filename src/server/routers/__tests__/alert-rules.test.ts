@@ -350,6 +350,61 @@ describe("alertRulesRouter", () => {
         }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
+
+    it("rejects whitespace-only ownerHint", async () => {
+      await expect(
+        caller.createRule({
+          name: "Test",
+          environmentId: "env-1",
+          metric: "cpu_usage" as never,
+          condition: "gt" as never,
+          threshold: 90,
+          teamId: "team-1",
+          ownerHint: "   ",
+        }),
+      ).rejects.toThrow();
+    });
+
+    it("rejects whitespace-only suggestedAction", async () => {
+      await expect(
+        caller.createRule({
+          name: "Test",
+          environmentId: "env-1",
+          metric: "cpu_usage" as never,
+          condition: "gt" as never,
+          threshold: 90,
+          teamId: "team-1",
+          suggestedAction: "   ",
+        }),
+      ).rejects.toThrow();
+    });
+
+    it("trims leading/trailing whitespace from ownerHint and suggestedAction", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.alertRule.create.mockResolvedValue(
+        makeAlertRule({ ownerHint: "sre-team", suggestedAction: "Check logs." }) as never,
+      );
+
+      await caller.createRule({
+        name: "Trim Test",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+        condition: "gt" as never,
+        threshold: 90,
+        teamId: "team-1",
+        ownerHint: "  sre-team  ",
+        suggestedAction: "  Check logs.  ",
+      });
+
+      expect(prismaMock.alertRule.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            ownerHint: "sre-team",
+            suggestedAction: "Check logs.",
+          }),
+        }),
+      );
+    });
   });
 
   // ─── updateRule ────────────────────────────────────────────────────────────
@@ -447,6 +502,41 @@ describe("alertRulesRouter", () => {
           channelIds: ["ch-1", "ch-invalid"],
         }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    });
+
+    it("rejects whitespace-only ownerHint on update", async () => {
+      await expect(
+        caller.updateRule({ id: "rule-1", ownerHint: "   " }),
+      ).rejects.toThrow();
+    });
+
+    it("rejects whitespace-only suggestedAction on update", async () => {
+      await expect(
+        caller.updateRule({ id: "rule-1", suggestedAction: "   " }),
+      ).rejects.toThrow();
+    });
+
+    it("trims whitespace from ownerHint and suggestedAction on update", async () => {
+      const existing = makeAlertRule();
+      prismaMock.alertRule.findUnique.mockResolvedValue(existing as never);
+      prismaMock.alertRule.update.mockResolvedValue(
+        { ...existing, ownerHint: "sre-team", suggestedAction: "Restart the pod." } as never,
+      );
+
+      await caller.updateRule({
+        id: "rule-1",
+        ownerHint: "  sre-team  ",
+        suggestedAction: "  Restart the pod.  ",
+      });
+
+      expect(prismaMock.alertRule.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            ownerHint: "sre-team",
+            suggestedAction: "Restart the pod.",
+          }),
+        }),
+      );
     });
   });
 

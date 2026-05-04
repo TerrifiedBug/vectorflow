@@ -35,8 +35,8 @@ export const alertRulesRouter = router({
         threshold: z.number().nullable().optional(),
         durationSeconds: z.number().int().min(1).nullable().optional(),
         severity: z.enum(["info", "warning", "critical"]).default("warning"),
-        ownerHint: z.string().min(1).max(120).default("platform-ops"),
-        suggestedAction: z.string().min(1).max(1000).default(
+        ownerHint: z.string().trim().min(1).max(120).default("platform-ops"),
+        suggestedAction: z.string().trim().min(1).max(1000).default(
           "Review the alert context, then inspect the affected pipeline, node, and recent deployment changes.",
         ),
         cooldownMinutes: z.number().int().min(0).max(1440).nullable().optional(),
@@ -175,8 +175,8 @@ export const alertRulesRouter = router({
         threshold: z.number().optional(),
         durationSeconds: z.number().int().min(1).optional(),
         severity: z.enum(["info", "warning", "critical"]).optional(),
-        ownerHint: z.string().min(1).max(120).optional(),
-        suggestedAction: z.string().min(1).max(1000).optional(),
+        ownerHint: z.string().trim().min(1).max(120).optional(),
+        suggestedAction: z.string().trim().min(1).max(1000).optional(),
         cooldownMinutes: z.number().int().min(0).max(1440).nullable().optional(),
         channelIds: z.array(z.string()).optional(),
         keyword: z.string().min(1).max(500).optional(),
