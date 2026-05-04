@@ -208,11 +208,12 @@ export default function AnalyticsPage() {
         </TabsList>
         <TabsContent value="volume" className="space-y-6">
           <div className="flex items-center justify-end">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1" role="group" aria-label="Analytics time range">
               {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (
                 <button
                   key={v}
                   type="button"
+                  aria-pressed={range === v}
                   onClick={() => setRange(v)}
                   className={cn(
                     "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
