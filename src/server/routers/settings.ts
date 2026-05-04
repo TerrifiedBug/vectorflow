@@ -621,20 +621,17 @@ export const settingsRouter = router({
     .query(async () => {
       const checkedAt = new Date().toISOString();
 
-      const [settings, nodeStats, webhookCount, auditPipeline] = await Promise.all([
-        getOrCreateSettings(),
-        prisma.vectorNode.groupBy({
-          by: ["status"],
-          _count: { id: true },
-        }),
-        prisma.webhookEndpoint.count({ where: { enabled: true } }),
-        prisma.pipeline.findFirst({
-          where: { isSystem: true },
-          select: { isDraft: true, deployedAt: true },
-        }),
-      ]);
+      type SignalStatus = "ok" | "warn" | "error" | "unknown";
+      type Signal = {
+        id: string;
+        label: string;
+        status: SignalStatus;
+        detail: string;
+        href?: string;
+      };
 
-      // Database latency check
+      // Database latency check runs first and independently so a DB outage
+      // still produces a payload with database: error rather than a 500.
       let dbLatencyMs: number | null = null;
       let dbOk = false;
       try {
@@ -646,35 +643,52 @@ export const settingsRouter = router({
         dbOk = false;
       }
 
+      // Config queries — wrapped so a DB outage degrades config signals to
+      // "unknown" instead of throwing and suppressing the database signal.
+      type NodeStatRow = { status: string; _count: { id: number } };
+      let settings: Awaited<ReturnType<typeof getOrCreateSettings>> | null = null;
+      let nodeStats: NodeStatRow[] = [];
+      let webhookCount = 0;
+      let auditPipeline: { isDraft: boolean; deployedAt: Date | null } | null = null;
+      let configAvailable = false;
+      try {
+        [settings, nodeStats, webhookCount, auditPipeline] = await Promise.all([
+          getOrCreateSettings(),
+          prisma.vectorNode.groupBy({
+            by: ["status"],
+            _count: { id: true },
+          }),
+          prisma.webhookEndpoint.count({ where: { enabled: true } }),
+          prisma.pipeline.findFirst({
+            where: { isSystem: true },
+            select: { isDraft: true, deployedAt: true },
+          }),
+        ]);
+        configAvailable = true;
+      } catch {
+        configAvailable = false;
+      }
+
       const totalNodes = nodeStats.reduce((sum, g) => sum + g._count.id, 0);
       const unhealthyNodes = nodeStats
         .filter((g) => g.status === "DEGRADED" || g.status === "UNREACHABLE" || g.status === "UNKNOWN")
         .reduce((sum, g) => sum + g._count.id, 0);
 
       const currentVersion = process.env.VF_VERSION ?? "dev";
-      const latestVersion = settings.latestServerRelease;
+      const latestVersion = settings?.latestServerRelease ?? null;
       const updateAvailable =
         latestVersion &&
         latestVersion !== currentVersion &&
         currentVersion !== "dev";
 
       const backupOk =
-        settings.backupEnabled &&
-        !!settings.lastBackupAt &&
-        settings.lastBackupStatus !== "failed" &&
+        !!settings?.backupEnabled &&
+        !!settings?.lastBackupAt &&
+        settings?.lastBackupStatus !== "failed" &&
         Date.now() - new Date(settings.lastBackupAt).getTime() < 48 * 60 * 60 * 1000;
 
       const auditShippingActive =
         !!auditPipeline && !auditPipeline.isDraft && !!auditPipeline.deployedAt;
-
-      type SignalStatus = "ok" | "warn" | "error" | "unknown";
-      type Signal = {
-        id: string;
-        label: string;
-        status: SignalStatus;
-        detail: string;
-        href?: string;
-      };
 
       const signals: Signal[] = [
         // Database
@@ -690,18 +704,22 @@ export const settingsRouter = router({
         {
           id: "backup",
           label: "Backups",
-          status: !settings.backupEnabled
+          status: !configAvailable
+            ? "unknown"
+            : !settings?.backupEnabled
             ? "warn"
             : backupOk
             ? "ok"
-            : settings.lastBackupStatus === "failed"
+            : settings?.lastBackupStatus === "failed"
             ? "error"
             : "warn",
-          detail: !settings.backupEnabled
+          detail: !configAvailable
+            ? "Could not read backup configuration"
+            : !settings?.backupEnabled
             ? "Scheduled backups disabled"
-            : settings.lastBackupStatus === "failed"
-            ? `Last backup failed: ${settings.lastBackupError ?? "unknown error"}`
-            : settings.lastBackupAt
+            : settings?.lastBackupStatus === "failed"
+            ? `Last backup failed: ${settings?.lastBackupError ?? "unknown error"}`
+            : settings?.lastBackupAt
             ? `Last backup ${new Date(settings.lastBackupAt).toLocaleDateString()}`
             : "No backup recorded",
           href: "/settings/backup",
@@ -710,12 +728,16 @@ export const settingsRouter = router({
         {
           id: "version",
           label: "Server version",
-          status: !latestVersion && currentVersion !== "dev"
+          status: !configAvailable
+            ? "unknown"
+            : !latestVersion && currentVersion !== "dev"
             ? "unknown"
             : updateAvailable
             ? "warn"
             : "ok",
-          detail: updateAvailable
+          detail: !configAvailable
+            ? "Could not read version data"
+            : updateAvailable
             ? `Update available: ${latestVersion}`
             : !latestVersion && currentVersion !== "dev"
             ? `v${currentVersion} — no release data fetched yet`
@@ -728,8 +750,10 @@ export const settingsRouter = router({
         {
           id: "oidc",
           label: "SSO / OIDC",
-          status: settings.oidcIssuer ? "ok" : "warn",
-          detail: settings.oidcIssuer
+          status: !configAvailable ? "unknown" : settings?.oidcIssuer ? "ok" : "warn",
+          detail: !configAvailable
+            ? "Could not read auth configuration"
+            : settings?.oidcIssuer
             ? `Configured (${settings.oidcDisplayName ?? "SSO"})`
             : "No OIDC provider configured — using local auth only",
           href: "/settings/auth",
@@ -738,34 +762,42 @@ export const settingsRouter = router({
         {
           id: "scim",
           label: "SCIM provisioning",
-          status: settings.scimEnabled ? "ok" : "warn",
-          detail: settings.scimEnabled ? "Enabled" : "Disabled — user provisioning is manual",
+          status: !configAvailable ? "unknown" : settings?.scimEnabled ? "ok" : "warn",
+          detail: !configAvailable
+            ? "Could not read SCIM configuration"
+            : settings?.scimEnabled
+            ? "Enabled"
+            : "Disabled — user provisioning is manual",
           href: "/settings/scim",
         },
         // Fleet
         {
           id: "fleet",
           label: "Fleet",
-          status:
-            totalNodes === 0
-              ? "warn"
-              : unhealthyNodes > 0
-              ? "warn"
-              : "ok",
-          detail:
-            totalNodes === 0
-              ? "No nodes registered"
-              : unhealthyNodes > 0
-              ? `${unhealthyNodes} of ${totalNodes} node${totalNodes !== 1 ? "s" : ""} unhealthy`
-              : `${totalNodes} node${totalNodes !== 1 ? "s" : ""} healthy`,
+          status: !configAvailable
+            ? "unknown"
+            : totalNodes === 0
+            ? "warn"
+            : unhealthyNodes > 0
+            ? "warn"
+            : "ok",
+          detail: !configAvailable
+            ? "Could not read fleet data"
+            : totalNodes === 0
+            ? "No nodes registered"
+            : unhealthyNodes > 0
+            ? `${unhealthyNodes} of ${totalNodes} node${totalNodes !== 1 ? "s" : ""} unhealthy`
+            : `${totalNodes} node${totalNodes !== 1 ? "s" : ""} healthy`,
           href: "/settings/fleet",
         },
         // Audit log shipping
         {
           id: "audit-shipping",
           label: "Audit log shipping",
-          status: auditShippingActive ? "ok" : "warn",
-          detail: auditShippingActive
+          status: !configAvailable ? "unknown" : auditShippingActive ? "ok" : "warn",
+          detail: !configAvailable
+            ? "Could not read audit pipeline status"
+            : auditShippingActive
             ? "Active — audit logs shipping to configured destination"
             : "Not deployed — audit events stay local only",
           href: "/settings/audit-shipping",
@@ -774,8 +806,10 @@ export const settingsRouter = router({
         {
           id: "webhooks",
           label: "Outbound webhooks",
-          status: webhookCount > 0 ? "ok" : "warn",
-          detail: webhookCount > 0
+          status: !configAvailable ? "unknown" : webhookCount > 0 ? "ok" : "warn",
+          detail: !configAvailable
+            ? "Could not read webhook configuration"
+            : webhookCount > 0
             ? `${webhookCount} active webhook${webhookCount !== 1 ? "s" : ""}`
             : "No outbound webhooks configured",
           href: "/settings/webhooks",
@@ -793,8 +827,9 @@ export const settingsRouter = router({
 
       const errorCount = signals.filter((s) => s.status === "error").length;
       const warnCount = signals.filter((s) => s.status === "warn").length;
+      const unknownCount = signals.filter((s) => s.status === "unknown").length;
       const overallStatus: SignalStatus =
-        errorCount > 0 ? "error" : warnCount > 0 ? "warn" : "ok";
+        errorCount > 0 ? "error" : warnCount > 0 || unknownCount > 0 ? "warn" : "ok";
 
       return { checkedAt, overallStatus, signals };
     }),

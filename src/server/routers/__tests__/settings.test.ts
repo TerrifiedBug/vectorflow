@@ -530,5 +530,66 @@ describe("settingsRouter", () => {
       const auditSignal = signals.find((s) => s.id === "audit-shipping");
       expect(auditSignal?.status).toBe("ok");
     });
+
+    it("unknown signals count toward non-ok overall status", async () => {
+      const originalVfVersion = process.env.VF_VERSION;
+      process.env.VF_VERSION = "1.2.3";
+      try {
+        // latestServerRelease null + real VF_VERSION → version signal = "unknown"
+        setupReadinessMocks({
+          latestServerRelease: null,
+          backupEnabled: true,
+          lastBackupAt: new Date(),
+          lastBackupStatus: "success",
+          oidcIssuer: "https://sso.example.com",
+          scimEnabled: true,
+        });
+        // @ts-expect-error - groupBy mock typing is complex
+        prismaMock.vectorNode.groupBy.mockResolvedValue([
+          { status: "HEALTHY", _count: { id: 2 } },
+        ]);
+        prismaMock.webhookEndpoint.count.mockResolvedValue(1);
+        prismaMock.pipeline.findFirst.mockResolvedValue({
+          isDraft: false,
+          deployedAt: new Date(),
+        } as never);
+
+        const result = await caller.productionReadiness();
+
+        // version is "unknown" → overall must not be "ok"
+        expect(result.overallStatus).not.toBe("ok");
+        const signals = result.signals as ReadinessSignal[];
+        const versionSignal = signals.find((s) => s.id === "version");
+        expect(versionSignal?.status).toBe("unknown");
+      } finally {
+        if (originalVfVersion === undefined) {
+          delete process.env.VF_VERSION;
+        } else {
+          process.env.VF_VERSION = originalVfVersion;
+        }
+      }
+    });
+
+    it("DB outage returns database:error payload without throwing", async () => {
+      // Make the DB ping fail AND the config queries fail
+      prismaMock.$queryRaw.mockRejectedValue(new Error("connection refused"));
+      prismaMock.systemSettings.findUnique.mockRejectedValue(new Error("connection refused"));
+      prismaMock.systemSettings.create.mockRejectedValue(new Error("connection refused"));
+      // @ts-expect-error - groupBy mock typing is complex
+      prismaMock.vectorNode.groupBy.mockRejectedValue(new Error("connection refused"));
+      prismaMock.webhookEndpoint.count.mockRejectedValue(new Error("connection refused"));
+      prismaMock.pipeline.findFirst.mockRejectedValue(new Error("connection refused"));
+
+      // Should not throw — must return a structured payload
+      const result = await caller.productionReadiness();
+
+      const signals = result.signals as ReadinessSignal[];
+      const dbSignal = signals.find((s) => s.id === "database");
+      expect(dbSignal?.status).toBe("error");
+      // Config-dependent signals should all be unknown
+      const configSignals = signals.filter((s) => s.id !== "database" && s.id !== "sentry");
+      expect(configSignals.every((s) => s.status === "unknown")).toBe(true);
+      expect(result.overallStatus).not.toBe("ok");
+    });
   });
 });
