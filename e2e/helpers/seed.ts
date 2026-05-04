@@ -38,7 +38,13 @@ export async function seed(prisma: PrismaClient): Promise<SeedResult> {
   });
 
   const environment = await prisma.environment.create({
-    data: { name: TEST_ENVIRONMENT.name, teamId: team.id, isSystem: false },
+    data: {
+      name: TEST_ENVIRONMENT.name,
+      teamId: team.id,
+      isSystem: false,
+      costPerGbCents: 14,
+      costBudgetCents: 2500,
+    },
   });
 
   await prisma.team.update({
@@ -136,6 +142,103 @@ export async function seed(prisma: PrismaClient): Promise<SeedResult> {
     },
   });
 
+  const driftedNode = await prisma.vectorNode.create({
+    data: {
+      name: "e2e-node-02-drift",
+      host: "e2e-host-02.local",
+      apiPort: 8687,
+      environmentId: environment.id,
+      status: "DEGRADED",
+      lastSeen: new Date(Date.now() - 45 * 60_000),
+      agentVersion: "0.9.5",
+      vectorVersion: "0.41.1",
+      os: "linux",
+      deploymentMode: "STANDALONE",
+      labels: { env: "e2e", region: "test", drift: "version" },
+    },
+  });
+
+  await prisma.nodePipelineStatus.createMany({
+    data: [
+      {
+        nodeId: node.id,
+        pipelineId: pipeline.id,
+        version: 1,
+        status: "RUNNING",
+        pid: 4201,
+        uptimeSeconds: 86_400,
+        eventsIn: BigInt(2_400_000),
+        eventsOut: BigInt(2_352_000),
+        errorsTotal: BigInt(340),
+        eventsDiscarded: BigInt(4_800),
+        bytesIn: BigInt(1_200_000_000),
+        bytesOut: BigInt(1_050_000_000),
+        utilization: 0.62,
+        configChecksum: "pipeline-v1-current",
+        recentLogs: [
+          { level: "INFO", message: "Pipeline running normally" },
+          { level: "WARN", message: "Recovered from short output backpressure" },
+        ],
+        lastUpdated: new Date(),
+      },
+      {
+        nodeId: driftedNode.id,
+        pipelineId: pipeline.id,
+        version: 0,
+        status: "RUNNING",
+        pid: 4202,
+        uptimeSeconds: 72_000,
+        eventsIn: BigInt(1_850_000),
+        eventsOut: BigInt(1_720_000),
+        errorsTotal: BigInt(1_240),
+        eventsDiscarded: BigInt(22_000),
+        bytesIn: BigInt(940_000_000),
+        bytesOut: BigInt(790_000_000),
+        utilization: 0.88,
+        configChecksum: "pipeline-v0-drifted",
+        recentLogs: [
+          { level: "WARN", message: "Running older pipeline version" },
+          { level: "ERROR", message: "Intermittent sink delivery failures" },
+        ],
+        lastUpdated: new Date(Date.now() - 45 * 60_000),
+      },
+    ],
+  });
+
+  await prisma.nodeStatusEvent.createMany({
+    data: [
+      {
+        nodeId: node.id,
+        fromStatus: null,
+        toStatus: "HEALTHY",
+        reason: "e2e seed enrollment",
+        timestamp: new Date(Date.now() - 48 * 3600_000),
+      },
+      {
+        nodeId: driftedNode.id,
+        fromStatus: "HEALTHY",
+        toStatus: "DEGRADED",
+        reason: "version drift detected",
+        timestamp: new Date(Date.now() - 6 * 3600_000),
+      },
+      {
+        nodeId: node.id,
+        fromStatus: "DEGRADED",
+        toStatus: "HEALTHY",
+        reason: "missing metrics recovered",
+        timestamp: new Date(Date.now() - 3 * 3600_000),
+      },
+    ],
+  });
+
+  await prisma.nodeMetric.createMany({
+    data: buildNodeMetricHistory(node.id, driftedNode.id),
+  });
+
+  await prisma.pipelineMetric.createMany({
+    data: buildPipelineMetricHistory(pipeline.id, node.id, driftedNode.id, sourceNode.id),
+  });
+
   const alertRule = await prisma.alertRule.create({
     data: {
       name: TEST_ALERT_RULE.name,
@@ -147,6 +250,33 @@ export async function seed(prisma: PrismaClient): Promise<SeedResult> {
       condition: "gt",
       threshold: 5.0,
       durationSeconds: 60,
+    },
+  });
+
+  const costAlertRule = await prisma.alertRule.create({
+    data: {
+      name: "E2E Cost Budget",
+      enabled: true,
+      environmentId: environment.id,
+      pipelineId: pipeline.id,
+      teamId: team.id,
+      metric: "cost_threshold_exceeded",
+      condition: "gt",
+      threshold: 25.0,
+      durationSeconds: 0,
+    },
+  });
+
+  await prisma.alertRule.create({
+    data: {
+      name: "E2E Version Drift",
+      enabled: true,
+      environmentId: environment.id,
+      teamId: team.id,
+      metric: "version_drift",
+      condition: "gt",
+      threshold: 0,
+      durationSeconds: 0,
     },
   });
 
@@ -196,6 +326,40 @@ export async function seed(prisma: PrismaClient): Promise<SeedResult> {
     },
   });
 
+  await prisma.alertEvent.create({
+    data: {
+      alertRuleId: alertRule.id,
+      nodeId: driftedNode.id,
+      status: "firing",
+      value: 18.9,
+      message: "Noisy error burst on drifted node: 18.9% > 5.0%",
+      firedAt: new Date(Date.now() - 30 * 3600_000),
+    },
+  });
+
+  await prisma.alertEvent.create({
+    data: {
+      alertRuleId: alertRule.id,
+      nodeId: driftedNode.id,
+      status: "resolved",
+      value: 1.8,
+      message: "Noisy error burst recovered: 1.8%",
+      firedAt: new Date(Date.now() - 29 * 3600_000),
+      resolvedAt: new Date(Date.now() - 28 * 3600_000),
+    },
+  });
+
+  await prisma.alertEvent.create({
+    data: {
+      alertRuleId: costAlertRule.id,
+      nodeId: node.id,
+      status: "firing",
+      value: 27.4,
+      message: "Monthly processing cost exceeded e2e budget: $27.40 > $25.00",
+      firedAt: new Date(Date.now() - 90 * 60_000),
+    },
+  });
+
   return {
     userId: user.id,
     teamId: team.id,
@@ -207,4 +371,136 @@ export async function seed(prisma: PrismaClient): Promise<SeedResult> {
     resolvedEventId: resolvedEvent.id,
     acknowledgedEventId: acknowledgedEvent.id,
   };
+}
+
+function buildNodeMetricHistory(primaryNodeId: string, driftedNodeId: string) {
+  const rows = [];
+
+  for (const hoursAgo of metricHoursAgo()) {
+    rows.push(buildNodeMetric(primaryNodeId, hoursAgo, 0.54));
+    rows.push(buildNodeMetric(driftedNodeId, hoursAgo, hoursAgo < 12 ? 0.83 : 0.68));
+  }
+
+  return rows;
+}
+
+function buildNodeMetric(nodeId: string, hoursAgo: number, pressure: number) {
+  const memoryTotal = 8_589_934_592;
+  const memoryUsed = Math.round(memoryTotal * pressure);
+  const counterBase = (48 - hoursAgo) * 60;
+
+  return {
+    nodeId,
+    timestamp: hoursAgoDate(hoursAgo),
+    memoryTotalBytes: BigInt(memoryTotal),
+    memoryUsedBytes: BigInt(memoryUsed),
+    memoryFreeBytes: BigInt(memoryTotal - memoryUsed),
+    cpuSecondsTotal: counterBase * 120,
+    cpuSecondsIdle: counterBase * (pressure > 0.8 ? 28 : 74),
+    loadAvg1: pressure > 0.8 ? 3.8 : 1.2,
+    loadAvg5: pressure > 0.8 ? 3.1 : 1.0,
+    loadAvg15: pressure > 0.8 ? 2.6 : 0.8,
+    fsTotalBytes: BigInt(107_374_182_400),
+    fsUsedBytes: BigInt(Math.round(107_374_182_400 * (0.45 + pressure / 10))),
+    fsFreeBytes: BigInt(Math.round(107_374_182_400 * (0.55 - pressure / 10))),
+    diskReadBytes: BigInt(counterBase * 1_250_000),
+    diskWrittenBytes: BigInt(counterBase * 900_000),
+    netRxBytes: BigInt(counterBase * 2_500_000),
+    netTxBytes: BigInt(counterBase * 2_100_000),
+  };
+}
+
+function buildPipelineMetricHistory(
+  pipelineId: string,
+  primaryNodeId: string,
+  driftedNodeId: string,
+  sourceComponentId: string,
+) {
+  const rows = [];
+
+  for (const hoursAgo of metricHoursAgo()) {
+    const isNoisyWindow = hoursAgo >= 27 && hoursAgo <= 30;
+    const isRecentRecovery = hoursAgo <= 3;
+    const primaryEvents = isRecentRecovery ? 68_000 : 52_000;
+    const driftedEvents = isNoisyWindow ? 39_000 : 31_000;
+    const primaryErrors = isNoisyWindow ? 1_250 : isRecentRecovery ? 40 : 180;
+    const driftedErrors = isNoisyWindow ? 3_400 : 820;
+
+    rows.push(buildPipelineMetric({
+      pipelineId,
+      nodeId: primaryNodeId,
+      componentId: sourceComponentId,
+      hoursAgo,
+      eventsIn: primaryEvents,
+      errorsTotal: primaryErrors,
+      utilization: isRecentRecovery ? 0.48 : 0.61,
+      latencyMeanMs: isRecentRecovery ? 38 : 74,
+    }));
+    rows.push(buildPipelineMetric({
+      pipelineId,
+      nodeId: driftedNodeId,
+      componentId: sourceComponentId,
+      hoursAgo,
+      eventsIn: driftedEvents,
+      errorsTotal: driftedErrors,
+      utilization: isNoisyWindow ? 0.94 : 0.79,
+      latencyMeanMs: isNoisyWindow ? 220 : 105,
+    }));
+    rows.push(buildPipelineMetric({
+      pipelineId,
+      nodeId: null,
+      componentId: null,
+      hoursAgo,
+      eventsIn: primaryEvents + driftedEvents,
+      errorsTotal: primaryErrors + driftedErrors,
+      utilization: isNoisyWindow ? 0.86 : 0.66,
+      latencyMeanMs: isNoisyWindow ? 171 : 86,
+    }));
+  }
+
+  return rows;
+}
+
+function buildPipelineMetric(input: {
+  pipelineId: string;
+  nodeId: string | null;
+  componentId: string | null;
+  hoursAgo: number;
+  eventsIn: number;
+  errorsTotal: number;
+  utilization: number;
+  latencyMeanMs: number;
+}) {
+  const eventsOut = Math.round(input.eventsIn * 0.97);
+  const discarded = Math.max(0, Math.round(input.eventsIn * 0.006));
+  const bytesIn = input.eventsIn * 850;
+  const bytesOut = eventsOut * 760;
+
+  return {
+    pipelineId: input.pipelineId,
+    nodeId: input.nodeId,
+    componentId: input.componentId,
+    timestamp: hoursAgoDate(input.hoursAgo),
+    eventsIn: BigInt(input.eventsIn),
+    eventsOut: BigInt(eventsOut),
+    eventsDiscarded: BigInt(discarded),
+    errorsTotal: BigInt(input.errorsTotal),
+    bytesIn: BigInt(bytesIn),
+    bytesOut: BigInt(bytesOut),
+    utilization: input.utilization,
+    latencyMeanMs: input.latencyMeanMs,
+  };
+}
+
+function metricHoursAgo() {
+  const hours = [];
+  for (let hour = 48; hour >= 0; hour -= 1) {
+    if (hour >= 18 && hour <= 23) continue;
+    hours.push(hour);
+  }
+  return hours;
+}
+
+function hoursAgoDate(hours: number) {
+  return new Date(Date.now() - hours * 3600_000);
 }
