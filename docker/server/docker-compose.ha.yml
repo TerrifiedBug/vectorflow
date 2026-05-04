@@ -64,7 +64,7 @@ services:
       - vfdata1:/app/.vectorflow
       - backups:/backups
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health/ready"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health/ready"]
       interval: 30s
       timeout: 5s
       start_period: 30s
@@ -89,7 +89,7 @@ services:
       - vfdata2:/app/.vectorflow
       - backups:/backups
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health/ready"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health/ready"]
       interval: 30s
       timeout: 5s
       start_period: 30s
@@ -110,8 +110,8 @@ services:
       - /bin/sh
       - -ec
       - |
-        until wget -q -T 2 -t 1 -O /dev/null http://vf1:3000/api/health/ready \
-          || wget -q -T 2 -t 1 -O /dev/null http://vf2:3000/api/health/ready; do
+        until wget -q -T 2 -O /dev/null http://vf1:3000/api/health/ready \
+          || wget -q -T 2 -O /dev/null http://vf2:3000/api/health/ready; do
           echo "Waiting for at least one VectorFlow replica to become ready..."
           sleep 2
         done
