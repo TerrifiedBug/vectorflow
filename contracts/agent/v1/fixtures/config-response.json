@@ -1,0 +1,39 @@
+{
+  "pipelines": [
+    {
+      "pipelineId": "pipe-1",
+      "pipelineName": "Production Logs",
+      "version": 7,
+      "configYaml": "sources:\n  demo:\n    type: demo_logs\nsinks: {}\n",
+      "checksum": "8f14e45fceea167a5a36dedd4bea2543",
+      "logLevel": "INFO",
+      "secrets": {
+        "VF_SECRET_API_TOKEN": "redacted"
+      },
+      "certFiles": [
+        {
+          "name": "ca-bundle",
+          "filename": "ca-bundle.pem",
+          "data": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t"
+        }
+      ]
+    }
+  ],
+  "pollIntervalMs": 15000,
+  "secretBackend": "BUILTIN",
+  "sampleRequests": [
+    {
+      "requestId": "sample-1",
+      "pipelineId": "pipe-1",
+      "componentKeys": ["demo"],
+      "limit": 25
+    }
+  ],
+  "pendingAction": {
+    "type": "self_update",
+    "targetVersion": "2.0.1",
+    "downloadUrl": "https://updates.example.test/vf-agent",
+    "checksum": "sha256:abc123"
+  },
+  "pushUrl": "https://app.example.test/api/agent/push"
+}

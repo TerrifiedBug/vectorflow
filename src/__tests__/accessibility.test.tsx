@@ -180,6 +180,39 @@ describe("Accessibility: WCAG 2.1 AA compliance", () => {
     expect(results).toHaveNoViolations();
   });
 
+  it("segmented filter controls expose selected state semantics", async () => {
+    const { container, getByRole } = render(
+      <div>
+        <div role="tablist" aria-label="Component palette sections">
+          <button type="button" role="tab" aria-selected="true">
+            Catalog
+          </button>
+          <button type="button" role="tab" aria-selected="false">
+            Shared
+          </button>
+        </div>
+        <div role="group" aria-label="Fleet status filters">
+          <button type="button" aria-pressed="true">
+            Healthy
+          </button>
+          <button type="button" aria-pressed="false">
+            Degraded
+          </button>
+        </div>
+      </div>
+    );
+
+    expect(getByRole("tab", { name: "Catalog" }).getAttribute("aria-selected")).toBe("true");
+    expect(getByRole("button", { name: "Healthy" }).getAttribute("aria-pressed")).toBe("true");
+    expect(getByRole("group", { name: "Fleet status filters" })).toBeTruthy();
+
+    const results = await axe(container, {
+      runOnly: ["wcag2a", "wcag2aa"],
+    });
+    // @ts-expect-error -- toHaveNoViolations is added by vitest-axe at runtime
+    expect(results).toHaveNoViolations();
+  });
+
   it("collapsible sidebar has proper aria attributes", async () => {
     const { container } = render(
       <nav aria-label="Main navigation">

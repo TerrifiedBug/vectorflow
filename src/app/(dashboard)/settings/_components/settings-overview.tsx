@@ -22,6 +22,14 @@ export function SettingsOverview() {
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
   const demoMode = isDemoMode();
 
+  // Production readiness — only for super admins
+  const readinessQuery = useQuery({
+    ...trpc.settings.productionReadiness.queryOptions(),
+    enabled: isSuperAdmin,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Version check — only for super admins
   const versionQuery = useQuery({
     ...trpc.settings.checkVersion.queryOptions(),
     enabled: isSuperAdmin,
@@ -41,6 +49,29 @@ export function SettingsOverview() {
 
   function getCardStatus(title: string): React.ReactNode {
     switch (title) {
+      case "Production Readiness": {
+        if (!readinessQuery.data) return readinessQuery.isLoading ? <Skeleton className="h-4 w-20 mt-1.5" /> : null;
+        const { overallStatus, signals } = readinessQuery.data;
+        const errorCount = signals.filter((s) => s.status === "error").length;
+        const warnCount = signals.filter((s) => s.status === "warn").length;
+        const unknownCount = signals.filter((s) => s.status === "unknown").length;
+        return (
+          <div className="mt-1.5 flex items-center gap-2">
+            {overallStatus === "ok" && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-green-600 border-green-600">All clear</Badge>
+            )}
+            {errorCount > 0 && (
+              <Badge variant="destructive" className="text-[10px] px-1.5 py-0">{errorCount} error{errorCount !== 1 ? "s" : ""}</Badge>
+            )}
+            {warnCount > 0 && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-yellow-600 border-yellow-500">{warnCount} warning{warnCount !== 1 ? "s" : ""}</Badge>
+            )}
+            {unknownCount > 0 && errorCount === 0 && warnCount === 0 && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">{unknownCount} unknown</Badge>
+            )}
+          </div>
+        );
+      }
       case "Version Check": {
         if (!versionQuery.data) return versionQuery.isLoading ? <Skeleton className="h-4 w-24 mt-1.5" /> : null;
         const { server } = versionQuery.data;

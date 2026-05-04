@@ -13,6 +13,7 @@ import {
   Activity,
   Send,
   Webhook,
+  ClipboardCheck,
 } from "lucide-react";
 
 export const settingsNavGroups = [
@@ -20,6 +21,7 @@ export const settingsNavGroups = [
     label: "System",
     description: "Infrastructure and update management",
     items: [
+      { title: "Production Readiness", description: "Aggregated health and configuration checklist for this VectorFlow instance.", href: "/settings/readiness", icon: ClipboardCheck, requiredSuperAdmin: true },
       { title: "Version Check", description: "Check for VectorFlow updates and view current version info.", href: "/settings/version", icon: RefreshCw, requiredSuperAdmin: true },
       { title: "Backup", description: "Configure automatic database backups and restore from backup.", href: "/settings/backup", icon: HardDrive, requiredSuperAdmin: true },
       { title: "Telemetry", description: "Opt in to anonymous usage telemetry that helps shape VectorFlow.", href: "/settings/telemetry", icon: Send, requiredSuperAdmin: true, demoHidden: true },
