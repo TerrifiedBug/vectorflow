@@ -34,6 +34,7 @@ import { analyticsRouter } from "@/server/routers/analytics";
 import { costRecommendationRouter } from "@/server/routers/cost-recommendation";
 import { anomalyRouter } from "@/server/routers/anomaly";
 import { telemetryRouter } from "@/server/routers/telemetry";
+import { governanceRouter } from "@/server/routers/governance";
 
 export const appRouter = router({
   team: teamRouter,
@@ -71,6 +72,7 @@ export const appRouter = router({
   costRecommendation: costRecommendationRouter,
   anomaly: anomalyRouter,
   telemetry: telemetryRouter,
+  governance: governanceRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -3,6 +3,21 @@ import { prisma } from "@/lib/prisma";
 import { metricStore } from "@/server/services/metric-store";
 import { errorLog } from "@/lib/logger";
 
+type PipelineCounterLabels = {
+  node_id: string;
+  pipeline_id: string;
+};
+
+type PipelineCounterName =
+  | "eventsIn"
+  | "eventsOut"
+  | "errorsTotal"
+  | "eventsDiscarded"
+  | "bytesIn"
+  | "bytesOut";
+
+type PipelineCounterSnapshot = Partial<Record<PipelineCounterName, number>>;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -23,6 +38,10 @@ export class PrometheusMetricsService {
   // Single-flight coalescing: overlapping scrapes share one in-flight collection
   // so concurrent reset()/inc() loops never interleave on the same registry.
   private inflight: Promise<string> | null = null;
+  private pipelineCounterSnapshots = new Map<
+    string,
+    { labels: PipelineCounterLabels; values: PipelineCounterSnapshot }
+  >();
 
   // Node-level gauges
   private nodeStatus: Gauge;
@@ -137,7 +156,9 @@ export class PrometheusMetricsService {
 
   /**
    * Collect all metrics from database tables and populate the registry.
-   * Resets all gauges first so removed nodes/pipelines disappear.
+   * Resets gauges first so removed nodes/pipelines disappear. Pipeline totals
+   * are counters, so they are updated by deltas instead of being reset on each
+   * scrape.
    *
    * Concurrent callers (e.g. overlapping Prometheus scrapes from an HA pair)
    * share a single in-flight collection so reset()/inc() loops cannot
@@ -156,12 +177,6 @@ export class PrometheusMetricsService {
       // Reset all gauges so stale labels are cleared
       this.nodeStatus.reset();
       this.pipelineStatus.reset();
-      this.pipelineEventsIn.reset();
-      this.pipelineEventsOut.reset();
-      this.pipelineErrorsTotal.reset();
-      this.pipelineEventsDiscarded.reset();
-      this.pipelineBytesIn.reset();
-      this.pipelineBytesOut.reset();
       this.pipelineUtilization.reset();
       this.pipelineLatencyMean.reset();
 
@@ -231,19 +246,69 @@ export class PrometheusMetricsService {
         CRASHED: 4,
         PENDING: 0,
       };
+      const activePipelineCounterKeys = new Set<string>();
       for (const ps of pipelineStatuses) {
         const labels = { node_id: ps.nodeId, pipeline_id: ps.pipelineId };
-        this.pipelineStatus.set(labels, processStatusMap[ps.status] ?? 0);
-        this.pipelineEventsIn.inc(labels, bigIntToNumber(ps.eventsIn));
-        this.pipelineEventsOut.inc(labels, bigIntToNumber(ps.eventsOut));
-        this.pipelineErrorsTotal.inc(labels, bigIntToNumber(ps.errorsTotal));
-        this.pipelineEventsDiscarded.inc(
+        const counterKey = this.pipelineCounterKey(labels);
+        activePipelineCounterKeys.add(counterKey);
+        const counterState = this.pipelineCounterSnapshots.get(counterKey) ?? {
           labels,
+          values: {},
+        };
+        counterState.labels = labels;
+
+        this.pipelineStatus.set(labels, processStatusMap[ps.status] ?? 0);
+        this.syncPipelineCounter(
+          this.pipelineEventsIn,
+          labels,
+          counterState.values,
+          "eventsIn",
+          bigIntToNumber(ps.eventsIn),
+        );
+        this.syncPipelineCounter(
+          this.pipelineEventsOut,
+          labels,
+          counterState.values,
+          "eventsOut",
+          bigIntToNumber(ps.eventsOut),
+        );
+        this.syncPipelineCounter(
+          this.pipelineErrorsTotal,
+          labels,
+          counterState.values,
+          "errorsTotal",
+          bigIntToNumber(ps.errorsTotal),
+        );
+        this.syncPipelineCounter(
+          this.pipelineEventsDiscarded,
+          labels,
+          counterState.values,
+          "eventsDiscarded",
           bigIntToNumber(ps.eventsDiscarded),
         );
-        this.pipelineBytesIn.inc(labels, bigIntToNumber(ps.bytesIn));
-        this.pipelineBytesOut.inc(labels, bigIntToNumber(ps.bytesOut));
+        this.syncPipelineCounter(
+          this.pipelineBytesIn,
+          labels,
+          counterState.values,
+          "bytesIn",
+          bigIntToNumber(ps.bytesIn),
+        );
+        this.syncPipelineCounter(
+          this.pipelineBytesOut,
+          labels,
+          counterState.values,
+          "bytesOut",
+          bigIntToNumber(ps.bytesOut),
+        );
+        this.pipelineCounterSnapshots.set(counterKey, counterState);
         this.pipelineUtilization.set(labels, ps.utilization);
+      }
+
+      for (const [key, state] of this.pipelineCounterSnapshots) {
+        if (!activePipelineCounterKeys.has(key)) {
+          this.removePipelineCounters(state.labels);
+          this.pipelineCounterSnapshots.delete(key);
+        }
       }
 
       // Populate latency gauges (only when latencyMeanMs is non-null)
@@ -269,5 +334,37 @@ export class PrometheusMetricsService {
       // Return whatever is in the registry (stale or empty)
       return await this.registry.metrics();
     }
+  }
+
+  private pipelineCounterKey(labels: PipelineCounterLabels): string {
+    return JSON.stringify([labels.node_id, labels.pipeline_id]);
+  }
+
+  private syncPipelineCounter(
+    counter: Counter,
+    labels: PipelineCounterLabels,
+    values: PipelineCounterSnapshot,
+    name: PipelineCounterName,
+    observed: number,
+  ): void {
+    const previous = values[name];
+    if (previous === undefined) {
+      counter.inc(labels, observed);
+    } else if (observed >= previous) {
+      counter.inc(labels, observed - previous);
+    } else {
+      counter.remove(labels);
+      counter.inc(labels, observed);
+    }
+    values[name] = observed;
+  }
+
+  private removePipelineCounters(labels: PipelineCounterLabels): void {
+    this.pipelineEventsIn.remove(labels);
+    this.pipelineEventsOut.remove(labels);
+    this.pipelineErrorsTotal.remove(labels);
+    this.pipelineEventsDiscarded.remove(labels);
+    this.pipelineBytesIn.remove(labels);
+    this.pipelineBytesOut.remove(labels);
   }
 }

@@ -2,8 +2,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 vi.mock("@/app/api/_lib/ip-rate-limit", () => ({
-  checkTokenRateLimit: vi.fn(() => null),
-  checkIpRateLimit: vi.fn(() => null),
+  checkTokenRateLimit: vi.fn(() => Promise.resolve(null)),
+  checkIpRateLimit: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock("@/server/services/agent-auth", () => ({
@@ -68,7 +68,7 @@ describe("GET /api/agent/config — rate limiting", () => {
   });
 
   it("returns 429 when rate limit is exceeded", async () => {
-    vi.mocked(checkTokenRateLimit).mockReturnValueOnce(
+    vi.mocked(checkTokenRateLimit).mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "Too many requests" }), {
         status: 429,
         headers: { "Content-Type": "application/json", "Retry-After": "60" },

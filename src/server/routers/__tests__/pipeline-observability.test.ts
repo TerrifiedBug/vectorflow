@@ -19,6 +19,7 @@ vi.mock("@/trpc/init", () => {
     requireSuperAdmin: passthrough,
     denyInDemo: passthrough,
     middleware: t.middleware,
+    roleLevel: { VIEWER: 0, EDITOR: 1, ADMIN: 2 },
   };
 });
 
@@ -39,6 +40,15 @@ vi.mock("@/server/services/batch-health", () => ({
   batchEvaluatePipelineHealth: vi.fn(),
 }));
 
+vi.mock("@/server/services/cost-attribution", () => ({
+  getPipelineCostSnapshot: vi.fn(),
+  computeCostCents: vi.fn((bytes: number, costPerGb: number) =>
+    bytes === 0 || costPerGb === 0
+      ? 0
+      : Math.round((bytes / 1_073_741_824) * costPerGb),
+  ),
+}));
+
 vi.mock("@/server/services/push-broadcast", () => ({
   relayPush: vi.fn(() => true),
   deliverPush: vi.fn(() => "local"),
@@ -55,6 +65,7 @@ import { prisma } from "@/lib/prisma";
 import { pipelineObservabilityRouter } from "@/server/routers/pipeline-observability";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
+import { getPipelineCostSnapshot } from "@/server/services/cost-attribution";
 import { relayPush, tryLocalPush } from "@/server/services/push-broadcast";
 import { pushRegistry } from "@/server/services/push-registry";
 
@@ -489,12 +500,211 @@ describe("pipelineObservabilityRouter", () => {
         "p-1": { status: "healthy", score: 100 },
         "p-2": { status: "degraded", score: 60 },
       };
+      prismaMock.pipeline.findMany.mockResolvedValue([
+        { id: "p-1", environment: { teamId: "team-1" } },
+        { id: "p-2", environment: { teamId: "team-1" } },
+      ] as never);
+      prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+      prismaMock.teamMember.findUnique.mockResolvedValue({ role: "VIEWER" } as never);
       vi.mocked(batchEvaluatePipelineHealth).mockResolvedValue(batchResult as never);
 
       const result = await caller.batchHealth({ pipelineIds: ["p-1", "p-2"] });
 
       expect(result).toEqual(batchResult);
       expect(batchEvaluatePipelineHealth).toHaveBeenCalledWith(["p-1", "p-2"]);
+    });
+  });
+
+  // ── scorecard ─────────────────────────────────────────────────────────────
+
+  describe("scorecard", () => {
+    function setupHappyPathMocks(overrides: {
+      health?: unknown;
+      firingAlerts?: number;
+      openAnomalyCount?: number;
+      anomalySeverities?: Array<{ severity: string }>;
+      last24h?: unknown;
+      prior24hAgg?: unknown;
+      current24hAgg?: unknown;
+      sevenDayAgg?: unknown;
+      recommendations?: unknown[];
+    } = {}) {
+      prismaMock.pipeline.findUnique.mockResolvedValue({
+        id: "p-1",
+        name: "Test Pipeline",
+        isDraft: false,
+        deployedAt: new Date("2026-05-01T00:00:00Z"),
+        environmentId: "env-1",
+        environment: { costPerGbCents: 50 },
+      } as never);
+
+      vi.mocked(evaluatePipelineHealth).mockResolvedValue(
+        (overrides.health ?? { status: "healthy", slis: [] }) as never,
+      );
+
+      vi.mocked(getPipelineCostSnapshot).mockResolvedValue(
+        (overrides.last24h ?? {
+          bytesIn: 2_000_000_000,
+          bytesOut: 1_000_000_000,
+          reductionPercent: 50,
+          costCents: 100,
+          periodHours: 24,
+        }) as never,
+      );
+
+      prismaMock.alertEvent.count.mockResolvedValue(
+        (overrides.firingAlerts ?? 0) as never,
+      );
+      prismaMock.anomalyEvent.count.mockResolvedValue(
+        (overrides.openAnomalyCount ?? 0) as never,
+      );
+      prismaMock.anomalyEvent.findMany.mockResolvedValue(
+        (overrides.anomalySeverities ?? []) as never,
+      );
+
+      prismaMock.pipelineMetric.aggregate
+        .mockResolvedValueOnce(
+          (overrides.prior24hAgg ?? {
+            _sum: { bytesIn: 1_000_000_000, bytesOut: 500_000_000 },
+          }) as never,
+        )
+        .mockResolvedValueOnce(
+          (overrides.current24hAgg ?? {
+            _sum: { eventsIn: 10_000, errorsTotal: 50 },
+          }) as never,
+        )
+        .mockResolvedValueOnce(
+          (overrides.sevenDayAgg ?? {
+            _sum: { eventsIn: 70_000, errorsTotal: 350 },
+          }) as never,
+        );
+
+      prismaMock.costRecommendation.findMany.mockResolvedValue(
+        (overrides.recommendations ?? []) as never,
+      );
+    }
+
+    it("composes health, alerts, anomalies, cost, trend, and recommendations into one response", async () => {
+      setupHappyPathMocks();
+
+      const result = await caller.scorecard({ pipelineId: "p-1" });
+
+      expect(result.pipeline).toEqual({
+        id: "p-1",
+        name: "Test Pipeline",
+        isDraft: false,
+        deployedAt: new Date("2026-05-01T00:00:00Z"),
+        environmentId: "env-1",
+      });
+      expect(result.health.status).toBe("healthy");
+      expect(result.alerts.firingCount).toBe(0);
+      expect(result.anomalies.openCount).toBe(0);
+      expect(result.anomalies.maxSeverity).toBeNull();
+      expect(result.cost.last24h.bytesIn).toBe(2_000_000_000);
+      // prior24h derived from second aggregate call
+      expect(result.cost.prior24h.bytesIn).toBe(1_000_000_000);
+      // delta = (2_000_000_000 - 1_000_000_000) / 1_000_000_000 = 1.0
+      expect(result.cost.deltaPercent).toBeCloseTo(100, 1);
+      // current error rate = 50/10000 = 0.005, baseline = 350/70000 = 0.005, ratio = 1
+      expect(result.trend.errorRate?.deltaRatio).toBeCloseTo(1, 1);
+      expect(result.recommendations).toEqual([]);
+      expect(result.recommendedAction).toBeNull();
+    });
+
+    it("throws NOT_FOUND when pipeline does not exist", async () => {
+      prismaMock.pipeline.findUnique.mockResolvedValue(null as never);
+
+      await expect(caller.scorecard({ pipelineId: "missing" })).rejects.toThrow(
+        "Pipeline not found",
+      );
+    });
+
+    it("returns null deltaPercent when prior period has no traffic", async () => {
+      setupHappyPathMocks({
+        prior24hAgg: { _sum: { bytesIn: 0, bytesOut: 0 } },
+      });
+
+      const result = await caller.scorecard({ pipelineId: "p-1" });
+
+      expect(result.cost.prior24h.bytesIn).toBe(0);
+      expect(result.cost.deltaPercent).toBeNull();
+    });
+
+    it("recommends investigating SLI when health is degraded", async () => {
+      setupHappyPathMocks({
+        health: {
+          status: "degraded",
+          slis: [
+            {
+              metric: "error_rate",
+              status: "breached",
+              value: 0.1,
+              threshold: 0.05,
+              condition: "lt",
+            },
+          ],
+        },
+      });
+
+      const result = await caller.scorecard({ pipelineId: "p-1" });
+
+      expect(result.recommendedAction?.kind).toBe("investigate_sli");
+      expect(result.recommendedAction?.message).toContain("error_rate");
+    });
+
+    it("picks highest severity from open anomalies", async () => {
+      setupHappyPathMocks({
+        openAnomalyCount: 3,
+        anomalySeverities: [
+          { severity: "warning" },
+          { severity: "critical" },
+          { severity: "info" },
+        ],
+      });
+
+      const result = await caller.scorecard({ pipelineId: "p-1" });
+
+      expect(result.anomalies.openCount).toBe(3);
+      expect(result.anomalies.maxSeverity).toBe("critical");
+      // Critical anomaly outranks empty alerts/cost-recs
+      expect(result.recommendedAction?.kind).toBe("review_anomaly");
+    });
+
+    it("filters metric aggregates to cross-node rollup rows (nodeId: null, componentId: null)", async () => {
+      setupHappyPathMocks();
+
+      await caller.scorecard({ pipelineId: "p-1" });
+
+      // Every pipelineMetric.aggregate call must constrain on both nodeId: null
+      // AND componentId: null. Without nodeId: null the sum double-counts because
+      // ingest writes both per-node rows and a separate aggregated row.
+      const aggCalls = prismaMock.pipelineMetric.aggregate.mock.calls;
+      expect(aggCalls.length).toBeGreaterThanOrEqual(3);
+      for (const [args] of aggCalls) {
+        expect(args.where).toMatchObject({
+          pipelineId: "p-1",
+          nodeId: null,
+          componentId: null,
+        });
+      }
+    });
+
+    it("recommends applying cost recommendation when one exists and nothing else fires", async () => {
+      setupHappyPathMocks({
+        recommendations: [
+          {
+            id: "rec-1",
+            title: "Add filter to drop debug logs",
+            type: "ADD_FILTER",
+            estimatedSavingsBytes: BigInt(500_000_000),
+          },
+        ],
+      });
+
+      const result = await caller.scorecard({ pipelineId: "p-1" });
+
+      expect(result.recommendations).toHaveLength(1);
+      expect(result.recommendedAction?.kind).toBe("apply_cost_recommendation");
     });
   });
 });

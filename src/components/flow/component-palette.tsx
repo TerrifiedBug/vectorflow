@@ -62,7 +62,7 @@ const DraggableItem = memo(function DraggableItem({
   const Icon = useMemo(() => getIcon(def.icon), [def.icon]);
   const meta = kindMeta[def.kind];
 
-  function handleDragStart(event: React.DragEvent<HTMLDivElement>) {
+  function handleDragStart(event: React.DragEvent<HTMLButtonElement>) {
     event.dataTransfer.setData(
       "application/vectorflow-component",
       `${def.kind}:${def.type}`
@@ -71,11 +71,20 @@ const DraggableItem = memo(function DraggableItem({
   }
 
   return (
-    <div
+    <button
+      type="button"
+      aria-label={`Add ${def.displayName} to canvas`}
       draggable
       onDragStart={handleDragStart}
+      onClick={() => onAdd(def)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onAdd(def);
+        }
+      }}
       className={cn(
-        "flex cursor-grab items-start gap-3 rounded-md border border-l-[3px] bg-card px-3 py-2.5 transition-colors hover:bg-accent active:cursor-grabbing",
+        "flex w-full cursor-grab items-start gap-3 rounded-md border border-l-[3px] bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         meta.borderClass
       )}
     >
@@ -102,15 +111,13 @@ const DraggableItem = memo(function DraggableItem({
           {def.description}
         </p>
       </div>
-      <button
-        type="button"
-        aria-label={`Add ${def.displayName} to canvas`}
-        onClick={() => onAdd(def)}
-        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      <span
+        aria-hidden="true"
+        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors"
       >
-        <Plus className="h-4 w-4" aria-hidden="true" />
-      </button>
-    </div>
+        <Plus className="h-4 w-4" />
+      </span>
+    </button>
   );
 });
 
@@ -399,7 +406,7 @@ export function ComponentPalette() {
 
         {activeTab === "shared" && (
           <div className="space-y-1.5 p-3">
-            <div className="flex gap-1 pb-1">
+            <div className="flex gap-1 pb-1" role="group" aria-label="Shared component kind filters">
               {(["all", "source", "transform", "sink"] as const).map((kind) => (
                 <button
                   key={kind}
@@ -436,11 +443,16 @@ export function ComponentPalette() {
                 const componentDef = getVectorCatalog().find(
                   (d) => d.type === sc.componentType && d.kind === kindKey
                 );
+                const canAdd = !!componentDef;
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={sc.id}
+                    aria-label={`Add ${sc.name} to canvas`}
+                    disabled={!canAdd}
                     draggable
                     onDragStart={(e) => {
+                      if (!canAdd) return;
                       e.dataTransfer.setData(
                         "application/vectorflow-component",
                         `${sc.kind.toLowerCase()}:${sc.componentType}`
@@ -455,8 +467,15 @@ export function ComponentPalette() {
                       );
                       e.dataTransfer.effectAllowed = "move";
                     }}
+                    onClick={() => componentDef && addComponentToCanvas(componentDef, sc)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        if (componentDef) addComponentToCanvas(componentDef, sc);
+                      }
+                    }}
                     className={cn(
-                      "flex cursor-grab items-start gap-3 rounded-md border border-l-[3px] bg-card px-3 py-2.5 transition-colors hover:bg-accent active:cursor-grabbing",
+                      "flex w-full cursor-grab items-start gap-3 rounded-md border border-l-[3px] bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
                       meta.borderClass
                     )}
                   >
@@ -484,16 +503,13 @@ export function ComponentPalette() {
                         )}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      aria-label={`Add ${sc.name} to canvas`}
-                      disabled={!componentDef}
-                      onClick={() => componentDef && addComponentToCanvas(componentDef, sc)}
-                      className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                    <span
+                      aria-hidden="true"
+                      className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors"
                     >
-                      <Plus className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                  </div>
+                      <Plus className="h-4 w-4" />
+                    </span>
+                  </button>
                 );
               })
             )}

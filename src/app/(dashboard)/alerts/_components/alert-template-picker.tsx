@@ -11,6 +11,9 @@ interface TemplatePick {
   condition: string;
   threshold: string;
   durationSeconds: string;
+  severity: "info" | "warning" | "critical";
+  ownerHint: string;
+  suggestedAction: string;
   keyword?: string;
   keywordWindowMinutes?: string;
 }
@@ -27,6 +30,9 @@ export function AlertTemplatePicker({ onSelect }: AlertTemplatePickerProps) {
       condition: template.defaults.condition,
       threshold: template.defaults.threshold,
       durationSeconds: template.defaults.durationSeconds,
+      severity: template.defaults.severity,
+      ownerHint: template.defaults.ownerHint,
+      suggestedAction: template.defaults.suggestedAction,
       ...(template.defaults.metric === "log_keyword"
         ? { keyword: "", keywordWindowMinutes: "5" }
         : {}),
@@ -63,9 +69,17 @@ export function AlertTemplatePicker({ onSelect }: AlertTemplatePickerProps) {
                 <CardDescription className="text-xs leading-snug">
                   {template.description}
                 </CardDescription>
-                <Badge variant="secondary" className="mt-1 w-fit text-[10px]">
-                  {METRIC_LABELS[template.defaults.metric] ?? template.defaults.metric}
-                </Badge>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  <Badge variant="secondary" className="w-fit text-[10px]">
+                    {METRIC_LABELS[template.defaults.metric] ?? template.defaults.metric}
+                  </Badge>
+                  <Badge variant="outline" className="w-fit text-[10px] capitalize">
+                    {template.defaults.severity}
+                  </Badge>
+                  <Badge variant="outline" className="w-fit text-[10px]">
+                    {template.defaults.ownerHint}
+                  </Badge>
+                </div>
               </CardHeader>
             </Card>
           );

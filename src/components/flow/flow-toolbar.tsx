@@ -1,12 +1,19 @@
 "use client";
 
-import { useRef, useState } from "react";
+import {
+  forwardRef,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ComponentPropsWithoutRef,
+  type ComponentType,
+} from "react";
+import Link from "next/link";
 import {
   Save,
   Undo2,
   Redo2,
   Upload,
-  Download,
   CheckCircle,
   CircleCheck,
   CircleX,
@@ -16,6 +23,7 @@ import {
   BookTemplate,
   History,
   BarChart3,
+  Gauge,
   ScrollText,
   Settings,
   Info,
@@ -26,6 +34,10 @@ import {
   Search,
   LayoutGrid,
   AlertTriangle,
+  ChevronDown,
+  Eye,
+  FileCog,
+  Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -40,6 +52,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -118,6 +132,29 @@ function downloadFile(content: string, filename: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+const ToolbarMenuButton = forwardRef<
+  HTMLButtonElement,
+  {
+    icon: ComponentType<{ className?: string }>;
+    label: string;
+  } & ComponentPropsWithoutRef<typeof Button>
+>(function ToolbarMenuButton({ icon: Icon, label, ...props }, ref) {
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      size="sm"
+      className="h-7 gap-1.5 px-2 text-xs"
+      aria-label={`${label} actions`}
+      {...props}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      <span className="hidden sm:inline">{label}</span>
+      <ChevronDown className="h-3 w-3 text-muted-foreground" />
+    </Button>
+  );
+});
 
 export function FlowToolbar({
   pipelineId,
@@ -276,7 +313,7 @@ export function FlowToolbar({
     fileInputRef.current?.click();
   };
 
-  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -297,13 +334,15 @@ export function FlowToolbar({
 
   return (
     <TooltipProvider>
-      <div className="flex h-10 items-center gap-1 px-3">
-        {gitOpsMode === "bidirectional" && (
-          <div className="flex items-center gap-1.5 rounded bg-blue-50 px-2 py-1 text-xs text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-            <Info className="h-3.5 w-3.5 shrink-0" />
-            <span>GitOps managed — changes may be overwritten on next git push</span>
-          </div>
-        )}
+      <div className="flex h-10 min-w-0 items-center gap-2 px-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {gitOpsMode === "bidirectional" && (
+            <div className="flex shrink-0 items-center gap-1.5 rounded bg-blue-50 px-2 py-1 text-xs text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+              <Info className="h-3.5 w-3.5 shrink-0" />
+              <span className="hidden lg:inline">GitOps managed — changes may be overwritten on next git push</span>
+              <span className="lg:hidden">GitOps managed</span>
+            </div>
+          )}
 
         {gitOpsMode === "bidirectional" && (
           <Separator orientation="vertical" className="mx-1 h-5" />
@@ -476,17 +515,11 @@ export function FlowToolbar({
         />
 
         <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Export config">
-                  <Download className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent>Export config (Cmd+E)</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent>
+          <DropdownMenuTrigger asChild>
+            <ToolbarMenuButton icon={FileCog} label="Config" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuLabel>Config actions</DropdownMenuLabel>
             <DropdownMenuItem onClick={handleExportYaml}>
               <FileDown className="mr-2 h-4 w-4" />
               Download YAML
@@ -495,112 +528,65 @@ export function FlowToolbar({
               <FileDown className="mr-2 h-4 w-4" />
               Download TOML
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onSaveAsTemplate} disabled={nodes.length === 0}>
+              <BookTemplate className="mr-2 h-4 w-4" />
+              Save as template
+            </DropdownMenuItem>
+            {pipelineId && (
+              <DropdownMenuItem onClick={() => setVersionsOpen(true)}>
+                <History className="mr-2 h-4 w-4" />
+                Version history
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onSaveAsTemplate}
-              disabled={nodes.length === 0}
-              className="h-7 w-7 p-0"
-              aria-label="Save as template"
-            >
-              <BookTemplate className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Save as template</TooltipContent>
-        </Tooltip>
-
-        {aiEnabled && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onAiOpen}
-                className="h-7 w-7 p-0"
-                aria-label="AI assistant"
-              >
-                <Sparkles className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>AI assistant</TooltipContent>
-          </Tooltip>
-        )}
-
         {pipelineId && (
-          <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setVersionsOpen(true)} aria-label="Version history">
-                  <History className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Version history &amp; rollback</TooltipContent>
-            </Tooltip>
-            <VersionHistoryDialog
-              pipelineId={pipelineId}
-              open={versionsOpen}
-              onOpenChange={setVersionsOpen}
-            />
-          </>
+          <VersionHistoryDialog
+            pipelineId={pipelineId}
+            open={versionsOpen}
+            onOpenChange={setVersionsOpen}
+          />
         )}
 
-        {onToggleMetrics && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={metricsOpen ? "secondary" : "ghost"}
-                size="sm"
-                onClick={onToggleMetrics}
-                className="h-7 w-7 p-0"
-                aria-label="Toggle metrics panel"
-              >
-                <BarChart3 className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{metricsOpen ? "Hide metrics" : "Show metrics"}</TooltipContent>
-          </Tooltip>
-        )}
-
-        {onToggleLogs && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={logsOpen ? "secondary" : "ghost"}
-                size="sm"
-                onClick={onToggleLogs}
-                className="relative h-7 w-7 p-0"
-                aria-label="Toggle logs panel"
-              >
-                <ScrollText className="h-4 w-4" />
-                {hasRecentErrors && !logsOpen && (
-                  <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{logsOpen ? "Hide logs" : "Show logs"}</TooltipContent>
-          </Tooltip>
-        )}
-
-        <Popover>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Pipeline settings">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-            </TooltipTrigger>
-            <TooltipContent>Pipeline settings</TooltipContent>
-          </Tooltip>
-          <PopoverContent align="end" className="w-80">
-            <PipelineSettings pipelineId={pipelineId} />
-          </PopoverContent>
-        </Popover>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="relative h-7 gap-1.5 px-2 text-xs" aria-label="View actions">
+              <Eye className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">View</span>
+              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              {hasRecentErrors && !logsOpen && (
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuLabel>View panels</DropdownMenuLabel>
+            <DropdownMenuItem onClick={onToggleMetrics} disabled={!onToggleMetrics}>
+              <BarChart3 className="mr-2 h-4 w-4" />
+              {metricsOpen ? "Hide metrics" : "Show metrics"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onToggleLogs} disabled={!onToggleLogs}>
+              <ScrollText className="mr-2 h-4 w-4" />
+              {logsOpen ? "Hide logs" : "Show logs"}
+              {hasRecentErrors && !logsOpen && (
+                <span className="ml-auto h-2 w-2 rounded-full bg-red-500" />
+              )}
+            </DropdownMenuItem>
+            {pipelineId && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href={`/pipelines/${pipelineId}/scorecard`}>
+                    <Gauge className="mr-2 h-4 w-4" />
+                    Pipeline scorecard
+                  </Link>
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <div className="relative flex items-center gap-1">
           <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
@@ -618,7 +604,7 @@ export function FlowToolbar({
               }
             }}
             placeholder="Search nodes..."
-            className="h-7 w-[140px] pl-7 text-xs"
+            className="h-7 w-[120px] pl-7 text-xs md:w-[140px]"
           />
           {canvasSearchTerm && canvasSearchMatchIds.length > 0 && (
             <span className="text-xs text-muted-foreground whitespace-nowrap">
@@ -632,138 +618,123 @@ export function FlowToolbar({
           )}
         </div>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <ToolbarMenuButton icon={Wrench} label="Tools" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuLabel>Canvas tools</DropdownMenuLabel>
+            {aiEnabled && (
+              <DropdownMenuItem onClick={onAiOpen}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                AI assistant
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
               onClick={() => autoLayout(selectedNodeIds.size > 1)}
               disabled={nodes.length === 0}
-              className={cn("h-7 w-7 p-0", selectedNodeIds.size > 1 && "bg-accent")}
-              aria-label="Auto-layout"
             >
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {selectedNodeIds.size > 1 ? "Auto-layout selected" : "Auto-layout all"}
-          </TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShortcutsOpen(true)}
-              className="h-7 w-7 p-0"
-              aria-label="Keyboard shortcuts"
-            >
-              <Keyboard className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Keyboard shortcuts</TooltipContent>
-        </Tooltip>
+              <LayoutGrid className="mr-2 h-4 w-4" />
+              {selectedNodeIds.size > 1 ? "Auto-layout selected" : "Auto-layout all"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShortcutsOpen(true)}>
+              <Keyboard className="mr-2 h-4 w-4" />
+              Keyboard shortcuts
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Popover>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Pipeline settings">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Pipeline settings</TooltipContent>
+          </Tooltip>
+          <PopoverContent align="end" className="w-80">
+            <PipelineSettings pipelineId={pipelineId} />
+          </PopoverContent>
+        </Popover>
         <KeyboardShortcutsDialog
           open={shortcutsOpen}
           onOpenChange={setShortcutsOpen}
         />
 
-        <Separator orientation="vertical" className="mx-1 h-5" />
+        </div>
 
-        {/* Pending approval indicator */}
-        {pendingRequest && (
-          <div className="flex items-center gap-0.5 px-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-md text-amber-600 dark:text-amber-400">
-                  <Clock className="h-4 w-4" />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                Pending Approval
-                {pendingRequest.requestedBy && (
-                  <> by {pendingRequest.requestedBy.name ?? pendingRequest.requestedBy.email}</>
-                )}
-              </TooltipContent>
-            </Tooltip>
-            {isMyRequest && (
+        <div className="flex shrink-0 items-center gap-1 border-l pl-2">
+          {/* Pending approval indicator */}
+          {pendingRequest && (
+            <div className="flex items-center gap-0.5 px-1">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => cancelRequestMutation.mutate({ requestId: pendingRequest.id })}
-                    disabled={cancelRequestMutation.isPending}
-                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                    aria-label="Cancel deploy request"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-md text-amber-600 dark:text-amber-400">
+                    <Clock className="h-4 w-4" />
+                  </span>
                 </TooltipTrigger>
-                <TooltipContent>Cancel your deploy request</TooltipContent>
+                <TooltipContent>
+                  Pending Approval
+                  {pendingRequest.requestedBy && (
+                    <> by {pendingRequest.requestedBy.name ?? pendingRequest.requestedBy.email}</>
+                  )}
+                </TooltipContent>
               </Tooltip>
-            )}
-          </div>
-        )}
-
-        {/* Process status indicator */}
-        {processStatus && (
-          <div className="flex items-center gap-1.5 px-2 text-xs">
-            <span className={
-              processStatus === "RUNNING" ? "h-2 w-2 rounded-full bg-green-500" :
-              processStatus === "CRASHED" ? "h-2 w-2 rounded-full bg-red-500" :
-              processStatus === "STOPPED" ? "h-2 w-2 rounded-full bg-gray-400" :
-              "h-2 w-2 rounded-full bg-yellow-500"
-            } />
-            <span className={
-              processStatus === "RUNNING" ? "font-medium text-green-600 dark:text-green-400" :
-              processStatus === "CRASHED" ? "font-medium text-red-600 dark:text-red-400" :
-              processStatus === "STOPPED" ? "font-medium text-muted-foreground" :
-              "font-medium text-yellow-600 dark:text-yellow-400"
-            }>
-              {processStatus === "RUNNING" && "Running"}
-              {processStatus === "STARTING" && "Starting..."}
-              {processStatus === "STOPPED" && "Stopped"}
-              {processStatus === "CRASHED" && "Crashed"}
-              {processStatus === "PENDING" && "Pending..."}
-            </span>
-          </div>
-        )}
-
-        {/* Deploy state buttons */}
-        {(() => {
-          const isDeployed = !isDraft && !!deployedAt;
-          // Only flag redeployment when saved config actually differs from deployed
-          const hasChanges = isDeployed && hasConfigChanges;
-
-          if (!isDeployed) {
-            // Never deployed or undeployed
-            return (
-              <PressableScale>
+              {isMyRequest && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      variant="default"
+                      variant="ghost"
                       size="sm"
-                      onClick={onDeploy}
-                      disabled={nodes.length === 0}
-                      className="h-7 gap-1.5 px-2.5 text-xs"
+                      onClick={() => cancelRequestMutation.mutate({ requestId: pendingRequest.id })}
+                      disabled={cancelRequestMutation.isPending}
+                      className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                      aria-label="Cancel deploy request"
                     >
-                      <Rocket className="h-3.5 w-3.5" />
-                      Deploy
+                      <X className="h-3.5 w-3.5" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Deploy pipeline to environment</TooltipContent>
+                  <TooltipContent>Cancel your deploy request</TooltipContent>
                 </Tooltip>
-              </PressableScale>
-            );
-          }
+              )}
+            </div>
+          )}
 
-          if (hasChanges) {
-            // Deployed but has changes to deploy
-            return (
-              <>
+          {/* Process status indicator */}
+          {processStatus && (
+            <div className="flex items-center gap-1.5 px-2 text-xs">
+              <span className={
+                processStatus === "RUNNING" ? "h-2 w-2 rounded-full bg-green-500" :
+                processStatus === "CRASHED" ? "h-2 w-2 rounded-full bg-red-500" :
+                processStatus === "STOPPED" ? "h-2 w-2 rounded-full bg-gray-400" :
+                "h-2 w-2 rounded-full bg-yellow-500"
+              } />
+              <span className={
+                processStatus === "RUNNING" ? "font-medium text-green-600 dark:text-green-400" :
+                processStatus === "CRASHED" ? "font-medium text-red-600 dark:text-red-400" :
+                processStatus === "STOPPED" ? "font-medium text-muted-foreground" :
+                "font-medium text-yellow-600 dark:text-yellow-400"
+              }>
+                {processStatus === "RUNNING" && "Running"}
+                {processStatus === "STARTING" && "Starting..."}
+                {processStatus === "STOPPED" && "Stopped"}
+                {processStatus === "CRASHED" && "Crashed"}
+                {processStatus === "PENDING" && "Pending..."}
+              </span>
+            </div>
+          )}
+
+          {/* Deploy state buttons */}
+          {(() => {
+            const isDeployed = !isDraft && !!deployedAt;
+            // Only flag redeployment when saved config actually differs from deployed
+            const hasChanges = isDeployed && hasConfigChanges;
+
+            if (!isDeployed) {
+              // Never deployed or undeployed
+              return (
                 <PressableScale>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -778,25 +749,74 @@ export function FlowToolbar({
                         Deploy
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Changes detected{deployedVersionNumber != null ? ` since v${deployedVersionNumber}` : ''} — deploy to update</TooltipContent>
+                    <TooltipContent>Deploy pipeline to environment</TooltipContent>
                   </Tooltip>
                 </PressableScale>
-                {onDiscardChanges && (
+              );
+            }
+
+            if (hasChanges) {
+              // Deployed but has changes to deploy
+              return (
+                <>
+                  <PressableScale>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={onDeploy}
+                          disabled={nodes.length === 0}
+                          className="h-7 gap-1.5 px-2.5 text-xs"
+                        >
+                          <Rocket className="h-3.5 w-3.5" />
+                          Deploy
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Changes detected{deployedVersionNumber != null ? ` since v${deployedVersionNumber}` : ''} — deploy to update</TooltipContent>
+                    </Tooltip>
+                  </PressableScale>
+                  {onDiscardChanges && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={onDiscardChanges}
+                          className="h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <Undo2 className="h-3.5 w-3.5" />
+                          Discard
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Revert to last deployed state</TooltipContent>
+                    </Tooltip>
+                  )}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={onDiscardChanges}
-                        className="h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={onUndeploy}
+                        className="h-7 gap-1.5 px-2.5 text-xs text-destructive hover:text-destructive"
                       >
-                        <Undo2 className="h-3.5 w-3.5" />
-                        Discard
+                        <CircleX className="h-3.5 w-3.5" />
+                        Undeploy
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Revert to last deployed state</TooltipContent>
+                    <TooltipContent>Remove deployed config</TooltipContent>
                   </Tooltip>
-                )}
+                </>
+              );
+            }
+
+            // Deployed and up-to-date — no redeploy needed
+            return (
+              <>
+                <div className="flex items-center gap-1.5 px-2.5 text-xs text-green-600 dark:text-green-400">
+                  <CircleCheck className="h-3.5 w-3.5" />
+                  <span className="font-medium">Deployed{deployedVersionNumber != null ? ` v${deployedVersionNumber}` : ''}</span>
+                </div>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -813,33 +833,9 @@ export function FlowToolbar({
                 </Tooltip>
               </>
             );
-          }
+          })()}
 
-          // Deployed and up-to-date — no redeploy needed
-          return (
-            <>
-              <div className="flex items-center gap-1.5 px-2.5 text-xs text-green-600 dark:text-green-400">
-                <CircleCheck className="h-3.5 w-3.5" />
-                <span className="font-medium">Deployed{deployedVersionNumber != null ? ` v${deployedVersionNumber}` : ''}</span>
-              </div>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onUndeploy}
-                    className="h-7 gap-1.5 px-2.5 text-xs text-destructive hover:text-destructive"
-                  >
-                    <CircleX className="h-3.5 w-3.5" />
-                    Undeploy
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Remove deployed config</TooltipContent>
-              </Tooltip>
-            </>
-          );
-        })()}
-
+        </div>
       </div>
     </TooltipProvider>
   );

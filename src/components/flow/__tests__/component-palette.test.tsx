@@ -249,7 +249,10 @@ describe("ComponentPalette", () => {
         }) as DOMRect;
       document.body.appendChild(canvas);
 
-      fireEvent.click(getByRole("button", { name: "Add Apache Kafka to canvas" }));
+      fireEvent.keyDown(getByRole("button", { name: "Add Apache Kafka to canvas" }), {
+        key: "Enter",
+        code: "Enter",
+      });
 
       const node = useFlowStore.getState().nodes[0];
       expect(node.data.componentDef).toMatchObject({
@@ -276,6 +279,7 @@ describe("ComponentPalette", () => {
       const { getByRole } = render(<ComponentPalette />);
 
       fireEvent.click(getByRole("tab", { name: "Shared" }));
+      expect(getByRole("group", { name: "Shared component kind filters" })).toBeInTheDocument();
       expect(getByRole("button", { name: "All" })).toHaveAttribute(
         "aria-pressed",
         "true"
@@ -286,7 +290,10 @@ describe("ComponentPalette", () => {
         "true"
       );
 
-      fireEvent.click(getByRole("button", { name: "Add Shared Kafka to canvas" }));
+      fireEvent.keyDown(getByRole("button", { name: "Add Shared Kafka to canvas" }), {
+        key: " ",
+        code: "Space",
+      });
 
       const node = useFlowStore.getState().nodes[0];
       expect(node.data).toMatchObject({
