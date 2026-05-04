@@ -31,6 +31,7 @@ export default defineConfig({
     },
     {
       name: "qa-chromium",
+      testMatch: /qa-seeded-pipeline\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         storageState: { cookies: [], origins: [] },

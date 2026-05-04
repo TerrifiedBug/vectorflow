@@ -2,6 +2,12 @@
 
 import { spawnSync } from "node:child_process";
 
+const QA_DEV_USER = {
+  id: "qa-user",
+  email: "qa@vectorflow.local",
+  name: "QA Dev User",
+};
+
 // Internal QA runner: starts the e2e PostgreSQL Compose service, applies Prisma
 // migrations, seeds deterministic QA data, then launches Next.js with the local
 // dev auth bypass. Keep setup notes in PR context rather than public docs.
@@ -16,9 +22,9 @@ const env = {
   NEXTAUTH_URL: process.env.NEXTAUTH_URL ?? "http://localhost:3000",
   NODE_ENV: "development",
   DEV_AUTH_BYPASS: "1",
-  DEV_AUTH_BYPASS_USER_ID: process.env.DEV_AUTH_BYPASS_USER_ID ?? "qa-user",
-  DEV_AUTH_BYPASS_USER_EMAIL: process.env.DEV_AUTH_BYPASS_USER_EMAIL ?? "qa@vectorflow.local",
-  DEV_AUTH_BYPASS_USER_NAME: process.env.DEV_AUTH_BYPASS_USER_NAME ?? "QA Dev User",
+  DEV_AUTH_BYPASS_USER_ID: QA_DEV_USER.id,
+  DEV_AUTH_BYPASS_USER_EMAIL: QA_DEV_USER.email,
+  DEV_AUTH_BYPASS_USER_NAME: QA_DEV_USER.name,
 };
 
 function run(command, args, options = {}) {

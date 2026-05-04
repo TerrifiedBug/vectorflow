@@ -21,7 +21,7 @@ describe("dev auth bypass", () => {
         DEV_AUTH_BYPASS_USER_EMAIL: "qa@example.test",
         DEV_AUTH_BYPASS_USER_NAME: "QA User",
       },
-      { requestHost: "localhost:3000" },
+      { requestHost: "localhost:3000", clientAddress: "127.0.0.1" },
     );
 
     expect(session?.user).toEqual({
@@ -38,15 +38,15 @@ describe("dev auth bypass", () => {
       DEV_AUTH_BYPASS: "1",
     };
 
-    expect(isDevAuthBypassRequestAllowed(new Request("http://localhost:3000/api/auth/session"), env)).toBe(true);
     expect(
       isDevAuthBypassRequestAllowed(
-        new Request("http://127.0.0.1:3000/api/auth/session", {
+        new Request("http://localhost:3000/api/auth/session", {
           headers: { "x-forwarded-for": "127.0.0.1" },
         }),
         env,
       ),
     ).toBe(true);
+    expect(isDevAuthBypassRequestAllowed(new Request("http://localhost:3000/api/auth/session"), env)).toBe(false);
     expect(isDevAuthBypassRequestAllowed(new Request("http://192.168.1.50:3000/api/auth/session"), env)).toBe(
       false,
     );
@@ -58,6 +58,13 @@ describe("dev auth bypass", () => {
         env,
       ),
     ).toBe(false);
+    expect(isDevAuthBypassEnabledForRequest(env, { requestHost: "localhost:3000" })).toBe(false);
+    expect(
+      isDevAuthBypassEnabledForRequest(env, {
+        requestHost: "localhost:3000",
+        clientAddress: "127.0.0.1",
+      }),
+    ).toBe(true);
     expect(
       isDevAuthBypassRequestAllowed(new Request("http://192.168.1.50:3000/api/auth/session"), {
         ...env,
@@ -102,5 +109,18 @@ describe("dev auth bypass", () => {
     expect(getDevAuthBypassSession(env, { requestHost: "qa-tunnel.example.com" })?.user.email).toBe(
       "qa@vectorflow.local",
     );
+  });
+
+  it("does not enable the bypass when the client address is missing", () => {
+    const env = { NODE_ENV: "development", DEV_AUTH_BYPASS: "1" };
+
+    expect(
+      isDevAuthBypassRequestAllowed(
+        new Request("http://localhost:3000/api/auth/session", {
+          headers: { host: "localhost:3000" },
+        }),
+        env,
+      ),
+    ).toBe(false);
   });
 });
