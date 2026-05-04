@@ -58,6 +58,10 @@ import {
 } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  SERVICE_ACCOUNT_PERMISSION_GROUPS,
+  type ServiceAccountPermission,
+} from "@/lib/service-account-permissions";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -89,42 +93,8 @@ function formatExpiresAt(date: Date | string | null | undefined): string {
 
 // ─── Permission Definitions ─────────────────────────────────────────────────────
 
-const PERMISSION_GROUPS = [
-  {
-    label: "Pipelines",
-    permissions: [
-      { value: "pipelines.read", label: "Read" },
-      { value: "pipelines.deploy", label: "Deploy" },
-    ],
-  },
-  {
-    label: "Nodes",
-    permissions: [
-      { value: "nodes.read", label: "Read" },
-      { value: "nodes.manage", label: "Manage" },
-    ],
-  },
-  {
-    label: "Secrets",
-    permissions: [
-      { value: "secrets.read", label: "Read" },
-      { value: "secrets.manage", label: "Manage" },
-    ],
-  },
-  {
-    label: "Alerts",
-    permissions: [
-      { value: "alerts.read", label: "Read" },
-      { value: "alerts.manage", label: "Manage" },
-    ],
-  },
-  {
-    label: "Audit",
-    permissions: [{ value: "audit.read", label: "Read" }],
-  },
-] as const;
-
-type PermissionValue = (typeof PERMISSION_GROUPS)[number]["permissions"][number]["value"];
+const PERMISSION_GROUPS = SERVICE_ACCOUNT_PERMISSION_GROUPS;
+type PermissionValue = ServiceAccountPermission;
 
 // ─── Main Page ──────────────────────────────────────────────────────────────────
 

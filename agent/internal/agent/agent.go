@@ -53,6 +53,8 @@ type Agent struct {
 	mu                  sync.Mutex
 	sampleResults       []client.SampleResultMsg
 	failedUpdateVersion string // skip retries for this version
+	failedUpdateAt      time.Time
+	selfUpdate          func(*client.PendingAction) error
 	updateError         string // report failure to server
 
 	pushClient           *push.Client
@@ -368,12 +370,17 @@ func (a *Agent) handlePendingAction(action *client.PendingAction) {
 			slog.Debug("already running target version, skipping update", "version", Version)
 			return
 		}
-		if action.TargetVersion == a.failedUpdateVersion {
-			return // already failed for this version, don't retry
+		if action.TargetVersion == a.failedUpdateVersion && time.Since(a.failedUpdateAt) < updateRetryBackoff {
+			return // already failed for this version inside the retry backoff
 		}
-		if err := a.handleSelfUpdate(action); err != nil {
+		selfUpdate := a.selfUpdate
+		if selfUpdate == nil {
+			selfUpdate = a.handleSelfUpdate
+		}
+		if err := selfUpdate(action); err != nil {
 			slog.Error("self-update failed", "error", err)
 			a.failedUpdateVersion = action.TargetVersion
+			a.failedUpdateAt = time.Now()
 			a.updateError = err.Error()
 		}
 	default:

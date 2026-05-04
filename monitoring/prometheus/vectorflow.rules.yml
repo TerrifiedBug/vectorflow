@@ -157,6 +157,6 @@ groups:
         annotations:
           summary: "VectorFlow MetricStore memory > 100 MiB"
           description: >
-            The in-process MetricStore is using {{ humanizeBytes $value }} of memory.
+            The in-process MetricStore is using {{ humanize1024 $value }}B of memory.
             This may indicate a leak in streaming metric accumulation. Consider restarting
             the VectorFlow server or increasing the eviction window.

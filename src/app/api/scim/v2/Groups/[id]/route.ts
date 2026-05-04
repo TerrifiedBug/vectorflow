@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { writeAuditLog } from "@/server/services/audit";
-import { fireScimSyncFailedAlert } from "@/server/services/scim";
+import { fireScimSyncFailedAlert, writeScimAuditLog } from "@/server/services/scim";
 import { debugLog } from "@/lib/logger";
 import { authenticateScim } from "../../auth";
 import {
@@ -157,8 +156,7 @@ export async function PATCH(
       }
     });
 
-    await writeAuditLog({
-      userId: null,
+    await writeScimAuditLog({
       action: "scim.group_patched",
       entityType: "ScimGroup",
       entityId: id,
@@ -169,6 +167,7 @@ export async function PATCH(
           path: o.path,
         })),
       },
+      status: "success",
     });
 
     const updated = await prisma.scimGroup.findUnique({
@@ -195,6 +194,14 @@ export async function PATCH(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to patch group";
+    await writeScimAuditLog({
+      action: "scim.group_patched",
+      entityType: "ScimGroup",
+      entityId: id,
+      metadata: { displayName: group.displayName },
+      status: "failure",
+      error,
+    });
     void fireScimSyncFailedAlert(message);
     return scimError(message, 400);
   }
@@ -285,8 +292,7 @@ export async function PUT(
       }
     });
 
-    await writeAuditLog({
-      userId: null,
+    await writeScimAuditLog({
       action: "scim.group_updated",
       entityType: "ScimGroup",
       entityId: id,
@@ -294,6 +300,7 @@ export async function PUT(
         displayName: body.displayName ?? group.displayName,
         memberCount: body.members?.length,
       },
+      status: "success",
     });
 
     const updated = await prisma.scimGroup.findUnique({
@@ -320,6 +327,14 @@ export async function PUT(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to update group";
+    await writeScimAuditLog({
+      action: "scim.group_updated",
+      entityType: "ScimGroup",
+      entityId: id,
+      metadata: { displayName: group.displayName },
+      status: "failure",
+      error,
+    });
     void fireScimSyncFailedAlert(message);
     return scimError(message, 400);
   }
@@ -342,25 +357,40 @@ export async function DELETE(
     return scimError("Group not found", 404);
   }
 
-  // Collect affected user IDs before deletion
-  const affectedUserIds = group.members.map((m) => m.userId);
+  try {
+    // Collect affected user IDs before deletion
+    const affectedUserIds = group.members.map((m) => m.userId);
 
-  // Delete group and reconcile all affected users in a single transaction
-  await prisma.$transaction(async (tx) => {
-    await tx.scimGroup.delete({ where: { id } });
-    for (const userId of affectedUserIds) {
-      const groupNames = await getScimGroupNamesForUser(tx, userId);
-      await reconcileUserTeamMemberships(tx, userId, groupNames);
-    }
-  });
+    // Delete group and reconcile all affected users in a single transaction
+    await prisma.$transaction(async (tx) => {
+      await tx.scimGroup.delete({ where: { id } });
+      for (const userId of affectedUserIds) {
+        const groupNames = await getScimGroupNamesForUser(tx, userId);
+        await reconcileUserTeamMemberships(tx, userId, groupNames);
+      }
+    });
 
-  await writeAuditLog({
-    userId: null,
-    action: "scim.group_deleted",
-    entityType: "ScimGroup",
-    entityId: id,
-    metadata: { displayName: group.displayName },
-  });
+    await writeScimAuditLog({
+      action: "scim.group_deleted",
+      entityType: "ScimGroup",
+      entityId: id,
+      metadata: { displayName: group.displayName },
+      status: "success",
+    });
 
-  return new NextResponse(null, { status: 204 });
+    return new NextResponse(null, { status: 204 });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to delete group";
+    await writeScimAuditLog({
+      action: "scim.group_deleted",
+      entityType: "ScimGroup",
+      entityId: id,
+      metadata: { displayName: group.displayName },
+      status: "failure",
+      error,
+    });
+    void fireScimSyncFailedAlert(message);
+    return scimError(message, 400);
+  }
 }

@@ -121,53 +121,62 @@ describe("getFleetEventVolume", () => {
 
 describe("getFleetThroughputDrop", () => {
   it("returns null when no previous data exists", async () => {
-    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
-      nps({ eventsIn: 1000 }),
-    ] as never);
-    prismaMock.pipelineMetric.findMany.mockResolvedValue([]);
+    prismaMock.pipelineMetric.findMany
+      .mockResolvedValueOnce([pm({ eventsIn: 1000 })] as never)
+      .mockResolvedValueOnce([]);
     expect(await getFleetThroughputDrop(ENV_ID)).toBeNull();
   });
 
   it("returns 0% when equal periods", async () => {
-    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
-      nps({ eventsIn: 1000 }),
-    ] as never);
-    prismaMock.pipelineMetric.findMany.mockResolvedValue([
-      pm({ eventsIn: 1000 }),
-    ] as never);
+    prismaMock.pipelineMetric.findMany
+      .mockResolvedValueOnce([pm({ eventsIn: 1000 })] as never)
+      .mockResolvedValueOnce([pm({ eventsIn: 1000 })] as never);
     expect(await getFleetThroughputDrop(ENV_ID)).toBe(0);
   });
 
   it("returns 50% when throughput drops by half", async () => {
-    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
-      nps({ eventsIn: 500 }),
-    ] as never);
-    prismaMock.pipelineMetric.findMany.mockResolvedValue([
-      pm({ eventsIn: 1000 }),
-    ] as never);
+    prismaMock.pipelineMetric.findMany
+      .mockResolvedValueOnce([pm({ eventsIn: 500 })] as never)
+      .mockResolvedValueOnce([pm({ eventsIn: 1000 })] as never);
     // (1000 - 500) / 1000 * 100 = 50
     expect(await getFleetThroughputDrop(ENV_ID)).toBe(50);
   });
 
   it("returns negative value when throughput increases", async () => {
-    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
-      nps({ eventsIn: 1500 }),
-    ] as never);
-    prismaMock.pipelineMetric.findMany.mockResolvedValue([
-      pm({ eventsIn: 1000 }),
-    ] as never);
+    prismaMock.pipelineMetric.findMany
+      .mockResolvedValueOnce([pm({ eventsIn: 1500 })] as never)
+      .mockResolvedValueOnce([pm({ eventsIn: 1000 })] as never);
     // (1000 - 1500) / 1000 * 100 = -50
     expect(await getFleetThroughputDrop(ENV_ID)).toBe(-50);
   });
 
   it("returns 0 when previous period is zero", async () => {
-    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
-      nps({ eventsIn: 1000 }),
-    ] as never);
-    prismaMock.pipelineMetric.findMany.mockResolvedValue([
-      pm({ eventsIn: 0 }),
-    ] as never);
+    prismaMock.pipelineMetric.findMany
+      .mockResolvedValueOnce([pm({ eventsIn: 1000 })] as never)
+      .mockResolvedValueOnce([pm({ eventsIn: 0 })] as never);
     expect(await getFleetThroughputDrop(ENV_ID)).toBe(0);
+  });
+
+  it("does not treat large lifetime counters as a throughput spike", async () => {
+    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+      nps({ eventsIn: 1_000_000 }),
+    ] as never);
+    prismaMock.pipelineMetric.findMany
+      .mockResolvedValueOnce([pm({ eventsIn: 1_000 })] as never)
+      .mockResolvedValueOnce([pm({ eventsIn: 1_000 })] as never);
+
+    expect(await getFleetThroughputDrop(ENV_ID)).toBe(0);
+  });
+
+  it("does not let lifetime counters hide an interval throughput drop", async () => {
+    prismaMock.nodePipelineStatus.findMany.mockResolvedValue([
+      nps({ eventsIn: 10_000 }),
+    ] as never);
+    prismaMock.pipelineMetric.findMany
+      .mockResolvedValueOnce([pm({ eventsIn: 6_000 })] as never)
+      .mockResolvedValueOnce([pm({ eventsIn: 12_000 })] as never);
+
+    expect(await getFleetThroughputDrop(ENV_ID)).toBe(50);
   });
 });
 

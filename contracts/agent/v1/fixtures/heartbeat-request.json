@@ -1,0 +1,80 @@
+{
+  "agentVersion": "2.0.0",
+  "vectorVersion": "0.54.0",
+  "deploymentMode": "DOCKER",
+  "runningAs": "vectorflow",
+  "labels": {
+    "region": "us-east-1",
+    "role": "ingest"
+  },
+  "pipelines": [
+    {
+      "pipelineId": "pipe-1",
+      "version": 7,
+      "status": "RUNNING",
+      "pid": 4242,
+      "uptimeSeconds": 3600,
+      "eventsIn": 1200,
+      "eventsOut": 1198,
+      "errorsTotal": 1,
+      "bytesIn": 98234,
+      "bytesOut": 88912,
+      "eventsDiscarded": 2,
+      "componentMetrics": [
+        {
+          "componentId": "demo",
+          "componentKind": "source",
+          "receivedEvents": 1200,
+          "sentEvents": 1198,
+          "receivedBytes": 98234,
+          "sentBytes": 88912,
+          "errorsTotal": 1,
+          "discardedEvents": 2,
+          "latencyMeanSeconds": 0.012
+        }
+      ],
+      "utilization": 0.43,
+      "recentLogs": ["pipeline started"],
+      "configChecksum": "8f14e45fceea167a5a36dedd4bea2543"
+    }
+  ],
+  "hostMetrics": {
+    "memoryTotalBytes": 17179869184,
+    "memoryUsedBytes": 8589934592,
+    "memoryFreeBytes": 8589934592,
+    "cpuSecondsTotal": 12345.6,
+    "cpuSecondsIdle": 5432.1,
+    "loadAvg1": 0.7,
+    "loadAvg5": 0.5,
+    "loadAvg15": 0.4,
+    "fsTotalBytes": 107374182400,
+    "fsUsedBytes": 53687091200,
+    "fsFreeBytes": 53687091200,
+    "diskReadBytes": 1024,
+    "diskWrittenBytes": 2048,
+    "netRxBytes": 4096,
+    "netTxBytes": 8192
+  },
+  "sampleResults": [
+    {
+      "requestId": "sample-1",
+      "componentKey": "demo",
+      "events": [{ "message": "hello" }],
+      "schema": [
+        {
+          "path": "message",
+          "type": "string",
+          "sample": "hello"
+        }
+      ]
+    }
+  ],
+  "agentHealth": {
+    "pollErrorsTotal": 0,
+    "pushReconnectsTotal": 1,
+    "heartbeatErrorsTotal": 0,
+    "pushConnected": true,
+    "pipelinesRunning": 1,
+    "uptimeSeconds": 7200
+  }
+}
