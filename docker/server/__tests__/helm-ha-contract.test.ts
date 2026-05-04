@@ -109,4 +109,19 @@ describe("vectorflow-server Helm HA contract", () => {
 
     expect(error).toContain("existingSecretContainsRedisUrl=true");
   });
+
+  it("rejects HA when existingSecret is set and inline redisUrl would bypass validation", () => {
+    const error = helmTemplateError([
+      "--set",
+      "replicaCount=2",
+      "--set",
+      "existingSecret=vectorflow-secrets",
+      "--set",
+      "secret.redisUrl=redis://localhost:6379",
+      "--set",
+      "persistence.data.accessMode=ReadWriteMany",
+    ]);
+
+    expect(error).toContain("existingSecretContainsRedisUrl=true");
+  });
 });
