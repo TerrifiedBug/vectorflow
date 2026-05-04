@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import {
+  buildPrerequisiteFailureMessage,
+  getPostgresEndpoint,
+  getQaDatabaseMode,
+  getQaDatabaseUrl,
+  hasDocker,
+  isTcpReachable,
+  POSTGRES_REACHABILITY_TIMEOUT_MS,
+} from "./dev-qa-lib.mjs";
 
 const QA_DEV_USER = {
   id: "qa-user",
@@ -11,9 +20,8 @@ const QA_DEV_USER = {
 // Internal QA runner: starts the e2e PostgreSQL Compose service, applies Prisma
 // migrations, seeds deterministic QA data, then launches Next.js with the local
 // dev auth bypass. Keep setup notes in PR context rather than public docs.
-const DATABASE_URL =
-  process.env.DATABASE_URL ??
-  "postgresql://vectorflow_e2e:e2e_test_password@127.0.0.1:5433/vectorflow_e2e?schema=public";
+const mode = getQaDatabaseMode();
+const DATABASE_URL = getQaDatabaseUrl();
 
 const env = {
   ...process.env,
@@ -43,32 +51,45 @@ function run(command, args, options = {}) {
   }
 }
 
-function hasDocker() {
-  const docker = spawnSync("docker", ["--version"], { stdio: "ignore" });
-  if (docker.status !== 0) return false;
-
-  const daemon = spawnSync("docker", ["info"], { stdio: "ignore" });
-  return daemon.status === 0;
-}
-
 if (env.NODE_ENV === "production") {
   console.error("Refusing to start QA dev auth bypass with NODE_ENV=production.");
   process.exit(1);
 }
 
-if (!hasDocker()) {
-  console.error(`
-Docker is required for pnpm dev:qa because this repository uses PostgreSQL-only Prisma models.
+const dockerAvailable = mode === "docker" ? hasDocker() : false;
+const localPostgresReachable = await isTcpReachable(
+  getPostgresEndpoint(DATABASE_URL),
+  POSTGRES_REACHABILITY_TIMEOUT_MS,
+);
 
-Start Docker Desktop or another Docker daemon, then rerun:
-  pnpm dev:qa
-
-The database container is defined in e2e/docker-compose.e2e.yml and listens on localhost:5433.
-`);
+if (mode === "docker" && !dockerAvailable) {
+  console.error(
+    buildPrerequisiteFailureMessage({
+      mode,
+      databaseUrl: DATABASE_URL,
+      dockerAvailable,
+      localPostgresReachable,
+    }),
+  );
   process.exit(1);
 }
 
-run("docker", ["compose", "-f", "e2e/docker-compose.e2e.yml", "up", "-d", "--wait"]);
+if (mode === "local-pg" && !localPostgresReachable) {
+  console.error(
+    buildPrerequisiteFailureMessage({
+      mode,
+      databaseUrl: DATABASE_URL,
+      dockerAvailable,
+      localPostgresReachable,
+    }),
+  );
+  process.exit(1);
+}
+
+if (mode === "docker") {
+  run("docker", ["compose", "-f", "e2e/docker-compose.e2e.yml", "up", "-d", "--wait"]);
+}
+
 run("pnpm", ["exec", "prisma", "migrate", "deploy"]);
 run("pnpm", ["seed:qa"]);
 
