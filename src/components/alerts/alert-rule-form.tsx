@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VFIcon } from "@/components/ui/vf-icon";
 import { cn } from "@/lib/utils";
+import { useDebounce } from "@/hooks/use-debounce";
 import { toast } from "sonner";
 import { AlertRulePreview } from "@/components/alerts/alert-rule-preview";
 import { AlertRuleSlackPreview } from "@/components/alerts/alert-rule-slack-preview";
@@ -114,6 +116,32 @@ export function AlertRuleForm(props: Props) {
     }),
     enabled: !!selectedEnvironmentId,
   });
+
+  // Surface overlapping rules so users don't accidentally double-author a rule
+  // on the same metric + scope. Debounce the inputs that drive scope to avoid
+  // hammering the server while the user is still picking pipeline/metric.
+  const debouncedMetric = useDebounce(metric, 300);
+  const debouncedPipelineId = useDebounce(pipelineId, 300);
+  const excludeId = props.mode === "edit" ? props.ruleId : undefined;
+  const similarQ = useQuery({
+    ...trpc.alert.findSimilar.queryOptions({
+      teamId: teamId ?? "",
+      pipelineId: debouncedPipelineId || null,
+      environmentId: selectedEnvironmentId ?? null,
+      metric: debouncedMetric as never,
+      excludeId,
+    }),
+    enabled: Boolean(teamId && debouncedMetric),
+  });
+  const similarMatches = (similarQ.data?.matches ?? []) as Array<{
+    id: string;
+    name: string;
+    metric: string;
+    condition: string | null;
+    threshold: number | null;
+    environment: { id: string; name: string } | null;
+    pipeline: { id: string; name: string } | null;
+  }>;
 
   const createRule = useMutation(
     trpc.alert.createRule.mutationOptions({
@@ -237,6 +265,9 @@ export function AlertRuleForm(props: Props) {
               <div className="mt-1 font-mono text-[10.5px] text-fg-2">
                 slug: <span className="text-fg-1">{slug}</span>
               </div>
+
+              <SimilarRulesCallout matches={similarMatches} />
+
 
               <FormLabel className="mt-3.5">Description</FormLabel>
               <textarea
@@ -467,6 +498,60 @@ export function AlertRuleForm(props: Props) {
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+function SimilarRulesCallout({
+  matches,
+}: {
+  matches: Array<{
+    id: string;
+    name: string;
+    metric: string;
+    condition: string | null;
+    threshold: number | null;
+    environment: { id: string; name: string } | null;
+    pipeline: { id: string; name: string } | null;
+  }>;
+}) {
+  if (matches.length === 0) return null;
+
+  const conditionLabel = (c: string | null) => {
+    if (c === "gt") return ">";
+    if (c === "lt") return "<";
+    if (c === "eq") return "=";
+    return "";
+  };
+
+  return (
+    <div className="mt-2.5 bg-status-degraded-bg border-l-[3px] border-l-status-degraded p-3 rounded-[3px]">
+      <div className="font-mono text-[11.5px] font-medium text-status-degraded">
+        Similar rule(s) already exist
+      </div>
+      <ul className="mt-1.5 flex flex-col gap-1">
+        {matches.map((m) => {
+          const scope = m.pipeline?.name ?? m.environment?.name ?? "team-wide";
+          const summary =
+            m.condition && m.threshold != null
+              ? `${m.metric} ${conditionLabel(m.condition)} ${m.threshold}`
+              : m.metric;
+          return (
+            <li key={m.id} className="flex items-center gap-2 leading-snug">
+              <Link
+                href={`/alerts/${m.id}/edit`}
+                className="font-mono text-[12px] text-fg hover:text-accent-brand underline-offset-2 hover:underline"
+              >
+                {m.name}
+              </Link>
+              <span className="font-mono text-[10.5px] text-fg-2 px-1.5 py-0.5 rounded-[3px] bg-bg-2 border border-line-2">
+                {scope}
+              </span>
+              <span className="font-mono text-[11px] text-fg-2">· {summary}</span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
