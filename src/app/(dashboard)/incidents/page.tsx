@@ -63,9 +63,15 @@ export default function IncidentsPage() {
     status?: "open" | "acknowledged" | "dismissed";
   };
 
+  const [nowMs, setNowMs] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    setNowMs(Date.now());
+    const interval = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const rows: TimelineRow[] = React.useMemo(() => {
-    if (!Array.isArray(anomaliesQ.data)) return [];
-    const now = Date.now();
+    if (!Array.isArray(anomaliesQ.data) || nowMs == null) return [];
     const windowMs = HOURS * 60 * 60 * 1000;
     const buckets = new Map<string, TimelineRow>();
 
@@ -73,7 +79,7 @@ export default function IncidentsPage() {
       const name = a.pipelineName ?? a.pipeline?.name ?? "—";
       const ts = a.detectedAt ?? new Date().toISOString();
       const t = new Date(ts).getTime();
-      const ago = now - t;
+      const ago = nowMs - t;
       if (ago > windowMs) continue;
       const hour = HOURS - 1 - Math.floor(ago / (60 * 60 * 1000));
       const row =
@@ -90,7 +96,7 @@ export default function IncidentsPage() {
       buckets.set(name, row);
     }
     return Array.from(buckets.values()).slice(0, 50);
-  }, [anomaliesQ.data]);
+  }, [anomaliesQ.data, nowMs]);
 
   const [selectedRowName, setSelectedRowName] = React.useState<string | null>(
     null,

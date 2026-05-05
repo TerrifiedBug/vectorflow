@@ -113,7 +113,7 @@ export default function MigrationProjectPage({
       onSuccess: (result) => {
         queryClient.invalidateQueries({ queryKey: trpc.migration.get.queryKey() });
         toast.success("Pipeline generated");
-        router.push(`/pipelines/${result.pipelineId}`);
+        router.push(`/pipelines/${result.pipelineId}/edit`);
       },
       onError: (err) => {
         toast.error(err.message);
@@ -316,7 +316,7 @@ export default function MigrationProjectPage({
               size="sm"
               variant="outline"
               onClick={() =>
-                router.push(`/pipelines/${project.generatedPipeline!.id}`)
+                router.push(`/pipelines/${project.generatedPipeline!.id}/edit`)
               }
             >
               <ExternalLink className="h-4 w-4 mr-1" />

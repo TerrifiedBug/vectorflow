@@ -360,8 +360,6 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const saveMutation = useMutation(
     trpc.pipeline.saveGraph.mutationOptions({
       onSuccess: () => {
-        markClean();
-        setLastSavedAt(new Date());
         queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
       },
       onError: (error) => {
@@ -495,19 +493,41 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
 
   const firstValidationError = validationErrors[0];
 
+  const markSavedIfCurrent = useCallback(
+    (payload: ReturnType<typeof buildSavePayload>) => {
+      if (JSON.stringify(payload) !== JSON.stringify(buildSavePayload())) {
+        return false;
+      }
+      markClean();
+      setLastSavedAt(new Date());
+      return true;
+    },
+    [buildSavePayload, markClean],
+  );
+
   const handleSave = useCallback(() => {
-    saveMutation.mutate(buildSavePayload(), {
-      onSuccess: () => toast.success("Pipeline saved"),
+    const payload = buildSavePayload();
+    saveMutation.mutate(payload, {
+      onSuccess: () => {
+        if (markSavedIfCurrent(payload)) {
+          toast.success("Pipeline saved");
+        }
+      },
     });
-  }, [saveMutation, buildSavePayload]);
+  }, [saveMutation, buildSavePayload, markSavedIfCurrent]);
 
   useEffect(() => {
     if (!isDirty || saveMutation.isPending) return;
     const timeout = window.setTimeout(() => {
-      saveMutation.mutate(buildSavePayload());
+      const payload = buildSavePayload();
+      saveMutation.mutate(payload, {
+        onSuccess: () => {
+          markSavedIfCurrent(payload);
+        },
+      });
     }, 2_000);
     return () => window.clearTimeout(timeout);
-  }, [isDirty, saveMutation, buildSavePayload, nodes, edges, globalConfig]);
+  }, [isDirty, saveMutation, buildSavePayload, markSavedIfCurrent, nodes, edges, globalConfig]);
 
   // Auto-save before deploying so the deploy dialog previews the current editor
   // state, not stale DB state. This prevents "no changes" deploys when users
@@ -521,7 +541,15 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       return;
     }
     try {
-      await saveMutation.mutateAsync(buildSavePayload());
+      const payload = buildSavePayload();
+      await saveMutation.mutateAsync(payload);
+      if (!markSavedIfCurrent(payload)) {
+        toast.error("Newer edits are still unsaved", {
+          description: "Wait for autosave to finish, then deploy again.",
+          duration: 6000,
+        });
+        return;
+      }
       await queryClient.invalidateQueries({
         queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }),
       });
@@ -529,7 +557,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     } catch {
       // Save error already toasted by saveMutation's onError handler
     }
-  }, [validationErrors.length, firstValidationError, saveMutation, buildSavePayload, queryClient, trpc.pipeline.get, pipelineId]);
+  }, [validationErrors.length, firstValidationError, saveMutation, buildSavePayload, markSavedIfCurrent, queryClient, trpc.pipeline.get, pipelineId]);
 
   if (pipelineQuery.isLoading) {
     return (

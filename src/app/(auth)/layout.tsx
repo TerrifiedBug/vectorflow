@@ -1,6 +1,7 @@
 "use client";
 
 import { LazyMotionProvider } from "@/components/motion/lazy-motion-provider";
+import { StaggerItem, StaggerList } from "@/components/motion";
 import { VFLogo } from "@/components/ui/vf-logo";
 import { VFIcon } from "@/components/ui/vf-icon";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -27,24 +28,25 @@ export default function AuthLayout({
         }}
       />
 
+      <LazyMotionProvider>
       {/* Left brand pane */}
       <div className="hidden md:flex relative z-10 flex-1 flex-col justify-between p-10 border-r border-line">
         <div className="text-fg">
           <VFLogo size={26} />
         </div>
 
-        <div>
-          <div className="font-mono text-[11px] text-accent-brand uppercase tracking-[0.08em] mb-3.5">
+        <StaggerList>
+          <StaggerItem className="font-mono text-[11px] text-accent-brand uppercase tracking-[0.08em] mb-3.5">
             v2.0 · self-hosted
-          </div>
-          <h1 className="m-0 text-[38px] font-semibold tracking-[-0.025em] text-fg leading-tight max-w-[520px]">
+          </StaggerItem>
+          <StaggerItem as="h1" className="m-0 text-[38px] font-semibold tracking-[-0.025em] text-fg leading-tight max-w-[520px]">
             Your fleet,<br />
             under one <span className="text-accent-brand">canvas</span>.
-          </h1>
-          <p className="mt-4 text-[14px] text-fg-1 max-w-[460px] leading-relaxed">
+          </StaggerItem>
+          <StaggerItem as="p" className="mt-4 text-[14px] text-fg-1 max-w-[460px] leading-relaxed">
             Build, deploy, and observe every Vector agent from a single visual control plane. Self-hosted · AGPL-3.0 · agent-driven.
-          </p>
-        </div>
+          </StaggerItem>
+        </StaggerList>
 
         <div className="flex gap-6 font-mono text-[11px] text-fg-2">
           <span className="inline-flex items-center gap-1.5">
@@ -63,14 +65,13 @@ export default function AuthLayout({
 
       {/* Right form pane */}
       <div className="relative z-10 w-full md:w-[460px] flex flex-col justify-center p-10 bg-bg-1 border-l border-line">
-        <LazyMotionProvider>
-          {/* Mobile-only header */}
-          <div className="md:hidden mb-6">
-            <VFLogo size={22} />
-          </div>
-          {children}
-        </LazyMotionProvider>
+        {/* Mobile-only header */}
+        <div className="md:hidden mb-6">
+          <VFLogo size={22} />
+        </div>
+        {children}
       </div>
+      </LazyMotionProvider>
     </div>
   );
 }

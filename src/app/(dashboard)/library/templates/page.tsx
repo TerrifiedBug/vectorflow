@@ -159,7 +159,7 @@ export default function TemplatesPage() {
   const saveGraphMutation = useMutation(
     trpc.pipeline.saveGraph.mutationOptions({
       onSuccess: (pipeline) => {
-        router.push(`/pipelines/${pipeline.id}`);
+        router.push(`/pipelines/${pipeline.id}/edit`);
       },
     }),
   );
