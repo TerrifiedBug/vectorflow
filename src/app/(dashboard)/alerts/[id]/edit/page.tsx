@@ -109,11 +109,15 @@ function mapRuleToFormValues(rule: RuleFromApi): AlertRuleFormValues {
     metric: rule.metric,
     condition: rule.condition ?? "gt",
     threshold: rule.threshold != null ? String(rule.threshold) : "",
-    durationMinutes:
-      rule.durationSeconds != null ? String(Math.max(1, Math.round(rule.durationSeconds / 60))) : "",
+    durationMinutes: rule.durationSeconds != null ? formatDurationMinutes(rule.durationSeconds) : "",
     cooldown: rule.cooldownMinutes != null ? String(rule.cooldownMinutes) : "",
     channelIds: rule.channels.map((c) => c.channelId),
   };
+}
+
+function formatDurationMinutes(durationSeconds: number): string {
+  if (durationSeconds % 60 === 0) return String(durationSeconds / 60);
+  return String(durationSeconds / 60);
 }
 
 function CenteredMessage({ children }: { children: React.ReactNode }) {

@@ -191,6 +191,11 @@ export function AlertRuleForm(props: Props) {
     return trimmed === "" ? undefined : Number(trimmed);
   }
 
+  function durationMinutesToSeconds(value: string) {
+    const minutes = numericOrUndefined(value);
+    return minutes === undefined ? undefined : Math.max(1, Math.round(minutes * 60));
+  }
+
   function submit() {
     if (!teamId || (props.mode === "create" && !effectiveEnvironmentId)) {
       toast.error("Select a team and environment");
@@ -206,7 +211,7 @@ export function AlertRuleForm(props: Props) {
         condition: condition as never,
         suggestedAction: description.trim() || DEFAULT_FORM_VALUES.description,
         threshold: numericOrUndefined(threshold),
-        durationSeconds: numericOrUndefined(durationMinutes) == null ? undefined : numericOrUndefined(durationMinutes)! * 60,
+        durationSeconds: durationMinutesToSeconds(durationMinutes),
         severity,
         cooldownMinutes: numericOrUndefined(cooldown),
         channelIds: Array.from(enabledChannels),
@@ -217,7 +222,7 @@ export function AlertRuleForm(props: Props) {
         name,
         suggestedAction: description.trim() || DEFAULT_FORM_VALUES.description,
         ...(numericOrUndefined(threshold) !== undefined ? { threshold: numericOrUndefined(threshold) } : {}),
-        ...(numericOrUndefined(durationMinutes) !== undefined ? { durationSeconds: numericOrUndefined(durationMinutes)! * 60 } : {}),
+        ...(durationMinutesToSeconds(durationMinutes) !== undefined ? { durationSeconds: durationMinutesToSeconds(durationMinutes)! } : {}),
         severity,
         ...(numericOrUndefined(cooldown) !== undefined ? { cooldownMinutes: numericOrUndefined(cooldown) } : {}),
         channelIds: Array.from(enabledChannels),

@@ -146,7 +146,8 @@ export default function SecretsVaultPage() {
     [usageRefs],
   );
   const usageLoading = usageQueries.some((q) => q.isPending);
-  const hasLoadError = envsQ.isError || perEnvQueries.some((q) => q.isError);
+  const usageError = usageQueries.find((q) => q.isError)?.error as Error | undefined;
+  const hasLoadError = envsQ.isError || perEnvQueries.some((q) => q.isError) || Boolean(usageError);
 
   const rowsWithUsage = React.useMemo(
     () => rows.map((row) => usageLoading ? row : withUsageStatus(row, usageBySecret.get(row.name)?.length ?? 0)),
@@ -217,7 +218,7 @@ export default function SecretsVaultPage() {
         <EmptyState
           glyph="!"
           title="Failed to load secrets"
-          description={envsQ.error?.message ?? "One or more environment secret lists failed to load."}
+          description={envsQ.error?.message ?? usageError?.message ?? "One or more environment secret lists or usage lookups failed to load."}
         />
       )}
 
