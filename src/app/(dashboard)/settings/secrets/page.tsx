@@ -119,12 +119,15 @@ export default function SecretsVaultPage() {
   const usageRefs: UsageRef[] = React.useMemo(() => {
     const all: UsageRef[] = [];
     for (const q of usageQueries) {
-      const data = q.data as { count: number; refs: UsageRef[] } | undefined;
+      const data = q.data as { count: number; pipelineCount: number; refs: UsageRef[] } | undefined;
       if (data?.refs) all.push(...data.refs);
     }
     return all;
   }, [usageQueries]);
-  const usageCount = usageRefs.length;
+  const usagePipelineCount = React.useMemo(
+    () => new Set(usageRefs.map((r) => r.pipeline.id)).size,
+    [usageRefs],
+  );
   const usageLoading = usageQueries.some((q) => q.isPending);
 
   const counts = React.useMemo(
@@ -177,8 +180,8 @@ export default function SecretsVaultPage() {
         <KpiInStrip label="UNUSED" value={counts.unused} sub="safe to delete" />
         <KpiInStrip
           label="USED BY"
-          value={selected ? (usageLoading ? "…" : usageCount) : "—"}
-          sub={selected ? `${selected.name} · ${usageCount === 1 ? "pipeline" : "pipelines"}` : "select a secret"}
+          value={selected ? (usageLoading ? "…" : usagePipelineCount) : "—"}
+          sub={selected ? `${selected.name} · ${usagePipelineCount === 1 ? "pipeline" : "pipelines"}` : "select a secret"}
         />
       </KpiStrip>
 
@@ -289,7 +292,8 @@ function SecretDetail({
   usageRefs: UsageRef[];
   usageLoading: boolean;
 }) {
-  const usageCount = usageRefs.length;
+  const usagePipelineCount = new Set(usageRefs.map((r) => r.pipeline.id)).size;
+  const usageNodeCount = usageRefs.length;
   return (
     <>
       <div className="px-5 py-3.5 border-b border-line bg-bg-1">
@@ -353,14 +357,14 @@ function SecretDetail({
         {/* Used by */}
         <div>
           <div className="font-mono text-[10px] text-fg-2 tracking-[0.04em] uppercase mb-1.5">
-            Used by · {usageLoading ? "…" : `${usageCount} pipeline${usageCount === 1 ? "" : "s"}`}
+            Used by · {usageLoading ? "…" : `${usagePipelineCount} pipeline${usagePipelineCount === 1 ? "" : "s"}`}
           </div>
           <div className="bg-bg-2 border border-line rounded-[3px] overflow-hidden">
             {usageLoading ? (
               <div className="px-3 py-3 font-mono text-[11px] text-fg-2 text-center">
                 Loading references…
               </div>
-            ) : usageCount === 0 ? (
+            ) : usageNodeCount === 0 ? (
               <div className="px-3 py-3 font-mono text-[11px] text-fg-2 text-center">
                 Not referenced by any pipeline yet.
               </div>

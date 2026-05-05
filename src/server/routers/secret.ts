@@ -120,7 +120,7 @@ export const secretRouter = router({
         select: { id: true, name: true, environmentId: true },
       });
       if (!secret || secret.environmentId !== input.environmentId) {
-        return { count: 0, refs: [] as Array<{
+        return { count: 0, pipelineCount: 0, refs: [] as Array<{
           id: string;
           componentType: string;
           pipeline: { id: string; name: string; environment: { id: string; name: string } };
@@ -157,6 +157,7 @@ export const secretRouter = router({
           pipeline: node.pipeline,
         }));
 
-      return { count: refs.length, refs };
+      const pipelineCount = new Set(refs.map((r) => r.pipeline.id)).size;
+      return { count: refs.length, pipelineCount, refs };
     }),
 });

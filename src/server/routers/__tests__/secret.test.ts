@@ -258,7 +258,7 @@ describe("secret router", () => {
 
       const result = await caller.usage({ secretId: "missing", environmentId: "env-1" });
 
-      expect(result).toEqual({ count: 0, refs: [] });
+      expect(result).toEqual({ count: 0, pipelineCount: 0, refs: [] });
     });
 
     it("returns refs from pipeline nodes that reference the secret", async () => {
@@ -304,12 +304,116 @@ describe("secret router", () => {
       const result = await caller.usage({ secretId: "s-1", environmentId: "env-1" });
 
       expect(result.count).toBe(2);
+      expect(result.pipelineCount).toBe(2);
       const ids = result.refs.map((r: { id: string }) => r.id).sort();
       expect(ids).toEqual(["node-1", "node-3"]);
       const node1 = result.refs.find((r: { id: string }) => r.id === "node-1");
       expect(node1?.componentType).toBe("http");
       expect(node1?.pipeline.name).toBe("Auth Pipeline");
       expect(node1?.pipeline.environment.name).toBe("production");
+    });
+
+    it("pipelineCount is distinct from count when multiple nodes share a pipeline", async () => {
+      prismaMock.secret.findUnique.mockResolvedValue({
+        id: "s-1",
+        name: "API_KEY",
+        environmentId: "env-1",
+      } as never);
+
+      // Two referencing nodes in the SAME pipeline (p-1) plus one in a different pipeline.
+      prismaMock.pipelineNode.findMany.mockResolvedValue([
+        {
+          id: "node-1",
+          componentType: "http",
+          config: { auth: { token: "SECRET[API_KEY]" } },
+          pipeline: {
+            id: "p-1",
+            name: "Auth Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+        {
+          id: "node-2",
+          componentType: "datadog_logs",
+          config: { default_api_key: "SECRET[API_KEY]" },
+          pipeline: {
+            id: "p-1",
+            name: "Auth Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+        {
+          id: "node-3",
+          componentType: "http",
+          config: { auth: { token: "SECRET[API_KEY]" } },
+          pipeline: {
+            id: "p-2",
+            name: "Other Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+      ] as never);
+
+      const result = await caller.usage({ secretId: "s-1", environmentId: "env-1" });
+
+      // 3 node refs total, but only 2 distinct pipelines.
+      expect(result.count).toBe(3);
+      expect(result.pipelineCount).toBe(2);
+      expect(result.pipelineCount).not.toBe(result.count);
+    });
+
+    it("includes nodes whose secret ref is only visible after decryptNodeConfig", async () => {
+      // Simulate a node whose stored config has an encrypted password field
+      // (`enc:...` ciphertext on disk). decryptNodeConfig must run before the
+      // SECRET[...] scan, otherwise the JS-side filter misses encrypted-at-rest
+      // references.
+      const configCrypto = await import("@/server/services/config-crypto");
+      const decryptMock = vi.mocked(configCrypto.decryptNodeConfig);
+      decryptMock.mockImplementation((_: unknown, c: unknown) => {
+        const cfg = c as Record<string, unknown>;
+        if (typeof cfg.password === "string" && cfg.password.startsWith("enc:")) {
+          return { ...cfg, password: "SECRET[API_KEY]" };
+        }
+        return cfg;
+      });
+
+      prismaMock.secret.findUnique.mockResolvedValue({
+        id: "s-1",
+        name: "API_KEY",
+        environmentId: "env-1",
+      } as never);
+
+      prismaMock.pipelineNode.findMany.mockResolvedValue([
+        {
+          id: "node-encrypted",
+          componentType: "postgres",
+          // Stored ciphertext — the SECRET[...] reference is NOT visible until
+          // decryptNodeConfig runs.
+          config: { host: "db.example.com", password: "enc:cipher_blob" },
+          pipeline: {
+            id: "p-1",
+            name: "DB Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+        {
+          id: "node-plain",
+          componentType: "http",
+          config: { url: "https://x.com" }, // no secret ref at all
+          pipeline: {
+            id: "p-2",
+            name: "Other Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+      ] as never);
+
+      const result = await caller.usage({ secretId: "s-1", environmentId: "env-1" });
+
+      expect(decryptMock).toHaveBeenCalled();
+      expect(result.count).toBe(1);
+      expect(result.pipelineCount).toBe(1);
+      expect(result.refs.map((r: { id: string }) => r.id)).toEqual(["node-encrypted"]);
     });
 
     it("returns empty refs when no pipeline node references the secret", async () => {
@@ -344,7 +448,7 @@ describe("secret router", () => {
 
       const result = await caller.usage({ secretId: "s-1", environmentId: "env-1" });
 
-      expect(result).toEqual({ count: 0, refs: [] });
+      expect(result).toEqual({ count: 0, pipelineCount: 0, refs: [] });
     });
   });
 });
