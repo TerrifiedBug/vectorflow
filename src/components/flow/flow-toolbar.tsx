@@ -41,6 +41,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Pill } from "@/components/ui/pill";
+import { StatusDot } from "@/components/ui/status-dot";
 import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
@@ -121,7 +123,33 @@ interface FlowToolbarProps {
   aiEnabled?: boolean;
   onAiOpen?: () => void;
   deployedVersionNumber?: number | null;
+  /** Optional pipeline name shown in the toolbar (mono 13px). */
+  pipelineName?: string;
+  /** Optional environment name to render as a Pill next to the pipeline name. */
+  environmentName?: string;
+  /** Optional environment color used to tint the Pill (CSS color). */
+  environmentColor?: string;
+  /** Optional human-readable "last saved" label (e.g. "14s ago"). */
+  lastSavedLabel?: string;
+  /** Total node count, surfaced in the running/paused status text. */
+  nodeCount?: number;
 }
+
+const PROCESS_STATUS_DOT: Record<ProcessStatusValue, "healthy" | "error" | "neutral" | "info" | "idle"> = {
+  RUNNING: "healthy",
+  STARTING: "info",
+  STOPPED: "idle",
+  CRASHED: "error",
+  PENDING: "info",
+};
+
+const PROCESS_STATUS_LABEL: Record<ProcessStatusValue, string> = {
+  RUNNING: "running",
+  STARTING: "starting",
+  STOPPED: "paused",
+  CRASHED: "crashed",
+  PENDING: "pending",
+};
 
 function downloadFile(content: string, filename: string) {
   const blob = new Blob([content], { type: "text/plain" });
@@ -178,6 +206,11 @@ export function FlowToolbar({
   aiEnabled,
   onAiOpen,
   deployedVersionNumber,
+  pipelineName,
+  environmentName,
+  environmentColor,
+  lastSavedLabel,
+  nodeCount,
 }: FlowToolbarProps) {
   const globalConfig = useFlowStore((s) => s.globalConfig);
   const canUndo = useFlowStore((s) => s.canUndo);
@@ -332,12 +365,41 @@ export function FlowToolbar({
     validateWithToastMutation.mutate({ yaml });
   };
 
+  const processDotVariant = processStatus ? PROCESS_STATUS_DOT[processStatus] : null;
+  const processLabel = processStatus ? PROCESS_STATUS_LABEL[processStatus] : null;
+  const showPipelineMeta = !!(pipelineName || environmentName || deployedVersionNumber != null);
+
   return (
     <TooltipProvider>
-      <div className="flex h-10 min-w-0 items-center gap-2 px-2">
-        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex h-11 min-w-0 items-center gap-2 px-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {showPipelineMeta && (
+            <div className="flex shrink-0 items-center gap-1.5">
+              {pipelineName && (
+                <span className="font-mono text-[13px] font-medium text-fg">
+                  {pipelineName}
+                </span>
+              )}
+              {environmentName && (
+                <Pill
+                  size="xs"
+                  variant={environmentColor ? "status" : "env"}
+                  color={environmentColor}
+                >
+                  {environmentName}
+                </Pill>
+              )}
+              {deployedVersionNumber != null && (
+                <span className="font-mono text-[11px] text-fg-2">
+                  v{deployedVersionNumber}
+                </span>
+              )}
+              <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
+            </div>
+          )}
+
           {gitOpsMode === "bidirectional" && (
-            <div className="flex shrink-0 items-center gap-1.5 rounded bg-blue-50 px-2 py-1 text-xs text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+            <div className="flex shrink-0 items-center gap-1.5 rounded-[3px] border border-line-2 bg-bg-2 px-2 py-1 font-mono text-[11px] text-fg-1">
               <Info className="h-3.5 w-3.5 shrink-0" />
               <span className="hidden lg:inline">GitOps managed — changes may be overwritten on next git push</span>
               <span className="lg:hidden">GitOps managed</span>
@@ -345,15 +407,15 @@ export function FlowToolbar({
           )}
 
         {gitOpsMode === "bidirectional" && (
-          <Separator orientation="vertical" className="mx-1 h-5" />
+          <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
         )}
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={onSave} disabled={isSaving || !isDirty} className={cn("relative h-7 w-7 p-0", !isDirty && "opacity-50")} aria-label="Save pipeline">
+            <Button variant="ghost" size="icon-sm" onClick={onSave} disabled={isSaving || !isDirty} className={cn("relative", !isDirty && "opacity-50")} aria-label="Save pipeline">
               <Save className="h-4 w-4" />
               {isDirty && (
-                <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-orange-500" />
+                <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-status-degraded" />
               )}
             </Button>
           </TooltipTrigger>
@@ -362,18 +424,18 @@ export function FlowToolbar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={handleValidate} disabled={validateWithToastMutation.isPending} className="h-7 w-7 p-0" aria-label="Validate pipeline">
+            <Button variant="ghost" size="icon-sm" onClick={handleValidate} disabled={validateWithToastMutation.isPending} aria-label="Validate pipeline">
               <CheckCircle className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>Validate pipeline</TooltipContent>
         </Tooltip>
 
-        <Separator orientation="vertical" className="mx-1 h-5" />
+        <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={undo} disabled={!canUndo} className="h-7 w-7 p-0" aria-label="Undo">
+            <Button variant="ghost" size="icon-sm" onClick={undo} disabled={!canUndo} aria-label="Undo">
               <Undo2 className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -382,7 +444,7 @@ export function FlowToolbar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={redo} disabled={!canRedo} className="h-7 w-7 p-0" aria-label="Redo">
+            <Button variant="ghost" size="icon-sm" onClick={redo} disabled={!canRedo} aria-label="Redo">
               <Redo2 className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -393,13 +455,13 @@ export function FlowToolbar({
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
               onClick={() => {
                 if (selectedNodeId) removeNode(selectedNodeId);
                 else if (selectedEdgeId) removeEdge(selectedEdgeId);
               }}
               disabled={!selectedNodeId && !selectedEdgeId}
-              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+              className="text-fg-2 hover:text-status-error"
               aria-label="Delete selected"
             >
               <Trash2 className="h-4 w-4" />
@@ -408,13 +470,13 @@ export function FlowToolbar({
           <TooltipContent>Delete selected (Del)</TooltipContent>
         </Tooltip>
 
-        <Separator orientation="vertical" className="mx-1 h-5" />
+        <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
 
         <Popover open={importOpen} onOpenChange={setImportOpen}>
           <Tooltip>
             <TooltipTrigger asChild>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Import config">
+                <Button variant="ghost" size="icon-sm" aria-label="Import config">
                   <Upload className="h-4 w-4" />
                 </Button>
               </PopoverTrigger>
@@ -552,12 +614,12 @@ export function FlowToolbar({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="relative h-7 gap-1.5 px-2 text-xs" aria-label="View actions">
+            <Button variant="ghost" size="sm" className="relative h-7 gap-1.5 px-2 text-[11px]" aria-label="View actions">
               <Eye className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">View</span>
-              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              <ChevronDown className="h-3 w-3 text-fg-2" />
               {hasRecentErrors && !logsOpen && (
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-status-error" />
               )}
             </Button>
           </DropdownMenuTrigger>
@@ -571,7 +633,7 @@ export function FlowToolbar({
               <ScrollText className="mr-2 h-4 w-4" />
               {logsOpen ? "Hide logs" : "Show logs"}
               {hasRecentErrors && !logsOpen && (
-                <span className="ml-auto h-2 w-2 rounded-full bg-red-500" />
+                <span className="ml-auto h-2 w-2 rounded-full bg-status-error" />
               )}
             </DropdownMenuItem>
             {pipelineId && (
@@ -589,7 +651,7 @@ export function FlowToolbar({
         </DropdownMenu>
 
         <div className="relative flex items-center gap-1">
-          <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-fg-2" />
           <Input
             value={canvasSearchTerm}
             onChange={(e) => setCanvasSearchTerm(e.target.value)}
@@ -604,15 +666,15 @@ export function FlowToolbar({
               }
             }}
             placeholder="Search nodes..."
-            className="h-7 w-[120px] pl-7 text-xs md:w-[140px]"
+            className="h-7 w-[120px] pl-7 text-[11px] md:w-[140px]"
           />
           {canvasSearchTerm && canvasSearchMatchIds.length > 0 && (
-            <span className="text-xs text-muted-foreground whitespace-nowrap">
+            <span className="font-mono text-[10px] text-fg-2 whitespace-nowrap">
               {canvasSearchActiveIndex + 1}/{canvasSearchMatchIds.length}
             </span>
           )}
           {canvasSearchTerm && canvasSearchMatchIds.length === 0 && (
-            <span className="text-xs text-destructive whitespace-nowrap">
+            <span className="font-mono text-[10px] text-status-error whitespace-nowrap">
               No matches
             </span>
           )}
@@ -647,7 +709,7 @@ export function FlowToolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Pipeline settings">
+                <Button variant="ghost" size="icon-sm" aria-label="Pipeline settings">
                   <Settings className="h-4 w-4" />
                 </Button>
               </PopoverTrigger>
@@ -665,13 +727,13 @@ export function FlowToolbar({
 
         </div>
 
-        <div className="flex shrink-0 items-center gap-1 border-l pl-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2 border-l border-line pl-2">
           {/* Pending approval indicator */}
           {pendingRequest && (
             <div className="flex items-center gap-0.5 px-1">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-md text-amber-600 dark:text-amber-400">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-[3px] text-status-degraded">
                     <Clock className="h-4 w-4" />
                   </span>
                 </TooltipTrigger>
@@ -687,10 +749,10 @@ export function FlowToolbar({
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="icon-xs"
                       onClick={() => cancelRequestMutation.mutate({ requestId: pendingRequest.id })}
                       disabled={cancelRequestMutation.isPending}
-                      className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                      className="text-fg-2 hover:text-status-error"
                       aria-label="Cancel deploy request"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -703,27 +765,24 @@ export function FlowToolbar({
           )}
 
           {/* Process status indicator */}
-          {processStatus && (
-            <div className="flex items-center gap-1.5 px-2 text-xs">
-              <span className={
-                processStatus === "RUNNING" ? "h-2 w-2 rounded-full bg-green-500" :
-                processStatus === "CRASHED" ? "h-2 w-2 rounded-full bg-red-500" :
-                processStatus === "STOPPED" ? "h-2 w-2 rounded-full bg-gray-400" :
-                "h-2 w-2 rounded-full bg-yellow-500"
-              } />
-              <span className={
-                processStatus === "RUNNING" ? "font-medium text-green-600 dark:text-green-400" :
-                processStatus === "CRASHED" ? "font-medium text-red-600 dark:text-red-400" :
-                processStatus === "STOPPED" ? "font-medium text-muted-foreground" :
-                "font-medium text-yellow-600 dark:text-yellow-400"
-              }>
-                {processStatus === "RUNNING" && "Running"}
-                {processStatus === "STARTING" && "Starting..."}
-                {processStatus === "STOPPED" && "Stopped"}
-                {processStatus === "CRASHED" && "Crashed"}
-                {processStatus === "PENDING" && "Pending..."}
+          {processStatus && processDotVariant && processLabel && (
+            <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-fg-1">
+              <StatusDot
+                variant={processDotVariant}
+                pulse={processStatus === "RUNNING"}
+                halo={processStatus === "RUNNING"}
+              />
+              <span>
+                {processLabel}
+                {nodeCount != null && ` · ${nodeCount} nodes`}
               </span>
-            </div>
+            </span>
+          )}
+
+          {lastSavedLabel && (
+            <span className="font-mono text-[10px] text-fg-2">
+              last saved {lastSavedLabel}
+            </span>
           )}
 
           {/* Deploy state buttons */}
@@ -739,11 +798,11 @@ export function FlowToolbar({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        variant="default"
+                        variant="primary"
                         size="sm"
                         onClick={onDeploy}
                         disabled={nodes.length === 0}
-                        className="h-7 gap-1.5 px-2.5 text-xs"
+                        className="gap-1.5"
                       >
                         <Rocket className="h-3.5 w-3.5" />
                         Deploy
@@ -759,31 +818,14 @@ export function FlowToolbar({
               // Deployed but has changes to deploy
               return (
                 <>
-                  <PressableScale>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="default"
-                          size="sm"
-                          onClick={onDeploy}
-                          disabled={nodes.length === 0}
-                          className="h-7 gap-1.5 px-2.5 text-xs"
-                        >
-                          <Rocket className="h-3.5 w-3.5" />
-                          Deploy
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Changes detected{deployedVersionNumber != null ? ` since v${deployedVersionNumber}` : ''} — deploy to update</TooltipContent>
-                    </Tooltip>
-                  </PressableScale>
                   {onDiscardChanges && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           onClick={onDiscardChanges}
-                          className="h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                          className="gap-1.5"
                         >
                           <Undo2 className="h-3.5 w-3.5" />
                           Discard
@@ -798,7 +840,7 @@ export function FlowToolbar({
                         variant="ghost"
                         size="sm"
                         onClick={onUndeploy}
-                        className="h-7 gap-1.5 px-2.5 text-xs text-destructive hover:text-destructive"
+                        className="gap-1.5 text-status-error hover:text-status-error"
                       >
                         <CircleX className="h-3.5 w-3.5" />
                         Undeploy
@@ -806,6 +848,23 @@ export function FlowToolbar({
                     </TooltipTrigger>
                     <TooltipContent>Remove deployed config</TooltipContent>
                   </Tooltip>
+                  <PressableScale>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={onDeploy}
+                          disabled={nodes.length === 0}
+                          className="gap-1.5"
+                        >
+                          <Rocket className="h-3.5 w-3.5" />
+                          Deploy
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Changes detected{deployedVersionNumber != null ? ` since v${deployedVersionNumber}` : ''} — deploy to update</TooltipContent>
+                    </Tooltip>
+                  </PressableScale>
                 </>
               );
             }
@@ -813,17 +872,17 @@ export function FlowToolbar({
             // Deployed and up-to-date — no redeploy needed
             return (
               <>
-                <div className="flex items-center gap-1.5 px-2.5 text-xs text-green-600 dark:text-green-400">
+                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-status-healthy">
                   <CircleCheck className="h-3.5 w-3.5" />
-                  <span className="font-medium">Deployed{deployedVersionNumber != null ? ` v${deployedVersionNumber}` : ''}</span>
-                </div>
+                  Deployed{deployedVersionNumber != null ? ` v${deployedVersionNumber}` : ''}
+                </span>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={onUndeploy}
-                      className="h-7 gap-1.5 px-2.5 text-xs text-destructive hover:text-destructive"
+                      className="gap-1.5 text-status-error hover:text-status-error"
                     >
                       <CircleX className="h-3.5 w-3.5" />
                       Undeploy
