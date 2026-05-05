@@ -137,6 +137,10 @@ interface FlowToolbarProps {
   onRename?: (name: string) => void;
   /** Disables the inline rename input while a rename request is pending. */
   isRenaming?: boolean;
+  /** Current editor validation error count; deploy is blocked while non-zero. */
+  validationErrorCount?: number;
+  /** Human-readable first validation error for the toolbar status/tooltip. */
+  validationMessage?: string;
 }
 
 const PROCESS_STATUS_DOT: Record<ProcessStatusValue, "healthy" | "error" | "neutral" | "info" | "idle"> = {
@@ -217,6 +221,8 @@ export function FlowToolbar({
   nodeCount,
   onRename,
   isRenaming = false,
+  validationErrorCount = 0,
+  validationMessage,
 }: FlowToolbarProps) {
   const globalConfig = useFlowStore((s) => s.globalConfig);
   const canUndo = useFlowStore((s) => s.canUndo);
@@ -847,6 +853,18 @@ export function FlowToolbar({
             </span>
           )}
 
+          {validationErrorCount > 0 ? (
+            <span className="inline-flex items-center gap-1.5 rounded-[3px] border border-status-error/35 bg-status-error/10 px-2 py-1 font-mono text-[10px] text-status-error">
+              <AlertTriangle className="h-3 w-3" />
+              {validationErrorCount} validation {validationErrorCount === 1 ? "error" : "errors"}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-[3px] border border-status-healthy/30 bg-status-healthy/10 px-2 py-1 font-mono text-[10px] text-status-healthy">
+              <CircleCheck className="h-3 w-3" />
+              valid
+            </span>
+          )}
+
           {lastSavedLabel && (
             <span className="font-mono text-[10px] text-fg-2">
               last saved {lastSavedLabel}
@@ -869,14 +887,14 @@ export function FlowToolbar({
                         variant="primary"
                         size="sm"
                         onClick={onDeploy}
-                        disabled={nodes.length === 0}
+                        disabled={nodes.length === 0 || validationErrorCount > 0 || isSaving}
                         className="gap-1.5"
                       >
                         <Rocket className="h-3.5 w-3.5" />
                         Deploy
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Deploy pipeline to environment</TooltipContent>
+                    <TooltipContent>{validationErrorCount > 0 ? (validationMessage ?? "Fix validation errors before deploying") : "Deploy pipeline to environment"}</TooltipContent>
                   </Tooltip>
                 </PressableScale>
               );
@@ -923,14 +941,14 @@ export function FlowToolbar({
                           variant="primary"
                           size="sm"
                           onClick={onDeploy}
-                          disabled={nodes.length === 0}
+                          disabled={nodes.length === 0 || validationErrorCount > 0 || isSaving}
                           className="gap-1.5"
                         >
                           <Rocket className="h-3.5 w-3.5" />
                           Deploy
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>Changes detected{deployedVersionNumber != null ? ` since v${deployedVersionNumber}` : ''} — deploy to update</TooltipContent>
+                      <TooltipContent>{validationErrorCount > 0 ? (validationMessage ?? "Fix validation errors before deploying") : `Changes detected${deployedVersionNumber != null ? ` since v${deployedVersionNumber}` : ''} — deploy to update`}</TooltipContent>
                     </Tooltip>
                   </PressableScale>
                 </>

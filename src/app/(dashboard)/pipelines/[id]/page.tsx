@@ -16,6 +16,7 @@ import { useTRPC } from "@/trpc/client";
 import { useFlowStore } from "@/stores/flow-store";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { findComponentDef } from "@/lib/vector/catalog";
+import { validateNodeConfig } from "@/lib/vector/validate-node-config";
 import { aggregateProcessStatus } from "@/lib/pipeline-status";
 import { toast } from "sonner";
 
@@ -362,7 +363,6 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
         markClean();
         setLastSavedAt(new Date());
         queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
-        toast.success("Pipeline saved");
       },
       onError: (error) => {
         toast.error(error.message || "Failed to save pipeline", { duration: 6000 });
@@ -477,14 +477,49 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     };
   }, [pipelineId]);
 
+  const validationErrors = useMemo(() => {
+    return nodes.flatMap((node) => {
+      const data = node.data as {
+        componentDef?: { displayName?: string; configSchema?: object };
+        displayName?: string;
+        config?: Record<string, unknown>;
+      };
+      const schema = data.componentDef?.configSchema;
+      if (!schema) return [];
+      const result = validateNodeConfig(data.config ?? {}, schema);
+      if (!result.hasError) return [];
+      const label = data.displayName ?? data.componentDef?.displayName ?? "Component";
+      return [`${label}: ${result.firstErrorMessage ?? "Invalid configuration"}`];
+    });
+  }, [nodes]);
+
+  const firstValidationError = validationErrors[0];
+
   const handleSave = useCallback(() => {
-    saveMutation.mutate(buildSavePayload());
+    saveMutation.mutate(buildSavePayload(), {
+      onSuccess: () => toast.success("Pipeline saved"),
+    });
   }, [saveMutation, buildSavePayload]);
+
+  useEffect(() => {
+    if (!isDirty || saveMutation.isPending) return;
+    const timeout = window.setTimeout(() => {
+      saveMutation.mutate(buildSavePayload());
+    }, 2_000);
+    return () => window.clearTimeout(timeout);
+  }, [isDirty, saveMutation, buildSavePayload, nodes, edges, globalConfig]);
 
   // Auto-save before deploying so the deploy dialog previews the current editor
   // state, not stale DB state. This prevents "no changes" deploys when users
   // edit without explicitly saving first.
   const handleDeploy = useCallback(async () => {
+    if (validationErrors.length > 0) {
+      toast.error("Fix validation errors before deploying", {
+        description: firstValidationError,
+        duration: 6000,
+      });
+      return;
+    }
     try {
       await saveMutation.mutateAsync(buildSavePayload());
       await queryClient.invalidateQueries({
@@ -494,7 +529,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     } catch {
       // Save error already toasted by saveMutation's onError handler
     }
-  }, [saveMutation, buildSavePayload, queryClient, trpc.pipeline.get, pipelineId]);
+  }, [validationErrors.length, firstValidationError, saveMutation, buildSavePayload, queryClient, trpc.pipeline.get, pipelineId]);
 
   if (pipelineQuery.isLoading) {
     return (
@@ -555,6 +590,8 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             lastSavedLabel={lastSavedLabel}
             onRename={handleConfirmRename}
             isRenaming={renameMutation.isPending}
+            validationErrorCount={validationErrors.length}
+            validationMessage={firstValidationError}
           />
         </div>
         <div className="flex items-center px-3">
