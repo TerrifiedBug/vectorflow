@@ -9,7 +9,7 @@ export class LoginPage {
   constructor(private page: Page) {
     this.emailInput = page.getByRole("textbox", { name: /email/i });
     this.passwordInput = page.locator('input[type="password"]');
-    this.submitButton = page.getByRole("button", { name: /sign in/i });
+    this.submitButton = page.getByRole("button", { name: /continue|sign in/i });
     this.errorContainer = page.locator(".bg-destructive\\/10");
   }
 

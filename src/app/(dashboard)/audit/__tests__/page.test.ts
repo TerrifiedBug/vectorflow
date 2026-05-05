@@ -8,15 +8,14 @@ const pageSource = readFileSync(
 );
 
 describe("AuditPage activity table", () => {
-  it("omits the details preview column while keeping expanded details", () => {
+  it("omits the details preview column and opens details in the v2 drawer", () => {
     expect(pageSource).not.toContain(
       '<TableHead className="hidden lg:table-cell">Details</TableHead>'
     );
     expect(pageSource).not.toContain(
       '<TableCell className="hidden lg:table-cell text-xs text-muted-foreground max-w-[300px] truncate">'
     );
-    expect(pageSource).toContain(
-      '<p className="text-xs font-medium text-muted-foreground mb-2">Details</p>'
-    );
+    expect(pageSource).toContain("AuditDetailDrawer");
+    expect(pageSource).toContain("setSelectedAuditId(entry.id)");
   });
 });

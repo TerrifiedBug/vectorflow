@@ -408,6 +408,62 @@ export const promotionRouter = router({
     }),
 
   /**
+   * Returns recent promotion requests across an entire team, ordered by
+   * createdAt desc. Powers the team-scoped Promotions hub view.
+   *
+   * Team scope is enforced via `sourcePipeline.environment.teamId` — every
+   * promotion is anchored to a source pipeline whose environment belongs to
+   * exactly one team.
+   *
+   * Cursor pagination uses the `id` of the last item in the page.
+   */
+  recentForTeam: protectedProcedure
+    .input(
+      z.object({
+        teamId: z.string(),
+        status: z
+          .enum([
+            "PENDING",
+            "APPROVED",
+            "DEPLOYED",
+            "REJECTED",
+            "CANCELLED",
+            "AWAITING_PR_MERGE",
+            "DEPLOYING",
+          ])
+          .optional(),
+        limit: z.number().int().min(1).max(200).default(50),
+        cursor: z.string().optional(),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const records = await prisma.promotionRequest.findMany({
+        where: {
+          sourcePipeline: { environment: { teamId: input.teamId } },
+          ...(input.status ? { status: input.status } : {}),
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: input.limit + 1,
+        ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+        include: {
+          sourcePipeline: { select: { id: true, name: true } },
+          targetPipeline: { select: { id: true, name: true } },
+          promotedBy: { select: { name: true, email: true } },
+          approvedBy: { select: { name: true, email: true } },
+          sourceEnvironment: { select: { name: true } },
+          targetEnvironment: { select: { name: true } },
+        },
+      });
+
+      const hasMore = records.length > input.limit;
+      const items = hasMore ? records.slice(0, input.limit) : records;
+      const last = items[items.length - 1];
+      const nextCursor = hasMore && last ? last.id : null;
+      return { items, nextCursor };
+    }),
+
+  /**
    * Returns promotion history for a pipeline ordered by createdAt desc.
    * Includes related user names, emails, and environment names.
    */

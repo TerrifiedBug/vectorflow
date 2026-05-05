@@ -54,6 +54,96 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+// ── audit.getDetail ────────────────────────────────────────────────────────────
+
+describe("audit.getDetail", () => {
+  it("returns the full AuditLog entry with user relation when id matches and teamId matches", async () => {
+    const entry = {
+      id: "log-1",
+      action: "pipeline.create",
+      entityType: "Pipeline",
+      entityId: "pipe-1",
+      userId: "user-1",
+      teamId: "team-1",
+      environmentId: null,
+      diff: null,
+      metadata: { foo: "bar" },
+      ipAddress: "127.0.0.1",
+      userEmail: "alice@example.com",
+      userName: "Alice",
+      createdAt: new Date(),
+      user: { name: "Alice", email: "alice@example.com" },
+    };
+
+    prismaMock.auditLog.findUnique.mockResolvedValue(entry as never);
+
+    const result = await caller.getDetail({ id: "log-1", teamId: "team-1" });
+
+    expect(result).toEqual(entry);
+    expect(prismaMock.auditLog.findUnique).toHaveBeenCalledWith({
+      where: { id: "log-1" },
+      include: {
+        user: { select: { name: true, email: true } },
+        environment: { select: { teamId: true } },
+      },
+    });
+  });
+
+  it("throws NOT_FOUND when entry does not exist", async () => {
+    prismaMock.auditLog.findUnique.mockResolvedValue(null);
+
+    await expect(caller.getDetail({ id: "missing", teamId: "team-1" })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+  });
+
+  it("throws NOT_FOUND when entry teamId does not match input teamId (cross-team protection)", async () => {
+    prismaMock.auditLog.findUnique.mockResolvedValue({
+      id: "log-1",
+      teamId: "team-other",
+      action: "pipeline.create",
+      entityType: "Pipeline",
+      entityId: "pipe-1",
+      userId: "user-1",
+      environmentId: null,
+      diff: null,
+      metadata: null,
+      ipAddress: null,
+      userEmail: null,
+      userName: null,
+      createdAt: new Date(),
+      user: null,
+    } as never);
+
+    await expect(caller.getDetail({ id: "log-1", teamId: "team-1" })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+  });
+
+  it("throws NOT_FOUND when entry teamId is null (treat null as not-yours)", async () => {
+    prismaMock.auditLog.findUnique.mockResolvedValue({
+      id: "log-1",
+      teamId: null,
+      action: "system.event",
+      entityType: "System",
+      entityId: "sys-1",
+      userId: null,
+      environmentId: null,
+      diff: null,
+      metadata: null,
+      ipAddress: null,
+      userEmail: null,
+      userName: null,
+      createdAt: new Date(),
+      user: null,
+    } as never);
+
+    await expect(caller.getDetail({ id: "log-1", teamId: "team-1" })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+  });
+});
+
 // ── audit.list ─────────────────────────────────────────────────────────────────
 
 describe("audit.list", () => {

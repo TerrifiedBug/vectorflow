@@ -9,6 +9,8 @@ export interface ListAnomaliesInput {
   status?: string;
   limit?: number;
   cursor?: string;
+  from?: string;
+  to?: string;
 }
 
 // ─── List ───────────────────────────────────────────────────────────────────
@@ -27,6 +29,13 @@ export async function listAnomalies(input: ListAnomaliesInput) {
 
   if (input.status) {
     where.status = input.status;
+  }
+
+  if (input.from || input.to) {
+    where.detectedAt = {
+      ...(input.from ? { gte: new Date(input.from) } : {}),
+      ...(input.to ? { lte: new Date(input.to) } : {}),
+    };
   }
 
   const take = input.limit ?? 50;

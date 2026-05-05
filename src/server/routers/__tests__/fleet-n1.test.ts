@@ -19,6 +19,7 @@ vi.mock("@/server/services/fleet-data", () => ({
   getVolumeTrend: vi.fn(),
   getNodeThroughput: vi.fn(),
   getNodeCapacity: vi.fn(),
+  getCpuHeatmap: vi.fn(),
   getDataLoss: vi.fn(),
   getMatrixThroughput: vi.fn(),
 }));

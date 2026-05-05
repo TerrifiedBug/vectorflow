@@ -540,6 +540,83 @@ describe("promotion router", () => {
     });
   });
 
+  // ─── recentForTeam ──────────────────────────────────────────────────────────
+
+  describe("recentForTeam", () => {
+    it("scopes to team via sourcePipeline.environment.teamId and orders by createdAt desc", async () => {
+      const records = [
+        {
+          ...makePromotionRequest({ id: "req-a", createdAt: new Date("2026-04-01") }),
+          sourcePipeline: { id: "pipeline-1", name: "P1" },
+          targetPipeline: null,
+          promotedBy: { name: "Alice", email: "alice@test.com" },
+          approvedBy: null,
+          sourceEnvironment: { name: "Development" },
+          targetEnvironment: { name: "Production" },
+        },
+        {
+          ...makePromotionRequest({ id: "req-b", createdAt: new Date("2026-03-30") }),
+          sourcePipeline: { id: "pipeline-2", name: "P2" },
+          targetPipeline: null,
+          promotedBy: { name: "Bob", email: "bob@test.com" },
+          approvedBy: null,
+          sourceEnvironment: { name: "Development" },
+          targetEnvironment: { name: "Staging" },
+        },
+      ];
+      prismaMock.promotionRequest.findMany.mockResolvedValue(records as never);
+
+      const result = await caller.recentForTeam({ teamId: "team-1" });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.nextCursor).toBeNull();
+      expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { sourcePipeline: { environment: { teamId: "team-1" } } },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 51,
+        }),
+      );
+    });
+
+    it("applies status filter when provided", async () => {
+      prismaMock.promotionRequest.findMany.mockResolvedValue([] as never);
+
+      await caller.recentForTeam({ teamId: "team-1", status: "PENDING" });
+
+      expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            sourcePipeline: { environment: { teamId: "team-1" } },
+            status: "PENDING",
+          },
+        }),
+      );
+    });
+
+    it("returns nextCursor when more records exist than the limit", async () => {
+      // Fabricate limit + 1 records to trigger pagination signal
+      const records = Array.from({ length: 4 }, (_, idx) => ({
+        ...makePromotionRequest({
+          id: `req-${idx}`,
+          createdAt: new Date(2026, 3, 10 - idx),
+        }),
+        sourcePipeline: { id: "pipeline-1", name: "P1" },
+        targetPipeline: null,
+        promotedBy: { name: "Alice", email: "alice@test.com" },
+        approvedBy: null,
+        sourceEnvironment: { name: "Development" },
+        targetEnvironment: { name: "Production" },
+      }));
+      prismaMock.promotionRequest.findMany.mockResolvedValue(records as never);
+
+      const result = await caller.recentForTeam({ teamId: "team-1", limit: 3 });
+
+      expect(result.items).toHaveLength(3);
+      expect(result.nextCursor).toBe("req-2");
+    });
+  });
+
   // ─── SECRET[name] ref preservation ───────────────────────────────────────────
 
   describe("clone preserves SECRET refs", () => {

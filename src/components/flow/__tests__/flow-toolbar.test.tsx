@@ -423,24 +423,97 @@ describe("FlowToolbar", () => {
   });
 
   describe("process status indicator", () => {
-    it("shows 'Running' label when processStatus is RUNNING", () => {
+    it("shows 'running' label when processStatus is RUNNING", () => {
       const { getByText } = renderToolbar({}, { processStatus: "RUNNING" });
-      expect(getByText("Running")).toBeTruthy();
+      expect(getByText(/running/)).toBeTruthy();
     });
 
-    it("shows 'Crashed' label when processStatus is CRASHED", () => {
+    it("shows 'crashed' label when processStatus is CRASHED", () => {
       const { getByText } = renderToolbar({}, { processStatus: "CRASHED" });
-      expect(getByText("Crashed")).toBeTruthy();
+      expect(getByText(/crashed/)).toBeTruthy();
     });
 
-    it("shows 'Stopped' label when processStatus is STOPPED", () => {
+    it("shows 'paused' label when processStatus is STOPPED", () => {
       const { getByText } = renderToolbar({}, { processStatus: "STOPPED" });
-      expect(getByText("Stopped")).toBeTruthy();
+      expect(getByText(/paused/)).toBeTruthy();
     });
 
-    it("shows 'Starting' label when processStatus is STARTING", () => {
+    it("shows 'starting' label when processStatus is STARTING", () => {
       const { getByText } = renderToolbar({}, { processStatus: "STARTING" });
-      expect(getByText("Starting...")).toBeTruthy();
+      expect(getByText(/starting/)).toBeTruthy();
+    });
+
+    it("appends node count when nodeCount is provided", () => {
+      const { getByText } = renderToolbar(
+        {},
+        { processStatus: "RUNNING", nodeCount: 12 },
+      );
+      expect(getByText(/running · 12 nodes/)).toBeTruthy();
+    });
+  });
+
+  describe("pipeline metadata", () => {
+    it("renders pipeline name, env pill, and version label when provided", () => {
+      const { getByText } = renderToolbar(
+        {},
+        {
+          pipelineName: "auditbeat.logs",
+          environmentName: "prod",
+          deployedVersionNumber: 11,
+        },
+      );
+      expect(getByText("auditbeat.logs")).toBeTruthy();
+      expect(getByText("prod")).toBeTruthy();
+      expect(getByText("v11")).toBeTruthy();
+    });
+
+    it("renders last saved label when provided", () => {
+      const { getByText } = renderToolbar(
+        {},
+        { lastSavedLabel: "14s ago" },
+      );
+      expect(getByText("last saved 14s ago")).toBeTruthy();
+    });
+
+    it("commits inline rename via Enter and calls onRename with trimmed value exactly once", () => {
+      const onRename = vi.fn();
+      const { getByText, getByLabelText } = renderToolbar(
+        {},
+        { pipelineName: "old-name", onRename },
+      );
+
+      fireEvent.click(getByText("old-name"));
+      const input = getByLabelText("Pipeline name") as HTMLInputElement;
+      input.focus();
+      fireEvent.change(input, { target: { value: "  new-name  " } });
+      // Bug repro (HIGH): pressing Enter triggers commitRename, which unmounts
+      // the input. The focus loss on the still-mounted-this-tick element fires
+      // onBlur, which would re-invoke commitRename. We collapse that real-world
+      // race into a single synchronous batch via act() — both handlers run
+      // against the still-mounted input. commitRename must guard against the
+      // second call so onRename only fires once.
+      act(() => {
+        fireEvent.keyDown(input, { key: "Enter" });
+        fireEvent.blur(input);
+      });
+
+      expect(onRename).toHaveBeenCalledWith("new-name");
+      expect(onRename).toHaveBeenCalledTimes(1);
+    });
+
+    it("cancels inline rename on Escape and does not call onRename", () => {
+      const onRename = vi.fn();
+      const { getByText, getByLabelText } = renderToolbar(
+        {},
+        { pipelineName: "old-name", onRename },
+      );
+
+      fireEvent.click(getByText("old-name"));
+      const input = getByLabelText("Pipeline name") as HTMLInputElement;
+      fireEvent.change(input, { target: { value: "new-name" } });
+      fireEvent.keyDown(input, { key: "Escape" });
+
+      expect(onRename).not.toHaveBeenCalled();
     });
   });
 
@@ -451,14 +524,14 @@ describe("FlowToolbar", () => {
         deployedAt: null,
       });
       // Use querySelector to avoid matching tooltip text content
-      const btn = container.querySelector('.bg-primary') as HTMLButtonElement;
+      const btn = container.querySelector('[data-variant="primary"]') as HTMLButtonElement;
       expect(btn).toBeTruthy();
       expect(btn?.textContent).toMatch(/Deploy/);
     });
 
     it("Deploy button is disabled when there are no nodes", () => {
       const { container } = renderToolbar({ nodes: [] }, { isDraft: true });
-      const btn = container.querySelector('.bg-primary') as HTMLButtonElement;
+      const btn = container.querySelector('[data-variant="primary"]') as HTMLButtonElement;
       expect(btn).toBeDisabled();
     });
 

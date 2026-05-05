@@ -94,7 +94,7 @@ export function VrlAiPanel({
             <RotateCcw className="h-3 w-3 mr-1" />
             New
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} aria-label="Close AI assistant">
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>

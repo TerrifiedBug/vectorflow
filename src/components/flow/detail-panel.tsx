@@ -1,7 +1,21 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
-import { Copy, Trash2, Lock, Info, MousePointerClick, Book, Link2 as LinkIcon, Unlink, AlertTriangle, ExternalLink, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { createElement, useCallback, useMemo } from "react";
+import {
+  Copy,
+  Trash2,
+  Lock,
+  Info,
+  MousePointerClick,
+  Book,
+  Link2 as LinkIcon,
+  Unlink,
+  AlertTriangle,
+  ExternalLink,
+  ChevronsLeft,
+  ChevronsRight,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
@@ -9,29 +23,26 @@ import { toast } from "sonner";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
 import { VrlEditor } from "@/components/vrl-editor/vrl-editor";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
+import { Pill } from "@/components/ui/pill";
+import { StatusDot } from "@/components/ui/status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LiveTailPanel } from "@/components/flow/live-tail-panel";
-import { FieldLineagePanel } from "@/components/flow/field-lineage-panel";
+import { EmptyState } from "@/components/empty-state";
+import { getIcon } from "@/components/flow/node-icon";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import type { Node, Edge } from "@xyflow/react";
 
 /* ------------------------------------------------------------------ */
-/*  Kind badge styling                                                 */
+/*  Node-type color tokens                                             */
 /* ------------------------------------------------------------------ */
 
-const kindVariant: Record<string, string> = {
-  source:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-  transform:
-    "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300",
-  sink: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+const NODE_COLOR_VAR: Record<string, string> = {
+  source: "var(--node-source)",
+  transform: "var(--node-transform)",
+  sink: "var(--node-sink)",
 };
 
 /* ------------------------------------------------------------------ */
@@ -108,15 +119,84 @@ function getUpstreamSources(
 }
 
 /* ------------------------------------------------------------------ */
+/*  Inspector header                                                   */
+/* ------------------------------------------------------------------ */
+
+interface InspectorHeaderProps {
+  componentDef: VectorComponentDef;
+  displayName: string;
+  evPerSec?: string;
+  onClose: () => void;
+}
+
+function InspectorHeader({
+  componentDef,
+  displayName,
+  evPerSec,
+  onClose,
+}: InspectorHeaderProps) {
+  const color = NODE_COLOR_VAR[componentDef.kind] ?? "var(--fg-1)";
+  const iconElement = createElement(getIcon(componentDef.icon), {
+    className: "h-[13px] w-[13px]",
+  });
+
+  return (
+    <div className="border-b border-line p-3.5">
+      <div className="flex items-center gap-2">
+        <div
+          aria-hidden
+          className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[5px]"
+          style={{
+            background: `color-mix(in srgb, ${color} 13%, transparent)`,
+            border: `1px solid color-mix(in srgb, ${color} 33%, transparent)`,
+            color,
+          }}
+        >
+          {iconElement}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-medium text-fg">
+            {displayName || componentDef.displayName}
+          </div>
+          <div className="truncate font-mono text-[10px] uppercase tracking-[0.04em] text-fg-2">
+            {componentDef.kind} · {componentDef.type}
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={onClose}
+          aria-label="Collapse detail panel"
+        >
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+      <div className="mt-2.5 flex items-center gap-1.5">
+        <Pill variant="ok" size="xs" className="gap-1">
+          <StatusDot variant="healthy" size={6} halo={false} />
+          healthy
+        </Pill>
+        {evPerSec && (
+          <Pill variant="status" size="xs">
+            {evPerSec} ev/s
+          </Pill>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
 interface DetailPanelProps {
   pipelineId: string;
+  /** Reserved for the upcoming Logs / Metrics tabs (live tail) — currently unused. */
   isDeployed: boolean;
 }
 
-export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
+export function DetailPanel({ pipelineId }: DetailPanelProps) {
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
   const selectedNodeIds = useFlowStore((s) => s.selectedNodeIds);
   const copySelectedNodes = useFlowStore((s) => s.copySelectedNodes);
@@ -216,40 +296,37 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
     }
   }, [selectedNodeId, removeNode]);
 
+  // ---- Empty selection (no node) ----
   if (!selectedNode) {
     if (detailPanelCollapsed) {
       return (
-        <div className="flex w-10 shrink-0 flex-col items-center border-l bg-muted/30 py-2">
+        <div className="flex w-10 shrink-0 flex-col items-center border-l border-line bg-bg-1 py-2">
           <Button
             variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
+            size="icon-xs"
             onClick={toggleDetailPanel}
             aria-label="Expand detail panel"
           >
-            <ChevronsLeft className="h-4 w-4" />
+            <ChevronsLeft className="h-3.5 w-3.5" />
           </Button>
         </div>
       );
     }
     return (
-      <div className="flex h-full w-80 shrink-0 flex-col border-l bg-muted/30">
-        <div className="flex items-center justify-end px-2 py-1">
+      <div className="flex h-full w-80 shrink-0 flex-col border-l border-line bg-bg-1">
+        <div className="flex items-center justify-end px-2 py-1.5 border-b border-line">
           <Button
             variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
+            size="icon-xs"
             onClick={toggleDetailPanel}
             aria-label="Collapse detail panel"
           >
-            <ChevronsRight className="h-4 w-4" />
+            <ChevronsRight className="h-3.5 w-3.5" />
           </Button>
         </div>
-        <div className="flex flex-col items-center justify-center flex-1 text-center p-6">
-          <MousePointerClick className="h-8 w-8 text-muted-foreground/50 mb-3" />
-          <p className="text-sm text-muted-foreground">
-            Select a node to configure it
-          </p>
+        <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
+          <MousePointerClick className="mb-3 h-7 w-7 text-fg-2" />
+          <p className="text-[12.5px] text-fg-1">Select a node to configure it</p>
         </div>
       </div>
     );
@@ -261,17 +338,16 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
       ?? (selectedNode.data as { componentDef?: { displayName: string } })?.componentDef?.displayName
       ?? "Node";
     return (
-      <div className="flex w-10 shrink-0 flex-col items-center border-l bg-background py-2 gap-2">
+      <div className="flex w-10 shrink-0 flex-col items-center gap-2 border-l border-line bg-bg-1 py-2">
         <Button
           variant="ghost"
-          size="sm"
-          className="h-7 w-7 p-0"
+          size="icon-xs"
           onClick={toggleDetailPanel}
           aria-label="Expand detail panel"
         >
-          <ChevronsLeft className="h-4 w-4" />
+          <ChevronsLeft className="h-3.5 w-3.5" />
         </Button>
-        <span className="text-xs text-muted-foreground [writing-mode:vertical-lr] rotate-180 truncate max-h-40">
+        <span className="max-h-40 truncate text-[11px] text-fg-2 [writing-mode:vertical-lr] rotate-180">
           {displayName}
         </span>
       </div>
@@ -281,9 +357,9 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
   // ---- Multi-select state ----
   if (selectedNodeIds.size > 1) {
     return (
-      <div className="flex h-full w-80 shrink-0 flex-col border-l bg-background">
-        <div className="space-y-4 p-4">
-          <h3 className="text-sm font-semibold">
+      <div className="flex h-full w-80 shrink-0 flex-col border-l border-line bg-bg-1">
+        <div className="space-y-3 p-4">
+          <h3 className="font-mono text-[11px] uppercase tracking-[0.04em] text-fg-2">
             {selectedNodeIds.size} components selected
           </h3>
           <div className="space-y-2">
@@ -293,8 +369,8 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
               className="w-full"
               onClick={copySelectedNodes}
             >
-              <Copy className="mr-2 h-4 w-4" />
-              Copy All
+              <Copy className="mr-1.5 h-3.5 w-3.5" />
+              Copy all
             </Button>
             <Button
               variant="destructive"
@@ -307,8 +383,8 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
                 });
               }}
             >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete All
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              Delete all
             </Button>
           </div>
         </div>
@@ -332,47 +408,55 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
   const isReadOnly = isSystemLocked || isShared;
 
   return (
-    <div className="flex h-full w-80 shrink-0 flex-col border-l bg-background">
-      <div className="flex items-center justify-end px-2 py-0.5 border-b border-border/40">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 p-0"
-          onClick={toggleDetailPanel}
-          aria-label="Collapse detail panel"
+    <div className="flex h-full w-80 shrink-0 flex-col border-l border-line bg-bg-1">
+      {/* Header: 26px tile + name + kind + close */}
+      <InspectorHeader
+        componentDef={componentDef}
+        displayName={currentDisplayName}
+        onClose={toggleDetailPanel}
+      />
+
+      <Tabs defaultValue="config" className="flex min-h-0 flex-1 flex-col gap-0">
+        <TabsList
+          variant="line"
+          className="w-full shrink-0 justify-start gap-0 border-b border-line px-3.5 py-0 h-auto bg-transparent"
         >
-          <ChevronsRight className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-      <Tabs defaultValue="config" className="flex min-h-0 flex-1 flex-col">
-        <TabsList variant="line" className="w-full shrink-0 justify-start border-b px-2">
-          <TabsTrigger value="config" className="text-xs">Config</TabsTrigger>
-          <TabsTrigger value="lineage" className="text-xs">Lineage</TabsTrigger>
-          <TabsTrigger value="live-tail" className="text-xs">Live Tail</TabsTrigger>
+          {(["config", "schema", "metrics", "logs"] as const).map((value) => (
+            <TabsTrigger
+              key={value}
+              value={value}
+              className="flex-none rounded-none border-b-2 border-transparent px-2.5 py-2 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-1 data-[state=active]:border-accent-brand data-[state=active]:text-fg data-[state=active]:bg-transparent dark:data-[state=active]:bg-transparent dark:data-[state=active]:border-accent-brand"
+            >
+              {value}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
+        {/* Config */}
         <TabsContent value="config" className="min-h-0 flex-1 overflow-y-auto">
-          <div className="space-y-6 p-4">
+          <div className="space-y-4 p-3.5">
             {/* ---- System locked banner ---- */}
             {isSystemLocked && (
-              <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
-                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="flex items-start gap-2 rounded-[3px] border border-line-2 bg-bg-2 px-3 py-2 text-[12px] text-fg-1">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-status-info" />
                 <span>This source is managed by VectorFlow and cannot be edited.</span>
               </div>
             )}
 
             {/* ---- Shared component info banner ---- */}
             {isShared && (
-              <div className="flex items-start gap-2 rounded-md border border-purple-200 bg-purple-50 px-3 py-2 text-sm text-purple-800 dark:border-purple-800 dark:bg-purple-950/40 dark:text-purple-300">
-                <LinkIcon className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="flex items-start gap-2 rounded-[3px] border border-line-2 bg-bg-2 px-3 py-2 text-[12px] text-fg-1">
+                <LinkIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-brand" />
                 <div className="flex-1">
-                  <span className="font-medium">{selectedNode.data.sharedComponentName as string}</span>
-                  <p className="mt-0.5 text-xs opacity-80">
+                  <span className="font-medium text-fg">
+                    {selectedNode.data.sharedComponentName as string}
+                  </span>
+                  <p className="mt-0.5 text-[11px] text-fg-2">
                     This component is shared. Config is managed in the Library.
                   </p>
                   <Link
                     href={`/library/shared-components/${selectedNode.data.sharedComponentId as string}`}
-                    className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-purple-700 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-200"
+                    className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-accent-brand hover:text-accent-brand-2"
                   >
                     Open in Library <ExternalLink className="h-3 w-3" />
                   </Link>
@@ -382,19 +466,15 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
 
             {/* ---- Stale update banner ---- */}
             {isStale && (
-              <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="flex items-start gap-2 rounded-[3px] border border-[color:var(--status-degraded)]/40 bg-[color:var(--status-degraded-bg)] px-3 py-2 text-[12px] text-status-degraded">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <div className="flex-1">
                   <span className="font-medium">Update available</span>
-                  <p className="mt-0.5 text-xs opacity-80">
+                  <p className="mt-0.5 text-[11px] opacity-80">
                     This shared component has been updated since it was last synced.
                   </p>
-                  <div className="mt-2 flex gap-2">
-                    <Button
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={handleAcceptUpdate}
-                    >
+                  <div className="mt-2">
+                    <Button size="xs" onClick={handleAcceptUpdate}>
                       Accept update
                     </Button>
                   </div>
@@ -402,125 +482,126 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
               </div>
             )}
 
-            {/* ---- Header ---- */}
-            <Card className="gap-4 py-4">
-              <CardHeader className="pb-0">
-                <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="flex items-center gap-1.5 truncate text-base">
-                    {componentDef.displayName}
-                    <a
-                      href={`https://vector.dev/docs/reference/configuration/${componentDef.kind}s/${componentDef.type}/`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex text-muted-foreground hover:text-foreground"
-                      aria-label="Open Vector docs"
+            {/* ---- Identity fields (name + key + enabled + delete) ---- */}
+            <div className="space-y-3">
+              {/* Name */}
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor="display-name"
+                  className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2"
+                >
+                  Name
+                </Label>
+                <Input
+                  id="display-name"
+                  value={currentDisplayName}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  disabled={isReadOnly}
+                  placeholder="Component name"
+                />
+              </div>
+
+              {/* Component ID (read-only) */}
+              <div className="space-y-1">
+                <Label className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2">
+                  Component ID
+                </Label>
+                <p className="select-all truncate font-mono text-[11px] text-fg-1">
+                  {componentKey}
+                </p>
+              </div>
+
+              {/* Enabled toggle + Vector docs link */}
+              <div className="flex items-center justify-between">
+                <Label
+                  htmlFor="node-enabled"
+                  className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2"
+                >
+                  Enabled
+                </Label>
+                <Switch
+                  id="node-enabled"
+                  checked={!disabled}
+                  onCheckedChange={() => {
+                    if (selectedNodeId) toggleNodeDisabled(selectedNodeId);
+                  }}
+                  disabled={isReadOnly}
+                />
+              </div>
+
+              {/* Action row: docs link + (unlink/delete) */}
+              <div className="flex items-center gap-2 pt-1">
+                <a
+                  href={`https://vector.dev/docs/reference/configuration/${componentDef.kind}s/${componentDef.type}/`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2 hover:text-fg"
+                  aria-label="Open Vector docs"
+                >
+                  <Book className="h-3 w-3" />
+                  Vector docs
+                </a>
+                <div className="ml-auto flex items-center gap-1">
+                  {isShared && !isSystemLocked && (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={handleUnlink}
+                      title="Unlink from shared component"
+                      aria-label="Unlink from shared component"
                     >
-                      <Book className="h-3.5 w-3.5" />
-                    </a>
-                  </CardTitle>
-                  <div className="flex items-center gap-1.5">
-                    <Badge
-                      variant="secondary"
-                      className={kindVariant[componentDef.kind] ?? ""}
+                      <Unlink className="h-3 w-3" />
+                    </Button>
+                  )}
+                  {isSystemLocked ? (
+                    <span
+                      aria-hidden
+                      className="inline-flex h-[22px] w-[22px] items-center justify-center text-status-info"
                     >
-                      {componentDef.kind}
-                    </Badge>
-                    {isShared && !isSystemLocked && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                        onClick={handleUnlink}
-                        title="Unlink from shared component"
-                      >
-                        <Unlink className="h-4 w-4" />
-                      </Button>
-                    )}
-                    {isSystemLocked ? (
-                      <div className="flex h-7 w-7 items-center justify-center text-blue-500">
-                        <Lock className="h-3.5 w-3.5" />
-                      </div>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={handleDelete}
-                        aria-label="Delete component"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
+                      <Lock className="h-3 w-3" />
+                    </span>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={handleDelete}
+                      aria-label="Delete component"
+                      className="hover:text-status-error"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Name */}
-                <div className="space-y-2">
-                  <Label htmlFor="display-name">Name</Label>
-                  <Input
-                    id="display-name"
-                    value={currentDisplayName}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    disabled={isReadOnly}
-                    placeholder="Component name"
-                  />
-                </div>
-
-                {/* Component ID (read-only) */}
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Component ID</Label>
-                  <p className="text-xs font-mono text-muted-foreground select-all">{componentKey}</p>
-                </div>
-
-                {/* Enabled toggle */}
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="node-enabled">Enabled</Label>
-                  <Switch
-                    id="node-enabled"
-                    checked={!disabled}
-                    onCheckedChange={() => {
-                      if (selectedNodeId) toggleNodeDisabled(selectedNodeId);
-                    }}
-                    disabled={isReadOnly}
-                  />
-                </div>
-
-                {/* Component Type (read-only) */}
-                <div className="space-y-1">
-                  <Label className="text-muted-foreground">Type</Label>
-                  <p className="text-sm">{componentDef.type}</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Separator />
+              </div>
+            </div>
 
             {/* ---- Configuration ---- */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold">Configuration</h3>
-
+            <div className="space-y-3 border-t border-line pt-3.5">
               {isReadOnly ? (
                 /* Read-only config display for locked/shared nodes */
                 <div className="space-y-3">
                   {Object.entries(config).map(([key, value]) => (
                     <div key={key} className="space-y-1">
-                      <Label className="text-muted-foreground">{key}</Label>
-                      <p className="truncate text-sm font-mono">
+                      <Label className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2">
+                        {key}
+                      </Label>
+                      <p className="truncate font-mono text-[11.5px] text-fg">
                         {typeof value === "object" ? JSON.stringify(value) : String(value ?? "")}
                       </p>
                     </div>
                   ))}
                   {Object.keys(config).length === 0 && (
-                    <p className="text-sm text-muted-foreground">No configuration</p>
+                    <p className="text-[12px] text-fg-2">No configuration</p>
                   )}
                 </div>
               ) : (
                 <>
                   {/* VRL Editor for remap source field */}
                   {componentDef.type === "remap" && (
-                    <div className="space-y-2">
-                      <Label>VRL Source</Label>
+                    <div className="space-y-1.5">
+                      <Label className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2">
+                        VRL Source
+                      </Label>
                       <VrlEditor
                         value={(config.source as string) ?? ""}
                         onChange={(v) => handleConfigChange({ ...config, source: v })}
@@ -534,8 +615,10 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
 
                   {/* VRL Editor for filter condition field */}
                   {componentDef.type === "filter" && (
-                    <div className="space-y-2">
-                      <Label>VRL Condition</Label>
+                    <div className="space-y-1.5">
+                      <Label className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2">
+                        VRL Condition
+                      </Label>
                       <VrlEditor
                         value={(config.condition as string) ?? ""}
                         onChange={(v) => handleConfigChange({ ...config, condition: v })}
@@ -549,13 +632,15 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
 
                   {/* VRL Editors for route conditions */}
                   {componentDef.type === "route" && (
-                    <div className="space-y-3">
-                      <Label>Route Conditions</Label>
+                    <div className="space-y-2.5">
+                      <Label className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2">
+                        Route Conditions
+                      </Label>
                       {Object.entries(
                         (config.route as Record<string, string>) ?? {},
                       ).map(([routeName, condition]) => (
-                        <div key={routeName} className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">
+                        <div key={routeName} className="space-y-1">
+                          <Label className="font-mono text-[10px] uppercase tracking-[0.04em] text-fg-2">
                             {routeName}
                           </Label>
                           <VrlEditor
@@ -599,19 +684,33 @@ export function DetailPanel({ pipelineId, isDeployed }: DetailPanelProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="lineage" className="min-h-0 flex-1 overflow-y-auto">
-          <FieldLineagePanel
-            selectedNodeId={selectedNode.id}
-            nodes={nodes}
-            edges={edges}
+        {/* Schema — coming soon */}
+        <TabsContent value="schema" className="min-h-0 flex-1 overflow-y-auto">
+          <EmptyState
+            compact
+            title="Schema inspector coming soon"
+            description="Field lineage and inferred schema will live here."
+            className="m-3.5"
           />
         </TabsContent>
 
-        <TabsContent value="live-tail" className="min-h-0 flex-1 overflow-y-auto">
-          <LiveTailPanel
-            pipelineId={pipelineId}
-            componentKey={componentKey}
-            isDeployed={isDeployed}
+        {/* Metrics — coming soon */}
+        <TabsContent value="metrics" className="min-h-0 flex-1 overflow-y-auto">
+          <EmptyState
+            compact
+            title="Metrics coming soon"
+            description="Per-component throughput, error rate, and latency."
+            className="m-3.5"
+          />
+        </TabsContent>
+
+        {/* Logs — coming soon */}
+        <TabsContent value="logs" className="min-h-0 flex-1 overflow-y-auto">
+          <EmptyState
+            compact
+            title="Logs coming soon"
+            description="Live tail and recent component log events."
+            className="m-3.5"
           />
         </TabsContent>
       </Tabs>

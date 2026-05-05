@@ -91,7 +91,10 @@ function FleetHealthDashboardInner({ environmentId }: FleetHealthDashboardProps)
 
   // Queries
   const healthStatsQuery = useQuery({
-    ...trpc.nodeGroup.groupHealthStats.queryOptions({ environmentId }),
+    ...trpc.nodeGroup.groupHealthStats.queryOptions({
+      environmentId,
+      ...(Object.keys(labelFilter).length > 0 ? { labels: labelFilter } : {}),
+    }),
     enabled: !!environmentId,
     refetchInterval: polling,
   });
@@ -199,6 +202,7 @@ function FleetHealthDashboardInner({ environmentId }: FleetHealthDashboardProps)
               group={group}
               isExpanded={expandedIds.has(group.id)}
               onToggle={() => toggleGroup(group.id)}
+              labelFilter={labelFilter}
               labelFilterActive={labelFilterActive}
             />
           ))}

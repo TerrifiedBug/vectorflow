@@ -363,6 +363,10 @@ export default function PipelinesPage() {
   const environments = environmentsQuery.data ?? [];
   const effectiveEnvId = selectedEnvironmentId || environments[0]?.id || "";
 
+  useEffect(() => {
+    setSelectedPipelineIds(new Set());
+  }, [effectiveEnvId, search, statusFilter, tagFilter, groupId]);
+
   const pipelinesQuery = useInfiniteQuery(
     trpc.pipeline.list.infiniteQueryOptions(
       {
@@ -737,6 +741,9 @@ export default function PipelinesPage() {
           {selectedPipelineIds.size > 0 && (
             <BulkActionBar
               selectedIds={[...selectedPipelineIds]}
+              selectedPipelines={filteredPipelines
+                .filter((pipeline) => selectedPipelineIds.has(pipeline.id))
+                .map((pipeline) => ({ id: pipeline.id, name: pipeline.name }))}
               onClearSelection={() => setSelectedPipelineIds(new Set())}
             />
           )}
@@ -756,16 +763,14 @@ export default function PipelinesPage() {
               }}
             />
           ) : filteredPipelines.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-              <p className="text-muted-foreground">No pipelines match your filters</p>
-              <Button
-                variant="outline"
-                className="mt-4"
-                onClick={clearAllFilters}
-              >
-                Clear filters
-              </Button>
-            </div>
+            <EmptyState
+              glyph="⌬"
+              title="No pipelines match your filter"
+              description="Adjust the environment, status, tag, group, or search filters to widen the result set."
+              action={{ label: "Clear filters", onClick: clearAllFilters }}
+              compact
+              className="p-12"
+            />
           ) : (
         <div onKeyDown={handleKeyDown} tabIndex={0} className="outline-none">
         <Table>

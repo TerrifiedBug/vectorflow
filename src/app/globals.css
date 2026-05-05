@@ -6,29 +6,55 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* shadcn semantic vars (kept as var() pointers for backward compat) */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* fonts (v2: Inter + JetBrains Mono) */
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-display: var(--font-inter);
+
+  /* sidebar */
   --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* node-type colors (used by editor + diagrams) */
   --color-node-source: var(--node-source);
   --color-node-source-glow: var(--node-source-glow);
+  --color-node-source-foreground: var(--node-source-foreground);
   --color-node-transform: var(--node-transform);
   --color-node-transform-glow: var(--node-transform-glow);
+  --color-node-transform-foreground: var(--node-transform-foreground);
   --color-node-sink: var(--node-sink);
   --color-node-sink-glow: var(--node-sink-glow);
-  --color-node-shared: var(--node-shared);
-  --color-node-source-foreground: var(--node-source-foreground);
-  --color-node-transform-foreground: var(--node-transform-foreground);
   --color-node-sink-foreground: var(--node-sink-foreground);
+  --color-node-shared: var(--node-shared);
   --color-node-shared-foreground: var(--node-shared-foreground);
+
+  /* status */
   --color-status-healthy: var(--status-healthy);
   --color-status-healthy-bg: var(--status-healthy-bg);
   --color-status-healthy-foreground: var(--status-healthy-foreground);
@@ -44,34 +70,42 @@
   --color-status-info: var(--status-info);
   --color-status-info-bg: var(--status-info-bg);
   --color-status-info-foreground: var(--status-info-foreground);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
+
+  /* charts */
   --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+
+  /* v2 surface layers */
+  --color-bg: var(--bg);
+  --color-bg-1: var(--bg-1);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-bg-4: var(--bg-4);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-line-3: var(--line-3);
+  --color-fg: var(--fg);
+  --color-fg-1: var(--fg-1);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-accent-brand: var(--accent-brand);
+  --color-accent-brand-2: var(--accent-brand-2);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+
+  /* radii (v2: 3px base) */
+  --radius-sm: calc(var(--radius) - 1px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 1px);
+  --radius-xl: calc(var(--radius) + 3px);
+  --radius-2xl: calc(var(--radius) + 5px);
+  --radius-3xl: calc(var(--radius) + 9px);
+  --radius-4xl: calc(var(--radius) + 13px);
+
   --animate-shimmer: shimmer 1.5s ease-in-out infinite;
 }
 
@@ -80,120 +114,202 @@
   100% { background-position: 200% 0; }
 }
 
+/* ─────────────────────────────────────────────────────────────
+ * v2 Editorial — light theme (default)
+ * Source: docs/internal/VectorFlow 2.0/screens/tokens.jsx (editorial)
+ * ───────────────────────────────────────────────────────────── */
 :root {
-  --radius: 0.625rem;
-  --node-source: oklch(0.65 0.18 145);
-  --node-source-glow: oklch(0.65 0.18 145 / 20%);
-  --node-transform: oklch(0.60 0.15 250);
-  --node-transform-glow: oklch(0.60 0.15 250 / 20%);
-  --node-sink: oklch(0.55 0.20 295);
-  --node-sink-glow: oklch(0.55 0.20 295 / 20%);
-  --node-shared: oklch(0.60 0.18 300);
-  --node-source-foreground: oklch(0.98 0 0);
-  --node-transform-foreground: oklch(0.98 0 0);
-  --node-sink-foreground: oklch(0.98 0 0);
-  --node-shared-foreground: oklch(0.98 0 0);
-  --status-healthy: oklch(0.55 0.17 145);
-  --status-healthy-bg: oklch(0.55 0.17 145 / 15%);
-  --status-healthy-foreground: oklch(0.35 0.12 145);
-  --status-degraded: oklch(0.75 0.17 85);
-  --status-degraded-bg: oklch(0.75 0.17 85 / 15%);
-  --status-degraded-foreground: oklch(0.45 0.12 85);
-  --status-error: oklch(0.60 0.22 25);
-  --status-error-bg: oklch(0.60 0.22 25 / 15%);
-  --status-error-foreground: oklch(0.40 0.16 25);
-  --status-neutral: oklch(0.55 0 0);
-  --status-neutral-bg: oklch(0.55 0 0 / 15%);
-  --status-neutral-foreground: oklch(0.40 0 0);
-  --status-info: oklch(0.55 0.17 250);
-  --status-info-bg: oklch(0.55 0.17 250 / 15%);
-  --status-info-foreground: oklch(0.35 0.12 250);
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.65 0.22 41);
-  --chart-2: oklch(0.55 0.24 265);
-  --chart-3: oklch(0.65 0.17 163);
-  --chart-4: oklch(0.63 0.26 304);
-  --chart-5: oklch(0.75 0.19 84);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 3px;
+
+  /* surfaces */
+  --bg: #fafaf7;
+  --bg-1: #ffffff;
+  --bg-2: #ffffff;
+  --bg-3: #f4f3ee;
+  --bg-4: #ebeae3;
+
+  /* hairlines */
+  --line: #e8e6df;
+  --line-2: #d8d5cc;
+  --line-3: #a8a59c;
+
+  /* foreground */
+  --fg: #15171a;
+  --fg-1: #52555c;
+  --fg-2: #86898f;
+  --fg-3: #b7b9bd;
+
+  /* accent (deep, professional green) */
+  --accent-brand: #1f6f3f;
+  --accent-brand-2: #175832;
+  --accent-soft: rgba(31, 111, 63, 0.08);
+  --accent-line: rgba(31, 111, 63, 0.25);
+
+  /* node-type semantics */
+  --node-source: #1f6f3f;
+  --node-source-glow: rgba(31, 111, 63, 0.20);
+  --node-source-foreground: #ffffff;
+  --node-transform: #2553a8;
+  --node-transform-glow: rgba(37, 83, 168, 0.20);
+  --node-transform-foreground: #ffffff;
+  --node-sink: #7c3aed;
+  --node-sink-glow: rgba(124, 58, 237, 0.20);
+  --node-sink-foreground: #ffffff;
+  --node-shared: #b45309;
+  --node-shared-foreground: #ffffff;
+
+  /* status */
+  --status-healthy: #1f6f3f;
+  --status-healthy-bg: rgba(31, 111, 63, 0.10);
+  --status-healthy-foreground: #14512c;
+  --status-degraded: #a16207;
+  --status-degraded-bg: rgba(161, 98, 7, 0.10);
+  --status-degraded-foreground: #713f04;
+  --status-error: #b91c1c;
+  --status-error-bg: rgba(185, 28, 28, 0.10);
+  --status-error-foreground: #7f1d1d;
+  --status-neutral: #86898f;
+  --status-neutral-bg: rgba(134, 137, 143, 0.10);
+  --status-neutral-foreground: #52555c;
+  --status-info: #1d4ed8;
+  --status-info-bg: rgba(29, 78, 216, 0.10);
+  --status-info-foreground: #1e3a8a;
+
+  /* charts */
+  --chart-1: #1f6f3f;
+  --chart-2: #2553a8;
+  --chart-3: #7c3aed;
+  --chart-4: #a16207;
+  --chart-5: #b91c1c;
+  --chart-6: #0e7490;
+
+  /* shadcn semantic mapping */
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --card: var(--bg-2);
+  --card-foreground: var(--fg);
+  --popover: var(--bg-2);
+  --popover-foreground: var(--fg);
+  --primary: var(--accent-brand);
+  --primary-foreground: #ffffff;
+  --secondary: var(--bg-3);
+  --secondary-foreground: var(--fg);
+  --muted: var(--bg-3);
+  --muted-foreground: var(--fg-2);
+  --accent: var(--bg-3);
+  --accent-foreground: var(--fg);
+  --destructive: var(--status-error);
+  --border: var(--line);
+  --input: var(--line-2);
+  --ring: var(--accent-brand);
+
+  /* sidebar */
+  --sidebar: var(--bg-1);
+  --sidebar-foreground: var(--fg-1);
+  --sidebar-primary: var(--accent-brand);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--accent-soft);
+  --sidebar-accent-foreground: var(--accent-brand);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--accent-brand);
 }
 
+/* ─────────────────────────────────────────────────────────────
+ * v2 Console — dark theme
+ * Source: docs/internal/VectorFlow 2.0/screens/tokens.jsx (console)
+ * ───────────────────────────────────────────────────────────── */
 .dark {
-  --node-source: oklch(0.50 0.15 145);
-  --node-source-glow: oklch(0.50 0.15 145 / 30%);
-  --node-transform: oklch(0.45 0.12 250);
-  --node-transform-glow: oklch(0.45 0.12 250 / 30%);
-  --node-sink: oklch(0.40 0.17 295);
-  --node-sink-glow: oklch(0.40 0.17 295 / 30%);
-  --status-healthy: oklch(0.65 0.17 145);
-  --status-healthy-bg: oklch(0.65 0.17 145 / 15%);
-  --status-healthy-foreground: oklch(0.75 0.15 145);
-  --status-degraded: oklch(0.75 0.17 85);
-  --status-degraded-bg: oklch(0.75 0.17 85 / 15%);
-  --status-degraded-foreground: oklch(0.80 0.14 85);
-  --status-error: oklch(0.65 0.22 25);
-  --status-error-bg: oklch(0.65 0.22 25 / 15%);
-  --status-error-foreground: oklch(0.75 0.18 25);
-  --status-neutral: oklch(0.55 0 0);
-  --status-neutral-bg: oklch(0.55 0 0 / 15%);
-  --status-neutral-foreground: oklch(0.65 0 0);
-  --status-info: oklch(0.60 0.17 250);
-  --status-info-bg: oklch(0.60 0.17 250 / 15%);
-  --status-info-foreground: oklch(0.70 0.14 250);
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.22 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.22 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.65 0.22 41);
-  --chart-2: oklch(0.55 0.24 265);
-  --chart-3: oklch(0.65 0.17 163);
-  --chart-4: oklch(0.63 0.26 304);
-  --chart-5: oklch(0.75 0.19 84);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* surfaces */
+  --bg: #0a0b0d;
+  --bg-1: #0e1013;
+  --bg-2: #14171c;
+  --bg-3: #1a1e25;
+  --bg-4: #252a32;
+
+  /* hairlines */
+  --line: #1f2329;
+  --line-2: #2a2f37;
+  --line-3: #3a4049;
+
+  /* foreground */
+  --fg: #e6e8ec;
+  --fg-1: #a8adb6;
+  --fg-2: #6b727d;
+  --fg-3: #454b54;
+
+  /* accent (electric green — Vector flow) */
+  --accent-brand: #7dd957;
+  --accent-brand-2: #5fb83a;
+  --accent-soft: rgba(125, 217, 87, 0.12);
+  --accent-line: rgba(125, 217, 87, 0.35);
+
+  /* node-type semantics */
+  --node-source: #7dd957;
+  --node-source-glow: rgba(125, 217, 87, 0.30);
+  --node-source-foreground: #0a0b0d;
+  --node-transform: #5b9cff;
+  --node-transform-glow: rgba(91, 156, 255, 0.30);
+  --node-transform-foreground: #0a0b0d;
+  --node-sink: #c084fc;
+  --node-sink-glow: rgba(192, 132, 252, 0.30);
+  --node-sink-foreground: #0a0b0d;
+  --node-shared: #f59e0b;
+  --node-shared-foreground: #0a0b0d;
+
+  /* status */
+  --status-healthy: #4ade80;
+  --status-healthy-bg: rgba(74, 222, 128, 0.12);
+  --status-healthy-foreground: #86efac;
+  --status-degraded: #fbbf24;
+  --status-degraded-bg: rgba(251, 191, 36, 0.12);
+  --status-degraded-foreground: #fcd34d;
+  --status-error: #f87171;
+  --status-error-bg: rgba(248, 113, 113, 0.12);
+  --status-error-foreground: #fca5a5;
+  --status-neutral: #6b727d;
+  --status-neutral-bg: rgba(107, 114, 125, 0.12);
+  --status-neutral-foreground: #a8adb6;
+  --status-info: #60a5fa;
+  --status-info-bg: rgba(96, 165, 250, 0.12);
+  --status-info-foreground: #93c5fd;
+
+  /* charts */
+  --chart-1: #7dd957;
+  --chart-2: #5b9cff;
+  --chart-3: #c084fc;
+  --chart-4: #fbbf24;
+  --chart-5: #f87171;
+  --chart-6: #22d3ee;
+
+  /* shadcn semantic mapping */
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --card: var(--bg-2);
+  --card-foreground: var(--fg);
+  --popover: var(--bg-2);
+  --popover-foreground: var(--fg);
+  --primary: var(--accent-brand);
+  --primary-foreground: #0a0b0d;
+  --secondary: var(--bg-3);
+  --secondary-foreground: var(--fg);
+  --muted: var(--bg-3);
+  --muted-foreground: var(--fg-2);
+  --accent: var(--bg-3);
+  --accent-foreground: var(--fg);
+  --destructive: var(--status-error);
+  --border: var(--line);
+  --input: var(--line-2);
+  --ring: var(--accent-brand);
+
+  /* sidebar */
+  --sidebar: var(--bg-1);
+  --sidebar-foreground: var(--fg-1);
+  --sidebar-primary: var(--accent-brand);
+  --sidebar-primary-foreground: #0a0b0d;
+  --sidebar-accent: var(--accent-soft);
+  --sidebar-accent-foreground: var(--accent-brand);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--accent-brand);
 }
 
 @layer base {
@@ -202,13 +318,13 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
   }
 
   /*
    * WCAG 2.4.7 — Global focus-visible ring for interactive elements.
    * shadcn/ui Button already has its own focus-visible styles, so we scope
    * this to elements that don't carry a data-slot="button" attribute.
-   * The ring uses the theme's --ring color for consistency.
    */
   a:focus-visible,
   button:not([data-slot="button"]):focus-visible,
@@ -219,18 +335,36 @@
     outline-offset: 2px;
     border-radius: var(--radius-sm);
   }
+
+  /* Skip-to-content link */
+  .skip-to-content {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: var(--accent-brand);
+    color: var(--primary-foreground);
+    padding: 8px 14px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    z-index: 9999;
+    transition: top 0.15s;
+  }
+  .skip-to-content:focus { top: 8px; }
 }
 
 @keyframes flow-dash {
-  to {
-    stroke-dashoffset: -24;
-  }
+  to { stroke-dashoffset: -24; }
+}
+
+@keyframes status-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  50% { box-shadow: 0 0 0 4px transparent; opacity: 0.7; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -238,13 +372,15 @@
   }
 }
 
-@keyframes status-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 currentColor;
-    opacity: 1;
-  }
-  50% {
-    box-shadow: 0 0 0 4px transparent;
-    opacity: 0.7;
+@media (max-width: 767px) {
+  body::before {
+    content: "VectorFlow runs on tablets and up (768px+).";
+    display: block;
+    padding: 12px 16px;
+    background: var(--status-info-bg);
+    color: var(--status-info-foreground);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: center;
   }
 }

@@ -35,75 +35,96 @@ const baseEdgeProps = {
 };
 
 describe("MetricEdge", () => {
-  describe("throughput label rendering", () => {
-    it("renders no throughput label when data has no throughput", () => {
-      const { queryByText } = render(
+  describe("gradient stroke", () => {
+    it("renders a linearGradient with stops keyed off source/target kinds", () => {
+      const { container } = render(
+        <svg>
+          <MetricEdge
+            {...baseEdgeProps}
+            data={{ sourceKind: "source", targetKind: "transform" }}
+          />
+        </svg>,
+      );
+      // SVG element tag matching is case-sensitive in jsdom — use getElementById.
+      const grad = container.querySelector("#metric-edge-grad-edge-1");
+      expect(grad).toBeTruthy();
+      const stops = grad!.querySelectorAll("stop");
+      expect(stops).toHaveLength(2);
+      expect(stops[0].getAttribute("stop-color")).toBe("var(--node-source)");
+      expect(stops[1].getAttribute("stop-color")).toBe("var(--node-transform)");
+    });
+
+    it("paints the visible path with the gradient url and 1.5px stroke", () => {
+      const { container } = render(
         <svg>
           <MetricEdge {...baseEdgeProps} data={{}} />
-        </svg>
+        </svg>,
       );
-      expect(queryByText(/\/s/)).toBeNull();
-      expect(queryByText(/k\/s/)).toBeNull();
+      const paths = container.querySelectorAll("path");
+      const gradientPath = Array.from(paths).find((p) =>
+        p.getAttribute("stroke")?.startsWith("url(#metric-edge-grad-"),
+      );
+      expect(gradientPath).toBeTruthy();
+      expect(gradientPath?.getAttribute("stroke-width")).toBe("1.5");
     });
 
-    it("renders throughput as '{n}/s' when throughput is below 1000", () => {
-      const { getByText } = render(
+    it("uses 2px stroke when selected", () => {
+      const { container } = render(
         <svg>
-          <MetricEdge {...baseEdgeProps} data={{ throughput: 250 }} />
-        </svg>
+          <MetricEdge {...baseEdgeProps} selected data={{}} />
+        </svg>,
       );
-      expect(getByText("250/s")).toBeTruthy();
-    });
-
-    it("renders throughput as '{n}k/s' when throughput is 1000 or above", () => {
-      const { getByText } = render(
-        <svg>
-          <MetricEdge {...baseEdgeProps} data={{ throughput: 3500 }} />
-        </svg>
+      const paths = container.querySelectorAll("path");
+      const gradientPath = Array.from(paths).find((p) =>
+        p.getAttribute("stroke")?.startsWith("url(#"),
       );
-      expect(getByText("3.5k/s")).toBeTruthy();
+      expect(gradientPath?.getAttribute("stroke-width")).toBe("2");
     });
   });
 
-  describe("active animation", () => {
-    it("applies animation style when throughput is above zero", () => {
-      const { container } = render(
-        <svg>
-          <MetricEdge {...baseEdgeProps} data={{ throughput: 1 }} />
-        </svg>
-      );
-      // The visible animated path has inline animation style
-      const paths = container.querySelectorAll("path");
-      const animatedPath = Array.from(paths).find(
-        (p) => p.style.animation !== ""
-      );
-      expect(animatedPath).toBeTruthy();
-    });
-
-    it("does not apply animation style when throughput is zero", () => {
-      const { container } = render(
-        <svg>
-          <MetricEdge {...baseEdgeProps} data={{ throughput: 0 }} />
-        </svg>
-      );
-      const paths = container.querySelectorAll("path");
-      const animatedPaths = Array.from(paths).filter(
-        (p) => p.style.animation !== ""
-      );
-      expect(animatedPaths).toHaveLength(0);
-    });
-
-    it("applies stroke-dasharray when active", () => {
+  describe("animated flow marker", () => {
+    it("renders an animateMotion marker when running with throughput", () => {
       const { container } = render(
         <svg>
           <MetricEdge {...baseEdgeProps} data={{ throughput: 100 }} />
-        </svg>
+        </svg>,
       );
-      const paths = container.querySelectorAll("path");
-      const dashedPath = Array.from(paths).find(
-        (p) => p.getAttribute("stroke-dasharray") !== null
+      const motion = Array.from(container.getElementsByTagName("*")).find(
+        (el) => el.tagName.toLowerCase() === "animatemotion",
       );
-      expect(dashedPath).toBeTruthy();
+      expect(motion).toBeTruthy();
+      const dur = motion?.getAttribute("dur");
+      expect(dur).toMatch(/^[23]\.[0-9]s$/);
+      const seconds = parseFloat(dur!.replace("s", ""));
+      expect(seconds).toBeGreaterThanOrEqual(2.4);
+      expect(seconds).toBeLessThanOrEqual(3.4);
+    });
+
+    it("does not render a marker when throughput is zero", () => {
+      const { container } = render(
+        <svg>
+          <MetricEdge {...baseEdgeProps} data={{ throughput: 0 }} />
+        </svg>,
+      );
+      const motion = Array.from(container.getElementsByTagName("*")).find(
+        (el) => el.tagName.toLowerCase() === "animatemotion",
+      );
+      expect(motion).toBeUndefined();
+    });
+
+    it("suppresses the marker when running is explicitly false", () => {
+      const { container } = render(
+        <svg>
+          <MetricEdge
+            {...baseEdgeProps}
+            data={{ throughput: 100, running: false }}
+          />
+        </svg>,
+      );
+      const motion = Array.from(container.getElementsByTagName("*")).find(
+        (el) => el.tagName.toLowerCase() === "animatemotion",
+      );
+      expect(motion).toBeUndefined();
     });
   });
 });

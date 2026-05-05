@@ -7,7 +7,7 @@ import { withAudit } from "@/server/middleware/audit";
 import { checkDevAgentVersion } from "@/server/services/version-check";
 import { pushRegistry } from "@/server/services/push-registry";
 import { relayPush } from "@/server/services/push-broadcast";
-import { getFleetOverview, getVolumeTrend, getNodeThroughput, getNodeCapacity, getDataLoss, getMatrixThroughput } from "@/server/services/fleet-data";
+import { getFleetOverview, getVolumeTrend, getNodeThroughput, getNodeCapacity, getCpuHeatmap, getDataLoss, getMatrixThroughput } from "@/server/services/fleet-data";
 import { isVersionOlder } from "@/lib/version";
 
 const maintenanceWindowSchema = z.object({
@@ -1138,6 +1138,18 @@ export const fleetRouter = router({
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       return getNodeCapacity(input.environmentId, input.range);
+    }),
+
+  cpuHeatmap: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        range: z.enum(["1h", "6h", "1d", "7d", "30d"]).default("1h"),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return getCpuHeatmap(input.environmentId, input.range);
     }),
 
   dataLoss: protectedProcedure

@@ -46,6 +46,26 @@ vi.mock("@/server/services/alert-evaluator", () => ({
     "throughput_floor",
   ]),
   PIPELINE_FLEET_METRICS: new Set(["latency_mean", "throughput_floor"]),
+  // Real implementation — testRule needs honest comparisons.
+  checkCondition: (value: number, condition: string, threshold: number) => {
+    switch (condition) {
+      case "gt":
+        return value > threshold;
+      case "lt":
+        return value < threshold;
+      case "eq":
+        return value === threshold;
+      default:
+        return false;
+    }
+  },
+}));
+
+const mockQueryPipelineMetricsAggregated = vi.fn();
+vi.mock("@/server/services/metrics-query", () => ({
+  queryPipelineMetricsAggregated: (
+    ...args: Parameters<typeof mockQueryPipelineMetricsAggregated>
+  ) => mockQueryPipelineMetricsAggregated(...args),
 }));
 
 import { prisma } from "@/lib/prisma";
@@ -88,6 +108,58 @@ describe("alertRulesRouter", () => {
     mockReset(prismaMock);
     vi.clearAllMocks();
     mockIsEventMetric.mockReturnValue(false);
+  });
+
+  // ─── getRule ───────────────────────────────────────────────────────────────
+
+  describe("getRule", () => {
+    it("returns rule with environment, pipeline, and channel relations", async () => {
+      const rule = makeAlertRule({
+        environment: { id: "env-1", name: "production" },
+        pipeline: { id: "pipe-1", name: "auditbeat" },
+        channels: [
+          {
+            id: "arc-1",
+            channelId: "ch-1",
+            channel: { id: "ch-1", name: "ops-slack", type: "slack" },
+          },
+        ],
+      });
+      prismaMock.alertRule.findUnique.mockResolvedValue(rule as never);
+
+      const result = await caller.getRule({ id: "rule-1", teamId: "team-1" });
+
+      expect(result.id).toBe("rule-1");
+      expect(result.channels).toHaveLength(1);
+      expect(prismaMock.alertRule.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "rule-1" },
+          include: expect.objectContaining({
+            environment: { select: { id: true, name: true } },
+            pipeline: { select: { id: true, name: true } },
+            channels: { include: { channel: true } },
+          }),
+        }),
+      );
+    });
+
+    it("throws NOT_FOUND when rule does not exist", async () => {
+      prismaMock.alertRule.findUnique.mockResolvedValue(null);
+
+      await expect(
+        caller.getRule({ id: "rule-missing", teamId: "team-1" }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+
+    it("throws NOT_FOUND when rule belongs to a different team", async () => {
+      prismaMock.alertRule.findUnique.mockResolvedValue(
+        makeAlertRule({ teamId: "team-2" }) as never,
+      );
+
+      await expect(
+        caller.getRule({ id: "rule-1", teamId: "team-1" }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
   });
 
   // ─── listRules ─────────────────────────────────────────────────────────────
@@ -593,6 +665,141 @@ describe("alertRulesRouter", () => {
 
   // ─── unsnoozeRule ──────────────────────────────────────────────────────────
 
+  // ─── testRule ──────────────────────────────────────────────────────────────
+
+  describe("testRule", () => {
+    beforeEach(() => {
+      prismaMock.pipeline.findUnique.mockResolvedValue({
+        id: "pipe-1",
+        environmentId: "env-1",
+        environment: { teamId: "team-1" },
+      } as never);
+    });
+
+    function buildRow(opts: {
+      ts: Date;
+      eventsIn?: number;
+      errorsTotal?: number;
+      latencyMeanMs?: number | null;
+    }) {
+      return {
+        timestamp: opts.ts,
+        eventsIn: BigInt(opts.eventsIn ?? 0),
+        eventsOut: BigInt(0),
+        eventsDiscarded: BigInt(0),
+        errorsTotal: BigInt(opts.errorsTotal ?? 0),
+        bytesIn: BigInt(0),
+        bytesOut: BigInt(0),
+        utilization: 0,
+        latencyMeanMs: opts.latencyMeanMs ?? null,
+      };
+    }
+
+    it("returns a series + breach count for a supported metric", async () => {
+      const start = new Date("2026-01-01T00:00:00Z").getTime();
+      const rows = [
+        buildRow({ ts: new Date(start + 0 * 30_000), latencyMeanMs: 100 }),
+        buildRow({ ts: new Date(start + 1 * 30_000), latencyMeanMs: 300 }),
+        buildRow({ ts: new Date(start + 2 * 30_000), latencyMeanMs: 320 }),
+        buildRow({ ts: new Date(start + 3 * 30_000), latencyMeanMs: 340 }),
+        buildRow({ ts: new Date(start + 4 * 30_000), latencyMeanMs: 100 }),
+      ];
+      mockQueryPipelineMetricsAggregated.mockResolvedValue({ rows });
+
+      const result = await caller.testRule({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        metric: "latency_mean" as never,
+        condition: "gt" as never,
+        threshold: 250,
+        durationSeconds: 60,
+        lookbackHours: 6,
+      });
+
+      expect(result.supported).toBe(true);
+      if (!result.supported) return; // type guard
+      expect(result.series).toHaveLength(5);
+      expect(result.wouldHaveFired).toBe(1);
+      expect(result.breaches).toHaveLength(1);
+      expect(result.threshold).toBe(250);
+      expect(result.lookbackHours).toBe(6);
+      expect(mockQueryPipelineMetricsAggregated).toHaveBeenCalledWith({
+        pipelineId: "pipe-1",
+        minutes: 360,
+      });
+    });
+
+    it("returns supported:false for an event-based metric", async () => {
+      const result = await caller.testRule({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        metric: "deploy_requested" as never,
+        condition: "eq" as never,
+        threshold: 1,
+        durationSeconds: 0,
+      });
+
+      expect(result.supported).toBe(false);
+      if (result.supported) return;
+      expect(result.reason).toMatch(/event/i);
+      expect(mockQueryPipelineMetricsAggregated).not.toHaveBeenCalled();
+    });
+
+    it("returns supported:false for a node-scoped metric", async () => {
+      const result = await caller.testRule({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        metric: "cpu_usage" as never,
+        condition: "gt" as never,
+        threshold: 80,
+        durationSeconds: 60,
+      });
+
+      expect(result.supported).toBe(false);
+      if (result.supported) return;
+      expect(result.reason).toMatch(/node/i);
+    });
+
+    it("returns supported:false when neither pipelineId nor environmentId provided", async () => {
+      const result = await caller.testRule({
+        teamId: "team-1",
+        metric: "latency_mean" as never,
+        condition: "gt" as never,
+        threshold: 250,
+        durationSeconds: 60,
+      });
+
+      expect(result.supported).toBe(false);
+      if (result.supported) return;
+      expect(result.reason).toMatch(/pipeline/i);
+      expect(mockQueryPipelineMetricsAggregated).not.toHaveBeenCalled();
+    });
+
+    it("returns 0 fires when breaches are too brief to satisfy duration", async () => {
+      const start = new Date("2026-01-01T00:00:00Z").getTime();
+      const rows = [
+        buildRow({ ts: new Date(start + 0 * 30_000), latencyMeanMs: 100 }),
+        buildRow({ ts: new Date(start + 1 * 30_000), latencyMeanMs: 300 }),
+        buildRow({ ts: new Date(start + 2 * 30_000), latencyMeanMs: 100 }),
+      ];
+      mockQueryPipelineMetricsAggregated.mockResolvedValue({ rows });
+
+      const result = await caller.testRule({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        metric: "latency_mean" as never,
+        condition: "gt" as never,
+        threshold: 250,
+        durationSeconds: 120,
+      });
+
+      expect(result.supported).toBe(true);
+      if (!result.supported) return;
+      expect(result.wouldHaveFired).toBe(0);
+      expect(result.breaches).toEqual([]);
+    });
+  });
+
   describe("unsnoozeRule", () => {
     it("unsnoozes a rule by setting snoozedUntil to null", async () => {
       prismaMock.alertRule.findUnique.mockResolvedValue(
@@ -617,6 +824,140 @@ describe("alertRulesRouter", () => {
       await expect(
         caller.unsnoozeRule({ id: "rule-missing" }),
       ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+  });
+
+  // ─── findSimilar ───────────────────────────────────────────────────────────
+
+  describe("findSimilar", () => {
+    function makeMatch(overrides: Record<string, unknown> = {}) {
+      return {
+        id: "rule-1",
+        name: "High CPU",
+        metric: "cpu_usage",
+        condition: "gt",
+        threshold: 90,
+        environment: { id: "env-1", name: "production" },
+        pipeline: { id: "pipe-1", name: "auditbeat" },
+        ...overrides,
+      };
+    }
+
+    it("returns matches for same metric on same pipeline", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([makeMatch()] as never);
+
+      const result = await caller.findSimilar({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+      });
+
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0]?.id).toBe("rule-1");
+      const where = prismaMock.alertRule.findMany.mock.calls[0]![0]!.where!;
+      expect(where).toEqual(
+        expect.objectContaining({
+          teamId: "team-1",
+          metric: "cpu_usage",
+        }),
+      );
+      // OR clause should target same pipeline
+      expect(where.OR).toEqual(
+        expect.arrayContaining([{ pipelineId: "pipe-1" }]),
+      );
+    });
+
+    it("excludes the rule named in excludeId", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([] as never);
+
+      await caller.findSimilar({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+        excludeId: "rule-self",
+      });
+
+      const where = prismaMock.alertRule.findMany.mock.calls[0]![0]!.where!;
+      expect(where).toEqual(
+        expect.objectContaining({
+          id: { not: "rule-self" },
+        }),
+      );
+    });
+
+    it("does NOT include id filter when excludeId not provided", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([] as never);
+
+      await caller.findSimilar({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+      });
+
+      const where = prismaMock.alertRule.findMany.mock.calls[0]![0]!.where!;
+      expect(where).not.toHaveProperty("id");
+    });
+
+    it("returns empty array when no overlapping rules exist", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([] as never);
+
+      const result = await caller.findSimilar({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+      });
+
+      expect(result.matches).toEqual([]);
+    });
+
+    it("caps results at 3", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([] as never);
+
+      await caller.findSimilar({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+      });
+
+      const args = prismaMock.alertRule.findMany.mock.calls[0]![0]!;
+      expect(args.take).toBe(3);
+    });
+
+    it("matches team-wide rules when no pipelineId/environmentId provided", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([] as never);
+
+      await caller.findSimilar({
+        teamId: "team-1",
+        metric: "cpu_usage" as never,
+      });
+
+      const where = prismaMock.alertRule.findMany.mock.calls[0]![0]!.where!;
+      expect(where.OR).toEqual(
+        expect.arrayContaining([{ pipelineId: null, environmentId: null }]),
+      );
+    });
+
+    it("includes env-wide overlap when environmentId provided without pipelineId", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([] as never);
+
+      await caller.findSimilar({
+        teamId: "team-1",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+      });
+
+      const where = prismaMock.alertRule.findMany.mock.calls[0]![0]!.where!;
+      expect(where.OR).toEqual(
+        expect.arrayContaining([
+          { pipelineId: null, environmentId: "env-1" },
+          { environmentId: "env-1", pipelineId: null },
+        ]),
+      );
     });
   });
 });
