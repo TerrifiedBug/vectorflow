@@ -31,7 +31,7 @@ export function PageHeader({
             {breadcrumb}
           </div>
         )}
-        <h1 className="m-0 text-[22px] font-semibold tracking-[-0.02em] text-fg leading-tight">
+        <h1 className="m-0 font-mono text-[22px] font-medium tracking-[-0.01em] text-fg leading-tight">
           {title}
         </h1>
         {subtitle && (
