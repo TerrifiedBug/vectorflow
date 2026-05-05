@@ -28,6 +28,8 @@ import { usePipelineSidebarStore } from "@/stores/pipeline-sidebar-store";
 import { PipelineGroupTree } from "@/components/pipeline/pipeline-group-tree";
 import { SidebarAlertBadge } from "@/components/sidebar-alert-badge";
 import { Button } from "@/components/ui/button";
+import { VFLogo } from "@/components/ui/vf-logo";
+import { StatusDot } from "@/components/ui/status-dot";
 import { isDemoMode } from "@/lib/is-demo-mode";
 
 import {
@@ -146,13 +148,12 @@ export function AppSidebar() {
               </span>
             </button>
           ) : (
-            <Link href="/" className="flex items-center gap-2">
-              <span className="text-xl tracking-tight group-data-[collapsible=icon]:hidden">
-                <span className="font-bold">Vector</span>
-                <span className="font-light">Flow</span>
+            <Link href="/" className="flex items-center text-fg" aria-label="VectorFlow home">
+              <span className="group-data-[collapsible=icon]:hidden">
+                <VFLogo size={20} />
               </span>
-              <span className="hidden text-xl group-data-[collapsible=icon]:block">
-                <span className="font-bold">V</span><span className="font-light">f</span>
+              <span className="hidden group-data-[collapsible=icon]:inline-flex">
+                <VFLogo size={22} wordmark={false} />
               </span>
             </Link>
           )}
@@ -324,6 +325,12 @@ export function AppSidebar() {
         </div>
       </SidebarContent>
       <SidebarFooter>
+        <div className="px-3 pb-2 pt-1 flex items-center justify-between text-[10px] font-mono text-fg-2 group-data-[collapsible=icon]:hidden">
+          <span>v2.0.0</span>
+          <span className="inline-flex items-center gap-1.5">
+            <StatusDot variant="healthy" /> All systems normal
+          </span>
+        </div>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

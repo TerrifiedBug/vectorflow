@@ -37,6 +37,7 @@ import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts-modal";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { DemoBanner } from "@/components/dashboard/demo-banner";
 import { isDemoMode } from "@/lib/is-demo-mode";
+import { Kbd } from "@/components/ui/kbd";
 
 export default function DashboardLayout({
   children,
@@ -200,40 +201,41 @@ export default function DashboardLayout({
         </a>
         <AppSidebar />
         <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4" aria-label="Dashboard header">
+        <header className="flex h-13 shrink-0 items-center gap-3 border-b border-line px-4 bg-bg" aria-label="Dashboard header">
           <TeamSelector />
           <Separator orientation="vertical" className="!h-5" />
           <EnvironmentSelector />
+          <div className="flex-1" />
           <button
             type="button"
             onClick={triggerCommandPalette}
-            className="hidden md:flex flex-1 max-w-md items-center gap-2 rounded-md border border-input bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+            role="search"
+            aria-label="Search"
+            className="hidden md:flex h-7 min-w-[200px] items-center gap-2 rounded-[3px] border border-line-2 bg-bg-2 px-2.5 text-[12px] text-fg-2 hover:bg-bg-3 hover:text-fg transition-colors cursor-pointer"
           >
             <Search className="h-3.5 w-3.5" />
-            <span>Search...</span>
-            <kbd className="pointer-events-none ml-2 inline-flex h-5 items-center gap-0.5 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-              <span className="text-xs">&#8984;</span>K
-            </kbd>
+            <span className="flex-1 text-left">Search…</span>
+            <Kbd>⌘K</Kbd>
           </button>
-          <div className="ml-auto flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               asChild
               aria-label={`Alerts${activeAlertCount > 0 ? ` (${activeAlertCount} active)` : ""}`}
             >
               <Link href="/alerts" className="relative">
-                <Bell className="h-5 w-5" />
+                <Bell className="h-4 w-4" />
                 {activeAlertCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground tabular-nums">
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-error px-1 font-mono text-[9px] font-semibold text-white tabular-nums">
                     {activeAlertCount > 99 ? "99+" : activeAlertCount}
                   </span>
                 )}
               </Link>
             </Button>
-            <Button variant="ghost" size="icon" asChild aria-label="Documentation">
+            <Button variant="ghost" size="icon-sm" asChild aria-label="Documentation">
               <a href="https://vectorflow.sh/docs" target="_blank" rel="noopener noreferrer">
-                <BookOpen className="h-5 w-5" />
+                <BookOpen className="h-4 w-4" />
               </a>
             </Button>
             <ThemeToggle />
@@ -279,7 +281,7 @@ export default function DashboardLayout({
         <CommandPalette />
         <KeyboardShortcutsModal />
         <LazyMotionProvider>
-          <main id="main-content" className="flex-1 py-2 px-6" tabIndex={-1}>
+          <main id="main-content" className="flex-1 min-h-0 overflow-auto" tabIndex={-1}>
             <ErrorBoundary>
               {children}
             </ErrorBoundary>
