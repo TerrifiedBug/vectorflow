@@ -10,6 +10,7 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -268,6 +269,12 @@ function TechniquePanel({ rows }: { rows: Array<{ label: string; amount: number;
 }
 
 function PipelineSavingsTable({ rows, isLoading }: { rows: PipelineCostRow[]; isLoading: boolean }) {
+  const [page, setPage] = useState(0);
+  const pageSize = 25;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const currentPage = Math.min(page, totalPages - 1);
+  const visibleRows = rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+
   if (isLoading) {
     return <Skeleton className="h-56 w-full" />;
   }
@@ -294,7 +301,7 @@ function PipelineSavingsTable({ rows, isLoading }: { rows: PipelineCostRow[]; is
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => {
+              {visibleRows.map((row) => {
                 const savedBytes = Math.max(0, row.bytesIn - row.bytesOut);
                 const trend = row.reductionPercent >= 50 ? "down" : row.reductionPercent >= 20 ? "flat" : "up";
                 return (
@@ -323,6 +330,22 @@ function PipelineSavingsTable({ rows, isLoading }: { rows: PipelineCostRow[]; is
             </TableBody>
           </Table>
         </div>
+        {rows.length > pageSize && (
+          <div className="flex items-center justify-between border-t border-line px-4 py-3 font-mono text-[11px] text-fg-2">
+            <span>
+              Showing {currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, rows.length)} of {rows.length} pipelines
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={currentPage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                Previous
+              </Button>
+              <span className="tabular-nums">Page {currentPage + 1} of {totalPages}</span>
+              <Button variant="outline" size="sm" disabled={currentPage >= totalPages - 1} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}>
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
