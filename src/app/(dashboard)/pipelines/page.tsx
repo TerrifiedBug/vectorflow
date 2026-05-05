@@ -763,16 +763,14 @@ export default function PipelinesPage() {
               }}
             />
           ) : filteredPipelines.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-              <p className="text-muted-foreground">No pipelines match your filters</p>
-              <Button
-                variant="outline"
-                className="mt-4"
-                onClick={clearAllFilters}
-              >
-                Clear filters
-              </Button>
-            </div>
+            <EmptyState
+              glyph="⌬"
+              title="No pipelines match your filter"
+              description="Adjust the environment, status, tag, group, or search filters to widen the result set."
+              action={{ label: "Clear filters", onClick: clearAllFilters }}
+              compact
+              className="p-12"
+            />
           ) : (
         <div onKeyDown={handleKeyDown} tabIndex={0} className="outline-none">
         <Table>
