@@ -668,6 +668,14 @@ describe("alertRulesRouter", () => {
   // ─── testRule ──────────────────────────────────────────────────────────────
 
   describe("testRule", () => {
+    beforeEach(() => {
+      prismaMock.pipeline.findUnique.mockResolvedValue({
+        id: "pipe-1",
+        environmentId: "env-1",
+        environment: { teamId: "team-1" },
+      } as never);
+    });
+
     function buildRow(opts: {
       ts: Date;
       eventsIn?: number;

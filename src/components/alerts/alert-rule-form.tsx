@@ -57,13 +57,13 @@ export type AlertRuleFormValues = {
 };
 
 export const DEFAULT_FORM_VALUES: AlertRuleFormValues = {
-  name: "auditbeat p95 latency breach",
-  description: "Triggers when p95 latency on auditbeat.logs sustains above SLO.",
+  name: "pipeline error rate breach",
+  description: "Triggers when pipeline error rate sustains above threshold.",
   severity: "critical",
   pipelineId: "",
-  metric: "latency_mean",
+  metric: "error_rate",
   condition: "gt",
-  threshold: "250",
+  threshold: "5",
   durationMinutes: "5",
   cooldown: "15",
   channelIds: [],
@@ -78,6 +78,7 @@ type Props =
       mode: "edit";
       ruleId: string;
       ruleName: string;
+      environmentId: string;
       initialValues: AlertRuleFormValues;
     };
 
@@ -87,6 +88,7 @@ export function AlertRuleForm(props: Props) {
   const qc = useQueryClient();
   const teamId = useTeamStore((s) => s.selectedTeamId);
   const { selectedEnvironmentId } = useEnvironmentStore();
+  const effectiveEnvironmentId = props.mode === "edit" ? props.environmentId : selectedEnvironmentId;
 
   const initial =
     props.mode === "edit" ? props.initialValues : props.initialValues ?? DEFAULT_FORM_VALUES;
@@ -106,15 +108,15 @@ export function AlertRuleForm(props: Props) {
 
   const pipelinesQ = useQuery({
     ...trpc.pipeline.list.queryOptions({
-      environmentId: selectedEnvironmentId ?? "",
+      environmentId: effectiveEnvironmentId ?? "",
     }),
-    enabled: !!selectedEnvironmentId,
+    enabled: !!effectiveEnvironmentId,
   });
   const channelsQ = useQuery({
     ...trpc.alert.listChannels.queryOptions({
-      environmentId: selectedEnvironmentId ?? "",
+      environmentId: effectiveEnvironmentId ?? "",
     }),
-    enabled: !!selectedEnvironmentId,
+    enabled: !!effectiveEnvironmentId,
   });
 
   // Surface overlapping rules so users don't accidentally double-author a rule
@@ -122,12 +124,13 @@ export function AlertRuleForm(props: Props) {
   // hammering the server while the user is still picking pipeline/metric.
   const debouncedMetric = useDebounce(metric, 300);
   const debouncedPipelineId = useDebounce(pipelineId, 300);
-  const excludeId = props.mode === "edit" ? props.ruleId : undefined;
+  const editRuleId = props.mode === "edit" ? props.ruleId : null;
+  const excludeId = editRuleId ?? undefined;
   const similarQ = useQuery({
     ...trpc.alert.findSimilar.queryOptions({
       teamId: teamId ?? "",
       pipelineId: debouncedPipelineId || null,
-      environmentId: selectedEnvironmentId ?? null,
+      environmentId: effectiveEnvironmentId ?? null,
       metric: debouncedMetric as never,
       excludeId,
     }),
@@ -147,7 +150,11 @@ export function AlertRuleForm(props: Props) {
     trpc.alert.createRule.mutationOptions({
       onSuccess: () => {
         toast.success("Alert rule created");
-        qc.invalidateQueries({ queryKey: [["alert", "listRules"]] });
+        if (effectiveEnvironmentId) {
+          qc.invalidateQueries({
+            queryKey: trpc.alert.listRules.queryKey({ environmentId: effectiveEnvironmentId }),
+          });
+        }
         router.push("/alerts");
       },
       onError: (e: { message: string }) => toast.error(e.message),
@@ -158,8 +165,16 @@ export function AlertRuleForm(props: Props) {
     trpc.alert.updateRule.mutationOptions({
       onSuccess: () => {
         toast.success("Alert rule updated");
-        qc.invalidateQueries({ queryKey: [["alert", "listRules"]] });
-        qc.invalidateQueries({ queryKey: [["alert", "getRule"]] });
+        if (effectiveEnvironmentId) {
+          qc.invalidateQueries({
+            queryKey: trpc.alert.listRules.queryKey({ environmentId: effectiveEnvironmentId }),
+          });
+        }
+        if (editRuleId) {
+          qc.invalidateQueries({
+            queryKey: trpc.alert.getRule.queryKey({ id: editRuleId, teamId: teamId ?? "" }),
+          });
+        }
         router.push("/alerts");
       },
       onError: (e: { message: string }) => toast.error(e.message),
@@ -171,8 +186,13 @@ export function AlertRuleForm(props: Props) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 
+  function numericOrUndefined(value: string) {
+    const trimmed = value.trim();
+    return trimmed === "" ? undefined : Number(trimmed);
+  }
+
   function submit() {
-    if (!teamId || !selectedEnvironmentId) {
+    if (!teamId || (props.mode === "create" && !effectiveEnvironmentId)) {
       toast.error("Select a team and environment");
       return;
     }
@@ -180,24 +200,24 @@ export function AlertRuleForm(props: Props) {
       createRule.mutate({
         name,
         teamId,
-        environmentId: selectedEnvironmentId,
+        environmentId: effectiveEnvironmentId!,
         pipelineId: pipelineId || undefined,
         metric: metric as never,
         condition: condition as never,
-        threshold: Number(threshold),
-        durationSeconds: Number(durationMinutes) * 60,
+        threshold: numericOrUndefined(threshold),
+        durationSeconds: numericOrUndefined(durationMinutes) == null ? undefined : numericOrUndefined(durationMinutes)! * 60,
         severity,
-        cooldownMinutes: Number(cooldown),
+        cooldownMinutes: numericOrUndefined(cooldown),
         channelIds: Array.from(enabledChannels),
       });
     } else {
       updateRule.mutate({
         id: props.ruleId,
         name,
-        threshold: Number(threshold),
-        durationSeconds: Number(durationMinutes) * 60,
+        ...(numericOrUndefined(threshold) !== undefined ? { threshold: numericOrUndefined(threshold) } : {}),
+        ...(numericOrUndefined(durationMinutes) !== undefined ? { durationSeconds: numericOrUndefined(durationMinutes)! * 60 } : {}),
         severity,
-        cooldownMinutes: Number(cooldown),
+        ...(numericOrUndefined(cooldown) !== undefined ? { cooldownMinutes: numericOrUndefined(cooldown) } : {}),
         channelIds: Array.from(enabledChannels),
       });
     }
@@ -311,7 +331,7 @@ export function AlertRuleForm(props: Props) {
                   ]}
                 />
                 <div className="px-2.5 py-2 bg-bg-2 border border-line-2 rounded-[3px] font-mono text-[12px] text-fg-2">
-                  environment: from topbar
+                  environment: {props.mode === "edit" ? "rule environment" : "from topbar"}
                 </div>
               </div>
               {isEdit && lockedHint}
@@ -479,7 +499,7 @@ export function AlertRuleForm(props: Props) {
 
           <AlertRulePreview
             teamId={teamId}
-            environmentId={selectedEnvironmentId ?? null}
+            environmentId={effectiveEnvironmentId ?? null}
             pipelineId={pipelineId}
             metric={metric}
             condition={condition}

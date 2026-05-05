@@ -573,7 +573,7 @@ describe("promotion router", () => {
       expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { sourcePipeline: { environment: { teamId: "team-1" } } },
-          orderBy: { createdAt: "desc" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: 51,
         }),
       );

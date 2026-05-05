@@ -52,7 +52,10 @@ export default function SecretsVaultPage() {
     ...trpc.environment.list.queryOptions({ teamId: teamId ?? "" }),
     enabled: !!teamId,
   });
-  const envs: { id: string; name: string }[] = (envsQ.data ?? []) as { id: string; name: string }[];
+  const envs = React.useMemo(
+    () => (envsQ.data ?? []) as { id: string; name: string }[],
+    [envsQ.data],
+  );
 
   // Pull secrets for each environment in a stable batch — useQueries respects
   // hook order across render even when env count changes.
@@ -67,8 +70,8 @@ export default function SecretsVaultPage() {
   type RawSecret = {
     id: string;
     name: string;
-    createdAt: string;
-    updatedAt: string;
+    createdAt: string | Date;
+    updatedAt: string | Date;
   };
 
   const rows: SecretRow[] = React.useMemo(() => {
@@ -99,15 +102,20 @@ export default function SecretsVaultPage() {
   const [selectedName, setSelectedName] = React.useState<string | null>(null);
   const selected = rows.find((r) => r.name === selectedName) ?? rows[0];
 
-  // Usage: query per occurrence (one Secret row per env). Refs from each are
-  // merged for the detail panel. Per-env caching keeps the request graph stable.
+  const allOccurrences = React.useMemo(
+    () => rows.flatMap((row) => row.occurrences.map((occ) => ({ ...occ, secretName: row.name }))),
+    [rows],
+  );
+
+  // Usage: query every occurrence so list-level "unused" status reflects real refs.
+  // Per-env caching keeps the request graph stable and bounded by visible secrets.
   const usageQueries = useQueries({
-    queries: (selected?.occurrences ?? []).map((occ) => ({
+    queries: allOccurrences.map((occ) => ({
       ...trpc.secret.usage.queryOptions({
         secretId: occ.id,
         environmentId: occ.environmentId,
       }),
-      enabled: !!selected,
+      enabled: rows.length > 0,
     })),
   });
 
@@ -116,28 +124,46 @@ export default function SecretsVaultPage() {
     componentType: string;
     pipeline: { id: string; name: string; environment: { id: string; name: string } };
   };
-  const usageRefs: UsageRef[] = React.useMemo(() => {
-    const all: UsageRef[] = [];
-    for (const q of usageQueries) {
+  const usageBySecret = React.useMemo(() => {
+    const map = new Map<string, UsageRef[]>();
+    usageQueries.forEach((q, i) => {
+      const name = allOccurrences[i]?.secretName;
+      if (!name) return;
       const data = q.data as { count: number; pipelineCount: number; refs: UsageRef[] } | undefined;
-      if (data?.refs) all.push(...data.refs);
-    }
-    return all;
-  }, [usageQueries]);
+      const refs = map.get(name) ?? [];
+      if (data?.refs) refs.push(...data.refs);
+      map.set(name, refs);
+    });
+    return map;
+  }, [allOccurrences, usageQueries]);
+
+  const usageRefs: UsageRef[] = React.useMemo(
+    () => (selected ? usageBySecret.get(selected.name) ?? [] : []),
+    [selected, usageBySecret],
+  );
   const usagePipelineCount = React.useMemo(
     () => new Set(usageRefs.map((r) => r.pipeline.id)).size,
     [usageRefs],
   );
   const usageLoading = usageQueries.some((q) => q.isPending);
+  const hasLoadError = envsQ.isError || perEnvQueries.some((q) => q.isError);
+
+  const rowsWithUsage = React.useMemo(
+    () => rows.map((row) => usageLoading ? row : withUsageStatus(row, usageBySecret.get(row.name)?.length ?? 0)),
+    [rows, usageBySecret, usageLoading],
+  );
+  const selectedWithUsage = selected
+    ? rowsWithUsage.find((row) => row.name === selected.name) ?? selected
+    : undefined;
 
   const counts = React.useMemo(
     () => ({
-      total: rows.length,
-      rotated30d: rows.filter((r) => isWithin(r.updatedAt, 30)).length,
-      aging: rows.filter((r) => r.status === "aging").length,
-      unused: rows.filter((r) => r.status === "unused").length,
+      total: rowsWithUsage.length,
+      rotated30d: rowsWithUsage.filter((r) => isWithin(r.updatedAt, 30)).length,
+      aging: rowsWithUsage.filter((r) => r.status === "aging").length,
+      unused: rowsWithUsage.filter((r) => r.status === "unused").length,
     }),
-    [rows],
+    [rowsWithUsage],
   );
 
   return (
@@ -180,14 +206,22 @@ export default function SecretsVaultPage() {
         <KpiInStrip label="UNUSED" value={counts.unused} sub="safe to delete" />
         <KpiInStrip
           label="USED BY"
-          value={selected ? (usageLoading ? "…" : usagePipelineCount) : "—"}
-          sub={selected ? `${selected.name} · ${usagePipelineCount === 1 ? "pipeline" : "pipelines"}` : "select a secret"}
+          value={selectedWithUsage ? (usageLoading ? "…" : usagePipelineCount) : "—"}
+          sub={selectedWithUsage ? `${selectedWithUsage.name} · ${usagePipelineCount === 1 ? "pipeline" : "pipelines"}` : "select a secret"}
         />
       </KpiStrip>
 
       {!teamId && <EmptyState glyph="◇" title="Select a team" description="Secrets are scoped per environment within a team." />}
 
-      {teamId && rows.length === 0 && !allLoading && (
+      {teamId && hasLoadError && (
+        <EmptyState
+          glyph="!"
+          title="Failed to load secrets"
+          description={envsQ.error?.message ?? "One or more environment secret lists failed to load."}
+        />
+      )}
+
+      {teamId && rows.length === 0 && !allLoading && !hasLoadError && (
         <EmptyState
           glyph="🔑"
           title="No secrets yet"
@@ -196,7 +230,7 @@ export default function SecretsVaultPage() {
         />
       )}
 
-      {teamId && rows.length > 0 && (
+      {teamId && rows.length > 0 && !hasLoadError && (
         <div className="flex-1 grid min-h-0" style={{ gridTemplateColumns: "1fr 440px" }}>
           {/* LEFT — list */}
           <div className="flex flex-col min-h-0 border-r border-line">
@@ -212,7 +246,7 @@ export default function SecretsVaultPage() {
               <span className="text-right">status</span>
             </div>
             <div className="flex-1 overflow-auto">
-              {rows.map((s) => (
+              {rowsWithUsage.map((s) => (
                 <button
                   key={s.id}
                   type="button"
@@ -254,7 +288,7 @@ export default function SecretsVaultPage() {
           <div className="flex flex-col min-h-0 overflow-hidden">
             {selected ? (
               <SecretDetail
-                row={selected}
+                row={selectedWithUsage ?? selected}
                 usageRefs={usageRefs}
                 usageLoading={usageLoading}
               />
@@ -264,6 +298,12 @@ export default function SecretsVaultPage() {
       )}
     </div>
   );
+}
+
+function withUsageStatus(row: SecretRow, useCount: number): SecretRow {
+  if (useCount === 0) return { ...row, uses: 0, status: "unused" };
+  if (row.status === "unused") return { ...row, uses: useCount, status: "ok" };
+  return { ...row, uses: useCount };
 }
 
 function SecretStatusBadge({ status }: { status: SecretRow["status"] }) {
@@ -431,7 +471,7 @@ function timeAgo(iso: string): string {
 }
 
 function secretToRow(
-  s: { id: string; name: string; createdAt: string; updatedAt: string },
+  s: { id: string; name: string; createdAt: string | Date; updatedAt: string | Date },
   envs: string[],
   occurrences: SecretOccurrence[],
 ): SecretRow {
@@ -443,8 +483,8 @@ function secretToRow(
     name: s.name,
     envs,
     occurrences,
-    createdAt: s.createdAt,
-    updatedAt: s.updatedAt,
+    createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
+    updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
     uses: 0,
     status,
     rotated: ageDays < 1 ? "today" : `${Math.floor(ageDays)}d ago`,

@@ -134,19 +134,25 @@ export function evaluateRuleHistory(
   input: EvaluateRuleHistoryInput,
 ): EvaluateRuleHistoryResult {
   const series: PreviewPoint[] = [];
-  for (const row of input.rows) {
-    const v = metricToColumn(input.metric, row);
-    if (v === null) continue;
-    series.push({ ts: row.timestamp.getTime(), value: v });
-  }
-
   const breaches: BreachWindow[] = [];
   let runStart: number | null = null;
   let runAccumSeconds = 0;
   let runFired = false;
+  let previousPointTs: number | null = null;
 
-  for (let i = 0; i < series.length; i++) {
-    const point = series[i];
+  for (const row of input.rows) {
+    const v = metricToColumn(input.metric, row);
+    if (v === null) {
+      // Missing data breaks sustained breach runs. Do not collapse gaps.
+      runStart = null;
+      runAccumSeconds = 0;
+      runFired = false;
+      previousPointTs = null;
+      continue;
+    }
+
+    const point = { ts: row.timestamp.getTime(), value: v };
+    series.push(point);
     const breached = checkCondition(point.value, input.condition, input.threshold);
 
     if (breached) {
@@ -154,9 +160,8 @@ export function evaluateRuleHistory(
         runStart = point.ts;
         runAccumSeconds = 0;
         runFired = false;
-      } else if (i > 0) {
-        const prev = series[i - 1];
-        runAccumSeconds += Math.max(0, (point.ts - prev.ts) / 1000);
+      } else if (previousPointTs !== null) {
+        runAccumSeconds += Math.max(0, (point.ts - previousPointTs) / 1000);
       }
 
       if (!runFired && runAccumSeconds >= input.durationSeconds) {
@@ -168,6 +173,8 @@ export function evaluateRuleHistory(
       runAccumSeconds = 0;
       runFired = false;
     }
+
+    previousPointTs = point.ts;
   }
 
   return {

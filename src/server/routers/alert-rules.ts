@@ -457,6 +457,18 @@ export const alertRulesRouter = router({
         };
       }
 
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        select: { environmentId: true, environment: { select: { teamId: true } } },
+      });
+      if (
+        !pipeline ||
+        pipeline.environment.teamId !== input.teamId ||
+        (input.environmentId && pipeline.environmentId !== input.environmentId)
+      ) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+
       const { rows } = await queryPipelineMetricsAggregated({
         pipelineId: input.pipelineId,
         minutes: input.lookbackHours * 60,

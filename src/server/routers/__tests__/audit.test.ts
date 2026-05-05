@@ -82,7 +82,10 @@ describe("audit.getDetail", () => {
     expect(result).toEqual(entry);
     expect(prismaMock.auditLog.findUnique).toHaveBeenCalledWith({
       where: { id: "log-1" },
-      include: { user: { select: { name: true, email: true } } },
+      include: {
+        user: { select: { name: true, email: true } },
+        environment: { select: { teamId: true } },
+      },
     });
   });
 

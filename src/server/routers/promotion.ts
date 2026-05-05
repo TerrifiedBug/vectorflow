@@ -443,7 +443,7 @@ export const promotionRouter = router({
           sourcePipeline: { environment: { teamId: input.teamId } },
           ...(input.status ? { status: input.status } : {}),
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: input.limit + 1,
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
         include: {

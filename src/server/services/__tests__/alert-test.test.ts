@@ -177,6 +177,20 @@ describe("evaluateRuleHistory", () => {
     expect(result.series).toHaveLength(4);
   });
 
+  it("breaks sustained breach runs when metric values are missing", () => {
+    const rows = latencySeries([300, null, 310], 120);
+    const result = evaluateRuleHistory({
+      rows,
+      metric: "latency_mean",
+      condition: "gt",
+      threshold: 250,
+      durationSeconds: 60,
+    });
+
+    expect(result.series).toHaveLength(2);
+    expect(result.wouldHaveFired).toBe(0);
+  });
+
   it("works with durationSeconds=0 (instant fire on first breach)", () => {
     const rows = latencySeries([100, 300, 100], 30);
     const result = evaluateRuleHistory({

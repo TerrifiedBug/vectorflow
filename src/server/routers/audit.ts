@@ -76,14 +76,18 @@ export const auditRouter = router({
     .query(async ({ input }) => {
       const entry = await prisma.auditLog.findUnique({
         where: { id: input.id },
-        include: { user: { select: { name: true, email: true } } },
+        include: {
+          user: { select: { name: true, email: true } },
+          environment: { select: { teamId: true } },
+        },
       });
       if (!entry) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
       // Cross-team enumeration guard: even if the caller has access to `input.teamId`
       // via the middleware, refuse to return entries that belong to a different team.
-      if (entry.teamId !== input.teamId) {
+      const scopedTeamId = entry.teamId ?? entry.environment?.teamId ?? null;
+      if (scopedTeamId !== input.teamId) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
       return entry;

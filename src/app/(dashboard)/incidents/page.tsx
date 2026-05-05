@@ -35,6 +35,7 @@ interface TimelineEvent {
 }
 
 interface TimelineRow {
+  pipelineId: string;
   pipelineName: string;
   env: string;
   state: "firing" | "recovered" | "ok";
@@ -54,10 +55,11 @@ export default function IncidentsPage() {
 
   type RawAnomaly = {
     id?: string;
+    pipelineId?: string;
     pipelineName?: string;
-    pipeline?: { name?: string };
+    pipeline?: { id?: string; name?: string };
     severity?: string;
-    detectedAt?: string;
+    detectedAt?: string | Date;
     description?: string;
     metric?: string;
     status?: "open" | "acknowledged" | "dismissed";
@@ -77,32 +79,34 @@ export default function IncidentsPage() {
 
     for (const a of anomaliesQ.data as RawAnomaly[]) {
       const name = a.pipelineName ?? a.pipeline?.name ?? "—";
+      const key = a.pipelineId ?? a.pipeline?.id ?? name;
       const ts = a.detectedAt ?? new Date().toISOString();
-      const t = new Date(ts).getTime();
+      const timestamp = ts instanceof Date ? ts.toISOString() : ts;
+      const t = new Date(timestamp).getTime();
       const ago = nowMs - t;
       if (ago > windowMs) continue;
       const hour = HOURS - 1 - Math.floor(ago / (60 * 60 * 1000));
       const row =
-        buckets.get(name) ??
-        ({ pipelineName: name, env: "—", state: "ok", events: [] } as TimelineRow);
+        buckets.get(key) ??
+        ({ pipelineId: key, pipelineName: name, env: "—", state: "ok", events: [] } as TimelineRow);
       row.events.push({
         kind: "anomaly",
         hour: Math.max(0, Math.min(HOURS - 1, hour)),
         label: a.description ?? a.metric ?? "anomaly",
-        ts,
+        ts: timestamp,
       });
       if (a.status === "open") row.state = "firing";
       else if (a.status === "acknowledged" && row.state === "ok") row.state = "recovered";
-      buckets.set(name, row);
+      buckets.set(key, row);
     }
     return Array.from(buckets.values()).slice(0, 50);
   }, [anomaliesQ.data, nowMs]);
 
-  const [selectedRowName, setSelectedRowName] = React.useState<string | null>(
+  const [selectedRowId, setSelectedRowId] = React.useState<string | null>(
     null,
   );
   const selectedRow =
-    rows.find((r) => r.pipelineName === selectedRowName) ?? rows[0];
+    rows.find((r) => r.pipelineId === selectedRowId) ?? rows[0];
 
   const counts = React.useMemo(
     () => ({
@@ -177,7 +181,15 @@ export default function IncidentsPage() {
         />
       )}
 
-      {selectedEnvironmentId && rows.length === 0 && !anomaliesQ.isPending && (
+      {selectedEnvironmentId && anomaliesQ.isError && (
+        <EmptyState
+          glyph="!"
+          title="Incident timeline unavailable"
+          description={anomaliesQ.error?.message ?? "Failed to load incident data."}
+        />
+      )}
+
+      {selectedEnvironmentId && rows.length === 0 && anomaliesQ.isSuccess && (
         <EmptyState
           glyph="✓"
           title="Nothing breaking"
@@ -222,12 +234,12 @@ export default function IncidentsPage() {
                     : row.state === "recovered"
                       ? "var(--status-degraded)"
                       : "var(--fg-2)";
-                const isSelected = row.pipelineName === (selectedRow?.pipelineName ?? "");
+                const isSelected = row.pipelineId === (selectedRow?.pipelineId ?? "");
                 return (
                   <button
-                    key={row.pipelineName}
+                    key={row.pipelineId}
                     type="button"
-                    onClick={() => setSelectedRowName(row.pipelineName)}
+                    onClick={() => setSelectedRowId(row.pipelineId)}
                     className={cn(
                       "grid w-full text-left border-b border-line min-h-[56px] cursor-pointer transition-colors",
                       isSelected

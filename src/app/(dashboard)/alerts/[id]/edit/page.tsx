@@ -76,6 +76,7 @@ export default function EditAlertRulePage() {
       mode="edit"
       ruleId={ruleQ.data.id}
       ruleName={ruleQ.data.name}
+      environmentId={ruleQ.data.environmentId}
       initialValues={initialValues}
     />
   );
