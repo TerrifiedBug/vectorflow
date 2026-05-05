@@ -189,6 +189,13 @@ export function AlertRuleForm(props: Props) {
   const channels = (channelsQ.data ?? []) as { id: string; name: string; type: string }[];
   const pipelines = (pipelinesQ.data?.pipelines ?? []) as { id: string; name: string }[];
 
+  const isEdit = props.mode === "edit";
+  const lockedHint = (
+    <div className="mt-1 font-mono text-[10.5px] text-fg-2">
+      Locked after create — delete to change.
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-full bg-bg text-fg">
       {/* HEADER */}
@@ -233,8 +240,13 @@ export function AlertRuleForm(props: Props) {
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full min-h-[60px] resize-y rounded-[3px] border border-line-2 bg-bg-2 px-2.5 py-2 text-[12px] text-fg outline-none focus-visible:border-accent-brand focus-visible:ring-2 focus-visible:ring-accent-soft"
+                disabled={isEdit}
+                className={cn(
+                  "w-full min-h-[60px] resize-y rounded-[3px] border border-line-2 bg-bg-2 px-2.5 py-2 text-[12px] text-fg outline-none focus-visible:border-accent-brand focus-visible:ring-2 focus-visible:ring-accent-soft",
+                  isEdit && "opacity-60 cursor-not-allowed",
+                )}
               />
+              {isEdit && lockedHint}
 
               <FormLabel className="mt-3.5">Severity</FormLabel>
               <Segmented
@@ -256,6 +268,7 @@ export function AlertRuleForm(props: Props) {
                   label="pipeline"
                   value={pipelineId}
                   onChange={setPipelineId}
+                  disabled={isEdit}
                   options={[
                     { value: "", label: "(any)" },
                     ...pipelines.map((p) => ({
@@ -268,13 +281,16 @@ export function AlertRuleForm(props: Props) {
                   environment: from topbar
                 </div>
               </div>
+              {isEdit && lockedHint}
 
               <FormLabel className="mt-3.5">Metric</FormLabel>
               <Select
                 value={metric}
                 onChange={setMetric}
+                disabled={isEdit}
                 options={METRICS.map((m) => ({ value: m.value, label: m.label }))}
               />
+              {isEdit && lockedHint}
 
               <FormLabel className="mt-3.5">Condition</FormLabel>
               <div
@@ -284,6 +300,7 @@ export function AlertRuleForm(props: Props) {
                 <Select
                   value={condition}
                   onChange={setCondition}
+                  disabled={isEdit}
                   options={CONDITIONS.map((c) => ({ value: c.value, label: c.label }))}
                 />
                 <div className="flex items-center bg-bg-2 border border-line-2 rounded-[3px] px-2.5">
@@ -298,6 +315,7 @@ export function AlertRuleForm(props: Props) {
                   absolute
                 </div>
               </div>
+              {isEdit && lockedHint}
 
               <FormLabel className="mt-3.5">For at least</FormLabel>
               <div className="grid gap-2.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
@@ -475,19 +493,30 @@ function Select({
   onChange,
   options,
   label,
+  disabled,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
   label?: string;
+  disabled?: boolean;
 }) {
   return (
-    <div className="relative flex items-center bg-bg-2 border border-line-2 rounded-[3px] px-2.5 py-2 font-mono text-[12px] text-fg">
+    <div
+      className={cn(
+        "relative flex items-center bg-bg-2 border border-line-2 rounded-[3px] px-2.5 py-2 font-mono text-[12px] text-fg",
+        disabled && "opacity-60",
+      )}
+    >
       {label && <span className="text-fg-2 mr-1.5">{label}:</span>}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="appearance-none bg-transparent border-0 outline-none text-fg pr-5 cursor-pointer flex-1"
+        disabled={disabled}
+        className={cn(
+          "appearance-none bg-transparent border-0 outline-none text-fg pr-5 flex-1",
+          disabled ? "cursor-not-allowed" : "cursor-pointer",
+        )}
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
