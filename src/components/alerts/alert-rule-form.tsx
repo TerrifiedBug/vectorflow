@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { VFIcon } from "@/components/ui/vf-icon";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { AlertRulePreview } from "@/components/alerts/alert-rule-preview";
 
 /**
  * Shared alert-rule editor used by both /alerts/new and /alerts/[id]/edit.
@@ -443,6 +444,16 @@ export function AlertRuleForm(props: Props) {
             Server emits an alert event each time this rule fires. Cooldown suppresses
             duplicates per scope.
           </div>
+
+          <AlertRulePreview
+            teamId={teamId}
+            environmentId={selectedEnvironmentId ?? null}
+            pipelineId={pipelineId}
+            metric={metric}
+            condition={condition}
+            threshold={threshold}
+            durationMinutes={durationMinutes}
+          />
         </div>
       </div>
     </div>

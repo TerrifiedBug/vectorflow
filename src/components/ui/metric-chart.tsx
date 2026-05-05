@@ -6,6 +6,15 @@ export interface MetricChartSeries {
   data: number[];
 }
 
+export interface MetricChartBand {
+  /** Index into series[0].data marking the start of the band (inclusive). */
+  startIndex: number;
+  /** Index into series[0].data marking the end of the band (inclusive). */
+  endIndex: number;
+  /** CSS color (defaults to a soft red). */
+  color?: string;
+}
+
 interface MetricChartProps {
   series: MetricChartSeries[];
   width: number;
@@ -16,6 +25,10 @@ interface MetricChartProps {
   axis?: boolean;
   smooth?: boolean;
   className?: string;
+  /** Optional vertical bands rendered underneath the line(s). */
+  bands?: MetricChartBand[];
+  /** Optional horizontal dashed line at this Y value. */
+  thresholdY?: number;
 }
 
 function smoothPath(pts: [number, number][]) {
@@ -41,6 +54,8 @@ export function MetricChart({
   axis = true,
   smooth = true,
   className,
+  bands,
+  thresholdY,
 }: MetricChartProps) {
   const PAD_L = axis ? 38 : 4;
   const PAD_R = 4;
@@ -50,7 +65,9 @@ export function MetricChart({
   const ih = height - PAD_T - PAD_B;
   const all = series.flatMap((s) => s.data);
   const min = 0;
-  const max = (Math.max(...all) || 1) * 1.08;
+  // Make sure the threshold line stays inside the plot area.
+  const dataMax = Math.max(...all, thresholdY ?? 0) || 1;
+  const max = dataMax * 1.08;
   const range = max - min;
   const n = series[0]?.data.length || 1;
   const stepX = iw / Math.max(n - 1, 1);
@@ -107,6 +124,36 @@ export function MetricChart({
             </text>
           );
         })}
+      {bands?.map((band, bi) => {
+        const startIdx = Math.max(0, Math.min(band.startIndex, n - 1));
+        const endIdx = Math.max(0, Math.min(band.endIndex, n - 1));
+        const x1 = PAD_L + startIdx * stepX;
+        const x2 = PAD_L + endIdx * stepX;
+        const w = Math.max(2, x2 - x1);
+        return (
+          <rect
+            key={`band-${bi}`}
+            x={x1}
+            y={PAD_T}
+            width={w}
+            height={ih}
+            fill={band.color ?? "var(--status-error-bg)"}
+            opacity={0.55}
+          />
+        );
+      })}
+      {thresholdY != null && (
+        <line
+          x1={PAD_L}
+          x2={width - PAD_R}
+          y1={yToPx(thresholdY)}
+          y2={yToPx(thresholdY)}
+          stroke="var(--status-error)"
+          strokeWidth="1"
+          strokeDasharray="3 3"
+          opacity={0.7}
+        />
+      )}
       {series.map((s, si) => {
         const pts: [number, number][] = s.data.map((v, i) => [
           PAD_L + i * stepX,
