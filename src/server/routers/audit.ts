@@ -105,6 +105,7 @@ export const auditRouter = router({
         startDate: z.string().optional(),
         endDate: z.string().optional(),
         cursor: z.string().optional(),
+        limit: z.number().int().min(1).max(100).default(100),
       })
     )
     .query(async ({ input, ctx }) => {
@@ -118,8 +119,9 @@ export const auditRouter = router({
         startDate,
         endDate,
         cursor,
+        limit,
       } = input;
-      const take = 50;
+      const take = limit;
 
       const conditions: Record<string, unknown>[] = [];
       pushAuditScope(conditions, scope);

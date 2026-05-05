@@ -98,6 +98,7 @@ export default function AuditPage() {
     : undefined;
 
   const queryInput = {
+    limit: 100,
     ...(actionFilter ? { action: actionFilter } : {}),
     ...(entityTypesParam ? { entityTypes: entityTypesParam } : {}),
     ...(userFilter ? { userId: userFilter } : {}),
