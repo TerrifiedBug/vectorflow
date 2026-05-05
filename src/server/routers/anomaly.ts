@@ -21,6 +21,8 @@ export const anomalyRouter = router({
         status: z.enum(["open", "acknowledged", "dismissed"]).optional(),
         limit: z.number().int().min(1).max(100).optional(),
         cursor: z.string().optional(),
+        from: z.string().optional(),
+        to: z.string().optional(),
       }),
     )
     .use(withTeamAccess("VIEWER"))

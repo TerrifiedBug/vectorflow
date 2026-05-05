@@ -2,9 +2,11 @@
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { DateRange } from "react-day-picker";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { Button } from "@/components/ui/button";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { KpiStrip, KpiInStrip } from "@/components/ui/kpi-tile";
 import { EventDot, type EventKind } from "@/components/ui/event-dot";
 import { VFIcon } from "@/components/ui/vf-icon";
@@ -45,12 +47,26 @@ interface TimelineRow {
 export default function IncidentsPage() {
   const trpc = useTRPC();
   const { selectedEnvironmentId } = useEnvironmentStore();
+  const [dateRange, setDateRange] = React.useState<DateRange | undefined>(() => ({
+    from: new Date(Date.now() - HOURS * 60 * 60 * 1000),
+    to: new Date(),
+  }));
+
+  const queryWindow = React.useMemo(() => {
+    const to = dateRange?.to ?? new Date();
+    const from = dateRange?.from ?? new Date(to.getTime() - HOURS * 60 * 60 * 1000);
+    return { from, to };
+  }, [dateRange]);
 
   const anomaliesQ = useQuery({
     ...trpc.anomaly.list.queryOptions({
       environmentId: selectedEnvironmentId ?? "",
+      from: queryWindow.from.toISOString(),
+      to: queryWindow.to.toISOString(),
+      limit: 100,
     }),
     enabled: !!selectedEnvironmentId,
+    refetchInterval: 5_000,
   });
 
   type RawAnomaly = {
@@ -74,7 +90,7 @@ export default function IncidentsPage() {
 
   const rows: TimelineRow[] = React.useMemo(() => {
     if (!Array.isArray(anomaliesQ.data) || nowMs == null) return [];
-    const windowMs = HOURS * 60 * 60 * 1000;
+    const windowMs = Math.max(60 * 60 * 1000, queryWindow.to.getTime() - queryWindow.from.getTime());
     const buckets = new Map<string, TimelineRow>();
 
     for (const a of anomaliesQ.data as RawAnomaly[]) {
@@ -83,7 +99,7 @@ export default function IncidentsPage() {
       const ts = a.detectedAt ?? new Date().toISOString();
       const timestamp = ts instanceof Date ? ts.toISOString() : ts;
       const t = new Date(timestamp).getTime();
-      const ago = nowMs - t;
+      const ago = queryWindow.to.getTime() - t;
       if (ago > windowMs) continue;
       const hour = HOURS - 1 - Math.floor(ago / (60 * 60 * 1000));
       const row =
@@ -100,7 +116,7 @@ export default function IncidentsPage() {
       buckets.set(key, row);
     }
     return Array.from(buckets.values()).slice(0, 50);
-  }, [anomaliesQ.data, nowMs]);
+  }, [anomaliesQ.data, nowMs, queryWindow]);
 
   const [selectedRowId, setSelectedRowId] = React.useState<string | null>(
     null,
@@ -146,7 +162,18 @@ export default function IncidentsPage() {
             <VFIcon name="filter" />
             All envs
           </Button>
-          <Button variant="ghost" size="sm">
+          <DateRangePicker
+            value={dateRange}
+            onChange={setDateRange}
+            placeholder="Incident window"
+            className="h-7 w-[240px] border-line-2 bg-bg-2 font-mono text-[11px]"
+            align="end"
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setDateRange({ from: new Date(Date.now() - HOURS * 60 * 60 * 1000), to: new Date() })}
+          >
             14h
           </Button>
           <Button variant="default" size="sm">
@@ -193,7 +220,7 @@ export default function IncidentsPage() {
         <EmptyState
           glyph="✓"
           title="Nothing breaking"
-          description="No anomalies, alerts, deploys or rollbacks in the last 14 hours."
+          description="No anomalies, alerts, deploys or rollbacks in the selected window."
         />
       )}
 
