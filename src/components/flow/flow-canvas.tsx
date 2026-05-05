@@ -4,7 +4,6 @@ import { useCallback, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   ReactFlow,
-  Background,
   Controls,
   useReactFlow,
   type ReactFlowInstance,
@@ -170,7 +169,22 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   );
 
   return (
-    <div className="h-full w-full" role="region" aria-label="Pipeline editor canvas">
+    <div
+      className="relative h-full w-full"
+      role="region"
+      aria-label="Pipeline editor canvas"
+    >
+      {/* v2 dot-grid background — sits behind React Flow's transparent canvas */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "radial-gradient(var(--line-2) 1px, transparent 1px)",
+          backgroundSize: "20px 20px",
+          opacity: 0.5,
+        }}
+      />
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -189,9 +203,9 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
         deleteKeyCode={null}
         selectionKeyCode="Shift"
         multiSelectionKeyCode="Meta"
+        style={{ background: "transparent" }}
         aria-roledescription="Pipeline editor canvas. Use arrow keys to navigate between nodes, Enter to select, Escape to deselect."
       >
-        <Background gap={16} size={1} />
         <Controls className="!bg-card !border-border !shadow-md [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-accent [&>button:focus-visible]:!ring-2 [&>button:focus-visible]:!ring-ring [&>button:focus-visible]:!outline-none" />
       </ReactFlow>
       {contextMenu && (
