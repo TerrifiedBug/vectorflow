@@ -193,13 +193,26 @@ describe("DetailPanel", () => {
       expect(getByTestId("schema-form")).toBeTruthy();
     });
 
-    it("shows a lineage tab for selected nodes", () => {
+    it("renders Config / Schema / Metrics / Logs tabs", () => {
       const node = makeNode("n1");
       const { getByRole } = renderPanel({
         selectedNodeId: "n1",
         nodes: [node],
       });
-      expect(getByRole("tab", { name: "Lineage" })).toBeTruthy();
+      expect(getByRole("tab", { name: /config/i })).toBeTruthy();
+      expect(getByRole("tab", { name: /schema/i })).toBeTruthy();
+      expect(getByRole("tab", { name: /metrics/i })).toBeTruthy();
+      expect(getByRole("tab", { name: /logs/i })).toBeTruthy();
+    });
+
+    it("renders the inspector header with mono kind label", () => {
+      const node = makeNode("n1");
+      const { getByText } = renderPanel({
+        selectedNodeId: "n1",
+        nodes: [node],
+      });
+      // mono uppercase kind · type
+      expect(getByText(/source · kafka/i)).toBeTruthy();
     });
   });
 });
