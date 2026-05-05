@@ -16,6 +16,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ArrowLeft,
+  GitBranch,
+  Activity,
 } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { cn } from "@/lib/utils";
@@ -54,6 +56,8 @@ const observeItems = [
 
 const operateItems = [
   { title: "Alerts", href: "/alerts", icon: Bell },
+  { title: "Incidents", href: "/incidents", icon: Activity },
+  { title: "Promotions", href: "/promotions", icon: GitBranch },
   { title: "Analytics", href: "/analytics", icon: BarChart3 },
   { title: "Audit Log", href: "/audit", icon: ScrollText },
 ];
