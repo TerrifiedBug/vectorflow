@@ -474,6 +474,36 @@ describe("FlowToolbar", () => {
       );
       expect(getByText("last saved 14s ago")).toBeTruthy();
     });
+
+    it("commits inline rename via Enter and calls onRename with trimmed value", () => {
+      const onRename = vi.fn();
+      const { getByText, getByLabelText } = renderToolbar(
+        {},
+        { pipelineName: "old-name", onRename },
+      );
+
+      fireEvent.click(getByText("old-name"));
+      const input = getByLabelText("Pipeline name") as HTMLInputElement;
+      fireEvent.change(input, { target: { value: "  new-name  " } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(onRename).toHaveBeenCalledWith("new-name");
+    });
+
+    it("cancels inline rename on Escape and does not call onRename", () => {
+      const onRename = vi.fn();
+      const { getByText, getByLabelText } = renderToolbar(
+        {},
+        { pipelineName: "old-name", onRename },
+      );
+
+      fireEvent.click(getByText("old-name"));
+      const input = getByLabelText("Pipeline name") as HTMLInputElement;
+      fireEvent.change(input, { target: { value: "new-name" } });
+      fireEvent.keyDown(input, { key: "Escape" });
+
+      expect(onRename).not.toHaveBeenCalled();
+    });
   });
 
   describe("deploy button state", () => {

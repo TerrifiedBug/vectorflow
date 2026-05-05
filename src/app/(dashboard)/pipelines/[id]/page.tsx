@@ -9,7 +9,8 @@ import {
   type Node,
   type Edge,
 } from "@xyflow/react";
-import { Trash2, Pencil, Check, X, AlertTriangle } from "lucide-react";
+import { Trash2, AlertTriangle } from "lucide-react";
+import { formatDistanceToNowStrict } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { useTRPC } from "@/trpc/client";
 import { useFlowStore } from "@/stores/flow-store";
@@ -19,7 +20,6 @@ import { aggregateProcessStatus } from "@/lib/pipeline-status";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -115,6 +115,20 @@ function dbEdgesToFlowEdges(
     target: e.targetNodeId,
     ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
   }));
+}
+
+/**
+ * Map common environment names to a CSS variable color so the toolbar Pill
+ * shows a tone-appropriate tint. Falls back to undefined for unknown names,
+ * which renders the neutral env Pill.
+ */
+function envPillColor(envName?: string | null): string | undefined {
+  if (!envName) return undefined;
+  const lower = envName.toLowerCase();
+  if (lower === "prod" || lower === "production") return "var(--status-error)";
+  if (lower === "staging" || lower === "stage" || lower === "preprod") return "var(--status-degraded)";
+  if (lower === "dev" || lower === "development" || lower === "local") return "var(--accent-brand)";
+  return undefined;
 }
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
@@ -330,11 +344,15 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
 
   const queryClient = useQueryClient();
 
+  // Last-saved timestamp for the toolbar's relative-time label.
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
   // Save mutation
   const saveMutation = useMutation(
     trpc.pipeline.saveGraph.mutationOptions({
       onSuccess: () => {
         markClean();
+        setLastSavedAt(new Date());
         queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
         toast.success("Pipeline saved");
       },
@@ -389,15 +407,11 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     })
   );
 
-  // Rename state
-  const [isRenaming, setIsRenaming] = useState(false);
-  const [renameValue, setRenameValue] = useState("");
-
+  // Rename mutation — the toolbar owns the inline-edit UX; this only fires on commit.
   const renameMutation = useMutation(
     trpc.pipeline.update.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey({ id: pipelineId }) });
-        setIsRenaming(false);
         toast.success("Pipeline renamed");
       },
       onError: (error) => {
@@ -406,19 +420,27 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     })
   );
 
-  const handleStartRename = () => {
-    setRenameValue(pipelineQuery.data?.name ?? "");
-    setIsRenaming(true);
-  };
-
-  const handleConfirmRename = () => {
-    const trimmed = renameValue.trim();
+  const handleConfirmRename = (trimmed: string) => {
     if (!trimmed || trimmed === pipelineQuery.data?.name) {
-      setIsRenaming(false);
       return;
     }
     renameMutation.mutate({ id: pipelineId, name: trimmed });
   };
+
+  // Tick the "last saved" relative label every 15s so it stays roughly accurate
+  // without rerendering on every frame.
+  const [lastSavedTick, setLastSavedTick] = useState(0);
+  useEffect(() => {
+    if (!lastSavedAt) return;
+    const interval = setInterval(() => setLastSavedTick((n) => n + 1), 15_000);
+    return () => clearInterval(interval);
+  }, [lastSavedAt]);
+  const lastSavedLabel = useMemo(() => {
+    if (!lastSavedAt) return undefined;
+    // Reference lastSavedTick so this memo recomputes on each tick.
+    void lastSavedTick;
+    return formatDistanceToNowStrict(lastSavedAt, { addSuffix: true });
+  }, [lastSavedAt, lastSavedTick]);
 
   const buildSavePayload = useCallback(() => {
     const state = useFlowStore.getState();
@@ -490,41 +512,8 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
 
   return (
     <div className="-mx-6 -my-2 flex h-[calc(100vh-3.5rem)] flex-col">
-      <div className="flex h-10 items-center border-b">
-        {/* Pipeline name — click to rename */}
-        <div className="flex items-center gap-1 border-r px-3">
-          {isRenaming ? (
-            <div className="flex items-center gap-1">
-              <Input
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleConfirmRename();
-                  if (e.key === "Escape") setIsRenaming(false);
-                }}
-                className="h-7 w-48 text-xs"
-                autoFocus
-                disabled={renameMutation.isPending}
-              />
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleConfirmRename} disabled={renameMutation.isPending}>
-                <Check className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setIsRenaming(false)}>
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          ) : (
-            <button
-              onClick={handleStartRename}
-              className="group flex items-center gap-1.5 rounded px-2 py-1 text-sm font-medium hover:bg-accent transition-colors"
-              title="Click to rename"
-            >
-              {pipelineQuery.data?.name ?? "Untitled"}
-              <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-            </button>
-          )}
-        </div>
-        <div className="flex-1">
+      <div className="flex items-center border-b">
+        <div className="flex-1 min-w-0">
           <FlowToolbar
             pipelineId={pipelineId}
             onSave={handleSave}
@@ -551,6 +540,13 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             aiEnabled={aiEnabled}
             onAiOpen={() => setAiDialogOpen(true)}
             deployedVersionNumber={pipelineQuery.data?.deployedVersionNumber}
+            pipelineName={pipelineQuery.data?.name ?? "Untitled"}
+            environmentName={pipelineQuery.data?.environment?.name}
+            environmentColor={envPillColor(pipelineQuery.data?.environment?.name)}
+            nodeCount={nodes.length}
+            lastSavedLabel={lastSavedLabel}
+            onRename={handleConfirmRename}
+            isRenaming={renameMutation.isPending}
           />
         </div>
         <div className="flex items-center px-3">

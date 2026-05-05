@@ -133,6 +133,10 @@ interface FlowToolbarProps {
   lastSavedLabel?: string;
   /** Total node count, surfaced in the running/paused status text. */
   nodeCount?: number;
+  /** When provided, the pipeline name becomes click-to-edit; called with the trimmed new name on commit. */
+  onRename?: (name: string) => void;
+  /** Disables the inline rename input while a rename request is pending. */
+  isRenaming?: boolean;
 }
 
 const PROCESS_STATUS_DOT: Record<ProcessStatusValue, "healthy" | "error" | "neutral" | "info" | "idle"> = {
@@ -211,6 +215,8 @@ export function FlowToolbar({
   environmentColor,
   lastSavedLabel,
   nodeCount,
+  onRename,
+  isRenaming = false,
 }: FlowToolbarProps) {
   const globalConfig = useFlowStore((s) => s.globalConfig);
   const canUndo = useFlowStore((s) => s.canUndo);
@@ -241,6 +247,32 @@ export function FlowToolbar({
   const [importText, setImportText] = useState("");
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [importValidation, setImportValidation] = useState<ImportValidationState>({ status: "idle" });
+  const [renameEditing, setRenameEditing] = useState(false);
+  const [renameDraft, setRenameDraft] = useState("");
+
+  const startRename = () => {
+    if (!onRename) return;
+    setRenameDraft(pipelineName ?? "");
+    setRenameEditing(true);
+  };
+
+  const commitRename = () => {
+    if (!onRename) {
+      setRenameEditing(false);
+      return;
+    }
+    const trimmed = renameDraft.trim();
+    if (!trimmed || trimmed === pipelineName) {
+      setRenameEditing(false);
+      return;
+    }
+    onRename(trimmed);
+    setRenameEditing(false);
+  };
+
+  const cancelRename = () => {
+    setRenameEditing(false);
+  };
 
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -376,9 +408,40 @@ export function FlowToolbar({
           {showPipelineMeta && (
             <div className="flex shrink-0 items-center gap-1.5">
               {pipelineName && (
-                <span className="font-mono text-[13px] font-medium text-fg">
-                  {pipelineName}
-                </span>
+                renameEditing && onRename ? (
+                  <input
+                    aria-label="Pipeline name"
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    onBlur={commitRename}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        commitRename();
+                      }
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelRename();
+                      }
+                    }}
+                    disabled={isRenaming}
+                    autoFocus
+                    className="bg-transparent border-b border-line-2 outline-none font-mono text-[13px] font-medium text-fg w-48 focus:border-accent-brand"
+                  />
+                ) : onRename ? (
+                  <button
+                    type="button"
+                    onClick={startRename}
+                    title="Click to rename"
+                    className="font-mono text-[13px] font-medium text-fg rounded-[3px] px-1 -mx-1 hover:bg-bg-3 transition-colors"
+                  >
+                    {pipelineName}
+                  </button>
+                ) : (
+                  <span className="font-mono text-[13px] font-medium text-fg">
+                    {pipelineName}
+                  </span>
+                )
               )}
               {environmentName && (
                 <Pill
