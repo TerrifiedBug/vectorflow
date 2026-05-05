@@ -73,7 +73,7 @@ export default function PromotionsPage() {
 
   const recentQ = useQuery({
     ...trpc.promotion.recentForTeam.queryOptions(
-      { teamId: teamId ?? "", limit: 100 },
+      { teamId: teamId ?? "", limit: 50 },
       { enabled: Boolean(teamId) },
     ),
   });
