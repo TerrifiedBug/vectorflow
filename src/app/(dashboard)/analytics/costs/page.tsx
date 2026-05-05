@@ -11,7 +11,7 @@ import { usePollingInterval } from "@/hooks/use-polling-interval";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ChartSkeleton, KpiSkeleton, TableSkeleton } from "@/components/ui/loading-skeletons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -95,12 +95,16 @@ export function CostDashboard() {
   if (summary.isLoading) {
     return (
       <div className="space-y-5">
-        <Skeleton className="h-40 w-full" />
-        <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-          <Skeleton className="h-72 w-full" />
-          <Skeleton className="h-72 w-full" />
+        <div className="grid gap-3 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <KpiSkeleton key={index} />
+          ))}
         </div>
-        <Skeleton className="h-56 w-full" />
+        <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+          <ChartSkeleton />
+          <ChartSkeleton />
+        </div>
+        <TableSkeleton rows={6} />
       </div>
     );
   }
@@ -198,7 +202,7 @@ function RawReducedTrend({ data, range, isLoading }: { data: CostTimeSeriesBucke
       </CardHeader>
       <CardContent className="p-4">
         {isLoading ? (
-          <Skeleton className="h-[260px] w-full" />
+          <ChartSkeleton />
         ) : points.length === 0 ? (
           <div className="flex h-[260px] items-center justify-center font-mono text-[11.5px] text-fg-2">No cost data for selected range.</div>
         ) : (
@@ -276,7 +280,7 @@ function PipelineSavingsTable({ rows, isLoading }: { rows: PipelineCostRow[]; is
   const visibleRows = rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   if (isLoading) {
-    return <Skeleton className="h-56 w-full" />;
+    return <TableSkeleton rows={6} />;
   }
   if (rows.length === 0) {
     return <EmptyState title="No pipeline cost data for selected range" />;
