@@ -6,6 +6,11 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { isEventMetric } from "@/server/services/event-alerts";
 import { FLEET_METRICS, PIPELINE_FLEET_METRICS } from "@/server/services/alert-evaluator";
+import { queryPipelineMetricsAggregated } from "@/server/services/metrics-query";
+import {
+  evaluateRuleHistory,
+  unsupportedPreviewReason,
+} from "@/server/services/alert-test";
 
 export const alertRulesRouter = router({
   getRule: protectedProcedure
@@ -331,5 +336,78 @@ export const alertRulesRouter = router({
         where: { id: input.id },
         data: { snoozedUntil: null },
       });
+    }),
+
+  /**
+   * Live-preview helper for the alert rule editor.
+   *
+   * Replays the rule's condition + threshold + duration over the last
+   * N hours of pipeline metric history and returns:
+   *   - the projected metric series
+   *   - the breach windows that would have produced an alert event
+   *   - the count of distinct fires
+   *
+   * For metrics that aren't time-series (event-based, drift, fleet aggregates,
+   * node-scoped), returns `{ supported: false, reason: "..." }` with a hint
+   * the UI surfaces verbatim.
+   */
+  testRule: protectedProcedure
+    .input(
+      z.object({
+        teamId: z.string(),
+        pipelineId: z.string().nullish(),
+        environmentId: z.string().nullish(),
+        metric: z.nativeEnum(AlertMetric),
+        condition: z.nativeEnum(AlertCondition),
+        threshold: z.number(),
+        durationSeconds: z.number().int().min(0),
+        lookbackHours: z.number().int().min(1).max(72).default(6),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const reason = unsupportedPreviewReason(input.metric);
+      if (reason) {
+        return {
+          supported: false as const,
+          reason,
+          lookbackHours: input.lookbackHours,
+        };
+      }
+
+      if (!input.pipelineId) {
+        // Environment-wide preview is not implemented for Phase A — preview
+        // requires a specific pipeline because the metric source query is
+        // pipeline-scoped.
+        return {
+          supported: false as const,
+          reason: input.environmentId
+            ? "Environment-wide preview isn't supported yet — pick a specific pipeline."
+            : "Pick a pipeline to preview historical breaches.",
+          lookbackHours: input.lookbackHours,
+        };
+      }
+
+      const { rows } = await queryPipelineMetricsAggregated({
+        pipelineId: input.pipelineId,
+        minutes: input.lookbackHours * 60,
+      });
+
+      const { series, breaches, wouldHaveFired } = evaluateRuleHistory({
+        rows,
+        metric: input.metric,
+        condition: input.condition,
+        threshold: input.threshold,
+        durationSeconds: input.durationSeconds,
+      });
+
+      return {
+        supported: true as const,
+        series,
+        threshold: input.threshold,
+        breaches,
+        wouldHaveFired,
+        lookbackHours: input.lookbackHours,
+      };
     }),
 });

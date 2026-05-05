@@ -46,6 +46,26 @@ vi.mock("@/server/services/alert-evaluator", () => ({
     "throughput_floor",
   ]),
   PIPELINE_FLEET_METRICS: new Set(["latency_mean", "throughput_floor"]),
+  // Real implementation — testRule needs honest comparisons.
+  checkCondition: (value: number, condition: string, threshold: number) => {
+    switch (condition) {
+      case "gt":
+        return value > threshold;
+      case "lt":
+        return value < threshold;
+      case "eq":
+        return value === threshold;
+      default:
+        return false;
+    }
+  },
+}));
+
+const mockQueryPipelineMetricsAggregated = vi.fn();
+vi.mock("@/server/services/metrics-query", () => ({
+  queryPipelineMetricsAggregated: (
+    ...args: Parameters<typeof mockQueryPipelineMetricsAggregated>
+  ) => mockQueryPipelineMetricsAggregated(...args),
 }));
 
 import { prisma } from "@/lib/prisma";
@@ -644,6 +664,133 @@ describe("alertRulesRouter", () => {
   });
 
   // ─── unsnoozeRule ──────────────────────────────────────────────────────────
+
+  // ─── testRule ──────────────────────────────────────────────────────────────
+
+  describe("testRule", () => {
+    function buildRow(opts: {
+      ts: Date;
+      eventsIn?: number;
+      errorsTotal?: number;
+      latencyMeanMs?: number | null;
+    }) {
+      return {
+        timestamp: opts.ts,
+        eventsIn: BigInt(opts.eventsIn ?? 0),
+        eventsOut: BigInt(0),
+        eventsDiscarded: BigInt(0),
+        errorsTotal: BigInt(opts.errorsTotal ?? 0),
+        bytesIn: BigInt(0),
+        bytesOut: BigInt(0),
+        utilization: 0,
+        latencyMeanMs: opts.latencyMeanMs ?? null,
+      };
+    }
+
+    it("returns a series + breach count for a supported metric", async () => {
+      const start = new Date("2026-01-01T00:00:00Z").getTime();
+      const rows = [
+        buildRow({ ts: new Date(start + 0 * 30_000), latencyMeanMs: 100 }),
+        buildRow({ ts: new Date(start + 1 * 30_000), latencyMeanMs: 300 }),
+        buildRow({ ts: new Date(start + 2 * 30_000), latencyMeanMs: 320 }),
+        buildRow({ ts: new Date(start + 3 * 30_000), latencyMeanMs: 340 }),
+        buildRow({ ts: new Date(start + 4 * 30_000), latencyMeanMs: 100 }),
+      ];
+      mockQueryPipelineMetricsAggregated.mockResolvedValue({ rows });
+
+      const result = await caller.testRule({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        metric: "latency_mean" as never,
+        condition: "gt" as never,
+        threshold: 250,
+        durationSeconds: 60,
+        lookbackHours: 6,
+      });
+
+      expect(result.supported).toBe(true);
+      if (!result.supported) return; // type guard
+      expect(result.series).toHaveLength(5);
+      expect(result.wouldHaveFired).toBe(1);
+      expect(result.breaches).toHaveLength(1);
+      expect(result.threshold).toBe(250);
+      expect(result.lookbackHours).toBe(6);
+      expect(mockQueryPipelineMetricsAggregated).toHaveBeenCalledWith({
+        pipelineId: "pipe-1",
+        minutes: 360,
+      });
+    });
+
+    it("returns supported:false for an event-based metric", async () => {
+      const result = await caller.testRule({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        metric: "deploy_requested" as never,
+        condition: "eq" as never,
+        threshold: 1,
+        durationSeconds: 0,
+      });
+
+      expect(result.supported).toBe(false);
+      if (result.supported) return;
+      expect(result.reason).toMatch(/event/i);
+      expect(mockQueryPipelineMetricsAggregated).not.toHaveBeenCalled();
+    });
+
+    it("returns supported:false for a node-scoped metric", async () => {
+      const result = await caller.testRule({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        metric: "cpu_usage" as never,
+        condition: "gt" as never,
+        threshold: 80,
+        durationSeconds: 60,
+      });
+
+      expect(result.supported).toBe(false);
+      if (result.supported) return;
+      expect(result.reason).toMatch(/node/i);
+    });
+
+    it("returns supported:false when neither pipelineId nor environmentId provided", async () => {
+      const result = await caller.testRule({
+        teamId: "team-1",
+        metric: "latency_mean" as never,
+        condition: "gt" as never,
+        threshold: 250,
+        durationSeconds: 60,
+      });
+
+      expect(result.supported).toBe(false);
+      if (result.supported) return;
+      expect(result.reason).toMatch(/pipeline/i);
+      expect(mockQueryPipelineMetricsAggregated).not.toHaveBeenCalled();
+    });
+
+    it("returns 0 fires when breaches are too brief to satisfy duration", async () => {
+      const start = new Date("2026-01-01T00:00:00Z").getTime();
+      const rows = [
+        buildRow({ ts: new Date(start + 0 * 30_000), latencyMeanMs: 100 }),
+        buildRow({ ts: new Date(start + 1 * 30_000), latencyMeanMs: 300 }),
+        buildRow({ ts: new Date(start + 2 * 30_000), latencyMeanMs: 100 }),
+      ];
+      mockQueryPipelineMetricsAggregated.mockResolvedValue({ rows });
+
+      const result = await caller.testRule({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        metric: "latency_mean" as never,
+        condition: "gt" as never,
+        threshold: 250,
+        durationSeconds: 120,
+      });
+
+      expect(result.supported).toBe(true);
+      if (!result.supported) return;
+      expect(result.wouldHaveFired).toBe(0);
+      expect(result.breaches).toEqual([]);
+    });
+  });
 
   describe("unsnoozeRule", () => {
     it("unsnoozes a rule by setting snoozedUntil to null", async () => {
