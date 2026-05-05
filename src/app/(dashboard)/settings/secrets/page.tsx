@@ -153,6 +153,11 @@ export default function SecretsVaultPage() {
     () => rows.map((row) => usageLoading ? row : withUsageStatus(row, usageBySecret.get(row.name)?.length ?? 0)),
     [rows, usageBySecret, usageLoading],
   );
+  const [page, setPage] = React.useState(0);
+  const pageSize = 50;
+  const totalPages = Math.max(1, Math.ceil(rowsWithUsage.length / pageSize));
+  const currentPage = Math.min(page, totalPages - 1);
+  const visibleRows = rowsWithUsage.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   const selectedWithUsage = selected
     ? rowsWithUsage.find((row) => row.name === selected.name) ?? selected
     : undefined;
@@ -247,7 +252,7 @@ export default function SecretsVaultPage() {
               <span className="text-right">status</span>
             </div>
             <div className="flex-1 overflow-auto">
-              {rowsWithUsage.map((s) => (
+              {visibleRows.map((s) => (
                 <button
                   key={s.id}
                   type="button"
@@ -283,6 +288,22 @@ export default function SecretsVaultPage() {
                 </button>
               ))}
             </div>
+            {rowsWithUsage.length > pageSize && (
+              <div className="flex items-center justify-between border-t border-line bg-bg-1 px-5 py-3 font-mono text-[11px] text-fg-2">
+                <span>
+                  Showing {currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, rowsWithUsage.length)} of {rowsWithUsage.length} secrets
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={currentPage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                    Previous
+                  </Button>
+                  <span className="tabular-nums">Page {currentPage + 1} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={currentPage >= totalPages - 1} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* RIGHT — detail */}
