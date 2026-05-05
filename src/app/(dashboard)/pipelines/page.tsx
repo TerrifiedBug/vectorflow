@@ -363,6 +363,10 @@ export default function PipelinesPage() {
   const environments = environmentsQuery.data ?? [];
   const effectiveEnvId = selectedEnvironmentId || environments[0]?.id || "";
 
+  useEffect(() => {
+    setSelectedPipelineIds(new Set());
+  }, [effectiveEnvId, search, statusFilter, tagFilter, groupId]);
+
   const pipelinesQuery = useInfiniteQuery(
     trpc.pipeline.list.infiniteQueryOptions(
       {
@@ -737,6 +741,9 @@ export default function PipelinesPage() {
           {selectedPipelineIds.size > 0 && (
             <BulkActionBar
               selectedIds={[...selectedPipelineIds]}
+              selectedPipelines={filteredPipelines
+                .filter((pipeline) => selectedPipelineIds.has(pipeline.id))
+                .map((pipeline) => ({ id: pipeline.id, name: pipeline.name }))}
               onClearSelection={() => setSelectedPipelineIds(new Set())}
             />
           )}
