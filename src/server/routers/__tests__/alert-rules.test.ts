@@ -818,4 +818,138 @@ describe("alertRulesRouter", () => {
       ).rejects.toMatchObject({ code: "NOT_FOUND" });
     });
   });
+
+  // ─── findSimilar ───────────────────────────────────────────────────────────
+
+  describe("findSimilar", () => {
+    function makeMatch(overrides: Record<string, unknown> = {}) {
+      return {
+        id: "rule-1",
+        name: "High CPU",
+        metric: "cpu_usage",
+        condition: "gt",
+        threshold: 90,
+        environment: { id: "env-1", name: "production" },
+        pipeline: { id: "pipe-1", name: "auditbeat" },
+        ...overrides,
+      };
+    }
+
+    it("returns matches for same metric on same pipeline", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([makeMatch()] as never);
+
+      const result = await caller.findSimilar({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+      });
+
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0]?.id).toBe("rule-1");
+      const where = prismaMock.alertRule.findMany.mock.calls[0]![0]!.where!;
+      expect(where).toEqual(
+        expect.objectContaining({
+          teamId: "team-1",
+          metric: "cpu_usage",
+        }),
+      );
+      // OR clause should target same pipeline
+      expect(where.OR).toEqual(
+        expect.arrayContaining([{ pipelineId: "pipe-1" }]),
+      );
+    });
+
+    it("excludes the rule named in excludeId", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([] as never);
+
+      await caller.findSimilar({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+        excludeId: "rule-self",
+      });
+
+      const where = prismaMock.alertRule.findMany.mock.calls[0]![0]!.where!;
+      expect(where).toEqual(
+        expect.objectContaining({
+          id: { not: "rule-self" },
+        }),
+      );
+    });
+
+    it("does NOT include id filter when excludeId not provided", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([] as never);
+
+      await caller.findSimilar({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+      });
+
+      const where = prismaMock.alertRule.findMany.mock.calls[0]![0]!.where!;
+      expect(where).not.toHaveProperty("id");
+    });
+
+    it("returns empty array when no overlapping rules exist", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([] as never);
+
+      const result = await caller.findSimilar({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+      });
+
+      expect(result.matches).toEqual([]);
+    });
+
+    it("caps results at 3", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([] as never);
+
+      await caller.findSimilar({
+        teamId: "team-1",
+        pipelineId: "pipe-1",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+      });
+
+      const args = prismaMock.alertRule.findMany.mock.calls[0]![0]!;
+      expect(args.take).toBe(3);
+    });
+
+    it("matches team-wide rules when no pipelineId/environmentId provided", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([] as never);
+
+      await caller.findSimilar({
+        teamId: "team-1",
+        metric: "cpu_usage" as never,
+      });
+
+      const where = prismaMock.alertRule.findMany.mock.calls[0]![0]!.where!;
+      expect(where.OR).toEqual(
+        expect.arrayContaining([{ pipelineId: null, environmentId: null }]),
+      );
+    });
+
+    it("includes env-wide overlap when environmentId provided without pipelineId", async () => {
+      prismaMock.alertRule.findMany.mockResolvedValue([] as never);
+
+      await caller.findSimilar({
+        teamId: "team-1",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+      });
+
+      const where = prismaMock.alertRule.findMany.mock.calls[0]![0]!.where!;
+      expect(where.OR).toEqual(
+        expect.arrayContaining([
+          { pipelineId: null, environmentId: "env-1" },
+          { environmentId: "env-1", pipelineId: null },
+        ]),
+      );
+    });
+  });
 });

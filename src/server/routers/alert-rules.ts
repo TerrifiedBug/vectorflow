@@ -351,6 +351,75 @@ export const alertRulesRouter = router({
    * node-scoped), returns `{ supported: false, reason: "..." }` with a hint
    * the UI surfaces verbatim.
    */
+  /**
+   * Surfaces existing alert rules that overlap with the rule the user is
+   * currently authoring (same team + same metric + overlapping scope).
+   *
+   * The editor uses this to render an inline warning so users don't end up
+   * with two near-duplicate rules firing on the same pipeline.
+   *
+   * Scope-overlap rules:
+   *   - If a pipeline is selected: any rule on the same pipelineId.
+   *   - If only an environment is selected: env-wide rules in that env
+   *     (pipelineId=null) — note these would overlap with any future
+   *     pipeline-scoped rule in the same env.
+   *   - If neither is selected: team-wide rules (both null).
+   *
+   * `excludeId` lets the edit form omit the rule being edited from results.
+   */
+  findSimilar: protectedProcedure
+    .input(
+      z.object({
+        teamId: z.string(),
+        pipelineId: z.string().nullish(),
+        environmentId: z.string().nullish(),
+        metric: z.nativeEnum(AlertMetric),
+        excludeId: z.string().nullish(),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const orClauses: Array<Record<string, unknown>> = [];
+
+      if (input.pipelineId) {
+        orClauses.push({ pipelineId: input.pipelineId });
+      } else {
+        orClauses.push({
+          pipelineId: null,
+          environmentId: input.environmentId ?? null,
+        });
+      }
+
+      if (input.environmentId) {
+        orClauses.push({
+          environmentId: input.environmentId,
+          pipelineId: null,
+        });
+      }
+
+      const matches = await prisma.alertRule.findMany({
+        where: {
+          teamId: input.teamId,
+          metric: input.metric,
+          ...(input.excludeId ? { id: { not: input.excludeId } } : {}),
+          OR: orClauses,
+        },
+        take: 3,
+        select: {
+          id: true,
+          name: true,
+          metric: true,
+          condition: true,
+          threshold: true,
+          environment: { select: { id: true, name: true } },
+          pipeline: { select: { id: true, name: true } },
+        },
+        orderBy: { updatedAt: "desc" },
+      });
+
+      return { matches };
+    }),
+
   testRule: protectedProcedure
     .input(
       z.object({
