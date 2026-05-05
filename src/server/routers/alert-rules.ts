@@ -8,6 +8,24 @@ import { isEventMetric } from "@/server/services/event-alerts";
 import { FLEET_METRICS, PIPELINE_FLEET_METRICS } from "@/server/services/alert-evaluator";
 
 export const alertRulesRouter = router({
+  getRule: protectedProcedure
+    .input(z.object({ id: z.string(), teamId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const rule = await prisma.alertRule.findUnique({
+        where: { id: input.id },
+        include: {
+          environment: { select: { id: true, name: true } },
+          pipeline: { select: { id: true, name: true } },
+          channels: { include: { channel: true } },
+        },
+      });
+      if (!rule || rule.teamId !== input.teamId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Alert rule not found" });
+      }
+      return rule;
+    }),
+
   listRules: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))

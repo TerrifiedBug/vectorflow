@@ -90,6 +90,58 @@ describe("alertRulesRouter", () => {
     mockIsEventMetric.mockReturnValue(false);
   });
 
+  // ─── getRule ───────────────────────────────────────────────────────────────
+
+  describe("getRule", () => {
+    it("returns rule with environment, pipeline, and channel relations", async () => {
+      const rule = makeAlertRule({
+        environment: { id: "env-1", name: "production" },
+        pipeline: { id: "pipe-1", name: "auditbeat" },
+        channels: [
+          {
+            id: "arc-1",
+            channelId: "ch-1",
+            channel: { id: "ch-1", name: "ops-slack", type: "slack" },
+          },
+        ],
+      });
+      prismaMock.alertRule.findUnique.mockResolvedValue(rule as never);
+
+      const result = await caller.getRule({ id: "rule-1", teamId: "team-1" });
+
+      expect(result.id).toBe("rule-1");
+      expect(result.channels).toHaveLength(1);
+      expect(prismaMock.alertRule.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "rule-1" },
+          include: expect.objectContaining({
+            environment: { select: { id: true, name: true } },
+            pipeline: { select: { id: true, name: true } },
+            channels: { include: { channel: true } },
+          }),
+        }),
+      );
+    });
+
+    it("throws NOT_FOUND when rule does not exist", async () => {
+      prismaMock.alertRule.findUnique.mockResolvedValue(null);
+
+      await expect(
+        caller.getRule({ id: "rule-missing", teamId: "team-1" }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+
+    it("throws NOT_FOUND when rule belongs to a different team", async () => {
+      prismaMock.alertRule.findUnique.mockResolvedValue(
+        makeAlertRule({ teamId: "team-2" }) as never,
+      );
+
+      await expect(
+        caller.getRule({ id: "rule-1", teamId: "team-1" }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+  });
+
   // ─── listRules ─────────────────────────────────────────────────────────────
 
   describe("listRules", () => {
