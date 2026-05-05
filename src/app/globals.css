@@ -371,3 +371,16 @@
     scroll-behavior: auto !important;
   }
 }
+
+@media (max-width: 767px) {
+  body::before {
+    content: "VectorFlow runs on tablets and up (768px+).";
+    display: block;
+    padding: 12px 16px;
+    background: var(--status-info-bg);
+    color: var(--status-info-foreground);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: center;
+  }
+}
