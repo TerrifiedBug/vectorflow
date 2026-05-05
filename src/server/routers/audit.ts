@@ -69,6 +69,26 @@ function pushAuditScope(conditions: Record<string, unknown>[], scope: AuditScope
 }
 
 export const auditRouter = router({
+  /** Full detail for a single audit entry, scoped to a team (for the entry drawer). */
+  getDetail: protectedProcedure
+    .input(z.object({ id: z.string(), teamId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const entry = await prisma.auditLog.findUnique({
+        where: { id: input.id },
+        include: { user: { select: { name: true, email: true } } },
+      });
+      if (!entry) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+      // Cross-team enumeration guard: even if the caller has access to `input.teamId`
+      // via the middleware, refuse to return entries that belong to a different team.
+      if (entry.teamId !== input.teamId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+      return entry;
+    }),
+
   list: protectedProcedure
     .input(
       z.object({
