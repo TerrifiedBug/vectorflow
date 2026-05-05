@@ -59,6 +59,7 @@ vi.mock("@/server/services/fleet-data", () => ({
   getVolumeTrend: vi.fn(),
   getNodeThroughput: vi.fn(),
   getNodeCapacity: vi.fn(),
+  getCpuHeatmap: vi.fn(),
   getDataLoss: vi.fn(),
   getMatrixThroughput: vi.fn(),
 }));
@@ -72,6 +73,7 @@ import {
   getVolumeTrend,
   getNodeThroughput,
   getNodeCapacity,
+  getCpuHeatmap,
   getDataLoss,
   getMatrixThroughput,
 } from "@/server/services/fleet-data";
@@ -1046,6 +1048,15 @@ describe("fleet.nodeCapacity", () => {
     await caller.nodeCapacity({ environmentId: "env-1", range: "6h" });
 
     expect(getNodeCapacity).toHaveBeenCalledWith("env-1", "6h");
+  });
+});
+
+describe("fleet.cpuHeatmap", () => {
+  it("delegates to getCpuHeatmap with correct args", async () => {
+    (getCpuHeatmap as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    const result = await caller.cpuHeatmap({ environmentId: "env-1", range: "1h" });
+    expect(result).toEqual([]);
+    expect(getCpuHeatmap).toHaveBeenCalledWith("env-1", "1h");
   });
 });
 

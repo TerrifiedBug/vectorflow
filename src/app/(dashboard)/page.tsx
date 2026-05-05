@@ -94,6 +94,20 @@ export default function DashboardPage() {
     refetchInterval: pipelineCardsPolling,
     enabled: !!selectedEnvironmentId && activeView === null,
   });
+  const cpuHeatmap = useQuery({
+    ...trpc.fleet.cpuHeatmap.queryOptions({ environmentId: selectedEnvironmentId ?? "", range: "1h" }),
+    refetchInterval: pipelineCardsPolling,
+    enabled: !!selectedEnvironmentId && activeView === null,
+  });
+
+  const cpuSummary = useMemo(() => {
+    const rows = cpuHeatmap.data ?? [];
+    if (rows.length === 0) return { peak: 0, avg: 0, hottestNode: "—" };
+    const peak = rows.reduce((max, row) => Math.max(max, row.cpuLoad), 0);
+    const avg = rows.reduce((sum, row) => sum + row.cpuLoad, 0) / rows.length;
+    const hottest = rows.reduce((max, row) => row.cpuLoad > max.cpuLoad ? row : max, rows[0]);
+    return { peak, avg, hottestNode: hottest.nodeName };
+  }, [cpuHeatmap.data]);
 
   // Compute pipeline status counts for summary bar
   const pipelineStatusCounts = useMemo(() => {
@@ -314,8 +328,8 @@ export default function DashboardPage() {
         <>
           {/* KPI Summary Cards */}
           {stats.isPending ? (
-            <div className="grid auto-rows-fr gap-4 md:grid-cols-2 lg:grid-cols-6">
-              {Array.from({ length: 6 }).map((_, i) => (
+            <div className="grid auto-rows-fr gap-4 md:grid-cols-2 lg:grid-cols-7">
+              {Array.from({ length: 7 }).map((_, i) => (
                 <Card key={i} className="h-full">
                   <CardContent className="p-4">
                     <Skeleton className="h-4 w-24 mb-2" />
@@ -325,7 +339,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-          <StaggerList className="grid auto-rows-fr gap-4 md:grid-cols-2 lg:grid-cols-6" aria-live="polite" aria-atomic="false" aria-relevant="text">
+          <StaggerList className="grid auto-rows-fr gap-4 md:grid-cols-2 lg:grid-cols-7" aria-live="polite" aria-atomic="false" aria-relevant="text">
             {/* Total Nodes */}
             <StaggerItem className="h-full">
             <Card className="h-full">
@@ -438,6 +452,24 @@ export default function DashboardPage() {
                     <p className="text-xs text-muted-foreground">No traffic data</p>
                   </>
                 )}
+              </CardContent>
+            </Card>
+            </StaggerItem>
+
+            {/* CPU Heatmap */}
+            <StaggerItem className="h-full">
+            <Card className="h-full">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">CPU Heatmap</p>
+                  <Cpu className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <p role="status" className="mt-1 text-2xl font-semibold tabular-nums">
+                  {cpuHeatmap.isPending ? "—" : cpuSummary.peak.toFixed(1)}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  peak load · avg {cpuSummary.avg.toFixed(1)} · {cpuSummary.hottestNode}
+                </p>
               </CardContent>
             </Card>
             </StaggerItem>
