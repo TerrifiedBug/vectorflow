@@ -118,12 +118,20 @@ const DraggableItem = memo(function DraggableItem({
 interface SectionProps {
   kind: Kind;
   items: VectorComponentDef[];
+  open: boolean;
+  onToggle: (kind: Kind) => void;
   onAdd: (def: VectorComponentDef) => void;
 }
 
-function CollapsibleSection({ kind, items, onAdd }: SectionProps) {
-  const [open, setOpen] = useState(true);
+function CollapsibleSection({
+  kind,
+  items,
+  open,
+  onToggle,
+  onAdd,
+}: SectionProps) {
   const meta = SECTION_META[kind];
+  const panelId = `palette-section-${kind}`;
 
   if (items.length === 0) return null;
 
@@ -131,8 +139,9 @@ function CollapsibleSection({ kind, items, onAdd }: SectionProps) {
     <div>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => onToggle(kind)}
         aria-expanded={open}
+        aria-controls={panelId}
         className={cn(
           "flex w-full items-center gap-[6px] px-[14px] pt-2 pb-1",
           "font-mono uppercase text-[9px] tracking-[0.08em] text-fg-2",
@@ -148,7 +157,12 @@ function CollapsibleSection({ kind, items, onAdd }: SectionProps) {
         <span className="ml-auto tabular-nums text-fg-2">{items.length}</span>
       </button>
       {open && (
-        <div className="space-y-[3px] px-2 pb-1">
+        <div
+          id={panelId}
+          role="region"
+          aria-label={meta.label}
+          className="space-y-[3px] px-2 pb-1"
+        >
           {items.map((def) => (
             <DraggableItem key={`${def.kind}:${def.type}`} def={def} onAdd={onAdd} />
           ))}
@@ -165,7 +179,7 @@ interface SharedItemProps {
 }
 
 function SharedItem({ sc, componentDef, onAdd }: SharedItemProps) {
-  const kindKey = (sc.kind.toLowerCase() as Kind) ?? "transform";
+  const kindKey = sc.kind.toLowerCase() as Kind;
   const tileVar = SECTION_META[kindKey]?.tileVar ?? SECTION_META.transform.tileVar;
   const canAdd = !!componentDef;
 
@@ -245,6 +259,23 @@ export function ComponentPalette() {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"catalog" | "shared">("catalog");
   const [sharedKindFilter, setSharedKindFilter] = useState<"all" | Kind>("all");
+  const [openSections, setOpenSections] = useState<Record<Kind, boolean>>({
+    source: true,
+    transform: true,
+    sink: true,
+  });
+
+  const toggleSection = useCallback((kind: Kind) => {
+    setOpenSections((prev) => ({ ...prev, [kind]: !prev[kind] }));
+  }, []);
+
+  const catalogIndex = useMemo(() => {
+    const map = new Map<string, VectorComponentDef>();
+    for (const def of getVectorCatalog()) {
+      map.set(`${def.kind}:${def.type}`, def);
+    }
+    return map;
+  }, []);
 
   const trpc = useTRPC();
   const { selectedEnvironmentId } = useEnvironmentStore();
@@ -345,7 +376,7 @@ export function ComponentPalette() {
     }));
   }, [filtered]);
 
-  const totalCount = useMemo(() => getVectorCatalog().length, []);
+  const totalCount = catalogIndex.size;
 
   return (
     <aside className="flex h-full w-[280px] shrink-0 flex-col overflow-hidden border-r border-line bg-bg-1">
@@ -415,6 +446,8 @@ export function ComponentPalette() {
                 key={kind}
                 kind={kind}
                 items={items}
+                open={openSections[kind]}
+                onToggle={toggleSection}
                 onAdd={addComponentToCanvas}
               />
             ))}
@@ -470,8 +503,8 @@ export function ComponentPalette() {
               <div className="space-y-[3px] pb-1">
                 {filteredShared.map((sc) => {
                   const kindKey = sc.kind.toLowerCase() as Kind;
-                  const componentDef = getVectorCatalog().find(
-                    (d) => d.type === sc.componentType && d.kind === kindKey,
+                  const componentDef = catalogIndex.get(
+                    `${kindKey}:${sc.componentType}`,
                   );
                   return (
                     <SharedItem

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, fireEvent, cleanup } from "@testing-library/react";
+import { render, fireEvent, cleanup, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import { useFlowStore } from "@/stores/flow-store";
@@ -204,6 +204,59 @@ describe("ComponentPalette", () => {
       fireEvent.click(getByText("Catalog"));
 
       expect(getByText("Apache Kafka")).toBeTruthy();
+    });
+  });
+
+  describe("collapsible sections", () => {
+    it("collapses and expands sections via header toggle", () => {
+      const { getByRole, queryByText } = render(<ComponentPalette />);
+
+      const sourcesHeader = getByRole("button", { name: /Sources/ });
+      expect(sourcesHeader).toHaveAttribute("aria-expanded", "true");
+      expect(queryByText("Apache Kafka")).toBeTruthy();
+
+      fireEvent.click(sourcesHeader);
+      expect(sourcesHeader).toHaveAttribute("aria-expanded", "false");
+      expect(queryByText("Apache Kafka")).toBeNull();
+
+      fireEvent.click(sourcesHeader);
+      expect(sourcesHeader).toHaveAttribute("aria-expanded", "true");
+      expect(queryByText("Apache Kafka")).toBeTruthy();
+    });
+
+    it("preserves collapsed state across tab switches", () => {
+      const { getByRole, queryByText } = render(<ComponentPalette />);
+
+      const sourcesHeader = getByRole("button", { name: /Sources/ });
+      fireEvent.click(sourcesHeader);
+      expect(sourcesHeader).toHaveAttribute("aria-expanded", "false");
+
+      fireEvent.click(getByRole("tab", { name: "Shared" }));
+      fireEvent.click(getByRole("tab", { name: "Catalog" }));
+
+      const sourcesHeaderAfter = getByRole("button", { name: /Sources/ });
+      expect(sourcesHeaderAfter).toHaveAttribute("aria-expanded", "false");
+      expect(queryByText("Apache Kafka")).toBeNull();
+    });
+  });
+
+  describe("sectioned grouping", () => {
+    it("renders each component under its kind's section header", () => {
+      const { getByRole } = render(<ComponentPalette />);
+
+      const sourcesHeader = getByRole("button", { name: /Sources/ });
+      const sourcesPanel = getByRole("region", { name: "Sources" });
+      expect(sourcesHeader).toHaveAttribute(
+        "aria-controls",
+        sourcesPanel.id,
+      );
+      expect(within(sourcesPanel).getByText("Apache Kafka")).toBeTruthy();
+
+      const transformsPanel = getByRole("region", { name: "Transforms" });
+      expect(within(transformsPanel).getByText("Remap")).toBeTruthy();
+
+      const sinksPanel = getByRole("region", { name: "Sinks" });
+      expect(within(sinksPanel).getByText("Datadog Logs")).toBeTruthy();
     });
   });
 
