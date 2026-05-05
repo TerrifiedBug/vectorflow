@@ -136,7 +136,7 @@ export default function NewPipelinePage() {
 
       queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
       toast.success("Pipeline created");
-      router.push(`/pipelines/${pipeline.id}`);
+      router.push(`/pipelines/${pipeline.id}/edit`);
     } catch {
       // Error already handled by mutation onError
     }

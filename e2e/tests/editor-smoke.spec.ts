@@ -5,7 +5,7 @@ test.describe("Editor smoke", () => {
   test("renders the v2 editor shell and node inspector", async ({ page }) => {
     const seed = await readSeedResult();
 
-    await page.goto(`/pipelines/${seed.pipelineId}`);
+    await page.goto(`/pipelines/${seed.pipelineId}/edit`);
 
     const canvas = page.locator(".react-flow");
     await expect(canvas).toBeVisible();
