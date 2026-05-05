@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
@@ -144,8 +145,25 @@ export default function FleetPage() {
   }, [rawNodes, sortField, sortDirection]);
 
   const PAGE_SIZE = 25;
+  const shouldVirtualize = nodes.length > 100;
   const totalPages = Math.ceil(nodes.length / PAGE_SIZE);
   const paginatedNodes = nodes.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is required for F1 fleet virtualization past 100 nodes.
+  const rowVirtualizer = useVirtualizer({
+    count: shouldVirtualize ? nodes.length : 0,
+    getScrollElement: () => tableScrollRef.current,
+    estimateSize: () => 56,
+    overscan: 8,
+  });
+  const virtualItems = shouldVirtualize ? rowVirtualizer.getVirtualItems() : [];
+  const visibleNodes = shouldVirtualize
+    ? virtualItems.map((item) => nodes[item.index]).filter((node): node is NonNullable<typeof node> => Boolean(node))
+    : paginatedNodes;
+  const topPadding = shouldVirtualize ? (virtualItems[0]?.start ?? 0) : 0;
+  const bottomPadding = shouldVirtualize
+    ? Math.max(0, rowVirtualizer.getTotalSize() - (virtualItems[virtualItems.length - 1]?.end ?? 0))
+    : 0;
 
   const versionQuery = useQuery(
     trpc.settings.checkVersion.queryOptions(undefined, {
@@ -259,7 +277,10 @@ export default function FleetPage() {
           </Button>
         </div>
       ) : (
-        <div>
+        <div
+          ref={tableScrollRef}
+          className={shouldVirtualize ? "max-h-[640px] overflow-auto rounded-[3px] border border-line" : undefined}
+        >
         <Table>
           <TableHeader>
             <TableRow>
@@ -304,7 +325,12 @@ export default function FleetPage() {
             </TableRow>
           </TableHeader>
           <StaggerList as="tbody" className="[&_tr:last-child]:border-0">
-            {paginatedNodes.map((node) => (
+            {topPadding > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={8} style={{ height: topPadding }} />
+              </tr>
+            )}
+            {visibleNodes.map((node) => (
               <StaggerItem as="tr" key={node.id} className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors cursor-pointer">
                 <TableCell className="font-medium">
                   <Link
@@ -485,9 +511,14 @@ export default function FleetPage() {
                 </TableCell>
               </StaggerItem>
             ))}
+            {bottomPadding > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={8} style={{ height: bottomPadding }} />
+              </tr>
+            )}
           </StaggerList>
         </Table>
-        {totalPages > 1 && (
+        {!shouldVirtualize && totalPages > 1 && (
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
             <span className="text-muted-foreground">
               Showing {page * PAGE_SIZE + 1}&ndash;{Math.min((page + 1) * PAGE_SIZE, nodes.length)} of {nodes.length} nodes
