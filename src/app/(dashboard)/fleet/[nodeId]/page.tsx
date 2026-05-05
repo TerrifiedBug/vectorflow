@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { NodeMetricsCharts } from "@/components/fleet/node-metrics-charts";
 import { UptimeCards } from "@/components/fleet/uptime-cards";
@@ -68,6 +69,7 @@ export default function NodeDetailPage() {
   const [isEditingLabels, setIsEditingLabels] = useState(false);
   const [editLabels, setEditLabels] = useState<Array<{ key: string; value: string }>>([]);
   const [timelineRange, setTimelineRange] = useState<"1h" | "6h" | "1d" | "7d" | "30d">("1d");
+  const [confirmAction, setConfirmAction] = useState<"enter-maintenance" | "exit-maintenance" | "revoke" | "delete" | null>(null);
 
   const nodePolling = usePollingInterval(15_000);
 
@@ -185,34 +187,33 @@ export default function NodeDetailPage() {
 
   function handleMaintenanceToggle() {
     if (!node) return;
-    if (!node.maintenanceMode) {
-      const runningCount = node.pipelineStatuses.filter(
-        (s) => s.status === "RUNNING"
-      ).length;
-      if (!confirm(
-        `Enter maintenance mode for "${node.name}"?\n\nThis will stop ${runningCount} running pipeline(s) on this node. Pipelines will automatically resume when maintenance mode is turned off.`
-      )) return;
-    }
-    maintenanceMutation.mutate({
-      nodeId: node.id,
-      enabled: !node.maintenanceMode,
-    });
+    setConfirmAction(node.maintenanceMode ? "exit-maintenance" : "enter-maintenance");
   }
 
   function handleRevoke() {
     if (!node) return;
-    if (!confirm(`Revoke token for "${node.name}"? The agent will no longer be able to connect.`)) {
-      return;
-    }
-    revokeMutation.mutate({ id: node.id });
+    setConfirmAction("revoke");
   }
 
   function handleDelete() {
     if (!node) return;
-    if (!confirm(`Delete node "${node.name}"? This action cannot be undone.`)) {
+    setConfirmAction("delete");
+  }
+
+  function handleConfirmAction() {
+    if (!node || !confirmAction) return;
+    if (confirmAction === "enter-maintenance" || confirmAction === "exit-maintenance") {
+      maintenanceMutation.mutate(
+        { nodeId: node.id, enabled: confirmAction === "enter-maintenance" },
+        { onSuccess: () => setConfirmAction(null) },
+      );
       return;
     }
-    deleteMutation.mutate({ id: node.id });
+    if (confirmAction === "revoke") {
+      revokeMutation.mutate({ id: node.id }, { onSuccess: () => setConfirmAction(null) });
+      return;
+    }
+    deleteMutation.mutate({ id: node.id }, { onSuccess: () => setConfirmAction(null) });
   }
 
   if (nodeQuery.isLoading) {
@@ -241,6 +242,11 @@ export default function NodeDetailPage() {
       </div>
     );
   }
+
+  const runningCount = node.pipelineStatuses.filter((s) => s.status === "RUNNING").length;
+  const confirmCopy = getConfirmCopy(confirmAction, node.name, runningCount);
+  const confirmPending =
+    maintenanceMutation.isPending || revokeMutation.isPending || deleteMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -627,6 +633,72 @@ export default function NodeDetailPage() {
           />
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null);
+        }}
+        title={confirmCopy.title}
+        description={confirmCopy.description}
+        confirmLabel={confirmCopy.confirmLabel}
+        pendingLabel={confirmCopy.pendingLabel}
+        variant={confirmCopy.variant}
+        isPending={confirmPending}
+        onConfirm={handleConfirmAction}
+      />
     </div>
   );
+}
+
+type ConfirmAction = "enter-maintenance" | "exit-maintenance" | "revoke" | "delete" | null;
+
+function getConfirmCopy(action: ConfirmAction, nodeName: string, runningCount: number) {
+  switch (action) {
+    case "enter-maintenance":
+      return {
+        title: "Enter maintenance mode?",
+        description: (
+          <>
+            This will stop {runningCount} running pipeline{runningCount === 1 ? "" : "s"} on
+            &quot;{nodeName}&quot;. Pipelines will automatically resume when maintenance mode is turned off.
+          </>
+        ),
+        confirmLabel: "Enter Maintenance",
+        pendingLabel: "Entering...",
+        variant: "default" as const,
+      };
+    case "exit-maintenance":
+      return {
+        title: "Exit maintenance mode?",
+        description: <>Pipelines assigned to &quot;{nodeName}&quot; will be allowed to resume.</>,
+        confirmLabel: "Exit Maintenance",
+        pendingLabel: "Exiting...",
+        variant: "default" as const,
+      };
+    case "revoke":
+      return {
+        title: "Revoke node token?",
+        description: <>The agent for &quot;{nodeName}&quot; will no longer be able to connect until re-enrolled.</>,
+        confirmLabel: "Revoke Token",
+        pendingLabel: "Revoking...",
+        variant: "destructive" as const,
+      };
+    case "delete":
+      return {
+        title: "Delete node?",
+        description: <>Delete &quot;{nodeName}&quot; and its node state. This action cannot be undone.</>,
+        confirmLabel: "Delete Node",
+        pendingLabel: "Deleting...",
+        variant: "destructive" as const,
+      };
+    default:
+      return {
+        title: "Confirm action",
+        description: "Confirm this node action.",
+        confirmLabel: "Confirm",
+        pendingLabel: "Working...",
+        variant: "default" as const,
+      };
+  }
 }
