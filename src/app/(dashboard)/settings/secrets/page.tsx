@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { KpiStrip, KpiInStrip } from "@/components/ui/kpi-tile";
 import { VFIcon } from "@/components/ui/vf-icon";
 import { Pill } from "@/components/ui/pill";
-import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 
@@ -25,10 +24,17 @@ import { EmptyState } from "@/components/empty-state";
  * `secret.listAll` is exposed.
  */
 
+interface SecretOccurrence {
+  id: string;
+  environmentId: string;
+  environmentName: string;
+}
+
 interface SecretRow {
   id: string;
   name: string;
   envs: string[];
+  occurrences: SecretOccurrence[];
   createdAt: string;
   updatedAt: string;
   uses: number;
@@ -68,15 +74,22 @@ export default function SecretsVaultPage() {
   const rows: SecretRow[] = React.useMemo(() => {
     const map = new Map<string, SecretRow>();
     perEnvQueries.forEach((q, i) => {
-      const envName = envs[i]?.name ?? "—";
+      const env = envs[i];
+      const envName = env?.name ?? "—";
       const list = (q.data ?? []) as RawSecret[];
       for (const s of list) {
         const key = s.name;
         const existing = map.get(key);
+        const occurrence: SecretOccurrence = {
+          id: s.id,
+          environmentId: env?.id ?? "",
+          environmentName: envName,
+        };
         if (existing) {
           if (!existing.envs.includes(envName)) existing.envs.push(envName);
+          existing.occurrences.push(occurrence);
         } else {
-          map.set(key, secretToRow(s, [envName]));
+          map.set(key, secretToRow(s, [envName], [occurrence]));
         }
       }
     });
@@ -85,6 +98,34 @@ export default function SecretsVaultPage() {
 
   const [selectedName, setSelectedName] = React.useState<string | null>(null);
   const selected = rows.find((r) => r.name === selectedName) ?? rows[0];
+
+  // Usage: query per occurrence (one Secret row per env). Refs from each are
+  // merged for the detail panel. Per-env caching keeps the request graph stable.
+  const usageQueries = useQueries({
+    queries: (selected?.occurrences ?? []).map((occ) => ({
+      ...trpc.secret.usage.queryOptions({
+        secretId: occ.id,
+        environmentId: occ.environmentId,
+      }),
+      enabled: !!selected,
+    })),
+  });
+
+  type UsageRef = {
+    id: string;
+    componentType: string;
+    pipeline: { id: string; name: string; environment: { id: string; name: string } };
+  };
+  const usageRefs: UsageRef[] = React.useMemo(() => {
+    const all: UsageRef[] = [];
+    for (const q of usageQueries) {
+      const data = q.data as { count: number; refs: UsageRef[] } | undefined;
+      if (data?.refs) all.push(...data.refs);
+    }
+    return all;
+  }, [usageQueries]);
+  const usageCount = usageRefs.length;
+  const usageLoading = usageQueries.some((q) => q.isPending);
 
   const counts = React.useMemo(
     () => ({
@@ -134,7 +175,11 @@ export default function SecretsVaultPage() {
         <KpiInStrip label="ROTATED · 30D" value={counts.rotated30d} sub="auto + manual" accent="var(--accent-brand)" />
         <KpiInStrip label="AGING · 90D+" value={counts.aging} sub="needs rotation" accent={counts.aging > 0 ? "var(--status-degraded)" : undefined} />
         <KpiInStrip label="UNUSED" value={counts.unused} sub="safe to delete" />
-        <KpiInStrip label="ACCESS · 24H" value="—" sub="server aggregate · pending" />
+        <KpiInStrip
+          label="USED BY"
+          value={selected ? (usageLoading ? "…" : usageCount) : "—"}
+          sub={selected ? `${selected.name} · ${usageCount === 1 ? "pipeline" : "pipelines"}` : "select a secret"}
+        />
       </KpiStrip>
 
       {!teamId && <EmptyState glyph="◇" title="Select a team" description="Secrets are scoped per environment within a team." />}
@@ -204,7 +249,13 @@ export default function SecretsVaultPage() {
 
           {/* RIGHT — detail */}
           <div className="flex flex-col min-h-0 overflow-hidden">
-            {selected ? <SecretDetail row={selected} /> : null}
+            {selected ? (
+              <SecretDetail
+                row={selected}
+                usageRefs={usageRefs}
+                usageLoading={usageLoading}
+              />
+            ) : null}
           </div>
         </div>
       )}
@@ -223,7 +274,22 @@ function SecretStatusBadge({ status }: { status: SecretRow["status"] }) {
   );
 }
 
-function SecretDetail({ row }: { row: SecretRow }) {
+interface UsageRef {
+  id: string;
+  componentType: string;
+  pipeline: { id: string; name: string; environment: { id: string; name: string } };
+}
+
+function SecretDetail({
+  row,
+  usageRefs,
+  usageLoading,
+}: {
+  row: SecretRow;
+  usageRefs: UsageRef[];
+  usageLoading: boolean;
+}) {
+  const usageCount = usageRefs.length;
   return (
     <>
       <div className="px-5 py-3.5 border-b border-line bg-bg-1">
@@ -287,17 +353,41 @@ function SecretDetail({ row }: { row: SecretRow }) {
         {/* Used by */}
         <div>
           <div className="font-mono text-[10px] text-fg-2 tracking-[0.04em] uppercase mb-1.5">
-            Used by · {row.uses} pipeline{row.uses === 1 ? "" : "s"}
+            Used by · {usageLoading ? "…" : `${usageCount} pipeline${usageCount === 1 ? "" : "s"}`}
           </div>
           <div className="bg-bg-2 border border-line rounded-[3px] overflow-hidden">
-            {row.uses === 0 ? (
+            {usageLoading ? (
               <div className="px-3 py-3 font-mono text-[11px] text-fg-2 text-center">
-                Not referenced — safe to delete
+                Loading references…
+              </div>
+            ) : usageCount === 0 ? (
+              <div className="px-3 py-3 font-mono text-[11px] text-fg-2 text-center">
+                Not referenced by any pipeline yet.
               </div>
             ) : (
-              <div className="px-3 py-3 font-mono text-[11px] text-fg-2">
-                {/* TODO wire trpc.secret.usage when available */}
-                Reference list will appear when <Kbd>trpc.secret.usage</Kbd> resolves.
+              <div className="divide-y divide-line">
+                {usageRefs.map((ref) => (
+                  <div
+                    key={ref.id}
+                    className="grid items-center px-3 py-2 font-mono text-[11.5px]"
+                    style={{ gridTemplateColumns: "1fr 80px 1fr" }}
+                  >
+                    <span className="text-fg truncate" title={ref.pipeline.name}>
+                      {ref.pipeline.name}
+                    </span>
+                    <span>
+                      <Pill
+                        variant={ref.pipeline.environment.name.startsWith("prod") ? "envProd" : "env"}
+                        size="xs"
+                      >
+                        {ref.pipeline.environment.name}
+                      </Pill>
+                    </span>
+                    <span className="text-fg-1 truncate text-right" title={ref.componentType}>
+                      {ref.componentType}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -339,6 +429,7 @@ function timeAgo(iso: string): string {
 function secretToRow(
   s: { id: string; name: string; createdAt: string; updatedAt: string },
   envs: string[],
+  occurrences: SecretOccurrence[],
 ): SecretRow {
   const ageDays = (Date.now() - new Date(s.updatedAt).getTime()) / (24 * 60 * 60 * 1000);
   const status: SecretRow["status"] =
@@ -347,9 +438,10 @@ function secretToRow(
     id: s.id,
     name: s.name,
     envs,
+    occurrences,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
-    uses: 0, // TODO: wire to trpc.secret.usage when available
+    uses: 0,
     status,
     rotated: ageDays < 1 ? "today" : `${Math.floor(ageDays)}d ago`,
   };
