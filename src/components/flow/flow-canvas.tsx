@@ -11,6 +11,7 @@ import {
   type Connection,
   type NodeMouseHandler,
 } from "@xyflow/react";
+import { toast } from "sonner";
 import "@xyflow/react/dist/style.css";
 import { useFlowStore } from "@/stores/flow-store";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -47,7 +48,7 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   const edges = useFlowStore((s) => s.edges);
   const onNodesChange = useFlowStore((s) => s.onNodesChange);
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange);
-  const onConnect = useFlowStore((s) => s.onConnect);
+  const onConnectStore = useFlowStore((s) => s.onConnect);
   const addNode = useFlowStore((s) => s.addNode);
   const hasFitRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
@@ -95,6 +96,45 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
       return hasOverlappingTypes(sourceTypes, targetTypes);
     },
     [nodes],
+  );
+
+  // Validate connection on drop: reject mismatched types with a toast and
+  // never add the edge. React Flow already calls isValidConnection live during
+  // the drag, but onConnect is the final gate before the edge is committed.
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      const sourceNode = nodes.find((n) => n.id === connection.source);
+      const targetNode = nodes.find((n) => n.id === connection.target);
+      if (!sourceNode || !targetNode) return;
+      if (connection.source === connection.target) return;
+
+      const sourceTypes = getNodeDataTypes(
+        sourceNode as { data: Record<string, unknown> },
+        "output",
+      );
+      const targetTypes = getNodeDataTypes(
+        targetNode as { data: Record<string, unknown> },
+        "input",
+      );
+
+      const sourceDef = (sourceNode.data as { componentDef?: VectorComponentDef })
+        .componentDef;
+      const targetDef = (targetNode.data as { componentDef?: VectorComponentDef })
+        .componentDef;
+
+      const typed = sourceTypes.length > 0 && targetTypes.length > 0;
+      if (typed && !hasOverlappingTypes(sourceTypes, targetTypes)) {
+        const sourceKind = sourceDef?.type ?? "source";
+        const targetKind = targetDef?.type ?? "target";
+        toast.error(
+          `Type mismatch: ${sourceKind}(${sourceTypes.join("|")}) → ${targetKind}(${targetTypes.join("|")})`,
+        );
+        return;
+      }
+
+      onConnectStore(connection);
+    },
+    [nodes, onConnectStore],
   );
 
   const onDrop = useCallback(
