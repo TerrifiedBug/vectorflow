@@ -38,6 +38,7 @@ import { useEnvironmentStore } from "@/stores/environment-store";
 import { DemoBanner } from "@/components/dashboard/demo-banner";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import { Kbd } from "@/components/ui/kbd";
+import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 
 export default function DashboardLayout({
   children,
@@ -50,6 +51,7 @@ export default function DashboardLayout({
   useSSE();
   useRealtimeInvalidation();
   useSSEToasts();
+  useGlobalShortcuts();
 
   const { data: session } = useSession();
   const trpc = useTRPC();
