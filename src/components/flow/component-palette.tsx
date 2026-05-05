@@ -1,42 +1,18 @@
 "use client";
 
 import { memo, useCallback, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Search, PackageOpen, Link2 as LinkIcon, Plus } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { useQuery } from "@tanstack/react-query";
+import { VFIcon, type VFIconName } from "@/components/ui/vf-icon";
 import { cn } from "@/lib/utils";
 import { getVectorCatalog } from "@/lib/vector/catalog";
 import type { VectorComponentDef } from "@/lib/vector/types";
-import { NODE_KIND_META } from "@/lib/node-kind-colors";
-import { getIcon } from "./node-icon";
-import { StaggerList, StaggerItem } from "@/components/motion";
-import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useFlowStore } from "@/stores/flow-store";
 import { DLP_VRL_SOURCES } from "@/lib/vector/dlp-vrl-sources";
 
-const kindMeta: Record<
-  VectorComponentDef["kind"],
-  { label: string; borderClass: string; bgClass: string }
-> = {
-  source: {
-    label: NODE_KIND_META.source.pluralLabel,
-    borderClass: NODE_KIND_META.source.borderClass,
-    bgClass: NODE_KIND_META.source.bgClass,
-  },
-  transform: {
-    label: NODE_KIND_META.transform.pluralLabel,
-    borderClass: NODE_KIND_META.transform.borderClass,
-    bgClass: NODE_KIND_META.transform.bgClass,
-  },
-  sink: {
-    label: NODE_KIND_META.sink.pluralLabel,
-    borderClass: NODE_KIND_META.sink.borderClass,
-    bgClass: NODE_KIND_META.sink.bgClass,
-  },
-};
+type Kind = VectorComponentDef["kind"];
 
 interface SharedComponentListItem {
   id: string;
@@ -48,24 +24,44 @@ interface SharedComponentListItem {
   linkedPipelineCount: number;
 }
 
-function formatFilterLabel(kind: "all" | VectorComponentDef["kind"]) {
+interface SectionMeta {
+  label: string;
+  tileVar: string;
+}
+
+const SECTION_META: Record<Kind, SectionMeta> = {
+  source: { label: "Sources", tileVar: "var(--node-source)" },
+  transform: { label: "Transforms", tileVar: "var(--node-transform)" },
+  sink: { label: "Sinks", tileVar: "var(--node-sink)" },
+};
+
+const SECTION_ORDER: Kind[] = ["source", "transform", "sink"];
+
+function tileIconName(kind: Kind): VFIconName {
+  if (kind === "source") return "database";
+  if (kind === "transform") return "split";
+  return "box";
+}
+
+function formatFilterLabel(kind: "all" | Kind) {
   return kind[0].toUpperCase() + kind.slice(1);
+}
+
+interface DraggableItemProps {
+  def: VectorComponentDef;
+  onAdd: (def: VectorComponentDef) => void;
 }
 
 const DraggableItem = memo(function DraggableItem({
   def,
   onAdd,
-}: {
-  def: VectorComponentDef;
-  onAdd: (def: VectorComponentDef) => void;
-}) {
-  const Icon = useMemo(() => getIcon(def.icon), [def.icon]);
-  const meta = kindMeta[def.kind];
+}: DraggableItemProps) {
+  const tileVar = SECTION_META[def.kind].tileVar;
 
   function handleDragStart(event: React.DragEvent<HTMLButtonElement>) {
     event.dataTransfer.setData(
       "application/vectorflow-component",
-      `${def.kind}:${def.type}`
+      `${def.kind}:${def.type}`,
     );
     event.dataTransfer.effectAllowed = "move";
   }
@@ -84,157 +80,172 @@ const DraggableItem = memo(function DraggableItem({
         }
       }}
       className={cn(
-        "flex w-full cursor-grab items-start gap-3 rounded-md border border-l-[3px] bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        meta.borderClass
+        "group flex w-full cursor-grab items-start gap-[9px] rounded-[3px]",
+        "border border-line bg-bg-2 px-[9px] py-[7px] text-left",
+        "transition-colors hover:border-line-2 hover:bg-bg-3",
+        "active:cursor-grabbing",
+        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-line",
       )}
     >
-      <div
-        className={cn(
-          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
-          meta.bgClass,
-          "text-white"
-        )}
-      >
-        {/* eslint-disable-next-line react-hooks/static-components */}
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
-            {def.displayName}
-          </span>
-          <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-xs">
-            {def.category}
-          </Badge>
-        </div>
-        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-          {def.description}
-        </p>
-      </div>
       <span
         aria-hidden="true"
-        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors"
+        className="mt-[1px] flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[4px] border text-fg"
+        style={{
+          backgroundColor: `color-mix(in srgb, ${tileVar} 13%, transparent)`,
+          borderColor: `color-mix(in srgb, ${tileVar} 33%, transparent)`,
+          color: tileVar,
+        }}
       >
-        <Plus className="h-4 w-4" />
+        <VFIcon name={tileIconName(def.kind)} size={12} strokeWidth={1.6} />
       </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-[5px]">
+          <span className="truncate text-[12px] font-medium text-fg">
+            {def.displayName}
+          </span>
+          <span className="shrink-0 font-mono uppercase text-[9px] tracking-[0.04em] text-fg-2">
+            {def.category}
+          </span>
+        </div>
+        <div className="mt-[2px] line-clamp-2 text-[10.5px] leading-[1.35] text-fg-2">
+          {def.description}
+        </div>
+      </div>
     </button>
   );
 });
 
-const CategoryGroup = memo(function CategoryGroup({
-  category,
-  items,
-  onAdd,
-}: {
-  category: string;
+interface SectionProps {
+  kind: Kind;
   items: VectorComponentDef[];
   onAdd: (def: VectorComponentDef) => void;
-}) {
+}
+
+function CollapsibleSection({ kind, items, onAdd }: SectionProps) {
   const [open, setOpen] = useState(true);
-
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        className="flex w-full cursor-pointer items-center gap-1 px-1 py-1 text-[11px] font-medium text-muted-foreground/70 transition-colors hover:text-muted-foreground"
-      >
-        {open ? (
-          <ChevronDown className="h-3 w-3" />
-        ) : (
-          <ChevronRight className="h-3 w-3" />
-        )}
-        {category}
-        <span className="ml-auto font-normal tabular-nums text-xs">
-          {items.length}
-        </span>
-      </button>
-      {open && (
-        <StaggerList className="space-y-1.5 pb-1 pl-1">
-          {items.map((def) => (
-            <StaggerItem key={def.type}>
-              <DraggableItem def={def} onAdd={onAdd} />
-            </StaggerItem>
-          ))}
-        </StaggerList>
-      )}
-    </div>
-  );
-});
-
-function CollapsibleSection({
-  kind,
-  items,
-  onAdd,
-}: {
-  kind: VectorComponentDef["kind"];
-  items: VectorComponentDef[];
-  onAdd: (def: VectorComponentDef) => void;
-}) {
-  const [open, setOpen] = useState(true);
-  const meta = kindMeta[kind];
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, VectorComponentDef[]>();
-    for (const def of items) {
-      const group = map.get(def.category) ?? [];
-      group.push(def);
-      map.set(def.category, group);
-    }
-    return Array.from(map.entries());
-  }, [items]);
+  const meta = SECTION_META[kind];
 
   if (items.length === 0) return null;
 
-  const needsSubGroups = grouped.length > 1 && items.length > 8;
-
   return (
     <div>
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full cursor-pointer items-center gap-1.5 px-1 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-      >
-        {open ? (
-          <ChevronDown className="h-3.5 w-3.5" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5" />
+        className={cn(
+          "flex w-full items-center gap-[6px] px-[14px] pt-2 pb-1",
+          "font-mono uppercase text-[9px] tracking-[0.08em] text-fg-2",
+          "transition-colors hover:text-fg",
         )}
-        {meta.label}
-        <span className="ml-auto font-normal tabular-nums">{items.length}</span>
+      >
+        <VFIcon
+          name={open ? "chevron-down" : "chevron-right"}
+          size={10}
+          strokeWidth={1.6}
+        />
+        <span>{meta.label}</span>
+        <span className="ml-auto tabular-nums text-fg-2">{items.length}</span>
       </button>
       {open && (
-        <div className="space-y-1.5 pb-3">
-          {needsSubGroups
-            ? grouped.map(([category, defs]) => (
-                <CategoryGroup
-                  key={category}
-                  category={category}
-                  items={defs}
-                  onAdd={onAdd}
-                />
-              ))
-            : (
-              <StaggerList>
-                {items.map((def) => (
-                  <StaggerItem key={def.type}>
-                    <DraggableItem def={def} onAdd={onAdd} />
-                  </StaggerItem>
-                ))}
-              </StaggerList>
-            )}
+        <div className="space-y-[3px] px-2 pb-1">
+          {items.map((def) => (
+            <DraggableItem key={`${def.kind}:${def.type}`} def={def} onAdd={onAdd} />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
+interface SharedItemProps {
+  sc: SharedComponentListItem;
+  componentDef: VectorComponentDef | undefined;
+  onAdd: (def: VectorComponentDef, sc: SharedComponentListItem) => void;
+}
+
+function SharedItem({ sc, componentDef, onAdd }: SharedItemProps) {
+  const kindKey = (sc.kind.toLowerCase() as Kind) ?? "transform";
+  const tileVar = SECTION_META[kindKey]?.tileVar ?? SECTION_META.transform.tileVar;
+  const canAdd = !!componentDef;
+
+  return (
+    <button
+      type="button"
+      aria-label={`Add ${sc.name} to canvas`}
+      disabled={!canAdd}
+      draggable={canAdd}
+      onDragStart={(e) => {
+        if (!canAdd) return;
+        e.dataTransfer.setData(
+          "application/vectorflow-component",
+          `${kindKey}:${sc.componentType}`,
+        );
+        e.dataTransfer.setData(
+          "application/vectorflow-shared-component-id",
+          sc.id,
+        );
+        e.dataTransfer.setData(
+          "application/vectorflow-shared-component-data",
+          JSON.stringify(sc),
+        );
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onClick={() => componentDef && onAdd(componentDef, sc)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (componentDef) onAdd(componentDef, sc);
+        }
+      }}
+      className={cn(
+        "flex w-full cursor-grab items-start gap-[9px] rounded-[3px]",
+        "border border-line bg-bg-2 px-[9px] py-[7px] text-left",
+        "transition-colors hover:border-line-2 hover:bg-bg-3",
+        "active:cursor-grabbing",
+        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-line",
+        "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className="mt-[1px] flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[4px] border"
+        style={{
+          backgroundColor: `color-mix(in srgb, ${tileVar} 13%, transparent)`,
+          borderColor: `color-mix(in srgb, ${tileVar} 33%, transparent)`,
+          color: tileVar,
+        }}
+      >
+        <VFIcon name={tileIconName(kindKey)} size={12} strokeWidth={1.6} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-[5px]">
+          <span className="truncate text-[12px] font-medium text-fg">
+            {sc.name}
+          </span>
+          <VFIcon name="git-branch" size={10} className="shrink-0 text-accent-brand" />
+        </div>
+        <div className="mt-[2px] flex items-center gap-[6px]">
+          <span className="truncate font-mono uppercase text-[9px] tracking-[0.04em] text-fg-2">
+            {sc.componentType}
+          </span>
+          {sc.linkedPipelineCount > 0 && (
+            <span className="shrink-0 font-mono text-[9px] text-fg-2">
+              · {sc.linkedPipelineCount} pipeline
+              {sc.linkedPipelineCount !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export function ComponentPalette() {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"catalog" | "shared">("catalog");
-  const [sharedKindFilter, setSharedKindFilter] = useState<"all" | "source" | "transform" | "sink">("all");
+  const [sharedKindFilter, setSharedKindFilter] = useState<"all" | Kind>("all");
+
   const trpc = useTRPC();
   const { selectedEnvironmentId } = useEnvironmentStore();
   const reactFlowInstance = useReactFlow();
@@ -255,7 +266,10 @@ export function ComponentPalette() {
   }, [reactFlowInstance]);
 
   const addComponentToCanvas = useCallback(
-    (componentDef: VectorComponentDef, sharedComponent?: SharedComponentListItem) => {
+    (
+      componentDef: VectorComponentDef,
+      sharedComponent?: SharedComponentListItem,
+    ) => {
       addNode(componentDef, getCanvasCenterPosition());
 
       if (componentDef.type.startsWith("dlp_")) {
@@ -286,25 +300,27 @@ export function ComponentPalette() {
         }
       }
     },
-    [addNode, getCanvasCenterPosition]
+    [addNode, getCanvasCenterPosition],
   );
 
   const sharedComponentsQuery = useQuery(
     trpc.sharedComponent.list.queryOptions(
       { environmentId: selectedEnvironmentId! },
-      { enabled: !!selectedEnvironmentId }
-    )
+      { enabled: !!selectedEnvironmentId },
+    ),
   );
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return getVectorCatalog();
+    const catalog = getVectorCatalog();
+    if (!search.trim()) return catalog;
 
     const term = search.toLowerCase().trim();
-    return getVectorCatalog().filter(
+    return catalog.filter(
       (def) =>
         def.displayName.toLowerCase().includes(term) ||
         def.type.toLowerCase().includes(term) ||
         def.description.toLowerCase().includes(term) ||
-        def.category.toLowerCase().includes(term)
+        def.category.toLowerCase().includes(term),
     );
   }, [search]);
 
@@ -318,49 +334,54 @@ export function ComponentPalette() {
     return items.filter(
       (sc) =>
         sc.name.toLowerCase().includes(term) ||
-        sc.componentType.toLowerCase().includes(term)
+        sc.componentType.toLowerCase().includes(term),
     );
   }, [search, sharedComponentsQuery.data, sharedKindFilter]);
 
-  const sources = useMemo(
-    () => filtered.filter((d) => d.kind === "source"),
-    [filtered]
-  );
-  const transforms = useMemo(
-    () => filtered.filter((d) => d.kind === "transform"),
-    [filtered]
-  );
-  const sinks = useMemo(
-    () => filtered.filter((d) => d.kind === "sink"),
-    [filtered]
-  );
+  const sectioned = useMemo(() => {
+    return SECTION_ORDER.map((kind) => ({
+      kind,
+      items: filtered.filter((d) => d.kind === kind),
+    }));
+  }, [filtered]);
+
+  const totalCount = useMemo(() => getVectorCatalog().length, []);
 
   return (
-    <aside className="flex h-full w-[280px] shrink-0 flex-col overflow-hidden border-r bg-background">
+    <aside className="flex h-full w-[280px] shrink-0 flex-col overflow-hidden border-r border-line bg-bg-1">
       {/* Search */}
-      <div className="border-b p-3">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+      <div className="border-b border-line p-3">
+        <div className="flex h-7 items-center gap-[7px] rounded-[3px] border border-line-2 bg-bg-2 px-[9px]">
+          <VFIcon name="search" size={12} className="text-fg-2" />
+          <input
+            type="text"
             placeholder="Search components..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
+            className="flex-1 border-none bg-transparent text-[11px] text-fg outline-none placeholder:text-fg-2"
+            aria-label="Search components"
           />
+          <span className="font-mono text-[10px] text-fg-2 tabular-nums">
+            {totalCount}
+          </span>
         </div>
       </div>
 
       {/* Tab switcher */}
-      <div className="flex border-b px-3" role="tablist" aria-label="Component palette sections">
+      <div
+        className="flex border-b border-line"
+        role="tablist"
+        aria-label="Component palette sections"
+      >
         <button
           type="button"
           role="tab"
           aria-selected={activeTab === "catalog"}
           className={cn(
-            "flex-1 border-b-2 px-2 py-2 text-xs font-medium transition-colors",
+            "flex-1 border-b-2 px-2 py-2 font-mono text-[10px] uppercase tracking-[0.06em] transition-colors",
             activeTab === "catalog"
-              ? "border-foreground text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
+              ? "border-accent-line text-fg"
+              : "border-transparent text-fg-2 hover:text-fg",
           )}
           onClick={() => setActiveTab("catalog")}
         >
@@ -371,52 +392,60 @@ export function ComponentPalette() {
           role="tab"
           aria-selected={activeTab === "shared"}
           className={cn(
-            "flex-1 border-b-2 px-2 py-2 text-xs font-medium transition-colors",
+            "flex-1 border-b-2 px-2 py-2 font-mono text-[10px] uppercase tracking-[0.06em] transition-colors",
             activeTab === "shared"
-              ? "border-purple-400 text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
+              ? "border-accent-line text-fg"
+              : "border-transparent text-fg-2 hover:text-fg",
           )}
           onClick={() => setActiveTab("shared")}
         >
-          <span className="flex items-center justify-center gap-1.5">
-            <LinkIcon className="h-3 w-3" />
+          <span className="flex items-center justify-center gap-[5px]">
+            <VFIcon name="git-branch" size={11} />
             Shared
           </span>
         </button>
       </div>
 
       {/* Component list */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto py-[6px]">
         {activeTab === "catalog" && (
-          <div className="space-y-1 p-3">
-            <CollapsibleSection kind="source" items={sources} onAdd={addComponentToCanvas} />
-            <CollapsibleSection kind="transform" items={transforms} onAdd={addComponentToCanvas} />
-            <CollapsibleSection kind="sink" items={sinks} onAdd={addComponentToCanvas} />
-
+          <>
+            {sectioned.map(({ kind, items }) => (
+              <CollapsibleSection
+                key={kind}
+                kind={kind}
+                items={items}
+                onAdd={addComponentToCanvas}
+              />
+            ))}
             {filtered.length === 0 && (
-              <div className="flex flex-col items-center justify-center p-8">
-                <PackageOpen className="h-8 w-8 text-muted-foreground/50" />
-                <p className="mt-2 text-sm text-muted-foreground">
+              <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
+                <VFIcon name="search" size={20} className="text-fg-2 opacity-50" />
+                <p className="mt-2 text-[11px] text-fg-2">
                   No components match your search.
                 </p>
               </div>
             )}
-          </div>
+          </>
         )}
 
         {activeTab === "shared" && (
-          <div className="space-y-1.5 p-3">
-            <div className="flex gap-1 pb-1" role="group" aria-label="Shared component kind filters">
+          <div className="px-2">
+            <div
+              className="flex gap-1 px-[6px] pb-[6px] pt-1"
+              role="group"
+              aria-label="Shared component kind filters"
+            >
               {(["all", "source", "transform", "sink"] as const).map((kind) => (
                 <button
                   key={kind}
                   type="button"
                   aria-pressed={sharedKindFilter === kind}
                   className={cn(
-                    "rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors",
+                    "rounded-[3px] border px-[7px] py-[3px] font-mono text-[9px] uppercase tracking-[0.06em] transition-colors",
                     sharedKindFilter === kind
-                      ? "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300"
-                      : "text-muted-foreground hover:bg-muted"
+                      ? "border-accent-line bg-accent-soft text-fg"
+                      : "border-transparent text-fg-2 hover:bg-bg-2 hover:text-fg",
                   )}
                   onClick={() => setSharedKindFilter(kind)}
                 >
@@ -425,93 +454,35 @@ export function ComponentPalette() {
               ))}
             </div>
             {filteredShared.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-8">
-                <PackageOpen className="h-8 w-8 text-muted-foreground/50" />
-                <p className="mt-2 text-center text-sm text-muted-foreground">
+              <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
+                <VFIcon
+                  name="git-branch"
+                  size={20}
+                  className="text-fg-2 opacity-50"
+                />
+                <p className="mt-2 text-[11px] text-fg-2">
                   {search.trim()
                     ? "No shared components match your search."
                     : "No shared components in this environment."}
                 </p>
               </div>
             ) : (
-              filteredShared.map((sc) => {
-                const kindKey = sc.kind.toLowerCase() as VectorComponentDef["kind"];
-                const meta = kindMeta[kindKey] ?? kindMeta.transform;
-                const Icon = getIcon(
-                  getVectorCatalog().find((d) => d.type === sc.componentType)?.icon
-                );
-                const componentDef = getVectorCatalog().find(
-                  (d) => d.type === sc.componentType && d.kind === kindKey
-                );
-                const canAdd = !!componentDef;
-                return (
-                  <button
-                    type="button"
-                    key={sc.id}
-                    aria-label={`Add ${sc.name} to canvas`}
-                    disabled={!canAdd}
-                    draggable
-                    onDragStart={(e) => {
-                      if (!canAdd) return;
-                      e.dataTransfer.setData(
-                        "application/vectorflow-component",
-                        `${sc.kind.toLowerCase()}:${sc.componentType}`
-                      );
-                      e.dataTransfer.setData(
-                        "application/vectorflow-shared-component-id",
-                        sc.id
-                      );
-                      e.dataTransfer.setData(
-                        "application/vectorflow-shared-component-data",
-                        JSON.stringify(sc)
-                      );
-                      e.dataTransfer.effectAllowed = "move";
-                    }}
-                    onClick={() => componentDef && addComponentToCanvas(componentDef, sc)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        if (componentDef) addComponentToCanvas(componentDef, sc);
-                      }
-                    }}
-                    className={cn(
-                      "flex w-full cursor-grab items-start gap-3 rounded-md border border-l-[3px] bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
-                      meta.borderClass
-                    )}
-                  >
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-purple-500/20 text-purple-400">
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-sm font-medium text-foreground">
-                          {sc.name}
-                        </span>
-                        <LinkIcon className="h-3 w-3 shrink-0 text-purple-400" />
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-1.5">
-                        <span className="truncate text-xs text-muted-foreground">
-                          {sc.componentType}
-                        </span>
-                        {sc.linkedPipelineCount > 0 && (
-                          <Badge
-                            variant="outline"
-                            className="shrink-0 px-1 py-0 text-[10px]"
-                          >
-                            {sc.linkedPipelineCount} pipeline{sc.linkedPipelineCount !== 1 ? "s" : ""}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <span
-                      aria-hidden="true"
-                      className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </span>
-                  </button>
-                );
-              })
+              <div className="space-y-[3px] pb-1">
+                {filteredShared.map((sc) => {
+                  const kindKey = sc.kind.toLowerCase() as Kind;
+                  const componentDef = getVectorCatalog().find(
+                    (d) => d.type === sc.componentType && d.kind === kindKey,
+                  );
+                  return (
+                    <SharedItem
+                      key={sc.id}
+                      sc={sc}
+                      componentDef={componentDef}
+                      onAdd={addComponentToCanvas}
+                    />
+                  );
+                })}
+              </div>
             )}
           </div>
         )}
