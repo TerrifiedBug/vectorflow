@@ -204,6 +204,7 @@ export function AlertRuleForm(props: Props) {
         pipelineId: pipelineId || undefined,
         metric: metric as never,
         condition: condition as never,
+        suggestedAction: description.trim() || DEFAULT_FORM_VALUES.description,
         threshold: numericOrUndefined(threshold),
         durationSeconds: numericOrUndefined(durationMinutes) == null ? undefined : numericOrUndefined(durationMinutes)! * 60,
         severity,
@@ -214,6 +215,7 @@ export function AlertRuleForm(props: Props) {
       updateRule.mutate({
         id: props.ruleId,
         name,
+        suggestedAction: description.trim() || DEFAULT_FORM_VALUES.description,
         ...(numericOrUndefined(threshold) !== undefined ? { threshold: numericOrUndefined(threshold) } : {}),
         ...(numericOrUndefined(durationMinutes) !== undefined ? { durationSeconds: numericOrUndefined(durationMinutes)! * 60 } : {}),
         severity,
