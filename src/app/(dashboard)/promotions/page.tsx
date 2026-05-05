@@ -7,6 +7,7 @@ import { useTeamStore } from "@/stores/team-store";
 import { Button } from "@/components/ui/button";
 import { KpiStrip, KpiInStrip } from "@/components/ui/kpi-tile";
 import { VFIcon } from "@/components/ui/vf-icon";
+import { ConfigDiff } from "@/components/ui/config-diff";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 import { GitBranch } from "lucide-react";
@@ -16,34 +17,52 @@ import { GitBranch } from "lucide-react";
  * Source: docs/internal/VectorFlow 2.0/screens/value-surfaces.jsx (ScreenPromotions).
  *
  * Wires to:
- *   - trpc.promotion.history → list rows
- *   - trpc.promotion.diffPreview, trpc.promotion.preflight → detail panel
+ *   - trpc.promotion.recentForTeam → list rows (team-scoped)
+ *   - trpc.promotion.diffPreview → detail diff panel
  *
- * KPI metrics are computed client-side from history; expose as a server
- * aggregate (`promotion.summary`) when noise becomes a problem.
+ * KPI metrics are computed client-side from the result set; expose as a
+ * server aggregate (`promotion.summary`) when noise becomes a problem.
  */
 
 type TabId = "pending" | "approved" | "in-flight" | "history";
 
-type StatusKey = "PENDING" | "APPROVED" | "EXECUTED" | "REJECTED" | "CANCELLED" | "FAILED";
+type StatusKey =
+  | "PENDING"
+  | "APPROVED"
+  | "DEPLOYED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "AWAITING_PR_MERGE"
+  | "DEPLOYING";
 
 interface PromotionRow {
   id: string;
+  sourcePipelineId: string;
   pipelineName: string;
   fromEnv: string;
   toEnv: string;
   requestedBy: string;
   requestedAt: string;
   status: StatusKey;
-  secretsOk?: number;
-  secretsMissing?: number;
 }
+
+const IN_FLIGHT_STATUSES: ReadonlySet<StatusKey> = new Set([
+  "APPROVED",
+  "AWAITING_PR_MERGE",
+  "DEPLOYING",
+]);
+
+const HISTORY_STATUSES: ReadonlySet<StatusKey> = new Set([
+  "DEPLOYED",
+  "REJECTED",
+  "CANCELLED",
+]);
 
 const TAB_FILTER: Record<TabId, (r: PromotionRow) => boolean> = {
   pending: (r) => r.status === "PENDING",
   approved: (r) => r.status === "APPROVED",
-  "in-flight": (r) => r.status === "EXECUTED" /* short window after approval */,
-  history: (r) => ["EXECUTED", "REJECTED", "CANCELLED", "FAILED"].includes(r.status),
+  "in-flight": (r) => IN_FLIGHT_STATUSES.has(r.status),
+  history: (r) => HISTORY_STATUSES.has(r.status),
 };
 
 export default function PromotionsPage() {
@@ -52,41 +71,39 @@ export default function PromotionsPage() {
   const [tab, setTab] = React.useState<TabId>("pending");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
-  // TODO(backend): expose `promotion.recentForTeam({ teamId })`. The existing
-  // `promotion.history({ pipelineId })` is per-pipeline only — a hub view
-  // needs a team-scoped aggregate. Until then, list is empty.
-  const historyQ = useQuery({
-    ...trpc.promotion.history.queryOptions({ pipelineId: "__hub_placeholder__" }),
-    enabled: false,
+  const recentQ = useQuery({
+    ...trpc.promotion.recentForTeam.queryOptions(
+      { teamId: teamId ?? "", limit: 100 },
+      { enabled: Boolean(teamId) },
+    ),
   });
 
-  // Adapt server response shape to our row shape; tolerant to schema evolution.
-  type RawRow = {
+  // Server response → row shape. The procedure includes nested relations
+  // we project here to keep the rest of the view shape-stable.
+  type ServerItem = {
     id: string;
-    pipelineName?: string;
-    pipeline?: { name?: string };
-    fromEnvironment?: { name?: string };
-    toEnvironment?: { name?: string };
-    requestedBy?: { name?: string; email?: string };
-    requestedAt?: string;
-    createdAt?: string;
-    status: StatusKey;
+    status: string;
+    createdAt: string | Date;
+    sourcePipeline: { id: string; name: string } | null;
+    promotedBy: { name: string | null; email: string | null } | null;
+    sourceEnvironment: { name: string } | null;
+    targetEnvironment: { name: string } | null;
   };
   const rows: PromotionRow[] = React.useMemo(() => {
-    if (!Array.isArray(historyQ.data)) return [];
-    return (historyQ.data as RawRow[]).map((r) => ({
+    const data = recentQ.data;
+    if (!data || !Array.isArray(data.items)) return [];
+    return (data.items as ServerItem[]).map((r) => ({
       id: r.id,
-      pipelineName: r.pipelineName ?? r.pipeline?.name ?? "—",
-      fromEnv: r.fromEnvironment?.name ?? "—",
-      toEnv: r.toEnvironment?.name ?? "—",
-      requestedBy:
-        r.requestedBy?.name ??
-        r.requestedBy?.email ??
-        "—",
-      requestedAt: r.requestedAt ?? r.createdAt ?? "",
-      status: r.status,
+      sourcePipelineId: r.sourcePipeline?.id ?? "",
+      pipelineName: r.sourcePipeline?.name ?? "—",
+      fromEnv: r.sourceEnvironment?.name ?? "—",
+      toEnv: r.targetEnvironment?.name ?? "—",
+      requestedBy: r.promotedBy?.name ?? r.promotedBy?.email ?? "—",
+      requestedAt:
+        typeof r.createdAt === "string" ? r.createdAt : r.createdAt.toISOString(),
+      status: r.status as StatusKey,
     }));
-  }, [historyQ.data]);
+  }, [recentQ.data]);
 
   const counts = React.useMemo(
     () => ({
@@ -160,7 +177,7 @@ export default function PromotionsPage() {
             counts.history === 0
               ? "—"
               : Math.round(
-                  (rows.filter((r) => r.status === "EXECUTED").length /
+                  (rows.filter((r) => r.status === "DEPLOYED").length /
                     Math.max(counts.history, 1)) *
                     100,
                 )
@@ -170,8 +187,8 @@ export default function PromotionsPage() {
         />
         <KpiInStrip
           label="ROLLBACKS · 7D"
-          value={rows.filter((r) => r.status === "FAILED").length}
-          sub="auto + manual"
+          value={rows.filter((r) => r.status === "REJECTED").length}
+          sub="rejections + cancels"
         />
         <KpiInStrip
           label="PROMOTIONS · MO"
@@ -227,10 +244,20 @@ export default function PromotionsPage() {
 
           {/* Rows */}
           <div className="flex-1 overflow-auto">
-            {historyQ.isPending && (
+            {!teamId && (
+              <div className="p-5 text-fg-2 font-mono text-[12px]">
+                Select a team to view promotions.
+              </div>
+            )}
+            {teamId && recentQ.isPending && (
               <div className="p-5 text-fg-2 font-mono text-[12px]">Loading…</div>
             )}
-            {historyQ.isSuccess && visibleRows.length === 0 && (
+            {teamId && recentQ.isError && (
+              <div className="p-5 text-status-error font-mono text-[12px]">
+                Failed to load promotions: {recentQ.error.message}
+              </div>
+            )}
+            {teamId && recentQ.isSuccess && visibleRows.length === 0 && (
               <EmptyState
                 glyph="◇"
                 title="Nothing here"
@@ -296,10 +323,11 @@ function PromotionStatusPill({ status }: { status: StatusKey }) {
   const cfg: Record<StatusKey, { label: string; tone: string }> = {
     PENDING: { label: "PENDING", tone: "bg-[color:var(--status-degraded-bg)] text-status-degraded border-[color:var(--status-degraded)]/40" },
     APPROVED: { label: "APPROVED", tone: "bg-[color:var(--status-info-bg)] text-status-info border-[color:var(--status-info)]/40" },
-    EXECUTED: { label: "EXECUTED", tone: "bg-accent-soft text-accent-brand border-accent-line" },
+    DEPLOYED: { label: "DEPLOYED", tone: "bg-accent-soft text-accent-brand border-accent-line" },
     REJECTED: { label: "REJECTED", tone: "bg-[color:var(--status-error-bg)] text-status-error border-[color:var(--status-error)]/40" },
     CANCELLED: { label: "CANCELLED", tone: "bg-bg-3 text-fg-2 border-line-2" },
-    FAILED: { label: "FAILED", tone: "bg-[color:var(--status-error-bg)] text-status-error border-[color:var(--status-error)]/40" },
+    AWAITING_PR_MERGE: { label: "AWAITING PR", tone: "bg-[color:var(--status-info-bg)] text-status-info border-[color:var(--status-info)]/40" },
+    DEPLOYING: { label: "DEPLOYING", tone: "bg-[color:var(--status-info-bg)] text-status-info border-[color:var(--status-info)]/40" },
   };
   const c = cfg[status];
   return (
@@ -310,6 +338,14 @@ function PromotionStatusPill({ status }: { status: StatusKey }) {
 }
 
 function PromotionDetail({ row }: { row: PromotionRow }) {
+  const trpc = useTRPC();
+  const diffQ = useQuery({
+    ...trpc.promotion.diffPreview.queryOptions(
+      { pipelineId: row.sourcePipelineId },
+      { enabled: Boolean(row.sourcePipelineId) },
+    ),
+  });
+
   return (
     <>
       <div className="px-5 py-3.5 border-b border-line bg-bg-1">
@@ -391,19 +427,23 @@ function PromotionDetail({ row }: { row: PromotionRow }) {
           Substitution preview · {row.fromEnv} → {row.toEnv}
         </div>
         <div className="border border-line rounded-[3px] bg-bg-2 font-mono text-[11px] leading-[1.7] overflow-hidden">
-          <div
-            className="grid bg-bg-1 border-b border-line py-1.5 px-3 text-[10px] text-fg-2 uppercase tracking-[0.04em]"
-            style={{ gridTemplateColumns: "1fr 1fr" }}
-          >
-            <span>{row.fromEnv}</span>
-            <span className="border-l border-line pl-3">{row.toEnv}</span>
-          </div>
-          <div className="px-3 py-2 text-fg-2 text-[11px]">
-            {/* TODO: render real diff when promotion.diffPreview is queried */}
-            Diff preview will render here once a promotion is selected and
-            <span className="text-fg-1 mx-1">trpc.promotion.diffPreview</span>
-            resolves.
-          </div>
+          {diffQ.isPending && (
+            <div className="px-3 py-2 text-fg-2 text-[11px]">Loading diff…</div>
+          )}
+          {diffQ.isError && (
+            <div className="px-3 py-2 text-status-error text-[11px]">
+              Failed to load diff: {diffQ.error.message}
+            </div>
+          )}
+          {diffQ.isSuccess && (
+            <ConfigDiff
+              oldConfig={diffQ.data.sourceYaml ?? ""}
+              newConfig={diffQ.data.targetYaml ?? ""}
+              oldLabel={row.fromEnv}
+              newLabel={row.toEnv}
+              className="p-3 text-[11px] font-mono leading-[1.7] max-h-[420px] overflow-auto bg-bg-2"
+            />
+          )}
         </div>
       </div>
 
