@@ -174,6 +174,15 @@ describe("useKeyboardShortcuts", () => {
     expect(mockUndo).not.toHaveBeenCalled();
   });
 
+  it("Ctrl+Y triggers redo", () => {
+    renderShortcutsHook();
+
+    dispatchKeyOutside("y", { ctrlKey: true });
+
+    expect(mockRedo).toHaveBeenCalledOnce();
+    expect(mockUndo).not.toHaveBeenCalled();
+  });
+
   it("Ctrl+S triggers onSave", () => {
     renderShortcutsHook();
 

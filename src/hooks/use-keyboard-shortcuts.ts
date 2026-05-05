@@ -80,8 +80,8 @@ export function useKeyboardShortcuts({ onSave, onExport, onImport }: KeyboardSho
         return;
       }
 
-      // Cmd+Shift+Z → Redo
-      if (isMeta && e.shiftKey && e.key === "z") {
+      // Cmd+Shift+Z / Cmd+Y → Redo
+      if (isMeta && ((e.shiftKey && e.key === "z") || e.key === "y")) {
         e.preventDefault();
         redo();
         return;
