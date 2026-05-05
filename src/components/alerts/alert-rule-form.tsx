@@ -12,6 +12,7 @@ import { VFIcon } from "@/components/ui/vf-icon";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { AlertRulePreview } from "@/components/alerts/alert-rule-preview";
+import { AlertRuleSlackPreview } from "@/components/alerts/alert-rule-slack-preview";
 
 /**
  * Shared alert-rule editor used by both /alerts/new and /alerts/[id]/edit.
@@ -453,6 +454,16 @@ export function AlertRuleForm(props: Props) {
             condition={condition}
             threshold={threshold}
             durationMinutes={durationMinutes}
+          />
+
+          <AlertRuleSlackPreview
+            name={name}
+            severity={severity}
+            metric={metric}
+            condition={condition}
+            threshold={threshold}
+            durationSeconds={Math.max(0, Math.round(Number(durationMinutes) * 60))}
+            pipelineName={pipelines.find((p) => p.id === pipelineId)?.name ?? null}
           />
         </div>
       </div>
