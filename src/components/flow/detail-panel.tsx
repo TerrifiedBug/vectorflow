@@ -158,7 +158,7 @@ function InspectorHeader({
           <div className="truncate text-[13px] font-medium text-fg">
             {displayName || componentDef.displayName}
           </div>
-          <div className="truncate font-mono text-[10px] uppercase tracking-[0.05em] text-fg-2">
+          <div className="truncate font-mono text-[10px] uppercase tracking-[0.04em] text-fg-2">
             {componentDef.kind} · {componentDef.type}
           </div>
         </div>

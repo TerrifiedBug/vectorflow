@@ -35,6 +35,7 @@ import { FlowCanvas } from "@/components/flow/flow-canvas";
 import { FlowToolbar } from "@/components/flow/flow-toolbar";
 import { AiPipelineDialog } from "@/components/flow/ai-pipeline-dialog";
 import { DetailPanel } from "@/components/flow/detail-panel";
+import { LiveTailPanel } from "@/components/flow/live-tail-panel";
 import { DeployDialog } from "@/components/flow/deploy-dialog";
 import { SaveTemplateDialog } from "@/components/flow/save-template-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -232,6 +233,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
   const updateNodeMetrics = useFlowStore((s) => s.updateNodeMetrics);
   const nodes = useFlowStore((s) => s.nodes);
   const edges = useFlowStore((s) => s.edges);
+  const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
   const globalConfig = useFlowStore((s) => s.globalConfig);
 
   // Generate current YAML for AI debug panel
@@ -239,6 +241,12 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     () => (nodes.length > 0 ? generateVectorYaml(nodes, edges, globalConfig) : undefined),
     [nodes, edges, globalConfig],
   );
+
+  const selectedComponentKey = useMemo(() => {
+    if (!selectedNodeId) return null;
+    const node = nodes.find((n) => n.id === selectedNodeId);
+    return (node?.data as { componentKey?: string } | undefined)?.componentKey ?? null;
+  }, [nodes, selectedNodeId]);
 
   // Fetch pipeline data
   const pipelineQuery = useQuery(
@@ -582,8 +590,13 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       </div>
       <div className="flex flex-1 overflow-hidden">
         <ComponentPalette />
-        <div className="flex-1">
+        <div className="relative flex-1">
           <FlowCanvas />
+          <LiveTailPanel
+            pipelineId={pipelineId}
+            componentKey={selectedComponentKey}
+            isDeployed={!!isDeployed}
+          />
         </div>
         <DetailPanel
           pipelineId={pipelineId}

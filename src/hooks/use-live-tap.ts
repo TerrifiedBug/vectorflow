@@ -15,7 +15,7 @@ export interface TapEventEntry {
 
 // ── Constants ───────────────────────────────────────────────────────
 
-const MAX_TAP_EVENTS = 100;
+const MAX_TAP_EVENTS = 200;
 
 // ── Pure helpers (exported for testing) ─────────────────────────────
 
