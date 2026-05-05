@@ -250,27 +250,32 @@ export function FlowToolbar({
   const [renameEditing, setRenameEditing] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
 
+  // Guards against double-fire when Enter triggers commit AND the focus loss
+  // on input unmount fires onBlur, which would re-invoke commit. Both handlers
+  // dispatch synchronously in the same React batch, so we use a ref (not state)
+  // to short-circuit the second call.
+  const renameCommittedRef = useRef(false);
+
   const startRename = () => {
     if (!onRename) return;
     setRenameDraft(pipelineName ?? "");
+    renameCommittedRef.current = false;
     setRenameEditing(true);
   };
 
   const commitRename = () => {
-    if (!onRename) {
-      setRenameEditing(false);
-      return;
-    }
-    const trimmed = renameDraft.trim();
-    if (!trimmed || trimmed === pipelineName) {
-      setRenameEditing(false);
-      return;
-    }
-    onRename(trimmed);
+    if (renameCommittedRef.current) return;
+    renameCommittedRef.current = true;
     setRenameEditing(false);
+    if (!onRename) return;
+    const trimmed = renameDraft.trim();
+    if (!trimmed || trimmed === pipelineName) return;
+    onRename(trimmed);
   };
 
   const cancelRename = () => {
+    if (renameCommittedRef.current) return;
+    renameCommittedRef.current = true;
     setRenameEditing(false);
   };
 

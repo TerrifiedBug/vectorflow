@@ -475,7 +475,7 @@ describe("FlowToolbar", () => {
       expect(getByText("last saved 14s ago")).toBeTruthy();
     });
 
-    it("commits inline rename via Enter and calls onRename with trimmed value", () => {
+    it("commits inline rename via Enter and calls onRename with trimmed value exactly once", () => {
       const onRename = vi.fn();
       const { getByText, getByLabelText } = renderToolbar(
         {},
@@ -484,10 +484,21 @@ describe("FlowToolbar", () => {
 
       fireEvent.click(getByText("old-name"));
       const input = getByLabelText("Pipeline name") as HTMLInputElement;
+      input.focus();
       fireEvent.change(input, { target: { value: "  new-name  " } });
-      fireEvent.keyDown(input, { key: "Enter" });
+      // Bug repro (HIGH): pressing Enter triggers commitRename, which unmounts
+      // the input. The focus loss on the still-mounted-this-tick element fires
+      // onBlur, which would re-invoke commitRename. We collapse that real-world
+      // race into a single synchronous batch via act() — both handlers run
+      // against the still-mounted input. commitRename must guard against the
+      // second call so onRename only fires once.
+      act(() => {
+        fireEvent.keyDown(input, { key: "Enter" });
+        fireEvent.blur(input);
+      });
 
       expect(onRename).toHaveBeenCalledWith("new-name");
+      expect(onRename).toHaveBeenCalledTimes(1);
     });
 
     it("cancels inline rename on Escape and does not call onRename", () => {
