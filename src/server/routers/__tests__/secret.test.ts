@@ -38,6 +38,10 @@ vi.mock("@/server/services/crypto", () => ({
   decrypt: vi.fn((val: string) => val.replace("encrypted:", "")),
 }));
 
+vi.mock("@/server/services/config-crypto", () => ({
+  decryptNodeConfig: vi.fn((_: unknown, c: unknown) => c),
+}));
+
 // ─── Import SUT + mocks ─────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
@@ -243,6 +247,104 @@ describe("secret router", () => {
       await expect(
         caller.resolve({ environmentId: "env-1", name: "MISSING" }),
       ).rejects.toThrow('Secret "MISSING" not found');
+    });
+  });
+
+  // ─── usage ────────────────────────────────────────────────────────────────
+
+  describe("usage", () => {
+    it("returns empty result when secret does not exist", async () => {
+      prismaMock.secret.findUnique.mockResolvedValue(null);
+
+      const result = await caller.usage({ secretId: "missing", environmentId: "env-1" });
+
+      expect(result).toEqual({ count: 0, refs: [] });
+    });
+
+    it("returns refs from pipeline nodes that reference the secret", async () => {
+      prismaMock.secret.findUnique.mockResolvedValue({
+        id: "s-1",
+        name: "API_KEY",
+        environmentId: "env-1",
+      } as never);
+
+      prismaMock.pipelineNode.findMany.mockResolvedValue([
+        {
+          id: "node-1",
+          componentType: "http",
+          config: { url: "https://x.com", auth: { token: "SECRET[API_KEY]" } },
+          pipeline: {
+            id: "p-1",
+            name: "Auth Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+        {
+          id: "node-2",
+          componentType: "kafka",
+          config: { topic: "events", sasl_password: "SECRET[OTHER]" },
+          pipeline: {
+            id: "p-2",
+            name: "Kafka Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+        {
+          id: "node-3",
+          componentType: "datadog_logs",
+          config: { default_api_key: "SECRET[API_KEY]" },
+          pipeline: {
+            id: "p-3",
+            name: "DD Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+      ] as never);
+
+      const result = await caller.usage({ secretId: "s-1", environmentId: "env-1" });
+
+      expect(result.count).toBe(2);
+      const ids = result.refs.map((r: { id: string }) => r.id).sort();
+      expect(ids).toEqual(["node-1", "node-3"]);
+      const node1 = result.refs.find((r: { id: string }) => r.id === "node-1");
+      expect(node1?.componentType).toBe("http");
+      expect(node1?.pipeline.name).toBe("Auth Pipeline");
+      expect(node1?.pipeline.environment.name).toBe("production");
+    });
+
+    it("returns empty refs when no pipeline node references the secret", async () => {
+      prismaMock.secret.findUnique.mockResolvedValue({
+        id: "s-1",
+        name: "UNUSED_KEY",
+        environmentId: "env-1",
+      } as never);
+
+      prismaMock.pipelineNode.findMany.mockResolvedValue([
+        {
+          id: "node-1",
+          componentType: "http",
+          config: { url: "https://x.com" },
+          pipeline: {
+            id: "p-1",
+            name: "Pipeline A",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+        {
+          id: "node-2",
+          componentType: "kafka",
+          config: { sasl_password: "SECRET[OTHER]" },
+          pipeline: {
+            id: "p-2",
+            name: "Pipeline B",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+      ] as never);
+
+      const result = await caller.usage({ secretId: "s-1", environmentId: "env-1" });
+
+      expect(result).toEqual({ count: 0, refs: [] });
     });
   });
 });
