@@ -26,8 +26,6 @@ interface NodeShellProps {
   searchMatch?: boolean;
   /** Top-right corner badge (validation error, lock, etc.) */
   badge?: ReactNode;
-  /** Click + double-click handlers preserved by React Flow's wrapper */
-  onClick?: () => void;
 }
 
 const NODE_W = 156;
