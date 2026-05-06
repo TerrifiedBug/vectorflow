@@ -45,9 +45,11 @@ function buildSeries(metrics: MetricsLike, kind: NodeKind | undefined) {
 
 function buildYLabels(values: number[]) {
   const ceiling = Math.max(...values, 0);
-  return [0, ceiling * 0.25, ceiling * 0.5, ceiling * 0.75, ceiling].map((value) =>
-    formatSI(Math.round(value)),
-  );
+  return [0, ceiling * 0.25, ceiling * 0.5, ceiling * 0.75, ceiling].map((value) => {
+    if (value === 0) return "0";
+    if (value < 10) return value.toFixed(1);
+    return formatSI(Number(value.toFixed(1)));
+  });
 }
 
 export function InspectorMetricsTab({ node }: InspectorMetricsTabProps) {

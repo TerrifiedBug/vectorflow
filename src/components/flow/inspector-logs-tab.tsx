@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Node } from "@xyflow/react";
-import { fingerprint, useStreamingLogs } from "@/hooks/use-streaming-logs";
+import { useStreamingLogs } from "@/hooks/use-streaming-logs";
 import { formatTimeWithSeconds } from "@/lib/format";
 import { useTRPC } from "@/trpc/client";
 
@@ -20,6 +20,10 @@ const LEVEL_COLORS: Record<string, string> = {
   TRACE: "text-muted-foreground/50",
 };
 
+function buildEntryMergeKey(entry: { level: string; message: string; timestamp: number | string }) {
+  return `${entry.level}\u0000${entry.timestamp}\u0000${entry.message}`;
+}
+
 export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
   const trpc = useTRPC();
   const { streamedEntries } = useStreamingLogs({ pipelineId });
@@ -33,12 +37,8 @@ export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
   const entries = useMemo(() => {
     if (streamedEntries.length === 0) return persistedEntries.slice(-50);
 
-    const persistedFingerprints = new Set(
-      persistedEntries.map((entry) => fingerprint(entry.level, entry.message)),
-    );
-    const uniqueStreamed = streamedEntries.filter(
-      (entry) => !persistedFingerprints.has(fingerprint(entry.level, entry.message)),
-    );
+    const persistedKeys = new Set(persistedEntries.map((entry) => buildEntryMergeKey(entry)));
+    const uniqueStreamed = streamedEntries.filter((entry) => !persistedKeys.has(buildEntryMergeKey(entry)));
 
     return [...persistedEntries, ...uniqueStreamed].slice(-50);
   }, [persistedEntries, streamedEntries]);
