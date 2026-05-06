@@ -1,9 +1,11 @@
 "use client";
 
+import * as React from "react";
 import {
   AlertRuleForm,
   formValuesFromSearchParams,
 } from "@/components/alerts/alert-rule-form";
+import { useEnvironmentStore } from "@/stores/environment-store";
 import { useSearchParams } from "next/navigation";
 
 
@@ -16,7 +18,15 @@ import { useSearchParams } from "next/navigation";
  */
 export default function NewAlertRulePage() {
   const searchParams = useSearchParams();
+  const setSelectedEnvironmentId = useEnvironmentStore((s) => s.setSelectedEnvironmentId);
+  const environmentId = searchParams.get("environmentId") ?? undefined;
   const hasParams = searchParams.toString().length > 0;
+
+  React.useEffect(() => {
+    if (environmentId) {
+      setSelectedEnvironmentId(environmentId);
+    }
+  }, [environmentId, setSelectedEnvironmentId]);
 
   if (!hasParams) {
     return <AlertRuleForm mode="create" />;
@@ -26,7 +36,7 @@ export default function NewAlertRulePage() {
     <AlertRuleForm
       mode="create"
       initialValues={formValuesFromSearchParams(searchParams)}
-      environmentId={searchParams.get("environmentId") ?? undefined}
+      environmentId={environmentId}
     />
   );
 }

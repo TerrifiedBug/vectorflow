@@ -260,17 +260,19 @@ export function AlertRuleForm(props: Props) {
       return;
     }
 
-    const thresholdValue = numericOrUndefined(threshold);
-    if (thresholdValue === undefined || !Number.isFinite(thresholdValue)) {
+    const rawThreshold = numericOrUndefined(threshold);
+    if (rawThreshold !== undefined && !Number.isFinite(rawThreshold)) {
       toast.error("Enter a numeric threshold");
       return;
     }
+    const thresholdValue = rawThreshold ?? 0;
 
-    const durationSeconds = durationMinutesToSeconds(durationMinutes);
-    if (durationSeconds === undefined || !Number.isFinite(durationSeconds)) {
+    const rawDuration = durationMinutesToSeconds(durationMinutes);
+    if (rawDuration !== undefined && !Number.isFinite(rawDuration)) {
       toast.error("Enter a numeric duration");
       return;
     }
+    const durationSeconds = rawDuration ?? 0;
 
     setTestRulePending(true);
     try {
