@@ -23,6 +23,9 @@ import { toast } from "sonner";
 import { useFlowStore } from "@/stores/flow-store";
 import { SchemaForm } from "@/components/config-forms/schema-form";
 import { VrlEditor } from "@/components/vrl-editor/vrl-editor";
+import { InspectorSchemaTab } from "@/components/flow/inspector-schema-tab";
+import { InspectorMetricsTab } from "@/components/flow/inspector-metrics-tab";
+import { InspectorLogsTab } from "@/components/flow/inspector-logs-tab";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -30,7 +33,6 @@ import { Switch } from "@/components/ui/switch";
 import { Pill } from "@/components/ui/pill";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { EmptyState } from "@/components/empty-state";
 import { getIcon } from "@/components/flow/node-icon";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import type { Node, Edge } from "@xyflow/react";
@@ -684,34 +686,16 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
           </div>
         </TabsContent>
 
-        {/* Schema — coming soon */}
         <TabsContent value="schema" className="min-h-0 flex-1 overflow-y-auto">
-          <EmptyState
-            compact
-            title="Schema inspector coming soon"
-            description="Field lineage and inferred schema will live here."
-            className="m-3.5"
-          />
+          <InspectorSchemaTab node={selectedNode} />
         </TabsContent>
 
-        {/* Metrics — coming soon */}
         <TabsContent value="metrics" className="min-h-0 flex-1 overflow-y-auto">
-          <EmptyState
-            compact
-            title="Metrics coming soon"
-            description="Per-component throughput, error rate, and latency."
-            className="m-3.5"
-          />
+          <InspectorMetricsTab node={selectedNode} />
         </TabsContent>
 
-        {/* Logs — coming soon */}
         <TabsContent value="logs" className="min-h-0 flex-1 overflow-y-auto">
-          <EmptyState
-            compact
-            title="Logs coming soon"
-            description="Live tail and recent component log events."
-            className="m-3.5"
-          />
+          <InspectorLogsTab pipelineId={pipelineId} node={selectedNode} />
         </TabsContent>
       </Tabs>
     </div>

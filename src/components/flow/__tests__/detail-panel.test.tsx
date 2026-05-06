@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, fireEvent, cleanup } from "@testing-library/react";
+import { render, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import type { Node } from "@xyflow/react";
 import type { FlowState } from "@/stores/flow-store";
@@ -80,6 +80,87 @@ vi.mock("@/components/vrl-editor/vrl-editor", () => ({
 vi.mock("@/components/flow/live-tail-panel", () => ({
   LiveTailPanel: () => <div data-testid="live-tail-panel" />,
 }));
+
+vi.mock("@/components/flow/inspector-schema-tab", () => ({
+  InspectorSchemaTab: () => <div data-testid="inspector-schema-tab" />,
+}));
+
+vi.mock("@/components/flow/inspector-metrics-tab", () => ({
+  InspectorMetricsTab: () => <div data-testid="inspector-metrics-tab" />,
+}));
+
+vi.mock("@/components/flow/inspector-logs-tab", () => ({
+  InspectorLogsTab: () => <div data-testid="inspector-logs-tab" />,
+}));
+
+vi.mock("@/components/ui/tabs", async () => {
+  const React = await import("react");
+  const TabsContext = React.createContext<{
+    value: string;
+    setValue: (value: string) => void;
+  } | null>(null);
+
+  function useTabsContext() {
+    const context = React.useContext(TabsContext);
+    if (!context) throw new Error("Tabs mock used outside provider");
+    return context;
+  }
+
+  return {
+    Tabs: ({
+      defaultValue,
+      children,
+      ...props
+    }: {
+      defaultValue: string;
+      children: React.ReactNode;
+    }) => {
+      const [value, setValue] = React.useState(defaultValue);
+      return (
+        <TabsContext.Provider value={{ value, setValue }}>
+          <div {...props}>{children}</div>
+        </TabsContext.Provider>
+      );
+    },
+    TabsList: ({ children, ...props }: { children: React.ReactNode }) => (
+      <div role="tablist" {...props}>
+        {children}
+      </div>
+    ),
+    TabsTrigger: ({
+      value,
+      children,
+      ...props
+    }: {
+      value: string;
+      children: React.ReactNode;
+    }) => {
+      const context = useTabsContext();
+      return (
+        <button
+          role="tab"
+          type="button"
+          aria-selected={context.value === value}
+          onClick={() => context.setValue(value)}
+          {...props}
+        >
+          {children}
+        </button>
+      );
+    },
+    TabsContent: ({
+      value,
+      children,
+      ...props
+    }: {
+      value: string;
+      children: React.ReactNode;
+    }) => {
+      const context = useTabsContext();
+      return context.value === value ? <div {...props}>{children}</div> : null;
+    },
+  };
+});
 
 import { DetailPanel } from "../detail-panel";
 
@@ -205,13 +286,42 @@ describe("DetailPanel", () => {
       expect(getByRole("tab", { name: /logs/i })).toBeTruthy();
     });
 
+    it("renders the schema inspector tab content when selected", async () => {
+      const node = makeNode("n1");
+      const { getByRole, getByTestId } = renderPanel({
+        selectedNodeId: "n1",
+        nodes: [node],
+      });
+      fireEvent.click(getByRole("tab", { name: /schema/i }));
+      await waitFor(() => expect(getByTestId("inspector-schema-tab")).toBeTruthy());
+    });
+
+    it("renders the metrics inspector tab content when selected", async () => {
+      const node = makeNode("n1");
+      const { getByRole, getByTestId } = renderPanel({
+        selectedNodeId: "n1",
+        nodes: [node],
+      });
+      fireEvent.click(getByRole("tab", { name: /metrics/i }));
+      await waitFor(() => expect(getByTestId("inspector-metrics-tab")).toBeTruthy());
+    });
+
+    it("renders the logs inspector tab content when selected", async () => {
+      const node = makeNode("n1");
+      const { getByRole, getByTestId } = renderPanel({
+        selectedNodeId: "n1",
+        nodes: [node],
+      });
+      fireEvent.click(getByRole("tab", { name: /logs/i }));
+      await waitFor(() => expect(getByTestId("inspector-logs-tab")).toBeTruthy());
+    });
+
     it("renders the inspector header with mono kind label", () => {
       const node = makeNode("n1");
       const { getByText } = renderPanel({
         selectedNodeId: "n1",
         nodes: [node],
       });
-      // mono uppercase kind · type
       expect(getByText(/source · kafka/i)).toBeTruthy();
     });
   });
