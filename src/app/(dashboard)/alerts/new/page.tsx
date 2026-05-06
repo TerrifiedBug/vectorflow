@@ -22,15 +22,27 @@ export default function NewAlertRulePage() {
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
   const environmentId = searchParams.get("environmentId") ?? undefined;
   const hasParams = searchParams.toString().length > 0;
+  const didSyncEnvironmentRef = React.useRef(false);
+  const [didSyncEnvironment, setDidSyncEnvironment] = React.useState(false);
 
 
   React.useEffect(() => {
-    if (environmentId && selectedEnvironmentId !== environmentId) {
+    if (!environmentId) {
+      return;
+    }
+
+    if (!didSyncEnvironmentRef.current && selectedEnvironmentId !== environmentId) {
       setSelectedEnvironmentId(environmentId);
+      return;
+    }
+
+    if (selectedEnvironmentId === environmentId) {
+      didSyncEnvironmentRef.current = true;
+      setDidSyncEnvironment(true);
     }
   }, [environmentId, selectedEnvironmentId, setSelectedEnvironmentId]);
 
-  if (environmentId && selectedEnvironmentId !== environmentId) {
+  if (environmentId && !didSyncEnvironment && selectedEnvironmentId !== environmentId) {
     return (
       <div className="flex flex-col h-full items-center justify-center bg-bg text-fg p-8">
         <div className="font-mono text-[12px] text-fg-2">Loading alert rule environment…</div>

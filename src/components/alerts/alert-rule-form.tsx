@@ -137,18 +137,17 @@ export function AlertRuleForm(props: Props) {
     }
 
     const previousEnvironmentId = previousEnvironmentIdRef.current;
-    previousEnvironmentIdRef.current = effectiveEnvironmentId;
 
-    if (
-      !previousEnvironmentId ||
-      !effectiveEnvironmentId ||
-      previousEnvironmentId === effectiveEnvironmentId
-    ) {
+    if (!effectiveEnvironmentId) {
       return;
     }
 
-    setPipelineId("");
-    setEnabledChannels(new Set<string>());
+    if (previousEnvironmentId && previousEnvironmentId !== effectiveEnvironmentId) {
+      setPipelineId("");
+      setEnabledChannels(new Set<string>());
+    }
+
+    previousEnvironmentIdRef.current = effectiveEnvironmentId;
   }, [effectiveEnvironmentId, props.mode]);
 
   const pipelinesQ = useQuery({
