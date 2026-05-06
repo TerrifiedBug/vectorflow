@@ -120,13 +120,16 @@ export default function IncidentsPage() {
   const selectedRow =
     rows.find((r) => r.pipelineId === selectedRowId) ?? rows[0];
 
-  const counts = React.useMemo(
-    () => ({
-      active: rows.filter((r) => r.state === "firing").length,
+  const counts = React.useMemo(() => {
+    const rawAnomalies = Array.isArray(anomaliesQ.data)
+      ? (anomaliesQ.data as RawAnomaly[])
+      : [];
+
+    return {
+      active: rawAnomalies.filter((a) => a.status === "open").length,
       anomalies: rows.flatMap((r) => r.events).filter((e) => e.kind === "anomaly").length,
-    }),
-    [rows],
-  );
+    };
+  }, [anomaliesQ.data, rows]);
 
   const hourLabels = React.useMemo(
     () =>
@@ -182,7 +185,7 @@ export default function IncidentsPage() {
         <KpiInStrip
           label="ACTIVE ANOMALIES"
           value={counts.active}
-          sub={`${counts.active} open anomaly ${counts.active === 1 ? "row" : "rows"}`}
+          sub={`${counts.active} open ${counts.active === 1 ? "anomaly" : "anomalies"}`}
           accent={counts.active > 0 ? "var(--status-error)" : undefined}
         />
         <KpiInStrip

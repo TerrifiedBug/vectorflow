@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 const queryState = vi.hoisted(() => ({
@@ -79,4 +79,38 @@ describe("IncidentsPage", () => {
     expect(screen.queryByText(/no anomalies detected in the selected window/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/pipeline ·/i)).not.toBeInTheDocument();
   }); 
+
+  it("counts active anomalies from open records, not grouped pipeline rows", async () => {
+    queryState.value = {
+      data: [
+        {
+          id: "anom-1",
+          pipelineId: "pipe-1",
+          pipelineName: "Shared pipeline",
+          detectedAt: new Date().toISOString(),
+          description: "CPU spike",
+          status: "open",
+        },
+        {
+          id: "anom-2",
+          pipelineId: "pipe-1",
+          pipelineName: "Shared pipeline",
+          detectedAt: new Date().toISOString(),
+          description: "Memory spike",
+          status: "open",
+        },
+      ],
+      isError: false,
+      isPending: false,
+      isSuccess: true,
+      error: null,
+    };
+
+    render(<IncidentsPage />);
+
+    expect(await screen.findByText("2 open anomalies")).toBeInTheDocument();
+    const activeKpi = screen.getByText("ACTIVE ANOMALIES").parentElement;
+    expect(activeKpi).not.toBeNull();
+    expect(within(activeKpi!).getByText("2")).toBeInTheDocument();
+  });
 });
