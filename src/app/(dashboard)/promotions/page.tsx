@@ -37,17 +37,32 @@ type StatusKey =
 
 type StatusFilter = "ALL" | Extract<
   StatusKey,
-  "PENDING" | "APPROVED" | "DEPLOYED" | "REJECTED" | "CANCELLED"
+  | "PENDING"
+  | "APPROVED"
+  | "DEPLOYED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "AWAITING_PR_MERGE"
+  | "DEPLOYING"
 >;
 
-const STATUS_FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
-  { value: "ALL", label: "ALL" },
-  { value: "PENDING", label: "PENDING" },
-  { value: "APPROVED", label: "APPROVED" },
-  { value: "DEPLOYED", label: "DEPLOYED" },
-  { value: "REJECTED", label: "REJECTED" },
-  { value: "CANCELLED", label: "CANCELLED" },
-];
+const STATUS_FILTER_LABELS: Record<StatusFilter, string> = {
+  ALL: "ALL",
+  PENDING: "PENDING",
+  APPROVED: "APPROVED",
+  DEPLOYED: "DEPLOYED",
+  REJECTED: "REJECTED",
+  CANCELLED: "CANCELLED",
+  AWAITING_PR_MERGE: "AWAITING PR",
+  DEPLOYING: "DEPLOYING",
+};
+
+const TAB_STATUS_OPTIONS: Record<TabId, StatusFilter[]> = {
+  pending: ["ALL", "PENDING"],
+  approved: ["ALL", "APPROVED"],
+  "in-flight": ["ALL", "APPROVED", "AWAITING_PR_MERGE", "DEPLOYING"],
+  history: ["ALL", "DEPLOYED", "REJECTED", "CANCELLED"],
+};
 
 interface PromotionRow {
   id: string;
@@ -194,9 +209,9 @@ export default function PromotionsPage() {
             }}
             className="h-8 rounded-[3px] border border-line bg-bg-2 px-2 font-mono text-[11px] text-fg outline-none hover:border-line-2 focus:border-accent-brand"
           >
-            {STATUS_FILTER_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
+            {TAB_STATUS_OPTIONS[tab].map((status) => (
+              <option key={status} value={status}>
+                {STATUS_FILTER_LABELS[status]}
               </option>
             ))}
           </select>
@@ -425,6 +440,7 @@ function PromotionStatusPill({ status }: { status: StatusKey }) {
 function PromotionDetail({ row }: { row: PromotionRow }) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const teamId = useTeamStore((s) => s.selectedTeamId);
   const diffQ = useQuery({
     ...trpc.promotion.diffPreview.queryOptions(
       { pipelineId: row.sourcePipelineId },
@@ -432,17 +448,20 @@ function PromotionDetail({ row }: { row: PromotionRow }) {
     ),
   });
 
-  const invalidateRecentPromotions = React.useCallback(() => {
+  const invalidatePromotions = React.useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: trpc.promotion.recentForTeam.queryKey(),
     });
-  }, [queryClient, trpc.promotion.recentForTeam]);
+    queryClient.invalidateQueries({
+      queryKey: trpc.promotion.summaryForTeam.queryKey({ teamId: teamId ?? "" }),
+    });
+  }, [queryClient, teamId, trpc.promotion.recentForTeam, trpc.promotion.summaryForTeam]);
 
   const rejectMutation = useMutation(
     trpc.promotion.reject.mutationOptions({
       onSuccess: () => {
         toast.success("Promotion rejected");
-        invalidateRecentPromotions();
+        invalidatePromotions();
       },
       onError: (error) => {
         toast.error(error.message || "Failed to reject promotion", { duration: 6000 });
@@ -454,7 +473,7 @@ function PromotionDetail({ row }: { row: PromotionRow }) {
     trpc.promotion.approve.mutationOptions({
       onSuccess: () => {
         toast.success("Promotion approved");
-        invalidateRecentPromotions();
+        invalidatePromotions();
       },
       onError: (error) => {
         toast.error(error.message || "Failed to approve promotion", { duration: 6000 });
