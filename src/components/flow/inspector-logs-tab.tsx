@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { Node } from "@xyflow/react";
 import { useStreamingLogs } from "@/hooks/use-streaming-logs";
 import { formatTimeWithSeconds } from "@/lib/format";
+import { useTRPC } from "@/trpc/client";
 
 interface InspectorLogsTabProps {
   pipelineId: string;
@@ -19,33 +21,58 @@ const LEVEL_COLORS: Record<string, string> = {
 };
 
 export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
+  const trpc = useTRPC();
   const { streamedEntries } = useStreamingLogs({ pipelineId });
-  const entries = useMemo(() => streamedEntries.slice(-50), [streamedEntries]);
+  const logsQuery = useQuery(
+    trpc.pipeline.logs.queryOptions({ pipelineId, limit: 50 }),
+  );
+  const persistedEntries = useMemo(
+    () => [...(logsQuery.data?.items ?? [])].reverse(),
+    [logsQuery.data?.items],
+  );
+  const entries = useMemo(
+    () => [...persistedEntries, ...streamedEntries].slice(-50),
+    [persistedEntries, streamedEntries],
+  );
 
   if (entries.length === 0) {
     return (
-      <p className="m-3.5 rounded-md border border-dashed border-line-2 px-3 py-6 text-center text-sm text-fg-2">
-        No recent pipeline log lines for this component context.
-      </p>
+      <div className="m-3.5 space-y-2">
+        {logsQuery.isError ? (
+          <p className="text-xs text-destructive">
+            Unable to load recent pipeline logs.
+          </p>
+        ) : null}
+        <p className="rounded-md border border-dashed border-line-2 px-3 py-6 text-center text-sm text-fg-2">
+          No recent pipeline log lines.
+        </p>
+      </div>
     );
   }
 
   return (
-    <div className="m-3.5 overflow-hidden rounded-md border">
-      <div className="max-h-80 overflow-auto bg-black/95 p-3 font-mono text-xs">
-        {entries.map((entry) => (
-          <div key={entry.id} className="whitespace-pre-wrap leading-5 text-foreground/85">
-            <span className="tabular-nums text-muted-foreground">
-              {formatTimeWithSeconds(new Date(entry.timestamp))}
-            </span>
-            {"  "}
-            <span className={`inline-block w-12 ${LEVEL_COLORS[entry.level] ?? "text-muted-foreground"}`}>
-              {entry.level}
-            </span>
-            {"  "}
-            <span>{entry.message}</span>
-          </div>
-        ))}
+    <div className="m-3.5 space-y-2">
+      {logsQuery.isError ? (
+        <p className="text-xs text-destructive">
+          Unable to load recent pipeline logs.
+        </p>
+      ) : null}
+      <div className="overflow-hidden rounded-md border">
+        <div className="max-h-80 overflow-auto bg-black/95 p-3 font-mono text-xs">
+          {entries.map((entry) => (
+            <div key={entry.id} className="whitespace-pre-wrap leading-5 text-foreground/85">
+              <span className="tabular-nums text-muted-foreground">
+                {formatTimeWithSeconds(new Date(entry.timestamp))}
+              </span>
+              {"  "}
+              <span className={`inline-block w-12 ${LEVEL_COLORS[entry.level] ?? "text-muted-foreground"}`}>
+                {entry.level}
+              </span>
+              {"  "}
+              <span>{entry.message}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
