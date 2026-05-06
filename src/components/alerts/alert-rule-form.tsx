@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
@@ -69,7 +69,7 @@ export const DEFAULT_FORM_VALUES: AlertRuleFormValues = {
   channelIds: [],
 };
 
-function formValuesFromSearchParams(searchParams: Pick<URLSearchParams, "get">): AlertRuleFormValues {
+export function formValuesFromSearchParams(searchParams: Pick<URLSearchParams, "get">): AlertRuleFormValues {
   const severity = searchParams.get("severity");
 
   return {
@@ -95,6 +95,7 @@ type Props =
   | {
       mode: "create";
       initialValues?: AlertRuleFormValues;
+      environmentId?: string;
     }
   | {
       mode: "edit";
@@ -108,15 +109,12 @@ export function AlertRuleForm(props: Props) {
   const trpc = useTRPC();
   const router = useRouter();
   const qc = useQueryClient();
-  const searchParams = useSearchParams();
   const teamId = useTeamStore((s) => s.selectedTeamId);
   const { selectedEnvironmentId } = useEnvironmentStore();
-  const effectiveEnvironmentId = props.mode === "edit" ? props.environmentId : selectedEnvironmentId;
+  const effectiveEnvironmentId =
+    props.mode === "edit" ? props.environmentId : props.environmentId ?? selectedEnvironmentId;
 
-  const initial =
-    props.mode === "edit"
-      ? props.initialValues
-      : props.initialValues ?? formValuesFromSearchParams(searchParams);
+  const initial = props.initialValues ?? DEFAULT_FORM_VALUES;
 
   const [name, setName] = React.useState(initial.name);
   const [description, setDescription] = React.useState(initial.description);
@@ -314,6 +312,7 @@ export function AlertRuleForm(props: Props) {
       durationMinutes,
       cooldown,
       channelIds: Array.from(enabledChannels).join(","),
+      environmentId: effectiveEnvironmentId ?? "",
     });
 
     router.push(`/alerts/new?${params.toString()}`);
