@@ -18,14 +18,14 @@ const LEVEL_COLORS: Record<string, string> = {
   TRACE: "text-muted-foreground/50",
 };
 
-export function InspectorLogsTab({ pipelineId, node }: InspectorLogsTabProps) {
-  const { streamedEntries } = useStreamingLogs({ pipelineId, nodeId: node.id });
+export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
+  const { streamedEntries } = useStreamingLogs({ pipelineId });
   const entries = useMemo(() => streamedEntries.slice(-50), [streamedEntries]);
 
   if (entries.length === 0) {
     return (
       <p className="m-3.5 rounded-md border border-dashed border-line-2 px-3 py-6 text-center text-sm text-fg-2">
-        No recent log lines for this component.
+        No recent pipeline log lines for this component context.
       </p>
     );
   }

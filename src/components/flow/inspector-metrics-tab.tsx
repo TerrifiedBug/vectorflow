@@ -4,6 +4,8 @@ import type { Node } from "@xyflow/react";
 import { MetricChart } from "@/components/ui/metric-chart";
 import { formatBytesRate, formatEventsRate, formatSI } from "@/lib/format";
 
+type NodeKind = "source" | "transform" | "sink";
+
 interface MetricSampleLike {
   timestamp: number;
   receivedEventsRate: number;
@@ -12,6 +14,7 @@ interface MetricSampleLike {
 
 interface MetricsLike {
   eventsPerSec?: number;
+  eventsInPerSec?: number;
   bytesPerSec?: number;
   samples?: MetricSampleLike[];
 }
@@ -20,10 +23,20 @@ interface InspectorMetricsTabProps {
   node: Node;
 }
 
-function buildSeries(metrics: MetricsLike) {
+function getNodeKind(node: Node): NodeKind | undefined {
+  const kind = (node.data as { componentDef?: { kind?: string } }).componentDef?.kind ?? node.type;
+  return kind === "source" || kind === "transform" || kind === "sink" ? kind : undefined;
+}
+
+function buildSeries(metrics: MetricsLike, kind: NodeKind | undefined) {
   const samples = metrics.samples?.slice(-12) ?? [];
   if (samples.length > 0) {
-    return samples.map((sample) => Math.max(sample.sentEventsRate, sample.receivedEventsRate));
+    return samples.map((sample) => {
+      if (kind === "transform") return sample.sentEventsRate;
+      if (kind === "source") return sample.receivedEventsRate || sample.sentEventsRate;
+      if (kind === "sink") return sample.receivedEventsRate;
+      return sample.sentEventsRate || sample.receivedEventsRate;
+    });
   }
 
   const fallback = metrics.eventsPerSec ?? 0;
@@ -39,7 +52,8 @@ function buildYLabels(values: number[]) {
 
 export function InspectorMetricsTab({ node }: InspectorMetricsTabProps) {
   const metrics = ((node.data as { metrics?: MetricsLike }).metrics ?? {}) as MetricsLike;
-  const series = buildSeries(metrics);
+  const nodeKind = getNodeKind(node);
+  const series = buildSeries(metrics, nodeKind);
 
   return (
     <div className="space-y-3 p-3.5">
@@ -47,6 +61,11 @@ export function InspectorMetricsTab({ node }: InspectorMetricsTabProps) {
         <div className="rounded-md border bg-bg-2 px-3 py-2">
           <div className="font-mono text-[10px] uppercase tracking-[0.04em] text-fg-2">Events/sec</div>
           <div className="mt-1 text-sm font-medium text-fg">{formatEventsRate(metrics.eventsPerSec)}</div>
+          {nodeKind === "transform" && metrics.eventsInPerSec != null ? (
+            <div className="mt-1 font-mono text-[10px] text-fg-2">
+              In: {formatEventsRate(metrics.eventsInPerSec)}
+            </div>
+          ) : null}
         </div>
         <div className="rounded-md border bg-bg-2 px-3 py-2">
           <div className="font-mono text-[10px] uppercase tracking-[0.04em] text-fg-2">Bytes/sec</div>
