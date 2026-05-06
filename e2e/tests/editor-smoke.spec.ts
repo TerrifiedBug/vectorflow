@@ -12,10 +12,7 @@ test.describe("Editor smoke", () => {
     await expect(canvas.locator(".react-flow__node")).toHaveCount(3);
     await expect(canvas.locator(".react-flow__edge")).toHaveCount(2);
     await expect(
-      canvas
-        .locator(".react-flow__edge")
-        .filter({ has: page.locator("[data-testid='metric-edge-marker']") })
-        .first(),
+      canvas.locator("[data-testid='metric-edge-path']").first(),
     ).toBeVisible();
 
     await expect(page.getByText(/valid/i).first()).toBeVisible();

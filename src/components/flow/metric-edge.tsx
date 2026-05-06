@@ -61,6 +61,7 @@ function MetricEdgeComponent({ id, data, selected, ...props }: EdgeProps) {
       />
       {/* Gradient stroke */}
       <path
+        data-testid="metric-edge-path"
         d={edgePath}
         fill="none"
         stroke={`url(#${gradId})`}

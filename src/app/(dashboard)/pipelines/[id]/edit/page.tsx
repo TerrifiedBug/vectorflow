@@ -117,7 +117,6 @@ function dbEdgesToFlowEdges(
     target: e.targetNodeId,
     ...(e.sourcePort ? { sourceHandle: e.sourcePort } : {}),
     type: "metric",
-    data: { running: true },
   }));
 }
 
