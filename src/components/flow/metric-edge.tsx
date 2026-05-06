@@ -69,7 +69,7 @@ function MetricEdgeComponent({ id, data, selected, ...props }: EdgeProps) {
       />
       {/* Animated flow marker — only while running */}
       {running && (
-        <circle r={2.5} fill={endColor}>
+        <circle r={2.5} fill={endColor} data-testid="metric-edge-marker">
           <animateMotion
             dur={`${dur}s`}
             repeatCount="indefinite"
