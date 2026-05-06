@@ -176,7 +176,6 @@ function toMetricEdge(edge: Edge, nodes: Node[]): Edge {
       ...data,
       sourceKind: data.sourceKind ?? getNodeKind(nodes, edge.source),
       targetKind: data.targetKind ?? getNodeKind(nodes, edge.target),
-      running: data.running ?? true,
     },
   };
 }
@@ -840,12 +839,15 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
           (n) => (n.data as unknown as FlowNodeData).componentKey === keyMap.get(pe.targetKey)
         );
         if (!sourceNode || !targetNode) return null;
-        return {
-          id: generateId(),
-          source: sourceNode.id,
-          target: targetNode.id,
-          ...(pe.sourcePort ? { sourceHandle: pe.sourcePort } : {}),
-        };
+        return toMetricEdge(
+          {
+            id: generateId(),
+            source: sourceNode.id,
+            target: targetNode.id,
+            ...(pe.sourcePort ? { sourceHandle: pe.sourcePort } : {}),
+          },
+          newNodes,
+        );
       })
       .filter(Boolean) as Edge[];
 
@@ -885,7 +887,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
           results.push({ suggestionId: suggestion.id, success: false, error: result.error });
         } else {
           nodes = result.nodes;
-          edges = result.edges;
+          edges = result.edges.map((edge) => toMetricEdge(edge, nodes));
           anyApplied = true;
           results.push({ suggestionId: suggestion.id, success: true });
         }
