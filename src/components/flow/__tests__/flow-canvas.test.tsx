@@ -15,9 +15,13 @@ type CapturedProps = {
   isValidConnection?: (connection: Edge | Connection) => boolean;
   onConnect?: (connection: Connection) => void;
   "aria-roledescription"?: string;
+  edgeTypes?: Record<string, unknown>;
 };
 
 let capturedReactFlowProps: CapturedProps = {};
+const { metricEdgeMock } = vi.hoisted(() => ({
+  metricEdgeMock: vi.fn(() => null),
+}));
 
 vi.mock("@xyflow/react", () => ({
   ReactFlow: (props: CapturedProps) => {
@@ -89,6 +93,12 @@ vi.mock("../node-types", () => ({
   nodeTypes: {},
 }));
 
+vi.mock("../edge-types", () => ({
+  edgeTypes: {
+    metric: metricEdgeMock,
+  },
+}));
+
 vi.mock("@/lib/vector/catalog", () => ({
   findComponentDef: vi.fn(() => undefined),
 }));
@@ -137,6 +147,12 @@ describe("FlowCanvas", () => {
       expect(region).toBeTruthy();
     });
   });
+
+    it("registers the v2 metric edge renderer with React Flow", () => {
+      render(<FlowCanvas />);
+
+      expect(capturedReactFlowProps.edgeTypes?.metric).toBe(metricEdgeMock);
+    });
 
   describe("isValidConnection — DataType compatibility", () => {
     it("returns false for a self-connection", () => {

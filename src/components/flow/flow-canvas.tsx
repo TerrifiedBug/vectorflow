@@ -16,6 +16,7 @@ import "@xyflow/react/dist/style.css";
 import { useFlowStore } from "@/stores/flow-store";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { nodeTypes } from "./node-types";
+import { edgeTypes } from "./edge-types";
 import { NodeContextMenu } from "./node-context-menu";
 import { EdgeContextMenu } from "./edge-context-menu";
 import { SaveSharedComponentDialog } from "./save-shared-component-dialog";
@@ -262,6 +263,7 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
         onPaneClick={() => { setContextMenu(null); setEdgeContextMenu(null); }}
         isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={null}
         selectionKeyCode="Shift"
