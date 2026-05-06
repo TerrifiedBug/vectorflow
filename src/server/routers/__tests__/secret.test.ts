@@ -303,14 +303,28 @@ describe("secret router", () => {
 
       const result = await caller.usage({ secretId: "s-1", environmentId: "env-1" });
 
-      expect(result.count).toBe(2);
-      expect(result.pipelineCount).toBe(2);
-      const ids = result.refs.map((r: { id: string }) => r.id).sort();
-      expect(ids).toEqual(["node-1", "node-3"]);
-      const node1 = result.refs.find((r: { id: string }) => r.id === "node-1");
-      expect(node1?.componentType).toBe("http");
-      expect(node1?.pipeline.name).toBe("Auth Pipeline");
-      expect(node1?.pipeline.environment.name).toBe("production");
+      expect(result).toEqual({
+        count: 2,
+        pipelineCount: 2,
+        refs: [
+          expect.objectContaining({
+            id: "node-1",
+            componentType: "http",
+            pipeline: expect.objectContaining({
+              name: "Auth Pipeline",
+              environment: expect.objectContaining({ name: "production" }),
+            }),
+          }),
+          expect.objectContaining({
+            id: "node-3",
+            componentType: "datadog_logs",
+            pipeline: expect.objectContaining({
+              name: "DD Pipeline",
+              environment: expect.objectContaining({ name: "production" }),
+            }),
+          }),
+        ],
+      });
     });
 
     it("pipelineCount is distinct from count when multiple nodes share a pipeline", async () => {

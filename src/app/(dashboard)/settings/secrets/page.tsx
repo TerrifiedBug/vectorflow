@@ -107,51 +107,34 @@ export default function SecretsVaultPage() {
     [rows],
   );
 
-  // Usage: query every occurrence so list-level "unused" status reflects real refs.
-  // Per-env caching keeps the request graph stable and bounded by visible secrets.
-  const usageQueries = useQueries({
-    queries: allOccurrences.map((occ) => ({
-      ...trpc.secret.usage.queryOptions({
-        secretId: occ.id,
-        environmentId: occ.environmentId,
-      }),
-      enabled: rows.length > 0,
-    })),
+  const selectedOccurrence = React.useMemo(() => {
+    const name = selectedName ?? selected?.name;
+    return name ? allOccurrences.find((occ) => occ.secretName === name) : undefined;
+  }, [allOccurrences, selectedName, selected?.name]);
+
+  const selectedUsageQ = useQuery({
+    ...trpc.secret.usage.queryOptions({
+      secretId: selectedOccurrence?.id ?? "",
+      environmentId: selectedOccurrence?.environmentId ?? "",
+    }),
+    enabled: Boolean(selectedOccurrence),
   });
 
-  type UsageRef = {
-    id: string;
-    componentType: string;
-    pipeline: { id: string; name: string; environment: { id: string; name: string } };
-  };
-  const usageBySecret = React.useMemo(() => {
-    const map = new Map<string, UsageRef[]>();
-    usageQueries.forEach((q, i) => {
-      const name = allOccurrences[i]?.secretName;
-      if (!name) return;
-      const data = q.data as { count: number; pipelineCount: number; refs: UsageRef[] } | undefined;
-      const refs = map.get(name) ?? [];
-      if (data?.refs) refs.push(...data.refs);
-      map.set(name, refs);
-    });
-    return map;
-  }, [allOccurrences, usageQueries]);
-
-  const usageRefs: UsageRef[] = React.useMemo(
-    () => (selected ? usageBySecret.get(selected.name) ?? [] : []),
-    [selected, usageBySecret],
-  );
-  const usagePipelineCount = React.useMemo(
-    () => new Set(usageRefs.map((r) => r.pipeline.id)).size,
-    [usageRefs],
-  );
-  const usageLoading = usageQueries.some((q) => q.isPending);
-  const usageError = usageQueries.find((q) => q.isError)?.error as Error | undefined;
-  const hasLoadError = envsQ.isError || perEnvQueries.some((q) => q.isError) || Boolean(usageError);
+  const selectedUsage = selectedUsageQ.data as UsageResult | undefined;
+  const usageRefs = selectedUsage?.refs ?? [];
+  const usagePipelineCount = selectedUsage?.pipelineCount ?? 0;
+  const usageLoading = Boolean(selectedOccurrence) && selectedUsageQ.isPending;
+  const usageError = selectedUsageQ.isError ? (selectedUsageQ.error as Error) : undefined;
+  const hasLoadError = envsQ.isError || perEnvQueries.some((q) => q.isError);
 
   const rowsWithUsage = React.useMemo(
-    () => rows.map((row) => usageLoading ? row : withUsageStatus(row, usageBySecret.get(row.name)?.length ?? 0)),
-    [rows, usageBySecret, usageLoading],
+    () =>
+      rows.map((row) =>
+        selected && row.name === selected.name && selectedUsage
+          ? withUsageStatus(row, selectedUsage.count)
+          : row,
+      ),
+    [rows, selected, selectedUsage],
   );
   const [page, setPage] = React.useState(0);
   const pageSize = 50;
@@ -223,7 +206,7 @@ export default function SecretsVaultPage() {
         <EmptyState
           glyph="!"
           title="Failed to load secrets"
-          description={envsQ.error?.message ?? usageError?.message ?? "One or more environment secret lists or usage lookups failed to load."}
+          description={envsQ.error?.message ?? "One or more environment secret lists failed to load."}
         />
       )}
 
@@ -313,6 +296,7 @@ export default function SecretsVaultPage() {
                 row={selectedWithUsage ?? selected}
                 usageRefs={usageRefs}
                 usageLoading={usageLoading}
+                usageError={usageError}
               />
             ) : null}
           </div>
@@ -345,14 +329,22 @@ interface UsageRef {
   pipeline: { id: string; name: string; environment: { id: string; name: string } };
 }
 
+interface UsageResult {
+  count: number;
+  pipelineCount: number;
+  refs: UsageRef[];
+}
+
 function SecretDetail({
   row,
   usageRefs,
   usageLoading,
+  usageError,
 }: {
   row: SecretRow;
   usageRefs: UsageRef[];
   usageLoading: boolean;
+  usageError?: Error;
 }) {
   const usagePipelineCount = new Set(usageRefs.map((r) => r.pipeline.id)).size;
   const usageNodeCount = usageRefs.length;
@@ -425,6 +417,10 @@ function SecretDetail({
             {usageLoading ? (
               <div className="px-3 py-3 font-mono text-[11px] text-fg-2 text-center">
                 Loading references…
+              </div>
+            ) : usageError ? (
+              <div className="px-3 py-3 font-mono text-[11px] text-status-error text-center">
+                {usageError.message}
               </div>
             ) : usageNodeCount === 0 ? (
               <div className="px-3 py-3 font-mono text-[11px] text-fg-2 text-center">
