@@ -11,7 +11,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ChartSkeleton } from "@/components/ui/loading-skeletons";
 import { formatBytes, formatTimeAxis } from "@/lib/format";
 import type { CostTimeSeriesBucket } from "@/server/services/cost-attribution";
 
@@ -71,13 +71,7 @@ export function CostChart({ data, range, isLoading }: CostChartProps) {
   }, [data]);
 
   if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="p-4">
-          <Skeleton className="h-[300px] w-full" />
-        </CardContent>
-      </Card>
-    );
+    return <ChartSkeleton />;
   }
 
   return (
