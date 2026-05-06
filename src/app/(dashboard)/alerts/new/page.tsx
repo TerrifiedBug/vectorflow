@@ -19,14 +19,24 @@ import { useSearchParams } from "next/navigation";
 export default function NewAlertRulePage() {
   const searchParams = useSearchParams();
   const setSelectedEnvironmentId = useEnvironmentStore((s) => s.setSelectedEnvironmentId);
+  const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
   const environmentId = searchParams.get("environmentId") ?? undefined;
   const hasParams = searchParams.toString().length > 0;
 
+
   React.useEffect(() => {
-    if (environmentId) {
+    if (environmentId && selectedEnvironmentId !== environmentId) {
       setSelectedEnvironmentId(environmentId);
     }
-  }, [environmentId, setSelectedEnvironmentId]);
+  }, [environmentId, selectedEnvironmentId, setSelectedEnvironmentId]);
+
+  if (environmentId && selectedEnvironmentId !== environmentId) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center bg-bg text-fg p-8">
+        <div className="font-mono text-[12px] text-fg-2">Loading alert rule environment…</div>
+      </div>
+    );
+  }
 
   if (!hasParams) {
     return <AlertRuleForm mode="create" />;

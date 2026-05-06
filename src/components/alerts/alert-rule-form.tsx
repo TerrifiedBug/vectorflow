@@ -128,6 +128,28 @@ export function AlertRuleForm(props: Props) {
     new Set(initial.channelIds),
   );
   const [testRulePending, setTestRulePending] = React.useState(false);
+  const previousEnvironmentIdRef = React.useRef(effectiveEnvironmentId);
+
+  React.useEffect(() => {
+    if (props.mode !== "create") {
+      previousEnvironmentIdRef.current = effectiveEnvironmentId;
+      return;
+    }
+
+    const previousEnvironmentId = previousEnvironmentIdRef.current;
+    previousEnvironmentIdRef.current = effectiveEnvironmentId;
+
+    if (
+      !previousEnvironmentId ||
+      !effectiveEnvironmentId ||
+      previousEnvironmentId === effectiveEnvironmentId
+    ) {
+      return;
+    }
+
+    setPipelineId("");
+    setEnabledChannels(new Set<string>());
+  }, [effectiveEnvironmentId, props.mode]);
 
   const pipelinesQ = useQuery({
     ...trpc.pipeline.list.queryOptions({
