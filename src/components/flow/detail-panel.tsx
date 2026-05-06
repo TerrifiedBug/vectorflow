@@ -36,6 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getIcon } from "@/components/flow/node-icon";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import type { Node, Edge } from "@xyflow/react";
+import { formatEventsRate } from "@/lib/format";
 
 /* ------------------------------------------------------------------ */
 /*  Node-type color tokens                                             */
@@ -128,6 +129,9 @@ interface InspectorHeaderProps {
   componentDef: VectorComponentDef;
   displayName: string;
   evPerSec?: string;
+  statusVariant: "ok" | "warn" | "status";
+  statusDotVariant: "healthy" | "degraded" | "error" | "idle";
+  statusLabel: string;
   onClose: () => void;
 }
 
@@ -135,6 +139,9 @@ function InspectorHeader({
   componentDef,
   displayName,
   evPerSec,
+  statusVariant,
+  statusDotVariant,
+  statusLabel,
   onClose,
 }: InspectorHeaderProps) {
   const color = NODE_COLOR_VAR[componentDef.kind] ?? "var(--fg-1)";
@@ -174,15 +181,15 @@ function InspectorHeader({
         </Button>
       </div>
       <div className="mt-2.5 flex items-center gap-1.5">
-        <Pill variant="ok" size="xs" className="gap-1">
-          <StatusDot variant="healthy" size={6} halo={false} />
-          healthy
+        <Pill variant={statusVariant} size="xs" className="gap-1">
+          <StatusDot variant={statusDotVariant} size={6} halo={false} />
+          {statusLabel}
         </Pill>
-        {evPerSec && (
+        {evPerSec !== undefined ? (
           <Pill variant="status" size="xs">
-            {evPerSec} ev/s
+            {evPerSec}
           </Pill>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -394,7 +401,13 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
     );
   }
 
-  const { componentDef, config, disabled, isSystemLocked } = selectedNode.data as {
+  const {
+    componentDef,
+    config,
+    disabled,
+    isSystemLocked,
+    metrics: nodeMetrics,
+  } = selectedNode.data as {
     componentDef: VectorComponentDef;
     componentKey: string;
     displayName?: string;
@@ -405,9 +418,42 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
     sharedComponentName?: string;
     sharedComponentVersion?: number;
     sharedComponentLatestVersion?: number;
+    metrics?: { eventsPerSec?: number; status?: string };
   };
 
   const isReadOnly = isSystemLocked || isShared;
+  const statusPill = (() => {
+    switch (nodeMetrics?.status) {
+      case "healthy":
+        return {
+          statusVariant: "ok" as const,
+          statusDotVariant: "healthy" as const,
+          statusLabel: "healthy",
+        };
+      case "degraded":
+        return {
+          statusVariant: "warn" as const,
+          statusDotVariant: "degraded" as const,
+          statusLabel: "degraded",
+        };
+      case "error":
+        return {
+          statusVariant: "status" as const,
+          statusDotVariant: "error" as const,
+          statusLabel: "error",
+        };
+      default:
+        return {
+          statusVariant: "status" as const,
+          statusDotVariant: "idle" as const,
+          statusLabel: "idle",
+        };
+    }
+  })();
+  const evPerSec =
+    nodeMetrics?.eventsPerSec == null
+      ? undefined
+      : formatEventsRate(nodeMetrics.eventsPerSec);
 
   return (
     <div className="flex h-full w-80 shrink-0 flex-col border-l border-line bg-bg-1">
@@ -415,6 +461,10 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
       <InspectorHeader
         componentDef={componentDef}
         displayName={currentDisplayName}
+        evPerSec={evPerSec}
+        statusVariant={statusPill.statusVariant}
+        statusDotVariant={statusPill.statusDotVariant}
+        statusLabel={statusPill.statusLabel}
         onClose={toggleDetailPanel}
       />
 

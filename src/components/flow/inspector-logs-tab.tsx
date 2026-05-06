@@ -14,16 +14,27 @@ interface InspectorLogsTabProps {
   node: Node;
 }
 
-type StreamedLogEntry = { level: string; message: string; timestamp: number };
-type SeededLogEntry = StreamedLogEntry & { id: string };
+type StreamedLogEntry = {
+  level: string;
+  message: string;
+  timestamp: number;
+  raw: string;
+};
+type SeededLogEntry = { id: string; level: string; message: string; timestamp: number };
 type HistoryState = {
   pipelineId: string;
   historySeeded: boolean;
   seededEntries: SeededLogEntry[];
+  seededStreamEntryCount: number;
 };
 type HistoryAction =
   | { type: "reset"; pipelineId: string }
-  | { type: "seed"; pipelineId: string; seededEntries: SeededLogEntry[] };
+  | {
+      type: "seed";
+      pipelineId: string;
+      seededEntries: SeededLogEntry[];
+      seededStreamEntryCount: number;
+    };
 
 const LEVEL_COLORS: Record<string, string> = {
   ERROR: "text-red-400",
@@ -48,12 +59,14 @@ function historyReducer(state: HistoryState, action: HistoryAction): HistoryStat
         pipelineId: action.pipelineId,
         historySeeded: false,
         seededEntries: [],
+        seededStreamEntryCount: 0,
       };
     case "seed":
       return {
         pipelineId: action.pipelineId,
         historySeeded: true,
         seededEntries: action.seededEntries,
+        seededStreamEntryCount: action.seededStreamEntryCount,
       };
   }
 }
@@ -69,8 +82,9 @@ export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
     pipelineId,
     historySeeded: false,
     seededEntries: [],
+    seededStreamEntryCount: 0,
   });
-  const { pipelineId: seededPipelineId, historySeeded, seededEntries } = historyState;
+  const { pipelineId: seededPipelineId, historySeeded, seededEntries, seededStreamEntryCount } = historyState;
   const hasSeededHistory = historySeeded && seededPipelineId === pipelineId;
   const logsQuery = useQuery(
     trpc.pipeline.logs.queryOptions(
@@ -90,12 +104,22 @@ export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
   useEffect(() => {
     if (!logsQuery.isSuccess || hasSeededHistory) return;
 
+    const seededEntries = [...(logsQuery.data.items ?? [])].reverse();
     dispatchHistory({
       type: "seed",
       pipelineId,
-      seededEntries: [...(logsQuery.data.items ?? [])].reverse(),
+      seededEntries,
+      seededStreamEntryCount:
+        streamState.pipelineId === pipelineId ? streamState.entries.length : 0,
     });
-  }, [hasSeededHistory, logsQuery.data?.items, logsQuery.isSuccess, pipelineId]);
+  }, [
+    hasSeededHistory,
+    logsQuery.data?.items,
+    logsQuery.isSuccess,
+    pipelineId,
+    streamState.entries.length,
+    streamState.pipelineId,
+  ]);
 
   useEffect(() => {
     const subId = subscribe("log_entry", (event) => {
@@ -103,9 +127,10 @@ export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
       if (logEvent.pipelineId !== pipelineId || logEvent.lines.length === 0) return;
 
       const now = Date.now();
-      const nextEntries = logEvent.lines.map((line, index) =>
-        parseLogLine(line, now + index),
-      );
+      const nextEntries = logEvent.lines.map((line, index) => {
+        const parsed = parseLogLine(line, now + index);
+        return { ...parsed, raw: line };
+      });
 
       setStreamState((current) => ({
         pipelineId,
@@ -125,10 +150,29 @@ export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
     () => (seededPipelineId === pipelineId ? seededEntries : []),
     [pipelineId, seededEntries, seededPipelineId],
   );
-  const streamedEntries = useMemo(
-    () => (streamState.pipelineId === pipelineId ? streamState.entries : []),
-    [pipelineId, streamState],
-  );
+  const streamedEntries = useMemo(() => {
+    if (streamState.pipelineId !== pipelineId) return [];
+    if (!hasSeededHistory) return streamState.entries;
+
+    const preSeedEntries = streamState.entries.slice(0, seededStreamEntryCount);
+    const postSeedEntries = streamState.entries.slice(seededStreamEntryCount);
+    const dedupedPreSeedEntries = preSeedEntries.filter((entry) =>
+      !seededEntries.some(
+        (seededEntry) =>
+          seededEntry.level === entry.level
+          && seededEntry.message === entry.raw
+          && Math.abs(seededEntry.timestamp - entry.timestamp) <= 1500,
+      ),
+    );
+
+    return [...dedupedPreSeedEntries, ...postSeedEntries];
+  }, [
+    hasSeededHistory,
+    pipelineId,
+    seededEntries,
+    seededStreamEntryCount,
+    streamState,
+  ]);
   const entries = useMemo(
     () => [...visibleSeededEntries, ...streamedEntries].slice(-50),
     [streamedEntries, visibleSeededEntries],

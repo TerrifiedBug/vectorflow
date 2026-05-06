@@ -347,9 +347,7 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
       });
     }
 
-    if (metricsMap.size > 0) {
-      updateNodeMetrics(metricsMap);
-    }
+    updateNodeMetrics(metricsMap);
   }, [componentMetricsQuery.data, updateNodeMetrics]);
 
   const queryClient = useQueryClient();
