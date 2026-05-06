@@ -14,16 +14,12 @@ import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 
 /**
- * v2 Incident timeline (11b) — anomalies + alerts + deploys + rollbacks.
- * Source: docs/internal/VectorFlow 2.0/screens/value-surfaces.jsx (ScreenIncidentTimeline).
+ * v2.0 incident timeline is anomaly-only.
+ * Do not claim alert, deploy, or rollback coverage until those data sources
+ * are queried and rendered from real backend data.
  *
  * Wires to:
- *   - trpc.anomaly.list (filtered to current env, 14h window)
- *   - trpc.alertEvents.list / alertEvent firing for the alert markers
- *
- * For correlation arcs: server should expose a per-pipeline event aggregate
- * within the time window. Until that lands, we group events by pipeline
- * client-side and link an anomaly + alert that fall within 8m of each other.
+ *   - trpc.anomaly.list (filtered to current env, selected window)
  */
 
 const HOURS = 14;
@@ -128,7 +124,6 @@ export default function IncidentsPage() {
     () => ({
       active: rows.filter((r) => r.state === "firing").length,
       anomalies: rows.flatMap((r) => r.events).filter((e) => e.kind === "anomaly").length,
-      deploys: rows.flatMap((r) => r.events).filter((e) => e.kind === "deploy").length,
     }),
     [rows],
   );
@@ -150,11 +145,11 @@ export default function IncidentsPage() {
       <div className="px-5 py-4 border-b border-line bg-bg-1 flex items-start justify-between">
         <div>
           <h1 className="m-0 font-mono text-[22px] font-medium tracking-[-0.01em]">
-            Incidents
+            Anomaly timeline
           </h1>
           <div className="mt-1 text-[12px] text-fg-2 max-w-[760px]">
-            Anomalies, alerts, deploys, and rollbacks on one timeline. When something
-            breaks at 3am, look here first — every signal correlated against what changed.
+            Anomaly detections for the selected environment and time range. This view only
+            shows anomaly data returned by the anomaly query.
           </div>
         </div>
         <div className="flex gap-2 items-center">
@@ -185,9 +180,9 @@ export default function IncidentsPage() {
 
       <KpiStrip>
         <KpiInStrip
-          label="ACTIVE INCIDENTS"
+          label="ACTIVE ANOMALIES"
           value={counts.active}
-          sub={`${counts.active} firing · 0 acknowledged`}
+          sub={`${counts.active} open anomaly ${counts.active === 1 ? "row" : "rows"}`}
           accent={counts.active > 0 ? "var(--status-error)" : undefined}
         />
         <KpiInStrip
@@ -195,7 +190,6 @@ export default function IncidentsPage() {
           value={counts.anomalies}
           sub="critical / warning"
         />
-        <KpiInStrip label="DEPLOYS · 14H" value={counts.deploys} sub="" />
         <KpiInStrip label="MTTA" value="—" unit="min" sub="median ack" />
         <KpiInStrip label="MTTR" value="—" unit="min" sub="median resolve" />
       </KpiStrip>
@@ -211,20 +205,36 @@ export default function IncidentsPage() {
       {selectedEnvironmentId && anomaliesQ.isError && (
         <EmptyState
           glyph="!"
-          title="Incident timeline unavailable"
-          description={anomaliesQ.error?.message ?? "Failed to load incident data."}
+          title="Anomaly timeline unavailable"
+          description={anomaliesQ.error?.message ?? "Failed to load anomaly data."}
         />
       )}
 
-      {selectedEnvironmentId && rows.length === 0 && anomaliesQ.isSuccess && (
+      {selectedEnvironmentId && anomaliesQ.isPending && (
+        <div className="flex-1 p-5" aria-label="Loading anomaly timeline">
+          <div className="mb-4 font-mono text-[11px] text-fg-2 uppercase tracking-[0.04em]">
+            Loading anomaly timeline
+          </div>
+          <div className="space-y-3">
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="grid gap-3" style={{ gridTemplateColumns: "180px 1fr" }}>
+                <div className="h-10 rounded-md bg-bg-2 border border-line animate-pulse" />
+                <div className="h-10 rounded-md bg-bg-2 border border-line animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selectedEnvironmentId && !anomaliesQ.isPending && rows.length === 0 && anomaliesQ.isSuccess && (
         <EmptyState
           glyph="✓"
-          title="Nothing breaking"
-          description="No anomalies, alerts, deploys or rollbacks in the selected window."
+          title="No anomalies detected"
+          description="No anomalies detected in the selected window. Adjust the time range or check back as anomaly detection updates."
         />
       )}
 
-      {selectedEnvironmentId && rows.length > 0 && (
+      {selectedEnvironmentId && !anomaliesQ.isPending && rows.length > 0 && (
         <div
           className="flex-1 grid min-h-0"
           style={{ gridTemplateColumns: "1fr 380px" }}
@@ -325,12 +335,10 @@ export default function IncidentsPage() {
 
             {/* legend */}
             <div className="px-5 py-2.5 border-t border-line bg-bg-1 flex items-center gap-4 font-mono text-[11px] text-fg-2">
-              {(["deploy", "rollback", "anomaly", "alert", "promote"] as EventKind[]).map((k) => (
-                <span key={k} className="flex items-center gap-1.5">
-                  <EventDot kind={k} size={8} /> {k}
-                </span>
-              ))}
-              <span className="ml-auto">dashed connectors = correlation group</span>
+              <span className="flex items-center gap-1.5">
+                <EventDot kind="anomaly" size={8} /> anomaly
+              </span>
+              <span className="ml-auto">Anomaly data only</span>
             </div>
           </div>
 
