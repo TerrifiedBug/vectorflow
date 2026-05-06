@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
@@ -69,6 +69,28 @@ export const DEFAULT_FORM_VALUES: AlertRuleFormValues = {
   channelIds: [],
 };
 
+function formValuesFromSearchParams(searchParams: Pick<URLSearchParams, "get">): AlertRuleFormValues {
+  const severity = searchParams.get("severity");
+
+  return {
+    name: searchParams.get("name") ?? DEFAULT_FORM_VALUES.name,
+    description: searchParams.get("description") ?? DEFAULT_FORM_VALUES.description,
+    severity: severity === "info" || severity === "warning" || severity === "critical"
+      ? severity
+      : DEFAULT_FORM_VALUES.severity,
+    pipelineId: searchParams.get("pipelineId") ?? DEFAULT_FORM_VALUES.pipelineId,
+    metric: searchParams.get("metric") ?? DEFAULT_FORM_VALUES.metric,
+    condition: searchParams.get("condition") ?? DEFAULT_FORM_VALUES.condition,
+    threshold: searchParams.get("threshold") ?? DEFAULT_FORM_VALUES.threshold,
+    durationMinutes: searchParams.get("durationMinutes") ?? DEFAULT_FORM_VALUES.durationMinutes,
+    cooldown: searchParams.get("cooldown") ?? DEFAULT_FORM_VALUES.cooldown,
+    channelIds: (searchParams.get("channelIds") ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean),
+  };
+}
+
 type Props =
   | {
       mode: "create";
@@ -86,12 +108,15 @@ export function AlertRuleForm(props: Props) {
   const trpc = useTRPC();
   const router = useRouter();
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
   const teamId = useTeamStore((s) => s.selectedTeamId);
   const { selectedEnvironmentId } = useEnvironmentStore();
   const effectiveEnvironmentId = props.mode === "edit" ? props.environmentId : selectedEnvironmentId;
 
   const initial =
-    props.mode === "edit" ? props.initialValues : props.initialValues ?? DEFAULT_FORM_VALUES;
+    props.mode === "edit"
+      ? props.initialValues
+      : props.initialValues ?? formValuesFromSearchParams(searchParams);
 
   const [name, setName] = React.useState(initial.name);
   const [description, setDescription] = React.useState(initial.description);
@@ -105,6 +130,7 @@ export function AlertRuleForm(props: Props) {
   const [enabledChannels, setEnabledChannels] = React.useState<Set<string>>(
     new Set(initial.channelIds),
   );
+  const [testRulePending, setTestRulePending] = React.useState(false);
 
   const pipelinesQ = useQuery({
     ...trpc.pipeline.list.queryOptions({
@@ -230,6 +256,69 @@ export function AlertRuleForm(props: Props) {
     }
   }
 
+  async function testRule() {
+    if (!teamId) {
+      toast.error("Select a team");
+      return;
+    }
+
+    const thresholdValue = numericOrUndefined(threshold);
+    if (thresholdValue === undefined || !Number.isFinite(thresholdValue)) {
+      toast.error("Enter a numeric threshold");
+      return;
+    }
+
+    const durationSeconds = durationMinutesToSeconds(durationMinutes);
+    if (durationSeconds === undefined || !Number.isFinite(durationSeconds)) {
+      toast.error("Enter a numeric duration");
+      return;
+    }
+
+    setTestRulePending(true);
+    try {
+      const result = await qc.fetchQuery(
+        trpc.alert.testRule.queryOptions({
+          teamId,
+          environmentId: effectiveEnvironmentId ?? null,
+          pipelineId: pipelineId || null,
+          metric: metric as never,
+          condition: condition as never,
+          threshold: thresholdValue,
+          durationSeconds,
+          lookbackHours: 6,
+        }),
+      );
+
+      if (!result.supported) {
+        toast.error(result.reason);
+        return;
+      }
+
+      toast.success(`Rule would have fired ${result.wouldHaveFired} time${result.wouldHaveFired === 1 ? "" : "s"} in the last 6h`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to test rule");
+    } finally {
+      setTestRulePending(false);
+    }
+  }
+
+  function cloneAsNewRule() {
+    const params = new URLSearchParams({
+      name: `Copy of ${name || DEFAULT_FORM_VALUES.name}`,
+      description,
+      severity,
+      pipelineId,
+      metric,
+      condition,
+      threshold,
+      durationMinutes,
+      cooldown,
+      channelIds: Array.from(enabledChannels).join(","),
+    });
+
+    router.push(`/alerts/new?${params.toString()}`);
+  }
+
   const isPending = props.mode === "create" ? createRule.isPending : updateRule.isPending;
   const breadcrumb =
     props.mode === "create" ? "alerts / new rule" : `alerts / ${props.ruleName} / edit`;
@@ -249,7 +338,7 @@ export function AlertRuleForm(props: Props) {
   const isEdit = props.mode === "edit";
   const lockedHint = (
     <div className="mt-1 font-mono text-[10.5px] text-fg-2">
-      Locked after create — delete to change.
+      Core definition locked after create. Clone as a new rule to change scope, metric, or condition.
     </div>
   );
 
@@ -263,17 +352,23 @@ export function AlertRuleForm(props: Props) {
             {heading}
           </h1>
           <div className="mt-1 text-[12px] text-fg-2">
-            Trigger when a metric crosses a threshold for a sustained window. Rules are
-            evaluated every 30s server-side.
+            {props.mode === "edit"
+              ? "Tune thresholds, severity, notifications, and description. Core definition is locked after creation."
+              : "Trigger when a metric crosses a threshold for a sustained window. Rules are evaluated every 30s server-side."}
           </div>
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => router.push("/alerts")}>
             Cancel
           </Button>
-          <Button variant="ghost" size="sm">
+          {isEdit && (
+            <Button variant="ghost" size="sm" onClick={cloneAsNewRule}>
+              Clone as new rule
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={testRule} disabled={testRulePending}>
             <VFIcon name="play" />
-            Test rule
+            {testRulePending ? "Testing…" : "Test rule"}
           </Button>
           <Button variant="primary" size="sm" onClick={submit} disabled={isPending}>
             <VFIcon name="check" />
@@ -300,13 +395,8 @@ export function AlertRuleForm(props: Props) {
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                disabled={isEdit}
-                className={cn(
-                  "w-full min-h-[60px] resize-y rounded-[3px] border border-line-2 bg-bg-2 px-2.5 py-2 text-[12px] text-fg outline-none focus-visible:border-accent-brand focus-visible:ring-2 focus-visible:ring-accent-soft",
-                  isEdit && "opacity-60 cursor-not-allowed",
-                )}
+                className="w-full min-h-[60px] resize-y rounded-[3px] border border-line-2 bg-bg-2 px-2.5 py-2 text-[12px] text-fg outline-none focus-visible:border-accent-brand focus-visible:ring-2 focus-visible:ring-accent-soft"
               />
-              {isEdit && lockedHint}
 
               <FormLabel className="mt-3.5">Severity</FormLabel>
               <Segmented
@@ -322,6 +412,11 @@ export function AlertRuleForm(props: Props) {
             </FormSection>
 
             <FormSection num="2" title="Trigger" sub="evaluate every 30s">
+              {isEdit && (
+                <div className="mb-3.5 rounded-[3px] border border-line-2 bg-bg-2 px-3 py-2 text-[11.5px] leading-snug text-fg-1">
+                  Pipeline, metric, and condition are fixed so historical alert meaning stays stable. Clone this rule to change the core definition.
+                </div>
+              )}
               <FormLabel>Scope</FormLabel>
               <div className="grid gap-2.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
                 <Select

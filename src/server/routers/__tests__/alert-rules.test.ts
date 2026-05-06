@@ -492,6 +492,28 @@ describe("alertRulesRouter", () => {
       expect(result.name).toBe("Renamed");
     });
 
+    it("updates suggestedAction when editing description", async () => {
+      const existing = makeAlertRule();
+      prismaMock.alertRule.findUnique.mockResolvedValue(existing as never);
+      prismaMock.alertRule.update.mockResolvedValue(
+        { ...existing, suggestedAction: "Check the Vector logs." } as never,
+      );
+
+      await caller.updateRule({
+        id: "rule-1",
+        suggestedAction: "Check the Vector logs.",
+      });
+
+      expect(prismaMock.alertRule.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "rule-1" },
+          data: expect.objectContaining({
+            suggestedAction: "Check the Vector logs.",
+          }),
+        }),
+      );
+    });
+
     it("updates operational metadata", async () => {
       const existing = makeAlertRule();
       prismaMock.alertRule.findUnique.mockResolvedValue(existing as never);
