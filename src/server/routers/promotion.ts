@@ -12,6 +12,16 @@ import { createPromotionPR } from "@/server/services/gitops-promotion";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 
+const promotionStatusSchema = z.enum([
+  "PENDING",
+  "APPROVED",
+  "DEPLOYED",
+  "REJECTED",
+  "CANCELLED",
+  "AWAITING_PR_MERGE",
+  "DEPLOYING",
+]);
+
 export const promotionRouter = router({
   /**
    * Preflight check: validates all SECRET[name] references in the source pipeline
@@ -421,27 +431,24 @@ export const promotionRouter = router({
     .input(
       z.object({
         teamId: z.string(),
-        status: z
-          .enum([
-            "PENDING",
-            "APPROVED",
-            "DEPLOYED",
-            "REJECTED",
-            "CANCELLED",
-            "AWAITING_PR_MERGE",
-            "DEPLOYING",
-          ])
-          .optional(),
+        status: promotionStatusSchema.optional(),
+        statuses: z.array(promotionStatusSchema).optional(),
         limit: z.number().int().min(1).max(200).default(50),
         cursor: z.string().optional(),
       }),
     )
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
+      const statusWhere = input.status
+        ? { status: input.status }
+        : input.statuses?.length
+          ? { status: { in: input.statuses } }
+          : {};
+
       const records = await prisma.promotionRequest.findMany({
         where: {
           sourcePipeline: { environment: { teamId: input.teamId } },
-          ...(input.status ? { status: input.status } : {}),
+          ...statusWhere,
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: input.limit + 1,

@@ -617,6 +617,26 @@ describe("promotion router", () => {
         }),
       );
     });
+
+    it("passes status arrays to Prisma status.in when no explicit status is present", async () => {
+      prismaMock.promotionRequest.findMany.mockResolvedValue([]);
+
+      const result = await caller.recentForTeam({
+        teamId: "team-1",
+        statuses: ["APPROVED", "AWAITING_PR_MERGE", "DEPLOYING"],
+      });
+
+      expect(result.items).toHaveLength(0);
+      expect(result.nextCursor).toBeNull();
+      expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            sourcePipeline: { environment: { teamId: "team-1" } },
+            status: { in: ["APPROVED", "AWAITING_PR_MERGE", "DEPLOYING"] },
+          },
+        }),
+      );
+    });
   });
 
   // ─── SECRET[name] ref preservation ───────────────────────────────────────────

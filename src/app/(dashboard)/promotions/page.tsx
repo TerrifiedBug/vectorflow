@@ -81,19 +81,29 @@ const TAB_FILTER: Record<TabId, (r: PromotionRow) => boolean> = {
   history: (r) => HISTORY_STATUSES.has(r.status),
 };
 
+const TAB_SERVER_STATUSES: Record<TabId, StatusKey[]> = {
+  pending: ["PENDING"],
+  approved: ["APPROVED"],
+  "in-flight": ["APPROVED", "AWAITING_PR_MERGE", "DEPLOYING"],
+  history: ["DEPLOYED", "REJECTED", "CANCELLED"],
+};
+
 export default function PromotionsPage() {
   const trpc = useTRPC();
   const teamId = useTeamStore((s) => s.selectedTeamId);
   const [tab, setTab] = React.useState<TabId>("pending");
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("ALL");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const serverStatuses = TAB_SERVER_STATUSES[tab];
 
   const recentQ = useInfiniteQuery(
     trpc.promotion.recentForTeam.infiniteQueryOptions(
       {
         teamId: teamId ?? "",
         limit: 50,
-        ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
+        ...(statusFilter !== "ALL"
+          ? { status: statusFilter }
+          : { statuses: serverStatuses }),
       },
       {
         enabled: Boolean(teamId),
@@ -138,10 +148,7 @@ export default function PromotionsPage() {
     [rows],
   );
 
-  const visibleRows = React.useMemo(
-    () => rows.filter(TAB_FILTER[tab]),
-    [rows, tab],
-  );
+  const visibleRows = rows;
 
   const selected = visibleRows.find((r) => r.id === selectedId) ?? visibleRows[0];
 
