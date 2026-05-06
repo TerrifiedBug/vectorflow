@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Node } from "@xyflow/react";
-import { useStreamingLogs } from "@/hooks/use-streaming-logs";
+import { fingerprint, useStreamingLogs } from "@/hooks/use-streaming-logs";
 import { formatTimeWithSeconds } from "@/lib/format";
 import { useTRPC } from "@/trpc/client";
 
@@ -30,10 +30,18 @@ export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
     () => [...(logsQuery.data?.items ?? [])].reverse(),
     [logsQuery.data?.items],
   );
-  const entries = useMemo(
-    () => [...persistedEntries, ...streamedEntries].slice(-50),
-    [persistedEntries, streamedEntries],
-  );
+  const entries = useMemo(() => {
+    if (streamedEntries.length === 0) return persistedEntries.slice(-50);
+
+    const persistedFingerprints = new Set(
+      persistedEntries.map((entry) => fingerprint(entry.level, entry.message)),
+    );
+    const uniqueStreamed = streamedEntries.filter(
+      (entry) => !persistedFingerprints.has(fingerprint(entry.level, entry.message)),
+    );
+
+    return [...persistedEntries, ...uniqueStreamed].slice(-50);
+  }, [persistedEntries, streamedEntries]);
 
   if (entries.length === 0) {
     return (
@@ -45,11 +53,11 @@ export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
         ) : null}
         {logsQuery.isPending ? (
           <p className="rounded-md border border-dashed border-line-2 px-3 py-4 text-center text-xs text-fg-2">
-            Loading recent log lines…
+            Loading recent pipeline log lines…
           </p>
         ) : logsQuery.isSuccess ? (
           <p className="rounded-md border border-dashed border-line-2 px-3 py-6 text-center text-sm text-fg-2">
-            No recent log lines for this component.
+            No recent pipeline history yet.
           </p>
         ) : null}
       </div>
