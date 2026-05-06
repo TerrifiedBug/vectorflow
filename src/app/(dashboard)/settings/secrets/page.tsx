@@ -107,34 +107,48 @@ export default function SecretsVaultPage() {
     [rows],
   );
 
-  const selectedOccurrence = React.useMemo(() => {
-    const name = selectedName ?? selected?.name;
-    return name ? allOccurrences.find((occ) => occ.secretName === name) : undefined;
-  }, [allOccurrences, selectedName, selected?.name]);
+  const selectedSecretName = selectedName ?? selected?.name;
+  const selectedOccurrences = React.useMemo(
+    () => allOccurrences.filter((occ) => occ.secretName === selectedSecretName),
+    [allOccurrences, selectedSecretName],
+  );
 
-  const selectedUsageQ = useQuery({
-    ...trpc.secret.usage.queryOptions({
-      secretId: selectedOccurrence?.id ?? "",
-      environmentId: selectedOccurrence?.environmentId ?? "",
-    }),
-    enabled: Boolean(selectedOccurrence),
+  const selectedUsageQueries = useQueries({
+    queries: selectedOccurrences.map((occ) => ({
+      ...trpc.secret.usage.queryOptions({
+        secretId: occ.id,
+        environmentId: occ.environmentId,
+      }),
+      enabled: Boolean(occ.id && occ.environmentId),
+    })),
   });
 
-  const selectedUsage = selectedUsageQ.data as UsageResult | undefined;
-  const usageRefs = selectedUsage?.refs ?? [];
-  const usagePipelineCount = selectedUsage?.pipelineCount ?? 0;
-  const usageLoading = Boolean(selectedOccurrence) && selectedUsageQ.isPending;
-  const usageError = selectedUsageQ.isError ? (selectedUsageQ.error as Error) : undefined;
+  const usageRefs = React.useMemo(
+    () =>
+      selectedUsageQueries.flatMap((q) => {
+        const usage = q.data as UsageResult | undefined;
+        return usage?.refs ?? [];
+      }),
+    [selectedUsageQueries],
+  );
+  const usagePipelineCount = React.useMemo(
+    () => new Set(usageRefs.map((ref) => ref.pipeline.id)).size,
+    [usageRefs],
+  );
+  const usageLoading = selectedOccurrences.length > 0 && selectedUsageQueries.some((q) => q.isPending);
+  const usageError = selectedUsageQueries.find((q) => q.isError)?.error as Error | undefined;
+  const selectedUsageLoaded =
+    selectedOccurrences.length > 0 && selectedUsageQueries.every((q) => q.isSuccess);
   const hasLoadError = envsQ.isError || perEnvQueries.some((q) => q.isError);
 
   const rowsWithUsage = React.useMemo(
     () =>
       rows.map((row) =>
-        selected && row.name === selected.name && selectedUsage
-          ? withUsageStatus(row, selectedUsage.count)
+        selected && row.name === selected.name && selectedUsageLoaded
+          ? withUsageStatus(row, usageRefs.length)
           : row,
       ),
-    [rows, selected, selectedUsage],
+    [rows, selected, selectedUsageLoaded, usageRefs.length],
   );
   const [page, setPage] = React.useState(0);
   const pageSize = 50;
@@ -150,10 +164,18 @@ export default function SecretsVaultPage() {
       total: rowsWithUsage.length,
       rotated30d: rowsWithUsage.filter((r) => isWithin(r.updatedAt, 30)).length,
       aging: rowsWithUsage.filter((r) => r.status === "aging").length,
-      unused: rowsWithUsage.filter((r) => r.status === "unused").length,
     }),
     [rowsWithUsage],
   );
+  const selectedUnusedValue = selectedWithUsage
+    ? usageLoading
+      ? "…"
+      : selectedUsageLoaded
+        ? usagePipelineCount === 0
+          ? 1
+          : 0
+        : "—"
+    : "—";
 
   return (
     <div className="flex flex-col h-full bg-bg text-fg">
@@ -192,7 +214,7 @@ export default function SecretsVaultPage() {
         <KpiInStrip label="TOTAL SECRETS" value={counts.total} sub={`across ${envs.length} environments`} />
         <KpiInStrip label="ROTATED · 30D" value={counts.rotated30d} sub="auto + manual" accent="var(--accent-brand)" />
         <KpiInStrip label="AGING · 90D+" value={counts.aging} sub="needs rotation" accent={counts.aging > 0 ? "var(--status-degraded)" : undefined} />
-        <KpiInStrip label="UNUSED" value={counts.unused} sub="safe to delete" />
+        <KpiInStrip label="SELECTED UNUSED" value={selectedUnusedValue} sub="selected secret only" />
         <KpiInStrip
           label="USED BY"
           value={selectedWithUsage ? (usageLoading ? "…" : usagePipelineCount) : "—"}
