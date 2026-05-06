@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ChartSkeleton, KpiSkeleton, TableSkeleton } from "@/components/ui/loading-skeletons";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
 import { RecommendationsPanel } from "@/components/analytics/recommendations-panel";
 import { PageHeader } from "@/components/page-header";
@@ -182,11 +182,11 @@ export default function AnalyticsPage() {
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 w-full" />
+            <KpiSkeleton key={i} />
           ))}
         </div>
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-48 w-full" />
+        <ChartSkeleton />
+        <TableSkeleton rows={5} />
       </div>
     );
   }

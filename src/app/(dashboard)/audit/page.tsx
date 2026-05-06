@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/ui/loading-skeletons";
 import { useTeamStore } from "@/stores/team-store";
 import { formatTimestamp } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
@@ -346,12 +346,7 @@ export default function AuditPage() {
 
       {/* Table */}
       {logsQuery.isLoading ? (
-        <div className="space-y-3">
-          {isInitialLoad && <Skeleton className="h-40 w-full" />}
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
+        <TableSkeleton rows={isInitialLoad ? 8 : 5} />
       ) : allItems.length === 0 ? (
         <EmptyState
           title="No audit log entries found"
