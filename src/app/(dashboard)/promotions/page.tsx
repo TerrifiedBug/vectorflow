@@ -88,6 +88,30 @@ const TAB_SERVER_STATUSES: Record<TabId, StatusKey[]> = {
   history: ["DEPLOYED", "REJECTED", "CANCELLED"],
 };
 
+type ServerItem = {
+  id: string;
+  status: string;
+  createdAt: string | Date;
+  sourcePipeline: { id: string; name: string } | null;
+  promotedBy: { name: string | null; email: string | null } | null;
+  sourceEnvironment: { name: string } | null;
+  targetEnvironment: { name: string } | null;
+};
+
+function toPromotionRow(r: ServerItem): PromotionRow {
+  return {
+    id: r.id,
+    sourcePipelineId: r.sourcePipeline?.id ?? "",
+    pipelineName: r.sourcePipeline?.name ?? "—",
+    fromEnv: r.sourceEnvironment?.name ?? "—",
+    toEnv: r.targetEnvironment?.name ?? "—",
+    requestedBy: r.promotedBy?.name ?? r.promotedBy?.email ?? "—",
+    requestedAt:
+      typeof r.createdAt === "string" ? r.createdAt : r.createdAt.toISOString(),
+    status: r.status as StatusKey,
+  };
+}
+
 export default function PromotionsPage() {
   const trpc = useTRPC();
   const teamId = useTeamStore((s) => s.selectedTeamId);
@@ -112,40 +136,33 @@ export default function PromotionsPage() {
     ),
   );
 
+  const summaryQ = useQuery(
+    trpc.promotion.recentForTeam.queryOptions(
+      { teamId: teamId ?? "", limit: 200 },
+      { enabled: Boolean(teamId) },
+    ),
+  );
+
   // Server response → row shape. The procedure includes nested relations
   // we project here to keep the rest of the view shape-stable.
-  type ServerItem = {
-    id: string;
-    status: string;
-    createdAt: string | Date;
-    sourcePipeline: { id: string; name: string } | null;
-    promotedBy: { name: string | null; email: string | null } | null;
-    sourceEnvironment: { name: string } | null;
-    targetEnvironment: { name: string } | null;
-  };
   const rows: PromotionRow[] = React.useMemo(() => {
     const items = recentQ.data?.pages.flatMap((page) => page.items) ?? [];
-    return (items as ServerItem[]).map((r) => ({
-      id: r.id,
-      sourcePipelineId: r.sourcePipeline?.id ?? "",
-      pipelineName: r.sourcePipeline?.name ?? "—",
-      fromEnv: r.sourceEnvironment?.name ?? "—",
-      toEnv: r.targetEnvironment?.name ?? "—",
-      requestedBy: r.promotedBy?.name ?? r.promotedBy?.email ?? "—",
-      requestedAt:
-        typeof r.createdAt === "string" ? r.createdAt : r.createdAt.toISOString(),
-      status: r.status as StatusKey,
-    }));
+    return (items as ServerItem[]).map(toPromotionRow);
   }, [recentQ.data]);
+
+  const summaryRows: PromotionRow[] = React.useMemo(() => {
+    const items = summaryQ.data?.items ?? [];
+    return (items as ServerItem[]).map(toPromotionRow);
+  }, [summaryQ.data]);
 
   const counts = React.useMemo(
     () => ({
-      pending: rows.filter(TAB_FILTER.pending).length,
-      approved: rows.filter(TAB_FILTER.approved).length,
-      "in-flight": rows.filter(TAB_FILTER["in-flight"]).length,
-      history: rows.filter(TAB_FILTER.history).length,
+      pending: summaryRows.filter(TAB_FILTER.pending).length,
+      approved: summaryRows.filter(TAB_FILTER.approved).length,
+      "in-flight": summaryRows.filter(TAB_FILTER["in-flight"]).length,
+      history: summaryRows.filter(TAB_FILTER.history).length,
     }),
-    [rows],
+    [summaryRows],
   );
 
   const visibleRows = rows;
@@ -238,7 +255,7 @@ export default function PromotionsPage() {
             counts.history === 0
               ? "—"
               : Math.round(
-                  (rows.filter((r) => r.status === "DEPLOYED").length /
+                  (summaryRows.filter((r) => r.status === "DEPLOYED").length /
                     Math.max(counts.history, 1)) *
                     100,
                 )
@@ -248,7 +265,7 @@ export default function PromotionsPage() {
         />
         <KpiInStrip
           label="ROLLBACKS · 7D"
-          value={rows.filter((r) => r.status === "REJECTED").length}
+          value={summaryRows.filter((r) => r.status === "REJECTED").length}
           sub="rejections + cancels"
         />
         <KpiInStrip
@@ -269,7 +286,10 @@ export default function PromotionsPage() {
               <button
                 key={t.id}
                 type="button"
-                onClick={() => setTab(t.id)}
+                onClick={() => {
+                  setTab(t.id);
+                  setStatusFilter("ALL");
+                }}
                 className={cn(
                   "h-full bg-transparent border-0 cursor-pointer flex items-center gap-1.5 px-0 text-[12px]",
                   tab === t.id
