@@ -158,8 +158,7 @@ export default function PromotionsPage() {
   }, [summaryQ.data]);
 
   const deployedCount = summaryQ.data?.DEPLOYED ?? null;
-  const rollbackCount =
-    summaryQ.data ? summaryQ.data.REJECTED + summaryQ.data.CANCELLED : null;
+  const rejectionCount = summaryQ.data?.REJECTED ?? null;
 
   const visibleRows = rows;
 
@@ -238,12 +237,12 @@ export default function PromotionsPage() {
         <KpiInStrip
           label="OPEN REQUESTS"
           value={counts ? counts.pending + counts.approved : "—"}
-          sub={`${counts?.pending ?? "—"} awaiting review · 24h sla`}
+          sub="aggregate pending"
         />
         <KpiInStrip
-          label="AVG REVIEW TIME"
+          label="REVIEW TIME"
           value="—"
-          sub="server aggregate · pending"
+          sub="aggregate pending"
         />
         <KpiInStrip
           label="SUCCESS RATE"
@@ -253,17 +252,17 @@ export default function PromotionsPage() {
               : "—"
           }
           unit={counts && counts.history > 0 ? "%" : undefined}
-          sub="last 30 promotions"
+          sub="all-time aggregate"
         />
         <KpiInStrip
-          label="ROLLBACKS · 7D"
-          value={rollbackCount ?? "—"}
-          sub="rejections + cancels"
+          label="REJECTIONS"
+          value={rejectionCount ?? "—"}
+          sub="all-time aggregate"
         />
         <KpiInStrip
-          label="PROMOTIONS · MO"
+          label="PROMOTIONS"
           value={counts ? counts.history : "—"}
-          sub="executed this period"
+          sub="all-time aggregate"
           accent="var(--accent-brand)"
         />
       </KpiStrip>
