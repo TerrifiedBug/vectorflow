@@ -43,9 +43,15 @@ export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
             Unable to load recent pipeline logs.
           </p>
         ) : null}
-        <p className="rounded-md border border-dashed border-line-2 px-3 py-6 text-center text-sm text-fg-2">
-          No recent pipeline log lines.
-        </p>
+        {logsQuery.isPending ? (
+          <p className="rounded-md border border-dashed border-line-2 px-3 py-4 text-center text-xs text-fg-2">
+            Loading recent log lines…
+          </p>
+        ) : logsQuery.isSuccess ? (
+          <p className="rounded-md border border-dashed border-line-2 px-3 py-6 text-center text-sm text-fg-2">
+            No recent log lines for this component.
+          </p>
+        ) : null}
       </div>
     );
   }
