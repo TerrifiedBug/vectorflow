@@ -36,7 +36,6 @@ export default function NewAlertRulePage() {
     <AlertRuleForm
       mode="create"
       initialValues={formValuesFromSearchParams(searchParams)}
-      environmentId={environmentId}
     />
   );
 }

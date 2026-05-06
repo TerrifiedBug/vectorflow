@@ -95,7 +95,6 @@ type Props =
   | {
       mode: "create";
       initialValues?: AlertRuleFormValues;
-      environmentId?: string;
     }
   | {
       mode: "edit";
@@ -112,7 +111,7 @@ export function AlertRuleForm(props: Props) {
   const teamId = useTeamStore((s) => s.selectedTeamId);
   const { selectedEnvironmentId } = useEnvironmentStore();
   const effectiveEnvironmentId =
-    props.mode === "edit" ? props.environmentId : props.environmentId ?? selectedEnvironmentId;
+    props.mode === "edit" ? props.environmentId : selectedEnvironmentId;
 
   const initial = props.initialValues ?? DEFAULT_FORM_VALUES;
 
