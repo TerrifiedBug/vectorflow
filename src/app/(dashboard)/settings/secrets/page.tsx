@@ -176,6 +176,22 @@ export default function SecretsVaultPage() {
           : 0
         : "—"
     : "—";
+  const usedByValue = !selectedWithUsage
+    ? "—"
+    : usageLoading
+      ? "…"
+      : usageError
+        ? "!"
+        : selectedUsageLoaded
+          ? usagePipelineCount
+          : "—";
+  const usedBySub = selectedWithUsage
+    ? usageLoading
+      ? "loading references"
+      : usageError
+        ? "usage unavailable"
+        : `${selectedWithUsage.name} · ${usagePipelineCount === 1 ? "pipeline" : "pipelines"}`
+    : "select a secret";
 
   return (
     <div className="flex flex-col h-full bg-bg text-fg">
@@ -217,8 +233,8 @@ export default function SecretsVaultPage() {
         <KpiInStrip label="SELECTED UNUSED" value={selectedUnusedValue} sub="selected secret only" />
         <KpiInStrip
           label="USED BY"
-          value={selectedWithUsage ? (usageLoading ? "…" : usagePipelineCount) : "—"}
-          sub={selectedWithUsage ? `${selectedWithUsage.name} · ${usagePipelineCount === 1 ? "pipeline" : "pipelines"}` : "select a secret"}
+          value={usedByValue}
+          sub={usedBySub}
         />
       </KpiStrip>
 
@@ -257,41 +273,59 @@ export default function SecretsVaultPage() {
               <span className="text-right">status</span>
             </div>
             <div className="flex-1 overflow-auto">
-              {visibleRows.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setSelectedName(s.name)}
-                  className={cn(
-                    "grid w-full text-left items-center px-5 py-2.5 border-b border-line font-mono text-[11.5px] cursor-pointer transition-colors",
-                    s.name === (selected?.name ?? "")
-                      ? "bg-bg-1 border-l-2 border-l-accent-brand"
-                      : "border-l-2 border-l-transparent hover:bg-bg-3/40",
-                  )}
-                  style={{ gridTemplateColumns: "1.6fr 100px 110px 1fr 70px 100px" }}
-                >
-                  <span className="text-fg flex items-center gap-1.5 truncate">
-                    <span className="text-fg-2">🔑</span>
-                    {s.name}
-                  </span>
-                  <span className="text-fg-2">—</span>
-                  <span className={s.rotated === "never" ? "text-fg-2" : "text-fg-1"}>{s.rotated}</span>
-                  <span className="flex gap-1 flex-wrap">
-                    {s.envs.length === 0 && <span className="text-fg-2 text-[10.5px]">—</span>}
-                    {s.envs.map((e) => (
-                      <Pill key={e} variant={e.startsWith("prod") ? "envProd" : "env"} size="xs">
-                        {e}
-                      </Pill>
-                    ))}
-                  </span>
-                  <span className={cn("text-right", s.uses === 0 ? "text-fg-2" : "text-fg")}>
-                    {s.uses}
-                  </span>
-                  <span className="text-right">
-                    <SecretStatusBadge status={s.status} />
-                  </span>
-                </button>
-              ))}
+              {visibleRows.map((s) => {
+                const isSelected = s.name === (selected?.name ?? "");
+                const usageDisplay = isSelected
+                  ? usageLoading
+                    ? "…"
+                    : usageError
+                      ? "!"
+                      : selectedUsageLoaded
+                        ? s.uses
+                        : "—"
+                  : "—";
+                const usageClass = usageError && isSelected
+                  ? "text-status-error"
+                  : usageDisplay === "—" || usageDisplay === "…" || usageDisplay === 0
+                    ? "text-fg-2"
+                    : "text-fg";
+
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSelectedName(s.name)}
+                    className={cn(
+                      "grid w-full text-left items-center px-5 py-2.5 border-b border-line font-mono text-[11.5px] cursor-pointer transition-colors",
+                      isSelected
+                        ? "bg-bg-1 border-l-2 border-l-accent-brand"
+                        : "border-l-2 border-l-transparent hover:bg-bg-3/40",
+                    )}
+                    style={{ gridTemplateColumns: "1.6fr 100px 110px 1fr 70px 100px" }}
+                  >
+                    <span className="text-fg flex items-center gap-1.5 truncate">
+                      <span className="text-fg-2">🔑</span>
+                      {s.name}
+                    </span>
+                    <span className="text-fg-2">—</span>
+                    <span className={s.rotated === "never" ? "text-fg-2" : "text-fg-1"}>{s.rotated}</span>
+                    <span className="flex gap-1 flex-wrap">
+                      {s.envs.length === 0 && <span className="text-fg-2 text-[10.5px]">—</span>}
+                      {s.envs.map((e) => (
+                        <Pill key={e} variant={e.startsWith("prod") ? "envProd" : "env"} size="xs">
+                          {e}
+                        </Pill>
+                      ))}
+                    </span>
+                    <span className={cn("text-right", usageClass)}>
+                      {usageDisplay}
+                    </span>
+                    <span className="text-right">
+                      <SecretStatusBadge status={s.status} />
+                    </span>
+                  </button>
+                );
+              })}
             </div>
             {rowsWithUsage.length > pageSize && (
               <div className="flex items-center justify-between border-t border-line bg-bg-1 px-5 py-3 font-mono text-[11px] text-fg-2">
