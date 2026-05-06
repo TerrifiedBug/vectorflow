@@ -156,11 +156,19 @@ export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
 
     const preSeedEntries = streamState.entries.slice(0, seededStreamEntryCount);
     const postSeedEntries = streamState.entries.slice(seededStreamEntryCount);
+    const seededDedupEntries = seededEntries.map((seededEntry) => {
+      const parsed = parseLogLine(seededEntry.message, seededEntry.timestamp);
+      return {
+        level: seededEntry.level,
+        raw: seededEntry.message,
+        timestamp: parsed.timestamp,
+      };
+    });
     const dedupedPreSeedEntries = preSeedEntries.filter((entry) =>
-      !seededEntries.some(
+      !seededDedupEntries.some(
         (seededEntry) =>
           seededEntry.level === entry.level
-          && seededEntry.message === entry.raw
+          && seededEntry.raw === entry.raw
           && Math.abs(seededEntry.timestamp - entry.timestamp) <= 1500,
       ),
     );
