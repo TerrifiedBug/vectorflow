@@ -20,10 +20,8 @@ import { toast } from "sonner";
  *
  * Wires to:
  *   - trpc.promotion.recentForTeam → list rows (team-scoped)
+ *   - trpc.promotion.summaryForTeam → aggregate KPI/tab counts
  *   - trpc.promotion.diffPreview → detail diff panel
- *
- * KPI metrics are computed client-side from the result set; expose as a
- * server aggregate (`promotion.summary`) when noise becomes a problem.
  */
 
 type TabId = "pending" | "approved" | "in-flight" | "history";
@@ -62,24 +60,6 @@ interface PromotionRow {
   status: StatusKey;
 }
 
-const IN_FLIGHT_STATUSES: ReadonlySet<StatusKey> = new Set([
-  "APPROVED",
-  "AWAITING_PR_MERGE",
-  "DEPLOYING",
-]);
-
-const HISTORY_STATUSES: ReadonlySet<StatusKey> = new Set([
-  "DEPLOYED",
-  "REJECTED",
-  "CANCELLED",
-]);
-
-const TAB_FILTER: Record<TabId, (r: PromotionRow) => boolean> = {
-  pending: (r) => r.status === "PENDING",
-  approved: (r) => r.status === "APPROVED",
-  "in-flight": (r) => IN_FLIGHT_STATUSES.has(r.status),
-  history: (r) => HISTORY_STATUSES.has(r.status),
-};
 
 const TAB_SERVER_STATUSES: Record<TabId, StatusKey[]> = {
   pending: ["PENDING"],
@@ -137,8 +117,8 @@ export default function PromotionsPage() {
   );
 
   const summaryQ = useQuery(
-    trpc.promotion.recentForTeam.queryOptions(
-      { teamId: teamId ?? "", limit: 200 },
+    trpc.promotion.summaryForTeam.queryOptions(
+      { teamId: teamId ?? "" },
       { enabled: Boolean(teamId) },
     ),
   );
@@ -150,20 +130,21 @@ export default function PromotionsPage() {
     return (items as ServerItem[]).map(toPromotionRow);
   }, [recentQ.data]);
 
-  const summaryRows: PromotionRow[] = React.useMemo(() => {
-    const items = summaryQ.data?.items ?? [];
-    return (items as ServerItem[]).map(toPromotionRow);
+  const counts = React.useMemo(() => {
+    const summary = summaryQ.data;
+    if (!summary) return null;
+
+    return {
+      pending: summary.PENDING,
+      approved: summary.APPROVED,
+      "in-flight": summary.APPROVED + summary.AWAITING_PR_MERGE + summary.DEPLOYING,
+      history: summary.DEPLOYED + summary.REJECTED + summary.CANCELLED,
+    };
   }, [summaryQ.data]);
 
-  const counts = React.useMemo(
-    () => ({
-      pending: summaryRows.filter(TAB_FILTER.pending).length,
-      approved: summaryRows.filter(TAB_FILTER.approved).length,
-      "in-flight": summaryRows.filter(TAB_FILTER["in-flight"]).length,
-      history: summaryRows.filter(TAB_FILTER.history).length,
-    }),
-    [summaryRows],
-  );
+  const deployedCount = summaryQ.data?.DEPLOYED ?? null;
+  const rollbackCount =
+    summaryQ.data ? summaryQ.data.REJECTED + summaryQ.data.CANCELLED : null;
 
   const visibleRows = rows;
 
@@ -241,8 +222,8 @@ export default function PromotionsPage() {
       <KpiStrip>
         <KpiInStrip
           label="OPEN REQUESTS"
-          value={counts.pending + counts.approved}
-          sub={`${counts.pending} awaiting review · 24h sla`}
+          value={counts ? counts.pending + counts.approved : "—"}
+          sub={`${counts?.pending ?? "—"} awaiting review · 24h sla`}
         />
         <KpiInStrip
           label="AVG REVIEW TIME"
@@ -252,25 +233,21 @@ export default function PromotionsPage() {
         <KpiInStrip
           label="SUCCESS RATE"
           value={
-            counts.history === 0
-              ? "—"
-              : Math.round(
-                  (summaryRows.filter((r) => r.status === "DEPLOYED").length /
-                    Math.max(counts.history, 1)) *
-                    100,
-                )
+            counts && counts.history > 0 && deployedCount !== null
+              ? Math.round((deployedCount / counts.history) * 100)
+              : "—"
           }
-          unit={counts.history === 0 ? undefined : "%"}
+          unit={counts && counts.history > 0 ? "%" : undefined}
           sub="last 30 promotions"
         />
         <KpiInStrip
           label="ROLLBACKS · 7D"
-          value={summaryRows.filter((r) => r.status === "REJECTED").length}
+          value={rollbackCount ?? "—"}
           sub="rejections + cancels"
         />
         <KpiInStrip
           label="PROMOTIONS · MO"
-          value={counts.history}
+          value={counts ? counts.history : "—"}
           sub="executed this period"
           accent="var(--accent-brand)"
         />
@@ -306,7 +283,7 @@ export default function PromotionsPage() {
                       : "bg-bg-3 text-fg-2",
                   )}
                 >
-                  {counts[t.id]}
+                  {counts ? counts[t.id] : "—"}
                 </span>
               </button>
             ))}

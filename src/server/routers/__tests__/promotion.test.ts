@@ -540,6 +540,34 @@ describe("promotion router", () => {
     });
   });
 
+  // ─── summaryForTeam ────────────────────────────────────────────────────────
+
+  describe("summaryForTeam", () => {
+    it("returns counts for each UI status and scopes by source pipeline team", async () => {
+      prismaMock.promotionRequest.groupBy.mockResolvedValue([
+        { status: "PENDING", _count: { _all: 3 } },
+        { status: "DEPLOYED", _count: { _all: 5 } },
+      ] as never);
+
+      const result = await caller.summaryForTeam({ teamId: "team-1" });
+
+      expect(result).toEqual({
+        PENDING: 3,
+        APPROVED: 0,
+        DEPLOYED: 5,
+        REJECTED: 0,
+        CANCELLED: 0,
+        AWAITING_PR_MERGE: 0,
+        DEPLOYING: 0,
+      });
+      expect(prismaMock.promotionRequest.groupBy).toHaveBeenCalledWith({
+        by: ["status"],
+        where: { sourcePipeline: { environment: { teamId: "team-1" } } },
+        _count: { _all: true },
+      });
+    });
+  });
+
   // ─── recentForTeam ──────────────────────────────────────────────────────────
 
   describe("recentForTeam", () => {

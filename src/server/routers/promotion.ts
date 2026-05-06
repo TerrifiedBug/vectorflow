@@ -12,7 +12,7 @@ import { createPromotionPR } from "@/server/services/gitops-promotion";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 
-const promotionStatusSchema = z.enum([
+const PROMOTION_STATUS_KEYS = [
   "PENDING",
   "APPROVED",
   "DEPLOYED",
@@ -20,7 +20,11 @@ const promotionStatusSchema = z.enum([
   "CANCELLED",
   "AWAITING_PR_MERGE",
   "DEPLOYING",
-]);
+] as const;
+
+type PromotionStatusKey = (typeof PROMOTION_STATUS_KEYS)[number];
+
+const promotionStatusSchema = z.enum(PROMOTION_STATUS_KEYS);
 
 export const promotionRouter = router({
   /**
@@ -415,6 +419,27 @@ export const promotionRouter = router({
       }
 
       return { cancelled: true };
+    }),
+
+  summaryForTeam: protectedProcedure
+    .input(z.object({ teamId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const grouped = await prisma.promotionRequest.groupBy({
+        by: ["status"],
+        where: { sourcePipeline: { environment: { teamId: input.teamId } } },
+        _count: { _all: true },
+      });
+
+      const summary = Object.fromEntries(
+        PROMOTION_STATUS_KEYS.map((status) => [status, 0]),
+      ) as Record<PromotionStatusKey, number>;
+
+      for (const row of grouped) {
+        summary[row.status as PromotionStatusKey] = row._count._all;
+      }
+
+      return summary;
     }),
 
   /**
