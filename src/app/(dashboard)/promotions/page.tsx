@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { ConfigDiff } from "@/components/ui/config-diff";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 import { GitBranch } from "lucide-react";
+import { toast } from "sonner";
 
 /**
  * v2 Promotions hub (11a) — list + detail split with KPI strip and tabs.
@@ -34,6 +36,20 @@ type StatusKey =
   | "CANCELLED"
   | "AWAITING_PR_MERGE"
   | "DEPLOYING";
+
+type StatusFilter = "ALL" | Extract<
+  StatusKey,
+  "PENDING" | "APPROVED" | "DEPLOYED" | "REJECTED" | "CANCELLED"
+>;
+
+const STATUS_FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: "ALL", label: "ALL" },
+  { value: "PENDING", label: "PENDING" },
+  { value: "APPROVED", label: "APPROVED" },
+  { value: "DEPLOYED", label: "DEPLOYED" },
+  { value: "REJECTED", label: "REJECTED" },
+  { value: "CANCELLED", label: "CANCELLED" },
+];
 
 interface PromotionRow {
   id: string;
@@ -69,14 +85,22 @@ export default function PromotionsPage() {
   const trpc = useTRPC();
   const teamId = useTeamStore((s) => s.selectedTeamId);
   const [tab, setTab] = React.useState<TabId>("pending");
+  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("ALL");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
-  const recentQ = useQuery({
-    ...trpc.promotion.recentForTeam.queryOptions(
-      { teamId: teamId ?? "", limit: 50 },
-      { enabled: Boolean(teamId) },
+  const recentQ = useInfiniteQuery(
+    trpc.promotion.recentForTeam.infiniteQueryOptions(
+      {
+        teamId: teamId ?? "",
+        limit: 50,
+        ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
+      },
+      {
+        enabled: Boolean(teamId),
+        getNextPageParam: (lastPage) => lastPage.nextCursor,
+      },
     ),
-  });
+  );
 
   // Server response → row shape. The procedure includes nested relations
   // we project here to keep the rest of the view shape-stable.
@@ -90,9 +114,8 @@ export default function PromotionsPage() {
     targetEnvironment: { name: string } | null;
   };
   const rows: PromotionRow[] = React.useMemo(() => {
-    const data = recentQ.data;
-    if (!data || !Array.isArray(data.items)) return [];
-    return (data.items as ServerItem[]).map((r) => ({
+    const items = recentQ.data?.pages.flatMap((page) => page.items) ?? [];
+    return (items as ServerItem[]).map((r) => ({
       id: r.id,
       sourcePipelineId: r.sourcePipeline?.id ?? "",
       pipelineName: r.sourcePipeline?.name ?? "—",
@@ -129,6 +152,19 @@ export default function PromotionsPage() {
     { id: "history", label: "History" },
   ];
 
+  const handleExportCsv = React.useCallback(() => {
+    const csv = toPromotionCsv(visibleRows);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "vectorflow-promotions.csv";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }, [visibleRows]);
+
   return (
     <div className="flex flex-col h-full bg-bg text-fg">
       {/* HEADER */}
@@ -143,18 +179,36 @@ export default function PromotionsPage() {
             artifact — like a pull request for ops.
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm">
-            <VFIcon name="filter" />
-            Filter
-          </Button>
-          <Button variant="ghost" size="sm">
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Filter promotions by status"
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value as StatusFilter);
+              setSelectedId(null);
+            }}
+            className="h-8 rounded-[3px] border border-line bg-bg-2 px-2 font-mono text-[11px] text-fg outline-none hover:border-line-2 focus:border-accent-brand"
+          >
+            {STATUS_FILTER_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleExportCsv}
+            disabled={visibleRows.length === 0}
+          >
             <VFIcon name="download" />
             Export
           </Button>
-          <Button variant="primary" size="sm">
-            <VFIcon name="git" />
-            New promotion
+          <Button variant="primary" size="sm" asChild>
+            <Link href="/pipelines" className="inline-flex items-center gap-1.5">
+              <VFIcon name="git" />
+              New promotion
+            </Link>
           </Button>
         </div>
       </div>
@@ -250,7 +304,22 @@ export default function PromotionsPage() {
               </div>
             )}
             {teamId && recentQ.isPending && (
-              <div className="p-5 text-fg-2 font-mono text-[12px]">Loading…</div>
+              <div>
+                {Array.from({ length: 6 }, (_, index) => (
+                  <div
+                    key={index}
+                    className="grid items-center px-5 py-2.5 border-b border-line animate-pulse"
+                    style={{ gridTemplateColumns: "60px 1fr 200px 110px 90px 80px" }}
+                  >
+                    <span className="h-3 w-10 rounded bg-bg-3" />
+                    <span className="h-3 w-36 rounded bg-bg-3" />
+                    <span className="h-3 w-28 rounded bg-bg-3" />
+                    <span className="h-3 w-20 rounded bg-bg-3" />
+                    <span className="ml-auto h-3 w-5 rounded bg-bg-3" />
+                    <span className="ml-auto h-4 w-14 rounded bg-bg-3" />
+                  </div>
+                ))}
+              </div>
             )}
             {teamId && recentQ.isError && (
               <div className="p-5 text-status-error font-mono text-[12px]">
@@ -262,7 +331,7 @@ export default function PromotionsPage() {
                 glyph="◇"
                 title="Nothing here"
                 description={`No ${tabs.find((t) => t.id === tab)?.label.toLowerCase()} promotions.`}
-                action={{ label: "New promotion", onClick: () => {} }}
+                action={{ label: "New promotion", href: "/pipelines" }}
               />
             )}
             {visibleRows.map((r) => (
@@ -301,6 +370,18 @@ export default function PromotionsPage() {
                 </span>
               </button>
             ))}
+            {recentQ.hasNextPage && (
+              <div className="flex justify-center p-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void recentQ.fetchNextPage()}
+                  disabled={recentQ.isFetchingNextPage}
+                >
+                  {recentQ.isFetchingNextPage ? "Loading…" : "Load more"}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -339,12 +420,45 @@ function PromotionStatusPill({ status }: { status: StatusKey }) {
 
 function PromotionDetail({ row }: { row: PromotionRow }) {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const diffQ = useQuery({
     ...trpc.promotion.diffPreview.queryOptions(
       { pipelineId: row.sourcePipelineId },
       { enabled: Boolean(row.sourcePipelineId) },
     ),
   });
+
+  const invalidateRecentPromotions = React.useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: trpc.promotion.recentForTeam.queryKey(),
+    });
+  }, [queryClient, trpc.promotion.recentForTeam]);
+
+  const rejectMutation = useMutation(
+    trpc.promotion.reject.mutationOptions({
+      onSuccess: () => {
+        toast.success("Promotion rejected");
+        invalidateRecentPromotions();
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to reject promotion", { duration: 6000 });
+      },
+    }),
+  );
+
+  const approveMutation = useMutation(
+    trpc.promotion.approve.mutationOptions({
+      onSuccess: () => {
+        toast.success("Promotion approved");
+        invalidateRecentPromotions();
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to approve promotion", { duration: 6000 });
+      },
+    }),
+  );
+
+  const actionPending = rejectMutation.isPending || approveMutation.isPending;
 
   return (
     <>
@@ -452,21 +566,39 @@ function PromotionDetail({ row }: { row: PromotionRow }) {
         <div className="flex gap-2">
           {row.status === "PENDING" ? (
             <>
-              <Button variant="ghost" size="sm">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  rejectMutation.mutate({
+                    requestId: row.id,
+                    note: "Rejected from promotions hub",
+                  })
+                }
+                disabled={actionPending}
+              >
                 <VFIcon name="x" />
-                Reject
+                {rejectMutation.isPending ? "Rejecting…" : "Reject"}
               </Button>
-              <Button variant="primary" size="sm">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => approveMutation.mutate({ requestId: row.id })}
+                disabled={actionPending}
+              >
                 <VFIcon name="check" />
-                Approve & continue
+                {approveMutation.isPending ? "Approving…" : "Approve & continue"}
               </Button>
             </>
           ) : (
             <Button variant="ghost" size="sm" asChild>
-              <a href="#" className="inline-flex items-center gap-1.5">
+              <Link
+                href={`/pipelines/${row.sourcePipelineId}`}
+                className="inline-flex items-center gap-1.5"
+              >
                 <GitBranch className="h-3.5 w-3.5" />
                 View on pipeline
-              </a>
+              </Link>
             </Button>
           )}
         </div>
@@ -475,6 +607,39 @@ function PromotionDetail({ row }: { row: PromotionRow }) {
   );
 }
 
+
+function toPromotionCsv(rows: PromotionRow[]): string {
+  const header = [
+    "id",
+    "sourcePipelineId",
+    "pipelineName",
+    "fromEnv",
+    "toEnv",
+    "requestedBy",
+    "requestedAt",
+    "status",
+  ];
+  const body = rows.map((row) =>
+    [
+      row.id,
+      row.sourcePipelineId,
+      row.pipelineName,
+      row.fromEnv,
+      row.toEnv,
+      row.requestedBy,
+      row.requestedAt,
+      row.status,
+    ]
+      .map(csvCell)
+      .join(","),
+  );
+  return [header.join(","), ...body].join("\n");
+}
+
+function csvCell(value: string): string {
+  if (!/[",\n\r]/.test(value)) return value;
+  return `"${value.replaceAll('"', '""')}"`;
+}
 function timeAgo(iso: string): string {
   if (!iso) return "—";
   const d = new Date(iso);

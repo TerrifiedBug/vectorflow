@@ -579,27 +579,12 @@ describe("promotion router", () => {
       );
     });
 
-    it("applies status filter when provided", async () => {
-      prismaMock.promotionRequest.findMany.mockResolvedValue([] as never);
-
-      await caller.recentForTeam({ teamId: "team-1", status: "PENDING" });
-
-      expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            sourcePipeline: { environment: { teamId: "team-1" } },
-            status: "PENDING",
-          },
-        }),
-      );
-    });
-
-    it("returns nextCursor when more records exist than the limit", async () => {
-      // Fabricate limit + 1 records to trigger pagination signal
-      const records = Array.from({ length: 4 }, (_, idx) => ({
+    it("passes status, limit, and cursor to Prisma and returns nextCursor", async () => {
+      const records = Array.from({ length: 3 }, (_, idx) => ({
         ...makePromotionRequest({
           id: `req-${idx}`,
           createdAt: new Date(2026, 3, 10 - idx),
+          status: "PENDING",
         }),
         sourcePipeline: { id: "pipeline-1", name: "P1" },
         targetPipeline: null,
@@ -610,10 +595,27 @@ describe("promotion router", () => {
       }));
       prismaMock.promotionRequest.findMany.mockResolvedValue(records as never);
 
-      const result = await caller.recentForTeam({ teamId: "team-1", limit: 3 });
+      const result = await caller.recentForTeam({
+        teamId: "team-1",
+        status: "PENDING",
+        limit: 2,
+        cursor: "req-before",
+      });
 
-      expect(result.items).toHaveLength(3);
-      expect(result.nextCursor).toBe("req-2");
+      expect(result.items).toHaveLength(2);
+      expect(result.nextCursor).toBe("req-1");
+      expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            sourcePipeline: { environment: { teamId: "team-1" } },
+            status: "PENDING",
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 3,
+          cursor: { id: "req-before" },
+          skip: 1,
+        }),
+      );
     });
   });
 
