@@ -107,7 +107,7 @@ export default function SecretsVaultPage() {
     [rows],
   );
 
-  const selectedSecretName = selectedName ?? selected?.name;
+  const selectedSecretName = selected?.name ?? null;
   const selectedOccurrences = React.useMemo(
     () => allOccurrences.filter((occ) => occ.secretName === selectedSecretName),
     [allOccurrences, selectedSecretName],
@@ -144,11 +144,11 @@ export default function SecretsVaultPage() {
   const rowsWithUsage = React.useMemo(
     () =>
       rows.map((row) =>
-        selected && row.name === selected.name && selectedUsageLoaded
+        row.name === selectedSecretName && selectedUsageLoaded
           ? withUsageStatus(row, usageRefs.length)
           : row,
       ),
-    [rows, selected, selectedUsageLoaded, usageRefs.length],
+    [rows, selectedSecretName, selectedUsageLoaded, usageRefs.length],
   );
   const [page, setPage] = React.useState(0);
   const pageSize = 50;
@@ -156,7 +156,7 @@ export default function SecretsVaultPage() {
   const currentPage = Math.min(page, totalPages - 1);
   const visibleRows = rowsWithUsage.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   const selectedWithUsage = selected
-    ? rowsWithUsage.find((row) => row.name === selected.name) ?? selected
+    ? rowsWithUsage.find((row) => row.name === selectedSecretName) ?? selected
     : undefined;
 
   const counts = React.useMemo(
@@ -274,7 +274,7 @@ export default function SecretsVaultPage() {
             </div>
             <div className="flex-1 overflow-auto">
               {visibleRows.map((s) => {
-                const isSelected = s.name === (selected?.name ?? "");
+                const isSelected = s.name === selectedSecretName;
                 const usageDisplay = isSelected
                   ? usageLoading
                     ? "…"
@@ -467,7 +467,7 @@ function SecretDetail({
         {/* Used by */}
         <div>
           <div className="font-mono text-[10px] text-fg-2 tracking-[0.04em] uppercase mb-1.5">
-            Used by · {usageLoading ? "…" : `${usagePipelineCount} pipeline${usagePipelineCount === 1 ? "" : "s"}`}
+            Used by · {usageError ? "unavailable" : usageLoading ? "…" : `${usagePipelineCount} pipeline${usagePipelineCount === 1 ? "" : "s"}`}
           </div>
           <div className="bg-bg-2 border border-line rounded-[3px] overflow-hidden">
             {usageLoading ? (
