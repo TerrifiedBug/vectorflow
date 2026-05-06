@@ -225,6 +225,7 @@ export function CustomView({ view }: CustomViewProps) {
       pipelineIds: selectedPipelineIds,
       range: timeRange,
       groupBy,
+      chartWidth: mounted ? Math.floor(width * 0.8) : undefined,
     }),
     refetchInterval: chartPolling,
     enabled: !!selectedEnvironmentId && needsChartData,

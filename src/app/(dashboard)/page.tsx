@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import {
@@ -164,6 +164,15 @@ export default function DashboardPage() {
   const [selectedPipelineIds, setSelectedPipelineIds] = useState<string[]>([]);
   const [timeRange, setTimeRange] = useState<TimeRange>("1h");
   const [groupBy, setGroupBy] = useState<GroupBy>("pipeline");
+  const [chartWidth, setChartWidth] = useState<number | undefined>(() =>
+    typeof window === "undefined" ? undefined : Math.floor(window.innerWidth * 0.8),
+  );
+
+  useEffect(() => {
+    const handleResize = () => setChartWidth(Math.floor(window.innerWidth * 0.8));
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const refreshInterval: Record<TimeRange, number> = {
     "1h": 15_000,
@@ -181,6 +190,7 @@ export default function DashboardPage() {
       pipelineIds: selectedPipelineIds,
       range: timeRange,
       groupBy,
+      chartWidth,
     }),
     refetchInterval: chartPolling,
     enabled: !!selectedEnvironmentId && activeView === null,
