@@ -687,7 +687,7 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
         </TabsContent>
 
         <TabsContent value="schema" className="min-h-0 flex-1 overflow-y-auto">
-          <InspectorSchemaTab node={selectedNode} />
+          <InspectorSchemaTab node={selectedNode} nodes={nodes} edges={edges} />
         </TabsContent>
 
         <TabsContent value="metrics" className="min-h-0 flex-1 overflow-y-auto">
