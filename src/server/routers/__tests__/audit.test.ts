@@ -169,8 +169,8 @@ describe("audit.list", () => {
     expect(result.nextCursor).toBeUndefined();
   });
 
-  it("returns nextCursor when there are more than 50 items", async () => {
-    // Router fetches take+1 (51) to determine if there is a next page
+  it("returns nextCursor when there are more items than the requested limit", async () => {
+    // Router fetches limit+1 to determine if there is a next page
     const items = Array.from({ length: 51 }, (_, i) => ({
       id: `log-${i}`,
       action: "pipeline.create",
@@ -186,7 +186,7 @@ describe("audit.list", () => {
 
     prismaMock.auditLog.findMany.mockResolvedValue(items as never);
 
-    const result = await caller.list({});
+    const result = await caller.list({ limit: 50 });
 
     expect(result.items).toHaveLength(50);
     expect(result.nextCursor).toBe("log-50");
