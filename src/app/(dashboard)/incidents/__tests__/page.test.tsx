@@ -4,7 +4,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
-const queryState = vi.hoisted(() => ({
+type TestAnomaly = {
+  id: string;
+  pipelineId: string;
+  pipelineName: string;
+  detectedAt: string;
+  description: string;
+  status: "open" | "acknowledged" | "dismissed";
+};
+
+type QueryState = {
+  data: TestAnomaly[] | undefined;
+  isError: boolean;
+  isPending: boolean;
+  isSuccess: boolean;
+  error: Error | null;
+};
+
+const queryState = vi.hoisted((): { value: QueryState } => ({
   value: {
     data: [],
     isError: false,

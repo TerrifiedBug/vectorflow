@@ -82,6 +82,10 @@ import * as promotionService from "@/server/services/promotion-service";
 import * as gitopsPromotion from "@/server/services/gitops-promotion";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
+
+const promotionRequestGroupByMock = prismaMock.promotionRequest.groupBy as unknown as ReturnType<
+  typeof vi.fn
+>;
 const caller = t.createCallerFactory(promotionRouter)({
   session: { user: { id: "user-1", email: "test@test.com" } },
 });
@@ -544,7 +548,7 @@ describe("promotion router", () => {
 
   describe("summaryForTeam", () => {
     it("returns counts for each UI status and scopes by source pipeline team", async () => {
-      prismaMock.promotionRequest.groupBy.mockResolvedValue([
+      promotionRequestGroupByMock.mockResolvedValue([
         { status: "PENDING", _count: { _all: 3 } },
         { status: "DEPLOYED", _count: { _all: 5 } },
       ] as never);

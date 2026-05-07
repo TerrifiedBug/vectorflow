@@ -44,6 +44,10 @@ const LEVEL_COLORS: Record<string, string> = {
   TRACE: "text-muted-foreground/50",
 };
 
+function timestampMs(value: Date | string | number): number {
+  return value instanceof Date ? value.getTime() : new Date(value).getTime();
+}
+
 function historyReducer(state: HistoryState, action: HistoryAction): HistoryState {
   switch (action.type) {
     case "reset":
@@ -104,7 +108,14 @@ export function InspectorLogsTab({ pipelineId }: InspectorLogsTabProps) {
   useEffect(() => {
     if (!logsQuery.isSuccess || hasSeededHistory) return;
 
-    const seededEntries = [...(logsQuery.data.items ?? [])].reverse();
+    const seededEntries: SeededLogEntry[] = [...(logsQuery.data.items ?? [])]
+      .reverse()
+      .map((entry) => ({
+        id: entry.id,
+        level: entry.level,
+        message: entry.message,
+        timestamp: timestampMs(entry.timestamp),
+      }));
     dispatchHistory({
       type: "seed",
       pipelineId,
