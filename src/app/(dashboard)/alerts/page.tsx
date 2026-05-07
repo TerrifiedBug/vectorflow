@@ -33,6 +33,7 @@ import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertRulesSection } from "./_components/alert-rules-section";
 import { NotificationChannelsSection } from "./_components/notification-channels-section";
+import { QueryError } from "@/components/query-error";
 import { AlertHistorySection } from "./_components/alert-history-section";
 import { CorrelatedAlertHistory } from "./_components/correlated-alert-history";
 import { FailedDeliveriesSection } from "./_components/failed-deliveries-section";
@@ -120,6 +121,21 @@ export default function AlertsPage() {
             <Skeleton key={i} className="h-14 w-full" />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (anomalyCountQuery.isError || rulesQuery.isError || firingEventsQuery.isError) {
+    return (
+      <div className="space-y-6">
+        <QueryError
+          message="Failed to load alert data"
+          onRetry={() => {
+            anomalyCountQuery.refetch();
+            rulesQuery.refetch();
+            firingEventsQuery.refetch();
+          }}
+        />
       </div>
     );
   }

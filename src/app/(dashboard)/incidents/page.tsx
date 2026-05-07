@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import type { DateRange } from "react-day-picker";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
@@ -24,6 +24,7 @@ import { EmptyState } from "@/components/empty-state";
 
 const HOURS = 14;
 const COL_W = 100 / HOURS;
+const INCIDENT_PAGE_SIZE = 100;
 
 interface TimelineEvent {
   kind: EventKind;
@@ -54,16 +55,28 @@ export default function IncidentsPage() {
     return { from, to };
   }, [dateRange]);
 
-  const anomaliesQ = useQuery({
-    ...trpc.anomaly.list.queryOptions({
-      environmentId: selectedEnvironmentId ?? "",
-      from: queryWindow.from.toISOString(),
-      to: queryWindow.to.toISOString(),
-      limit: 100,
-    }),
-    enabled: !!selectedEnvironmentId,
-    refetchInterval: 5_000,
-  });
+  const anomaliesQ = useInfiniteQuery(
+    trpc.anomaly.list.infiniteQueryOptions(
+      {
+        environmentId: selectedEnvironmentId ?? "",
+        from: queryWindow.from.toISOString(),
+        to: queryWindow.to.toISOString(),
+        limit: INCIDENT_PAGE_SIZE,
+      },
+      {
+        enabled: !!selectedEnvironmentId,
+        refetchInterval: 5_000,
+        getNextPageParam: (lastPage) =>
+          lastPage.length === INCIDENT_PAGE_SIZE ? lastPage.at(-1)?.id : undefined,
+      },
+    ),
+  );
+  const { fetchNextPage, hasNextPage, isFetchingNextPage } = anomaliesQ;
+
+  React.useEffect(() => {
+    if (!hasNextPage || isFetchingNextPage) return;
+    void fetchNextPage();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   type RawAnomaly = {
     id?: string;
@@ -77,6 +90,11 @@ export default function IncidentsPage() {
     status?: "open" | "acknowledged" | "dismissed";
   };
 
+  const rawAnomalies = React.useMemo(
+    () => anomaliesQ.data?.pages.flatMap((page) => page as RawAnomaly[]) ?? [],
+    [anomaliesQ.data],
+  );
+
   const [nowMs, setNowMs] = React.useState<number | null>(null);
   React.useEffect(() => {
     setNowMs(Date.now());
@@ -85,19 +103,20 @@ export default function IncidentsPage() {
   }, []);
 
   const rows: TimelineRow[] = React.useMemo(() => {
-    if (!Array.isArray(anomaliesQ.data) || nowMs == null) return [];
+    if (rawAnomalies.length === 0 || nowMs == null) return [];
     const windowMs = Math.max(60 * 60 * 1000, queryWindow.to.getTime() - queryWindow.from.getTime());
+    const bucketMs = windowMs / HOURS;
     const buckets = new Map<string, TimelineRow>();
 
-    for (const a of anomaliesQ.data as RawAnomaly[]) {
+    for (const a of rawAnomalies) {
       const name = a.pipelineName ?? a.pipeline?.name ?? "—";
       const key = a.pipelineId ?? a.pipeline?.id ?? name;
       const ts = a.detectedAt ?? new Date().toISOString();
       const timestamp = ts instanceof Date ? ts.toISOString() : ts;
       const t = new Date(timestamp).getTime();
-      const ago = queryWindow.to.getTime() - t;
-      if (ago > windowMs) continue;
-      const hour = HOURS - 1 - Math.floor(ago / (60 * 60 * 1000));
+      const elapsed = t - queryWindow.from.getTime();
+      if (elapsed < 0 || t > queryWindow.to.getTime()) continue;
+      const hour = Math.floor(elapsed / bucketMs);
       const row =
         buckets.get(key) ??
         ({ pipelineId: key, pipelineName: name, env: "—", state: "ok", events: [] } as TimelineRow);
@@ -112,7 +131,7 @@ export default function IncidentsPage() {
       buckets.set(key, row);
     }
     return Array.from(buckets.values()).slice(0, 50);
-  }, [anomaliesQ.data, nowMs, queryWindow]);
+  }, [nowMs, queryWindow, rawAnomalies]);
 
   const [selectedRowId, setSelectedRowId] = React.useState<string | null>(
     null,
@@ -120,16 +139,13 @@ export default function IncidentsPage() {
   const selectedRow =
     rows.find((r) => r.pipelineId === selectedRowId) ?? rows[0];
 
-  const counts = React.useMemo(() => {
-    const rawAnomalies = Array.isArray(anomaliesQ.data)
-      ? (anomaliesQ.data as RawAnomaly[])
-      : [];
-
-    return {
+  const counts = React.useMemo(
+    () => ({
       active: rawAnomalies.filter((a) => a.status === "open").length,
-      anomalies: rows.flatMap((r) => r.events).filter((e) => e.kind === "anomaly").length,
-    };
-  }, [anomaliesQ.data, rows]);
+      anomalies: rawAnomalies.length,
+    }),
+    [rawAnomalies],
+  );
 
   const hourLabels = React.useMemo(
     () =>

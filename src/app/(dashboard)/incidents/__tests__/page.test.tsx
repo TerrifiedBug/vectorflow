@@ -33,6 +33,10 @@ const queryState = vi.hoisted((): { value: QueryState } => ({
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => queryState.value,
+  useInfiniteQuery: () => ({
+    ...queryState.value,
+    data: queryState.value.data ? { pages: [queryState.value.data] } : undefined,
+  }),
 }));
 
 vi.mock("@/trpc/client", () => ({
@@ -40,6 +44,7 @@ vi.mock("@/trpc/client", () => ({
     anomaly: {
       list: {
         queryOptions: vi.fn(() => ({ queryKey: ["anomalies"], queryFn: vi.fn() })),
+        infiniteQueryOptions: vi.fn(() => ({ queryKey: ["anomalies"], queryFn: vi.fn() })),
       },
     },
   }),
@@ -129,5 +134,28 @@ describe("IncidentsPage", () => {
     const activeKpi = screen.getByText("ACTIVE ANOMALIES").parentElement;
     expect(activeKpi).not.toBeNull();
     expect(within(activeKpi!).getByText("2")).toBeInTheDocument();
+  });
+
+  it("counts anomalies from raw records before row truncation", async () => {
+    queryState.value = {
+      data: Array.from({ length: 55 }, (_, index) => ({
+        id: `anom-${index}`,
+        pipelineId: `pipe-${index}`,
+        pipelineName: `Pipeline ${index}`,
+        detectedAt: new Date().toISOString(),
+        description: `Anomaly ${index}`,
+        status: "open" as const,
+      })),
+      isError: false,
+      isPending: false,
+      isSuccess: true,
+      error: null,
+    };
+
+    render(<IncidentsPage />);
+
+    const anomalyKpi = screen.getByText("ANOMALIES · 14H").parentElement;
+    expect(anomalyKpi).not.toBeNull();
+    expect(await within(anomalyKpi!).findByText("55")).toBeInTheDocument();
   });
 });

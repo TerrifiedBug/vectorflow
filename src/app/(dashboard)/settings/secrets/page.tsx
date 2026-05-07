@@ -65,7 +65,7 @@ export default function SecretsVaultPage() {
       enabled: !!e.id,
     })),
   });
-  const allLoading = perEnvQueries.some((q) => q.isPending);
+  const allLoading = envsQ.isPending || perEnvQueries.some((q) => q.isPending);
 
   type RawSecret = {
     id: string;

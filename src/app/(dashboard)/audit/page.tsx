@@ -116,15 +116,18 @@ export default function AuditPage() {
     })
   );
 
+  const allItems = logsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const selectedAuditEntry = allItems.find((entry) => entry.id === selectedAuditId);
+  const selectedAuditTeamId = effectiveTeamId ?? selectedAuditEntry?.teamId ?? null;
+
   const detailQuery = useQuery({
     ...trpc.audit.getDetail.queryOptions({
       id: selectedAuditId ?? "",
-      teamId: effectiveTeamId ?? "",
+      teamId: selectedAuditTeamId ?? "",
     }),
-    enabled: !!selectedAuditId && !!effectiveTeamId,
+    enabled: !!selectedAuditId && !!selectedAuditTeamId,
   });
 
-  const allItems = logsQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const actions = actionsQuery.data ?? [];
   const entityTypes = entityTypesQuery.data ?? [];
   const users = usersQuery.data ?? [];
