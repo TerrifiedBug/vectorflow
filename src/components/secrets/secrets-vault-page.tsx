@@ -138,7 +138,7 @@ export function SecretsVaultPage() {
   const trpc = useTRPC();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [uploadInputKey, setUploadInputKey] = React.useState(0);
   const teamId = useTeamStore((s) => s.selectedTeamId);
 
   const envsQ = useQuery({
@@ -624,7 +624,7 @@ export function SecretsVaultPage() {
     setUploadName("");
     setUploadFileType("cert");
     setUploadFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    setUploadInputKey((current) => current + 1);
   }
 
   function handleCreate(event: React.FormEvent) {
@@ -1162,7 +1162,7 @@ export function SecretsVaultPage() {
             <div className="space-y-2">
               <Label htmlFor="cert-file">File</Label>
               <Input
-                ref={fileInputRef}
+                key={uploadInputKey}
                 id="cert-file"
                 type="file"
                 accept=".pem,.crt,.cert,.key,.ca"
