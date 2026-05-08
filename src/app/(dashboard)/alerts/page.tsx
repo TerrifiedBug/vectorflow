@@ -149,18 +149,12 @@ export default function AlertsPage() {
           </>
         }
         actions={
-          <>
-            <Button variant="outline" size="sm" onClick={() => setTopTab("channels")}>
-              <Bell className="h-3.5 w-3.5" />
-              Notification channels
-            </Button>
-            <Button variant="primary" size="sm" asChild>
-              <Link href="/alerts/new">
-                <Plus className="h-3.5 w-3.5" />
-                New rule
-              </Link>
-            </Button>
-          </>
+          <Button variant="primary" size="sm" asChild>
+            <Link href="/alerts/new">
+              <Plus className="h-3.5 w-3.5" />
+              New rule
+            </Link>
+          </Button>
         }
       />
 
