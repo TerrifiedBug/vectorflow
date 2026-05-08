@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Edge, Node } from "@xyflow/react";
-import { useFlowStore } from "@/stores/flow-store";
+import { useFlowStore, type NodeMetricsData } from "@/stores/flow-store";
 import type { VectorComponentDef } from "@/lib/vector/types";
 import type { AiSuggestion } from "@/lib/ai/types";
 
@@ -198,5 +198,35 @@ describe("flow-store metric edge runtime metadata", () => {
       },
     });
     expect(edge.data).not.toHaveProperty("running");
+  });
+
+  it("updateNodeMetrics propagates source throughput onto connected edges", () => {
+    useFlowStore.getState().loadGraph(nodes, [
+      {
+        id: "edge-1",
+        source: "source-1",
+        target: "transform-1",
+      },
+    ] as Edge[]);
+
+    const metrics = new Map<string, NodeMetricsData>([
+      [
+        "source-1",
+        {
+          eventsPerSec: 42,
+          bytesPerSec: 512,
+          status: "healthy",
+        },
+      ],
+    ]);
+
+    useFlowStore.getState().updateNodeMetrics(metrics);
+
+    expect(useFlowStore.getState().edges[0]).toMatchObject({
+      data: {
+        running: true,
+        throughput: 42,
+      },
+    });
   });
 });
