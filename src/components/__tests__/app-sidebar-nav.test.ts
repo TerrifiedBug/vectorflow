@@ -16,4 +16,13 @@ describe("app sidebar navigation", () => {
     expect(commandPaletteSource).toContain('title: "Costs"');
     expect(commandPaletteSource).toContain('href: "/analytics/costs"');
   });
+
+  it("promotes Secrets into the Configure sidebar group", () => {
+    const sidebarSource = readFileSync("src/components/app-sidebar.tsx", "utf8");
+
+    expect(sidebarSource).toContain('title: "Secrets"');
+    expect(sidebarSource).toContain('href: "/secrets"');
+    const commandPaletteSource = readFileSync("src/components/command-palette.tsx", "utf8");
+    expect(commandPaletteSource).toContain('href: "/secrets"');
+  });
 });

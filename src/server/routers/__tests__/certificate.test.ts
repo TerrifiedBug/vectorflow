@@ -2,11 +2,11 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
-const { t } = vi.hoisted(() => {
+const { t, mockCollectCertRefs } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { initTRPC } = require("@trpc/server");
   const t = initTRPC.context().create();
-  return { t };
+  return { t, mockCollectCertRefs: vi.fn() };
 });
 
 vi.mock("@/trpc/init", () => {
@@ -41,12 +41,21 @@ vi.mock("@/server/services/cert-expiry-checker", () => ({
   daysUntilExpiry: vi.fn().mockReturnValue(274),
 }));
 
+vi.mock("@/server/services/config-crypto", () => ({
+  decryptNodeConfig: vi.fn((_: unknown, config: unknown) => config),
+}));
+
+vi.mock("@/server/services/secret-resolver", () => ({
+  collectCertRefs: mockCollectCertRefs,
+}));
+
 // ─── Import SUT + mocks ─────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
 import { certificateRouter } from "@/server/routers/certificate";
 import { encrypt } from "@/server/services/crypto";
 import { parseCertExpiry } from "@/server/services/cert-expiry-checker";
+import { decryptNodeConfig } from "@/server/services/config-crypto";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -66,6 +75,14 @@ describe("certificateRouter", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     vi.clearAllMocks();
+    mockCollectCertRefs.mockReset();
+    mockCollectCertRefs.mockImplementation((config: Record<string, unknown>) => {
+      const refs = new Set<string>();
+      const values = JSON.stringify(config);
+      if (values.includes("CERT[client-cert]")) refs.add("client-cert");
+      if (values.includes("CERT[other-cert]")) refs.add("other-cert");
+      return refs;
+    });
   });
 
   // ─── list ─────────────────────────────────────────────────────────────────
@@ -232,6 +249,97 @@ describe("certificateRouter", () => {
     });
   });
 
+  // ─── usage ─────────────────────────────────────────────────────────────────
+
+  describe("usage", () => {
+    it("returns empty result when certificate does not exist", async () => {
+      prismaMock.certificate.findUnique.mockResolvedValue(null as never);
+
+      const result = await caller.usage({ certificateId: "missing", environmentId: "env-1" });
+
+      expect(result).toEqual({ count: 0, pipelineCount: 0, refs: [] });
+    });
+
+    it("returns refs from pipeline nodes that reference the certificate", async () => {
+      prismaMock.certificate.findUnique.mockResolvedValue({
+        id: "c1",
+        name: "client-cert",
+        environmentId: "env-1",
+      } as never);
+      prismaMock.pipelineNode.findMany.mockResolvedValue([
+        {
+          id: "node-1",
+          componentType: "kafka",
+          config: { tls: { crt_file: "CERT[client-cert]" } },
+          pipeline: {
+            id: "p-1",
+            name: "TLS Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+        {
+          id: "node-2",
+          componentType: "http",
+          config: { tls: { crt_file: "CERT[other-cert]" } },
+          pipeline: {
+            id: "p-2",
+            name: "Other Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+      ] as never);
+
+      const result = await caller.usage({ certificateId: "c1", environmentId: "env-1" });
+
+      expect(result).toEqual({
+        count: 1,
+        pipelineCount: 1,
+        refs: [
+          expect.objectContaining({
+            id: "node-1",
+            componentType: "kafka",
+            pipeline: expect.objectContaining({
+              name: "TLS Pipeline",
+              environment: expect.objectContaining({ name: "production" }),
+            }),
+          }),
+        ],
+      });
+    });
+
+    it("scans decrypted node config before collecting cert refs", async () => {
+      vi.mocked(decryptNodeConfig).mockImplementationOnce((_: unknown, config: unknown) => {
+        const record = config as Record<string, unknown>;
+        return { ...record, tls: { crt_file: "CERT[client-cert]" } };
+      });
+      prismaMock.certificate.findUnique.mockResolvedValue({
+        id: "c1",
+        name: "client-cert",
+        environmentId: "env-1",
+      } as never);
+      prismaMock.pipelineNode.findMany.mockResolvedValue([
+        {
+          id: "node-encrypted",
+          componentType: "vector_sink",
+          config: { tls: { crt_file: "enc:ciphertext" } },
+          pipeline: {
+            id: "p-1",
+            name: "Encrypted TLS Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+      ] as never);
+
+      const result = await caller.usage({ certificateId: "c1", environmentId: "env-1" });
+
+      expect(decryptNodeConfig).toHaveBeenCalled();
+      expect(mockCollectCertRefs).toHaveBeenCalledWith({ tls: { crt_file: "CERT[client-cert]" } });
+      expect(result.count).toBe(1);
+      expect(result.pipelineCount).toBe(1);
+      expect(result.refs.map((ref: { id: string }) => ref.id)).toEqual(["node-encrypted"]);
+    });
+  });
+
   // ─── getData ──────────────────────────────────────────────────────────────
 
   describe("getData", () => {
@@ -269,4 +377,179 @@ describe("certificateRouter", () => {
       ).rejects.toThrow("Certificate not found");
     });
   });
+
+  // ─── certificate bundles ──────────────────────────────────────────────────
+
+  describe("certificate bundles", () => {
+    it("lists bundles with linked certificate metadata", async () => {
+      prismaMock.certificateBundle.findMany.mockResolvedValue([
+        {
+          id: "bundle-1",
+          name: "mtls-prod",
+          environmentId: "env-1",
+          caId: "ca-1",
+          certId: "cert-1",
+          keyId: "key-1",
+          createdAt: new Date("2026-05-01T00:00:00Z"),
+          updatedAt: new Date("2026-05-02T00:00:00Z"),
+          ca: { id: "ca-1", name: "root-ca", filename: "root.pem", fileType: "ca" },
+          cert: { id: "cert-1", name: "client-cert", filename: "client.pem", fileType: "cert" },
+          key: { id: "key-1", name: "client-key", filename: "client.key", fileType: "key" },
+        },
+      ] as never);
+
+      const result = await caller.bundleList({ environmentId: "env-1" });
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          id: "bundle-1",
+          name: "mtls-prod",
+          ca: expect.objectContaining({ name: "root-ca" }),
+          cert: expect.objectContaining({ name: "client-cert" }),
+          key: expect.objectContaining({ name: "client-key" }),
+        }),
+      ]);
+      expect(prismaMock.certificateBundle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { environmentId: "env-1" } }),
+      );
+    });
+
+    it("gets a bundle by id within the environment", async () => {
+      prismaMock.certificateBundle.findUnique.mockResolvedValue({
+        id: "bundle-1",
+        name: "mtls-prod",
+        environmentId: "env-1",
+        caId: "ca-1",
+        certId: null,
+        keyId: null,
+        createdAt: new Date("2026-05-01T00:00:00Z"),
+        updatedAt: new Date("2026-05-02T00:00:00Z"),
+        ca: { id: "ca-1", name: "root-ca", filename: "root.pem", fileType: "ca" },
+        cert: null,
+        key: null,
+      } as never);
+
+      const result = await caller.bundleGet({ id: "bundle-1", environmentId: "env-1" });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: "bundle-1",
+          name: "mtls-prod",
+          ca: expect.objectContaining({ name: "root-ca" }),
+          cert: null,
+          key: null,
+        }),
+      );
+    });
+
+    it("creates a bundle after validating linked certificate types", async () => {
+      prismaMock.certificate.findMany.mockResolvedValue([
+        { id: "ca-1", name: "root-ca", filename: "root.pem", fileType: "ca", environmentId: "env-1" },
+        { id: "cert-1", name: "client-cert", filename: "client.pem", fileType: "cert", environmentId: "env-1" },
+        { id: "key-1", name: "client-key", filename: "client.key", fileType: "key", environmentId: "env-1" },
+      ] as never);
+      prismaMock.certificateBundle.findUnique.mockResolvedValue(null as never);
+      prismaMock.certificateBundle.create.mockResolvedValue({
+        id: "bundle-1",
+        name: "mtls-prod",
+        environmentId: "env-1",
+        caId: "ca-1",
+        certId: "cert-1",
+        keyId: "key-1",
+        createdAt: new Date("2026-05-01T00:00:00Z"),
+        updatedAt: new Date("2026-05-02T00:00:00Z"),
+        ca: { id: "ca-1", name: "root-ca", filename: "root.pem", fileType: "ca" },
+        cert: { id: "cert-1", name: "client-cert", filename: "client.pem", fileType: "cert" },
+        key: { id: "key-1", name: "client-key", filename: "client.key", fileType: "key" },
+      } as never);
+
+      const result = await caller.bundleCreate({
+        environmentId: "env-1",
+        name: "mtls-prod",
+        caId: "ca-1",
+        certId: "cert-1",
+        keyId: "key-1",
+      });
+
+      expect(result).toEqual(expect.objectContaining({ id: "bundle-1", name: "mtls-prod" }));
+      expect(prismaMock.certificate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: { in: ["ca-1", "cert-1", "key-1"] } } }),
+      );
+    });
+
+    it("rejects bundle creation when a linked certificate has the wrong file type", async () => {
+      prismaMock.certificate.findMany.mockResolvedValue([
+        { id: "cert-1", name: "client-cert", filename: "client.pem", fileType: "cert", environmentId: "env-1" },
+      ] as never);
+      prismaMock.certificateBundle.findUnique.mockResolvedValue(null as never);
+
+      await expect(
+        caller.bundleCreate({
+          environmentId: "env-1",
+          name: "bad-bundle",
+          caId: "cert-1",
+          certId: null,
+          keyId: null,
+        }),
+      ).rejects.toThrow("Selected CA certificate is invalid");
+    });
+
+    it("updates a bundle after validating replacement certificates", async () => {
+      prismaMock.certificateBundle.findUnique
+        .mockResolvedValueOnce({
+          id: "bundle-1",
+          environmentId: "env-1",
+          name: "mtls-prod",
+        } as never)
+        .mockResolvedValueOnce(null as never);
+      prismaMock.certificate.findMany.mockResolvedValue([
+        { id: "ca-1", name: "root-ca", filename: "root.pem", fileType: "ca", environmentId: "env-1" },
+        { id: "key-2", name: "next-key", filename: "next.key", fileType: "key", environmentId: "env-1" },
+      ] as never);
+      prismaMock.certificateBundle.update.mockResolvedValue({
+        id: "bundle-1",
+        name: "mtls-prod",
+        environmentId: "env-1",
+        caId: "ca-1",
+        certId: null,
+        keyId: "key-2",
+        createdAt: new Date("2026-05-01T00:00:00Z"),
+        updatedAt: new Date("2026-05-03T00:00:00Z"),
+        ca: { id: "ca-1", name: "root-ca", filename: "root.pem", fileType: "ca" },
+        cert: null,
+        key: { id: "key-2", name: "next-key", filename: "next.key", fileType: "key" },
+      } as never);
+
+      const result = await caller.bundleUpdate({
+        id: "bundle-1",
+        environmentId: "env-1",
+        name: "mtls-prod",
+        caId: "ca-1",
+        certId: null,
+        keyId: "key-2",
+      });
+
+      expect(result).toEqual(expect.objectContaining({ keyId: "key-2" }));
+      expect(prismaMock.certificateBundle.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "bundle-1" },
+          data: expect.objectContaining({ keyId: "key-2" }),
+        }),
+      );
+    });
+
+    it("deletes a bundle by id", async () => {
+      prismaMock.certificateBundle.findUnique.mockResolvedValue({
+        id: "bundle-1",
+        environmentId: "env-1",
+      } as never);
+      prismaMock.certificateBundle.delete.mockResolvedValue({} as never);
+
+      const result = await caller.bundleDelete({ id: "bundle-1", environmentId: "env-1" });
+
+      expect(result).toEqual({ deleted: true });
+      expect(prismaMock.certificateBundle.delete).toHaveBeenCalledWith({ where: { id: "bundle-1" } });
+    });
+  });
+
 });

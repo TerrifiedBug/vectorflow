@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { SecretPickerInput } from "./secret-picker-input";
 import { CertPickerInput, isCertFileField } from "./cert-picker-input";
+import { CertBundlePickerInput } from "./cert-bundle-picker";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -100,6 +101,14 @@ function isComplexField(name: string, schema: FieldSchema): boolean {
     lower.includes("codec") ||
     (typeof schema.description === "string" && schema.description.length > 80)
   );
+}
+
+function isTlsCertSection(name: string, schema: FieldSchema): boolean {
+  if (name !== "tls" || schema.type !== "object" || !schema.properties) {
+    return false;
+  }
+
+  return ["ca_file", "crt_file", "key_file"].some((field) => isCertFileField(field) && field in schema.properties!);
 }
 
 /* ------------------------------------------------------------------ */
@@ -365,6 +374,7 @@ export function FieldRenderer({
   if (schema.type === "object" && schema.properties) {
     const objValue = (value as Record<string, unknown>) ?? {};
     const requiredFields = schema.required ?? [];
+    const showBundlePicker = isTlsCertSection(name, schema);
     return (
       <div className="space-y-2">
         {labelRow}
@@ -372,6 +382,12 @@ export function FieldRenderer({
           <p className={descriptionClass}>{schema.description}</p>
         )}
         <div className="space-y-3 border-l border-line pl-3">
+          {showBundlePicker ? (
+            <CertBundlePickerInput
+              value={objValue}
+              onChange={(nextValue) => onChange(nextValue)}
+            />
+          ) : null}
           {Object.entries(schema.properties).map(([key, propSchema]) => (
             <FieldRenderer
               key={key}

@@ -18,4 +18,9 @@ describe("AuditPage activity table", () => {
     expect(pageSource).toContain("AuditDetailDrawer");
     expect(pageSource).toContain("setSelectedAuditId(entry.id)");
   });
+
+  it("hydrates entityType and search filters from URL params", () => {
+    expect(pageSource).toContain('useState<string>(searchParams.get("entityType") ?? "")');
+    expect(pageSource).toContain('useState<string>(searchParams.get("search") ?? "")');
+  });
 });
