@@ -200,7 +200,7 @@ vi.mock("@/components/ui/chart", () => ({
 }));
 
 import PipelineDetailPage from "../page";
-import PipelineBuilderPage from "../edit/page";
+import PipelineBuilderPage from "../edit/editor-client";
 import PipelineMetricsPage from "../metrics/page";
 
 describe("pipeline operational pages", () => {

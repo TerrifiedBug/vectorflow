@@ -23,7 +23,8 @@ describe("v2 design primitives", () => {
   it("defines runtime font variables so body text resolves to Inter", () => {
     const css = readFileSync("src/app/globals.css", "utf8");
 
-    const rootBlock = css.match(/:root\s*\{(?<body>[\s\S]*?)\n\}/)?.groups?.body ?? "";
+    const rootBlockMatch = css.match(/:root\s*\{([\s\S]*?)\n\}/);
+    const rootBlock = rootBlockMatch?.[1] ?? "";
     expect(rootBlock).toMatch(/--font-sans:\s*var\(--font-inter\)/);
     expect(rootBlock).toMatch(/--font-mono:\s*var\(--font-jetbrains-mono\)/);
     expect(css).toMatch(/body\s*\{[\s\S]*font-family:\s*var\(--font-inter\)/);

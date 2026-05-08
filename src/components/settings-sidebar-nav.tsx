@@ -17,7 +17,24 @@ import {
   Lock,
 } from "lucide-react";
 
-export const settingsNavGroups = [
+type SettingsNavItem = {
+  title: string;
+  description: string;
+  href: string;
+  icon: typeof RefreshCw;
+  requiredSuperAdmin: boolean;
+  demoHidden?: boolean;
+  designHidden?: boolean;
+};
+
+type SettingsNavGroup = {
+  label: string;
+  description: string;
+  items: SettingsNavItem[];
+};
+
+
+export const settingsNavGroups: SettingsNavGroup[] = [
   {
     label: "System",
     description: "Infrastructure and update management",
