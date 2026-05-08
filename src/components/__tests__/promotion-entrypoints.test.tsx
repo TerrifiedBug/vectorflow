@@ -76,6 +76,20 @@ const queryState = vi.hoisted(() => ({
   } as Record<string, { pipelines: Array<{ id: string; name: string; environmentId: string }> }>,
 }));
 
+function flattenPipelines() {
+  return Object.entries(queryState.pipelinesByEnvironment)
+    .flatMap(([environmentId, result]) =>
+      result.pipelines.map((pipeline) => ({
+        id: pipeline.id,
+        name: pipeline.name,
+        environmentId,
+        environmentName:
+          queryState.environments.find((environment) => environment.id === environmentId)?.name ?? environmentId,
+      })),
+    )
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
 vi.mock("next/link", () => ({
   default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
     <a href={href} {...props}>{children}</a>
@@ -161,10 +175,9 @@ vi.mock("@tanstack/react-query", () => ({
         refetch: vi.fn(),
       };
     }
-    if (key === "pipeline.list") {
-      const environmentId = String(options.queryKey?.[1]);
+    if (key === "promotion-pipeline-picker") {
       return {
-        data: queryState.pipelinesByEnvironment[environmentId] ?? { pipelines: [] },
+        data: flattenPipelines(),
         isLoading: false,
         isPending: false,
         isError: false,
@@ -174,20 +187,16 @@ vi.mock("@tanstack/react-query", () => ({
     }
     return { data: undefined, isLoading: false, isPending: false, isError: false, isSuccess: true, error: null };
   },
-  useQueries: ({ queries }: { queries: Array<{ queryKey?: unknown[] }> }) =>
-    queries.map((options) => {
-      const environmentId = String(options.queryKey?.[1]);
-      return {
-        data: queryState.pipelinesByEnvironment[environmentId] ?? { pipelines: [] },
-        isLoading: false,
-        isPending: false,
-        isError: false,
-        isSuccess: true,
-        error: null,
-      };
-    }),
+  useQueries: () => [],
   useMutation: () => ({ mutate: vi.fn(), isPending: false }),
-  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
+  useQueryClient: () => ({
+    invalidateQueries: mockInvalidateQueries,
+    fetchQuery: vi.fn(async (options: { queryKey?: unknown[] }) => {
+      const input = options.queryKey?.[2] as { environmentId?: string } | undefined;
+      const environmentId = input?.environmentId;
+      return environmentId ? queryState.pipelinesByEnvironment[environmentId] ?? { pipelines: [] } : { pipelines: [] };
+    }),
+  }),
 }));
 
 vi.mock("sonner", () => ({
