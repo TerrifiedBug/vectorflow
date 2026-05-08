@@ -13,13 +13,23 @@ function addPoint(map: TSMap, label: string, t: number, v: number) {
   map[label].push({ t, v });
 }
 
-function downsample(map: TSMap, bucketMs: number): TSMap {
-  if (bucketMs === 0) return map;
+function downsample(map: TSMap, bucketMs: number, maxPoints?: number): TSMap {
   const result: TSMap = {};
   for (const [label, points] of Object.entries(map)) {
+    const sorted = [...points].sort((a, b) => a.t - b.t);
+    const spanMs = Math.max(0, (sorted.at(-1)?.t ?? 0) - (sorted[0]?.t ?? 0));
+    const viewportBucketMs = maxPoints && sorted.length > maxPoints && spanMs > 0
+      ? Math.ceil(spanMs / maxPoints)
+      : 0;
+    const effectiveBucketMs = Math.max(bucketMs, viewportBucketMs);
+    if (effectiveBucketMs === 0) {
+      result[label] = sorted;
+      continue;
+    }
+
     const buckets = new Map<number, { sum: number; count: number }>();
-    for (const p of points) {
-      const bucket = Math.floor(p.t / bucketMs) * bucketMs;
+    for (const p of sorted) {
+      const bucket = Math.floor(p.t / effectiveBucketMs) * effectiveBucketMs;
       const b = buckets.get(bucket) ?? { sum: 0, count: 0 };
       b.sum += p.v;
       b.count++;
@@ -92,6 +102,7 @@ interface ChartMetricsInput {
     nodes: { id: string; name: string }[];
     pipelines: { id: string; name: string }[];
   };
+  maxPoints?: number;
 }
 
 export function computeChartMetrics(input: ChartMetricsInput) {
@@ -103,6 +114,7 @@ export function computeChartMetrics(input: ChartMetricsInput) {
     pipelineRows,
     nodeRows,
     filterOptions,
+    maxPoints,
   } = input;
 
   const bucketMs = range === "7d" ? 5 * 60 * 1000 : 0;
@@ -270,21 +282,21 @@ export function computeChartMetrics(input: ChartMetricsInput) {
 
   return {
     pipeline: {
-      eventsIn: downsample(eventsIn, bucketMs),
-      eventsOut: downsample(eventsOut, bucketMs),
-      bytesIn: downsample(bytesIn, bucketMs),
-      bytesOut: downsample(bytesOut, bucketMs),
-      errors: downsample(errors, bucketMs),
-      discarded: downsample(discarded, bucketMs),
-      latency: downsample(latency, bucketMs),
+      eventsIn: downsample(eventsIn, bucketMs, maxPoints),
+      eventsOut: downsample(eventsOut, bucketMs, maxPoints),
+      bytesIn: downsample(bytesIn, bucketMs, maxPoints),
+      bytesOut: downsample(bytesOut, bucketMs, maxPoints),
+      errors: downsample(errors, bucketMs, maxPoints),
+      discarded: downsample(discarded, bucketMs, maxPoints),
+      latency: downsample(latency, bucketMs, maxPoints),
     },
     system: {
-      cpu: downsample(cpu, bucketMs),
-      memory: downsample(memory, bucketMs),
-      diskRead: downsample(diskRead, bucketMs),
-      diskWrite: downsample(diskWrite, bucketMs),
-      netRx: downsample(netRx, bucketMs),
-      netTx: downsample(netTx, bucketMs),
+      cpu: downsample(cpu, bucketMs, maxPoints),
+      memory: downsample(memory, bucketMs, maxPoints),
+      diskRead: downsample(diskRead, bucketMs, maxPoints),
+      diskWrite: downsample(diskWrite, bucketMs, maxPoints),
+      netRx: downsample(netRx, bucketMs, maxPoints),
+      netTx: downsample(netTx, bucketMs, maxPoints),
     },
     filterOptions,
   };

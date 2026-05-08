@@ -7,13 +7,22 @@ import { withAudit } from "@/server/middleware/audit";
 import { encryptNodeConfig, decryptNodeConfig } from "@/server/services/config-crypto";
 
 export const sharedComponentRouter = router({
-  /** List all shared components for an environment */
+  /** List shared components for a team, or for a single environment when no team scope is available */
   list: protectedProcedure
-    .input(z.object({ environmentId: z.string() }))
+    .input(
+      z.object({
+        environmentId: z.string().optional(),
+        teamId: z.string().optional(),
+      }).refine((input) => input.environmentId || input.teamId, {
+        message: "environmentId or teamId is required",
+      }),
+    )
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const components = await prisma.sharedComponent.findMany({
-        where: { environmentId: input.environmentId },
+        where: input.teamId
+          ? { environment: { teamId: input.teamId, isSystem: false } }
+          : { environmentId: input.environmentId! },
         include: {
           linkedNodes: { select: { pipelineId: true } },
         },
@@ -31,6 +40,7 @@ export const sharedComponentRouter = router({
           (sc.config as Record<string, unknown>) ?? {},
         ),
         version: sc.version,
+        environmentId: sc.environmentId,
         linkedPipelineCount: new Set(sc.linkedNodes.map((n) => n.pipelineId)).size,
         createdAt: sc.createdAt,
         updatedAt: sc.updatedAt,
@@ -39,7 +49,7 @@ export const sharedComponentRouter = router({
 
   /** Get a single shared component by ID with linked pipeline details */
   getById: protectedProcedure
-    .input(z.object({ id: z.string(), environmentId: z.string() }))
+    .input(z.object({ id: z.string(), environmentId: z.string().optional() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const sc = await prisma.sharedComponent.findUnique({
@@ -53,7 +63,7 @@ export const sharedComponentRouter = router({
         },
       });
 
-      if (!sc || sc.environmentId !== input.environmentId) {
+      if (!sc || (input.environmentId && sc.environmentId !== input.environmentId)) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Shared component not found",

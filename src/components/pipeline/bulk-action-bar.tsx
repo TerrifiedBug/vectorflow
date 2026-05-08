@@ -22,10 +22,11 @@ import { useDeployProgress } from "@/hooks/use-deploy-progress";
 
 interface BulkActionBarProps {
   selectedIds: string[];
+  selectedPipelines?: Array<{ id: string; name: string }>;
   onClearSelection: () => void;
 }
 
-export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarProps) {
+export function BulkActionBar({ selectedIds, selectedPipelines, onClearSelection }: BulkActionBarProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
@@ -162,16 +163,16 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
 
   return (
     <>
-      <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2 shadow-sm animate-in slide-in-from-bottom-2 duration-200">
-        <span className="text-sm font-medium tabular-nums">
+      <div className="fixed bottom-6 left-1/2 z-50 flex h-12 -translate-x-1/2 items-center gap-2 rounded-[3px] border border-line-2 bg-bg-2 px-4 shadow-[0_8px_24px_rgba(0,0,0,0.3)] animate-in slide-in-from-bottom-2 duration-200">
+        <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-fg-1 tabular-nums">
           {count} selected
         </span>
-        <div className="h-5 w-px bg-border" />
+        <div className="h-5 w-px bg-line" />
 
         <Button
           variant="outline"
           size="sm"
-          className="h-7 gap-1 text-xs"
+          className="h-7 gap-1 font-mono text-[11px] uppercase tracking-[0.04em]"
           disabled={isPending}
           onClick={() => {
             setChangelog("");
@@ -189,7 +190,7 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
         <Button
           variant="outline"
           size="sm"
-          className="h-7 gap-1 text-xs"
+          className="h-7 gap-1 font-mono text-[11px] uppercase tracking-[0.04em]"
           disabled={isPending}
           onClick={() => bulkUndeployMutation.mutate({ pipelineIds: selectedIds })}
         >
@@ -204,7 +205,7 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
         <Button
           variant="outline"
           size="sm"
-          className="h-7 gap-1 text-xs text-destructive"
+          className="h-7 gap-1 font-mono text-[11px] uppercase tracking-[0.04em] text-status-error"
           disabled={isPending}
           onClick={() => setDeleteOpen(true)}
         >
@@ -216,12 +217,12 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
           Delete
         </Button>
 
-        <div className="h-5 w-px bg-border" />
+        <div className="h-5 w-px bg-line" />
 
         <Button
           variant="outline"
           size="sm"
-          className="h-7 gap-1 text-xs"
+          className="h-7 gap-1 font-mono text-[11px] uppercase tracking-[0.04em]"
           disabled={isPending}
           onClick={() => {
             setSelectedTags([]);
@@ -240,7 +241,7 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
         <Button
           variant="outline"
           size="sm"
-          className="h-7 gap-1 text-xs"
+          className="h-7 gap-1 font-mono text-[11px] uppercase tracking-[0.04em]"
           disabled={isPending}
           onClick={() => {
             setSelectedTags([]);
@@ -256,12 +257,12 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
           Remove Tags
         </Button>
 
-        <div className="h-5 w-px bg-border" />
+        <div className="h-5 w-px bg-line" />
 
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 gap-1 text-xs text-muted-foreground"
+          className="h-7 gap-1 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-2"
           onClick={onClearSelection}
         >
           <X className="h-3 w-3" />
@@ -280,10 +281,12 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
               e.preventDefault();
               if (!changelog.trim()) return;
               setDeployOpen(false);
-              // Use deploy progress hook — pipeline names resolved from query cache
+              const pipelineNameById = new Map(
+                (selectedPipelines ?? []).map((pipeline) => [pipeline.id, pipeline.name]),
+              );
               const pipelineInfos = selectedIds.map((id) => ({
                 id,
-                name: id,
+                name: pipelineNameById.get(id) ?? id,
               }));
               startBatchDeploy(pipelineInfos, changelog.trim());
             }}
@@ -330,9 +333,9 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
             <DialogTitle>Add Tags to {count} pipeline{count !== 1 ? "s" : ""}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            {availableTags.length > 0 ? (
+            {availableTags.length > 0 && (
               <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Select tags to add:</p>
+                <p className="text-sm text-muted-foreground">Select existing tags to add:</p>
                 <div className="max-h-40 space-y-1.5 overflow-y-auto">
                   {availableTags.map((tag) => (
                     <label
@@ -348,19 +351,18 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
                   ))}
                 </div>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Enter tags to add (comma-separated):
-                </p>
-                <Input
-                  value={customTagInput}
-                  onChange={(e) => setCustomTagInput(e.target.value)}
-                  placeholder="production, backend, v2"
-                  autoFocus
-                />
-              </div>
             )}
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Add custom tags (comma-separated):
+              </p>
+              <Input
+                value={customTagInput}
+                onChange={(e) => setCustomTagInput(e.target.value)}
+                placeholder="production, backend, v2"
+                autoFocus={availableTags.length === 0}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -391,9 +393,9 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
             <DialogTitle>Remove Tags from {count} pipeline{count !== 1 ? "s" : ""}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            {availableTags.length > 0 ? (
+            {availableTags.length > 0 && (
               <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Select tags to remove:</p>
+                <p className="text-sm text-muted-foreground">Select existing tags to remove:</p>
                 <div className="max-h-40 space-y-1.5 overflow-y-auto">
                   {availableTags.map((tag) => (
                     <label
@@ -409,19 +411,18 @@ export function BulkActionBar({ selectedIds, onClearSelection }: BulkActionBarPr
                   ))}
                 </div>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Enter tags to remove (comma-separated):
-                </p>
-                <Input
-                  value={customTagInput}
-                  onChange={(e) => setCustomTagInput(e.target.value)}
-                  placeholder="production, backend, v2"
-                  autoFocus
-                />
-              </div>
             )}
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Remove custom tags (comma-separated):
+              </p>
+              <Input
+                value={customTagInput}
+                onChange={(e) => setCustomTagInput(e.target.value)}
+                placeholder="production, backend, v2"
+                autoFocus={availableTags.length === 0}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button

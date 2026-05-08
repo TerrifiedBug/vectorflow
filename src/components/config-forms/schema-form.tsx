@@ -23,16 +23,14 @@ export interface SchemaFormProps {
 export function SchemaForm({ schema, values, onChange }: SchemaFormProps) {
   if (!schema.properties || Object.keys(schema.properties).length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No configurable properties.
-      </p>
+      <p className="text-[12px] text-fg-2">No configurable properties.</p>
     );
   }
 
   const requiredFields = schema.required ?? [];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3.5">
       {Object.entries(schema.properties).map(([key, propSchema]) => (
         <FieldRenderer
           key={key}
@@ -43,6 +41,7 @@ export function SchemaForm({ schema, values, onChange }: SchemaFormProps) {
             onChange({ ...values, [key]: fieldValue });
           }}
           required={requiredFields.includes(key)}
+          parentValues={values}
         />
       ))}
     </div>

@@ -69,6 +69,30 @@ function pushAuditScope(conditions: Record<string, unknown>[], scope: AuditScope
 }
 
 export const auditRouter = router({
+  /** Full detail for a single audit entry, scoped to a team (for the entry drawer). */
+  getDetail: protectedProcedure
+    .input(z.object({ id: z.string(), teamId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const entry = await prisma.auditLog.findUnique({
+        where: { id: input.id },
+        include: {
+          user: { select: { name: true, email: true } },
+          environment: { select: { teamId: true } },
+        },
+      });
+      if (!entry) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+      // Cross-team enumeration guard: even if the caller has access to `input.teamId`
+      // via the middleware, refuse to return entries that belong to a different team.
+      const scopedTeamId = entry.teamId ?? entry.environment?.teamId ?? null;
+      if (scopedTeamId !== input.teamId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+      return entry;
+    }),
+
   list: protectedProcedure
     .input(
       z.object({
@@ -81,6 +105,7 @@ export const auditRouter = router({
         startDate: z.string().optional(),
         endDate: z.string().optional(),
         cursor: z.string().optional(),
+        limit: z.number().int().min(1).max(100).default(100),
       })
     )
     .query(async ({ input, ctx }) => {
@@ -94,8 +119,9 @@ export const auditRouter = router({
         startDate,
         endDate,
         cursor,
+        limit,
       } = input;
-      const take = 50;
+      const take = limit;
 
       const conditions: Record<string, unknown>[] = [];
       pushAuditScope(conditions, scope);

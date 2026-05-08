@@ -82,12 +82,9 @@ export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps)
     <ChartContainer config={chartConfig} className="w-full" style={{ height }}>
       <AreaChart data={data}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-        <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-        <YAxis
-          tick={{ fontSize: 10 }}
-          width={55}
-          tickFormatter={(v) => formatter(v)}
-        />
+        <XAxis dataKey="time" tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} interval="preserveStartEnd" />
+        <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={55}
+        tickFormatter={(v) => formatter(v)} />
         <ChartTooltip
           content={
             <ChartTooltipContent

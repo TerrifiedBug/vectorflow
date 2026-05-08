@@ -88,6 +88,21 @@ describe("sharedComponentRouter", () => {
       expect(result[0].linkedPipelineCount).toBe(2);
       expect(result[0].name).toBe("Shared Source");
     });
+
+    it("can list shared components across a team so list and stable-id detail agree", async () => {
+      const sc = makeSC({ environmentId: "env-staging" });
+      prismaMock.sharedComponent.findMany.mockResolvedValueOnce([sc] as never);
+
+      const result = await caller.list({ teamId: "team-1" } as never);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].environmentId).toBe("env-staging");
+      expect(prismaMock.sharedComponent.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { environment: { teamId: "team-1", isSystem: false } },
+        }),
+      );
+    });
   });
 
   describe("getById", () => {
@@ -108,6 +123,16 @@ describe("sharedComponentRouter", () => {
       expect(result.id).toBe("sc-1");
       expect(result.linkedPipelines).toHaveLength(1);
       expect(result.linkedPipelines[0].isStale).toBe(false);
+    });
+
+    it("returns a shared component by stable id when the selected environment differs", async () => {
+      const sc = makeSC({ environmentId: "env-staging" });
+      prismaMock.sharedComponent.findUnique.mockResolvedValueOnce(sc as never);
+
+      const result = await caller.getById({ id: "sc-1" } as never);
+
+      expect(result.id).toBe("sc-1");
+      expect(result.environmentId).toBe("env-staging");
     });
 
     it("throws NOT_FOUND when component does not exist", async () => {

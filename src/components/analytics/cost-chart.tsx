@@ -11,7 +11,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ChartSkeleton } from "@/components/ui/loading-skeletons";
 import { formatBytes, formatTimeAxis } from "@/lib/format";
 import type { CostTimeSeriesBucket } from "@/server/services/cost-attribution";
 
@@ -71,13 +71,7 @@ export function CostChart({ data, range, isLoading }: CostChartProps) {
   }, [data]);
 
   if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="p-4">
-          <Skeleton className="h-[300px] w-full" />
-        </CardContent>
-      </Card>
-    );
+    return <ChartSkeleton />;
   }
 
   return (
@@ -102,16 +96,13 @@ export function CostChart({ data, range, isLoading }: CostChartProps) {
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
               <XAxis
                 dataKey="t"
-                tick={{ fontSize: 10 }}
+                tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }}
                 tickFormatter={(v) => formatTimeAxis(v, range)}
                 interval="preserveStartEnd"
               />
-              <YAxis
-                tick={{ fontSize: 10 }}
-                width={65}
-                tickFormatter={formatBytes}
-                domain={["auto", "auto"]}
-              />
+              <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={65}
+              tickFormatter={formatBytes}
+              domain={["auto", "auto"]} />
               <ChartTooltip
                 content={
                   <ChartTooltipContent

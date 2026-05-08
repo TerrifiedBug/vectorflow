@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import Link from "next/link";
-import { ShieldOff, Trash2, Activity, Pencil, Check, X, Wrench, Plus, Tag } from "lucide-react";
+import { ShieldOff, Trash2, Wrench, Tag, Pencil, X, Plus, Activity } from "lucide-react";
 import { NodeLogs } from "@/components/fleet/node-logs";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -24,8 +24,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/empty-state";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
+import { KpiInStrip, KpiStrip } from "@/components/ui/kpi-tile";
 import { NodeMetricsCharts } from "@/components/fleet/node-metrics-charts";
 import { UptimeCards } from "@/components/fleet/uptime-cards";
 import { StatusTimeline } from "@/components/fleet/status-timeline";
@@ -63,11 +67,10 @@ export default function NodeDetailPage() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  const [isRenaming, setIsRenaming] = useState(false);
-  const [editName, setEditName] = useState("");
   const [isEditingLabels, setIsEditingLabels] = useState(false);
   const [editLabels, setEditLabels] = useState<Array<{ key: string; value: string }>>([]);
   const [timelineRange, setTimelineRange] = useState<"1h" | "6h" | "1d" | "7d" | "30d">("1d");
+  const [confirmAction, setConfirmAction] = useState<"enter-maintenance" | "exit-maintenance" | "revoke" | "delete" | null>(null);
 
   const nodePolling = usePollingInterval(15_000);
 
@@ -89,35 +92,6 @@ export default function NodeDetailPage() {
   );
   const pipelineRates = ratesQuery.data?.rates ?? {};
 
-  const handleStartRename = () => {
-    setEditName(node?.name ?? "");
-    setIsRenaming(true);
-  };
-
-  const handleConfirmRename = () => {
-    const trimmed = editName.trim();
-    if (!trimmed || !node || trimmed === node.name) {
-      setIsRenaming(false);
-      return;
-    }
-    updateMutation.mutate(
-      { id: node.id, name: trimmed },
-      { onSuccess: () => setIsRenaming(false) },
-    );
-  };
-
-  const updateMutation = useMutation(
-    trpc.fleet.update.mutationOptions({
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: trpc.fleet.get.queryKey({ id: params.nodeId }),
-        });
-        queryClient.invalidateQueries({
-          queryKey: trpc.fleet.list.queryKey(),
-        });
-      },
-    })
-  );
 
   const deleteMutation = useMutation(
     trpc.fleet.delete.mutationOptions({
@@ -185,34 +159,33 @@ export default function NodeDetailPage() {
 
   function handleMaintenanceToggle() {
     if (!node) return;
-    if (!node.maintenanceMode) {
-      const runningCount = node.pipelineStatuses.filter(
-        (s) => s.status === "RUNNING"
-      ).length;
-      if (!confirm(
-        `Enter maintenance mode for "${node.name}"?\n\nThis will stop ${runningCount} running pipeline(s) on this node. Pipelines will automatically resume when maintenance mode is turned off.`
-      )) return;
-    }
-    maintenanceMutation.mutate({
-      nodeId: node.id,
-      enabled: !node.maintenanceMode,
-    });
+    setConfirmAction(node.maintenanceMode ? "exit-maintenance" : "enter-maintenance");
   }
 
   function handleRevoke() {
     if (!node) return;
-    if (!confirm(`Revoke token for "${node.name}"? The agent will no longer be able to connect.`)) {
-      return;
-    }
-    revokeMutation.mutate({ id: node.id });
+    setConfirmAction("revoke");
   }
 
   function handleDelete() {
     if (!node) return;
-    if (!confirm(`Delete node "${node.name}"? This action cannot be undone.`)) {
+    setConfirmAction("delete");
+  }
+
+  function handleConfirmAction() {
+    if (!node || !confirmAction) return;
+    if (confirmAction === "enter-maintenance" || confirmAction === "exit-maintenance") {
+      maintenanceMutation.mutate(
+        { nodeId: node.id, enabled: confirmAction === "enter-maintenance" },
+        { onSuccess: () => setConfirmAction(null) },
+      );
       return;
     }
-    deleteMutation.mutate({ id: node.id });
+    if (confirmAction === "revoke") {
+      revokeMutation.mutate({ id: node.id }, { onSuccess: () => setConfirmAction(null) });
+      return;
+    }
+    deleteMutation.mutate({ id: node.id }, { onSuccess: () => setConfirmAction(null) });
   }
 
   if (nodeQuery.isLoading) {
@@ -229,101 +202,131 @@ export default function NodeDetailPage() {
 
   if (nodeQuery.isError || !node) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-1.5 text-sm">
-          <Link href="/fleet" className="text-muted-foreground hover:text-foreground transition-colors">
-            Fleet
-          </Link>
-          <span className="text-muted-foreground">/</span>
-          <span className="font-medium">Not found</span>
-        </div>
-        <EmptyState title="Node not found" />
+      <div className="min-h-full bg-bg">
+        <ErrorState
+          title="Node not found"
+          body="The requested fleet node could not be loaded. Return to the fleet list or retry this route."
+          primary={{ label: "Retry", onClick: () => nodeQuery.refetch() }}
+          secondary={[{ label: "Back to fleet", onClick: () => router.push("/fleet") }]}
+        />
       </div>
     );
   }
 
+  const runningCount = node.pipelineStatuses.filter((s) => s.status === "RUNNING").length;
+  const totalEventsIn = node.pipelineStatuses.reduce((sum, s) => sum + Number(s.eventsIn ?? 0), 0);
+  const totalEventsOut = node.pipelineStatuses.reduce((sum, s) => sum + Number(s.eventsOut ?? 0), 0);
+  const totalErrors = node.pipelineStatuses.reduce((sum, s) => sum + Number(s.errorsTotal ?? 0), 0);
+  const avgLatency = Object.values(pipelineRates).filter((rate) => rate.latencyMeanMs != null);
+  const meanLatencyMs = avgLatency.length
+    ? avgLatency.reduce((sum, rate) => sum + (rate.latencyMeanMs ?? 0), 0) / avgLatency.length
+    : null;
+  const confirmCopy = getConfirmCopy(confirmAction, node.name, runningCount);
+  const confirmPending =
+    maintenanceMutation.isPending || revokeMutation.isPending || deleteMutation.isPending;
+
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 text-sm">
-            <Link href="/fleet" className="text-muted-foreground hover:text-foreground transition-colors">
-              Fleet
+    <div className="min-h-full bg-bg">
+      <PageHeader
+        title={
+          <span className="inline-flex items-baseline gap-2">
+            <Link href="/fleet" className="text-[13px] font-normal text-fg-1 hover:text-fg">
+              Fleet /
             </Link>
-            <span className="text-muted-foreground">/</span>
-          </div>
-          <div>
-            {isRenaming ? (
-              <div className="flex items-center gap-1">
-                <Input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleConfirmRename();
-                    if (e.key === "Escape") setIsRenaming(false);
-                  }}
-                  className="h-9 w-64 text-lg font-bold"
-                  autoFocus
-                  disabled={updateMutation.isPending}
-                />
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={handleConfirmRename} disabled={updateMutation.isPending} aria-label="Confirm rename">
-                  <Check className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setIsRenaming(false)} aria-label="Cancel rename">
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <button
-                onClick={handleStartRename}
-                className="group flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-2xl font-semibold tracking-tight hover:bg-accent transition-colors"
-                title="Click to rename"
-              >
-                {node.name}
-                <Pencil className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-              </button>
-            )}
-            <p className="text-muted-foreground">
-              {node.host}:{node.apiPort}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant={node.maintenanceMode ? "default" : "outline"}
-            size="sm"
-            onClick={handleMaintenanceToggle}
-            disabled={maintenanceMutation.isPending}
-          >
-            <Wrench className="mr-2 h-4 w-4" />
-            {maintenanceMutation.isPending
-              ? "Updating..."
-              : node.maintenanceMode
-                ? "Exit Maintenance"
-                : "Enter Maintenance"}
-          </Button>
-          {node.nodeTokenHash && (
+            <span>{node.name}</span>
+          </span>
+        }
+        subtitle={<span className="font-mono">{node.host}:{node.apiPort} · {node.environment.name}</span>}
+        meta={
+          <>
+            <span>{nodeStatusLabel(node.status)}</span>
+            <PageHeaderMetaSep />
+            <span>vector {node.vectorVersion ?? "unknown"}</span>
+            <PageHeaderMetaSep />
+            <span>agent {node.agentVersion ?? "unknown"}</span>
+            <PageHeaderMetaSep />
+            <span>uptime —</span>
+          </>
+        }
+        actions={
+          <>
             <Button
-              variant="outline"
+              variant={node.maintenanceMode ? "default" : "outline"}
               size="sm"
-              onClick={handleRevoke}
-              disabled={revokeMutation.isPending}
+              onClick={handleMaintenanceToggle}
+              disabled={maintenanceMutation.isPending}
             >
-              <ShieldOff className="mr-2 h-4 w-4" />
-              {revokeMutation.isPending ? "Revoking..." : "Revoke Token"}
+              <Wrench className="h-3.5 w-3.5" />
+              {maintenanceMutation.isPending
+                ? "Updating"
+                : node.maintenanceMode
+                  ? "Exit maintenance"
+                  : "Maintenance"}
             </Button>
-          )}
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleDelete}
-            disabled={deleteMutation.isPending}
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            {deleteMutation.isPending ? "Deleting..." : "Delete Node"}
-          </Button>
-        </div>
-      </div>
+            {node.nodeTokenHash && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRevoke}
+                disabled={revokeMutation.isPending}
+              >
+                <ShieldOff className="h-3.5 w-3.5" />
+                {revokeMutation.isPending ? "Revoking" : "Revoke token"}
+              </Button>
+            )}
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {deleteMutation.isPending ? "Deleting" : "Delete node"}
+            </Button>
+          </>
+        }
+      />
+
+      <div className="space-y-4 p-4">
+        {node.status === "UNREACHABLE" && (
+          <ErrorState
+            title={`${node.name} disconnected`}
+            statusLabel={`${nodeStatusLabel(node.status)}${node.currentStatusSince ? ` · ${formatLastSeen(node.currentStatusSince)}` : ""}`}
+            body={
+              <>
+                Lost heartbeat from <span className="font-mono text-fg">{node.host}</span>.{" "}
+                {runningCount > 0
+                  ? `${runningCount} pipeline${runningCount === 1 ? "" : "s"} are assigned to this node.`
+                  : "No running pipelines are assigned to this node."}
+              </>
+            }
+            diagnostics={[
+              { label: "last contact", value: formatLastSeen(node.lastHeartbeat) },
+              { label: "host", value: `${node.host}:${node.apiPort}` },
+              { label: "environment", value: node.environment.name },
+              { label: "pipelines affected", value: runningCount, accent: runningCount > 0 },
+            ]}
+            trySteps={[
+              <>Check the host directly: <span className="font-mono text-fg">ssh ops@{node.host}</span></>,
+              <>Confirm the agent process: <span className="font-mono text-fg">systemctl status vectorflow-agent</span></>,
+              "If decommissioning, delete the node to stop the alert.",
+            ]}
+            primary={{ label: "Retry connection", onClick: () => nodeQuery.refetch() }}
+            secondary={[
+              {
+                label: node.maintenanceMode ? "Exit maintenance" : "Maintenance",
+                onClick: handleMaintenanceToggle,
+                icon: <Wrench className="h-3.5 w-3.5" />,
+              },
+              {
+                label: "Delete node",
+                onClick: handleDelete,
+                icon: <Trash2 className="h-3.5 w-3.5" />,
+              },
+            ]}
+          />
+        )}
 
       {node.maintenanceMode && (
         <div className="flex items-center gap-3 rounded-lg border border-orange-500/50 bg-orange-50 px-4 py-3 dark:bg-orange-950/20">
@@ -346,6 +349,28 @@ export default function NodeDetailPage() {
           </Button>
         </div>
       )}
+
+        <Card className="overflow-hidden border-line bg-bg-2">
+          <CardHeader className="border-b border-line bg-bg-1 px-4 py-3">
+            <CardTitle className="font-mono text-[12px] uppercase tracking-[0.06em]">
+              Resource live surface
+            </CardTitle>
+          </CardHeader>
+          <KpiStrip className="grid grid-cols-2 md:grid-cols-4">
+            <KpiInStrip label="running" value={`${runningCount}/${node.pipelineStatuses.length}`} sub="assigned pipelines" />
+            <KpiInStrip label="events in" value={formatCount(totalEventsIn)} sub="node lifetime" />
+            <KpiInStrip label="events out" value={formatCount(totalEventsOut)} sub="node lifetime" />
+            <KpiInStrip label="errors" value={formatCount(totalErrors)} sub="node lifetime" accent={totalErrors > 0 ? "var(--error)" : undefined} />
+          </KpiStrip>
+          <CardContent className="space-y-3 p-4">
+            <div className="grid gap-3 rounded-[3px] border border-line bg-bg p-3 font-mono text-[11px] text-fg-2 md:grid-cols-3">
+              <div>host · <span className="text-fg">{node.host}:{node.apiPort}</span></div>
+              <div>load latency · <span className="text-fg">{meanLatencyMs == null ? "—" : formatLatency(meanLatencyMs)}</span></div>
+              <div>last heartbeat · <span className="text-fg">{formatLastSeen(node.lastHeartbeat)}</span></div>
+            </div>
+            <NodeMetricsCharts nodeId={params.nodeId} />
+          </CardContent>
+        </Card>
 
       <Tabs defaultValue="overview">
         <TabsList>
@@ -627,6 +652,73 @@ export default function NodeDetailPage() {
           />
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null);
+        }}
+        title={confirmCopy.title}
+        description={confirmCopy.description}
+        confirmLabel={confirmCopy.confirmLabel}
+        pendingLabel={confirmCopy.pendingLabel}
+        variant={confirmCopy.variant}
+        isPending={confirmPending}
+        onConfirm={handleConfirmAction}
+      />
+      </div>
     </div>
   );
+}
+
+type ConfirmAction = "enter-maintenance" | "exit-maintenance" | "revoke" | "delete" | null;
+
+function getConfirmCopy(action: ConfirmAction, nodeName: string, runningCount: number) {
+  switch (action) {
+    case "enter-maintenance":
+      return {
+        title: "Enter maintenance mode?",
+        description: (
+          <>
+            This will stop {runningCount} running pipeline{runningCount === 1 ? "" : "s"} on
+            &quot;{nodeName}&quot;. Pipelines will automatically resume when maintenance mode is turned off.
+          </>
+        ),
+        confirmLabel: "Enter Maintenance",
+        pendingLabel: "Entering...",
+        variant: "default" as const,
+      };
+    case "exit-maintenance":
+      return {
+        title: "Exit maintenance mode?",
+        description: <>Pipelines assigned to &quot;{nodeName}&quot; will be allowed to resume.</>,
+        confirmLabel: "Exit Maintenance",
+        pendingLabel: "Exiting...",
+        variant: "default" as const,
+      };
+    case "revoke":
+      return {
+        title: "Revoke node token?",
+        description: <>The agent for &quot;{nodeName}&quot; will no longer be able to connect until re-enrolled.</>,
+        confirmLabel: "Revoke Token",
+        pendingLabel: "Revoking...",
+        variant: "destructive" as const,
+      };
+    case "delete":
+      return {
+        title: "Delete node?",
+        description: <>Delete &quot;{nodeName}&quot; and its node state. This action cannot be undone.</>,
+        confirmLabel: "Delete Node",
+        pendingLabel: "Deleting...",
+        variant: "destructive" as const,
+      };
+    default:
+      return {
+        title: "Confirm action",
+        description: "Confirm this node action.",
+        confirmLabel: "Confirm",
+        pendingLabel: "Working...",
+        variant: "default" as const,
+      };
+  }
 }

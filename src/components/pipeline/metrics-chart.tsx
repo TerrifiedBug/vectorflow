@@ -80,12 +80,9 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
         <ChartContainer config={eventsChartConfig} className="w-full" style={{ height: 180 }}>
           <AreaChart data={data}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-            <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-            <YAxis
-              tick={{ fontSize: 10 }}
-              width={55}
-              tickFormatter={(v) => formatEventsRate(v)}
-            />
+            <XAxis dataKey="time" tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} interval="preserveStartEnd" />
+            <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={55}
+            tickFormatter={(v) => formatEventsRate(v)} />
             <ChartTooltip
               content={
                 <ChartTooltipContent
@@ -126,12 +123,9 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
         <ChartContainer config={bytesChartConfig} className="w-full" style={{ height: 180 }}>
           <AreaChart data={data}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-            <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-            <YAxis
-              tick={{ fontSize: 10 }}
-              width={55}
-              tickFormatter={(v) => formatBytesRate(v)}
-            />
+            <XAxis dataKey="time" tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} interval="preserveStartEnd" />
+            <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={55}
+            tickFormatter={(v) => formatBytesRate(v)} />
             <ChartTooltip
               content={
                 <ChartTooltipContent
@@ -172,12 +166,9 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
         <ChartContainer config={latencyChartConfig} className="w-full" style={{ height: 180 }}>
           <AreaChart data={data}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-            <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-            <YAxis
-              tick={{ fontSize: 10 }}
-              width={55}
-              tickFormatter={(v) => formatLatency(v)}
-            />
+            <XAxis dataKey="time" tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} interval="preserveStartEnd" />
+            <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={55}
+            tickFormatter={(v) => formatLatency(v)} />
             <ChartTooltip
               content={
                 <ChartTooltipContent

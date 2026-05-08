@@ -13,10 +13,15 @@ afterEach(cleanup);
 // call it directly in assertions.
 type CapturedProps = {
   isValidConnection?: (connection: Edge | Connection) => boolean;
+  onConnect?: (connection: Connection) => void;
   "aria-roledescription"?: string;
+  edgeTypes?: Record<string, unknown>;
 };
 
 let capturedReactFlowProps: CapturedProps = {};
+const { metricEdgeMock } = vi.hoisted(() => ({
+  metricEdgeMock: vi.fn(() => null),
+}));
 
 vi.mock("@xyflow/react", () => ({
   ReactFlow: (props: CapturedProps) => {
@@ -32,9 +37,18 @@ vi.mock("@xyflow/react", () => ({
   }),
 }));
 
+// Spy on sonner so we can assert the type-mismatch toast fires on bad connects.
+const toastErrorSpy = vi.fn();
+vi.mock("sonner", () => ({
+  toast: {
+    error: (...args: unknown[]) => toastErrorSpy(...args),
+  },
+}));
+
 // ── Other mocks ────────────────────────────────────────────────────────────
 
 const mockNodes: Node[] = [];
+const storeOnConnectSpy = vi.fn();
 vi.mock("@/stores/flow-store", () => ({
   useFlowStore: (selector: (s: unknown) => unknown) =>
     selector({
@@ -42,7 +56,7 @@ vi.mock("@/stores/flow-store", () => ({
       edges: [],
       onNodesChange: vi.fn(),
       onEdgesChange: vi.fn(),
-      onConnect: vi.fn(),
+      onConnect: storeOnConnectSpy,
       addNode: vi.fn(),
       updateNodeConfig: vi.fn(),
       patchNodeSharedData: vi.fn(),
@@ -79,6 +93,12 @@ vi.mock("../node-types", () => ({
   nodeTypes: {},
 }));
 
+vi.mock("../edge-types", () => ({
+  edgeTypes: {
+    metric: metricEdgeMock,
+  },
+}));
+
 vi.mock("@/lib/vector/catalog", () => ({
   findComponentDef: vi.fn(() => undefined),
 }));
@@ -111,6 +131,8 @@ describe("FlowCanvas", () => {
   beforeEach(() => {
     capturedReactFlowProps = {};
     mockNodes.length = 0;
+    toastErrorSpy.mockClear();
+    storeOnConnectSpy.mockClear();
   });
 
   describe("canvas structure", () => {
@@ -125,6 +147,12 @@ describe("FlowCanvas", () => {
       expect(region).toBeTruthy();
     });
   });
+
+    it("registers the v2 metric edge renderer with React Flow", () => {
+      render(<FlowCanvas />);
+
+      expect(capturedReactFlowProps.edgeTypes?.metric).toBe(metricEdgeMock);
+    });
 
   describe("isValidConnection — DataType compatibility", () => {
     it("returns false for a self-connection", () => {
@@ -168,6 +196,51 @@ describe("FlowCanvas", () => {
       const { isValidConnection } = capturedReactFlowProps;
 
       expect(isValidConnection!(makeConnection("src", "dst"))).toBe(true);
+    });
+  });
+
+  describe("onConnect — type-mismatch validator + toast", () => {
+    it("rejects mismatched types, fires a toast, and does not commit the edge", () => {
+      mockNodes.push(
+        makeNode("src", ["metric"]),
+        makeNode("dst", ["log"], ["log"]),
+      );
+      render(<FlowCanvas />);
+      const { onConnect } = capturedReactFlowProps;
+
+      expect(onConnect).toBeDefined();
+      onConnect!(makeConnection("src", "dst"));
+
+      expect(toastErrorSpy).toHaveBeenCalledTimes(1);
+      const [msg] = toastErrorSpy.mock.calls[0];
+      expect(typeof msg).toBe("string");
+      expect(msg).toMatch(/Type mismatch/i);
+      expect(storeOnConnectSpy).not.toHaveBeenCalled();
+    });
+
+    it("commits the edge and does not toast on a valid connection", () => {
+      mockNodes.push(
+        makeNode("src", ["log"]),
+        makeNode("dst", ["log"], ["log"]),
+      );
+      render(<FlowCanvas />);
+      const { onConnect } = capturedReactFlowProps;
+
+      onConnect!(makeConnection("src", "dst"));
+
+      expect(toastErrorSpy).not.toHaveBeenCalled();
+      expect(storeOnConnectSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores self-connections silently (no toast, no commit)", () => {
+      mockNodes.push(makeNode("src", ["log"], ["log"]));
+      render(<FlowCanvas />);
+      const { onConnect } = capturedReactFlowProps;
+
+      onConnect!(makeConnection("src", "src"));
+
+      expect(toastErrorSpy).not.toHaveBeenCalled();
+      expect(storeOnConnectSpy).not.toHaveBeenCalled();
     });
   });
 });

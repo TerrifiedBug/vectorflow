@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("renders the seeded QA pipeline canvas with nodes", async ({ page }) => {
-  await page.goto("/pipelines/qa-pipeline");
+  await page.goto("/pipelines/qa-pipeline/edit");
 
   const canvas = page.locator(".react-flow");
   await expect(canvas).toBeVisible();

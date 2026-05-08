@@ -206,16 +206,13 @@ export function MetricChart({
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
             <XAxis
               dataKey="t"
-              tick={{ fontSize: 10 }}
+              tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }}
               tickFormatter={(v) => formatTimeAxis(v, timeRange)}
               interval="preserveStartEnd"
             />
-            <YAxis
-              tick={{ fontSize: 10 }}
-              width={55}
-              tickFormatter={yFormatter}
-              domain={yDomain ?? ["auto", "auto"]}
-            />
+            <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={55}
+            tickFormatter={yFormatter}
+            domain={yDomain ?? ["auto", "auto"]} />
             <ChartTooltip
               content={
                 <ChartTooltipContent

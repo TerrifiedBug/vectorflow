@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/ui/loading-skeletons";
 import { formatBytes } from "@/lib/format";
 import type { EnvironmentCostRow } from "@/server/services/cost-attribution";
 
@@ -31,13 +31,7 @@ function formatRate(cents: number): string {
 
 export function CostEnvironmentRollup({ rows, isLoading }: CostEnvironmentRollupProps) {
   if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="p-4">
-          <Skeleton className="h-48 w-full" />
-        </CardContent>
-      </Card>
-    );
+    return <TableSkeleton rows={5} />;
   }
 
   const sorted = [...rows].sort((a, b) => b.bytesIn - a.bytesIn);

@@ -100,12 +100,12 @@ export function AiMessageBubble({
 
   if (message.role === "user") {
     return (
-      <div className="flex items-start gap-3">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
-          <User className="h-3.5 w-3.5 text-primary" />
+      <div className="flex items-start gap-2.5">
+        <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border border-line-2 bg-bg-2">
+          <User className="h-3.5 w-3.5 text-fg-2" />
         </div>
-        <div className="flex-1 pt-0.5">
-          <p className="text-sm">{message.content}</p>
+        <div className="min-w-0 flex-1 pt-0.5">
+          <p className="whitespace-pre-wrap text-[12.5px] leading-6 text-fg">{message.content}</p>
         </div>
       </div>
     );
@@ -115,25 +115,25 @@ export function AiMessageBubble({
   if (!hasSuggestions) {
     // Fallback: render raw text content
     return (
-      <div className="flex items-start gap-3">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500/10">
-          <Bot className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+      <div className="flex items-start gap-2.5">
+        <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border border-accent-line bg-accent-soft">
+          <Bot className="h-3.5 w-3.5 text-accent-brand" />
         </div>
-        <div className="flex-1 pt-0.5">
-          <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+        <div className="min-w-0 flex-1 pt-0.5">
+          <div className="whitespace-pre-wrap text-[12.5px] leading-6 text-fg-1">{message.content}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex items-start gap-3">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500/10">
-        <Bot className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+    <div className="flex items-start gap-2.5">
+      <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border border-accent-line bg-accent-soft">
+        <Bot className="h-3.5 w-3.5 text-accent-brand" />
       </div>
-      <div className="flex-1 space-y-3">
+      <div className="min-w-0 flex-1 space-y-3">
         {summary && (
-          <p className="text-sm text-muted-foreground">{summary}</p>
+          <p className="whitespace-pre-wrap text-[12.5px] leading-6 text-fg-1">{summary}</p>
         )}
 
         <div className="space-y-2">
@@ -153,12 +153,12 @@ export function AiMessageBubble({
         </div>
 
         {actionableSuggestions.length > 0 && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 pt-1">
             <Button
               size="sm"
               onClick={handleApplyAll}
             >
-              Apply All ({actionableSuggestions.length})
+              Apply all ({actionableSuggestions.length})
             </Button>
             <Button
               size="sm"
@@ -166,7 +166,7 @@ export function AiMessageBubble({
               onClick={handleApplySelected}
               disabled={selectedSuggestions.length === 0}
             >
-              Apply Selected{selectedSuggestions.length > 0 ? ` (${selectedSuggestions.length})` : ""}
+              Apply selected{selectedSuggestions.length > 0 ? ` (${selectedSuggestions.length})` : ""}
             </Button>
           </div>
         )}

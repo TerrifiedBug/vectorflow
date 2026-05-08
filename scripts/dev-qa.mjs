@@ -3,6 +3,7 @@
 import { spawnSync } from "node:child_process";
 import {
   buildPrerequisiteFailureMessage,
+  buildQaDevEnv,
   getPostgresEndpoint,
   getQaDatabaseMode,
   getQaDatabaseUrl,
@@ -23,17 +24,7 @@ const QA_DEV_USER = {
 const mode = getQaDatabaseMode();
 const DATABASE_URL = getQaDatabaseUrl();
 
-const env = {
-  ...process.env,
-  DATABASE_URL,
-  NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET ?? "qa-dev-nextauth-secret-at-least-16",
-  NEXTAUTH_URL: process.env.NEXTAUTH_URL ?? "http://localhost:3000",
-  NODE_ENV: "development",
-  DEV_AUTH_BYPASS: "1",
-  DEV_AUTH_BYPASS_USER_ID: QA_DEV_USER.id,
-  DEV_AUTH_BYPASS_USER_EMAIL: QA_DEV_USER.email,
-  DEV_AUTH_BYPASS_USER_NAME: QA_DEV_USER.name,
-};
+const env = buildQaDevEnv(process.env, DATABASE_URL, QA_DEV_USER);
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -97,4 +88,4 @@ console.warn(
   "[auth] DEV_AUTH_BYPASS=1 is enabled for pnpm dev:qa. Do not use this mode outside local development.",
 );
 
-run("pnpm", ["exec", "next", "dev", "-p", "3000"]);
+run("pnpm", ["exec", "next", "dev", "-p", String(env.PORT ?? "3000")]);

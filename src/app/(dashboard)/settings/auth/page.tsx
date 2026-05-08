@@ -1,7 +1,5 @@
-"use client";
-
-import { AuthSettings } from "../_components/auth-settings";
+import { redirect } from "next/navigation";
 
 export default function AuthPage() {
-  return <AuthSettings />;
+  redirect("/settings");
 }

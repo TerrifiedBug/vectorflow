@@ -32,7 +32,7 @@ test.describe("E2E Error Handling", () => {
       await route.continue();
     });
 
-    await page.goto(`/pipelines/${seed.pipelineId}`);
+    await page.goto(`/pipelines/${seed.pipelineId}/edit`);
     await expect(page.getByText(/Failed to load pipeline/i)).toBeVisible();
     await page.getByRole("button", { name: /try again/i }).click();
     await expect(page.locator(".react-flow")).toBeVisible();

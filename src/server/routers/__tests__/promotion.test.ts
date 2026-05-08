@@ -82,6 +82,10 @@ import * as promotionService from "@/server/services/promotion-service";
 import * as gitopsPromotion from "@/server/services/gitops-promotion";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
+
+const promotionRequestGroupByMock = prismaMock.promotionRequest.groupBy as unknown as ReturnType<
+  typeof vi.fn
+>;
 const caller = t.createCallerFactory(promotionRouter)({
   session: { user: { id: "user-1", email: "test@test.com" } },
 });
@@ -535,6 +539,133 @@ describe("promotion router", () => {
           where: { sourcePipelineId: "pipeline-1" },
           orderBy: { createdAt: "desc" },
           take: 20,
+        }),
+      );
+    });
+  });
+
+  // ─── summaryForTeam ────────────────────────────────────────────────────────
+
+  describe("summaryForTeam", () => {
+    it("returns counts for each UI status and scopes by source pipeline team", async () => {
+      promotionRequestGroupByMock.mockResolvedValue([
+        { status: "PENDING", _count: { _all: 3 } },
+        { status: "DEPLOYED", _count: { _all: 5 } },
+      ] as never);
+
+      const result = await caller.summaryForTeam({ teamId: "team-1" });
+
+      expect(result).toEqual({
+        PENDING: 3,
+        APPROVED: 0,
+        DEPLOYED: 5,
+        REJECTED: 0,
+        CANCELLED: 0,
+        AWAITING_PR_MERGE: 0,
+        DEPLOYING: 0,
+      });
+      expect(prismaMock.promotionRequest.groupBy).toHaveBeenCalledWith({
+        by: ["status"],
+        where: { sourcePipeline: { environment: { teamId: "team-1" } } },
+        _count: { _all: true },
+      });
+    });
+  });
+
+  // ─── recentForTeam ──────────────────────────────────────────────────────────
+
+  describe("recentForTeam", () => {
+    it("scopes to team via sourcePipeline.environment.teamId and orders by createdAt desc", async () => {
+      const records = [
+        {
+          ...makePromotionRequest({ id: "req-a", createdAt: new Date("2026-04-01") }),
+          sourcePipeline: { id: "pipeline-1", name: "P1" },
+          targetPipeline: null,
+          promotedBy: { name: "Alice", email: "alice@test.com" },
+          approvedBy: null,
+          sourceEnvironment: { name: "Development" },
+          targetEnvironment: { name: "Production" },
+        },
+        {
+          ...makePromotionRequest({ id: "req-b", createdAt: new Date("2026-03-30") }),
+          sourcePipeline: { id: "pipeline-2", name: "P2" },
+          targetPipeline: null,
+          promotedBy: { name: "Bob", email: "bob@test.com" },
+          approvedBy: null,
+          sourceEnvironment: { name: "Development" },
+          targetEnvironment: { name: "Staging" },
+        },
+      ];
+      prismaMock.promotionRequest.findMany.mockResolvedValue(records as never);
+
+      const result = await caller.recentForTeam({ teamId: "team-1" });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.nextCursor).toBeNull();
+      expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { sourcePipeline: { environment: { teamId: "team-1" } } },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 51,
+        }),
+      );
+    });
+
+    it("passes status, limit, and cursor to Prisma and returns nextCursor", async () => {
+      const records = Array.from({ length: 3 }, (_, idx) => ({
+        ...makePromotionRequest({
+          id: `req-${idx}`,
+          createdAt: new Date(2026, 3, 10 - idx),
+          status: "PENDING",
+        }),
+        sourcePipeline: { id: "pipeline-1", name: "P1" },
+        targetPipeline: null,
+        promotedBy: { name: "Alice", email: "alice@test.com" },
+        approvedBy: null,
+        sourceEnvironment: { name: "Development" },
+        targetEnvironment: { name: "Production" },
+      }));
+      prismaMock.promotionRequest.findMany.mockResolvedValue(records as never);
+
+      const result = await caller.recentForTeam({
+        teamId: "team-1",
+        status: "PENDING",
+        limit: 2,
+        cursor: "req-before",
+      });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.nextCursor).toBe("req-1");
+      expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            sourcePipeline: { environment: { teamId: "team-1" } },
+            status: "PENDING",
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 3,
+          cursor: { id: "req-before" },
+          skip: 1,
+        }),
+      );
+    });
+
+    it("passes status arrays to Prisma status.in when no explicit status is present", async () => {
+      prismaMock.promotionRequest.findMany.mockResolvedValue([]);
+
+      const result = await caller.recentForTeam({
+        teamId: "team-1",
+        statuses: ["APPROVED", "AWAITING_PR_MERGE", "DEPLOYING"],
+      });
+
+      expect(result.items).toHaveLength(0);
+      expect(result.nextCursor).toBeNull();
+      expect(prismaMock.promotionRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            sourcePipeline: { environment: { teamId: "team-1" } },
+            status: { in: ["APPROVED", "AWAITING_PR_MERGE", "DEPLOYING"] },
+          },
         }),
       );
     });

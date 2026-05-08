@@ -405,6 +405,30 @@ describe("nodeGroupRouter", () => {
 
       expect(result).toEqual([]);
     });
+
+    it("filters group health stats by node labels", async () => {
+      const groups = [
+        makeNodeGroup({ id: "ng-1", name: "Workers", criteria: { role: "worker" }, requiredLabels: ["role"] }),
+      ];
+      const nodes = [
+        makeNode({ id: "n-east", status: "HEALTHY", labels: { role: "worker", region: "us-east" } }),
+        makeNode({ id: "n-west", status: "DEGRADED", labels: { role: "worker", region: "us-west" } }),
+      ];
+
+      prismaMock.vectorNode.findMany.mockResolvedValue(nodes as never);
+      prismaMock.nodeGroup.findMany.mockResolvedValue(groups as never);
+      prismaMock.alertEvent.findMany.mockResolvedValue([] as never);
+
+      const result = await caller.groupHealthStats({
+        environmentId: "env-1",
+        labels: { region: "us-east" },
+      });
+
+      const workers = result.find((r: { id: string }) => r.id === "ng-1");
+      expect(workers).toBeDefined();
+      expect(workers!.totalNodes).toBe(1);
+      expect(workers!.onlineCount).toBe(1);
+    });
   });
 
   // ── nodesInGroup ─────────────────────────────────────────────────────────
@@ -461,6 +485,25 @@ describe("nodeGroupRouter", () => {
       const result = await caller.nodesInGroup({ groupId: "ng-1", environmentId: "env-1" });
 
       expect(result[0].labelCompliant).toBe(true);
+    });
+
+    it("filters group detail nodes by labels", async () => {
+      const group = makeNodeGroup({ id: "ng-1", criteria: { role: "worker" }, requiredLabels: ["role"] });
+      const nodes = [
+        makeNode({ id: "n-east", name: "east", labels: { role: "worker", region: "us-east" } }),
+        makeNode({ id: "n-west", name: "west", labels: { role: "worker", region: "us-west" } }),
+      ];
+
+      prismaMock.nodeGroup.findFirst.mockResolvedValue(group as never);
+      prismaMock.vectorNode.findMany.mockResolvedValue(nodes as never);
+
+      const result = await caller.nodesInGroup({
+        groupId: "ng-1",
+        environmentId: "env-1",
+        labels: { region: "us-east" },
+      });
+
+      expect(result.map((node: { id: string }) => node.id)).toEqual(["n-east"]);
     });
 
     it("Test 10: Attaches labelCompliant=false when node is missing a required label key", async () => {

@@ -63,6 +63,13 @@ export interface MatrixCellThroughput {
   lossRate: number;
 }
 
+export interface CpuHeatmapCell {
+  nodeId: string;
+  nodeName: string;
+  bucket: string;
+  cpuLoad: number;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const RANGE_MS: Record<TimeRange, number> = {
@@ -356,6 +363,44 @@ export async function getNodeCapacity(
   }
 
   return Array.from(nodeMap.values());
+}
+
+// ─── CPU Heatmap ─────────────────────────────────────────────────────────────
+
+export async function getCpuHeatmap(
+  environmentId: string,
+  range: TimeRange,
+): Promise<CpuHeatmapCell[]> {
+  const since = sinceDate(range);
+  const bucket = BUCKET_SIZE[range];
+
+  const rows = await prisma.$queryRaw<
+    {
+      node_id: string;
+      node_name: string;
+      bucket: Date;
+      cpu_load: number | null;
+    }[]
+  >(Prisma.sql`
+    SELECT
+      nm."nodeId" AS node_id,
+      n."name" AS node_name,
+      date_trunc(${bucket}, nm."timestamp") AS bucket,
+      AVG(nm."loadAvg1") AS cpu_load
+    FROM "NodeMetric" nm
+    JOIN "VectorNode" n ON n."id" = nm."nodeId"
+    WHERE n."environmentId" = ${environmentId}
+      AND nm."timestamp" >= ${since}
+    GROUP BY 1, 2, 3
+    ORDER BY 2, 3
+  `);
+
+  return rows.map((r) => ({
+    nodeId: r.node_id,
+    nodeName: r.node_name,
+    bucket: (r.bucket instanceof Date ? r.bucket : new Date(r.bucket)).toISOString(),
+    cpuLoad: Math.round((r.cpu_load ?? 0) * 100) / 100,
+  }));
 }
 
 // ─── Data Loss Detection ────────────────────────────────────────────────────
