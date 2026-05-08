@@ -36,7 +36,7 @@ export function ChartSkeleton({ className }: { className?: string }) {
   return (
     <div className={cn("rounded-[3px] border border-line bg-bg-2 p-4", className)}>
       <Skeleton className="h-4 w-40" />
-      <div className="mt-4 h-60 rounded-[3px] border border-line bg-[linear-gradient(var(--line)_1px,transparent_1px),linear-gradient(90deg,var(--line)_1px,transparent_1px)] [background-size:48px_48px] opacity-80" />
+      <div className="mt-4 h-60 rounded-[3px] border border-line bg-bg-1 opacity-80" />
     </div>
   );
 }

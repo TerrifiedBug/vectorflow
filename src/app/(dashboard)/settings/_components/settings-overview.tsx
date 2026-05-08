@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 
+import { PageHeader } from "@/components/ui/page-header";
 /**
  * v2 Settings hub (D2): dense tile grid landing page linking to existing settings sub-routes.
  */
@@ -19,8 +20,6 @@ export function SettingsOverview() {
   const { data: session } = useSession();
   const user = session?.user as ({ isSuperAdmin?: boolean; role?: string } & NonNullable<typeof session>["user"]) | undefined;
   const isSuperAdmin = user?.isSuperAdmin === true;
-  const userRole = user?.role;
-  const isAdmin = isSuperAdmin || userRole === "ADMIN";
 
   const trpc = useTRPC();
   const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
@@ -96,59 +95,68 @@ export function SettingsOverview() {
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => {
+        if (item.designHidden) return false;
         if (demoMode && item.demoHidden) return false;
         if (item.requiredSuperAdmin) return isSuperAdmin;
-        return isAdmin;
+        return true;
       }),
     }))
     .filter((group) => group.items.length > 0);
 
-  return (
-    <div className="space-y-7 bg-bg text-fg">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.06em] text-fg-2">workspace / settings</div>
-          <h1 className="mt-1 font-mono text-[22px] font-medium tracking-[-0.01em] text-fg">Settings</h1>
-          <p className="mt-1 max-w-[720px] text-[12px] leading-relaxed text-fg-1">
-            Manage identity, security, operations, and instance configuration.
-          </p>
-        </div>
-      </div>
+  const hasVisibleSettings = visibleGroups.length > 0;
 
-      {visibleGroups.map((group) => (
-        <section key={group.label} className="space-y-3">
-          <div>
-            <h2 className="font-mono text-[14px] font-medium text-fg">{group.label}</h2>
-            <p className="mt-0.5 text-[11.5px] text-fg-2">{group.description}</p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {group.items.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link key={item.href} href={item.href} className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg">
-                  <Card className="h-full border-line bg-bg-2 transition-colors hover:border-line-2 hover:bg-bg-3">
-                    <CardContent className="p-4">
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[3px] border border-line-2 bg-bg-3 text-fg-1">
-                          <Icon className="h-4 w-4" strokeWidth={1.5} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <h3 className="truncate text-[12px] font-medium text-fg">{item.title}</h3>
-                            <VFIcon name="chevron-right" size={13} className="text-fg-3" />
+  return (
+    <div className="min-h-full bg-bg text-fg">
+      <PageHeader
+        title="Settings"
+        subtitle="Manage identity, security, operations, and instance configuration."
+      />
+      <div className="space-y-6 p-4">
+        {hasVisibleSettings ? (
+          visibleGroups.map((group) => (
+            <section key={group.label} className="space-y-3">
+              <div>
+                <h2 className="font-mono text-[14px] font-medium text-fg">{group.label}</h2>
+                <p className="mt-0.5 text-[11.5px] text-fg-2">{group.description}</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link key={item.href} href={item.href} className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg">
+                      <Card className="h-full border-line bg-bg-2 transition-colors hover:border-line-2 hover:bg-bg-3">
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[3px] border border-line-2 bg-bg-3 text-fg-1">
+                              <Icon className="h-4 w-4" strokeWidth={1.5} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <h3 className="truncate text-[12px] font-medium text-fg">{item.title}</h3>
+                                <VFIcon name="chevron-right" size={13} className="text-fg-3" />
+                              </div>
+                              <p className="mt-1 line-clamp-2 text-[11.5px] leading-snug text-fg-1">{item.description}</p>
+                              {getCardStatus(item.title)}
+                            </div>
                           </div>
-                          <p className="mt-1 line-clamp-2 text-[11.5px] leading-snug text-fg-1">{item.description}</p>
-                          {getCardStatus(item.title)}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      ))}
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          ))
+        ) : (
+          <Card className="border-line bg-bg-2">
+            <CardContent className="p-4">
+              <p className="font-mono text-[12px] text-fg">
+                You do not have access to settings. Ask an administrator for the Admin role.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

@@ -85,9 +85,9 @@ export function TeamSelector() {
   // Single team — show name only, no dropdown
   if (teams.length === 1) {
     return (
-      <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm">
+      <div className="flex h-7 min-w-[150px] items-center gap-1.5 rounded-[3px] border border-line-2 bg-bg-2 px-2.5 font-mono text-[12px] text-fg">
         <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="font-medium truncate">{teams[0].name}</span>
+        <span className="truncate text-left">{teams[0].name}</span>
       </div>
     );
   }
@@ -97,7 +97,7 @@ export function TeamSelector() {
       <PopoverTrigger asChild>
         <button
           className={cn(
-            "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 flex w-[160px] items-center gap-2 rounded-md border bg-transparent px-3 py-2 text-xs whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 h-8",
+            "flex h-7 min-w-[150px] items-center gap-1.5 rounded-[3px] border border-line-2 bg-bg-2 px-2.5 font-mono text-[12px] whitespace-nowrap text-fg shadow-none transition-colors outline-none hover:bg-bg-3 focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >
           <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -107,7 +107,7 @@ export function TeamSelector() {
           <ChevronDownIcon className="size-4 opacity-50 shrink-0" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-1" align="start">
+      <PopoverContent className="w-[220px] p-1" align="start">
         <div className="flex flex-col">
           {teams.map((team) => {
             const isSelected = team.id === selectedTeamId;
@@ -116,8 +116,8 @@ export function TeamSelector() {
               <div
                 key={team.id}
                 className={cn(
-                  "relative flex items-center gap-2 rounded-md py-1.5 pl-7 pr-8 text-sm cursor-default select-none hover:bg-accent hover:text-accent-foreground",
-                  isSelected && "bg-accent text-accent-foreground",
+                  "relative flex cursor-default select-none items-center gap-2 rounded-[3px] py-1.5 pr-8 pl-7 text-[12px] hover:bg-bg-3 hover:text-fg",
+                  isSelected && "bg-accent-soft text-accent-brand",
                 )}
                 onClick={() => {
                   setSelectedTeamId(team.id);

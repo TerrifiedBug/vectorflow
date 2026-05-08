@@ -33,6 +33,11 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}
+        style={{
+          fontFamily: "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          "--font-sans": "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          "--font-mono": "var(--font-jetbrains-mono), 'SF Mono', Menlo, monospace",
+        } as React.CSSProperties}
       >
         <a href="#main-content" className="skip-to-content">Skip to content</a>
         <ThemeProvider

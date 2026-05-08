@@ -97,7 +97,7 @@ export function MetricChart({
                 x={PAD_L - 6}
                 y={y + 3}
                 fill="var(--fg-2)"
-                fontSize="9"
+                fontSize="11"
                 textAnchor="end"
                 fontFamily="var(--font-mono)"
               >
@@ -116,7 +116,7 @@ export function MetricChart({
               x={x}
               y={height - 4}
               fill="var(--fg-2)"
-              fontSize="9"
+              fontSize="11"
               textAnchor="middle"
               fontFamily="var(--font-mono)"
             >

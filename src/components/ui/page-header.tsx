@@ -21,7 +21,7 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "px-6 pt-5 pb-4 border-b border-line bg-bg-1 flex items-end gap-4",
+        "px-6 py-5 border-b border-line bg-bg flex items-end gap-4",
         className,
       )}
     >
@@ -31,21 +31,21 @@ export function PageHeader({
             {breadcrumb}
           </div>
         )}
-        <h1 className="m-0 font-mono text-[22px] font-medium tracking-[-0.01em] text-fg leading-tight">
+        <h1 className="m-0 font-mono text-[22px] font-medium tracking-[-0.02em] text-fg leading-tight">
           {title}
         </h1>
         {subtitle && (
-          <div className="mt-1 text-[13px] text-fg-1 leading-snug">
+          <div className="mt-1 text-[12px] text-fg-1 leading-snug max-w-3xl">
             {subtitle}
           </div>
         )}
         {meta && (
-          <div className="mt-2 flex items-center gap-3 text-[11px] font-mono text-fg-2 flex-wrap">
+          <div className="mt-2 flex items-center gap-2.5 text-[11px] font-mono text-fg-2 flex-wrap">
             {meta}
           </div>
         )}
       </div>
-      {actions && <div className="flex gap-2 shrink-0">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">{actions}</div>}
     </div>
   );
 }

@@ -82,7 +82,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "text-fg-2 font-mono uppercase tracking-[0.04em] text-[10px] font-medium text-left align-middle whitespace-nowrap",
+        "text-fg-2 font-mono uppercase tracking-[0.04em] text-[10px] font-normal text-left align-middle whitespace-nowrap",
         density === "compact" ? "h-6 px-3" : density === "dense" ? "h-7 px-3" : "h-8 px-3",
         "[&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className,
@@ -102,6 +102,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
         density === "compact" ? "py-1 px-3" : density === "dense" ? "py-1.5 px-3" : "py-2.5 px-3",
         "[&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className,
+        "font-mono text-[12px]",
       )}
       {...props}
     />

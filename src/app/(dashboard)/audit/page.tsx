@@ -87,8 +87,8 @@ export default function AuditPage() {
   );
   const environments = environmentsQuery.data ?? [];
 
-  // Build query input — explicit team filter overrides global team selector
-  const effectiveTeamId = teamFilter || selectedTeamId;
+  // Build query input — explicit page filters only. The global team selector should not hide audit activity by default.
+  const effectiveTeamId = teamFilter || undefined;
   const effectiveEnvironmentId = environmentFilter || undefined;
   // Map entity type filter to entityTypes array for the query
   const entityTypesParam = entityTypeFilter
@@ -118,7 +118,7 @@ export default function AuditPage() {
 
   const allItems = logsQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const selectedAuditEntry = allItems.find((entry) => entry.id === selectedAuditId);
-  const selectedAuditTeamId = effectiveTeamId ?? selectedAuditEntry?.teamId ?? null;
+  const selectedAuditTeamId = selectedAuditEntry?.teamId ?? effectiveTeamId ?? null;
 
   const detailQuery = useQuery({
     ...trpc.audit.getDetail.queryOptions({
@@ -145,8 +145,10 @@ export default function AuditPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-full bg-bg">
       <PageHeader title="Audit Log" description="Track all changes and actions across your VectorFlow instance." />
+
+      <div className="space-y-6 p-4">
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
@@ -352,8 +354,30 @@ export default function AuditPage() {
         <TableSkeleton rows={isInitialLoad ? 8 : 5} />
       ) : allItems.length === 0 ? (
         <EmptyState
-          title="No audit log entries found"
-          description="Actions will appear here as they are performed"
+          title={
+            actionFilter ||
+            entityTypeFilter ||
+            userFilter ||
+            teamFilter ||
+            environmentFilter ||
+            startDate ||
+            endDate ||
+            search
+              ? "No audit entries match the current filters"
+              : "Audit log returned no visible entries"
+          }
+          description={
+            actionFilter ||
+            entityTypeFilter ||
+            userFilter ||
+            teamFilter ||
+            environmentFilter ||
+            startDate ||
+            endDate ||
+            search
+              ? "Clear filters to inspect seeded or recent activity across teams."
+              : "No activity was returned for your audit scope. If seed data is expected, verify the current user has access to the seeded teams."
+          }
         />
       ) : (
         <>
@@ -443,6 +467,7 @@ export default function AuditPage() {
         isLoading={detailQuery.isLoading}
       />
 
+      </div>
     </div>
   );
 }

@@ -43,7 +43,7 @@ export function EmptyState({
       <FadeIn>
         <div
           className={cn(
-            "flex flex-col items-center justify-center rounded-md border border-dashed border-line-2 p-8 text-center",
+            "flex flex-col items-center justify-center rounded-[3px] border border-dashed border-line-2 bg-bg p-8 text-center",
             className,
           )}
         >
@@ -66,7 +66,7 @@ export function EmptyState({
     <FadeIn>
       <div className={cn("flex items-center justify-center p-10 min-h-[60vh]", className)}>
         <div className="w-[540px] text-center">
-          <div className="mx-auto mb-4 inline-flex h-16 w-16 items-center justify-center rounded-xl bg-bg-2 border border-line-2 text-accent-brand font-mono text-[28px]">
+          <div className="mx-auto mb-[18px] inline-flex h-16 w-16 items-center justify-center rounded-[3px] bg-bg-2 border border-line-2 text-accent-brand font-mono text-[28px]">
             {glyph || (Icon ? <Icon className="h-7 w-7" /> : "◇")}
           </div>
           <h2 className="m-0 font-mono text-[22px] font-medium tracking-[-0.02em] text-fg">{title}</h2>
@@ -75,7 +75,7 @@ export function EmptyState({
           )}
 
           {helperLines && helperLines.length > 0 && (
-            <div className="mt-5 p-3.5 bg-bg-2 border border-line rounded-md font-mono text-[11.5px] leading-[1.7] text-fg-1 text-left">
+            <div className="mt-[22px] p-3.5 bg-bg-2 border border-line rounded-[3px] font-mono text-[11.5px] leading-[1.7] text-fg-1 text-left">
               {helperLines.map((line, i) => (
                 <div key={i} className="flex gap-2 items-baseline">
                   <span className="text-accent-brand">{line.icon || "$"}</span>

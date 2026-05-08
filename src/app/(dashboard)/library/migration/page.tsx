@@ -33,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
 
 const STATUS_CONFIG: Record<
   string,
@@ -115,41 +116,60 @@ export default function MigrationPage() {
   );
 
   return (
-    <div className="space-y-8">
+    <div className="min-h-full bg-bg text-fg">
+      <PageHeader
+        title="Migration tools"
+        subtitle="Import existing logging configurations, analyze migration readiness, and generate Vector pipelines."
+        meta={
+          <>
+            <span>{projects.length} projects</span>
+            <PageHeaderMetaSep />
+            <span>{PLATFORMS.filter((platform) => platform.available).length} importers available</span>
+          </>
+        }
+        actions={
+          <Button size="sm" variant="primary" onClick={() => router.push("/library/migration/new")}>
+            <Plus className="h-3.5 w-3.5" />
+            New migration
+          </Button>
+        }
+      />
+
+      <div className="space-y-6 p-4">
       {/* Supported Platforms */}
-      <section>
-        <h2 className="text-lg font-semibold mb-4">Supported Platforms</h2>
+      <section className="space-y-3">
+        <h2 className="font-mono text-[13px] font-medium uppercase tracking-[0.05em] text-fg-1">Supported Platforms</h2>
         <div className="grid gap-4 sm:grid-cols-3">
           {PLATFORMS.map((platform) => {
             const PlatformIcon = platform.icon;
             return (
               <Card
                 key={platform.id}
-                className={platform.available ? "cursor-pointer hover:border-primary/50 transition-colors" : "opacity-50"}
+                className={platform.available ? "cursor-pointer border-line bg-bg-2 transition-colors hover:border-line-2 hover:bg-bg-3/60" : "border-line bg-bg-2 opacity-50"}
               >
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
+                <CardHeader className="border-b border-line bg-bg-1/70 pb-3">
+                  <CardTitle className="flex items-center gap-2 font-mono text-[15px] font-medium text-fg">
                     <PlatformIcon className="h-4 w-4" />
                     {platform.name}
                     {!platform.available && (
-                      <Badge variant="outline" className="text-xs">
-                        Coming Soon
+                      <Badge variant="outline" className="text-[10px] uppercase">
+                        Coming soon
                       </Badge>
                     )}
                   </CardTitle>
-                  <CardDescription className="text-xs">
+                  <CardDescription className="text-[12px] text-fg-2">
                     {platform.description}
                   </CardDescription>
                 </CardHeader>
                 {platform.available && (
-                  <CardFooter className="pt-2">
+                  <CardFooter className="pt-3">
                     <Button
                       size="sm"
                       onClick={() =>
                         router.push(platform.href ?? "/library/migration/new")
                       }
                     >
-                      <Plus className="h-4 w-4 mr-1" />
+                      <Plus className="mr-1 h-3.5 w-3.5" />
                       {platform.href ? "Import Config" : "Start Migration"}
                     </Button>
                   </CardFooter>
@@ -161,13 +181,9 @@ export default function MigrationPage() {
       </section>
 
       {/* Migration Projects */}
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Migration Projects</h2>
-          <Button size="sm" onClick={() => router.push("/library/migration/new")}>
-            <Plus className="h-4 w-4 mr-1" />
-            New Migration
-          </Button>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-mono text-[13px] font-medium uppercase tracking-[0.05em] text-fg-1">Migration Projects</h2>
         </div>
 
         {projectsQuery.isError ? (
@@ -194,7 +210,7 @@ export default function MigrationPage() {
               return (
                 <Card
                   key={project.id}
-                  className="cursor-pointer hover:border-primary/50 transition-colors"
+                  className="cursor-pointer border-line bg-bg-2 transition-colors hover:border-line-2 hover:bg-bg-3/60"
                   onClick={() =>
                     router.push(`/library/migration/${project.id}`)
                   }
@@ -284,6 +300,7 @@ export default function MigrationPage() {
           });
         }}
       />
+      </div>
     </div>
   );
 }

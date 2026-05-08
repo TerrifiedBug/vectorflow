@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, Fragment, useEffect } from "react";
+import { useState, useCallback, useMemo, Fragment } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import {
@@ -14,7 +14,6 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -93,13 +92,9 @@ function csvEscape(value: string): string {
   return value;
 }
 
-export default function DeploymentHistoryRedirect() {
-  const router = useRouter();
-  useEffect(() => {
-    router.replace("/audit?tab=deployments");
-  }, [router]);
-  return null;
-}
+export default function DeploymentHistoryPage() {
+  return <DeploymentHistory />;
+} 
 
 export function DeploymentHistory() {
   const trpc = useTRPC();
@@ -206,10 +201,10 @@ export function DeploymentHistory() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="font-mono text-[22px] font-medium tracking-[-0.02em] text-fg">
             Deployment History
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-[12px] text-muted-foreground">
             Chronological timeline of deploy, undeploy, and rollback actions
           </p>
         </div>

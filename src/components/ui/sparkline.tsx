@@ -13,12 +13,12 @@ interface SparklineProps {
 
 export const Sparkline = React.memo(function Sparkline({
   data,
-  width = 80,
-  height = 22,
+  width = 96,
+  height = 24,
   color = "var(--accent-brand)",
   fill = true,
-  fillOpacity = 0.18,
-  strokeWidth = 1.4,
+  fillOpacity = 0.14,
+  strokeWidth = 1.5,
   className,
 }: SparklineProps) {
   if (!data || data.length === 0) return null;

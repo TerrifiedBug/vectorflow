@@ -205,6 +205,20 @@ describe("ComponentPalette", () => {
 
       expect(getByText("Apache Kafka")).toBeTruthy();
     });
+
+  describe("design density", () => {
+    it("keeps editor palette labels at or above the 11px text floor", () => {
+      const { getByRole, getByText } = render(<ComponentPalette />);
+
+      expect(getByText("Messaging").className).toContain("text-[11px]");
+      expect(getByRole("button", { name: /Sources/ }).className).toContain("text-[11px]");
+
+      fireEvent.click(getByRole("tab", { name: "Shared" }));
+
+      expect(getByRole("tab", { name: "Catalog" }).className).toContain("text-[11px]");
+      expect(getByRole("button", { name: "All" }).className).toContain("text-[11px]");
+    });
+  });
   });
 
   describe("collapsible sections", () => {

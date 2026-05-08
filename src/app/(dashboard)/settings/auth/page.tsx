@@ -1,12 +1,5 @@
-"use client";
-
-import { AccessSettingsShell } from "../_components/access-settings-shell";
-import { AuthSettings } from "../_components/auth-settings";
+import { redirect } from "next/navigation";
 
 export default function AuthPage() {
-  return (
-    <AccessSettingsShell active="sso">
-      <AuthSettings />
-    </AccessSettingsShell>
-  );
+  redirect("/settings");
 }

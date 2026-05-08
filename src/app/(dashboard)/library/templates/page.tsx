@@ -29,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { PageHeader } from "@/components/ui/page-header";
 
 const CATEGORIES = [
   { id: "Getting Started", icon: Play, color: "text-status-ok" },
@@ -196,21 +197,24 @@ export default function TemplatesPage() {
   const hasActiveFilters = search.length > 0 || categoryFilter.length > 0;
 
   return (
-    <div className="space-y-5 bg-bg text-fg">
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-4">
-        <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.06em] text-fg-2">library / templates</div>
-          <h1 className="mt-1 font-mono text-[22px] font-medium tracking-[-0.01em] text-fg">Templates</h1>
-          <p className="mt-2 max-w-[720px] text-[12px] leading-relaxed text-fg-1">
-            Start from curated Vector pipeline blueprints, inspect their graph, then create an editable pipeline in the selected environment.
-          </p>
-        </div>
-        <div className="grid grid-cols-3 gap-2 font-mono text-[11px]">
-          <Stat label="templates" value={templates.length} />
-          <Stat label="nodes" value={templateStats.nodeCount} />
-          <Stat label="custom" value={templateStats.customCount} />
-        </div>
-      </div>
+    <div className="min-h-full bg-bg text-fg">
+      <PageHeader
+        title="Templates"
+        subtitle="Reusable pipeline patterns. Promote internal best practices into editable pipelines."
+        meta={
+          <>
+            <span>{templates.length} templates</span>
+            <span className="text-fg-3">·</span>
+            <span>{templateStats.nodeCount} nodes</span>
+            <span className="text-fg-3">·</span>
+            <span>{templateStats.edgeCount} edges</span>
+            <span className="text-fg-3">·</span>
+            <span>{templateStats.customCount} custom</span>
+          </>
+        }
+      />
+
+      <div className="space-y-4 p-4">
 
       {!selectedEnvironmentId && (
         <EmptyState title="Select an environment from the header to use templates" className="p-4 text-sm" />
@@ -310,6 +314,7 @@ export default function TemplatesPage() {
           deleteTemplateMutation.mutate({ id: deleteConfirm.id });
         }}
       />
+      </div>
     </div>
   );
 }
@@ -349,7 +354,7 @@ function TemplateCard({
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") onOpen();
       }}
-      className="group flex min-h-[240px] cursor-pointer flex-col border-line bg-bg-2 transition-colors hover:border-line-2 hover:bg-bg-3/60"
+      className="group flex min-h-[220px] cursor-pointer flex-col border-line bg-bg-2 transition-colors hover:border-line-2 hover:bg-bg-3/60"
     >
       <CardHeader className="border-b border-line bg-bg-1/70 pb-3">
         <div className="flex items-start justify-between gap-3">
@@ -365,11 +370,20 @@ function TemplateCard({
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 space-y-4 p-4">
+      <CardContent className="flex-1 space-y-3 p-4">
         <p className="line-clamp-3 text-[12px] leading-relaxed text-fg-1">{template.description}</p>
-        <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
-          <MiniStat icon={Database} label="nodes" value={template.nodeCount} />
-          <MiniStat icon={ArrowRight} label="edges" value={template.edgeCount} />
+        <div className="flex flex-wrap items-center gap-1.5 font-mono text-[10px]">
+          {template.nodes.slice(0, 5).map((node, index) => {
+            const typedNode = node as TemplateNode;
+            const nodeKind = typedNode.kind.toLowerCase();
+            return (
+              <span key={typedNode.id ?? index} className="inline-flex items-center gap-1 rounded-[3px] border border-line bg-bg-1 px-1.5 py-1 text-fg-1">
+                <span className={cn("h-1.5 w-1.5 rounded-full", nodeKind === "source" ? "bg-chart-1" : nodeKind === "sink" ? "bg-chart-3" : "bg-accent-brand")} />
+                <span className="max-w-[120px] truncate">{typedNode.componentKey || typedNode.componentType}</span>
+              </span>
+            );
+          })}
+          {template.nodes.length > 5 && <span className="text-fg-2">+{template.nodes.length - 5}</span>}
         </div>
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
@@ -384,6 +398,10 @@ function TemplateCard({
             ))}
           </div>
         )}
+        <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
+          <MiniStat icon={Database} label="nodes" value={template.nodeCount} />
+          <MiniStat icon={ArrowRight} label="edges" value={template.edgeCount} />
+        </div>
       </CardContent>
       <CardFooter className="gap-2 border-t border-line bg-bg-1/60 p-3">
         <Button
@@ -420,14 +438,6 @@ function TemplateCard({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="min-w-[86px] rounded-[3px] border border-line bg-bg-2 px-3 py-2 text-right">
-      <div className="text-[17px] text-fg">{value.toLocaleString()}</div>
-      <div className="text-[10px] uppercase tracking-[0.06em] text-fg-2">{label}</div>
-    </div>
-  );
-}
 
 function MiniStat({ icon: Icon, label, value }: { icon: typeof Database; label: string; value: number }) {
   return (

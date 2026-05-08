@@ -11,6 +11,7 @@ import { VFIcon } from "@/components/ui/vf-icon";
 import { Pill } from "@/components/ui/pill";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
 
 /**
  * v2 Secrets vault (11d) — settings sub-page.
@@ -195,36 +196,32 @@ export default function SecretsVaultPage() {
 
   return (
     <div className="flex flex-col h-full bg-bg text-fg">
-      {/* HEADER */}
-      <div className="px-5 py-4 border-b border-line bg-bg-1 flex items-start justify-between">
-        <div>
-          <div className="font-mono text-[11px] text-fg-2 tracking-[0.04em]">
-            settings / secrets
-          </div>
-          <h1 className="m-0 mt-1 font-mono text-[22px] font-medium tracking-[-0.01em]">
-            Secrets vault
-          </h1>
-          <div className="mt-1 text-[12px] text-fg-2 max-w-[720px]">
+      <PageHeader
+        title="Secrets vault"
+        subtitle={
+          <>
             Encrypted at rest with envelope encryption. Referenced from pipelines as{" "}
-            <span className="font-mono text-fg-1">SECRET[name]</span>; values never appear in
-            canvas, diff, audit log, or wire.
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm">
-            <VFIcon name="upload" />
-            Import
-          </Button>
-          <Button variant="ghost" size="sm">
-            <VFIcon name="rotate-cw" />
-            Rotate selected
-          </Button>
-          <Button variant="primary" size="sm">
-            <VFIcon name="plus" />
-            New secret
-          </Button>
-        </div>
-      </div>
+            <span className="font-mono text-fg-1">SECRET[name]</span>; values never appear in canvas, diff, audit log, or wire.
+          </>
+        }
+        breadcrumb="settings / secrets"
+        actions={
+          <>
+            <Button variant="ghost" size="sm">
+              <VFIcon name="upload" />
+              Import
+            </Button>
+            <Button variant="ghost" size="sm">
+              <VFIcon name="rotate-cw" />
+              Rotate selected
+            </Button>
+            <Button variant="primary" size="sm">
+              <VFIcon name="plus" />
+              New secret
+            </Button>
+          </>
+        }
+      />
 
       <KpiStrip>
         <KpiInStrip label="TOTAL SECRETS" value={counts.total} sub={`across ${envs.length} environments`} />
@@ -250,7 +247,7 @@ export default function SecretsVaultPage() {
 
       {teamId && rows.length === 0 && !allLoading && !hasLoadError && (
         <EmptyState
-          glyph="🔑"
+          glyph="K"
           title="No secrets yet"
           description="Create a secret and reference it from your pipelines as SECRET[name]."
           action={{ label: "New secret", onClick: () => {} }}
@@ -304,7 +301,7 @@ export default function SecretsVaultPage() {
                     style={{ gridTemplateColumns: "1.6fr 100px 110px 1fr 70px 100px" }}
                   >
                     <span className="text-fg flex items-center gap-1.5 truncate">
-                      <span className="text-fg-2">🔑</span>
+                      <VFIcon name="key" size={13} className="text-fg-2" />
                       {s.name}
                     </span>
                     <span className="text-fg-2">—</span>

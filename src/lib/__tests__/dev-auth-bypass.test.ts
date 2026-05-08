@@ -117,6 +117,16 @@ describe("dev auth bypass", () => {
     expect(isDevAuthBypassEnabledForRequest(env, { requestHost: "localhost:3000" })).toBe(false);
   });
 
+  it("allows localhost host-only checks when trusted proxy headers are enabled", () => {
+    const env = {
+      NODE_ENV: "development",
+      DEV_AUTH_BYPASS: "1",
+      VF_TRUST_PROXY_HEADERS: "true",
+    };
+
+    expect(isDevAuthBypassEnabledForRequest(env, { requestHost: "localhost:3000" })).toBe(true);
+  });
+
   it("rejects spoofable proxy headers unless trusted proxy headers are explicitly enabled", () => {
     const env = { NODE_ENV: "development", DEV_AUTH_BYPASS: "1" };
 

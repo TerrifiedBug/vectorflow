@@ -170,7 +170,7 @@ export default function EnvironmentDetailPage({
 
   if (envQuery.isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="min-h-full bg-bg p-4 text-fg">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -179,7 +179,7 @@ export default function EnvironmentDetailPage({
 
   if (envQuery.isError) {
     return (
-      <div className="space-y-6">
+      <div className="min-h-full bg-bg p-4 text-fg">
         <QueryError message="Failed to load environment" onRetry={() => envQuery.refetch()} />
       </div>
     );
@@ -187,7 +187,7 @@ export default function EnvironmentDetailPage({
 
   if (!env) {
     return (
-      <div className="flex flex-col items-center justify-center py-20">
+      <div className="min-h-full bg-bg p-4 text-fg">
         <p className="text-muted-foreground">Environment not found</p>
         <Button asChild variant="outline" className="mt-4">
           <Link href="/environments">Back to environments</Link>
@@ -202,7 +202,8 @@ export default function EnvironmentDetailPage({
   const deployTrend = Array.from({ length: 20 }, (_, index) => 30 + ((env._count.pipelines + index * 11) % 44));
 
   return (
-    <div className="space-y-5 bg-bg text-fg">
+    <div className="min-h-full bg-bg text-fg">
+      <div className="space-y-5 p-4">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-4">
         <div>
           <Button asChild variant="ghost" size="sm" className="mb-2 h-7 px-0 font-mono text-[11px] text-fg-2 hover:text-fg">
@@ -720,6 +721,7 @@ export default function EnvironmentDetailPage({
       <p className="text-xs text-muted-foreground">
         Created {new Date(env.createdAt).toLocaleDateString()}
       </p>
+      </div>
     </div>
   );
 }

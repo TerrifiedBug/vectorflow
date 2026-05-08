@@ -1,4 +1,5 @@
 "use client";
+import { usePathname } from "next/navigation";
 
 import { LazyMotionProvider } from "@/components/motion/lazy-motion-provider";
 import { StaggerItem, StaggerList } from "@/components/motion";
@@ -15,16 +16,27 @@ export default function AuthLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const isSetupFlow = pathname.startsWith("/setup");
+
+  if (isSetupFlow) {
+    return (
+      <div className="relative min-h-screen w-full overflow-x-hidden bg-bg px-4 py-8 font-sans text-fg sm:px-6 lg:px-10">
+        <LazyMotionProvider>
+          <div className="mx-auto w-full max-w-[1120px]">
+            {children}
+          </div>
+        </LazyMotionProvider>
+      </div>
+    );
+  }
   return (
     <div className="relative flex min-h-screen w-full bg-bg text-fg font-sans overflow-hidden">
-      {/* dot grid background */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-40"
+        className="pointer-events-none absolute inset-0 opacity-30"
         style={{
-          backgroundImage:
-            "radial-gradient(var(--line-2) 1px, transparent 1px)",
-          backgroundSize: "24px 24px",
+          backgroundColor: "transparent",
         }}
       />
 

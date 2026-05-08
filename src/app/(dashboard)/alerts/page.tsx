@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { type ComponentProps, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { EmptyState } from "@/components/empty-state";
@@ -17,19 +17,13 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { Badge } from "@/components/ui/badge";
+import { Pill } from "@/components/ui/pill";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { StatusDot } from "@/components/ui/status-dot";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-import { PageHeader } from "@/components/page-header";
+import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertRulesSection } from "./_components/alert-rules-section";
 import { NotificationChannelsSection } from "./_components/notification-channels-section";
@@ -141,10 +135,19 @@ export default function AlertsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-full bg-bg">
       <PageHeader
         title="Alerts"
-        description="Configure alert rules, notification channels, and review alert history."
+        subtitle="Configure alert rules, notification channels, and review alert history."
+        meta={
+          <>
+            <span>{rules.length} rules</span>
+            <PageHeaderMetaSep />
+            <span>{firingEvents.length} firing now</span>
+            <PageHeaderMetaSep />
+            <span>{totalAnomalies} anomalies</span>
+          </>
+        }
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => setTopTab("channels")}>
@@ -161,13 +164,15 @@ export default function AlertsPage() {
         }
       />
 
+      <div className="space-y-6 p-4">
+
       <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] text-fg-2">
-        <Badge variant="outline" className="rounded-[3px] font-mono text-[10px] uppercase tracking-[0.04em] text-status-error">
+        <Pill variant="error" size="xs">
           {criticalCount} critical
-        </Badge>
-        <Badge variant="outline" className="rounded-[3px] font-mono text-[10px] uppercase tracking-[0.04em] text-status-degraded">
+        </Pill>
+        <Pill variant="warn" size="xs">
           {warningCount} warning
-        </Badge>
+        </Pill>
         <span>{rules.length} rules</span>
         <span>·</span>
         <span>{firingEvents.length} firing now</span>
@@ -255,6 +260,7 @@ export default function AlertsPage() {
           </div>
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   );
 }
@@ -279,62 +285,56 @@ type FiringEvent = {
 
 function FiringAndRecentCard({ events }: { events: FiringEvent[] }) {
   return (
-    <Card className="overflow-hidden border-line bg-bg-2">
-      <CardHeader className="border-b border-line bg-bg-1 px-4 py-3">
-        <CardTitle className="font-mono text-[14px] font-medium text-fg">
+    <Card className="overflow-hidden rounded-[3px] border-line bg-bg-2">
+      <CardHeader className="border-b border-line bg-bg-1 px-[14px] py-3">
+        <CardTitle className="font-mono text-[12px] font-medium uppercase tracking-[0.06em] text-fg">
           Firing & recent
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="p-[14px]">
         {events.length === 0 ? (
-          <div className="px-4 py-6 font-mono text-[11.5px] text-fg-2">
+          <div className="font-mono text-[11.5px] text-fg-2">
             No alerts are currently firing.
           </div>
         ) : (
-          <Table>
+          <Table density="dense" className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[32px]" />
-                <TableHead>Severity</TableHead>
-                <TableHead>Rule</TableHead>
-                <TableHead>State</TableHead>
-                <TableHead>Since</TableHead>
-                <TableHead>Pipeline</TableHead>
-                <TableHead>Node</TableHead>
+                <TableHead className="w-[14%]">Severity</TableHead>
+                <TableHead className="w-[34%]">Rule</TableHead>
+                <TableHead className="w-[20%]">Target</TableHead>
+                <TableHead className="w-[12%]">Status</TableHead>
+                <TableHead className="w-[10%]">Since</TableHead>
+                <TableHead className="hidden xl:table-cell w-[10%]">Node</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {events.map((event) => (
                 <TableRow key={event.id} className="font-mono text-[11.5px]">
-                  <TableCell className="p-0">
-                    <div className="h-10 w-[3px] bg-status-error" />
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={`rounded-[3px] font-mono text-[10px] uppercase tracking-[0.04em] ${severityClass(event.alertRule.severity)}`}>
+                  <TableCell className="align-top">
+                    <Pill variant={severityVariant(event.alertRule.severity)} size="xs">
                       {event.alertRule.severity ?? "alert"}
-                    </Badge>
+                    </Pill>
                   </TableCell>
-                  <TableCell>
-                    <div className="text-fg">{event.alertRule.name}</div>
-                    <div className="text-[10.5px] text-fg-2">
-                      {event.alertRule.metric} {event.alertRule.condition ?? ""} {event.alertRule.threshold ?? ""}
+                  <TableCell className="align-top">
+                    <div className="min-w-0">
+                      <div className="truncate text-fg">{event.alertRule.name}</div>
+                      <div className="truncate text-[10.5px] text-fg-2">
+                        {event.alertRule.metric} {event.alertRule.condition ?? ""} {event.alertRule.threshold ?? ""}
+                      </div>
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="align-top text-fg-1">
+                    <span className="block truncate">{event.alertRule.pipeline?.name ?? event.node?.host ?? "fleet"}</span>
+                  </TableCell>
+                  <TableCell className="align-top">
                     <span className="inline-flex items-center gap-1.5 text-status-error">
-                      <span className="h-1.5 w-1.5 rounded-full bg-status-error" />
+                      <StatusDot variant="error" size={6} pulse />
                       firing
                     </span>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-fg-2">
-                    {formatSince(event.firedAt)}
-                  </TableCell>
-                  <TableCell className="text-fg-1">
-                    {event.alertRule.pipeline?.name ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-fg-2">
-                    {event.node?.host ?? "fleet"}
-                  </TableCell>
+                  <TableCell className="align-top text-fg-2">{formatSince(event.firedAt)}</TableCell>
+                  <TableCell className="hidden xl:table-cell align-top text-fg-2">{event.node?.host ?? "—"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -345,6 +345,7 @@ function FiringAndRecentCard({ events }: { events: FiringEvent[] }) {
   );
 }
 
+
 function formatSince(date: Date | string) {
   const fired = typeof date === "string" ? new Date(date) : date;
   const minutes = Math.max(0, Math.round((Date.now() - fired.getTime()) / 60_000));
@@ -354,9 +355,9 @@ function formatSince(date: Date | string) {
   return rest ? `${hours}h ${rest}m ago` : `${hours}h ago`;
 }
 
-function severityClass(severity: string | undefined) {
-  if (severity === "critical") return "border-status-error/40 bg-status-error-bg text-status-error";
-  if (severity === "warning") return "border-status-degraded/40 bg-status-degraded-bg text-status-degraded";
-  if (severity === "info") return "border-status-info/40 bg-status-info-bg text-status-info";
-  return "border-line-2 bg-bg-2 text-fg-1";
+function severityVariant(severity: string | undefined): ComponentProps<typeof Pill>["variant"] {
+  if (severity === "critical") return "error";
+  if (severity === "warning") return "warn";
+  if (severity === "info") return "info";
+  return "status";
 }

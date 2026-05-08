@@ -118,12 +118,12 @@ export function EnvironmentSelector() {
   }, [defaultEnvironmentId, environments, setSelectedEnvironmentId, setIsSystemEnvironment]);
 
   if (envsQuery.isLoading) {
-    return <Skeleton className="h-8 w-[160px]" />;
+    return <Skeleton className="h-7 w-[160px] rounded-[3px]" />;
   }
 
   if (environments.length === 0 && !systemEnvironment) {
     return (
-      <Button variant="outline" size="sm" className="h-9 text-xs text-muted-foreground" asChild>
+      <Button variant="outline" size="sm" className="h-7 font-mono text-[11px] text-fg-2" asChild>
         <Link href="/environments">
           <Plus className="mr-1.5 h-3.5 w-3.5" />
           Create Environment
@@ -143,7 +143,7 @@ export function EnvironmentSelector() {
       <PopoverTrigger asChild>
         <button
           className={cn(
-            "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 flex w-[160px] items-center gap-2 rounded-md border bg-transparent px-3 py-2 text-xs whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 h-8",
+            "flex h-7 min-w-[150px] items-center gap-1.5 rounded-[3px] border border-line-2 bg-bg-2 px-2.5 font-mono text-[12px] whitespace-nowrap text-fg shadow-none transition-colors outline-none hover:bg-bg-3 focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >
           <Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -162,8 +162,8 @@ export function EnvironmentSelector() {
               <div
                 key={env.id}
                 className={cn(
-                  "relative flex items-center gap-2 rounded-md py-1.5 pl-7 pr-8 text-sm cursor-default select-none hover:bg-accent hover:text-accent-foreground",
-                  isSelected && "bg-accent text-accent-foreground",
+                  "relative flex cursor-default select-none items-center gap-2 rounded-[3px] py-1.5 pr-8 pl-7 text-[12px] hover:bg-bg-3 hover:text-fg",
+                  isSelected && "bg-accent-soft text-accent-brand",
                 )}
                 onClick={() => {
                   handleEnvironmentChange(env.id);
@@ -208,8 +208,8 @@ export function EnvironmentSelector() {
               <div className="bg-border pointer-events-none -mx-1 my-1 h-px" />
               <div
                 className={cn(
-                  "relative flex items-center gap-2 rounded-md py-1.5 pl-7 pr-8 text-sm cursor-default select-none hover:bg-accent hover:text-accent-foreground text-muted-foreground",
-                  selectedEnvironmentId === systemEnvironment.id && "bg-accent text-accent-foreground",
+                  "relative flex cursor-default select-none items-center gap-2 rounded-[3px] py-1.5 pr-8 pl-7 text-[12px] text-fg-2 hover:bg-bg-3 hover:text-fg",
+                  selectedEnvironmentId === systemEnvironment.id && "bg-accent-soft text-accent-brand",
                 )}
                 onClick={() => {
                   handleEnvironmentChange(systemEnvironment.id);

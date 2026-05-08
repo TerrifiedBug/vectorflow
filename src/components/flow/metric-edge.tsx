@@ -30,8 +30,27 @@ function durationFor(id: string): number {
   return 2.4 + slot * 0.1;
 }
 
-function MetricEdgeComponent({ id, data, selected, ...props }: EdgeProps) {
-  const [edgePath] = getBezierPath(props);
+function MetricEdgeComponent({
+  id,
+  data,
+  selected,
+  markerEnd,
+  interactionWidth = 20,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+}: EdgeProps) {
+  const [edgePath] = getBezierPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+  });
   const d = (data ?? {}) as MetricEdgeData;
   const throughput = d.throughput;
   const sourceKind: EdgeKind = d.sourceKind ?? "source";
@@ -56,7 +75,8 @@ function MetricEdgeComponent({ id, data, selected, ...props }: EdgeProps) {
       {/* Wide invisible hit-area for click/hover */}
       <BaseEdge
         path={edgePath}
-        {...props}
+        markerEnd={markerEnd}
+        interactionWidth={interactionWidth}
         style={{ stroke: "transparent", strokeWidth: 20 }}
       />
       {/* Gradient stroke */}

@@ -47,6 +47,14 @@ interface PromotePipelineDialogProps {
   pipeline: { id: string; name: string; environmentId: string };
 }
 
+const dialogContentClass =
+  "gap-0 overflow-hidden rounded-[3px] border-line-2 bg-bg-2 p-0 text-fg shadow-[0_24px_60px_rgba(0,0,0,0.6)] sm:max-w-lg";
+const wideDialogContentClass =
+  "gap-0 overflow-hidden rounded-[3px] border-line-2 bg-bg-2 p-0 text-fg shadow-[0_24px_60px_rgba(0,0,0,0.6)] sm:max-w-2xl";
+const dialogHeaderClass = "border-b border-line bg-bg-2 px-5 py-4 pr-12";
+const dialogFooterClass = "border-t border-line bg-bg px-5 py-3";
+const labelClass = "font-mono text-[10px] uppercase tracking-[0.08em] text-fg-2";
+
 export function PromotePipelineDialog({
   open,
   onOpenChange,
@@ -129,23 +137,57 @@ export function PromotePipelineDialog({
     });
   };
 
+  const stepMeta = [
+    { key: "target", label: "Target" },
+    { key: "preflight", label: "Preflight" },
+    { key: "diff", label: "Diff preview" },
+    { key: "result", label: "Result" },
+  ] as const;
+  const activeStepIndex = step === "confirm" ? 2 : stepMeta.findIndex((s) => s.key === step);
+
+  const stepper = (
+    <div className="flex flex-wrap items-center gap-3 border-b border-line bg-bg-1 px-5 py-3">
+      {stepMeta.map((s, index) => {
+        const isActive = index === activeStepIndex;
+        const isDone = index < activeStepIndex;
+        return (
+          <div key={s.key} className="flex items-center gap-2">
+            <span className={[
+              "flex h-[22px] w-[22px] items-center justify-center rounded-full border font-mono text-[11px]",
+              isActive ? "border-accent-brand bg-accent-brand text-primary-foreground" : isDone ? "border-[color:var(--status-healthy)]/50 bg-bg text-status-healthy" : "border-line bg-bg-2 text-fg-2",
+            ].join(" ")}>
+              {isDone ? "✓" : index + 1}
+            </span>
+            <span className={[
+              "font-mono text-[11px] uppercase tracking-[0.04em]",
+              isActive ? "text-fg" : isDone ? "text-fg-1" : "text-fg-2",
+            ].join(" ")}>
+              {s.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   // Step 1: Target selection
   if (step === "target") {
     return (
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Promote Pipeline</DialogTitle>
-            <DialogDescription>
-              Promote this pipeline to another environment with preflight validation.
+        <DialogContent className={dialogContentClass}>
+          <DialogHeader className={dialogHeaderClass}>
+            <DialogTitle className="font-mono text-[15px]">Promote pipeline</DialogTitle>
+            <DialogDescription className="text-[12px] text-fg-2">
+              Copy <span className="font-mono text-fg">{pipeline.name}</span> to another environment with preflight validation.
             </DialogDescription>
           </DialogHeader>
+          {stepper}
 
-          <div className="space-y-4">
+          <div className="space-y-4 px-5 py-4">
             <div className="space-y-2">
-              <Label htmlFor="promote-target-env">Target Environment</Label>
+              <Label htmlFor="promote-target-env" className={labelClass}>Target environment</Label>
               <Select value={targetEnvId} onValueChange={setTargetEnvId}>
-                <SelectTrigger id="promote-target-env" className="w-full">
+                <SelectTrigger id="promote-target-env" className="h-8 w-full rounded-[3px] border-line-2 bg-bg font-mono text-[12px]">
                   <SelectValue placeholder="Select environment..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -159,16 +201,17 @@ export function PromotePipelineDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="promote-pipeline-name">Pipeline Name</Label>
+              <Label htmlFor="promote-pipeline-name" className={labelClass}>Pipeline name</Label>
               <Input
                 id="promote-pipeline-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                className="h-8 rounded-[3px] border-line-2 bg-bg font-mono text-[12px]"
               />
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className={dialogFooterClass}>
             <Button variant="outline" onClick={() => handleClose(false)}>
               Cancel
             </Button>
@@ -196,35 +239,36 @@ export function PromotePipelineDialog({
 
     return (
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Preflight Check</DialogTitle>
-            <DialogDescription>
-              Validating secret references in the target environment.
+        <DialogContent className={dialogContentClass}>
+          <DialogHeader className={dialogHeaderClass}>
+            <DialogTitle className="font-mono text-[15px]">Preflight check</DialogTitle>
+            <DialogDescription className="text-[12px] text-fg-2">
+              Validate secret references in <span className="font-mono text-fg">{selectedEnv?.name ?? "target"}</span>.
             </DialogDescription>
           </DialogHeader>
+          {stepper}
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-3 px-5 py-4">
             {isLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 font-mono text-[12px] text-fg-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Checking secret references...
               </div>
             ) : (
               <>
                 {missing.length > 0 && (
-                  <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
+                  <div className="rounded-[3px] border border-destructive/30 bg-destructive/10 p-3">
                     <div className="flex items-start gap-2">
                       <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive shrink-0" />
-                      <div className="text-sm text-destructive">
-                        <p className="font-medium mb-1">
+                      <div className="text-[12px] text-destructive">
+                        <p className="mb-1 font-medium">
                           The following secrets are missing in the target environment and must be
                           created before promotion can proceed:
                         </p>
-                        <ul className="list-disc pl-4 space-y-0.5">
+                        <ul className="space-y-0.5 pl-0 font-mono">
                           {missing.map((s) => (
                             <li key={s}>
-                              <code className="text-xs">{s}</code>
+                              <code className="text-[11px]">{s}</code>
                             </li>
                           ))}
                         </ul>
@@ -234,10 +278,10 @@ export function PromotePipelineDialog({
                 )}
 
                 {nameCollision && (
-                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                  <div className="rounded-[3px] border border-[color:var(--status-degraded)]/30 bg-[color:var(--status-degraded-bg)] p-3">
                     <div className="flex items-start gap-2">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                      <p className="text-sm text-amber-800 dark:text-amber-300">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-degraded" />
+                      <p className="text-[12px] text-status-degraded">
                         A pipeline named &quot;{name}&quot; already exists in the target environment.
                         Go back and change the pipeline name to proceed.
                       </p>
@@ -246,10 +290,10 @@ export function PromotePipelineDialog({
                 )}
 
                 {canProceed && !nameCollision && (
-                  <div className="rounded-md border border-green-500/30 bg-green-500/10 p-3">
+                  <div className="rounded-[3px] border border-[color:var(--status-healthy)]/30 bg-[color:var(--status-healthy-bg)] p-3">
                     <div className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
-                      <p className="text-sm text-green-800 dark:text-green-300">
+                      <CheckCircle className="h-4 w-4 shrink-0 text-status-healthy" />
+                      <p className="text-[12px] text-status-healthy">
                         {present.length === 0
                           ? "No secret references in this pipeline."
                           : `All ${present.length} secret reference${present.length === 1 ? "" : "s"} verified in target environment.`}
@@ -261,7 +305,7 @@ export function PromotePipelineDialog({
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className={dialogFooterClass}>
             <Button variant="outline" onClick={() => setStep("target")}>
               Back
             </Button>
@@ -285,17 +329,18 @@ export function PromotePipelineDialog({
 
     return (
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Substitution Preview</DialogTitle>
-            <DialogDescription>
-              Review how secret references will be substituted in the target environment.
+        <DialogContent className={wideDialogContentClass}>
+          <DialogHeader className={dialogHeaderClass}>
+            <DialogTitle className="font-mono text-[15px]">Substitution preview</DialogTitle>
+            <DialogDescription className="text-[12px] text-fg-2">
+              Review secret substitution before promoting to <span className="font-mono text-fg">{selectedEnv?.name ?? "target"}</span>.
             </DialogDescription>
           </DialogHeader>
+          {stepper}
 
-          <div className="space-y-3">
+          <div className="space-y-3 px-5 py-4">
             {isLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 font-mono text-[12px] text-fg-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Generating substitution preview...
               </div>
@@ -304,18 +349,18 @@ export function PromotePipelineDialog({
                 <ConfigDiff
                   oldConfig={diff.sourceYaml}
                   newConfig={diff.targetYaml}
-                  oldLabel="Source Environment"
-                  newLabel="Target Environment"
+                  oldLabel="Source"
+                  newLabel="Target"
                 />
-                <p className="text-xs text-muted-foreground">
-                  <code>SECRET[name]</code> references will be resolved as environment
+                <p className="font-mono text-[11px] text-fg-2">
+                  <code className="rounded-[3px] bg-bg px-1 text-fg">SECRET[name]</code> references resolve as environment
                   variables in the target environment.
                 </p>
               </>
             ) : null}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className={dialogFooterClass}>
             <Button variant="outline" onClick={() => setStep("preflight")}>
               Back
             </Button>
@@ -323,7 +368,7 @@ export function PromotePipelineDialog({
               disabled={isLoading || !diff}
               onClick={handleConfirmPromotion}
             >
-              Confirm Promotion
+              Confirm promotion
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -335,20 +380,21 @@ export function PromotePipelineDialog({
   if (step === "confirm") {
     return (
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Submitting Promotion</DialogTitle>
-            <DialogDescription>
-              Your promotion request is being processed.
+        <DialogContent className={dialogContentClass}>
+          <DialogHeader className={dialogHeaderClass}>
+            <DialogTitle className="font-mono text-[15px]">Submitting promotion</DialogTitle>
+            <DialogDescription className="text-[12px] text-fg-2">
+              Creating promotion request for <span className="font-mono text-fg">{pipeline.name}</span>.
             </DialogDescription>
           </DialogHeader>
+          {stepper}
 
-          <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 px-5 py-6 font-mono text-[12px] text-fg-2">
             <Loader2 className="h-4 w-4 animate-spin" />
             Submitting promotion request...
           </div>
 
-          <DialogFooter>
+          <DialogFooter className={dialogFooterClass}>
             <Button variant="outline" disabled>
               Cancel
             </Button>
@@ -361,20 +407,21 @@ export function PromotePipelineDialog({
   // Step 5: Result
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Promotion Complete</DialogTitle>
-          <DialogDescription>
-            Your pipeline has been promoted to {selectedEnv?.name ?? "the target environment"}.
+      <DialogContent className={dialogContentClass}>
+        <DialogHeader className={dialogHeaderClass}>
+          <DialogTitle className="font-mono text-[15px]">Promotion result</DialogTitle>
+          <DialogDescription className="text-[12px] text-fg-2">
+            Target environment: <span className="font-mono text-fg">{selectedEnv?.name ?? "target"}</span>
           </DialogDescription>
         </DialogHeader>
+        {stepper}
 
-        <div className="py-2">
+        <div className="px-5 py-4">
           {result?.pendingApproval ? (
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-4">
+            <div className="rounded-[3px] border border-[color:var(--status-degraded)]/30 bg-[color:var(--status-degraded-bg)] p-4">
               <div className="flex items-start gap-3">
-                <Clock className="mt-0.5 h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
-                <div className="text-sm text-amber-800 dark:text-amber-300">
+                <Clock className="mt-0.5 h-5 w-5 shrink-0 text-status-degraded" />
+                <div className="text-[12px] text-status-degraded">
                   <p className="font-medium">Promotion request submitted for approval</p>
                   <p className="mt-1">
                     An administrator must approve before the pipeline appears in{" "}
@@ -384,10 +431,10 @@ export function PromotePipelineDialog({
               </div>
             </div>
           ) : (
-            <div className="rounded-md border border-green-500/30 bg-green-500/10 p-4">
+            <div className="rounded-[3px] border border-[color:var(--status-healthy)]/30 bg-[color:var(--status-healthy-bg)] p-4">
               <div className="flex items-start gap-3">
-                <CheckCircle className="mt-0.5 h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
-                <div className="text-sm text-green-800 dark:text-green-300">
+                <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-status-healthy" />
+                <div className="text-[12px] text-status-healthy">
                   <p className="font-medium">Pipeline promoted successfully</p>
                   <p className="mt-1">
                     The pipeline has been deployed to{" "}
@@ -399,7 +446,7 @@ export function PromotePipelineDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className={dialogFooterClass}>
           <Button onClick={() => handleClose(false)}>Close</Button>
         </DialogFooter>
       </DialogContent>

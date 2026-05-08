@@ -16,8 +16,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ArrowLeft,
-  GitBranch,
-  Activity,
+  Rocket,
 } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { cn } from "@/lib/utils";
@@ -56,9 +55,9 @@ const observeItems = [
 
 const operateItems = [
   { title: "Alerts", href: "/alerts", icon: Bell },
-  { title: "Incidents", href: "/incidents", icon: Activity },
-  { title: "Promotions", href: "/promotions", icon: GitBranch },
+  { title: "Incidents", href: "/incidents", icon: Bell },
   { title: "Analytics", href: "/analytics", icon: BarChart3 },
+  { title: "Promotions", href: "/promotions", icon: Rocket },
   { title: "Audit Log", href: "/audit", icon: ScrollText },
 ];
 
@@ -139,8 +138,8 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" aria-label="Main navigation">
-      <SidebarHeader className="p-0">
-        <div className="flex h-14 items-center px-4 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
+      <SidebarHeader className="gap-0 p-0">
+        <div className="flex h-13 items-center px-4 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
           {isSubMode ? (
             <button
               onClick={handleBack}
@@ -154,10 +153,10 @@ export function AppSidebar() {
           ) : (
             <Link href="/" className="flex items-center text-fg" aria-label="VectorFlow home">
               <span className="group-data-[collapsible=icon]:hidden">
-                <VFLogo size={20} />
+                <VFLogo size={24} />
               </span>
               <span className="hidden group-data-[collapsible=icon]:inline-flex">
-                <VFLogo size={22} wordmark={false} />
+                <VFLogo size={24} wordmark={false} />
               </span>
             </Link>
           )}
@@ -226,6 +225,7 @@ export function AppSidebar() {
           {settingsNavGroups.map((group) => {
             const demoMode = isDemoMode();
             const visibleGroupItems = group.items.filter((item) => {
+              if (item.designHidden) return false;
               if (demoMode && item.demoHidden) return false;
               if (item.requiredSuperAdmin) return isSuperAdmin;
               return isSuperAdmin || userRole === "ADMIN";

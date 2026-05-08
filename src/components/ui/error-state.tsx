@@ -1,6 +1,5 @@
 'use client';
 
-import { AlertTriangle } from 'lucide-react';
 import { FadeIn } from '@/components/motion';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -16,6 +15,7 @@ interface ErrorStateProps {
   body?: React.ReactNode;
   severity?: Severity;
   diagnostics?: Array<{ label: string; value: React.ReactNode; accent?: boolean }>;
+  statusLabel?: React.ReactNode;
   trySteps?: React.ReactNode[];
   primary?: { label: string; onClick?: () => void; icon?: React.ReactNode };
   secondary?: Array<{ label: string; onClick?: () => void; icon?: React.ReactNode }>;
@@ -32,6 +32,7 @@ export function ErrorState({
   trySteps,
   primary,
   secondary,
+  statusLabel,
   className,
 }: ErrorStateProps) {
   // Legacy error-boundary mode
@@ -39,9 +40,9 @@ export function ErrorState({
     return (
       <div className="flex min-h-[400px] items-center justify-center p-8">
         <FadeIn className="w-full max-w-md">
-          <div className="bg-[color:var(--status-error-bg)] border border-[color:var(--status-error)]/40 border-l-[3px] border-l-status-error rounded-md p-5">
+          <div className="rounded-[3px] bg-[color:var(--status-error-bg)] border border-[color:var(--status-error)]/40 border-l-[3px] border-l-status-error p-5">
             <div className="flex items-center gap-2.5 mb-2">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[color:var(--status-error)]/20 border border-status-error text-status-error font-mono text-[13px] font-semibold">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-[3px] bg-[color:var(--status-error)]/20 border border-status-error text-status-error font-mono text-[13px] font-semibold">
                 !
               </span>
               <h2 className="m-0 font-mono text-[16px] font-medium tracking-[-0.01em] text-fg">
@@ -52,7 +53,7 @@ export function ErrorState({
               An unexpected error occurred. Try again or refresh the page.
             </p>
             {error.digest && (
-              <div className="mt-3 p-2.5 bg-bg-2 border border-line rounded font-mono text-[11px] text-fg-1">
+              <div className="mt-3 p-2.5 bg-bg-2 border border-line rounded-[3px] font-mono text-[11px] text-fg-1">
                 Error ID: <span className="text-fg">{error.digest}</span>
               </div>
             )}
@@ -70,14 +71,13 @@ export function ErrorState({
   }
 
   // v2 full-fidelity mode
-  const sevColor = severity === 'warning' ? 'status-degraded' : 'status-error';
 
   return (
-    <div className={cn("flex items-center justify-center p-10", className)}>
+    <div className={cn("flex min-h-[60vh] items-center justify-center bg-bg p-10", className)}>
       <div className="w-[640px]">
         <div
           className={cn(
-            "rounded-md p-5 border-l-[3px]",
+            "rounded-[3px] p-[22px] border-l-[3px]",
             severity === 'warning'
               ? "bg-[color:var(--status-degraded-bg)] border border-[color:var(--status-degraded)]/40 border-l-status-degraded"
               : "bg-[color:var(--status-error-bg)] border border-[color:var(--status-error)]/40 border-l-status-error",
@@ -86,17 +86,29 @@ export function ErrorState({
           <div className="flex items-center gap-2.5 mb-2">
             <span
               className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-full font-mono text-[13px] font-semibold",
+                "inline-flex h-7 w-7 items-center justify-center rounded-full font-mono text-[14px] font-semibold",
                 severity === 'warning'
                   ? "bg-[color:var(--status-degraded)]/20 border border-status-degraded text-status-degraded"
                   : "bg-[color:var(--status-error)]/20 border border-status-error text-status-error",
               )}
             >
-              {severity === 'warning' ? <AlertTriangle className="h-4 w-4" /> : '!'}
+              {severity === 'warning' ? '!' : '!'}
             </span>
             <h2 className="m-0 font-mono text-[18px] font-medium tracking-[-0.01em] text-fg">
               {title}
             </h2>
+            {statusLabel && (
+              <span
+                className={cn(
+                  "ml-auto rounded-[3px] border px-2 py-0.5 font-mono text-[10px] tracking-[0.04em]",
+                  severity === 'warning'
+                    ? "border-[color:var(--status-degraded)]/40 bg-[color:var(--status-degraded)]/20 text-status-degraded"
+                    : "border-[color:var(--status-error)]/40 bg-[color:var(--status-error)]/20 text-status-error",
+                )}
+              >
+                {statusLabel}
+              </span>
+            )}
           </div>
           {body && (
             <div className="m-0 text-[13px] text-fg-1 leading-relaxed">
@@ -105,12 +117,12 @@ export function ErrorState({
           )}
 
           {diagnostics && diagnostics.length > 0 && (
-            <div className="mt-3.5 p-3 bg-bg-2 border border-line rounded font-mono text-[11.5px] leading-[1.7]">
+            <div className="mt-3.5 p-3 bg-bg-2 border border-line rounded-[3px] font-mono text-[11.5px] leading-[1.7]">
               <div className="text-fg-2 mb-1">diagnostics</div>
               {diagnostics.map((d, i) => (
                 <div key={i} className="text-fg-1">
                   {d.label}{' '}
-                  <span className={d.accent ? `text-${sevColor === 'status-degraded' ? 'status-degraded' : 'accent-brand'}` : 'text-fg'}>
+                  <span className={d.accent ? (severity === 'warning' ? 'text-status-degraded' : 'text-accent-brand') : 'text-fg'}>
                     {d.value}
                   </span>
                 </div>

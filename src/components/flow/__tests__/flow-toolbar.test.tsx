@@ -369,14 +369,14 @@ describe("FlowToolbar", () => {
   });
 
   describe("toolbar grouping", () => {
-    it("groups export, template, and history actions under Config", () => {
+    it("groups export, template, and history actions under Export", () => {
       const onSaveAsTemplate = vi.fn();
       const { getByLabelText, getByText } = renderToolbar(
         { nodes: [{ id: "n1" } as never] },
         { pipelineId: "pipe-1", onSaveAsTemplate },
       );
 
-      fireEvent.pointerDown(getByLabelText("Config actions"), { button: 0, ctrlKey: false });
+      fireEvent.pointerDown(getByLabelText("Export actions"), { button: 0, ctrlKey: false });
 
       expect(getByText("Download YAML")).toBeTruthy();
       expect(getByText("Download TOML")).toBeTruthy();

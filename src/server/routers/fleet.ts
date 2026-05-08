@@ -255,6 +255,17 @@ export const fleetRouter = router({
         where,
         include: {
           environment: { select: { id: true, name: true } },
+          nodeMetrics: {
+            orderBy: { timestamp: "desc" },
+            take: 24,
+            select: {
+              timestamp: true,
+              memoryTotalBytes: true,
+              memoryUsedBytes: true,
+              cpuSecondsTotal: true,
+              cpuSecondsIdle: true,
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
       });

@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { parseS3StorageLocation } from "@/server/services/storage-backend";

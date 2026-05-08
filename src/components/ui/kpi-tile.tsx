@@ -26,22 +26,22 @@ export function KpiTile({
   return (
     <div
       className={cn(
-        "flex flex-col p-4",
+        "flex flex-col p-[14px]",
         bordered &&
-          "bg-bg-2 border border-line rounded-md",
+          "bg-bg-2 border border-line rounded-[3px]",
         className,
       )}
       style={style}
       {...props}
     >
-      <div className="font-mono text-fg-2 uppercase tracking-[0.05em]" style={{ fontSize: 10 }}>
+      <div className="font-mono text-fg-2 uppercase tracking-[0.05em]" style={{ fontSize: 11 }}>
         {label}
       </div>
       <div className="flex items-baseline gap-1.5 mt-2">
         <span
           className="font-mono font-medium tracking-[-0.02em]"
           style={{
-            fontSize: 26,
+            fontSize: 28,
             color: accent ?? "var(--fg)",
             lineHeight: 1,
           }}
@@ -55,7 +55,7 @@ export function KpiTile({
         )}
       </div>
       {(sub || trend) && (
-        <div className="flex items-center justify-between mt-2">
+        <div className="flex items-center justify-between gap-3 mt-2">
           {sub && (
             <span
               className="font-mono text-fg-2"
@@ -99,14 +99,14 @@ export function KpiInStrip({
   ...props
 }: KpiTileProps) {
   return (
-    <div className={cn("p-4", className)} {...props}>
-      <div className="font-mono text-fg-2 uppercase tracking-[0.05em]" style={{ fontSize: 10 }}>
+    <div className={cn("p-[14px]", className)} {...props}>
+      <div className="font-mono text-fg-2 uppercase tracking-[0.05em]" style={{ fontSize: 11 }}>
         {label}
       </div>
       <div className="flex items-baseline gap-1 mt-1.5">
         <span
           className="font-mono font-medium"
-          style={{ fontSize: 26, color: accent ?? "var(--fg)", lineHeight: 1 }}
+          style={{ fontSize: 28, color: accent ?? "var(--fg)", lineHeight: 1 }}
         >
           {value}
         </span>

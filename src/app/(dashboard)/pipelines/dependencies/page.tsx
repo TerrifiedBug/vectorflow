@@ -24,6 +24,7 @@ import {
 } from "@/components/pipeline/dependency-graph-node";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ── Dagre layout helper ─────────────────────────────────────────────────
 const NODE_WIDTH = 220;
@@ -121,8 +122,15 @@ function DependencyGraphContent() {
     return (
       <EmptyState
         icon={Network}
-        title="No dependencies configured"
-        description="Add dependencies in pipeline settings to see the dependency graph here."
+        title="No dependency graph yet"
+        description="This environment has pipelines, but no upstream/downstream gates are configured. Add a dependency from a pipeline’s settings, then return here to verify deploy order and blast radius."
+        action={{ label: "Open pipelines", href: "/pipelines" }}
+        secondary={{ label: "Create pipeline", href: "/pipelines/new" }}
+        helperLines={[
+          { icon: "1", text: "Open a pipeline that must wait for another pipeline." },
+          { icon: "2", text: "Add its upstream requirement in dependency settings." },
+          { icon: "3", text: "Refresh this graph to confirm the route before deploying." },
+        ]}
         className="mt-8"
       />
     );
@@ -152,19 +160,24 @@ function DependencyGraphContent() {
 // ── Page wrapper ────────────────────────────────────────────────────────
 export default function PipelineDependenciesPage() {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/pipelines">
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            Pipelines
-          </Link>
-        </Button>
-        <h1 className="text-lg font-semibold">Pipeline Dependencies</h1>
+    <div className="min-h-full bg-bg text-fg">
+      <PageHeader
+        title="Pipeline dependencies"
+        subtitle="Deploy-order map for upstream requirements and downstream blast radius."
+        actions={
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/pipelines">
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              Pipelines
+            </Link>
+          </Button>
+        }
+      />
+      <div className="p-4">
+        <ReactFlowProvider>
+          <DependencyGraphContent />
+        </ReactFlowProvider>
       </div>
-      <ReactFlowProvider>
-        <DependencyGraphContent />
-      </ReactFlowProvider>
     </div>
   );
 }

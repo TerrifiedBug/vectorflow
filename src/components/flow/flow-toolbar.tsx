@@ -652,7 +652,7 @@ export function FlowToolbar({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <ToolbarMenuButton icon={FileCog} label="Config" />
+            <ToolbarMenuButton icon={FileCog} label="Export" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-52">
             <DropdownMenuLabel>Config actions</DropdownMenuLabel>
@@ -783,9 +783,7 @@ export function FlowToolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label="Pipeline settings">
-                  <Settings className="h-4 w-4" />
-                </Button>
+                <ToolbarMenuButton icon={Settings} label="Settings" />
               </PopoverTrigger>
             </TooltipTrigger>
             <TooltipContent>Pipeline settings</TooltipContent>

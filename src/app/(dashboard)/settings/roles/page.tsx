@@ -1,7 +1,5 @@
-"use client";
-
-import { RolesMatrix } from "../_components/access-settings-shell";
+import { redirect } from "next/navigation";
 
 export default function RolesPage() {
-  return <RolesMatrix />;
+  redirect("/settings");
 }

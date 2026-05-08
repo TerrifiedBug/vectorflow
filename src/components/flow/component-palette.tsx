@@ -103,11 +103,11 @@ const DraggableItem = memo(function DraggableItem({
           <span className="truncate text-[12px] font-medium text-fg">
             {def.displayName}
           </span>
-          <span className="shrink-0 font-mono uppercase text-[9px] tracking-[0.04em] text-fg-2">
+          <span className="shrink-0 font-mono uppercase text-[11px] tracking-[0.04em] text-fg-2">
             {def.category}
           </span>
         </div>
-        <div className="mt-[2px] line-clamp-2 text-[10.5px] leading-[1.35] text-fg-2">
+        <div className="mt-[2px] line-clamp-2 text-[11px] leading-[1.35] text-fg-2">
           {def.description}
         </div>
       </div>
@@ -144,7 +144,7 @@ function CollapsibleSection({
         aria-controls={panelId}
         className={cn(
           "flex w-full items-center gap-[6px] px-[14px] pt-2 pb-1",
-          "font-mono uppercase text-[9px] tracking-[0.08em] text-fg-2",
+          "font-mono uppercase text-[11px] tracking-[0.08em] text-fg-2",
           "transition-colors hover:text-fg",
         )}
       >
@@ -240,11 +240,11 @@ function SharedItem({ sc, componentDef, onAdd }: SharedItemProps) {
           <VFIcon name="git-branch" size={10} className="shrink-0 text-accent-brand" />
         </div>
         <div className="mt-[2px] flex items-center gap-[6px]">
-          <span className="truncate font-mono uppercase text-[9px] tracking-[0.04em] text-fg-2">
+          <span className="truncate font-mono uppercase text-[11px] tracking-[0.04em] text-fg-2">
             {sc.componentType}
           </span>
           {sc.linkedPipelineCount > 0 && (
-            <span className="shrink-0 font-mono text-[9px] text-fg-2">
+            <span className="shrink-0 font-mono text-[11px] text-fg-2">
               · {sc.linkedPipelineCount} pipeline
               {sc.linkedPipelineCount !== 1 ? "s" : ""}
             </span>
@@ -392,7 +392,7 @@ export function ComponentPalette() {
             className="flex-1 border-none bg-transparent text-[11px] text-fg outline-none placeholder:text-fg-2"
             aria-label="Search components"
           />
-          <span className="font-mono text-[10px] text-fg-2 tabular-nums">
+          <span className="font-mono text-[11px] text-fg-2 tabular-nums">
             {totalCount}
           </span>
         </div>
@@ -409,7 +409,7 @@ export function ComponentPalette() {
           role="tab"
           aria-selected={activeTab === "catalog"}
           className={cn(
-            "flex-1 border-b-2 px-2 py-2 font-mono text-[10px] uppercase tracking-[0.06em] transition-colors",
+            "flex-1 border-b-2 px-2 py-2 font-mono text-[11px] uppercase tracking-[0.06em] transition-colors",
             activeTab === "catalog"
               ? "border-accent-line text-fg"
               : "border-transparent text-fg-2 hover:text-fg",
@@ -423,7 +423,7 @@ export function ComponentPalette() {
           role="tab"
           aria-selected={activeTab === "shared"}
           className={cn(
-            "flex-1 border-b-2 px-2 py-2 font-mono text-[10px] uppercase tracking-[0.06em] transition-colors",
+            "flex-1 border-b-2 px-2 py-2 font-mono text-[11px] uppercase tracking-[0.06em] transition-colors",
             activeTab === "shared"
               ? "border-accent-line text-fg"
               : "border-transparent text-fg-2 hover:text-fg",
@@ -475,7 +475,7 @@ export function ComponentPalette() {
                   type="button"
                   aria-pressed={sharedKindFilter === kind}
                   className={cn(
-                    "rounded-[3px] border px-[7px] py-[3px] font-mono text-[9px] uppercase tracking-[0.06em] transition-colors",
+                    "rounded-[3px] border px-[7px] py-[3px] font-mono text-[11px] uppercase tracking-[0.06em] transition-colors",
                     sharedKindFilter === kind
                       ? "border-accent-line bg-accent-soft text-fg"
                       : "border-transparent text-fg-2 hover:bg-bg-2 hover:text-fg",

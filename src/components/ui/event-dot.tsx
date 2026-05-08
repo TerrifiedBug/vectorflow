@@ -30,7 +30,7 @@ export function EventDot({
       role="img"
       aria-label={`${kind} event`}
       className={cn(
-        "inline-flex items-center justify-center rounded-full font-mono font-semibold shrink-0",
+        "inline-flex items-center justify-center rounded-[3px] font-mono font-semibold shrink-0",
         className,
       )}
       style={{
@@ -39,7 +39,7 @@ export function EventDot({
         background: `color-mix(in srgb, ${color} 14%, transparent)`,
         border: `1px solid ${color}`,
         color,
-        fontSize: size - 1,
+        fontSize: Math.max(11, size - 1),
         ...style,
       }}
       {...props}

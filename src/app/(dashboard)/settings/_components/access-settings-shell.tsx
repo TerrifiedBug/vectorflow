@@ -2,11 +2,12 @@ import Link from "next/link";
 import { Check, ShieldCheck, Users, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 
 const TABS = [
   { id: "users", label: "Users", href: "/settings/users", icon: Users },
-  { id: "roles", label: "Roles", href: "/settings/roles", icon: ShieldCheck },
-  { id: "sso", label: "SSO", href: "/settings/auth", icon: ShieldCheck },
+  { id: "roles", label: "Roles", href: "/settings", icon: ShieldCheck },
+  { id: "sso", label: "SSO", href: "/settings", icon: ShieldCheck },
 ] as const;
 
 export function AccessSettingsShell({
@@ -17,16 +18,13 @@ export function AccessSettingsShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-5 bg-bg text-fg">
-      <div className="border-b border-line pb-4">
-        <div className="font-mono text-[11px] uppercase tracking-[0.06em] text-fg-2">settings / access</div>
-        <h1 className="mt-1 font-mono text-[22px] font-medium tracking-[-0.01em] text-fg">Users, roles & SSO</h1>
-        <p className="mt-2 max-w-[760px] text-[12px] leading-relaxed text-fg-1">
-          Manage human access, role permissions, and identity-provider mapping across VectorFlow.
-        </p>
-      </div>
-
-      <div className="flex flex-wrap gap-1 rounded-[3px] border border-line bg-bg-2 p-1">
+    <div className="min-h-full bg-bg text-fg">
+      <PageHeader
+        title="Users, roles & SSO"
+        subtitle="Manage human access, role permissions, and identity-provider mapping across VectorFlow."
+      />
+      <div className="space-y-4 p-4">
+        <div className="flex flex-wrap gap-1 rounded-[3px] border border-line bg-bg-2 p-1">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = active === tab.id;
@@ -44,9 +42,10 @@ export function AccessSettingsShell({
             </Link>
           );
         })}
-      </div>
+        </div>
 
-      {children}
+        {children}
+      </div>
     </div>
   );
 }

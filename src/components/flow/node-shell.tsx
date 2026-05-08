@@ -78,7 +78,7 @@ export function NodeShell({
       )}
       <div
         className={cn(
-          "relative overflow-hidden rounded-md transition-shadow duration-150",
+          "relative overflow-hidden rounded-[3px] transition-shadow duration-150",
           searchMatch && "ring-2 ring-yellow-400",
         )}
         style={{
@@ -105,7 +105,7 @@ export function NodeShell({
               className="font-mono uppercase truncate"
               style={{
                 color,
-                fontSize: 9,
+                fontSize: 11,
                 letterSpacing: "0.04em",
                 lineHeight: 1.1,
               }}
@@ -123,7 +123,7 @@ export function NodeShell({
                 className="font-mono truncate"
                 style={{
                   color: "var(--fg-2)",
-                  fontSize: 10,
+                  fontSize: 11,
                   lineHeight: 1.2,
                   marginTop: 1,
                 }}
@@ -137,7 +137,7 @@ export function NodeShell({
               className="font-mono text-right"
               style={{
                 color: "var(--fg-1)",
-                fontSize: 9.5,
+                fontSize: 11,
                 lineHeight: 1,
               }}
             >

@@ -44,7 +44,7 @@ interface StatusDotProps {
 export function StatusDot({
   variant,
   pulse = false,
-  halo = true,
+  halo = false,
   size = 6,
   className,
   label,

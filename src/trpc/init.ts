@@ -285,6 +285,16 @@ export const withTeamAccess = (minRole: Role) =>
       }
     }
 
+    if (!teamId && rawInput?.id) {
+      const sharedComponent = await prisma.sharedComponent.findUnique({
+        where: { id: rawInput.id as string },
+        select: { environment: { select: { teamId: true } } },
+      });
+      if (sharedComponent) {
+        teamId = sharedComponent.environment.teamId ?? undefined;
+      }
+    }
+
     // Resolve requestId → EventSampleRequest → pipeline → environment.teamId
     if (!teamId && rawInput?.requestId) {
       const req = await prisma.eventSampleRequest.findUnique({

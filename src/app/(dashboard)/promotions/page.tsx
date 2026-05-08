@@ -268,9 +268,14 @@ export default function PromotionsPage() {
       </KpiStrip>
 
       {/* MAIN */}
-      <div className="flex-1 grid min-h-0" style={{ gridTemplateColumns: "1fr 480px" }}>
+      <div
+        className={cn(
+          "flex-1 grid min-h-0",
+          visibleRows.length === 0 ? "grid-cols-1" : "lg:grid-cols-[1fr_480px]",
+        )}
+      >
         {/* LEFT — list */}
-        <div className="flex flex-col min-h-0 border-r border-line">
+        <div className={cn("flex flex-col min-h-0", visibleRows.length > 0 && "border-r border-line")}>
           {/* Tabs */}
           <div className="flex items-center gap-5 px-5 border-b border-line bg-bg-1 h-11">
             {tabs.map((t) => (
@@ -347,9 +352,13 @@ export default function PromotionsPage() {
             {teamId && recentQ.isSuccess && visibleRows.length === 0 && (
               <EmptyState
                 glyph="◇"
-                title="Nothing here"
-                description={`No ${tabs.find((t) => t.id === tab)?.label.toLowerCase()} promotions.`}
-                action={{ label: "New promotion", href: "/pipelines" }}
+                title="No promotions match this view"
+                description={
+                  statusFilter === "ALL"
+                    ? `This team has no ${tabs.find((t) => t.id === tab)?.label.toLowerCase()} promotions yet.`
+                    : `This team has no ${STATUS_FILTER_LABELS[statusFilter].toLowerCase()} promotions in this tab.`
+                }
+                action={{ label: "Start from pipelines", href: "/pipelines" }}
               />
             )}
             {visibleRows.map((r) => (
@@ -403,16 +412,13 @@ export default function PromotionsPage() {
           </div>
         </div>
 
-        {/* RIGHT — detail */}
-        <div className="flex flex-col min-h-0 bg-bg overflow-hidden">
-          {!selected ? (
-            <div className="flex-1 flex items-center justify-center text-fg-2 font-mono text-[12px]">
-              Select a promotion
-            </div>
-          ) : (
-            <PromotionDetail row={selected} />
-          )}
-        </div>
+        {visibleRows.length === 0 ? (
+          null
+        ) : (
+          <div className="flex flex-col min-h-0 bg-bg overflow-hidden">
+            {selected && <PromotionDetail row={selected} />}
+          </div>
+        )}
       </div>
     </div>
   );

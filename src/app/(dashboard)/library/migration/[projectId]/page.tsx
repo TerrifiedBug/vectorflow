@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   Play,
   CheckCircle,
+  AlertTriangle,
   Loader2,
   Download,
   ExternalLink,
@@ -26,6 +27,7 @@ import { BlockDetailPanel } from "@/components/migration/block-detail-panel";
 import { ConfigViewer } from "@/components/migration/config-viewer";
 import { ReadinessBadge } from "@/components/migration/readiness-badge";
 import type { ParsedConfig, TranslationResult } from "@/server/services/migration/types";
+import { getMigrationTranslationBlocks } from "@/lib/migration-normalize";
 
 export default function MigrationProjectPage({
   params,
@@ -76,11 +78,20 @@ export default function MigrationProjectPage({
     }
   }
   const parsedConfig = project?.parsedTopology as unknown as ParsedConfig | null;
-  const translationResult = project?.translatedBlocks as unknown as TranslationResult | null;
+  const translationBlocks = getMigrationTranslationBlocks(project?.translatedBlocks);
+  const translationResult = translationBlocks.length > 0
+    ? ({ blocks: translationBlocks } as unknown as TranslationResult)
+    : null;
 
-  const selectedBlock = parsedConfig?.blocks.find((b) => b.id === selectedBlockId) ?? null;
-  const selectedTranslation = translationResult?.blocks.find(
-    (b) => b.blockId === selectedBlockId,
+  const selectedBlock = Array.isArray(parsedConfig?.blocks)
+    ? parsedConfig.blocks.find((b) => b.id === selectedBlockId) ?? null
+    : null;
+  const selectedTranslation = translationBlocks.find(
+    (b): b is TranslationResult["blocks"][number] =>
+      typeof b === "object" &&
+      b !== null &&
+      "blockId" in b &&
+      (b as { blockId?: unknown }).blockId === selectedBlockId,
   ) ?? null;
 
   const startTranslationMutation = useMutation(
@@ -214,8 +225,70 @@ export default function MigrationProjectPage({
     );
   }
 
+  if (!selectedTeamId) {
+    return (
+      <MigrationDiagnosticState
+        title="Select a team to load this migration"
+        message="The migration detail route needs an active team scope before it can request project data."
+        diagnostics={[
+          ["project", projectId],
+          ["team", "not selected"],
+        ]}
+        nextSteps={[
+          "Select a team from the application header.",
+          "Return to the migration library once team context is available.",
+        ]}
+        actions={[
+          { label: "Back to migration library", onClick: () => router.push("/library/migration"), variant: "default" },
+        ]}
+      />
+    );
+  }
+
+  if (projectQuery.isError) {
+    return (
+      <MigrationDiagnosticState
+        title="Migration project could not be loaded"
+        message="The server returned an error while loading this migration project. The route is available, but the detail view cannot truthfully render project data until the request succeeds."
+        diagnostics={[
+          ["project", projectId],
+          ["team", selectedTeamId],
+          ["error", projectQuery.error.message],
+        ]}
+        nextSteps={[
+          "Retry the request.",
+          "Confirm the project exists in the selected team.",
+          "Return to the migration library if this link is stale.",
+        ]}
+        actions={[
+          { label: "Retry", onClick: () => void projectQuery.refetch(), variant: "default" },
+          { label: "Back to migration library", onClick: () => router.push("/library/migration"), variant: "outline" },
+        ]}
+      />
+    );
+  }
+
   if (!project) {
-    return <div className="p-8">Project not found</div>;
+    return (
+      <MigrationDiagnosticState
+        title="Migration project not found"
+        message="No migration project was returned for this route and team scope. This may be a stale link, a deleted project, or a project that belongs to a different team."
+        diagnostics={[
+          ["project", projectId],
+          ["team", selectedTeamId],
+          ["query", "completed without project data"],
+        ]}
+        nextSteps={[
+          "Check that the active team is correct.",
+          "Open the migration library and choose an existing project.",
+          "Create a new migration only after that workflow has an approved design.",
+        ]}
+        actions={[
+          { label: "Back to migration library", onClick: () => router.push("/library/migration"), variant: "default" },
+          { label: "Retry", onClick: () => void projectQuery.refetch(), variant: "outline" },
+        ]}
+      />
+    );
   }
 
   return (
@@ -230,7 +303,7 @@ export default function MigrationProjectPage({
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-lg font-semibold">{project.name}</h1>
+          <h1 className="font-mono text-[22px] font-medium tracking-[-0.02em] text-fg">{project.name}</h1>
           <Badge variant="outline">{project.platform}</Badge>
           <ReadinessBadge score={project.readinessScore} />
         </div>
@@ -385,13 +458,29 @@ export default function MigrationProjectPage({
               onRetryAllFailed={handleRetryAllFailed}
             />
           ) : project.status === "FAILED" ? (
-            <div className="flex items-center justify-center h-full text-sm text-destructive">
-              Parsing failed. Please check your config and try again.
+            <div className="flex h-full items-center justify-center p-8">
+              <div className="max-w-lg rounded-[3px] border border-status-error/40 bg-status-error-bg p-4">
+                <h2 className="font-mono text-[16px] font-medium text-fg">Migration parse failed</h2>
+                <p className="mt-2 text-[12px] text-fg-1">
+                  {project.errorMessage ?? "The source config could not be parsed. Review the original config and retry parsing."}
+                </p>
+                <pre className="mt-3 rounded-[3px] border border-line bg-bg p-3 font-mono text-[11px] text-fg-2">
+                  project · {project.id}
+                  {"\n"}status · {project.status}
+                </pre>
+              </div>
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Parsing config...
+            <div className="flex h-full items-center justify-center p-8">
+              <div className="max-w-lg rounded-[3px] border border-line bg-bg-2 p-4 text-center">
+                <h2 className="font-mono text-[16px] font-medium text-fg">No parsed topology saved</h2>
+                <p className="mt-2 text-[12px] text-fg-1">
+                  This migration has metadata and generated pipeline state, but no parsed block topology to draw. Open the original config or regenerate the migration parse before editing blocks.
+                </p>
+                <div className="mt-3 font-mono text-[11px] text-fg-2">
+                  status · {project.status} · readiness {project.readinessScore ?? 0}%
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -410,6 +499,75 @@ export default function MigrationProjectPage({
             />
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+type DiagnosticAction = {
+  label: string;
+  onClick: () => void;
+  variant: "default" | "outline";
+};
+
+function MigrationDiagnosticState({
+  title,
+  message,
+  diagnostics,
+  nextSteps,
+  actions,
+}: {
+  title: string;
+  message: string;
+  diagnostics: Array<[label: string, value: string]>;
+  nextSteps: string[];
+  actions: DiagnosticAction[];
+}) {
+  return (
+    <div className="min-h-[calc(100vh-4rem)] bg-bg p-6 text-fg">
+      <div className="mx-auto max-w-2xl rounded-[3px] border border-status-error/40 bg-status-error-bg p-5">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-status-error" />
+          <div className="min-w-0 flex-1">
+            <h1 className="font-mono text-[22px] font-medium tracking-[-0.02em] text-fg">
+              {title}
+            </h1>
+            <p className="mt-2 text-[13px] leading-relaxed text-fg-1">{message}</p>
+
+            <div className="mt-4 rounded-[3px] border border-line bg-bg p-3 font-mono text-[11.5px] text-fg-1">
+              {diagnostics.map(([label, value]) => (
+                <div key={label} className="flex gap-2">
+                  <span className="w-20 shrink-0 text-fg-2">{label}</span>
+                  <span className="min-w-0 break-all text-fg">{value}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4">
+              <h2 className="font-mono text-[12px] uppercase tracking-[0.04em] text-fg-2">
+                Next steps
+              </h2>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-[12px] text-fg-1">
+                {nextSteps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              {actions.map((action) => (
+                <Button
+                  key={action.label}
+                  variant={action.variant}
+                  size="sm"
+                  onClick={action.onClick}
+                >
+                  {action.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -72,8 +72,9 @@ export function isDevAuthBypassEnabledForRequest(
 ): boolean {
   if (!isDevAuthBypassEnabled(env)) return false;
   if (env.DEV_AUTH_BYPASS_ALLOW_NETWORK === "1") return true;
-
-  return isLocalAddress(options.requestHost) && isLocalAddress(options.clientAddress);
+  if (!isLocalAddress(options.requestHost)) return false;
+  if (!options.clientAddress) return env.VF_TRUST_PROXY_HEADERS === "true";
+  return isLocalAddress(options.clientAddress);
 }
 
 export function isDevAuthBypassRequestAllowed(

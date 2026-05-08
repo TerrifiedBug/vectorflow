@@ -53,6 +53,10 @@ export default function NewPipelinePage() {
   const environments = environmentsQuery.data ?? [];
   const templates = templatesQuery.data ?? [];
   const effectiveEnvId = selectedEnvironmentId || environments[0]?.id || "";
+  const effectiveEnvironment = environments.find((e) => e.id === effectiveEnvId);
+  const environmentLabel =
+    effectiveEnvironment?.name ??
+    (effectiveEnvId ? "Selected environment" : "No environment selected");
 
   const createMutation = useMutation(
     trpc.pipeline.create.mutationOptions({
@@ -245,7 +249,7 @@ export default function NewPipelinePage() {
             <div className="space-y-2">
               <Label>Environment</Label>
               <p className="text-sm">
-                {environments.find((e) => e.id === effectiveEnvId)?.name ?? "No environment selected"}
+                {environmentLabel}
               </p>
               <p className="text-xs text-muted-foreground">
                 Change the environment using the selector in the header

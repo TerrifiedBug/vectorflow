@@ -759,7 +759,7 @@ export const settingsRouter = router({
             : settings?.oidcIssuer
             ? `Configured (${settings.oidcDisplayName ?? "SSO"})`
             : "No OIDC provider configured — using local auth only",
-          href: "/settings/auth",
+          href: "/settings",
         },
         // SCIM
         {

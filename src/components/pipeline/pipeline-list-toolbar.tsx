@@ -82,19 +82,19 @@ function TagMultiSelect({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-1">
+        <Button variant="outline" size="sm" className="h-7 rounded-[3px] border-line-2 bg-bg-2 px-2.5 font-mono text-[10.5px] uppercase tracking-[0.05em]">
           Tags
           {selected.length > 0 ? (
-            <Badge variant="secondary" className="ml-1 px-1 text-xs">
+            <Badge variant="secondary" className="ml-1 rounded-[3px] px-1 font-mono text-[9.5px]">
               {selected.length}
             </Badge>
           ) : (
-            <span className="text-muted-foreground ml-1">All</span>
+            <span className="ml-1 text-fg-2">All</span>
           )}
           <ChevronsUpDown className="h-3 w-3 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[220px] p-0" align="start">
+      <PopoverContent className="w-[220px] rounded-[3px] border-line-2 bg-bg-2 p-0" align="start">
         <Command>
           <CommandInput placeholder="Search tags..." />
           <CommandList>
@@ -115,11 +115,11 @@ function TagMultiSelect({
           </CommandList>
         </Command>
         {selected.length > 0 && (
-          <div className="border-t p-1">
+          <div className="border-t border-line p-1">
             <Button
               variant="ghost"
               size="sm"
-              className="w-full text-xs"
+              className="h-7 w-full rounded-[3px] font-mono text-[10.5px] uppercase tracking-[0.05em]"
               onClick={() => onChange([])}
             >
               <X className="mr-1 h-3 w-3" />
@@ -190,23 +190,18 @@ export function PipelineListToolbar({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card px-4 py-2.5">
-      {/* Search */}
-      <div className="relative w-64">
-        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+    <div className="flex flex-wrap items-center gap-3 rounded-[3px] border border-line bg-bg-2 px-3 py-2.5">
+      <div className="relative w-full min-w-[240px] flex-1 md:max-w-[320px]">
+        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-2" />
         <Input
           value={localSearch}
           onChange={(e) => setLocalSearch(e.target.value)}
-          placeholder="Search pipelines..."
-          className="h-8 pl-8 text-sm"
+          placeholder="Search pipelines…"
+          className="h-8 border-line-2 bg-bg-1 pl-8 font-mono text-[12px]"
         />
       </div>
 
-      {/* Separator */}
-      <div className="h-6 w-px bg-border" />
-
-      {/* Status filter chips */}
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1.5">
         {STATUS_OPTIONS.map((opt) => {
           const count = statusCounts?.[opt.id];
           return (
@@ -215,22 +210,15 @@ export function PipelineListToolbar({
               type="button"
               onClick={() => toggleStatus(opt.id)}
               className={cn(
-                "inline-flex items-center gap-1 rounded-full px-3 h-7 text-xs font-medium border transition-colors",
+                "inline-flex h-7 items-center gap-1 rounded-[3px] border px-2 font-mono text-[10.5px] uppercase tracking-[0.05em] transition-colors",
                 statusFilter.includes(opt.id)
-                  ? "bg-accent text-accent-foreground border-transparent"
-                  : "bg-transparent text-muted-foreground border-border hover:bg-muted",
+                  ? "border-accent-line bg-accent-soft text-accent-brand"
+                  : "border-line bg-bg-1 text-fg-2 hover:border-line-2 hover:text-fg",
               )}
             >
-              {opt.label}
-              {count != null && count > 0 && (
-                <span
-                  className={cn(
-                    "inline-flex items-center justify-center rounded-full px-1.5 min-w-[18px] h-4 text-[10px] font-semibold tabular-nums",
-                    statusFilter.includes(opt.id)
-                      ? "bg-accent-foreground/15"
-                      : "bg-muted-foreground/15",
-                  )}
-                >
+              <span>{opt.label}</span>
+              {count != null && (
+                <span className={cn("min-w-[16px] text-right tabular-nums", statusFilter.includes(opt.id) ? "text-accent-brand" : "text-fg-2")}>
                   {count}
                 </span>
               )}
@@ -239,10 +227,6 @@ export function PipelineListToolbar({
         })}
       </div>
 
-      {/* Separator */}
-      <div className="h-6 w-px bg-border" />
-
-      {/* Tag multi-select */}
       {tagOptions.length > 0 && (
         <TagMultiSelect
           options={tagOptions}
@@ -251,50 +235,43 @@ export function PipelineListToolbar({
         />
       )}
 
-      {/* Clear all filters */}
       {hasActiveFilters && (
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 text-xs text-muted-foreground"
+          className="h-7 px-2 font-mono text-[10.5px] uppercase tracking-[0.05em] text-fg-2"
           onClick={clearAll}
         >
-          <X className="mr-1 h-3 w-3" />
-          Clear filters
+          <X className="h-3.5 w-3.5" />
+          Clear
         </Button>
       )}
 
-      {/* Density toggle */}
       {density && onDensityChange && (
-        <>
-          <div className="h-6 w-px bg-border" />
-          <div className="flex items-center border rounded-md">
-            <Button
-              variant={density === "comfortable" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 px-2"
-              onClick={() => onDensityChange("comfortable")}
-            >
-              <LayoutList className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant={density === "compact" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 px-2"
-              onClick={() => onDensityChange("compact")}
-            >
-              <List className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </>
+        <div className="flex items-center rounded-[3px] border border-line bg-bg-1">
+          <Button
+            variant={density === "comfortable" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-7 rounded-none border-0 px-2 data-[variant=secondary]:bg-bg-3"
+            onClick={() => onDensityChange("comfortable")}
+          >
+            <LayoutList className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant={density === "compact" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-7 rounded-none border-0 border-l border-line px-2 data-[variant=secondary]:bg-bg-3"
+            onClick={() => onDensityChange("compact")}
+          >
+            <List className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       )}
 
-      {/* Preset bar — rendered on right side when provided */}
       {presetBar && (
-        <>
-          <div className="flex-1" />
+        <div className="min-w-full md:ml-auto md:min-w-[280px] md:flex-1">
           {presetBar}
-        </>
+        </div>
       )}
     </div>
   );

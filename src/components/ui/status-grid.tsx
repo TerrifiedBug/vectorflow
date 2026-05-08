@@ -11,7 +11,7 @@ interface StatusGridProps {
 
 export function StatusGrid({
   data,
-  cellSize = 10,
+  cellSize = 9,
   gap = 2,
   color = "var(--accent-brand)",
   className,

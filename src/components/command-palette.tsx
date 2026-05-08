@@ -52,10 +52,9 @@ const NAV_PAGES: NavPage[] = [
   { title: "Alerts", href: "/alerts", icon: Bell, keywords: ["notifications", "warnings"], shortcut: "g a" },
   { title: "Incidents", href: "/incidents", icon: Bell, keywords: ["timeline", "anomalies"], shortcut: "g i" },
   { title: "Analytics", href: "/analytics", icon: BarChart3, keywords: ["metrics", "charts", "cost"] },
+  { title: "Costs", href: "/analytics/costs", icon: BarChart3, keywords: ["cost", "savings", "spend"] },
+  { title: "Promotions", href: "/promotions", icon: Rocket, keywords: ["promote", "approval", "release"] },
   { title: "Settings", href: "/settings", icon: Settings, keywords: ["config", "preferences"], shortcut: "g s" },
-  { title: "Authentication", href: "/settings/auth", icon: Settings, keywords: ["login", "sso", "oidc"] },
-  { title: "Users", href: "/settings/users", icon: Settings, keywords: ["members", "accounts"] },
-  { title: "Roles", href: "/settings/roles", icon: Settings, keywords: ["permissions", "matrix"] },
   { title: "My Team", href: "/settings/team", icon: Settings, keywords: ["team config"] },
   { title: "Service Accounts", href: "/settings/service-accounts", icon: Settings, keywords: ["api keys", "tokens"] },
   { title: "Secrets", href: "/settings/secrets", icon: Settings, keywords: ["vault", "security"] },
@@ -135,15 +134,15 @@ export function CommandPalette() {
       onOpenChange={handleOpenChange}
       title="Command Palette"
       description="Search pipelines, nodes, environments, and pages..."
-      className="border-line bg-bg-2 text-fg sm:max-w-2xl"
+      className="border-line-2 bg-bg-2 text-fg shadow-[0_24px_60px_rgba(0,0,0,0.6),0_8px_16px_rgba(0,0,0,0.4)] sm:max-w-[720px] rounded-[3px] [&_[data-slot=command]]:rounded-[3px] [&_[data-slot=command]]:bg-bg-2"
     >
       <CommandInput
         placeholder="Search pipelines, nodes, pages..."
         value={search}
         onValueChange={setSearch}
-        className="font-mono text-[13px]"
+        className="font-mono text-[13px] text-fg placeholder:text-fg-2"
       />
-      <CommandList className="max-h-[520px]">
+      <CommandList className="max-h-[520px] py-1">
         <CommandEmpty className="py-8 font-mono text-[12px] text-fg-2">
           {search.length < 2 ? "Type to search..." : "No results found."}
         </CommandEmpty>
@@ -222,7 +221,7 @@ export function CommandPalette() {
           </CommandSection>
         )}
       </CommandList>
-      <div className="flex items-center justify-between border-t border-line bg-bg-1 px-4 py-2 font-mono text-[10.5px] text-fg-2">
+      <div className="flex items-center justify-between border-t border-line bg-bg px-3.5 py-2 font-mono text-[10.5px] text-fg-2">
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1"><Kbd>↑↓</Kbd> navigate</span>
           <span className="inline-flex items-center gap-1"><Kbd>↵</Kbd> open</span>
@@ -238,7 +237,7 @@ function CommandSection({ heading, separated = false, children }: { heading: str
   return (
     <>
       {separated && <CommandSeparator className="bg-line" />}
-      <CommandGroup heading={heading} className="[&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.08em] [&_[cmdk-group-heading]]:text-fg-2">
+      <CommandGroup heading={heading} className="[&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.08em] [&_[cmdk-group-heading]]:text-fg-2">
         {children}
       </CommandGroup>
     </>
@@ -264,7 +263,7 @@ function PaletteItem({
     <CommandItem
       value={value}
       onSelect={onSelect}
-      className="border-l-2 border-transparent px-3 py-2.5 text-[12px] data-[selected=true]:border-accent-brand data-[selected=true]:bg-accent-soft data-[selected=true]:text-fg"
+      className="rounded-none border-l-2 border-transparent px-4 py-2 text-[12px] data-[selected=true]:border-accent-brand data-[selected=true]:bg-accent-soft data-[selected=true]:text-fg"
     >
       <Icon className="h-3.5 w-3.5 text-fg-2" />
       <span className="font-medium text-fg">{title}</span>

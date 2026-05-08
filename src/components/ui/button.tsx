@@ -15,6 +15,8 @@ const buttonVariants = cva(
           "bg-accent-brand text-primary-foreground border border-accent-brand hover:bg-accent-brand-2 hover:border-accent-brand-2",
         destructive:
           "bg-transparent text-status-error border border-[color:var(--status-error)]/40 hover:bg-[color:var(--status-error-bg)]",
+        danger:
+          "bg-transparent text-status-error border border-[color:var(--status-error)]/40 hover:bg-[color:var(--status-error-bg)]",
         outline:
           "bg-transparent text-fg border border-line-2 hover:bg-bg-3",
         secondary:

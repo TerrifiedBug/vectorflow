@@ -5,6 +5,7 @@ import {
   AlertRuleForm,
   formValuesFromSearchParams,
 } from "@/components/alerts/alert-rule-form";
+import { VFIcon } from "@/components/ui/vf-icon";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useSearchParams } from "next/navigation";
 
@@ -44,8 +45,26 @@ export default function NewAlertRulePage() {
 
   if (environmentId && !didSyncEnvironment && selectedEnvironmentId !== environmentId) {
     return (
-      <div className="flex flex-col h-full items-center justify-center bg-bg text-fg p-8">
-        <div className="font-mono text-[12px] text-fg-2">Loading alert rule environment…</div>
+      <div className="flex h-full items-center justify-center bg-bg p-8 text-fg">
+        <div className="w-full max-w-[720px] rounded-[3px] border border-line bg-bg-2">
+          <div className="flex items-center gap-2 border-b border-line bg-bg-1 px-4 py-3">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-[3px] border border-line bg-bg-2 text-fg-1">
+              <VFIcon name="bell" size={13} />
+            </span>
+            <div>
+              <div className="font-mono text-[12px] font-medium text-fg">Alert rule preview</div>
+              <div className="text-[11.5px] text-fg-2">Environment context is syncing</div>
+            </div>
+          </div>
+          <div className="grid gap-3 p-4">
+            <div className="h-8 rounded-[3px] bg-bg-3" />
+            <div className="h-24 rounded-[3px] border border-dashed border-line bg-bg-1" />
+            <div className="flex justify-end gap-2">
+              <div className="h-8 w-24 rounded-[3px] bg-bg-3" />
+              <div className="h-8 w-32 rounded-[3px] bg-accent-soft" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

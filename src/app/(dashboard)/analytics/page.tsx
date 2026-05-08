@@ -1,11 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowUp, ArrowDown, Minus, Info, Inbox, BarChart3, DollarSign } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowUp, ArrowDown, Minus, Info, Inbox } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -30,9 +29,7 @@ import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { ChartSkeleton, KpiSkeleton, TableSkeleton } from "@/components/ui/loading-skeletons";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
-import { RecommendationsPanel } from "@/components/analytics/recommendations-panel";
 import { PageHeader } from "@/components/page-header";
-import { CostDashboard } from "./costs/page";
 
 type VolumeRange = "1h" | "6h" | "1d" | "7d" | "30d";
 
@@ -57,12 +54,32 @@ interface PipelineRow {
 type SortKey = "pipelineName" | "bytesIn" | "bytesOut" | "reduction" | "eventsReduced";
 type SortDir = "asc" | "desc";
 
+function AnalyticsSectionNav() {
+  return (
+    <nav
+      aria-label="Analytics sections"
+      className="inline-flex h-[34px] items-center gap-1 rounded-[3px] border border-line bg-bg-2 p-[3px]"
+    >
+      <Link
+        href="/analytics"
+        aria-current="page"
+        className="inline-flex h-full items-center rounded-[3px] border border-line-2 bg-bg-1 px-2.5 font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-fg"
+      >
+        Volume
+      </Link>
+      <Link
+        href="/analytics/costs"
+        className="inline-flex h-full items-center rounded-[3px] border border-transparent px-2.5 font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-fg-2 transition-colors hover:bg-bg-3 hover:text-fg"
+      >
+        Costs
+      </Link>
+    </nav>
+  );
+}
+
 export default function AnalyticsPage() {
   const trpc = useTRPC();
   const { selectedEnvironmentId } = useEnvironmentStore();
-  const searchParams = useSearchParams();
-  const defaultTab = searchParams.get("tab") === "costs" ? "costs" : "volume";
-  const [activeTab, setActiveTab] = useState(defaultTab);
   const [range, setRange] = useState<VolumeRange>("1d");
   const [sortKey, setSortKey] = useState<SortKey>("bytesIn");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -123,8 +140,8 @@ export default function AnalyticsPage() {
     : [];
 
   const chartConfig: ChartConfig = {
-    bytesIn: { label: "Bytes In", color: "oklch(0.55 0.24 265)" },
-    bytesOut: { label: "Bytes Out", color: "oklch(0.65 0.17 163)" },
+    bytesIn: { label: "Bytes In", color: "var(--chart-2)" },
+    bytesOut: { label: "Bytes Out", color: "var(--chart-1)" },
   };
 
   // Per-pipeline table with sorting
@@ -163,7 +180,11 @@ export default function AnalyticsPage() {
 
   if (!selectedEnvironmentId) {
     return (
-      <div className="space-y-6">
+      <div className="min-h-full bg-bg text-fg">
+        <PageHeader title="Analytics" description="Volume analytics and data reduction insights across your pipelines." />
+        <div className="p-4">
+          <AnalyticsSectionNav />
+        </div>
         <EmptyState title="Select an environment to view analytics" />
       </div>
     );
@@ -171,7 +192,11 @@ export default function AnalyticsPage() {
 
   if (analytics.isError) {
     return (
-      <div className="space-y-6">
+      <div className="min-h-full bg-bg text-fg">
+        <PageHeader title="Analytics" description="Volume analytics and data reduction insights across your pipelines." />
+        <div className="p-4">
+          <AnalyticsSectionNav />
+        </div>
         <QueryError message="Failed to load analytics data" onRetry={() => analytics.refetch()} />
       </div>
     );
@@ -179,54 +204,53 @@ export default function AnalyticsPage() {
 
   if (analytics.isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="min-h-full bg-bg text-fg">
+        <PageHeader title="Analytics" description="Volume analytics and data reduction insights across your pipelines." />
+        <div className="p-4">
+          <AnalyticsSectionNav />
+        </div>
+        <div className="grid grid-cols-1 gap-4 p-4 pt-0 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <KpiSkeleton key={i} />
           ))}
         </div>
-        <ChartSkeleton />
-        <TableSkeleton rows={5} />
+        <div className="px-4">
+          <ChartSkeleton />
+        </div>
+        <div className="px-4">
+          <TableSkeleton rows={5} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-full bg-bg text-fg">
       <PageHeader title="Analytics" description="Volume analytics and data reduction insights across your pipelines." />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="volume" className="gap-1.5">
-            <BarChart3 className="h-4 w-4" />
-            Volume
-          </TabsTrigger>
-          <TabsTrigger value="costs" className="gap-1.5">
-            <DollarSign className="h-4 w-4" />
-            Costs
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="volume" className="space-y-6">
-          <div className="flex items-center justify-end">
-            <div className="flex items-center gap-1" role="group" aria-label="Analytics time range">
-              {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  aria-pressed={range === v}
-                  onClick={() => setRange(v)}
-                  className={cn(
-                    "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
-                    range === v
-                      ? "bg-accent text-accent-foreground border-transparent"
-                      : "bg-transparent text-muted-foreground border-border hover:bg-muted",
-                  )}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
+      <div className="space-y-6 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <AnalyticsSectionNav />
+
+          <div className="flex items-center gap-1" role="group" aria-label="Analytics time range">
+            {(["1h", "6h", "1d", "7d", "30d"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={range === v}
+                onClick={() => setRange(v)}
+                className={cn(
+                  "h-7 rounded-[3px] border px-2.5 font-mono text-[11px] font-medium tabular-nums transition-colors",
+                  range === v
+                    ? "border-line-2 bg-bg-3 text-fg"
+                    : "border-line bg-transparent text-fg-2 hover:bg-bg-3 hover:text-fg",
+                )}
+              >
+                {v}
+              </button>
+            ))}
           </div>
+        </div>
 
           {/* KPI Cards */}
           <div className="grid gap-4 md:grid-cols-4">
@@ -234,14 +258,14 @@ export default function AnalyticsPage() {
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">Total In</p>
+                  <p className="text-[12px] font-medium text-fg-1">Total In</p>
                   <TrendArrow value={bytesInTrend} />
                 </div>
-                <p className="mt-1 text-2xl font-bold">
+                <p className="mt-1 font-mono text-[26px] font-medium tabular-nums text-fg">
                   {data ? formatBytes(totalBytesIn) : "--"}
                 </p>
                 {bytesInTrend != null && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="font-mono text-[11px] text-fg-2">
                     {bytesInTrend >= 0 ? "+" : ""}
                     {bytesInTrend.toFixed(1)}% vs previous period
                   </p>
@@ -253,14 +277,14 @@ export default function AnalyticsPage() {
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">Total Out</p>
+                  <p className="text-[12px] font-medium text-fg-1">Total Out</p>
                   <TrendArrow value={bytesOutTrend} />
                 </div>
-                <p className="mt-1 text-2xl font-bold">
+                <p className="mt-1 font-mono text-[26px] font-medium tabular-nums text-fg">
                   {data ? formatBytes(totalBytesOut) : "--"}
                 </p>
                 {bytesOutTrend != null && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="font-mono text-[11px] text-fg-2">
                     {bytesOutTrend >= 0 ? "+" : ""}
                     {bytesOutTrend.toFixed(1)}% vs previous period
                   </p>
@@ -272,12 +296,12 @@ export default function AnalyticsPage() {
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">Events Reduced</p>
+                  <p className="text-[12px] font-medium text-fg-1">Events Reduced</p>
                   <TrendArrow value={eventsReducedDelta} invertColor />
                 </div>
                 <p
                   className={cn(
-                    "mt-1 text-2xl font-bold",
+                    "mt-1 font-mono text-[26px] font-medium tabular-nums",
                     eventsReducedPercent != null && eventsReducedPercent > 50
                       ? "text-green-600 dark:text-green-400"
                       : eventsReducedPercent != null && eventsReducedPercent > 10
@@ -288,7 +312,7 @@ export default function AnalyticsPage() {
                   {eventsReducedPercent != null ? `${eventsReducedPercent.toFixed(1)}%` : "--"}
                 </p>
                 {eventsReducedDelta != null && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="font-mono text-[11px] text-fg-2">
                     {eventsReducedDelta >= 0 ? "+" : ""}
                     {eventsReducedDelta.toFixed(1)} pp vs last period
                   </p>
@@ -301,10 +325,10 @@ export default function AnalyticsPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1">
-                    <p className="text-sm font-medium text-muted-foreground">Bytes Saved</p>
+                    <p className="text-[12px] font-medium text-fg-1">Bytes Saved</p>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        <Info className="h-3.5 w-3.5 cursor-help text-fg-2" />
                       </TooltipTrigger>
                       <TooltipContent>
                         Total bytes saved including sink compression and encoding
@@ -313,11 +337,11 @@ export default function AnalyticsPage() {
                   </div>
                   <TrendArrow value={bytesSavedDelta} invertColor />
                 </div>
-                <p className="mt-1 text-2xl font-bold text-muted-foreground">
+                <p className="mt-1 font-mono text-[26px] font-medium tabular-nums text-fg-2">
                   {bytesSavedPercent != null ? `${bytesSavedPercent.toFixed(1)}%` : "--"}
                 </p>
                 {bytesSavedDelta != null && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="font-mono text-[11px] text-fg-2">
                     {bytesSavedDelta >= 0 ? "+" : ""}
                     {bytesSavedDelta.toFixed(1)} pp vs last period
                   </p>
@@ -329,7 +353,7 @@ export default function AnalyticsPage() {
           {/* Volume Over Time Chart */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <CardTitle className="flex items-center gap-2">
                 Volume Over Time
               </CardTitle>
             </CardHeader>
@@ -348,16 +372,13 @@ export default function AnalyticsPage() {
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
                     <XAxis
                       dataKey="t"
-                      tick={{ fontSize: 10 }}
+                      tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }}
                       tickFormatter={(v) => formatTimeAxis(v, range)}
                       interval="preserveStartEnd"
                     />
-                    <YAxis
-                      tick={{ fontSize: 10 }}
-                      width={65}
-                      tickFormatter={formatBytes}
-                      domain={["auto", "auto"]}
-                    />
+                    <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={65}
+                    tickFormatter={formatBytes}
+                    domain={["auto", "auto"]} />
                     <ChartTooltip
                       content={
                         <ChartTooltipContent
@@ -411,7 +432,7 @@ export default function AnalyticsPage() {
           {/* Per-Pipeline Breakdown Table */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Per-Pipeline Breakdown</CardTitle>
+              <CardTitle>Per-Pipeline Breakdown</CardTitle>
             </CardHeader>
             <CardContent>
               {sortedPipelines.length === 0 ? (
@@ -534,14 +555,7 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
 
-        </TabsContent>
-        <TabsContent value="costs" className="space-y-6">
-          <CostDashboard />
-          {selectedEnvironmentId && (
-            <RecommendationsPanel environmentId={selectedEnvironmentId} />
-          )}
-        </TabsContent>
-      </Tabs>
+      </div>
     </div>
   );
 }

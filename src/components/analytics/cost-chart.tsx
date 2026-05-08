@@ -96,16 +96,13 @@ export function CostChart({ data, range, isLoading }: CostChartProps) {
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
               <XAxis
                 dataKey="t"
-                tick={{ fontSize: 10 }}
+                tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }}
                 tickFormatter={(v) => formatTimeAxis(v, range)}
                 interval="preserveStartEnd"
               />
-              <YAxis
-                tick={{ fontSize: 10 }}
-                width={65}
-                tickFormatter={formatBytes}
-                domain={["auto", "auto"]}
-              />
+              <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={65}
+              tickFormatter={formatBytes}
+              domain={["auto", "auto"]} />
               <ChartTooltip
                 content={
                   <ChartTooltipContent

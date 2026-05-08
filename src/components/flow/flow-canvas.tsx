@@ -238,16 +238,9 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
       role="region"
       aria-label="Pipeline editor canvas"
     >
-      {/* v2 dot-grid background — sits behind React Flow's transparent canvas */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          backgroundImage:
-            "radial-gradient(var(--line-2) 1px, transparent 1px)",
-          backgroundSize: "20px 20px",
-          opacity: 0.5,
-        }}
+        className="pointer-events-none absolute inset-0 bg-bg"
       />
       <ReactFlow
         nodes={nodes}
