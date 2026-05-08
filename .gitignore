@@ -37,9 +37,6 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
-# vercel
-.vercel
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts
@@ -51,6 +48,8 @@ next-env.d.ts
 /docs/internal/*
 # agent build output
 /agent/bin/
+.vectorflow/
+artifacts/
 
 # codeql
 .codeql/

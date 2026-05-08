@@ -15,6 +15,7 @@ import {
   resolveSecretRefs,
   resolveCertRefs,
   collectSecretRefs,
+  collectCertRefs,
   convertSecretRefsToEnvVars,
   secretNameToEnvVar,
 } from "../secret-resolver";
@@ -61,6 +62,30 @@ describe("secret-resolver", () => {
         b: "SECRET[key]",
       });
       expect(refs.size).toBe(1);
+    });
+  });
+
+  describe("collectCertRefs", () => {
+    it("returns empty set for config with no refs", () => {
+      const refs = collectCertRefs({ host: "localhost", port: 5432 });
+      expect(refs.size).toBe(0);
+    });
+
+    it("collects top-level cert refs", () => {
+      const refs = collectCertRefs({
+        caFile: "CERT[ca-bundle]",
+        host: "localhost",
+      });
+      expect(refs).toEqual(new Set(["ca-bundle"]));
+    });
+
+    it("collects nested cert refs in arrays", () => {
+      const refs = collectCertRefs({
+        tls: {
+          files: ["CERT[client-cert]", "CERT[client-key]"],
+        },
+      });
+      expect(refs).toEqual(new Set(["client-cert", "client-key"]));
     });
   });
 
@@ -190,6 +215,39 @@ describe("secret-resolver", () => {
       expect(result).toEqual({ tls_cert: "/certs/server.crt" });
       expect(certFiles).toEqual([
         { name: "tls-cert", filename: "server.crt", data: "decrypted:enc-data" },
+      ]);
+    });
+
+    it("resolves nested TLS cert refs without changing CERT semantics", async () => {
+      prismaMock.certificate.findMany.mockResolvedValue([
+        { name: "root-ca", filename: "root.pem", encryptedData: "ca-data" },
+        { name: "client-cert", filename: "client.pem", encryptedData: "cert-data" },
+        { name: "client-key", filename: "client.key", encryptedData: "key-data" },
+      ] as never);
+
+      const { config: result, certFiles } = await resolveCertRefs(
+        {
+          tls: {
+            ca_file: "CERT[root-ca]",
+            crt_file: "CERT[client-cert]",
+            key_file: "CERT[client-key]",
+          },
+        },
+        "env-1",
+        "/certs",
+      );
+
+      expect(result).toEqual({
+        tls: {
+          ca_file: "/certs/root.pem",
+          crt_file: "/certs/client.pem",
+          key_file: "/certs/client.key",
+        },
+      });
+      expect(certFiles).toEqual([
+        { name: "root-ca", filename: "root.pem", data: "decrypted:ca-data" },
+        { name: "client-cert", filename: "client.pem", data: "decrypted:cert-data" },
+        { name: "client-key", filename: "client.key", data: "decrypted:key-data" },
       ]);
     });
 

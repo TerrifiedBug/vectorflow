@@ -14,7 +14,6 @@ import {
   Send,
   Webhook,
   ClipboardCheck,
-  Lock,
 } from "lucide-react";
 
 type SettingsNavItem = {
@@ -51,7 +50,6 @@ export const settingsNavGroups: SettingsNavGroup[] = [
     items: [
       { title: "Authentication", description: "Configure OIDC providers, password policy, and two-factor authentication.", href: "/settings", icon: Shield, requiredSuperAdmin: true, designHidden: true },
       { title: "SCIM", description: "Provision users and groups from your identity provider.", href: "/settings/scim", icon: KeyRound, requiredSuperAdmin: true },
-      { title: "Secrets", description: "Centralized vault for pipeline secrets across environments.", href: "/settings/secrets", icon: Lock, requiredSuperAdmin: false },
       { title: "Users", description: "Manage user accounts, roles, and access.", href: "/settings/users", icon: UserCog, requiredSuperAdmin: true },
     ],
   },

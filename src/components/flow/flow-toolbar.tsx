@@ -31,12 +31,12 @@ import {
   X,
   Sparkles,
   Keyboard,
-  Search,
   LayoutGrid,
   AlertTriangle,
   ChevronDown,
   Eye,
   FileCog,
+  MoreHorizontal,
   Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -59,6 +59,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -72,10 +78,9 @@ import { useSession } from "next-auth/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { VersionHistoryDialog } from "@/components/pipeline/version-history-dialog";
 import { KeyboardShortcutsDialog } from "@/components/flow/keyboard-shortcuts-dialog";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useCanvasSearch } from "@/hooks/use-canvas-search";
 import { PressableScale } from "@/components/motion";
+import { useMediaQuery } from "@/hooks/use-media-query";
 
 type ProcessStatusValue = "RUNNING" | "STARTING" | "STOPPED" | "CRASHED" | "PENDING";
 type ImportValidationIssue = string | { message: string; componentKey?: string };
@@ -238,13 +243,6 @@ export function FlowToolbar({
   const loadGraph = useFlowStore((s) => s.loadGraph);
   const autoLayout = useFlowStore((s) => s.autoLayout);
   const selectedNodeIds = useFlowStore((s) => s.selectedNodeIds);
-  const canvasSearchTerm = useFlowStore((s) => s.canvasSearchTerm);
-  const canvasSearchMatchIds = useFlowStore((s) => s.canvasSearchMatchIds);
-  const canvasSearchActiveIndex = useFlowStore((s) => s.canvasSearchActiveIndex);
-  const setCanvasSearchTerm = useFlowStore((s) => s.setCanvasSearchTerm);
-  const cycleCanvasSearchMatch = useFlowStore((s) => s.cycleCanvasSearchMatch);
-  const clearCanvasSearch = useFlowStore((s) => s.clearCanvasSearch);
-  useCanvasSearch();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importRequestIdRef = useRef(0);
   const [versionsOpen, setVersionsOpen] = useState(false);
@@ -407,17 +405,27 @@ export function FlowToolbar({
     const yaml = generateVectorYaml(nodes, edges, globalConfig);
     validateWithToastMutation.mutate({ yaml });
   };
+  const handleDeleteSelected = () => {
+    if (selectedNodeId) removeNode(selectedNodeId);
+    else if (selectedEdgeId) removeEdge(selectedEdgeId);
+  };
 
   const processDotVariant = processStatus ? PROCESS_STATUS_DOT[processStatus] : null;
   const processLabel = processStatus ? PROCESS_STATUS_LABEL[processStatus] : null;
+  const collapseTierTwo = useMediaQuery("(max-width: 1279px)");
+  const collapseTierThree = useMediaQuery("(max-width: 1023px)");
+  const showOverflowMenu = collapseTierTwo || collapseTierThree;
+  const showInlineViewActions = !collapseTierThree;
+  const showInlineToolsActions = !collapseTierThree;
+  const canDeleteSelected = !!selectedNodeId || !!selectedEdgeId;
   const showPipelineMeta = !!(pipelineName || environmentName || deployedVersionNumber != null);
 
   return (
     <TooltipProvider>
       <div className="flex h-11 min-w-0 items-center gap-2 px-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden pr-1">
           {showPipelineMeta && (
-            <div className="flex shrink-0 items-center gap-1.5">
+            <div className="flex min-w-0 shrink items-center gap-1.5">
               {pipelineName && (
                 renameEditing && onRename ? (
                   <input
@@ -437,19 +445,19 @@ export function FlowToolbar({
                     }}
                     disabled={isRenaming}
                     autoFocus
-                    className="bg-transparent border-b border-line-2 outline-none font-mono text-[13px] font-medium text-fg w-48 focus:border-accent-brand"
+                    className="w-40 max-w-full border-b border-line-2 bg-transparent font-mono text-[13px] font-medium text-fg outline-none focus:border-accent-brand xl:w-52"
                   />
                 ) : onRename ? (
                   <button
                     type="button"
                     onClick={startRename}
                     title="Click to rename"
-                    className="font-mono text-[13px] font-medium text-fg rounded-[3px] px-1 -mx-1 hover:bg-bg-3 transition-colors"
+                    className="max-w-[160px] rounded-[3px] px-1 font-mono text-[13px] font-medium text-fg transition-colors hover:bg-bg-3 xl:max-w-[220px]"
                   >
-                    {pipelineName}
+                    <span className="block truncate">{pipelineName}</span>
                   </button>
                 ) : (
-                  <span className="font-mono text-[13px] font-medium text-fg">
+                  <span className="block max-w-[160px] truncate font-mono text-[13px] font-medium text-fg xl:max-w-[220px]">
                     {pipelineName}
                   </span>
                 )
@@ -480,323 +488,385 @@ export function FlowToolbar({
             </div>
           )}
 
-        {gitOpsMode === "bidirectional" && (
-          <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
-        )}
+          {gitOpsMode === "bidirectional" && (
+            <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
+          )}
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" onClick={onSave} disabled={isSaving || !isDirty} className={cn("relative", !isDirty && "opacity-50")} aria-label="Save pipeline">
-              <Save className="h-4 w-4" />
-              {isDirty && (
-                <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-status-degraded" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Save pipeline (Cmd+S)</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" onClick={handleValidate} disabled={validateWithToastMutation.isPending} aria-label="Validate pipeline">
-              <CheckCircle className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Validate pipeline</TooltipContent>
-        </Tooltip>
-
-        <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" onClick={undo} disabled={!canUndo} aria-label="Undo">
-              <Undo2 className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Undo (Cmd+Z)</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" onClick={redo} disabled={!canRedo} aria-label="Redo">
-              <Redo2 className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Redo (Cmd+Shift+Z)</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => {
-                if (selectedNodeId) removeNode(selectedNodeId);
-                else if (selectedEdgeId) removeEdge(selectedEdgeId);
-              }}
-              disabled={!selectedNodeId && !selectedEdgeId}
-              className="text-fg-2 hover:text-status-error"
-              aria-label="Delete selected"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Delete selected (Del)</TooltipContent>
-        </Tooltip>
-
-        <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
-
-        <Popover open={importOpen} onOpenChange={setImportOpen}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label="Import config">
-                  <Upload className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-            </TooltipTrigger>
-            <TooltipContent>Import config (Cmd+I)</TooltipContent>
-          </Tooltip>
-          <PopoverContent align="start" className="w-[420px] space-y-3">
-            <div className="space-y-1">
-              <div className="text-sm font-medium">Import Vector config</div>
-              <div className="text-xs text-muted-foreground">Paste YAML/TOML or upload a config file.</div>
-            </div>
-            <Textarea
-              aria-label="Vector config"
-              value={importText}
-              onChange={(e) => setImportText(e.target.value)}
-              placeholder="sources:\n  demo:\n    type: demo_logs"
-              className="min-h-[180px] font-mono text-xs"
-            />
-            <div className="flex items-center justify-between gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={handleUploadImport}>
-                <Upload className="mr-2 h-4 w-4" />
-                Upload
+              <Button variant="ghost" size="icon-sm" onClick={onSave} disabled={isSaving || !isDirty} className={cn("relative", !isDirty && "opacity-50")} aria-label="Save pipeline">
+                <Save className="h-4 w-4" />
+                {isDirty && (
+                  <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-status-degraded" />
+                )}
               </Button>
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="secondary" size="sm" onClick={() => handlePasteImport("toml")} disabled={!importText.trim()}>
-                  Import TOML
+            </TooltipTrigger>
+            <TooltipContent>Save pipeline (Cmd+S)</TooltipContent>
+          </Tooltip>
+
+          {!collapseTierTwo && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon-sm" onClick={handleValidate} disabled={validateWithToastMutation.isPending} aria-label="Validate pipeline">
+                  <CheckCircle className="h-4 w-4" />
                 </Button>
-                <Button type="button" size="sm" onClick={() => handlePasteImport("yaml")} disabled={!importText.trim()}>
-                  Import YAML
-                </Button>
-              </div>
-            </div>
-            {importWarnings.length > 0 && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
-                <div className="mb-1 flex items-center gap-1.5 font-medium">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  {importWarnings.length} parser warning{importWarnings.length > 1 ? "s" : ""}
-                </div>
-                <ul className="space-y-1">
-                  {importWarnings.map((warning, index) => (
-                    <li key={`${warning}-${index}`}>{warning}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {importValidation.status !== "idle" && (
-              <div
-                className={cn(
-                  "rounded-md border p-2 text-xs",
-                  importValidation.status === "invalid" || importValidation.status === "error"
-                    ? "border-red-200 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-                    : "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200",
-                )}
-              >
-                <div className="mb-1 flex items-center gap-1.5 font-medium">
-                  {importValidation.status === "invalid" || importValidation.status === "error" ? (
-                    <CircleX className="h-3.5 w-3.5" />
-                  ) : (
-                    <CircleCheck className="h-3.5 w-3.5" />
-                  )}
-                  {importValidation.status === "validating" && "Validating imported config..."}
-                  {importValidation.status === "valid" && "Imported config is valid"}
-                  {importValidation.status === "invalid" && `${importValidation.errors.length} validation error${importValidation.errors.length > 1 ? "s" : ""}`}
-                  {importValidation.status === "error" && "Validation unavailable"}
-                </div>
-                {importValidation.status === "invalid" && (
-                  <ul className="space-y-1">
-                    {importValidation.errors.map((error, index) => (
-                      <li key={`${getImportValidationIssueComponent(error) ?? "config"}-${getImportValidationIssueMessage(error)}-${index}`}>
-                        {getImportValidationIssueComponent(error)
-                          ? `${getImportValidationIssueComponent(error)}: ${getImportValidationIssueMessage(error)}`
-                          : getImportValidationIssueMessage(error)}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {importValidation.status === "error" && (
-                  <div>{importValidation.message}</div>
-                )}
-                {(importValidation.status === "valid" || importValidation.status === "invalid") && importValidation.warnings.length > 0 && (
-                  <ul className="mt-1 space-y-1">
-                    {importValidation.warnings.map((warning, index) => (
-                      <li key={`${warning.message}-${index}`}>{warning.message}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </PopoverContent>
-        </Popover>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".yaml,.yml,.toml"
-          className="hidden"
-          onChange={handleFileSelected}
-        />
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <ToolbarMenuButton icon={FileCog} label="Export" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-52">
-            <DropdownMenuLabel>Config actions</DropdownMenuLabel>
-            <DropdownMenuItem onClick={handleExportYaml}>
-              <FileDown className="mr-2 h-4 w-4" />
-              Download YAML
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleExportToml}>
-              <FileDown className="mr-2 h-4 w-4" />
-              Download TOML
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onSaveAsTemplate} disabled={nodes.length === 0}>
-              <BookTemplate className="mr-2 h-4 w-4" />
-              Save as template
-            </DropdownMenuItem>
-            {pipelineId && (
-              <DropdownMenuItem onClick={() => setVersionsOpen(true)}>
-                <History className="mr-2 h-4 w-4" />
-                Version history
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {pipelineId && (
-          <VersionHistoryDialog
-            pipelineId={pipelineId}
-            open={versionsOpen}
-            onOpenChange={setVersionsOpen}
-          />
-        )}
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="relative h-7 gap-1.5 px-2 text-[11px]" aria-label="View actions">
-              <Eye className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">View</span>
-              <ChevronDown className="h-3 w-3 text-fg-2" />
-              {hasRecentErrors && !logsOpen && (
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-status-error" />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-52">
-            <DropdownMenuLabel>View panels</DropdownMenuLabel>
-            <DropdownMenuItem onClick={onToggleMetrics} disabled={!onToggleMetrics}>
-              <BarChart3 className="mr-2 h-4 w-4" />
-              {metricsOpen ? "Hide metrics" : "Show metrics"}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onToggleLogs} disabled={!onToggleLogs}>
-              <ScrollText className="mr-2 h-4 w-4" />
-              {logsOpen ? "Hide logs" : "Show logs"}
-              {hasRecentErrors && !logsOpen && (
-                <span className="ml-auto h-2 w-2 rounded-full bg-status-error" />
-              )}
-            </DropdownMenuItem>
-            {pipelineId && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href={`/pipelines/${pipelineId}/scorecard`}>
-                    <Gauge className="mr-2 h-4 w-4" />
-                    Pipeline scorecard
-                  </Link>
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <div className="relative flex items-center gap-1">
-          <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-fg-2" />
-          <Input
-            value={canvasSearchTerm}
-            onChange={(e) => setCanvasSearchTerm(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                cycleCanvasSearchMatch(e.shiftKey ? "prev" : "next");
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                clearCanvasSearch();
-              }
-            }}
-            placeholder="Search nodes..."
-            className="h-7 w-[120px] pl-7 text-[11px] md:w-[140px]"
-          />
-          {canvasSearchTerm && canvasSearchMatchIds.length > 0 && (
-            <span className="font-mono text-[10px] text-fg-2 whitespace-nowrap">
-              {canvasSearchActiveIndex + 1}/{canvasSearchMatchIds.length}
-            </span>
+              </TooltipTrigger>
+              <TooltipContent>Validate pipeline</TooltipContent>
+            </Tooltip>
           )}
-          {canvasSearchTerm && canvasSearchMatchIds.length === 0 && (
-            <span className="font-mono text-[10px] text-status-error whitespace-nowrap">
-              No matches
-            </span>
-          )}
-        </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <ToolbarMenuButton icon={Wrench} label="Tools" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-52">
-            <DropdownMenuLabel>Canvas tools</DropdownMenuLabel>
-            {aiEnabled && (
-              <DropdownMenuItem onClick={onAiOpen}>
-                <Sparkles className="mr-2 h-4 w-4" />
-                AI assistant
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem
-              onClick={() => autoLayout(selectedNodeIds.size > 1)}
-              disabled={nodes.length === 0}
-            >
-              <LayoutGrid className="mr-2 h-4 w-4" />
-              {selectedNodeIds.size > 1 ? "Auto-layout selected" : "Auto-layout all"}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setShortcutsOpen(true)}>
-              <Keyboard className="mr-2 h-4 w-4" />
-              Keyboard shortcuts
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Popover>
+          <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
+
           <Tooltip>
             <TooltipTrigger asChild>
-              <PopoverTrigger asChild>
-                <ToolbarMenuButton icon={Settings} label="Settings" />
-              </PopoverTrigger>
+              <Button variant="ghost" size="icon-sm" onClick={undo} disabled={!canUndo} aria-label="Undo">
+                <Undo2 className="h-4 w-4" />
+              </Button>
             </TooltipTrigger>
-            <TooltipContent>Pipeline settings</TooltipContent>
+            <TooltipContent>Undo (Cmd+Z)</TooltipContent>
           </Tooltip>
-          <PopoverContent align="end" className="w-80">
-            <PipelineSettings pipelineId={pipelineId} />
-          </PopoverContent>
-        </Popover>
-        <KeyboardShortcutsDialog
-          open={shortcutsOpen}
-          onOpenChange={setShortcutsOpen}
-        />
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={redo} disabled={!canRedo} aria-label="Redo">
+                <Redo2 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Redo (Cmd+Shift+Z)</TooltipContent>
+          </Tooltip>
+
+          {!collapseTierTwo && (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={handleDeleteSelected}
+                    disabled={!canDeleteSelected}
+                    className="text-fg-2 hover:text-status-error"
+                    aria-label="Delete selected"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Delete selected (Del)</TooltipContent>
+              </Tooltip>
+
+              <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <ToolbarMenuButton icon={FileCog} label="Export" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  <DropdownMenuLabel>Config actions</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Import config
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleExportYaml}>
+                    <FileDown className="mr-2 h-4 w-4" />
+                    Download YAML
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportToml}>
+                    <FileDown className="mr-2 h-4 w-4" />
+                    Download TOML
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={onSaveAsTemplate} disabled={nodes.length === 0}>
+                    <BookTemplate className="mr-2 h-4 w-4" />
+                    Save as template
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
+
+          {showInlineViewActions && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="relative h-7 gap-1.5 px-2 text-[11px]" aria-label="View actions">
+                  <Eye className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">View</span>
+                  <ChevronDown className="h-3 w-3 text-fg-2" />
+                  {hasRecentErrors && !logsOpen && (
+                    <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-status-error" />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                <DropdownMenuLabel>View panels</DropdownMenuLabel>
+                <DropdownMenuItem onClick={onToggleMetrics} disabled={!onToggleMetrics}>
+                  <BarChart3 className="mr-2 h-4 w-4" />
+                  {metricsOpen ? "Hide metrics" : "Show metrics"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onToggleLogs} disabled={!onToggleLogs}>
+                  <ScrollText className="mr-2 h-4 w-4" />
+                  {logsOpen ? "Hide logs" : "Show logs"}
+                  {hasRecentErrors && !logsOpen && (
+                    <span className="ml-auto h-2 w-2 rounded-full bg-status-error" />
+                  )}
+                </DropdownMenuItem>
+                {pipelineId && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href={`/pipelines/${pipelineId}/scorecard`}>
+                        <Gauge className="mr-2 h-4 w-4" />
+                        Pipeline scorecard
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setVersionsOpen(true)}>
+                      <History className="mr-2 h-4 w-4" />
+                      Version history
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+
+          {showInlineToolsActions && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <ToolbarMenuButton icon={Wrench} label="Tools" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                <DropdownMenuLabel>Canvas tools</DropdownMenuLabel>
+                {aiEnabled && (
+                  <DropdownMenuItem onClick={onAiOpen}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    AI assistant
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  onClick={() => autoLayout(selectedNodeIds.size > 1)}
+                  disabled={nodes.length === 0}
+                >
+                  <LayoutGrid className="mr-2 h-4 w-4" />
+                  {selectedNodeIds.size > 1 ? "Auto-layout selected" : "Auto-layout all"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShortcutsOpen(true)}>
+                  <Keyboard className="mr-2 h-4 w-4" />
+                  Keyboard shortcuts
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          <Popover>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <ToolbarMenuButton icon={Settings} label="Settings" />
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Pipeline settings</TooltipContent>
+            </Tooltip>
+            <PopoverContent align="end" className="w-80">
+              <PipelineSettings pipelineId={pipelineId} />
+            </PopoverContent>
+          </Popover>
+
+          {showOverflowMenu && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="More actions">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel>More actions</DropdownMenuLabel>
+                {collapseTierTwo && (
+                  <>
+                    <DropdownMenuItem onClick={handleValidate} disabled={validateWithToastMutation.isPending}>
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      Validate pipeline
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleDeleteSelected} disabled={!canDeleteSelected}>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete selected
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Import config
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleExportYaml}>
+                      <FileDown className="mr-2 h-4 w-4" />
+                      Download YAML
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExportToml}>
+                      <FileDown className="mr-2 h-4 w-4" />
+                      Download TOML
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={onSaveAsTemplate} disabled={nodes.length === 0}>
+                      <BookTemplate className="mr-2 h-4 w-4" />
+                      Save as template
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {collapseTierThree && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={onToggleMetrics} disabled={!onToggleMetrics}>
+                      <BarChart3 className="mr-2 h-4 w-4" />
+                      {metricsOpen ? "Hide metrics" : "Show metrics"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onToggleLogs} disabled={!onToggleLogs}>
+                      <ScrollText className="mr-2 h-4 w-4" />
+                      {logsOpen ? "Hide logs" : "Show logs"}
+                    </DropdownMenuItem>
+                    {pipelineId && (
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link href={`/pipelines/${pipelineId}/scorecard`}>
+                            <Gauge className="mr-2 h-4 w-4" />
+                            Pipeline scorecard
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setVersionsOpen(true)}>
+                          <History className="mr-2 h-4 w-4" />
+                          Version history
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    {aiEnabled && (
+                      <DropdownMenuItem onClick={onAiOpen}>
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        AI assistant
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem
+                      onClick={() => autoLayout(selectedNodeIds.size > 1)}
+                      disabled={nodes.length === 0}
+                    >
+                      <LayoutGrid className="mr-2 h-4 w-4" />
+                      {selectedNodeIds.size > 1 ? "Auto-layout selected" : "Auto-layout all"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setShortcutsOpen(true)}>
+                      <Keyboard className="mr-2 h-4 w-4" />
+                      Keyboard shortcuts
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          <Dialog open={importOpen} onOpenChange={setImportOpen}>
+            <DialogContent className="sm:max-w-[460px]">
+              <DialogHeader>
+                <DialogTitle>Import Vector config</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="text-xs text-muted-foreground">Paste YAML/TOML or upload a config file.</div>
+                <Textarea
+                  aria-label="Vector config"
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  placeholder="sources:\n  demo:\n    type: demo_logs"
+                  className="min-h-[180px] font-mono text-xs"
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={handleUploadImport}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Upload
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="secondary" size="sm" onClick={() => handlePasteImport("toml")} disabled={!importText.trim()}>
+                      Import TOML
+                    </Button>
+                    <Button type="button" size="sm" onClick={() => handlePasteImport("yaml")} disabled={!importText.trim()}>
+                      Import YAML
+                    </Button>
+                  </div>
+                </div>
+                {importWarnings.length > 0 && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+                    <div className="mb-1 flex items-center gap-1.5 font-medium">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      {importWarnings.length} parser warning{importWarnings.length > 1 ? "s" : ""}
+                    </div>
+                    <ul className="space-y-1">
+                      {importWarnings.map((warning, index) => (
+                        <li key={`${warning}-${index}`}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {importValidation.status !== "idle" && (
+                  <div
+                    className={cn(
+                      "rounded-md border p-2 text-xs",
+                      importValidation.status === "invalid" || importValidation.status === "error"
+                        ? "border-red-200 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200",
+                    )}
+                  >
+                    <div className="mb-1 flex items-center gap-1.5 font-medium">
+                      {importValidation.status === "invalid" || importValidation.status === "error" ? (
+                        <CircleX className="h-3.5 w-3.5" />
+                      ) : (
+                        <CircleCheck className="h-3.5 w-3.5" />
+                      )}
+                      {importValidation.status === "validating" && "Validating imported config..."}
+                      {importValidation.status === "valid" && "Imported config is valid"}
+                      {importValidation.status === "invalid" && `${importValidation.errors.length} validation error${importValidation.errors.length > 1 ? "s" : ""}`}
+                      {importValidation.status === "error" && "Validation unavailable"}
+                    </div>
+                    {importValidation.status === "invalid" && (
+                      <ul className="space-y-1">
+                        {importValidation.errors.map((error, index) => (
+                          <li key={`${getImportValidationIssueComponent(error) ?? "config"}-${getImportValidationIssueMessage(error)}-${index}`}>
+                            {getImportValidationIssueComponent(error)
+                              ? `${getImportValidationIssueComponent(error)}: ${getImportValidationIssueMessage(error)}`
+                              : getImportValidationIssueMessage(error)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {importValidation.status === "error" && (
+                      <div>{importValidation.message}</div>
+                    )}
+                    {(importValidation.status === "valid" || importValidation.status === "invalid") && importValidation.warnings.length > 0 && (
+                      <ul className="mt-1 space-y-1">
+                        {importValidation.warnings.map((warning, index) => (
+                          <li key={`${warning.message}-${index}`}>{warning.message}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".yaml,.yml,.toml"
+            className="hidden"
+            onChange={handleFileSelected}
+          />
+
+          {pipelineId && (
+            <VersionHistoryDialog
+              pipelineId={pipelineId}
+              open={versionsOpen}
+              onOpenChange={setVersionsOpen}
+            />
+          )}
+
+          <KeyboardShortcutsDialog
+            open={shortcutsOpen}
+            onOpenChange={setShortcutsOpen}
+          />
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-2 border-l border-line pl-2">

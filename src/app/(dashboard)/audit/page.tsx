@@ -64,13 +64,13 @@ export default function AuditPage() {
   const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   // Filter state
   const [actionFilter, setActionFilter] = useState<string>("");
-  const [entityTypeFilter, setEntityTypeFilter] = useState<string>("");
+  const [entityTypeFilter, setEntityTypeFilter] = useState<string>(searchParams.get("entityType") ?? "");
   const [userFilter, setUserFilter] = useState<string>("");
   const [teamFilter, setTeamFilter] = useState<string>("");
   const [environmentFilter, setEnvironmentFilter] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
-  const [search, setSearch] = useState<string>("");
+  const [search, setSearch] = useState<string>(searchParams.get("search") ?? "");
 
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
 

@@ -50,8 +50,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkline } from "@/components/ui/sparkline";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SecretsSection } from "@/components/environment/secrets-section";
-import { CertificatesSection } from "@/components/environment/certificates-section";
 import { GitSyncSection } from "@/components/environment/git-sync-section";
 import { GitSyncStatus } from "@/components/environment/git-sync-status";
 import { nodeStatusVariant, nodeStatusLabel } from "@/lib/status";
@@ -312,7 +310,7 @@ export default function EnvironmentDetailPage({
           </TabsTrigger>
           <TabsTrigger value="secrets" className="gap-1.5">
             <KeyRound className="h-4 w-4" />
-            Secrets
+            Secret Backend
           </TabsTrigger>
           <TabsTrigger value="git-sync" className="gap-1.5">
             <GitBranch className="h-4 w-4" />
@@ -557,9 +555,6 @@ export default function EnvironmentDetailPage({
             </CardContent>
           </Card>
 
-          {/* Secrets & Certificates */}
-          <SecretsSection environmentId={id} />
-          <CertificatesSection environmentId={id} />
         </TabsContent>
 
         {/* -- Git Sync Tab -- */}

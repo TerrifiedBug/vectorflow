@@ -12,14 +12,14 @@ ADD COLUMN "suggestedAction" TEXT NOT NULL DEFAULT 'Review the alert context, th
 -- in-app templates and Prometheus rules.
 UPDATE "AlertRule"
 SET
-  "severity" = CASE "metric"
+  "severity" = CASE "metric"::text
     WHEN 'node_unreachable' THEN 'critical'
     WHEN 'pipeline_crashed' THEN 'critical'
     WHEN 'backup_failed' THEN 'critical'
     WHEN 'certificate_expiring' THEN 'warning'
     ELSE 'warning'
   END,
-  "ownerHint" = CASE "metric"
+  "ownerHint" = CASE "metric"::text
     WHEN 'cpu_usage' THEN 'platform-ops'
     WHEN 'memory_usage' THEN 'platform-ops'
     WHEN 'disk_usage' THEN 'platform-ops'
@@ -51,7 +51,7 @@ SET
     WHEN 'log_keyword' THEN 'pipeline-owner'
     ELSE 'platform-ops'
   END,
-  "suggestedAction" = CASE "metric"
+  "suggestedAction" = CASE "metric"::text
     WHEN 'cpu_usage' THEN 'Check node CPU saturation, noisy pipelines, and recent deploys; scale or move workloads if sustained.'
     WHEN 'memory_usage' THEN 'Inspect memory pressure and pipeline buffers on the node; restart or scale only after confirming growth is sustained.'
     WHEN 'disk_usage' THEN 'Free disk space or expand storage, then check Vector data directories and retained logs.'

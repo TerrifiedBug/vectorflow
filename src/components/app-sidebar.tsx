@@ -17,6 +17,7 @@ import {
   ChevronsRight,
   ArrowLeft,
   Rocket,
+  Lock,
 } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,7 @@ const operateItems = [
 const configureItems = [
   { title: "Environments", href: "/environments", icon: Layers },
   { title: "Library", href: "/library", icon: FileText },
+  { title: "Secrets", href: "/secrets", icon: Lock },
   { title: "Settings", href: "/settings", icon: Settings, requiredRole: "ADMIN" as const },
 ];
 
