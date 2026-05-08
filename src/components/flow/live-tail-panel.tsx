@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Pause, Play, Radio, Square, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Clipboard, Pause, Play, Radio, Square, Trash2, WrapText } from "lucide-react";
 import { useLiveTap } from "@/hooks/use-live-tap";
 import { Button } from "@/components/ui/button";
 
@@ -16,6 +16,7 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
   const [expanded, setExpanded] = useState(false);
   const [paused, setPaused] = useState(false);
   const [buffer, setBuffer] = useState<Array<{ id: string; data: unknown }>>([]);
+  const [wrapLines, setWrapLines] = useState(true);
 
   useEffect(() => {
     setBuffer([]);
@@ -33,6 +34,8 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
     () => buffer.map((e) => JSON.stringify(e.data)).filter(Boolean),
     [buffer],
   );
+
+  const canCopy = typeof navigator !== "undefined" && typeof navigator.clipboard?.writeText === "function";
 
   return (
     <div
@@ -64,6 +67,17 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
             <Button
               size="icon-xs"
               variant="ghost"
+              disabled={lines.length === 0 || !canCopy}
+              onClick={() => {
+                void navigator.clipboard.writeText(lines.join("\n"));
+              }}
+              aria-label="Copy live tail"
+            >
+              <Clipboard className="h-3 w-3" />
+            </Button>
+            <Button
+              size="icon-xs"
+              variant="ghost"
               disabled={lines.length === 0}
               onClick={() => {
                 setBuffer([]);
@@ -71,6 +85,15 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
               aria-label="Clear live tail"
             >
               <Trash2 className="h-3 w-3" />
+            </Button>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              disabled={lines.length === 0}
+              onClick={() => setWrapLines((value) => !value)}
+              aria-label={wrapLines ? "Switch to scroll mode" : "Switch to wrap mode"}
+            >
+              <WrapText className="h-3 w-3" />
             </Button>
             <Button
               size="icon-xs"
@@ -84,12 +107,17 @@ export function LiveTailPanel({ pipelineId, componentKey, isDeployed }: LiveTail
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 font-mono text-[10px] leading-4 text-fg-1">
+        <div
+          className={`flex-1 overflow-y-auto p-2 font-mono text-[10px] leading-4 text-fg-1 ${wrapLines ? "" : "overflow-x-auto whitespace-pre"}`}
+        >
           {!componentKey && <div className="text-fg-2">Select a component to tail.</div>}
           {componentKey && !isDeployed && <div className="text-fg-2">Deploy pipeline to stream logs.</div>}
           {componentKey && isDeployed && lines.length === 0 && <div className="text-fg-2">No events yet.</div>}
           {lines.map((line, i) => (
-            <div key={`${i}-${line.slice(0, 16)}`} className="truncate">
+            <div
+              key={`${i}-${line.slice(0, 16)}`}
+              className={wrapLines ? "whitespace-pre-wrap break-all" : "whitespace-nowrap"}
+            >
               {line}
             </div>
           ))}
