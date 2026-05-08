@@ -41,6 +41,9 @@ const {
   mockDeleteSecretMutate,
   mockUploadCertificateMutate,
   mockDeleteCertificateMutate,
+  mockBundleCreateMutate,
+  mockBundleUpdateMutate,
+  mockBundleDeleteMutate,
   mockInvalidateQueries,
   mockFetchQuery,
   mockRouterPush,
@@ -52,6 +55,9 @@ const {
   mockDeleteSecretMutate: vi.fn(),
   mockUploadCertificateMutate: vi.fn(),
   mockDeleteCertificateMutate: vi.fn(),
+  mockBundleCreateMutate: vi.fn(),
+  mockBundleUpdateMutate: vi.fn(),
+  mockBundleDeleteMutate: vi.fn(),
   mockInvalidateQueries: vi.fn(),
   mockFetchQuery: vi.fn(),
   mockRouterPush: vi.fn(),
@@ -89,6 +95,36 @@ const queryState = vi.hoisted(() => ({
     ],
     "env-2": [],
   } as Record<string, Array<{ id: string; name: string; filename: string; fileType: "ca" | "cert" | "key"; createdAt: string; expiryDate: string | null; daysUntilExpiry: number | null }>>,
+  bundlesByEnvironment: {
+    "env-1": [
+      {
+        id: "bundle-1",
+        name: "mtls-prod",
+        environmentId: "env-1",
+        caId: null,
+        certId: "cert-1",
+        keyId: null,
+        createdAt: new Date("2026-05-03T00:00:00.000Z").toISOString(),
+        updatedAt: new Date("2026-05-05T00:00:00.000Z").toISOString(),
+        ca: null,
+        cert: { id: "cert-1", name: "client-cert", filename: "client.pem", fileType: "cert" },
+        key: null,
+      },
+    ],
+    "env-2": [],
+  } as Record<string, Array<{
+    id: string;
+    name: string;
+    environmentId: string;
+    caId: string | null;
+    certId: string | null;
+    keyId: string | null;
+    createdAt: string;
+    updatedAt: string;
+    ca: { id: string; name: string; filename: string; fileType: "ca" | "cert" | "key" } | null;
+    cert: { id: string; name: string; filename: string; fileType: "ca" | "cert" | "key" } | null;
+    key: { id: string; name: string; filename: string; fileType: "ca" | "cert" | "key" } | null;
+  }>>,
   usageBySecret: {
     "secret-1:env-1": {
       count: 1,
@@ -178,6 +214,19 @@ vi.mock("@/trpc/client", () => ({
       getData: {
         queryOptions: (input: { id: string; environmentId: string }) => ({ __name: "certificate.getData", input, queryKey: ["certificate.getData", input.id, input.environmentId] }),
       },
+      bundleList: {
+        queryOptions: (input: { environmentId: string }) => ({ __name: "certificate.bundleList", input, queryKey: ["certificate.bundleList", input.environmentId] }),
+        queryKey: (input: { environmentId: string }) => ["certificate.bundleList", input.environmentId],
+      },
+      bundleCreate: {
+        mutationOptions: (opts: object) => ({ __name: "certificate.bundleCreate", ...opts }),
+      },
+      bundleUpdate: {
+        mutationOptions: (opts: object) => ({ __name: "certificate.bundleUpdate", ...opts }),
+      },
+      bundleDelete: {
+        mutationOptions: (opts: object) => ({ __name: "certificate.bundleDelete", ...opts }),
+      },
     },
   }),
 }));
@@ -209,6 +258,15 @@ vi.mock("@tanstack/react-query", () => ({
       if (query.__name === "certificate.list") {
         return {
           data: queryState.certificatesByEnvironment[query.input?.environmentId ?? ""] ?? [],
+          isPending: false,
+          isError: false,
+          isSuccess: true,
+          error: null,
+        };
+      }
+      if (query.__name === "certificate.bundleList") {
+        return {
+          data: queryState.bundlesByEnvironment[query.input?.environmentId ?? ""] ?? [],
           isPending: false,
           isError: false,
           isSuccess: true,
@@ -249,6 +307,15 @@ vi.mock("@tanstack/react-query", () => ({
     }
     if (options.__name === "certificate.upload") {
       return { mutate: mockUploadCertificateMutate, isPending: false };
+    }
+    if (options.__name === "certificate.bundleCreate") {
+      return { mutate: mockBundleCreateMutate, isPending: false };
+    }
+    if (options.__name === "certificate.bundleUpdate") {
+      return { mutate: mockBundleUpdateMutate, isPending: false };
+    }
+    if (options.__name === "certificate.bundleDelete") {
+      return { mutate: mockBundleDeleteMutate, isPending: false };
     }
     return { mutate: mockDeleteCertificateMutate, isPending: false };
   },
@@ -392,4 +459,27 @@ describe("SecretsVaultPage", () => {
 
     expect(mockRouterPush).toHaveBeenCalledWith("/audit?entityType=Certificate&search=cert-1");
   });
+
+  it("shows bundles grouped by environment and creates a new bundle", async () => {
+    render(<SecretsVaultPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: /bundles/i }));
+
+    expect(screen.getAllByText("prod-eu").length).toBeGreaterThan(0);
+    expect(screen.getByText("mtls-prod")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^new$/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /new bundle/i }));
+    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: "shared-ca-only" } });
+    fireEvent.click(screen.getAllByRole("button", { name: /^create bundle$/i }).at(-1)!);
+
+    expect(mockBundleCreateMutate).toHaveBeenCalledWith({
+      environmentId: "env-1",
+      name: "shared-ca-only",
+      caId: null,
+      certId: null,
+      keyId: null,
+    });
+  });
+
 });

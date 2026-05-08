@@ -218,6 +218,39 @@ describe("secret-resolver", () => {
       ]);
     });
 
+    it("resolves nested TLS cert refs without changing CERT semantics", async () => {
+      prismaMock.certificate.findMany.mockResolvedValue([
+        { name: "root-ca", filename: "root.pem", encryptedData: "ca-data" },
+        { name: "client-cert", filename: "client.pem", encryptedData: "cert-data" },
+        { name: "client-key", filename: "client.key", encryptedData: "key-data" },
+      ] as never);
+
+      const { config: result, certFiles } = await resolveCertRefs(
+        {
+          tls: {
+            ca_file: "CERT[root-ca]",
+            crt_file: "CERT[client-cert]",
+            key_file: "CERT[client-key]",
+          },
+        },
+        "env-1",
+        "/certs",
+      );
+
+      expect(result).toEqual({
+        tls: {
+          ca_file: "/certs/root.pem",
+          crt_file: "/certs/client.pem",
+          key_file: "/certs/client.key",
+        },
+      });
+      expect(certFiles).toEqual([
+        { name: "root-ca", filename: "root.pem", data: "decrypted:ca-data" },
+        { name: "client-cert", filename: "client.pem", data: "decrypted:cert-data" },
+        { name: "client-key", filename: "client.key", data: "decrypted:key-data" },
+      ]);
+    });
+
     it("throws when a referenced cert is not found", async () => {
       prismaMock.certificate.findMany.mockResolvedValue([] as never);
 

@@ -377,4 +377,179 @@ describe("certificateRouter", () => {
       ).rejects.toThrow("Certificate not found");
     });
   });
+
+  // ─── certificate bundles ──────────────────────────────────────────────────
+
+  describe("certificate bundles", () => {
+    it("lists bundles with linked certificate metadata", async () => {
+      prismaMock.certificateBundle.findMany.mockResolvedValue([
+        {
+          id: "bundle-1",
+          name: "mtls-prod",
+          environmentId: "env-1",
+          caId: "ca-1",
+          certId: "cert-1",
+          keyId: "key-1",
+          createdAt: new Date("2026-05-01T00:00:00Z"),
+          updatedAt: new Date("2026-05-02T00:00:00Z"),
+          ca: { id: "ca-1", name: "root-ca", filename: "root.pem", fileType: "ca" },
+          cert: { id: "cert-1", name: "client-cert", filename: "client.pem", fileType: "cert" },
+          key: { id: "key-1", name: "client-key", filename: "client.key", fileType: "key" },
+        },
+      ] as never);
+
+      const result = await caller.bundleList({ environmentId: "env-1" });
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          id: "bundle-1",
+          name: "mtls-prod",
+          ca: expect.objectContaining({ name: "root-ca" }),
+          cert: expect.objectContaining({ name: "client-cert" }),
+          key: expect.objectContaining({ name: "client-key" }),
+        }),
+      ]);
+      expect(prismaMock.certificateBundle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { environmentId: "env-1" } }),
+      );
+    });
+
+    it("gets a bundle by id within the environment", async () => {
+      prismaMock.certificateBundle.findUnique.mockResolvedValue({
+        id: "bundle-1",
+        name: "mtls-prod",
+        environmentId: "env-1",
+        caId: "ca-1",
+        certId: null,
+        keyId: null,
+        createdAt: new Date("2026-05-01T00:00:00Z"),
+        updatedAt: new Date("2026-05-02T00:00:00Z"),
+        ca: { id: "ca-1", name: "root-ca", filename: "root.pem", fileType: "ca" },
+        cert: null,
+        key: null,
+      } as never);
+
+      const result = await caller.bundleGet({ id: "bundle-1", environmentId: "env-1" });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: "bundle-1",
+          name: "mtls-prod",
+          ca: expect.objectContaining({ name: "root-ca" }),
+          cert: null,
+          key: null,
+        }),
+      );
+    });
+
+    it("creates a bundle after validating linked certificate types", async () => {
+      prismaMock.certificate.findMany.mockResolvedValue([
+        { id: "ca-1", name: "root-ca", filename: "root.pem", fileType: "ca", environmentId: "env-1" },
+        { id: "cert-1", name: "client-cert", filename: "client.pem", fileType: "cert", environmentId: "env-1" },
+        { id: "key-1", name: "client-key", filename: "client.key", fileType: "key", environmentId: "env-1" },
+      ] as never);
+      prismaMock.certificateBundle.findUnique.mockResolvedValue(null as never);
+      prismaMock.certificateBundle.create.mockResolvedValue({
+        id: "bundle-1",
+        name: "mtls-prod",
+        environmentId: "env-1",
+        caId: "ca-1",
+        certId: "cert-1",
+        keyId: "key-1",
+        createdAt: new Date("2026-05-01T00:00:00Z"),
+        updatedAt: new Date("2026-05-02T00:00:00Z"),
+        ca: { id: "ca-1", name: "root-ca", filename: "root.pem", fileType: "ca" },
+        cert: { id: "cert-1", name: "client-cert", filename: "client.pem", fileType: "cert" },
+        key: { id: "key-1", name: "client-key", filename: "client.key", fileType: "key" },
+      } as never);
+
+      const result = await caller.bundleCreate({
+        environmentId: "env-1",
+        name: "mtls-prod",
+        caId: "ca-1",
+        certId: "cert-1",
+        keyId: "key-1",
+      });
+
+      expect(result).toEqual(expect.objectContaining({ id: "bundle-1", name: "mtls-prod" }));
+      expect(prismaMock.certificate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: { in: ["ca-1", "cert-1", "key-1"] } } }),
+      );
+    });
+
+    it("rejects bundle creation when a linked certificate has the wrong file type", async () => {
+      prismaMock.certificate.findMany.mockResolvedValue([
+        { id: "cert-1", name: "client-cert", filename: "client.pem", fileType: "cert", environmentId: "env-1" },
+      ] as never);
+      prismaMock.certificateBundle.findUnique.mockResolvedValue(null as never);
+
+      await expect(
+        caller.bundleCreate({
+          environmentId: "env-1",
+          name: "bad-bundle",
+          caId: "cert-1",
+          certId: null,
+          keyId: null,
+        }),
+      ).rejects.toThrow("Selected CA certificate is invalid");
+    });
+
+    it("updates a bundle after validating replacement certificates", async () => {
+      prismaMock.certificateBundle.findUnique
+        .mockResolvedValueOnce({
+          id: "bundle-1",
+          environmentId: "env-1",
+          name: "mtls-prod",
+        } as never)
+        .mockResolvedValueOnce(null as never);
+      prismaMock.certificate.findMany.mockResolvedValue([
+        { id: "ca-1", name: "root-ca", filename: "root.pem", fileType: "ca", environmentId: "env-1" },
+        { id: "key-2", name: "next-key", filename: "next.key", fileType: "key", environmentId: "env-1" },
+      ] as never);
+      prismaMock.certificateBundle.update.mockResolvedValue({
+        id: "bundle-1",
+        name: "mtls-prod",
+        environmentId: "env-1",
+        caId: "ca-1",
+        certId: null,
+        keyId: "key-2",
+        createdAt: new Date("2026-05-01T00:00:00Z"),
+        updatedAt: new Date("2026-05-03T00:00:00Z"),
+        ca: { id: "ca-1", name: "root-ca", filename: "root.pem", fileType: "ca" },
+        cert: null,
+        key: { id: "key-2", name: "next-key", filename: "next.key", fileType: "key" },
+      } as never);
+
+      const result = await caller.bundleUpdate({
+        id: "bundle-1",
+        environmentId: "env-1",
+        name: "mtls-prod",
+        caId: "ca-1",
+        certId: null,
+        keyId: "key-2",
+      });
+
+      expect(result).toEqual(expect.objectContaining({ keyId: "key-2" }));
+      expect(prismaMock.certificateBundle.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "bundle-1" },
+          data: expect.objectContaining({ keyId: "key-2" }),
+        }),
+      );
+    });
+
+    it("deletes a bundle by id", async () => {
+      prismaMock.certificateBundle.findUnique.mockResolvedValue({
+        id: "bundle-1",
+        environmentId: "env-1",
+      } as never);
+      prismaMock.certificateBundle.delete.mockResolvedValue({} as never);
+
+      const result = await caller.bundleDelete({ id: "bundle-1", environmentId: "env-1" });
+
+      expect(result).toEqual({ deleted: true });
+      expect(prismaMock.certificateBundle.delete).toHaveBeenCalledWith({ where: { id: "bundle-1" } });
+    });
+  });
+
 });

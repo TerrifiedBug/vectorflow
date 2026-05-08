@@ -32,13 +32,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { CertificateBundleDialog, type BundleDialogCertificateOption, type BundleDialogValue } from "@/components/certificate-bundle-dialog";
 import { certExpiryBadgeClass } from "@/lib/badge-variants";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type VaultKind = "secret" | "ca" | "cert" | "key";
 type VaultStatus = "ok" | "fresh" | "aging" | "unused" | "valid" | "expiring" | "expired" | "na";
@@ -104,6 +114,20 @@ type RawCertificate = {
   daysUntilExpiry: number | null;
 };
 
+type RawCertificateBundle = {
+  id: string;
+  name: string;
+  environmentId: string;
+  caId: string | null;
+  certId: string | null;
+  keyId: string | null;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+  ca: { id: string; name: string; filename: string; fileType: "ca" | "cert" | "key" } | null;
+  cert: { id: string; name: string; filename: string; fileType: "ca" | "cert" | "key" } | null;
+  key: { id: string; name: string; filename: string; fileType: "ca" | "cert" | "key" } | null;
+};
+
 const CERT_FILE_TYPES: Array<{ value: "ca" | "cert" | "key"; label: string }> = [
   { value: "ca", label: "CA Certificate" },
   { value: "cert", label: "Certificate" },
@@ -139,14 +163,22 @@ export function SecretsVaultPage() {
       enabled: !!env.id,
     })),
   });
+  const bundleQueries = useQueries({
+    queries: envs.map((env) => ({
+      ...trpc.certificate.bundleList.queryOptions({ environmentId: env.id }),
+      enabled: !!env.id,
+    })),
+  });
   const allLoading =
     envsQ.isPending ||
     secretQueries.some((query) => query.isPending) ||
-    certificateQueries.some((query) => query.isPending);
+    certificateQueries.some((query) => query.isPending) ||
+    bundleQueries.some((query) => query.isPending);
   const hasLoadError =
     envsQ.isError ||
     secretQueries.some((query) => query.isError) ||
-    certificateQueries.some((query) => query.isError);
+    certificateQueries.some((query) => query.isError) ||
+    bundleQueries.some((query) => query.isError);
 
   const secretRows = React.useMemo(() => {
     const map = new Map<string, VaultRow>();
@@ -215,6 +247,31 @@ export function SecretsVaultPage() {
   const rows = React.useMemo(
     () => [...secretRows, ...certificateRows].sort(compareVaultRows),
     [secretRows, certificateRows],
+  );
+
+  const certificateOptionsByEnvironment = React.useMemo(
+    () =>
+      Object.fromEntries(
+        envs.map((env, index) => [
+          env.id,
+          ((certificateQueries[index]?.data ?? []) as RawCertificate[]).map((certificate) => ({
+            id: certificate.id,
+            name: certificate.name,
+            filename: certificate.filename,
+            fileType: certificate.fileType,
+          })) as BundleDialogCertificateOption[],
+        ]),
+      ),
+    [envs, certificateQueries],
+  );
+
+  const bundleGroups = React.useMemo(
+    () =>
+      envs.map((env, index) => ({
+        environment: env,
+        bundles: (bundleQueries[index]?.data ?? []) as RawCertificateBundle[],
+      })),
+    [envs, bundleQueries],
   );
 
   const [selectedRowKey, setSelectedRowKey] = React.useState<string | null>(null);
@@ -342,6 +399,18 @@ export function SecretsVaultPage() {
   const [rotateTarget, setRotateTarget] = React.useState<RotateTarget>(null);
   const [rotateValue, setRotateValue] = React.useState("");
   const [deleteTarget, setDeleteTarget] = React.useState<DeleteTarget>(null);
+  const [bundleDialogState, setBundleDialogState] = React.useState<{
+    mode: "create" | "edit";
+    bundleId?: string;
+    value: BundleDialogValue;
+  } | null>(null);
+  const [activeVaultTab, setActiveVaultTab] = React.useState<"entries" | "bundles">("entries");
+  const [bundleDeleteTarget, setBundleDeleteTarget] = React.useState<{
+    id: string;
+    name: string;
+    environmentId: string;
+    environmentName: string;
+  } | null>(null);
 
   React.useEffect(() => {
     if (envs.length === 0) {
@@ -454,6 +523,51 @@ export function SecretsVaultPage() {
     }),
   );
 
+  const bundleCreateMutation = useMutation(
+    trpc.certificate.bundleCreate.mutationOptions({
+      onSuccess: (_data, variables) => {
+        queryClient.invalidateQueries({
+          queryKey: trpc.certificate.bundleList.queryKey({ environmentId: variables.environmentId }),
+        });
+        toast.success("Certificate bundle created");
+        setBundleDialogState(null);
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to create certificate bundle", { duration: 6000 });
+      },
+    }),
+  );
+
+  const bundleUpdateMutation = useMutation(
+    trpc.certificate.bundleUpdate.mutationOptions({
+      onSuccess: (_data, variables) => {
+        queryClient.invalidateQueries({
+          queryKey: trpc.certificate.bundleList.queryKey({ environmentId: variables.environmentId }),
+        });
+        toast.success("Certificate bundle updated");
+        setBundleDialogState(null);
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to update certificate bundle", { duration: 6000 });
+      },
+    }),
+  );
+
+  const bundleDeleteMutation = useMutation(
+    trpc.certificate.bundleDelete.mutationOptions({
+      onSuccess: (_data, variables) => {
+        queryClient.invalidateQueries({
+          queryKey: trpc.certificate.bundleList.queryKey({ environmentId: variables.environmentId }),
+        });
+        toast.success("Certificate bundle deleted");
+        setBundleDeleteTarget(null);
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to delete certificate bundle", { duration: 6000 });
+      },
+    }),
+  );
+
   const rotateRow = rotateTarget
     ? rows.find((row) => row.key === rotateTarget.rowKey && row.kind === "secret") ?? null
     : null;
@@ -469,6 +583,34 @@ export function SecretsVaultPage() {
   function openUploadDialog() {
     if (!hasEnvironments) return;
     setUploadOpen(true);
+  }
+
+  function openCreateBundleDialog(environmentId?: string) {
+    if (!hasEnvironments) return;
+    setBundleDialogState({
+      mode: "create",
+      value: {
+        environmentId: environmentId ?? envs[0]?.id ?? "",
+        name: "",
+        caId: null,
+        certId: null,
+        keyId: null,
+      },
+    });
+  }
+
+  function openEditBundleDialog(bundle: RawCertificateBundle) {
+    setBundleDialogState({
+      mode: "edit",
+      bundleId: bundle.id,
+      value: {
+        environmentId: bundle.environmentId,
+        name: bundle.name,
+        caId: bundle.caId,
+        certId: bundle.certId,
+        keyId: bundle.keyId,
+      },
+    });
   }
 
   function openRotateDialog(row: VaultRow, occurrenceId: string | null) {
@@ -515,6 +657,23 @@ export function SecretsVaultPage() {
     });
   }
 
+  function handleBundleSubmit(value: BundleDialogValue) {
+    if (bundleDialogState?.mode === "edit" && bundleDialogState.bundleId) {
+      bundleUpdateMutation.mutate({
+        id: bundleDialogState.bundleId,
+        environmentId: value.environmentId,
+        name: value.name,
+        caId: value.caId,
+        certId: value.certId,
+        keyId: value.keyId,
+      });
+      return;
+    }
+
+    bundleCreateMutation.mutate(value);
+  }
+
+
   async function handleDownloadCertificate(row: VaultRow) {
     if (row.kind === "secret") return;
     const occurrence = row.occurrences[0];
@@ -546,6 +705,15 @@ export function SecretsVaultPage() {
     const entityType = row.kind === "secret" ? "Secret" : "Certificate";
     router.push(`/audit?entityType=${entityType}&search=${encodeURIComponent(occurrenceId)}`);
   }
+
+  const bundleDialogPending =
+    bundleDialogState?.mode === "edit"
+      ? bundleUpdateMutation.isPending
+      : bundleCreateMutation.isPending;
+  const bundleDialogTitle =
+    bundleDialogState?.mode === "edit" ? "Edit bundle" : "Create bundle";
+  const bundleDialogSubmitLabel =
+    bundleDialogState?.mode === "edit" ? "Save bundle" : "Create bundle";
 
   const entryLabel = selectedWithUsage?.kind === "secret" ? "secret" : "certificate";
 
@@ -588,6 +756,7 @@ export function SecretsVaultPage() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={openCreateDialog}>New secret</DropdownMenuItem>
                   <DropdownMenuItem onClick={openUploadDialog}>Upload certificate</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openCreateBundleDialog()}>New bundle</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </>
@@ -627,152 +796,237 @@ export function SecretsVaultPage() {
         />
       )}
 
-      {teamId && hasEnvironments && rows.length === 0 && !allLoading && !hasLoadError && (
-        <EmptyState
-          glyph="K"
-          title="No vault entries yet"
-          description="Create a secret or upload a certificate to reference from pipelines as SECRET[name] or CERT[name]."
-          action={{ label: "New", onClick: openCreateDialog }}
-        />
-      )}
+      {teamId && hasEnvironments && !hasLoadError && (
+        <Tabs value={activeVaultTab} onValueChange={(value) => setActiveVaultTab(value as "entries" | "bundles")} className="min-h-0 flex-1 px-6">
+          <TabsList variant="mono">
+            <TabsTrigger value="entries" onClick={() => setActiveVaultTab("entries")}>Entries</TabsTrigger>
+            <TabsTrigger value="bundles" onClick={() => setActiveVaultTab("bundles")}>Bundles</TabsTrigger>
+          </TabsList>
 
-      {teamId && rows.length > 0 && !hasLoadError && (
-        <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: "1fr 440px" }}>
-          <div className="flex min-h-0 flex-col border-r border-line">
-            <div
-              className="grid border-b border-line px-5 py-2 font-mono text-[10px] uppercase tracking-[0.04em] text-fg-2"
-              style={{ gridTemplateColumns: "1.6fr 100px 110px 1fr 70px 100px" }}
-            >
-              <span>name</span>
-              <span>type</span>
-              <span>last rotated</span>
-              <span>envs</span>
-              <span className="text-right">uses</span>
-              <span className="text-right">status</span>
-            </div>
-            <div className="flex-1 overflow-auto">
-              {visibleRows.map((row) => {
-                const isSelected = row.key === selectedWithUsage?.key;
-                const usageDisplay = isSelected
-                  ? usageLoading
-                    ? "…"
-                    : usageError
-                      ? "!"
-                      : selectedUsageLoaded
-                        ? row.uses
-                        : "—"
-                  : "—";
-                const usageClass =
-                  usageError && isSelected
-                    ? "text-status-error"
-                    : usageDisplay === "—" || usageDisplay === "…" || usageDisplay === 0
-                      ? "text-fg-2"
-                      : "text-fg";
-
-                return (
-                  <button
-                    key={row.key}
-                    type="button"
-                    onClick={() => setSelectedRowKey(row.key)}
-                    className={cn(
-                      "grid w-full cursor-pointer items-center border-b border-line border-l-2 border-l-transparent px-5 py-2.5 text-left font-mono text-[11.5px] transition-colors",
-                      isSelected ? "border-l-accent-brand bg-bg-1" : "hover:bg-bg-3/40",
-                    )}
+          <TabsContent value="entries" className="mt-4 min-h-0 flex-1">
+            {rows.length === 0 && !allLoading ? (
+              <EmptyState
+                glyph="K"
+                title="No vault entries yet"
+                description="Create a secret or upload a certificate to reference from pipelines as SECRET[name] or CERT[name]."
+                action={{ label: "New", onClick: openCreateDialog }}
+              />
+            ) : rows.length > 0 ? (
+              <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: "1fr 440px" }}>
+                <div className="flex min-h-0 flex-col border-r border-line">
+                  <div
+                    className="grid border-b border-line px-5 py-2 font-mono text-[10px] uppercase tracking-[0.04em] text-fg-2"
                     style={{ gridTemplateColumns: "1.6fr 100px 110px 1fr 70px 100px" }}
                   >
-                    <span className="flex items-center gap-1.5 truncate text-fg">
-                      <VFIcon name={row.kind === "secret" ? "key" : "shield"} size={13} className="text-fg-2" />
-                      {row.name}
-                    </span>
-                    <span className="text-fg-2">{typeLabel(row.kind)}</span>
-                    <span className={row.rotated === "—" || row.rotated === "never" ? "text-fg-2" : "text-fg-1"}>
-                      {row.rotated}
-                    </span>
-                    <span className="flex flex-wrap gap-1">
-                      {row.envs.length === 0 && <span className="text-[10.5px] text-fg-2">—</span>}
-                      {row.envs.map((envName) => (
-                        <Pill key={envName} variant={environmentPillVariant(envName)} size="xs">
-                          {envName}
-                        </Pill>
-                      ))}
-                    </span>
-                    <span className={cn("text-right", usageClass)}>{usageDisplay}</span>
-                    <span className="text-right">
-                      <VaultStatusBadge row={row} />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {rowsWithUsage.length > pageSize && (
-              <div className="flex items-center justify-between border-t border-line bg-bg-1 px-5 py-3 font-mono text-[11px] text-fg-2">
-                <span>
-                  Showing {currentPage * pageSize + 1}–
-                  {Math.min((currentPage + 1) * pageSize, rowsWithUsage.length)} of {rowsWithUsage.length} entries
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={currentPage === 0}
-                    onClick={() => setPage((value) => Math.max(0, value - 1))}
-                  >
-                    Previous
-                  </Button>
-                  <span className="tabular-nums">
-                    Page {currentPage + 1} of {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={currentPage >= totalPages - 1}
-                    onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
-                  >
-                    Next
-                  </Button>
+                    <span>name</span>
+                    <span>type</span>
+                    <span>last rotated</span>
+                    <span>envs</span>
+                    <span className="text-right">uses</span>
+                    <span className="text-right">status</span>
+                  </div>
+                  <div className="flex-1 overflow-auto">
+                    {visibleRows.map((row) => {
+                      const isSelected = row.key === selectedWithUsage?.key;
+                      const usageDisplay = isSelected
+                        ? usageLoading
+                          ? "…"
+                          : usageError
+                            ? "!"
+                            : selectedUsageLoaded
+                              ? row.uses
+                              : "—"
+                        : "—";
+                      const usageClass =
+                        usageError && isSelected
+                          ? "text-status-error"
+                          : usageDisplay === "—" || usageDisplay === "…" || usageDisplay === 0
+                            ? "text-fg-2"
+                            : "text-fg";
+
+                      return (
+                        <button
+                          key={row.key}
+                          type="button"
+                          onClick={() => setSelectedRowKey(row.key)}
+                          className={cn(
+                            "grid w-full cursor-pointer items-center border-b border-line border-l-2 border-l-transparent px-5 py-2.5 text-left font-mono text-[11.5px] transition-colors",
+                            isSelected ? "border-l-accent-brand bg-bg-1" : "hover:bg-bg-3/40",
+                          )}
+                          style={{ gridTemplateColumns: "1.6fr 100px 110px 1fr 70px 100px" }}
+                        >
+                          <span className="flex items-center gap-1.5 truncate text-fg">
+                            <VFIcon name={row.kind === "secret" ? "key" : "shield"} size={13} className="text-fg-2" />
+                            {row.name}
+                          </span>
+                          <span className="text-fg-2">{typeLabel(row.kind)}</span>
+                          <span className={row.rotated === "—" || row.rotated === "never" ? "text-fg-2" : "text-fg-1"}>
+                            {row.rotated}
+                          </span>
+                          <span className="flex flex-wrap gap-1">
+                            {row.envs.length === 0 && <span className="text-[10.5px] text-fg-2">—</span>}
+                            {row.envs.map((envName) => (
+                              <Pill key={envName} variant={environmentPillVariant(envName)} size="xs">
+                                {envName}
+                              </Pill>
+                            ))}
+                          </span>
+                          <span className={cn("text-right", usageClass)}>{usageDisplay}</span>
+                          <span className="text-right">
+                            <VaultStatusBadge row={row} />
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {rowsWithUsage.length > pageSize && (
+                    <div className="flex items-center justify-between border-t border-line bg-bg-1 px-5 py-3 font-mono text-[11px] text-fg-2">
+                      <span>
+                        Showing {currentPage * pageSize + 1}–
+                        {Math.min((currentPage + 1) * pageSize, rowsWithUsage.length)} of {rowsWithUsage.length} entries
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={currentPage === 0}
+                          onClick={() => setPage((value) => Math.max(0, value - 1))}
+                        >
+                          Previous
+                        </Button>
+                        <span className="tabular-nums">
+                          Page {currentPage + 1} of {totalPages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={currentPage >= totalPages - 1}
+                          onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex min-h-0 flex-col overflow-hidden">
+                  {selectedWithUsage?.kind === "secret" ? (
+                    <SecretDetail
+                      row={selectedWithUsage}
+                      usageRefs={usageRefs}
+                      usageLoading={usageLoading}
+                      usageError={usageError}
+                      onRotateOccurrence={(occurrence) => openRotateDialog(selectedWithUsage, occurrence.id)}
+                      onDeleteOccurrence={(occurrence) =>
+                        setDeleteTarget({
+                          ...occurrence,
+                          rowKey: selectedWithUsage.key,
+                          rowName: selectedWithUsage.name,
+                          kind: "secret",
+                        })
+                      }
+                      onViewAudit={() => openAudit(selectedWithUsage)}
+                    />
+                  ) : selectedWithUsage ? (
+                    <CertificateDetail
+                      row={selectedWithUsage}
+                      usageRefs={usageRefs}
+                      usageLoading={usageLoading}
+                      usageError={usageError}
+                      onDeleteOccurrence={(occurrence) =>
+                        setDeleteTarget({
+                          ...occurrence,
+                          rowKey: selectedWithUsage.key,
+                          rowName: selectedWithUsage.name,
+                          kind: selectedWithUsage.kind,
+                        })
+                      }
+                      onDownloadPem={() => handleDownloadCertificate(selectedWithUsage)}
+                      onViewAudit={() => openAudit(selectedWithUsage)}
+                    />
+                  ) : null}
                 </div>
               </div>
-            )}
-          </div>
-
-          <div className="flex min-h-0 flex-col overflow-hidden">
-            {selectedWithUsage?.kind === "secret" ? (
-              <SecretDetail
-                row={selectedWithUsage}
-                usageRefs={usageRefs}
-                usageLoading={usageLoading}
-                usageError={usageError}
-                onRotateOccurrence={(occurrence) => openRotateDialog(selectedWithUsage, occurrence.id)}
-                onDeleteOccurrence={(occurrence) =>
-                  setDeleteTarget({
-                    ...occurrence,
-                    rowKey: selectedWithUsage.key,
-                    rowName: selectedWithUsage.name,
-                    kind: "secret",
-                  })
-                }
-                onViewAudit={() => openAudit(selectedWithUsage)}
-              />
-            ) : selectedWithUsage ? (
-              <CertificateDetail
-                row={selectedWithUsage}
-                usageRefs={usageRefs}
-                usageLoading={usageLoading}
-                usageError={usageError}
-                onDeleteOccurrence={(occurrence) =>
-                  setDeleteTarget({
-                    ...occurrence,
-                    rowKey: selectedWithUsage.key,
-                    rowName: selectedWithUsage.name,
-                    kind: selectedWithUsage.kind,
-                  })
-                }
-                onDownloadPem={() => handleDownloadCertificate(selectedWithUsage)}
-                onViewAudit={() => openAudit(selectedWithUsage)}
-              />
             ) : null}
-          </div>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="bundles" className="mt-4 min-h-0 flex-1">
+            <div className="flex flex-col gap-4">
+              {bundleGroups.map(({ environment, bundles }) => (
+                <div key={environment.id} className="rounded-[3px] border border-line bg-bg-1">
+                  <div className="flex items-center justify-between border-b border-line px-4 py-3">
+                    <div>
+                      <p className="font-mono text-[11px] uppercase tracking-[0.04em] text-fg-2">
+                        {environment.name}
+                      </p>
+                      <p className="text-[11px] text-fg-2">
+                        {bundles.length === 0 ? "No bundles yet" : `${bundles.length} bundle${bundles.length === 1 ? "" : "s"}`}
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => openCreateBundleDialog(environment.id)}>
+                      New bundle
+                    </Button>
+                  </div>
+
+                  {bundles.length === 0 ? (
+                    <div className="px-4 py-6 text-sm text-fg-2">
+                      No bundles in this environment.
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>CA</TableHead>
+                          <TableHead>Certificate</TableHead>
+                          <TableHead>Private Key</TableHead>
+                          <TableHead>Updated</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {bundles.map((bundle) => (
+                          <TableRow key={bundle.id}>
+                            <TableCell className="font-mono text-sm font-medium">{bundle.name}</TableCell>
+                            <TableCell className="text-muted-foreground text-sm">{bundle.ca?.name ?? "—"}</TableCell>
+                            <TableCell className="text-muted-foreground text-sm">{bundle.cert?.name ?? "—"}</TableCell>
+                            <TableCell className="text-muted-foreground text-sm">{bundle.key?.name ?? "—"}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {toIsoString(bundle.updatedAt)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button variant="ghost" size="sm" onClick={() => openEditBundleDialog(bundle)}>
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-status-error hover:text-status-error"
+                                  onClick={() =>
+                                    setBundleDeleteTarget({
+                                      id: bundle.id,
+                                      name: bundle.name,
+                                      environmentId: bundle.environmentId,
+                                      environmentName: environment.name,
+                                    })
+                                  }
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              ))}
+            </div>
+          </TabsContent>
+        </Tabs>
       )}
 
       <Dialog
@@ -931,6 +1185,22 @@ export function SecretsVaultPage() {
         </DialogContent>
       </Dialog>
 
+      <CertificateBundleDialog
+        open={!!bundleDialogState}
+        onOpenChange={(open) => {
+          if (!open) setBundleDialogState(null);
+        }}
+        title={bundleDialogTitle}
+        description="Group existing CA, certificate, and key files under a single bundle name for TLS forms."
+        submitLabel={bundleDialogSubmitLabel}
+        isPending={bundleDialogPending}
+        environments={envs}
+        certificatesByEnvironment={certificateOptionsByEnvironment}
+        initialValue={bundleDialogState?.value ?? null}
+        onSubmit={handleBundleSubmit}
+      />
+
+
       <Dialog
         open={!!rotateTarget}
         onOpenChange={(open) => {
@@ -1030,6 +1300,32 @@ export function SecretsVaultPage() {
           deleteCertificateMutation.mutate({
             id: deleteTarget.id,
             environmentId: deleteTarget.environmentId,
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!bundleDeleteTarget}
+        onOpenChange={(open) => !open && setBundleDeleteTarget(null)}
+        title="Delete bundle"
+        description={
+          bundleDeleteTarget ? (
+            <>
+              Permanently delete <span className="font-mono font-semibold">{bundleDeleteTarget.name}</span>
+              from <span className="font-mono font-semibold">{bundleDeleteTarget.environmentName}</span>?
+              Pipelines that already saved individual CERT refs will keep working, but operators will no longer be able to pick this bundle in TLS forms.
+            </>
+          ) : null
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        isPending={bundleDeleteMutation.isPending}
+        pendingLabel="Deleting..."
+        onConfirm={() => {
+          if (!bundleDeleteTarget) return;
+          bundleDeleteMutation.mutate({
+            id: bundleDeleteTarget.id,
+            environmentId: bundleDeleteTarget.environmentId,
           });
         }}
       />

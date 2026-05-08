@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { Plus, Trash2, FileKey, Upload } from "lucide-react";
+import { Plus, Trash2, FileKey, Upload, Boxes } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { CertificateBundleDialog, type BundleDialogCertificateOption } from "@/components/certificate-bundle-dialog";
 import { certExpiryBadgeClass } from "@/lib/badge-variants";
 
 const FILE_TYPE_LABELS: Record<string, string> = {
@@ -75,7 +76,11 @@ export function CertificatesSection({ environmentId }: CertificatesSectionProps)
   const certsQuery = useQuery(
     trpc.certificate.list.queryOptions({ environmentId })
   );
+  const bundlesQuery = useQuery(
+    trpc.certificate.bundleList.queryOptions({ environmentId })
+  );
   const certs = certsQuery.data ?? [];
+  const bundles = bundlesQuery.data ?? [];
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadName, setUploadName] = useState("");
@@ -83,6 +88,7 @@ export function CertificatesSection({ environmentId }: CertificatesSectionProps)
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [bundleDialogOpen, setBundleDialogOpen] = useState(false);
 
   const uploadMutation = useMutation(
     // eslint-disable-next-line react-hooks/refs
@@ -110,6 +116,26 @@ export function CertificatesSection({ environmentId }: CertificatesSectionProps)
       },
     })
   );
+
+  const bundleCreateMutation = useMutation(
+    trpc.certificate.bundleCreate.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.certificate.bundleList.queryKey({ environmentId }) });
+        toast.success("Certificate bundle created");
+        setBundleDialogOpen(false);
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to create certificate bundle", { duration: 6000 });
+      },
+    })
+  );
+
+  const bundleCertOptions: BundleDialogCertificateOption[] = certs.map((cert) => ({
+    id: cert.id,
+    name: cert.name,
+    filename: cert.filename,
+    fileType: cert.fileType as "ca" | "cert" | "key",
+  }));
 
   function resetUploadForm() {
     setUploadOpen(false);
@@ -153,10 +179,16 @@ export function CertificatesSection({ environmentId }: CertificatesSectionProps)
                 Uploaded files are encrypted at rest.
               </CardDescription>
             </div>
-            <Button size="sm" onClick={() => setUploadOpen(true)}>
-              <Plus className="mr-2 h-3.5 w-3.5" />
-              Upload Certificate
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => setBundleDialogOpen(true)}>
+                <Boxes className="mr-2 h-3.5 w-3.5" />
+                Create Bundle
+              </Button>
+              <Button size="sm" onClick={() => setUploadOpen(true)}>
+                <Plus className="mr-2 h-3.5 w-3.5" />
+                Upload Certificate
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -236,6 +268,65 @@ export function CertificatesSection({ environmentId }: CertificatesSectionProps)
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Boxes className="h-4 w-4" />
+                Certificate Bundles
+              </CardTitle>
+              <CardDescription>
+                Group CA, certificate, and key files under one name for TLS forms.
+              </CardDescription>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setBundleDialogOpen(true)}>
+              <Plus className="mr-2 h-3.5 w-3.5" />
+              Create Bundle
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {bundles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
+              <Boxes className="mb-2 h-8 w-8 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                No certificate bundles created for this environment
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Create a bundle to auto-fill TLS CA, certificate, and key references together.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>CA</TableHead>
+                  <TableHead>Certificate</TableHead>
+                  <TableHead>Private Key</TableHead>
+                  <TableHead>Updated</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {bundles.map((bundle) => (
+                  <TableRow key={bundle.id}>
+                    <TableCell className="font-mono text-sm font-medium">{bundle.name}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{bundle.ca?.name ?? "\u2014"}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{bundle.cert?.name ?? "\u2014"}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{bundle.key?.name ?? "\u2014"}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(bundle.updatedAt ?? bundle.createdAt).toLocaleDateString()}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+
       {/* Upload Certificate Dialog */}
       <Dialog open={uploadOpen} onOpenChange={(open) => { if (!open) resetUploadForm(); else setUploadOpen(true); }}>
         <DialogContent>
@@ -311,6 +402,27 @@ export function CertificatesSection({ environmentId }: CertificatesSectionProps)
           </form>
         </DialogContent>
       </Dialog>
+
+      <CertificateBundleDialog
+        open={bundleDialogOpen}
+        onOpenChange={setBundleDialogOpen}
+        title="Create Bundle"
+        description="Group existing CA, certificate, and key files under a single bundle name for TLS forms."
+        submitLabel="Create Bundle"
+        isPending={bundleCreateMutation.isPending}
+        environments={[{ id: environmentId, name: "Current environment" }]}
+        certificatesByEnvironment={{ [environmentId]: bundleCertOptions }}
+        initialValue={{
+          environmentId,
+          name: "",
+          caId: null,
+          certId: null,
+          keyId: null,
+        }}
+        environmentLocked
+        onSubmit={(value) => bundleCreateMutation.mutate(value)}
+      />
+
 
       {/* Delete Confirmation */}
       <ConfirmDialog

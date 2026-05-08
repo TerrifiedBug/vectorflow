@@ -137,6 +137,7 @@ model Environment {
   pipelines           Pipeline[]
   secrets             Secret[]
   certificates        Certificate[]
+  certificateBundles    CertificateBundle[]
   auditLogs           AuditLog[]
   enrollmentTokenHash String?
   enrollmentTokenHint String?
@@ -695,14 +696,34 @@ model Secret {
 }
 
 model Certificate {
-  id            String      @id @default(cuid())
+  id            String              @id @default(cuid())
   name          String
   filename      String
   fileType      String
   encryptedData String
   environmentId String
-  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  createdAt     DateTime    @default(now())
+  environment   Environment         @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  bundlesAsCa   CertificateBundle[] @relation("bundleCa")
+  bundlesAsCert CertificateBundle[] @relation("bundleCert")
+  bundlesAsKey  CertificateBundle[] @relation("bundleKey")
+  createdAt     DateTime            @default(now())
+
+  @@unique([environmentId, name])
+}
+
+model CertificateBundle {
+  id            String       @id @default(cuid())
+  name          String
+  environmentId String
+  environment   Environment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  caId          String?
+  ca            Certificate? @relation("bundleCa", fields: [caId], references: [id], onDelete: SetNull)
+  certId        String?
+  cert          Certificate? @relation("bundleCert", fields: [certId], references: [id], onDelete: SetNull)
+  keyId         String?
+  key           Certificate? @relation("bundleKey", fields: [keyId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   @@unique([environmentId, name])
 }

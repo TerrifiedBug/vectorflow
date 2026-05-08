@@ -9,6 +9,63 @@ import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { collectCertRefs } from "@/server/services/secret-resolver";
 
 const MAX_CERT_SIZE = 100 * 1024; // 100KB
+const certificateNameSchema = z.string().min(1).max(100).regex(
+  /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/,
+  "Name must start with a letter or number and contain only letters, numbers, hyphens, and underscores",
+);
+const bundleCertIdSchema = z.string().min(1).nullable().optional();
+
+const certificateBundleSelect = {
+  id: true,
+  name: true,
+  environmentId: true,
+  caId: true,
+  certId: true,
+  keyId: true,
+  createdAt: true,
+  updatedAt: true,
+  ca: { select: { id: true, name: true, filename: true, fileType: true } },
+  cert: { select: { id: true, name: true, filename: true, fileType: true } },
+  key: { select: { id: true, name: true, filename: true, fileType: true } },
+} as const;
+
+async function validateBundleCertificates(
+  environmentId: string,
+  input: { caId?: string | null; certId?: string | null; keyId?: string | null },
+) {
+  const certIds = Array.from(
+    new Set(
+      [input.caId ?? null, input.certId ?? null, input.keyId ?? null].filter(
+        (id): id is string => Boolean(id),
+      ),
+    ),
+  );
+
+  if (certIds.length === 0) return;
+
+  const certificates = await prisma.certificate.findMany({
+    where: { id: { in: certIds } },
+    select: { id: true, environmentId: true, fileType: true },
+  });
+  const byId = new Map(certificates.map((certificate) => [certificate.id, certificate]));
+
+  const checks = [
+    { id: input.caId ?? null, expectedType: "ca", label: "CA certificate" },
+    { id: input.certId ?? null, expectedType: "cert", label: "certificate" },
+    { id: input.keyId ?? null, expectedType: "key", label: "private key" },
+  ] as const;
+
+  for (const check of checks) {
+    if (!check.id) continue;
+    const certificate = byId.get(check.id);
+    if (!certificate || certificate.environmentId !== environmentId || certificate.fileType !== check.expectedType) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Selected ${check.label} is invalid`,
+      });
+    }
+  }
+}
 
 export const certificateRouter = router({
   list: protectedProcedure
@@ -67,14 +124,149 @@ export const certificateRouter = router({
       return enriched;
     }),
 
+  bundleList: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      return prisma.certificateBundle.findMany({
+        where: { environmentId: input.environmentId },
+        orderBy: { name: "asc" },
+        select: certificateBundleSelect,
+      });
+    }),
+
+  bundleGet: protectedProcedure
+    .input(z.object({ id: z.string(), environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const bundle = await prisma.certificateBundle.findUnique({
+        where: { id: input.id },
+        select: certificateBundleSelect,
+      });
+      if (!bundle || bundle.environmentId !== input.environmentId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Certificate bundle not found" });
+      }
+      return bundle;
+    }),
+
+  bundleCreate: protectedProcedure
+    .input(
+      z.object({
+        environmentId: z.string(),
+        name: certificateNameSchema,
+        caId: bundleCertIdSchema,
+        certId: bundleCertIdSchema,
+        keyId: bundleCertIdSchema,
+      }),
+    )
+    .use(denyInDemo())
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("certificateBundle.created", "CertificateBundle"))
+    .mutation(async ({ input }) => {
+      const existing = await prisma.certificateBundle.findUnique({
+        where: {
+          environmentId_name: {
+            environmentId: input.environmentId,
+            name: input.name,
+          },
+        },
+      });
+      if (existing) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A certificate bundle with this name already exists in this environment",
+        });
+      }
+
+      await validateBundleCertificates(input.environmentId, input);
+
+      return prisma.certificateBundle.create({
+        data: {
+          environmentId: input.environmentId,
+          name: input.name,
+          caId: input.caId ?? null,
+          certId: input.certId ?? null,
+          keyId: input.keyId ?? null,
+        },
+        select: certificateBundleSelect,
+      });
+    }),
+
+  bundleUpdate: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        environmentId: z.string(),
+        name: certificateNameSchema,
+        caId: bundleCertIdSchema,
+        certId: bundleCertIdSchema,
+        keyId: bundleCertIdSchema,
+      }),
+    )
+    .use(denyInDemo())
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("certificateBundle.updated", "CertificateBundle"))
+    .mutation(async ({ input }) => {
+      const existing = await prisma.certificateBundle.findUnique({
+        where: { id: input.id },
+        select: { id: true, environmentId: true },
+      });
+      if (!existing || existing.environmentId !== input.environmentId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Certificate bundle not found" });
+      }
+
+      const duplicate = await prisma.certificateBundle.findUnique({
+        where: {
+          environmentId_name: {
+            environmentId: input.environmentId,
+            name: input.name,
+          },
+        },
+        select: { id: true },
+      });
+      if (duplicate && duplicate.id !== input.id) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A certificate bundle with this name already exists in this environment",
+        });
+      }
+
+      await validateBundleCertificates(input.environmentId, input);
+
+      return prisma.certificateBundle.update({
+        where: { id: input.id },
+        data: {
+          name: input.name,
+          caId: input.caId ?? null,
+          certId: input.certId ?? null,
+          keyId: input.keyId ?? null,
+        },
+        select: certificateBundleSelect,
+      });
+    }),
+
+  bundleDelete: protectedProcedure
+    .input(z.object({ id: z.string(), environmentId: z.string() }))
+    .use(denyInDemo())
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("certificateBundle.deleted", "CertificateBundle"))
+    .mutation(async ({ input }) => {
+      const bundle = await prisma.certificateBundle.findUnique({
+        where: { id: input.id },
+        select: { id: true, environmentId: true },
+      });
+      if (!bundle || bundle.environmentId !== input.environmentId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Certificate bundle not found" });
+      }
+      await prisma.certificateBundle.delete({ where: { id: input.id } });
+      return { deleted: true };
+    }),
+
   upload: protectedProcedure
     .input(
       z.object({
         environmentId: z.string(),
-        name: z.string().min(1).max(100).regex(
-          /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/,
-          "Name must start with a letter or number and contain only letters, numbers, hyphens, and underscores",
-        ),
+        name: certificateNameSchema,
         filename: z.string().min(1).max(255).regex(
           /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
           "Filename must start with a letter or number and contain only letters, numbers, dots, hyphens, and underscores",
@@ -143,11 +335,15 @@ export const certificateRouter = router({
         select: { id: true, name: true, environmentId: true },
       });
       if (!certificate || certificate.environmentId !== input.environmentId) {
-        return { count: 0, pipelineCount: 0, refs: [] as Array<{
-          id: string;
-          componentType: string;
-          pipeline: { id: string; name: string; environment: { id: string; name: string } };
-        }> };
+        return {
+          count: 0,
+          pipelineCount: 0,
+          refs: [] as Array<{
+            id: string;
+            componentType: string;
+            pipeline: { id: string; name: string; environment: { id: string; name: string } };
+          }>,
+        };
       }
 
       const nodes = await prisma.pipelineNode.findMany({
