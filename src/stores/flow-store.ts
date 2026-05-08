@@ -571,8 +571,8 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   },
 
   updateNodeMetrics: (metricsMap) => {
-    set((state) => ({
-      nodes: state.nodes.map((n) => {
+    set((state) => {
+      const nodes = state.nodes.map((n) => {
         const key = n.data.componentKey as string;
         const m = metricsMap.get(key);
         if (m) {
@@ -583,9 +583,29 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
           return { ...n, data: { ...n.data, metrics: undefined } };
         }
         return n;
-      }),
-      // Do NOT set isDirty — metrics are ephemeral, not user edits
-    }));
+      });
+
+      const componentKeyByNodeId = new Map(
+        nodes.map((node) => [node.id, node.data.componentKey as string]),
+      );
+      const edges = state.edges.map((edge) => {
+        const sourceMetrics = metricsMap.get(componentKeyByNodeId.get(edge.source) ?? "");
+        return {
+          ...edge,
+          data: {
+            ...(edge.data ?? {}),
+            running: (sourceMetrics?.eventsPerSec ?? 0) > 0,
+            throughput: sourceMetrics?.eventsPerSec ?? 0,
+          },
+        };
+      });
+
+      return {
+        nodes,
+        edges,
+        // Do NOT set isDirty — metrics are ephemeral, not user edits
+      };
+    });
   },
 
   /* ---- Global config ---- */

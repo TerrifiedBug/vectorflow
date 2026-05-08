@@ -52,7 +52,7 @@ export function AccessSettingsShell({
 
 const PERMISSIONS = [
   { name: "View dashboards and audit logs", viewer: true, editor: true, admin: true, owner: true },
-  { name: "Create and edit draft pipelines", viewer: false, editor: true, admin: true, owner: true },
+  { name: "Create and edit pipelines on canvas", viewer: false, editor: true, admin: true, owner: true },
   { name: "Deploy pipelines", viewer: false, editor: true, admin: true, owner: true },
   { name: "Manage environments and secrets", viewer: false, editor: false, admin: true, owner: true },
   { name: "Invite and remove team members", viewer: false, editor: false, admin: true, owner: true },
