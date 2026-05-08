@@ -275,7 +275,9 @@ function RawReducedTrend({ data, range, isLoading }: { data: CostTimeSeriesBucke
   );
 }
 
-function SpendSvg({ points, range }: { points: Array<{ t: number; rawSpendCents: number; reducedSpendCents: number }>; range: string }) {
+export function SpendSvg({ points, range }: { points: Array<{ t: number; rawSpendCents: number; reducedSpendCents: number }>; range: string }) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
   const width = 760;
   const height = 260;
   const pad = 28;
@@ -287,9 +289,10 @@ function SpendSvg({ points, range }: { points: Array<{ t: number; rawSpendCents:
   const area = `${reducedPath} L${x(points.length - 1).toFixed(1)},${height - pad} L${x(0).toFixed(1)},${height - pad} Z`;
   const first = new Date(points[0].t).toLocaleDateString([], { month: "short", day: "numeric" });
   const last = new Date(points[points.length - 1].t).toLocaleDateString([], { month: "short", day: "numeric" });
+  const hoveredPoint = hoverIndex == null ? null : points[hoverIndex];
 
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <svg viewBox={`0 0 ${width} ${height}`} className="h-[260px] min-w-[640px] w-full" role="img" aria-label={`Raw and reduced spend over ${range}`}>
         {Array.from({ length: 5 }).map((_, index) => {
           const gy = pad + index * ((height - pad * 2) / 4);
@@ -298,10 +301,65 @@ function SpendSvg({ points, range }: { points: Array<{ t: number; rawSpendCents:
         <path d={area} fill="var(--accent-brand)" opacity="0.14" />
         <path d={rawPath} fill="none" stroke="var(--fg-2)" strokeDasharray="5 5" strokeWidth="1.5" />
         <path d={reducedPath} fill="none" stroke="var(--accent-brand)" strokeWidth="2" />
+        {hoverIndex != null && (
+          <line
+            x1={x(hoverIndex)}
+            x2={x(hoverIndex)}
+            y1={pad}
+            y2={height - pad}
+            stroke="var(--line-2)"
+            strokeDasharray="3 3"
+          />
+        )}
+        <rect
+          data-testid="spend-chart-hitbox"
+          x={pad}
+          y={pad}
+          width={width - pad * 2}
+          height={height - pad * 2}
+          fill="transparent"
+          onMouseLeave={() => {
+            setHoverIndex(null);
+            setTooltipPosition(null);
+          }}
+          onMouseMove={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            const relativeX = event.clientX - rect.left;
+            const index = Math.min(
+              Math.max(Math.round((relativeX / rect.width) * Math.max(points.length - 1, 1)), 0),
+              Math.max(points.length - 1, 0),
+            );
+            setHoverIndex(index);
+            setTooltipPosition({ x: relativeX, y: event.clientY - rect.top });
+          }}
+        />
         <text x={pad} y={height - 6} className="fill-fg-2 font-mono text-[10px]">{first}</text>
         <text x={width - pad} y={height - 6} textAnchor="end" className="fill-fg-2 font-mono text-[10px]">{last}</text>
         <text x={width - pad} y={18} textAnchor="end" className="fill-fg-2 font-mono text-[10px]">max {displayCost(max)}</text>
       </svg>
+      {hoveredPoint && tooltipPosition && (
+        <div
+          className="pointer-events-none absolute z-10 min-w-[10rem] rounded-[3px] border border-line bg-bg-2 px-2.5 py-1.5 font-sans text-[12px] shadow-xl"
+          style={{
+            left: Math.min(Math.max(tooltipPosition.x + 12, 8), width - 180),
+            top: Math.min(Math.max(tooltipPosition.y - 12, 8), height - 88),
+          }}
+        >
+          <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.04em] text-fg-2">
+            {new Date(hoveredPoint.t).toLocaleDateString([], { month: "short", day: "numeric" })}
+          </div>
+          <div className="grid gap-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-1.5 text-fg-1"><span className="h-2 w-2 rounded-[2px] bg-fg-2" />raw spend</span>
+              <span className="font-mono text-fg tabular-nums">{displayCost(hoveredPoint.rawSpendCents)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-1.5 text-fg-1"><span className="h-2 w-2 rounded-[2px] bg-accent-brand" />reduced spend</span>
+              <span className="font-mono text-fg tabular-nums">{displayCost(hoveredPoint.reducedSpendCents)}</span>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="mt-2 flex items-center justify-between font-mono text-[10px] text-fg-2">
         <span>{range} ago</span>
         <span>today</span>

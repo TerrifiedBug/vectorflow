@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, ArrowRight, BarChart3, GitBranch, GitCommit, Layers, Pencil, PlayCircle, ShieldCheck } from "lucide-react";
+import { Activity, ArrowRight, BarChart3, GitBranch, GitCommit, Layers, Pencil, PlayCircle, Rocket, ShieldCheck } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { aggregateProcessStatus } from "@/lib/pipeline-status";
 import { Button } from "@/components/ui/button";
@@ -112,6 +112,12 @@ export default function PipelineDetailPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm" className="h-8 rounded-[3px] gap-1.5 font-mono text-[11px] uppercase tracking-[0.04em]">
+              <Link href="/promotions">
+                <Rocket className="h-3.5 w-3.5" />
+                Promotions
+              </Link>
+            </Button>
             <Button asChild variant="outline" size="sm" className="h-8 rounded-[3px] gap-1.5 font-mono text-[11px] uppercase tracking-[0.04em]">
               <Link href={`/pipelines/${pipelineId}/metrics`}>
                 <BarChart3 className="h-3.5 w-3.5" />
