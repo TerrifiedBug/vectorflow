@@ -11,6 +11,7 @@ import { VFIcon } from "@/components/ui/vf-icon";
 import { ConfigDiff } from "@/components/ui/config-diff";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
+import { NewPromotionButton } from "@/components/new-promotion-button";
 import { GitBranch } from "lucide-react";
 import { toast } from "sonner";
 
@@ -223,12 +224,10 @@ export default function PromotionsPage() {
             <VFIcon name="download" />
             Export
           </Button>
-          <Button variant="primary" size="sm" asChild>
-            <Link href="/pipelines" className="inline-flex items-center gap-1.5">
-              <VFIcon name="git" />
-              New promotion
-            </Link>
-          </Button>
+          <NewPromotionButton
+            label="New promotion"
+            icon={<VFIcon name="git" />}
+          />
         </div>
       </div>
 

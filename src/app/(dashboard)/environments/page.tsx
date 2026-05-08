@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
+import { NewPromotionButton } from "@/components/new-promotion-button";
 
 const ENV_COLORS = [
   "var(--accent-brand)",
@@ -75,12 +76,12 @@ export default function EnvironmentsPage() {
         }
         actions={
           <>
-            <Button asChild variant="outline" size="sm">
-              <Link href="/promotions">
-                <Rocket className="h-3.5 w-3.5" />
-                Promote pipeline
-              </Link>
-            </Button>
+            <NewPromotionButton
+              variant="outline"
+              size="sm"
+              label="Promote pipeline"
+              icon={<Rocket className="h-3.5 w-3.5" />}
+            />
             <Button asChild variant="primary" size="sm">
               <Link href="/environments/new">
                 <Plus className="h-3.5 w-3.5" />

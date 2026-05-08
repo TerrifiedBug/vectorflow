@@ -46,6 +46,28 @@ const baseStore: Partial<FlowState> = {
 
 let currentStore = { ...baseStore };
 
+const originalMatchMedia = window.matchMedia;
+
+function setViewportWidth(width: number) {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => {
+    const maxWidth = query.match(/max-width:\s*(\d+)px/);
+    const minWidth = query.match(/min-width:\s*(\d+)px/);
+    const matchesMax = maxWidth ? width <= Number(maxWidth[1]) : true;
+    const matchesMin = minWidth ? width >= Number(minWidth[1]) : true;
+    return {
+      matches: matchesMax && matchesMin,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    };
+  });
+}
+
+
 vi.mock("@/stores/flow-store", () => ({
   useFlowStore: (selector: (s: typeof currentStore) => unknown) =>
     selector(currentStore),
@@ -128,11 +150,20 @@ function renderToolbar(overrides: Partial<FlowState> = {}, propOverrides: Partia
   );
 }
 
+function openExportMenu(getByLabelText: (text: string) => HTMLElement) {
+  fireEvent.pointerDown(getByLabelText("Export actions"), { button: 0, ctrlKey: false });
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe("FlowToolbar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setViewportWidth(1440);
+  });
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
   });
 
   describe("import config", () => {
@@ -148,7 +179,8 @@ describe("FlowToolbar", () => {
 
       const { getByLabelText, getByText } = renderToolbar();
 
-      fireEvent.click(getByLabelText("Import config"));
+      openExportMenu(getByLabelText);
+      fireEvent.click(getByText("Import config"));
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  orphan_source:\n    type: demo_logs" },
       });
@@ -188,7 +220,8 @@ describe("FlowToolbar", () => {
 
       const { getByLabelText, getByText } = renderToolbar();
 
-      fireEvent.click(getByLabelText("Import config"));
+      openExportMenu(getByLabelText);
+      fireEvent.click(getByText("Import config"));
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  bad_source:\n    type: bad_source" },
       });
@@ -226,7 +259,8 @@ describe("FlowToolbar", () => {
 
       const { getByLabelText, getByText, queryByText } = renderToolbar();
 
-      fireEvent.click(getByLabelText("Import config"));
+      openExportMenu(getByLabelText);
+      fireEvent.click(getByText("Import config"));
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  demo:\n    type: demo_logs" },
       });
@@ -253,7 +287,8 @@ describe("FlowToolbar", () => {
 
       const { getByLabelText, getByText, queryByText } = renderToolbar();
 
-      fireEvent.click(getByLabelText("Import config"));
+      openExportMenu(getByLabelText);
+      fireEvent.click(getByText("Import config"));
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  orphan_source:\n    type: demo_logs" },
       });
@@ -298,7 +333,8 @@ describe("FlowToolbar", () => {
 
       const { getByLabelText, getByText, queryByText } = renderToolbar();
 
-      fireEvent.click(getByLabelText("Import config"));
+      openExportMenu(getByLabelText);
+      fireEvent.click(getByText("Import config"));
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  first:\n    type: demo_logs" },
       });
@@ -369,18 +405,19 @@ describe("FlowToolbar", () => {
   });
 
   describe("toolbar grouping", () => {
-    it("groups export, template, and history actions under Export", () => {
+    it("groups import and export actions under Export", () => {
       const onSaveAsTemplate = vi.fn();
-      const { getByLabelText, getByText } = renderToolbar(
+      const { getByLabelText, getByText, queryByText } = renderToolbar(
         { nodes: [{ id: "n1" } as never] },
         { pipelineId: "pipe-1", onSaveAsTemplate },
       );
 
-      fireEvent.pointerDown(getByLabelText("Export actions"), { button: 0, ctrlKey: false });
+      openExportMenu(getByLabelText);
 
+      expect(getByText("Import config")).toBeTruthy();
       expect(getByText("Download YAML")).toBeTruthy();
       expect(getByText("Download TOML")).toBeTruthy();
-      expect(getByText("Version history")).toBeTruthy();
+      expect(queryByText("Version history")).not.toBeInTheDocument();
       fireEvent.click(getByText("Save as template"));
       expect(onSaveAsTemplate).toHaveBeenCalledOnce();
     });
@@ -403,6 +440,7 @@ describe("FlowToolbar", () => {
       expect(getByText("Show metrics")).toBeTruthy();
       expect(getByText("Show logs")).toBeTruthy();
       expect(getByText("Pipeline scorecard")).toBeTruthy();
+      expect(getByText("Version history")).toBeTruthy();
       fireEvent.click(getByText("Show metrics"));
       expect(onToggleMetrics).toHaveBeenCalledOnce();
     });
@@ -419,6 +457,47 @@ describe("FlowToolbar", () => {
       fireEvent.click(getByText("Auto-layout selected"));
 
       expect(mockAutoLayout).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe("responsive overflow", () => {
+    it("moves tier-two actions into an overflow menu below xl", () => {
+      setViewportWidth(1100);
+      const { getByLabelText, getByText, queryByLabelText } = renderToolbar(
+        { nodes: [{ id: "n1" } as never], selectedNodeId: "n1" },
+        { pipelineId: "pipe-1", onSaveAsTemplate: vi.fn() },
+      );
+
+      expect(queryByLabelText("Validate pipeline")).not.toBeInTheDocument();
+      expect(getByLabelText("More actions")).toBeInTheDocument();
+
+      fireEvent.pointerDown(getByLabelText("More actions"), { button: 0, ctrlKey: false });
+
+      expect(getByText("Validate pipeline")).toBeTruthy();
+      expect(getByText("Import config")).toBeTruthy();
+      expect(getByText("Download YAML")).toBeTruthy();
+      expect(getByText("Delete selected")).toBeTruthy();
+    });
+
+    it("moves view and tools into overflow below lg", () => {
+      setViewportWidth(900);
+      const onToggleMetrics = vi.fn();
+      const { getByLabelText, getByText, queryByLabelText, queryByPlaceholderText, queryByText } = renderToolbar(
+        { nodes: [{ id: "n1" } as never], selectedNodeIds: new Set(["n1", "n2"]) },
+        { pipelineId: "pipe-1", onToggleMetrics, onToggleLogs: vi.fn(), aiEnabled: true, onAiOpen: vi.fn() },
+      );
+
+      expect(queryByLabelText("View actions")).not.toBeInTheDocument();
+      expect(queryByLabelText("Tools actions")).not.toBeInTheDocument();
+      expect(queryByPlaceholderText("Search nodes...")).not.toBeInTheDocument();
+
+      fireEvent.pointerDown(getByLabelText("More actions"), { button: 0, ctrlKey: false });
+
+      expect(getByText("Show metrics")).toBeTruthy();
+      expect(getByText("Keyboard shortcuts")).toBeTruthy();
+      expect(queryByText("Search nodes")).not.toBeInTheDocument();
+      fireEvent.click(getByText("Show metrics"));
+      expect(onToggleMetrics).toHaveBeenCalledOnce();
     });
   });
 

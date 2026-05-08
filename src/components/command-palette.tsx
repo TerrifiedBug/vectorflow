@@ -57,7 +57,7 @@ const NAV_PAGES: NavPage[] = [
   { title: "Settings", href: "/settings", icon: Settings, keywords: ["config", "preferences"], shortcut: "g s" },
   { title: "My Team", href: "/settings/team", icon: Settings, keywords: ["team config"] },
   { title: "Service Accounts", href: "/settings/service-accounts", icon: Settings, keywords: ["api keys", "tokens"] },
-  { title: "Secrets", href: "/settings/secrets", icon: Settings, keywords: ["vault", "security"] },
+  { title: "Secrets", href: "/secrets", icon: Settings, keywords: ["vault", "security"] },
 ];
 
 let openCommandPalette: (() => void) | null = null;

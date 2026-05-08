@@ -854,9 +854,9 @@ export default function PipelinesPage() {
                 onSort={handleSort}
                 className="text-right"
               />
-              <TableHead className="text-right">Bytes/sec In</TableHead>
+              <TableHead className="hidden min-[1100px]:table-cell text-right">Bytes/sec In</TableHead>
               <TableHead className="text-right">Reduction</TableHead>
-              <TableHead>Created</TableHead>
+              <TableHead className="hidden min-[1281px]:table-cell">Created</TableHead>
               <SortableHeader
                 label="Last Updated"
                 field="updated"
@@ -1057,7 +1057,7 @@ export default function PipelinesPage() {
                     })()}
                   </TableCell>
                   {/* Bytes/sec In */}
-                  <TableCell className="text-right font-mono text-sm tabular-nums text-muted-foreground">
+                  <TableCell className="hidden min-[1100px]:table-cell text-right font-mono text-sm tabular-nums text-muted-foreground">
                     {liveRates[pipeline.id]
                       ? formatBytesRate(
                           liveRates[pipeline.id].bytesPerSec,
@@ -1088,7 +1088,7 @@ export default function PipelinesPage() {
                     })()}
                   </TableCell>
                   {/* Created */}
-                  <TableCell>
+                  <TableCell className="hidden min-[1281px]:table-cell">
                     <div className="flex items-center gap-1.5">
                       <Tooltip>
                         <TooltipTrigger asChild>
