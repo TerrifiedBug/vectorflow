@@ -674,10 +674,7 @@ export function SecretsVaultPage() {
   }
 
 
-  async function handleDownloadCertificate(row: VaultRow) {
-    if (row.kind === "secret") return;
-    const occurrence = row.occurrences[0];
-    if (!occurrence) return;
+  async function handleDownloadCertificate(occurrence: VaultOccurrence) {
     try {
       const result = await queryClient.fetchQuery(
         trpc.certificate.getData.queryOptions({
@@ -700,10 +697,9 @@ export function SecretsVaultPage() {
     }
   }
 
-  function openAudit(row: VaultRow) {
-    const occurrenceId = row.occurrences[0]?.id ?? row.name;
-    const entityType = row.kind === "secret" ? "Secret" : "Certificate";
-    router.push(`/audit?entityType=${entityType}&search=${encodeURIComponent(occurrenceId)}`);
+  function openAudit(kind: VaultRow["kind"], occurrence: VaultOccurrence) {
+    const entityType = kind === "secret" ? "Secret" : "Certificate";
+    router.push(`/audit?entityType=${entityType}&search=${encodeURIComponent(occurrence.id)}`);
   }
 
   const bundleDialogPending =
@@ -926,7 +922,7 @@ export function SecretsVaultPage() {
                           kind: "secret",
                         })
                       }
-                      onViewAudit={() => openAudit(selectedWithUsage)}
+                      onViewAudit={(occurrence) => openAudit(selectedWithUsage.kind, occurrence)}
                     />
                   ) : selectedWithUsage ? (
                     <CertificateDetail
@@ -942,8 +938,8 @@ export function SecretsVaultPage() {
                           kind: selectedWithUsage.kind,
                         })
                       }
-                      onDownloadPem={() => handleDownloadCertificate(selectedWithUsage)}
-                      onViewAudit={() => openAudit(selectedWithUsage)}
+                      onDownloadPem={(occurrence) => handleDownloadCertificate(occurrence)}
+                      onViewAudit={(occurrence) => openAudit(selectedWithUsage.kind, occurrence)}
                     />
                   ) : null}
                 </div>
@@ -1379,10 +1375,16 @@ function SecretDetail({
   usageError?: Error;
   onRotateOccurrence: (occurrence: VaultOccurrence) => void;
   onDeleteOccurrence: (occurrence: VaultOccurrence) => void;
-  onViewAudit: () => void;
+  onViewAudit: (occurrence: VaultOccurrence) => void;
 }) {
   const usagePipelineCount = new Set(usageRefs.map((ref) => ref.pipeline.id)).size;
   const usageNodeCount = usageRefs.length;
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = React.useState(row.occurrences[0]?.id ?? null);
+  React.useEffect(() => {
+    setSelectedOccurrenceId(row.occurrences[0]?.id ?? null);
+  }, [row.id, row.occurrences]);
+  const selectedOccurrence =
+    row.occurrences.find((occurrence) => occurrence.id === selectedOccurrenceId) ?? row.occurrences[0] ?? null;
 
   return (
     <>
@@ -1432,25 +1434,39 @@ function SecretDetail({
           </div>
           <div className="overflow-hidden rounded-[3px] border border-line bg-bg-2">
             <div className="divide-y divide-line">
-              {row.occurrences.map((occurrence) => (
-                <div key={occurrence.id} className="flex items-center gap-2 px-3 py-2 font-mono text-[11.5px]">
-                  <Pill variant={environmentPillVariant(occurrence.environmentName)} size="xs">
-                    {occurrence.environmentName}
-                  </Pill>
-                  <span className="min-w-0 flex-1 truncate text-fg-1">{occurrence.id}</span>
-                  <Button variant="ghost" size="xs" onClick={() => onRotateOccurrence(occurrence)}>
-                    Rotate
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-status-error"
-                    onClick={() => onDeleteOccurrence(occurrence)}
-                  >
-                    Delete
-                  </Button>
-                </div>
-              ))}
+              {row.occurrences.map((occurrence) => {
+                const isSelected = occurrence.id === selectedOccurrence?.id;
+                return (
+                  <div key={occurrence.id} className="flex items-center gap-2 px-3 py-2 font-mono text-[11.5px]">
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex min-w-0 flex-1 items-center gap-2 rounded-[3px] px-1 py-1 text-left",
+                        isSelected ? "bg-bg-3 text-fg" : "text-fg-1 hover:bg-bg-3/50",
+                      )}
+                      aria-pressed={isSelected}
+                      aria-label={`Select ${occurrence.environmentName} occurrence`}
+                      onClick={() => setSelectedOccurrenceId(occurrence.id)}
+                    >
+                      <Pill variant={environmentPillVariant(occurrence.environmentName)} size="xs">
+                        {occurrence.environmentName}
+                      </Pill>
+                      <span className="min-w-0 flex-1 truncate text-current">{occurrence.id}</span>
+                    </button>
+                    <Button variant="ghost" size="xs" onClick={() => onRotateOccurrence(occurrence)}>
+                      Rotate
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="text-status-error"
+                      onClick={() => onDeleteOccurrence(occurrence)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1459,7 +1475,7 @@ function SecretDetail({
       </div>
 
       <div className="flex items-center gap-2 border-t border-line bg-bg-1 px-4 py-3">
-        <Button variant="ghost" size="sm" className="ml-auto" onClick={onViewAudit}>
+        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => selectedOccurrence && onViewAudit(selectedOccurrence)} disabled={!selectedOccurrence}>
           <VFIcon name="external-link" />
           View audit
         </Button>
@@ -1482,10 +1498,15 @@ function CertificateDetail({
   usageLoading: boolean;
   usageError?: Error;
   onDeleteOccurrence: (occurrence: VaultOccurrence) => void;
-  onDownloadPem: () => void;
-  onViewAudit: () => void;
+  onDownloadPem: (occurrence: VaultOccurrence) => void;
+  onViewAudit: (occurrence: VaultOccurrence) => void;
 }) {
-  const primaryOccurrence = row.occurrences[0];
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = React.useState(row.occurrences[0]?.id ?? null);
+  React.useEffect(() => {
+    setSelectedOccurrenceId(row.occurrences[0]?.id ?? null);
+  }, [row.id, row.occurrences]);
+  const selectedOccurrence =
+    row.occurrences.find((occurrence) => occurrence.id === selectedOccurrenceId) ?? row.occurrences[0] ?? null;
   const usagePipelineCount = new Set(usageRefs.map((ref) => ref.pipeline.id)).size;
   const usageNodeCount = usageRefs.length;
   const daysUntilExpiry = minDaysUntilExpiry(row.occurrences);
@@ -1506,7 +1527,7 @@ function CertificateDetail({
         <div className="mb-4 rounded-[3px] border border-line bg-bg-2 p-3 font-mono text-[11.5px] leading-[1.8]">
           <div className="flex justify-between gap-4">
             <span className="text-fg-2">filename</span>
-            <span className="truncate text-fg" title={primaryOccurrence?.filename}>{primaryOccurrence?.filename ?? "—"}</span>
+            <span className="truncate text-fg" title={selectedOccurrence?.filename}>{selectedOccurrence?.filename ?? "—"}</span>
           </div>
           <div className="flex justify-between gap-4">
             <span className="text-fg-2">type</span>
@@ -1514,7 +1535,7 @@ function CertificateDetail({
           </div>
           <div className="flex justify-between gap-4">
             <span className="text-fg-2">expires</span>
-            <span className="text-fg">{primaryOccurrence?.expiryDate ? new Date(primaryOccurrence.expiryDate).toLocaleDateString() : "—"}</span>
+            <span className="text-fg">{selectedOccurrence?.expiryDate ? new Date(selectedOccurrence.expiryDate).toLocaleDateString() : "—"}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
             <span className="text-fg-2">status</span>
@@ -1535,24 +1556,38 @@ function CertificateDetail({
           </div>
           <div className="overflow-hidden rounded-[3px] border border-line bg-bg-2">
             <div className="divide-y divide-line">
-              {row.occurrences.map((occurrence) => (
-                <div key={occurrence.id} className="flex items-center gap-2 px-3 py-2 font-mono text-[11.5px]">
-                  <Pill variant={environmentPillVariant(occurrence.environmentName)} size="xs">
-                    {occurrence.environmentName}
-                  </Pill>
-                  <span className="min-w-0 flex-1 truncate text-fg-1" title={occurrence.filename}>
-                    {occurrence.filename ?? occurrence.id}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-status-error"
-                    onClick={() => onDeleteOccurrence(occurrence)}
-                  >
-                    Delete
-                  </Button>
-                </div>
-              ))}
+              {row.occurrences.map((occurrence) => {
+                const isSelected = occurrence.id === selectedOccurrence?.id;
+                return (
+                  <div key={occurrence.id} className="flex items-center gap-2 px-3 py-2 font-mono text-[11.5px]">
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex min-w-0 flex-1 items-center gap-2 rounded-[3px] px-1 py-1 text-left",
+                        isSelected ? "bg-bg-3 text-fg" : "text-fg-1 hover:bg-bg-3/50",
+                      )}
+                      aria-pressed={isSelected}
+                      aria-label={`Select ${occurrence.environmentName} occurrence`}
+                      onClick={() => setSelectedOccurrenceId(occurrence.id)}
+                    >
+                      <Pill variant={environmentPillVariant(occurrence.environmentName)} size="xs">
+                        {occurrence.environmentName}
+                      </Pill>
+                      <span className="min-w-0 flex-1 truncate text-current" title={occurrence.filename}>
+                        {occurrence.filename ?? occurrence.id}
+                      </span>
+                    </button>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="text-status-error"
+                      onClick={() => onDeleteOccurrence(occurrence)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1561,11 +1596,11 @@ function CertificateDetail({
       </div>
 
       <div className="flex items-center gap-2 border-t border-line bg-bg-1 px-4 py-3">
-        <Button variant="ghost" size="sm" onClick={onDownloadPem}>
+        <Button variant="ghost" size="sm" onClick={() => selectedOccurrence && onDownloadPem(selectedOccurrence)} disabled={!selectedOccurrence}>
           <VFIcon name="download" />
           Download PEM
         </Button>
-        <Button variant="ghost" size="sm" onClick={onViewAudit}>
+        <Button variant="ghost" size="sm" onClick={() => selectedOccurrence && onViewAudit(selectedOccurrence)} disabled={!selectedOccurrence}>
           <VFIcon name="external-link" />
           View audit
         </Button>

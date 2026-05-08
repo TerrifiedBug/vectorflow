@@ -93,7 +93,17 @@ const queryState = vi.hoisted(() => ({
         daysUntilExpiry: 12,
       },
     ],
-    "env-2": [],
+    "env-2": [
+      {
+        id: "cert-2",
+        name: "client-cert",
+        filename: "client-stage.pem",
+        fileType: "cert",
+        createdAt: new Date("2026-04-21T00:00:00.000Z").toISOString(),
+        expiryDate: new Date("2026-07-01T00:00:00.000Z").toISOString(),
+        daysUntilExpiry: 23,
+      },
+    ],
   } as Record<string, Array<{ id: string; name: string; filename: string; fileType: "ca" | "cert" | "key"; createdAt: string; expiryDate: string | null; daysUntilExpiry: number | null }>>,
   bundlesByEnvironment: {
     "env-1": [
@@ -157,6 +167,11 @@ const queryState = vi.hoisted(() => ({
           },
         },
       ],
+    },
+    "cert-2:env-2": {
+      count: 0,
+      pipelineCount: 0,
+      refs: [],
     },
   } as Record<string, { count: number; pipelineCount: number; refs: Array<{ id: string; componentType: string; pipeline: { id: string; name: string; environment: { id: string; name: string } } }> }>,
 }));
@@ -451,6 +466,24 @@ describe("SecretsVaultPage", () => {
     expect(URL.createObjectURL).toHaveBeenCalled();
   });
 
+  it("downloads the selected certificate occurrence", async () => {
+    render(<SecretsVaultPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /client-cert/i }));
+    fireEvent.click(screen.getByRole("button", { name: /select staging occurrence/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /download pem/i }));
+
+    await waitFor(() => {
+      expect(mockFetchQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          __name: "certificate.getData",
+          input: { id: "cert-2", environmentId: "env-2" },
+        })
+      );
+    });
+  });
+
+
   it("navigates to audit with certificate filters", async () => {
     render(<SecretsVaultPage />);
 
@@ -459,6 +492,17 @@ describe("SecretsVaultPage", () => {
 
     expect(mockRouterPush).toHaveBeenCalledWith("/audit?entityType=Certificate&search=cert-1");
   });
+
+  it("navigates to audit with the selected certificate occurrence", async () => {
+    render(<SecretsVaultPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /client-cert/i }));
+    fireEvent.click(screen.getByRole("button", { name: /select staging occurrence/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /view audit/i }));
+
+    expect(mockRouterPush).toHaveBeenCalledWith("/audit?entityType=Certificate&search=cert-2");
+  });
+
 
   it("shows bundles grouped by environment and creates a new bundle", async () => {
     render(<SecretsVaultPage />);
