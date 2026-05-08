@@ -115,6 +115,18 @@ export function collectSecretRefs(
 }
 
 /**
+ * Walk a config object and collect all CERT[name] references.
+ * Returns the set of certificate names referenced in the config.
+ */
+export function collectCertRefs(
+  config: Record<string, unknown>,
+): Set<string> {
+  const refs = new Set<string>();
+  collectStringRefs(config, CERT_REF_PATTERN, refs);
+  return refs;
+}
+
+/**
  * Walk a config object and convert SECRET[name] references to
  * ${VF_SECRET_NAME} env var placeholders for Vector interpolation.
  * Pure string transformation — no DB lookups or decryption.

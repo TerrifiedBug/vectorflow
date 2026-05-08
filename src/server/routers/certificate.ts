@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { parseCertExpiry, daysUntilExpiry } from "@/server/services/cert-expiry-checker";
 import { withAudit } from "@/server/middleware/audit";
+import { decryptNodeConfig } from "@/server/services/config-crypto";
+import { collectCertRefs } from "@/server/services/secret-resolver";
 
 const MAX_CERT_SIZE = 100 * 1024; // 100KB
 
@@ -126,6 +128,60 @@ export const certificateRouter = router({
       }
       await prisma.certificate.delete({ where: { id: input.id } });
       return { deleted: true };
+    }),
+
+  /**
+   * Usage: returns the pipeline nodes in the certificate's environment whose
+   * (decrypted) config references this certificate as `CERT[name]`.
+   */
+  usage: protectedProcedure
+    .input(z.object({ certificateId: z.string(), environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const certificate = await prisma.certificate.findUnique({
+        where: { id: input.certificateId },
+        select: { id: true, name: true, environmentId: true },
+      });
+      if (!certificate || certificate.environmentId !== input.environmentId) {
+        return { count: 0, pipelineCount: 0, refs: [] as Array<{
+          id: string;
+          componentType: string;
+          pipeline: { id: string; name: string; environment: { id: string; name: string } };
+        }> };
+      }
+
+      const nodes = await prisma.pipelineNode.findMany({
+        where: { pipeline: { environmentId: certificate.environmentId } },
+        select: {
+          id: true,
+          componentType: true,
+          config: true,
+          pipeline: {
+            select: {
+              id: true,
+              name: true,
+              environment: { select: { id: true, name: true } },
+            },
+          },
+        },
+      });
+
+      const refs = nodes
+        .filter((node) => {
+          const decrypted = decryptNodeConfig(
+            node.componentType,
+            (node.config ?? {}) as Record<string, unknown>,
+          );
+          return collectCertRefs(decrypted).has(certificate.name);
+        })
+        .map((node) => ({
+          id: node.id,
+          componentType: node.componentType,
+          pipeline: node.pipeline,
+        }));
+
+      const pipelineCount = new Set(refs.map((ref) => ref.pipeline.id)).size;
+      return { count: refs.length, pipelineCount, refs };
     }),
 
   /** Internal: get decrypted cert data for deploy */

@@ -2,11 +2,11 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
-const { t } = vi.hoisted(() => {
+const { t, mockCollectCertRefs } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { initTRPC } = require("@trpc/server");
   const t = initTRPC.context().create();
-  return { t };
+  return { t, mockCollectCertRefs: vi.fn() };
 });
 
 vi.mock("@/trpc/init", () => {
@@ -41,12 +41,21 @@ vi.mock("@/server/services/cert-expiry-checker", () => ({
   daysUntilExpiry: vi.fn().mockReturnValue(274),
 }));
 
+vi.mock("@/server/services/config-crypto", () => ({
+  decryptNodeConfig: vi.fn((_: unknown, config: unknown) => config),
+}));
+
+vi.mock("@/server/services/secret-resolver", () => ({
+  collectCertRefs: mockCollectCertRefs,
+}));
+
 // ─── Import SUT + mocks ─────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
 import { certificateRouter } from "@/server/routers/certificate";
 import { encrypt } from "@/server/services/crypto";
 import { parseCertExpiry } from "@/server/services/cert-expiry-checker";
+import { decryptNodeConfig } from "@/server/services/config-crypto";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -66,6 +75,14 @@ describe("certificateRouter", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     vi.clearAllMocks();
+    mockCollectCertRefs.mockReset();
+    mockCollectCertRefs.mockImplementation((config: Record<string, unknown>) => {
+      const refs = new Set<string>();
+      const values = JSON.stringify(config);
+      if (values.includes("CERT[client-cert]")) refs.add("client-cert");
+      if (values.includes("CERT[other-cert]")) refs.add("other-cert");
+      return refs;
+    });
   });
 
   // ─── list ─────────────────────────────────────────────────────────────────
@@ -229,6 +246,97 @@ describe("certificateRouter", () => {
       await expect(
         caller.delete({ id: "c1", environmentId: "env-1" }),
       ).rejects.toThrow("Certificate not found");
+    });
+  });
+
+  // ─── usage ─────────────────────────────────────────────────────────────────
+
+  describe("usage", () => {
+    it("returns empty result when certificate does not exist", async () => {
+      prismaMock.certificate.findUnique.mockResolvedValue(null as never);
+
+      const result = await caller.usage({ certificateId: "missing", environmentId: "env-1" });
+
+      expect(result).toEqual({ count: 0, pipelineCount: 0, refs: [] });
+    });
+
+    it("returns refs from pipeline nodes that reference the certificate", async () => {
+      prismaMock.certificate.findUnique.mockResolvedValue({
+        id: "c1",
+        name: "client-cert",
+        environmentId: "env-1",
+      } as never);
+      prismaMock.pipelineNode.findMany.mockResolvedValue([
+        {
+          id: "node-1",
+          componentType: "kafka",
+          config: { tls: { crt_file: "CERT[client-cert]" } },
+          pipeline: {
+            id: "p-1",
+            name: "TLS Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+        {
+          id: "node-2",
+          componentType: "http",
+          config: { tls: { crt_file: "CERT[other-cert]" } },
+          pipeline: {
+            id: "p-2",
+            name: "Other Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+      ] as never);
+
+      const result = await caller.usage({ certificateId: "c1", environmentId: "env-1" });
+
+      expect(result).toEqual({
+        count: 1,
+        pipelineCount: 1,
+        refs: [
+          expect.objectContaining({
+            id: "node-1",
+            componentType: "kafka",
+            pipeline: expect.objectContaining({
+              name: "TLS Pipeline",
+              environment: expect.objectContaining({ name: "production" }),
+            }),
+          }),
+        ],
+      });
+    });
+
+    it("scans decrypted node config before collecting cert refs", async () => {
+      vi.mocked(decryptNodeConfig).mockImplementationOnce((_: unknown, config: unknown) => {
+        const record = config as Record<string, unknown>;
+        return { ...record, tls: { crt_file: "CERT[client-cert]" } };
+      });
+      prismaMock.certificate.findUnique.mockResolvedValue({
+        id: "c1",
+        name: "client-cert",
+        environmentId: "env-1",
+      } as never);
+      prismaMock.pipelineNode.findMany.mockResolvedValue([
+        {
+          id: "node-encrypted",
+          componentType: "vector_sink",
+          config: { tls: { crt_file: "enc:ciphertext" } },
+          pipeline: {
+            id: "p-1",
+            name: "Encrypted TLS Pipeline",
+            environment: { id: "env-1", name: "production" },
+          },
+        },
+      ] as never);
+
+      const result = await caller.usage({ certificateId: "c1", environmentId: "env-1" });
+
+      expect(decryptNodeConfig).toHaveBeenCalled();
+      expect(mockCollectCertRefs).toHaveBeenCalledWith({ tls: { crt_file: "CERT[client-cert]" } });
+      expect(result.count).toBe(1);
+      expect(result.pipelineCount).toBe(1);
+      expect(result.refs.map((ref: { id: string }) => ref.id)).toEqual(["node-encrypted"]);
     });
   });
 

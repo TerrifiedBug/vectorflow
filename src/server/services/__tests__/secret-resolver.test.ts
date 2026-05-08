@@ -15,6 +15,7 @@ import {
   resolveSecretRefs,
   resolveCertRefs,
   collectSecretRefs,
+  collectCertRefs,
   convertSecretRefsToEnvVars,
   secretNameToEnvVar,
 } from "../secret-resolver";
@@ -61,6 +62,30 @@ describe("secret-resolver", () => {
         b: "SECRET[key]",
       });
       expect(refs.size).toBe(1);
+    });
+  });
+
+  describe("collectCertRefs", () => {
+    it("returns empty set for config with no refs", () => {
+      const refs = collectCertRefs({ host: "localhost", port: 5432 });
+      expect(refs.size).toBe(0);
+    });
+
+    it("collects top-level cert refs", () => {
+      const refs = collectCertRefs({
+        caFile: "CERT[ca-bundle]",
+        host: "localhost",
+      });
+      expect(refs).toEqual(new Set(["ca-bundle"]));
+    });
+
+    it("collects nested cert refs in arrays", () => {
+      const refs = collectCertRefs({
+        tls: {
+          files: ["CERT[client-cert]", "CERT[client-key]"],
+        },
+      });
+      expect(refs).toEqual(new Set(["client-cert", "client-key"]));
     });
   });
 
