@@ -8,7 +8,7 @@ export class PipelineEditorPage {
   }
 
   async goto(pipelineId: string): Promise<void> {
-    await this.page.goto(`/pipelines/${pipelineId}`);
+    await this.page.goto(`/pipelines/${pipelineId}/edit`);
     await this.canvas.waitFor({ state: "visible" });
   }
 

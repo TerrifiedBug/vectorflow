@@ -2,22 +2,21 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
 import { Bell, BookOpen, LogOut, Search, ShieldAlert, User } from "lucide-react";
 
 import { useTRPC } from "@/trpc/client";
-import { useSSE } from "@/hooks/use-sse";
+import { useSSEConnection } from "@/hooks/use-sse";
 import { useRealtimeInvalidation } from "@/hooks/use-realtime-invalidation";
 import { useSSEToasts } from "@/hooks/use-sse-toasts";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TeamSelector } from "@/components/team-selector";
 import { EnvironmentSelector } from "@/components/environment-selector";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { cn } from "@/lib/utils";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -37,6 +36,8 @@ import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts-modal";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { DemoBanner } from "@/components/dashboard/demo-banner";
 import { isDemoMode } from "@/lib/is-demo-mode";
+import { Kbd } from "@/components/ui/kbd";
+import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 
 export default function DashboardLayout({
   children,
@@ -44,11 +45,13 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
 
   // SSE connection + cache invalidation + toast notifications (fire-and-forget)
-  useSSE();
+  useSSEConnection();
   useRealtimeInvalidation();
   useSSEToasts();
+  useGlobalShortcuts();
 
   const { data: session } = useSession();
   const trpc = useTRPC();
@@ -81,6 +84,16 @@ export default function DashboardLayout({
     refetchInterval: 60_000,
   });
   const activeAlertCount = alertStats.data?.alerts ?? 0;
+
+  const breadcrumb = (() => {
+    const segments = pathname.split("/").filter(Boolean);
+    if (segments.length === 0) return ["Dashboard"];
+    return segments.map((segment) =>
+      segment
+        .replaceAll("-", " ")
+        .replace(/^\w/, (letter) => letter.toUpperCase()),
+    );
+  })();
 
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   // Force password change dialog when mustChangePassword is set
@@ -117,10 +130,9 @@ export default function DashboardLayout({
                 <BookOpen className="h-5 w-5" />
               </a>
             </Button>
-            <ThemeToggle />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full" aria-label="User menu">
+                <Button variant="ghost" size="icon" className="rounded-[3px]" aria-label="User menu">
                   <Avatar size="sm">
                     {userImage && <AvatarImage src={userImage} alt={userName ?? "User"} />}
                     <AvatarFallback>{initials}</AvatarFallback>
@@ -149,7 +161,7 @@ export default function DashboardLayout({
         </header>
         <main id="main-content" className="flex flex-1 items-center justify-center" tabIndex={-1}>
           <div className="mx-auto max-w-md text-center space-y-4">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[3px] bg-muted">
               <ShieldAlert className="h-8 w-8 text-muted-foreground" />
             </div>
             <h1 className="text-2xl font-semibold text-balance">No Team Assigned</h1>
@@ -200,46 +212,57 @@ export default function DashboardLayout({
         </a>
         <AppSidebar />
         <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4" aria-label="Dashboard header">
-          <TeamSelector />
-          <Separator orientation="vertical" className="!h-5" />
-          <EnvironmentSelector />
+        <header className="flex h-13 shrink-0 items-center gap-3 border-b border-line px-[18px] bg-bg" aria-label="Dashboard header">
+          <nav aria-label="Breadcrumb" className="flex shrink-0 items-center gap-1.5 text-[13px]">
+            {breadcrumb.map((item, index) => (
+              <span key={`${item}-${index}`} className="inline-flex items-center gap-1.5">
+                {index > 0 && <span className="font-mono text-[10px] text-fg-3">/</span>}
+                <span className={cn("capitalize", index === breadcrumb.length - 1 ? "font-medium text-fg" : "text-fg-1")}>
+                  {item}
+                </span>
+              </span>
+            ))}
+          </nav>
+          <div className="flex-1" />
           <button
             type="button"
             onClick={triggerCommandPalette}
-            className="hidden md:flex flex-1 max-w-md items-center gap-2 rounded-md border border-input bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+            role="search"
+            aria-label="Search"
+            className="hidden md:flex h-7 min-w-[320px] items-center gap-2 rounded-[3px] border border-line-2 bg-bg-2 px-2.5 text-[12px] text-fg-2 hover:bg-bg-3 hover:text-fg transition-colors cursor-pointer"
           >
             <Search className="h-3.5 w-3.5" />
-            <span>Search...</span>
-            <kbd className="pointer-events-none ml-2 inline-flex h-5 items-center gap-0.5 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-              <span className="text-xs">&#8984;</span>K
-            </kbd>
+            <span className="flex-1 text-left">Search…</span>
+            <Kbd>⌘K</Kbd>
           </button>
-          <div className="ml-auto flex items-center gap-4">
+          <div className="flex shrink-0 items-center gap-2">
+            <TeamSelector />
+            <EnvironmentSelector />
+          </div>
+          <div className="flex items-center gap-2">
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               asChild
               aria-label={`Alerts${activeAlertCount > 0 ? ` (${activeAlertCount} active)` : ""}`}
             >
               <Link href="/alerts" className="relative">
-                <Bell className="h-5 w-5" />
+                <Bell className="h-4 w-4" />
                 {activeAlertCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground tabular-nums">
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-[3px] bg-status-error px-1 font-mono text-[11px] font-semibold text-white tabular-nums">
                     {activeAlertCount > 99 ? "99+" : activeAlertCount}
                   </span>
                 )}
               </Link>
             </Button>
-            <Button variant="ghost" size="icon" asChild aria-label="Documentation">
+            <Button variant="ghost" size="icon-sm" asChild aria-label="Documentation">
               <a href="https://vectorflow.sh/docs" target="_blank" rel="noopener noreferrer">
-                <BookOpen className="h-5 w-5" />
+                <BookOpen className="h-4 w-4" />
               </a>
             </Button>
-            <ThemeToggle />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full" aria-label="User menu">
+                <Button variant="ghost" size="icon" className="rounded-[3px]" aria-label="User menu">
                   <Avatar size="sm">
                     {userImage && <AvatarImage src={userImage} alt={userName ?? "User"} />}
                     <AvatarFallback>{initials}</AvatarFallback>
@@ -279,7 +302,7 @@ export default function DashboardLayout({
         <CommandPalette />
         <KeyboardShortcutsModal />
         <LazyMotionProvider>
-          <main id="main-content" className="flex-1 py-2 px-6" tabIndex={-1}>
+          <main id="main-content" className="flex-1 min-h-0 overflow-auto" tabIndex={-1}>
             <ErrorBoundary>
               {children}
             </ErrorBoundary>

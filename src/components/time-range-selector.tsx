@@ -32,7 +32,7 @@ export function TimeRangeSelector<T extends string = string>({
           onClick={() => onChange(v)}
           aria-pressed={value === v}
           className={cn(
-            "rounded-full px-3 h-7 text-xs font-medium border transition-colors",
+            "rounded-[3px] px-3 h-7 font-mono text-[11px] font-medium border transition-colors",
             value === v
               ? "bg-accent text-accent-foreground border-transparent"
               : "bg-transparent text-muted-foreground border-border hover:bg-muted",

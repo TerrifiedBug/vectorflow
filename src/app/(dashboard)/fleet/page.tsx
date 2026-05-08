@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { useTeamStore } from "@/stores/team-store";
@@ -38,10 +39,75 @@ import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { FleetListToolbar } from "@/components/fleet/fleet-list-toolbar";
-import { FleetTabs } from "@/components/fleet/fleet-tabs";
 import { ArrowUp, ArrowDown } from "lucide-react";
 import { useFleetListFilters } from "@/hooks/use-fleet-list-filters";
 import { useAgentUpdateTracker } from "@/hooks/use-agent-update-tracker";
+
+import { Pill } from "@/components/ui/pill";
+import { Sparkline } from "@/components/ui/sparkline";
+import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
+type NodeMetricSample = {
+  timestamp: Date | string;
+  memoryTotalBytes: bigint | number;
+  memoryUsedBytes: bigint | number;
+  cpuSecondsTotal: number;
+  cpuSecondsIdle: number;
+};
+
+function asStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+}
+
+function getNodeRegion(node: { labels: unknown; metadata: unknown; environment: { name: string } }) {
+  const labels = asStringRecord(node.labels);
+  const metadata = asStringRecord(node.metadata);
+  return labels.region ?? labels.zone ?? metadata.region ?? metadata.zone ?? node.environment.name;
+}
+
+function metricSummary(metrics: NodeMetricSample[] | undefined) {
+  const sorted = [...(metrics ?? [])].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  );
+  const latest = sorted.at(-1);
+  const previous = sorted.at(-2);
+  const memoryTotal = Number(latest?.memoryTotalBytes ?? 0);
+  const memoryUsed = Number(latest?.memoryUsedBytes ?? 0);
+  const memoryPct = memoryTotal > 0 ? Math.max(0, Math.min(100, (memoryUsed / memoryTotal) * 100)) : 0;
+
+  let cpuPct = 0;
+  if (latest && previous) {
+    const totalDelta = latest.cpuSecondsTotal - previous.cpuSecondsTotal;
+    const idleDelta = latest.cpuSecondsIdle - previous.cpuSecondsIdle;
+    cpuPct = totalDelta > 0 ? Math.max(0, Math.min(100, ((totalDelta - idleDelta) / totalDelta) * 100)) : 0;
+  }
+
+  return {
+    cpuPct,
+    memoryPct,
+    sparkline: sorted.map((sample, index) => {
+      if (index === 0) return 0;
+      const prev = sorted[index - 1];
+      const totalDelta = sample.cpuSecondsTotal - prev.cpuSecondsTotal;
+      const idleDelta = sample.cpuSecondsIdle - prev.cpuSecondsIdle;
+      return totalDelta > 0 ? Math.max(0, Math.min(100, ((totalDelta - idleDelta) / totalDelta) * 100)) : 0;
+    }),
+  };
+}
+
+function ProgressMeter({ value }: { value: number }) {
+  const color = value >= 85 ? "var(--status-error)" : value >= 70 ? "var(--status-degraded)" : "var(--accent-brand)";
+  return (
+    <div className="flex items-center justify-end gap-2">
+      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-bg-4">
+        <div className="h-full rounded-full" style={{ width: `${Math.round(value)}%`, background: color }} />
+      </div>
+      <span className="w-10 text-right font-mono text-[11px] tabular-nums text-fg-2">{value.toFixed(0)}%</span>
+    </div>
+  );
+}
 
 const AGENT_REPO = "TerrifiedBug/vectorflow";
 
@@ -122,6 +188,60 @@ export default function FleetPage() {
 
   const rawNodes = useMemo(() => nodesQuery.data ?? [], [nodesQuery.data]);
 
+  const telemetryByNodeId = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof metricSummary>>();
+    for (const node of rawNodes) {
+      map.set(node.id, metricSummary(node.nodeMetrics));
+    }
+    return map;
+  }, [rawNodes]);
+
+  const nodeCounts = useMemo(
+    () => ({
+      healthy: rawNodes.filter((node) => node.status === "HEALTHY").length,
+      degraded: rawNodes.filter((node) => node.status === "DEGRADED").length,
+      unreachable: rawNodes.filter((node) => node.status === "UNREACHABLE").length,
+    }),
+    [rawNodes],
+  );
+
+  const regionSummaries = useMemo(() => {
+    const regions = new Map<
+      string,
+      { name: string; nodes: number; healthy: number; cpuTotal: number; memTotal: number; sparkline: number[] }
+    >();
+    for (const node of rawNodes) {
+      const region = getNodeRegion(node);
+      const metrics = telemetryByNodeId.get(node.id) ?? metricSummary([]);
+      const summary = regions.get(region) ?? {
+        name: region,
+        nodes: 0,
+        healthy: 0,
+        cpuTotal: 0,
+        memTotal: 0,
+        sparkline: [],
+      };
+      summary.nodes += 1;
+      if (node.status === "HEALTHY") summary.healthy += 1;
+      summary.cpuTotal += metrics.cpuPct;
+      summary.memTotal += metrics.memoryPct;
+      summary.sparkline =
+        summary.sparkline.length >= metrics.sparkline.length
+          ? summary.sparkline
+          : metrics.sparkline;
+      regions.set(region, summary);
+    }
+    return [...regions.values()]
+      .sort((a, b) => b.nodes - a.nodes)
+      .slice(0, 4)
+      .map((region) => ({
+        ...region,
+        avgCpu: region.nodes > 0 ? region.cpuTotal / region.nodes : 0,
+        avgMem: region.nodes > 0 ? region.memTotal / region.nodes : 0,
+      }));
+  }, [rawNodes, telemetryByNodeId]);
+
+  const regionCount = useMemo(() => new Set(rawNodes.map((node) => getNodeRegion(node))).size, [rawNodes]);
   // Sort client-side
   const nodes = useMemo(() => {
     const sorted = [...rawNodes];
@@ -144,8 +264,25 @@ export default function FleetPage() {
   }, [rawNodes, sortField, sortDirection]);
 
   const PAGE_SIZE = 25;
+  const shouldVirtualize = nodes.length > 100;
   const totalPages = Math.ceil(nodes.length / PAGE_SIZE);
   const paginatedNodes = nodes.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is required for F1 fleet virtualization past 100 nodes.
+  const rowVirtualizer = useVirtualizer({
+    count: shouldVirtualize ? nodes.length : 0,
+    getScrollElement: () => tableScrollRef.current,
+    estimateSize: () => 56,
+    overscan: 8,
+  });
+  const virtualItems = shouldVirtualize ? rowVirtualizer.getVirtualItems() : [];
+  const visibleNodes = shouldVirtualize
+    ? virtualItems.map((item) => nodes[item.index]).filter((node): node is NonNullable<typeof node> => Boolean(node))
+    : paginatedNodes;
+  const topPadding = shouldVirtualize ? (virtualItems[0]?.start ?? 0) : 0;
+  const bottomPadding = shouldVirtualize
+    ? Math.max(0, rowVirtualizer.getTotalSize() - (virtualItems[virtualItems.length - 1]?.end ?? 0))
+    : 0;
 
   const versionQuery = useQuery(
     trpc.settings.checkVersion.queryOptions(undefined, {
@@ -220,8 +357,52 @@ export default function FleetPage() {
   }
 
   return (
-    <div className="space-y-6" role="region" aria-label="Fleet management">
-      <FleetTabs active="nodes" />
+    <div className="min-h-full bg-bg" role="region" aria-label="Fleet management">
+      <PageHeader
+        title="Fleet"
+        subtitle={`${rawNodes.length} Vector agents across ${regionCount || 0} regions.`}
+        meta={
+          <>
+            <span>{nodeCounts.healthy} healthy</span>
+            <PageHeaderMetaSep />
+            <span>{nodeCounts.degraded} degraded</span>
+            <PageHeaderMetaSep />
+            <span>{nodeCounts.unreachable} unreachable</span>
+          </>
+        }
+        actions={
+          <>
+            <Button variant="outline" size="sm">Sync</Button>
+            <Button variant="outline" size="sm">Install agent</Button>
+            <Button variant="primary" size="sm">Deploy to fleet</Button>
+          </>
+        }
+      />
+
+      <div className="space-y-4 p-4">
+      {!isLoading && rawNodes.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {regionSummaries.map((region) => (
+            <div key={region.name} className="rounded-[3px] border border-line bg-bg-2 p-[14px]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-fg-2">
+                    {region.name}
+                  </div>
+                  <div className="mt-1 font-mono text-[24px] leading-none text-fg tabular-nums">
+                    {region.healthy}/{region.nodes}
+                  </div>
+                </div>
+                <Sparkline data={region.sparkline.length ? region.sparkline : [0, 1, 0]} width={92} height={24} />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3 font-mono text-[11px] text-fg-2">
+                <span>CPU {region.avgCpu.toFixed(0)}%</span>
+                <span>MEM {region.avgMem.toFixed(0)}%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Toolbar — shown when not loading and nodes exist or filters active */}
       {!isLoading && (rawNodes.length > 0 || nodeListHasActiveFilters) && (
@@ -259,8 +440,11 @@ export default function FleetPage() {
           </Button>
         </div>
       ) : (
-        <div>
-        <Table>
+        <div
+          ref={tableScrollRef}
+          className={shouldVirtualize ? "max-h-[640px] overflow-auto rounded-[3px] border border-line" : undefined}
+        >
+        <Table density="dense">
           <TableHeader>
             <TableRow>
               <TableHead>
@@ -279,6 +463,8 @@ export default function FleetPage() {
               <TableHead>Labels</TableHead>
               <TableHead>Version</TableHead>
               <TableHead>Agent Version</TableHead>
+              <TableHead className="text-right">CPU</TableHead>
+              <TableHead className="text-right">MEM</TableHead>
               <TableHead>
                 <button
                   type="button"
@@ -304,7 +490,12 @@ export default function FleetPage() {
             </TableRow>
           </TableHeader>
           <StaggerList as="tbody" className="[&_tr:last-child]:border-0">
-            {paginatedNodes.map((node) => (
+            {topPadding > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={10} style={{ height: topPadding }} />
+              </tr>
+            )}
+            {visibleNodes.map((node) => (
               <StaggerItem as="tr" key={node.id} className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors cursor-pointer">
                 <TableCell className="font-medium">
                   <Link
@@ -318,7 +509,7 @@ export default function FleetPage() {
                   {node.host}:{node.apiPort}
                 </TableCell>
                 <TableCell>
-                  <Badge variant="secondary">{node.environment.name}</Badge>
+                  <Pill variant="env" size="xs">{node.environment.name}</Pill>
                 </TableCell>
                 <TableCell>
                   {(() => {
@@ -331,7 +522,7 @@ export default function FleetPage() {
                         <PopoverTrigger asChild>
                           <button
                             type="button"
-                            className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted transition-colors"
+                            className="inline-flex items-center gap-1 rounded-[3px] border border-line-2 bg-bg-2 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.06em] text-fg-2 hover:bg-bg-3 transition-colors"
                           >
                             <Tag className="h-3 w-3" />
                             {entries.length} {entries.length === 1 ? "label" : "labels"}
@@ -340,9 +531,9 @@ export default function FleetPage() {
                         <PopoverContent className="w-auto p-2" align="start">
                           <div className="flex flex-wrap gap-1">
                             {entries.map(([k, v]) => (
-                              <Badge key={k} variant="outline" className="text-xs">
+                              <Pill key={k} variant="kind" size="xs">
                                 {k}={v}
-                              </Badge>
+                              </Pill>
                             ))}
                           </div>
                         </PopoverContent>
@@ -428,6 +619,12 @@ export default function FleetPage() {
                   </div>
                 </TableCell>
                 <TableCell>
+                  <ProgressMeter value={telemetryByNodeId.get(node.id)?.cpuPct ?? 0} />
+                </TableCell>
+                <TableCell>
+                  <ProgressMeter value={telemetryByNodeId.get(node.id)?.memoryPct ?? 0} />
+                </TableCell>
+                <TableCell>
                   {node.maintenanceMode ? (
                     <Badge variant="outline" className="text-orange-600 border-orange-500/50">
                       <Wrench className="mr-1 h-3 w-3" />
@@ -485,9 +682,14 @@ export default function FleetPage() {
                 </TableCell>
               </StaggerItem>
             ))}
+            {bottomPadding > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={10} style={{ height: bottomPadding }} />
+              </tr>
+            )}
           </StaggerList>
         </Table>
-        {totalPages > 1 && (
+        {!shouldVirtualize && totalPages > 1 && (
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
             <span className="text-muted-foreground">
               Showing {page * PAGE_SIZE + 1}&ndash;{Math.min((page + 1) * PAGE_SIZE, nodes.length)} of {nodes.length} nodes
@@ -570,6 +772,8 @@ export default function FleetPage() {
           }
         }}
       />
+
+      </div>
 
       {/* Screen reader announcements for real-time fleet status changes */}
       <div className="sr-only" aria-live="assertive" aria-atomic="true" role="alert">

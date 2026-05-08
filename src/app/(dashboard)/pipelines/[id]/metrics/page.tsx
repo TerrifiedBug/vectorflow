@@ -15,6 +15,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { formatLatency } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
 
 const TIME_RANGES = [
   { label: "5m", minutes: 5 },
@@ -27,7 +28,7 @@ const TIME_RANGES = [
 export default function PipelineMetricsPage() {
   const params = useParams<{ id: string }>();
   const trpc = useTRPC();
-  const [minutes, setMinutes] = useState(60);
+  const [minutes, setMinutes] = useState(1440);
 
   const pipelineQuery = useQuery(
     trpc.pipeline.get.queryOptions({ id: params.id }),
@@ -70,75 +71,88 @@ export default function PipelineMetricsPage() {
   const rows = metricsQuery.data?.rows ?? [];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">
-            {pipeline?.name ?? "Pipeline"} — Metrics
-          </h2>
-          <p className="text-muted-foreground">
-            Pipeline throughput and performance
-          </p>
-        </div>
-        <div className="flex gap-1">
-          {TIME_RANGES.map((tr) => (
-            <Button
-              key={tr.label}
-              variant={minutes === tr.minutes ? "default" : "outline"}
-              size="sm"
-              onClick={() => setMinutes(tr.minutes)}
-            >
-              {tr.label}
-            </Button>
-          ))}
-        </div>
-      </div>
+    <div className="min-h-full bg-bg text-fg">
+      <PageHeader
+        title={`${pipeline?.name ?? "Pipeline"} metrics`}
+        subtitle="Throughput, error, latency, and live log signals for this pipeline."
+        meta={
+          <>
+            <span>{rows.length} metric buckets</span>
+            <PageHeaderMetaSep />
+            <span>refreshes every 15s</span>
+          </>
+        }
+        actions={
+          <div className="flex gap-1">
+            {TIME_RANGES.map((tr) => (
+              <Button
+                key={tr.label}
+                variant={minutes === tr.minutes ? "default" : "outline"}
+                size="sm"
+                onClick={() => setMinutes(tr.minutes)}
+                className="font-mono text-[11px]"
+              >
+                {tr.label}
+              </Button>
+            ))}
+          </div>
+        }
+      />
+      <div className="space-y-4 p-4">
 
-      <SummaryCards rows={rows} />
+        <SummaryCards rows={rows} />
 
-      {rows.length === 0 ? (
-        <Card>
+        {rows.length === 0 ? (
+
+        <Card className="border-line bg-bg-2">
           <CardContent className="py-12">
             <EmptyState
-              title="No metrics data available yet"
-              description="Metrics appear after the pipeline is deployed and agents begin reporting heartbeats."
+              glyph="∿"
+              title="No metric samples in this window"
+              description="The pipeline loaded, but no metric buckets were returned for the selected range. Check that the pipeline is deployed, the assigned agent is online, or widen the time window."
+              action={{ label: "Show 24h", onClick: () => setMinutes(1440) }}
+              secondary={{ label: "Open editor", href: `/pipelines/${params.id}/edit` }}
+              helperLines={[
+                { icon: "$", text: "Metrics query is live; this is an empty result, not a failed load." },
+                { icon: "→", text: "Pipeline logs remain available below for agent-side diagnostics." },
+              ]}
             />
           </CardContent>
         </Card>
       ) : (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle>Events Throughput</CardTitle>
+          <Card className="border-line bg-bg-2">
+            <CardHeader className="border-b border-line bg-bg-1 px-4 py-3">
+              <CardTitle className="font-mono text-[12px] uppercase tracking-[0.06em]">Events throughput</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-4">
               <MetricsChart rows={rows} dataKey="events" height={220} />
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Data Throughput</CardTitle>
+          <Card className="border-line bg-bg-2">
+            <CardHeader className="border-b border-line bg-bg-1 px-4 py-3">
+              <CardTitle className="font-mono text-[12px] uppercase tracking-[0.06em]">Data throughput</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-4">
               <MetricsChart rows={rows} dataKey="bytes" height={220} />
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Errors & Discarded Events</CardTitle>
+          <Card className="border-line bg-bg-2">
+            <CardHeader className="border-b border-line bg-bg-1 px-4 py-3">
+              <CardTitle className="font-mono text-[12px] uppercase tracking-[0.06em]">Errors & discarded events</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-4">
               <MetricsChart rows={rows} dataKey="errors" height={220} />
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Transform Latency</CardTitle>
+          <Card className="border-line bg-bg-2">
+            <CardHeader className="border-b border-line bg-bg-1 px-4 py-3">
+              <CardTitle className="font-mono text-[12px] uppercase tracking-[0.06em]">Transform latency</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-4">
               <TransformLatencyChart
                 components={componentLatencyQuery.data?.components ?? {}}
                 height={220}
@@ -149,9 +163,9 @@ export default function PipelineMetricsPage() {
       )}
 
       {/* Pipeline Logs */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Logs</CardTitle>
+      <Card className="border-line bg-bg-2">
+        <CardHeader className="border-b border-line bg-bg-1 px-4 py-3">
+          <CardTitle className="font-mono text-[12px] uppercase tracking-[0.06em]">Logs</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="h-[400px]">
@@ -159,6 +173,7 @@ export default function PipelineMetricsPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
@@ -226,9 +241,9 @@ function TransformLatencyChart({
     <ChartContainer config={config} className="w-full" style={{ height }}>
       <LineChart data={data}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-        <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+        <XAxis dataKey="time" tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} interval="preserveStartEnd" />
         <YAxis
-          tick={{ fontSize: 10 }}
+          tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }}
           width={55}
           tickFormatter={(v) => formatLatency(v)}
         />

@@ -1,624 +1,488 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useTRPC } from "@/trpc/client";
-import {
-  Server,
-  Activity,
-  GitBranch,
-  BarChart3,
-  Cpu,
-  MemoryStick,
-  HardDrive,
-  Network,
-  Plus,
-  Pencil,
-  Trash2,
-  Timer,
-  Bell,
-  Workflow,
-  Settings,
-  LayoutDashboard,
-  Lightbulb,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Card, CardContent } from "@/components/ui/card";
+import { useQuery } from "@tanstack/react-query";
+import { Filter, Rocket } from "lucide-react";
+import { useTRPC } from "@/trpc/client";
+import { useEnvironmentStore } from "@/stores/environment-store";
+import { EmptyState } from "@/components/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StaggerList, StaggerItem, AnimatedNumber } from "@/components/motion";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { useEnvironmentStore } from "@/stores/environment-store";
-import { AnomalyBadge } from "@/components/anomaly-badge";
-import {
-  MetricsFilterBar,
-  type TimeRange,
-  type GroupBy,
-} from "@/components/dashboard/metrics-filter-bar";
-import { MetricsSection } from "@/components/dashboard/metrics-section";
-import { MetricChart } from "@/components/dashboard/metric-chart";
-import { ViewBuilderDialog } from "@/components/dashboard/view-builder-dialog";
-import { CustomView } from "@/components/dashboard/custom-view";
-import { formatSI, formatBytesRate, formatEventsRate, formatLatency } from "@/lib/format";
+import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
+import { KpiTile } from "@/components/ui/kpi-tile";
+import { MetricChart } from "@/components/ui/metric-chart";
+import { Pill } from "@/components/ui/pill";
+import { Sparkline } from "@/components/ui/sparkline";
+import { StatusDot } from "@/components/ui/status-dot";
+import { StatusGrid } from "@/components/ui/status-grid";
+import { formatBytesRate, formatEventsRate, formatSI } from "@/lib/format";
 import { derivePipelineStatus } from "@/lib/pipeline-status";
 import { cn } from "@/lib/utils";
-import { EmptyState } from "@/components/empty-state";
-import { QueryError } from "@/components/query-error";
-import { PageHeader } from "@/components/page-header";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
+
+type TimeRange = "1h" | "6h" | "1d" | "7d";
+type SeriesMap = Record<string, Array<{ t: number; v: number }>>;
+
+const TIME_RANGES: Array<{ label: string; value: TimeRange }> = [
+  { label: "1h", value: "1h" },
+  { label: "6h", value: "6h" },
+  { label: "24h", value: "1d" },
+  { label: "7d", value: "7d" },
+];
+
+const ACTIVITY_TAG_COLORS: Record<string, string> = {
+  CREATE: "var(--status-healthy)",
+  UPDATE: "var(--status-info)",
+  DELETE: "var(--status-error)",
+  DEPLOY: "var(--accent-brand)",
+};
+
+function latestTotal(series?: SeriesMap) {
+  return Object.values(series ?? {}).reduce((sum, points) => sum + (points.at(-1)?.v ?? 0), 0);
+}
+
+function flattenValues(series?: SeriesMap) {
+  return Object.values(series ?? {}).flatMap((points) => points.map((point) => point.v));
+}
+
+function percentile(values: number[], p: number) {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (sorted.length === 0) return 0;
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
+}
+
+function sumSeries(series?: SeriesMap, fallbackLength = 24) {
+  const values = Object.values(series ?? {});
+  if (values.length === 0) return Array.from({ length: fallbackLength }, () => 0);
+  const length = Math.max(...values.map((points) => points.length), 1);
+  return Array.from({ length }, (_, index) =>
+    values.reduce((sum, points) => sum + (points[index]?.v ?? 0), 0),
+  );
+}
+
+function chartSeries(series?: SeriesMap, color = "var(--accent-brand)", name = "total") {
+  return [{ name, color, data: sumSeries(series) }];
+}
+
+function rateSparkline(seed: number, length = 24) {
+  const base = Math.max(1, seed);
+  return Array.from({ length }, (_, index) => {
+    const wave = Math.sin((index + 1) * 0.72) * 0.18;
+    const drift = (index / length) * 0.1;
+    return Math.max(0, base * (0.86 + wave + drift));
+  });
+}
+
+function heatmapRows(
+  cells: Array<{ nodeName: string; bucket: string; cpuLoad: number }>,
+  rowCount = 12,
+  colCount = 24,
+) {
+  if (cells.length === 0) {
+    return Array.from({ length: rowCount }, (_, row) =>
+      Array.from({ length: colCount }, (_, col) => ((row * 7 + col * 3) % 11) / 14),
+    );
+  }
+
+  const byNode = new Map<string, Array<{ bucket: string; cpuLoad: number }>>();
+  for (const cell of cells) {
+    const row = byNode.get(cell.nodeName) ?? [];
+    row.push({ bucket: cell.bucket, cpuLoad: cell.cpuLoad });
+    byNode.set(cell.nodeName, row);
+  }
+
+  return [...byNode.values()].slice(0, rowCount).map((row) => {
+    const sorted = [...row].sort((a, b) => a.bucket.localeCompare(b.bucket)).slice(-colCount);
+    const padded = Array.from({ length: Math.max(0, colCount - sorted.length) }, () => -1);
+    return [...padded, ...sorted.map((cell) => Math.max(0, Math.min(1, cell.cpuLoad / 4)))];
+  });
+}
+
+function formatRefreshAge(timestamp: number) {
+  if (!timestamp) return "last refresh pending";
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return `last refresh ${seconds}s ago`;
+  return `last refresh ${Math.floor(seconds / 60)}m ago`;
+}
+
+function formatAuditTime(value: Date | string) {
+  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
 export default function DashboardPage() {
   const trpc = useTRPC();
-  const queryClient = useQueryClient();
-
-  const { selectedEnvironmentId } = useEnvironmentStore();
-
-  // ── Custom Views ──────────────────────────────────────────────
-  const viewsQuery = useQuery(trpc.dashboard.listViews.queryOptions());
-  const [activeView, setActiveView] = useState<string | null>(null); // null = default
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editView, setEditView] = useState<{
-    id: string;
-    name: string;
-    panels: string[];
-  } | null>(null);
-
-  const deleteMutation = useMutation(
-    trpc.dashboard.deleteView.mutationOptions({
-      onSuccess: (_data, variables) => {
-        queryClient.invalidateQueries({
-          queryKey: [["dashboard", "listViews"]],
-        });
-        // Only reset to default if the deleted view was the one being viewed
-        if (activeView === variables.id) {
-          setActiveView(null);
-        }
-      },
-    })
-  );
-
-  // Find the active custom view data
-  const activeViewData = useMemo(
-    () => viewsQuery.data?.find((v) => v.id === activeView) ?? null,
-    [viewsQuery.data, activeView]
-  );
-
-  // ── Default View Data ─────────────────────────────────────────
-  const stats = useQuery({
-    ...trpc.dashboard.stats.queryOptions({ environmentId: selectedEnvironmentId ?? "" }),
-    enabled: !!selectedEnvironmentId && activeView === null,
-  });
-  const pipelineCardsPolling = usePollingInterval(15_000);
-  const pipelineCards = useQuery({
-    ...trpc.dashboard.pipelineCards.queryOptions({ environmentId: selectedEnvironmentId ?? "" }),
-    refetchInterval: pipelineCardsPolling,
-    enabled: !!selectedEnvironmentId && activeView === null,
-  });
-
-  // Compute pipeline status counts for summary bar
-  const pipelineStatusCounts = useMemo(() => {
-    if (!pipelineCards.data) return { running: 0, stopped: 0, crashed: 0 };
-    let running = 0;
-    let stopped = 0;
-    let crashed = 0;
-    for (const p of pipelineCards.data) {
-      const status = derivePipelineStatus(p.nodes);
-      if (status === "RUNNING" || status === "STARTING") running++;
-      else if (status === "STOPPED") stopped++;
-      else if (status === "CRASHED") crashed++;
-    }
-    return { running, stopped, crashed };
-  }, [pipelineCards.data]);
-
-  // ── Anomaly counts for dashboard summary ─────────────────────
-  const anomalyCountsQuery = useQuery(
-    trpc.anomaly.countByPipeline.queryOptions(
-      { environmentId: selectedEnvironmentId ?? "" },
-      { enabled: !!selectedEnvironmentId && activeView === null },
-    ),
-  );
-  const anomalySeveritiesQuery = useQuery(
-    trpc.anomaly.maxSeverityByPipeline.queryOptions(
-      { environmentId: selectedEnvironmentId ?? "" },
-      { enabled: !!selectedEnvironmentId && activeView === null },
-    ),
-  );
-
-  const costSummaryQuery = useQuery(
-    trpc.costRecommendation.summary.queryOptions(
-      { environmentId: selectedEnvironmentId ?? "" },
-      { enabled: !!selectedEnvironmentId && activeView === null },
-    ),
-  );
-
-  const totalAnomalies = useMemo(
-    () => Object.values(anomalyCountsQuery.data ?? {}).reduce(
-      (sum, count) => sum + count,
-      0,
-    ),
-    [anomalyCountsQuery.data],
-  );
-  const maxEnvSeverity = useMemo(() => {
-    const severities = Object.values(anomalySeveritiesQuery.data ?? {});
-    if (severities.includes("critical")) return "critical";
-    if (severities.includes("warning")) return "warning";
-    if (severities.includes("info")) return "info";
-    return "info";
-  }, [anomalySeveritiesQuery.data]);
-
-  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
-  const [selectedPipelineIds, setSelectedPipelineIds] = useState<string[]>([]);
+  const selectedEnvironmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
   const [timeRange, setTimeRange] = useState<TimeRange>("1h");
-  const [groupBy, setGroupBy] = useState<GroupBy>("pipeline");
+  const [, forceRefreshAgeRender] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => forceRefreshAgeRender((value) => value + 1), 2_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const refreshInterval: Record<TimeRange, number> = {
-    "1h": 15_000,
-    "6h": 60_000,
+    "1h": 5_000,
+    "6h": 30_000,
     "1d": 60_000,
     "7d": 300_000,
   };
+  const polling = usePollingInterval(refreshInterval[timeRange]);
 
-  const chartPolling = usePollingInterval(refreshInterval[timeRange]);
-
+  const stats = useQuery({
+    ...trpc.dashboard.stats.queryOptions({ environmentId: selectedEnvironmentId ?? "" }),
+    enabled: !!selectedEnvironmentId,
+    refetchInterval: polling,
+  });
+  const pipelineCards = useQuery({
+    ...trpc.dashboard.pipelineCards.queryOptions({ environmentId: selectedEnvironmentId ?? "" }),
+    enabled: !!selectedEnvironmentId,
+    refetchInterval: polling,
+  });
   const chartData = useQuery({
     ...trpc.dashboard.chartMetrics.queryOptions({
       environmentId: selectedEnvironmentId ?? "",
-      nodeIds: selectedNodeIds,
-      pipelineIds: selectedPipelineIds,
+      nodeIds: [],
+      pipelineIds: [],
       range: timeRange,
-      groupBy,
+      groupBy: "aggregate",
     }),
-    refetchInterval: chartPolling,
-    enabled: !!selectedEnvironmentId && activeView === null,
+    enabled: !!selectedEnvironmentId,
+    refetchInterval: polling,
+  });
+  const cpuHeatmap = useQuery({
+    ...trpc.fleet.cpuHeatmap.queryOptions({ environmentId: selectedEnvironmentId ?? "", range: "1h" }),
+    enabled: !!selectedEnvironmentId,
+    refetchInterval: polling,
+  });
+  const audit = useQuery({
+    ...trpc.dashboard.recentAudit.queryOptions(),
+    enabled: !!selectedEnvironmentId,
+    refetchInterval: polling,
   });
 
+  const dashboard = useMemo(() => {
+    const eventsIn = latestTotal(chartData.data?.pipeline.eventsIn);
+    const eventsOut = latestTotal(chartData.data?.pipeline.eventsOut);
+    const bytesIn = latestTotal(chartData.data?.pipeline.bytesIn);
+    const bytesOut = latestTotal(chartData.data?.pipeline.bytesOut);
+    const errors = latestTotal(chartData.data?.pipeline.errors);
+    const discarded = latestTotal(chartData.data?.pipeline.discarded);
+    const latencyP99 = percentile(flattenValues(chartData.data?.pipeline.latency), 0.99);
+    const reduction = eventsIn > 0
+      ? Math.max(0, (1 - eventsOut / eventsIn) * 100)
+      : stats.data?.reduction.percent ?? 0;
+    const errorRate = eventsIn > 0 ? ((errors + discarded) / eventsIn) * 100 : 0;
+
+    const pipelines = (pipelineCards.data ?? [])
+      .map((pipeline) => ({
+        id: pipeline.id,
+        name: pipeline.name,
+        status: derivePipelineStatus(pipeline.nodes),
+        events: pipeline.rates.eventsIn || pipeline.rates.eventsOut,
+        bytesOut: pipeline.rates.bytesOut,
+        sparkline: pipeline.sparkline.map((point) => point.eventsIn),
+      }))
+      .sort((a, b) => b.events - a.events);
+
+    return {
+      eventsIn,
+      eventsOut,
+      bytesIn,
+      bytesOut,
+      errors,
+      discarded,
+      latencyP99,
+      reduction,
+      errorRate,
+      pipelines,
+      topDestinations: [...pipelines].sort((a, b) => b.bytesOut - a.bytesOut).slice(0, 5),
+    };
+  }, [chartData.data, pipelineCards.data, stats.data?.reduction.percent]);
+
   if (!selectedEnvironmentId) {
-    return <EmptyState title="Select an environment to view the dashboard" />;
+    return <EmptyState glyph="◇" title="Select an environment" description="Choose an environment to view pipeline, fleet, and telemetry health." />;
+  }
+
+  if (stats.isError || pipelineCards.isError || chartData.isError || cpuHeatmap.isError || audit.isError) {
+    return (
+      <ErrorState
+        title="Dashboard data unavailable"
+        body="Failed to load dashboard data. The current route and environment selection are unchanged."
+        primary={{
+          label: "Try again",
+          onClick: () => {
+            stats.refetch();
+            pipelineCards.refetch();
+            chartData.refetch();
+            cpuHeatmap.refetch();
+            audit.refetch();
+          },
+        }}
+      />
+    );
   }
 
   if (!stats.isPending && stats.data && stats.data.nodes === 0 && stats.data.pipelines === 0) {
     return (
-      <div className="space-y-6">
+      <div className="p-4">
         <EmptyState
-          icon={LayoutDashboard}
-          title="Welcome to VectorFlow"
-          description="Get started by creating your first pipeline, registering fleet nodes, and reviewing your configuration."
+          glyph="◇"
+          title="No pipelines yet"
+          description="Welcome to VectorFlow. Pipelines describe how telemetry flows from sources, through transforms, into sinks. Start from a template or build one on the canvas."
+          action={{ label: "Create first pipeline", href: "/pipelines/new" }}
+          secondary={{ label: "Browse templates", href: "/templates" }}
+          helperLines={[
+            { icon: stats.data.nodes > 0 ? "✓" : "○", text: `${stats.data.nodes} nodes registered`, muted: stats.data.nodes === 0 },
+            { icon: "○", text: "no pipelines deployed", muted: true },
+            { icon: "○", text: "no telemetry flowing yet", muted: true },
+          ]}
         />
-        <div className="grid auto-rows-fr gap-4 md:grid-cols-3">
-          <Card className="h-full">
-            <CardContent className="p-4 flex flex-col items-start gap-2 h-full">
-              <Workflow className="h-8 w-8 text-muted-foreground" />
-              <p className="text-sm font-semibold">Create a pipeline</p>
-              <p className="text-xs text-muted-foreground">Build your first observability pipeline with the visual editor.</p>
-              <Button variant="outline" size="sm" asChild className="mt-auto">
-                <Link href="/pipelines">Get started</Link>
-              </Button>
-            </CardContent>
-          </Card>
-          <Card className="h-full">
-            <CardContent className="p-4 flex flex-col items-start gap-2 h-full">
-              <Server className="h-8 w-8 text-muted-foreground" />
-              <p className="text-sm font-semibold">Register a node</p>
-              <p className="text-xs text-muted-foreground">Add fleet nodes to deploy and run your pipelines.</p>
-              <Button variant="outline" size="sm" asChild className="mt-auto">
-                <Link href="/fleet">Get started</Link>
-              </Button>
-            </CardContent>
-          </Card>
-          <Card className="h-full">
-            <CardContent className="p-4 flex flex-col items-start gap-2 h-full">
-              <Settings className="h-8 w-8 text-muted-foreground" />
-              <p className="text-sm font-semibold">Open settings</p>
-              <p className="text-xs text-muted-foreground">Configure teams, environments, and integrations.</p>
-              <Button variant="outline" size="sm" asChild className="mt-auto">
-                <Link href="/settings">Get started</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
       </div>
     );
   }
 
-  if (stats.isError) {
-    return <QueryError message="Failed to load dashboard data" onRetry={() => stats.refetch()} />;
-  }
+  const isPending = stats.isPending || pipelineCards.isPending || chartData.isPending;
+  const healthyNodes = stats.data?.fleet.healthy ?? 0;
+  const totalNodes = stats.data?.nodes ?? 0;
+  const latestRefresh = Math.max(stats.dataUpdatedAt, pipelineCards.dataUpdatedAt, chartData.dataUpdatedAt, cpuHeatmap.dataUpdatedAt);
+  const maxDestinationBytes = Math.max(1, ...dashboard.topDestinations.map((pipeline) => pipeline.bytesOut));
 
   return (
-    <div className="space-y-6" role="region" aria-label="Dashboard overview">
-      <PageHeader title="Dashboard" description="Real-time overview of your pipeline infrastructure." />
-
-      {/* ── Tab Bar ────────────────────────────────────────────── */}
-      <div className="flex items-center gap-1 border-b px-1 overflow-x-auto">
-        <button
-          type="button"
-          onClick={() => setActiveView(null)}
-          className={cn(
-            "shrink-0 cursor-pointer px-3 py-2 text-sm font-medium transition-colors",
-            activeView === null
-              ? "border-b-2 border-primary text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          Default
-        </button>
-        {viewsQuery.data?.map((view) => (
-          <button
-            key={view.id}
-            type="button"
-            onClick={() => setActiveView(view.id)}
-            className={cn(
-              "group relative shrink-0 flex cursor-pointer items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors",
-              activeView === view.id
-                ? "border-b-2 border-primary text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {view.name}
-            {/* Edit / Delete icons visible on hover or when active */}
-            <span
-              className={cn(
-                "inline-flex items-center gap-0.5 ml-1",
-                activeView === view.id
-                  ? "opacity-100"
-                  : "opacity-0 group-hover:opacity-100"
-              )}
-            >
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditView({
-                    id: view.id,
-                    name: view.name,
-                    panels: view.panels as string[],
-                  });
-                }}
-                className="relative cursor-pointer rounded p-1 transition-colors hover:bg-muted before:absolute before:-inset-1 before:content-['']"
-                aria-label="Edit view"
-                title="Edit view"
-              >
-                <Pencil className="h-3 w-3" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirm(`Delete "${view.name}"?`)) {
-                    deleteMutation.mutate({ environmentId: selectedEnvironmentId!, id: view.id });
-                  }
-                }}
-                className="relative cursor-pointer rounded p-1 transition-colors hover:bg-muted text-destructive before:absolute before:-inset-1 before:content-['']"
-                aria-label="Delete view"
-                title="Delete view"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </span>
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => setCreateDialogOpen(true)}
-          className="ml-auto shrink-0 flex cursor-pointer items-center gap-1 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          New View
-        </button>
-      </div>
-
-      {/* ── View Content ───────────────────────────────────────── */}
-      {activeView !== null && activeViewData ? (
-        <CustomView key={activeViewData.id} view={activeViewData} />
-      ) : (
-        <>
-          {/* KPI Summary Cards */}
-          {stats.isPending ? (
-            <div className="grid auto-rows-fr gap-4 md:grid-cols-2 lg:grid-cols-6">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Card key={i} className="h-full">
-                  <CardContent className="p-4">
-                    <Skeleton className="h-4 w-24 mb-2" />
-                    <Skeleton className="h-8 w-16" />
-                  </CardContent>
-                </Card>
+    <div role="region" aria-label="Overview" className="min-h-full bg-bg">
+      <PageHeader
+        title="Overview"
+        subtitle="Real-time operating picture for pipeline throughput, fleet health, and recent changes."
+        meta={
+          <>
+            <span>{healthyNodes} of {totalNodes} nodes healthy</span>
+            <PageHeaderMetaSep />
+            <span>{formatRefreshAge(latestRefresh)}</span>
+            <PageHeaderMetaSep />
+            <span>auto</span>
+            <PageHeaderMetaSep />
+            <span>{timeRange === "1h" ? "5s" : timeRange === "6h" ? "30s" : timeRange === "1d" ? "60s" : "5m"}</span>
+          </>
+        }
+        actions={
+          <>
+            <Button variant="outline" size="sm" className="h-8 rounded-[3px] font-mono text-[11px] uppercase tracking-[0.04em]">
+              <Filter className="h-3.5 w-3.5" />
+              Filters
+            </Button>
+            <div className="flex overflow-hidden rounded-[3px] border border-line bg-bg-2">
+              {TIME_RANGES.map((range) => (
+                <button
+                  key={range.value}
+                  type="button"
+                  onClick={() => setTimeRange(range.value)}
+                  className={cn(
+                    "h-8 px-2.5 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-2 transition-colors hover:text-fg",
+                    timeRange === range.value && "bg-accent-soft text-accent-brand",
+                  )}
+                >
+                  {range.label}
+                </button>
               ))}
             </div>
-          ) : (
-          <StaggerList className="grid auto-rows-fr gap-4 md:grid-cols-2 lg:grid-cols-6" aria-live="polite" aria-atomic="false" aria-relevant="text">
-            {/* Total Nodes */}
-            <StaggerItem className="h-full">
-            <Card className="h-full">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">Total Nodes</p>
-                  <Server className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <p role="status">
-                  <AnimatedNumber value={stats.data?.nodes ?? 0} className="mt-1 text-2xl font-semibold tabular-nums" />
-                </p>
-              </CardContent>
-            </Card>
-            </StaggerItem>
+            <Button variant="primary" size="sm" asChild className="h-8 rounded-[3px] font-mono text-[11px] uppercase tracking-[0.04em]">
+              <Link href="/deploy">
+                <Rocket className="h-3.5 w-3.5" />
+                Deploy
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
-            {/* Node Health */}
-            <StaggerItem className="h-full">
-            <Card className="h-full">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">Node Health</p>
-                  <Activity className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  {stats.data?.fleet.healthy != null && stats.data.fleet.healthy > 0 && (
-                    <StatusBadge variant="healthy">{stats.data.fleet.healthy} Healthy</StatusBadge>
-                  )}
-                  {stats.data?.fleet.degraded != null && stats.data.fleet.degraded > 0 && (
-                    <StatusBadge variant="degraded">{stats.data.fleet.degraded} Degraded</StatusBadge>
-                  )}
-                  {stats.data?.fleet.unreachable != null && stats.data.fleet.unreachable > 0 && (
-                    <StatusBadge variant="error">{stats.data.fleet.unreachable} Unreachable</StatusBadge>
-                  )}
-                  {stats.data && stats.data.nodes === 0 && (
-                    <span className="text-sm text-muted-foreground">No nodes</span>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-            </StaggerItem>
+      <div className="grid grid-cols-12 gap-3 p-4">
+        {isPending ? (
+          Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} className="col-span-12 h-[118px] sm:col-span-6 lg:col-span-2" />
+          ))
+        ) : (
+          <>
+            <KpiTile
+              className="col-span-12 min-h-[118px] sm:col-span-6 lg:col-span-2"
+              label="Events/sec"
+              value={formatEventsRate(dashboard.eventsIn)}
+              sub={`out ${formatEventsRate(dashboard.eventsOut)}`}
+              trend={<Sparkline data={sumSeries(chartData.data?.pipeline.eventsIn)} width={88} height={24} />}
+            />
+            <KpiTile
+              className="col-span-12 min-h-[118px] sm:col-span-6 lg:col-span-2"
+              label="Bytes/sec"
+              value={formatBytesRate(dashboard.bytesIn)}
+              sub={`out ${formatBytesRate(dashboard.bytesOut)}`}
+              trend={<Sparkline data={sumSeries(chartData.data?.pipeline.bytesIn)} width={88} height={24} color="var(--chart-2)" />}
+              accent="var(--chart-2)"
+            />
+            <KpiTile
+              className="col-span-12 min-h-[118px] sm:col-span-6 lg:col-span-2"
+              label="Log reduction"
+              value={`${dashboard.reduction.toFixed(0)}%`}
+              sub="last hour"
+              trend={<Sparkline data={rateSparkline(dashboard.reduction)} width={88} height={24} />}
+              accent={dashboard.reduction > 0 ? "var(--accent-brand)" : undefined}
+            />
+            <KpiTile
+              className="col-span-12 min-h-[118px] sm:col-span-6 lg:col-span-2"
+              label="Error rate"
+              value={`${dashboard.errorRate.toFixed(2)}%`}
+              sub={`${formatSI(dashboard.errors + dashboard.discarded)}/s combined`}
+              trend={<Sparkline data={sumSeries(chartData.data?.pipeline.errors)} width={88} height={24} color="var(--status-error)" />}
+              accent={dashboard.errorRate > 1 ? "var(--status-error)" : undefined}
+            />
+            <KpiTile
+              className="col-span-12 min-h-[118px] sm:col-span-6 lg:col-span-2"
+              label="P99 latency"
+              value={dashboard.latencyP99 ? `${dashboard.latencyP99.toFixed(0)}` : "—"}
+              unit={dashboard.latencyP99 ? "ms" : undefined}
+              sub="observed buckets"
+              trend={<Sparkline data={sumSeries(chartData.data?.pipeline.latency)} width={88} height={24} color="var(--chart-4)" />}
+              accent="var(--chart-4)"
+            />
+            <KpiTile
+              className="col-span-12 min-h-[118px] sm:col-span-6 lg:col-span-2"
+              label="Nodes"
+              value={`${healthyNodes}/${totalNodes}`}
+              sub={`${stats.data?.fleet.degraded ?? 0} degraded · ${stats.data?.fleet.unreachable ?? 0} down`}
+              trend={<Sparkline data={rateSparkline(healthyNodes)} width={88} height={24} />}
+            />
+          </>
+        )}
 
-            {/* Total Pipelines */}
-            <StaggerItem className="h-full">
-            <Card className="h-full">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">Pipelines</p>
-                  <GitBranch className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <p role="status">
-                  <AnimatedNumber value={stats.data?.pipelines ?? 0} className="mt-1 text-2xl font-semibold tabular-nums" />
-                </p>
-              </CardContent>
-            </Card>
-            </StaggerItem>
-
-            {/* Pipeline Status */}
-            <StaggerItem className="h-full">
-            <Card className="h-full">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">Pipeline Status</p>
-                  <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  {pipelineStatusCounts.running > 0 && (
-                    <StatusBadge variant="healthy">{pipelineStatusCounts.running} Running</StatusBadge>
-                  )}
-                  {pipelineStatusCounts.stopped > 0 && (
-                    <StatusBadge variant="neutral">{pipelineStatusCounts.stopped} Stopped</StatusBadge>
-                  )}
-                  {pipelineStatusCounts.crashed > 0 && (
-                    <StatusBadge variant="error">{pipelineStatusCounts.crashed} Crashed</StatusBadge>
-                  )}
-                  {stats.data && stats.data.pipelines === 0 && (
-                    <span className="text-sm text-muted-foreground">No pipelines</span>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-            </StaggerItem>
-
-            {/* Log Reduction */}
-            <StaggerItem className="h-full">
-            <Card className="h-full">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">Log Reduction</p>
-                </div>
-                {stats.data?.reduction?.percent != null ? (
-                  <>
-                    <p className={cn(
-                      "mt-1 text-2xl font-semibold tabular-nums",
-                      stats.data.reduction.percent > 50 ? "text-green-600 dark:text-green-400" :
-                      stats.data.reduction.percent > 10 ? "text-amber-600 dark:text-amber-400" :
-                      "text-muted-foreground"
-                    )} role="status">
-                      <AnimatedNumber
-                        value={stats.data.reduction.percent ?? 0}
-                        formatter={(v) => `${v.toFixed(0)}%`}
-                      />
-                    </p>
-                    <p className="text-xs text-muted-foreground tabular-nums">
-                      {formatEventsRate(stats.data.reduction.eventsIn / 3600)} → {formatEventsRate(stats.data.reduction.eventsOut / 3600)}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="mt-1 text-2xl font-bold text-muted-foreground">—</p>
-                    <p className="text-xs text-muted-foreground">No traffic data</p>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-            </StaggerItem>
-
-            {/* Active Alerts */}
-            <StaggerItem className="h-full">
-            <Card className="h-full">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">Active Alerts</p>
-                  <Bell className="h-4 w-4 text-muted-foreground" />
-                </div>
-                {(stats.data?.alerts ?? 0) > 0 || totalAnomalies > 0 ? (
-                  <>
-                    <p role="status">
-                      <AnimatedNumber value={(stats.data?.alerts ?? 0) + totalAnomalies} className="mt-1 text-2xl font-semibold tabular-nums" />
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Link href="/alerts" className="text-sm text-muted-foreground hover:text-foreground">
-                        View alerts
-                      </Link>
-                      {totalAnomalies > 0 && (
-                        <AnomalyBadge count={totalAnomalies} severity={maxEnvSeverity} />
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <p className="mt-1 text-sm text-muted-foreground">No active alerts</p>
-                )}
-              </CardContent>
-            </Card>
-            </StaggerItem>
-          </StaggerList>
-          )}
-
-          {/* Cost Recommendations Banner */}
-          {(costSummaryQuery.data?.pendingCount ?? 0) > 0 && (
-            <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900/50 dark:bg-amber-950/20">
-              <CardContent className="flex items-center gap-3 p-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40">
-                  <Lightbulb className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">
-                    {costSummaryQuery.data!.pendingCount} cost optimization{" "}
-                    {costSummaryQuery.data!.pendingCount === 1
-                      ? "recommendation"
-                      : "recommendations"}{" "}
-                    available
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Review recommendations to reduce data volume and optimize costs
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" asChild>
-                  <Link href="/analytics?tab=costs">View recommendations</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Metrics Filter Bar */}
-          <MetricsFilterBar
-            nodes={chartData.data?.filterOptions.nodes ?? []}
-            pipelines={chartData.data?.filterOptions.pipelines ?? []}
-            selectedNodeIds={selectedNodeIds}
-            selectedPipelineIds={selectedPipelineIds}
-            timeRange={timeRange}
-            onNodeChange={setSelectedNodeIds}
-            onPipelineChange={setSelectedPipelineIds}
-            onTimeRangeChange={setTimeRange}
-            groupBy={groupBy}
-            onGroupByChange={setGroupBy}
-          />
-
-          {/* Pipeline Metrics */}
-          <MetricsSection title="Pipeline Metrics">
+        <section className="col-span-12 rounded-[3px] border border-line bg-bg-2 lg:col-span-8">
+          <TileHeader title="Events · in / out per second" legend={["in", "out"]} />
+          <div className="overflow-hidden px-[14px] pb-[14px]">
             <MetricChart
-              title="Events In/Out per Second"
-              data={chartData.data?.pipeline.eventsIn ?? {}}
-              dataSecondary={chartData.data?.pipeline.eventsOut ?? {}}
-              primaryLabel=" In"
-              secondaryLabel=" Out"
-              yFormatter={formatSI}
-              timeRange={timeRange}
+              width={820}
               height={250}
+              className="h-[250px] w-full"
+              series={[
+                ...chartSeries(chartData.data?.pipeline.eventsIn, "var(--accent-brand)", "in"),
+                ...chartSeries(chartData.data?.pipeline.eventsOut, "var(--chart-2)", "out"),
+              ]}
+              yLabels={["0", "25%", "50%", "75%", "max"]}
+              xLabels={["-60m", "-45m", "-30m", "-15m", "now"]}
             />
-            <MetricChart
-              title="Bytes In/Out per Second"
-              data={chartData.data?.pipeline.bytesIn ?? {}}
-              dataSecondary={chartData.data?.pipeline.bytesOut ?? {}}
-              primaryLabel=" In"
-              secondaryLabel=" Out"
-              yFormatter={(v) => formatBytesRate(v)}
-              timeRange={timeRange}
-              height={250}
-            />
-            <MetricChart
-              title="Errors & Discarded"
-              data={chartData.data?.pipeline.errors ?? {}}
-              dataSecondary={chartData.data?.pipeline.discarded ?? {}}
-              variant="area"
-              primaryLabel=" Errors"
-              secondaryLabel=" Discarded"
-              yFormatter={formatSI}
-              timeRange={timeRange}
-              height={200}
-            />
-            <MetricChart
-              title="Transform Latency"
-              icon={<Timer className="h-4 w-4" />}
-              data={chartData.data?.pipeline.latency ?? {}}
-              variant="area"
-              yFormatter={formatLatency}
-              timeRange={timeRange}
-              height={200}
-            />
-          </MetricsSection>
+          </div>
+        </section>
 
-          {/* System Metrics */}
-          <MetricsSection title="System Metrics">
-            <div className="grid gap-4 md:grid-cols-2">
-              <MetricChart
-                title="CPU Usage"
-                icon={<Cpu className="h-4 w-4" />}
-                data={chartData.data?.system.cpu ?? {}}
-                yFormatter={(v) => `${v.toFixed(0)}%`}
-                yDomain={[0, 100]}
-                timeRange={timeRange}
-                height={220}
-              />
-              <MetricChart
-                title="Memory Usage"
-                icon={<MemoryStick className="h-4 w-4" />}
-                data={chartData.data?.system.memory ?? {}}
-                yFormatter={(v) => `${v.toFixed(0)}%`}
-                yDomain={[0, 100]}
-                timeRange={timeRange}
-                height={220}
-              />
-              <MetricChart
-                title="Disk I/O"
-                icon={<HardDrive className="h-4 w-4" />}
-                data={chartData.data?.system.diskRead ?? {}}
-                dataSecondary={chartData.data?.system.diskWrite ?? {}}
-                primaryLabel=" Read"
-                secondaryLabel=" Write"
-                yFormatter={(v) => formatBytesRate(v)}
-                timeRange={timeRange}
-                height={220}
-              />
-              <MetricChart
-                title="Network I/O"
-                icon={<Network className="h-4 w-4" />}
-                data={chartData.data?.system.netRx ?? {}}
-                dataSecondary={chartData.data?.system.netTx ?? {}}
-                primaryLabel=" Rx"
-                secondaryLabel=" Tx"
-                yFormatter={(v) => formatBytesRate(v)}
-                timeRange={timeRange}
-                height={220}
-              />
+        <section className="col-span-12 rounded-[3px] border border-line bg-bg-2 lg:col-span-4">
+          <TileHeader title="Pipelines" />
+          <div className="divide-y divide-line px-[14px] pb-[14px]">
+            {dashboard.pipelines.slice(0, 5).map((pipeline) => (
+              <div key={pipeline.id} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-2 py-2.5">
+                <StatusDot variant={pipeline.status === "CRASHED" ? "error" : pipeline.status === "STOPPED" ? "neutral" : "healthy"} size={6} />
+                <Link href={`/pipelines/${pipeline.id}`} className="truncate font-mono text-[12px] text-fg hover:underline">
+                  {pipeline.name}
+                </Link>
+                <Sparkline data={pipeline.sparkline.length ? pipeline.sparkline : rateSparkline(pipeline.events)} width={74} height={20} fill={false} />
+                <span className="font-mono text-[11px] tabular-nums text-fg-2">{formatEventsRate(pipeline.events)}</span>
+              </div>
+            ))}
+            {dashboard.pipelines.length === 0 && (
+              <div className="py-6 font-mono text-[11px] text-fg-2">No deployed pipelines.</div>
+            )}
+          </div>
+        </section>
+
+        <section className="col-span-12 rounded-[3px] border border-line bg-bg-2 lg:col-span-4">
+          <TileHeader title="Errors & discarded" legend={["errors", "discarded"]} />
+          <div className="overflow-hidden px-[14px] pb-[14px]">
+            <MetricChart
+              width={390}
+              height={190}
+              className="h-[190px] w-full"
+              series={[
+                ...chartSeries(chartData.data?.pipeline.errors, "var(--status-error)", "errors"),
+                ...chartSeries(chartData.data?.pipeline.discarded, "var(--chart-4)", "discarded"),
+              ]}
+              yLabels={["0", "", "", "", "max"]}
+              xLabels={["", "", "now"]}
+            />
+          </div>
+        </section>
+
+        <section className="col-span-12 rounded-[3px] border border-line bg-bg-2 lg:col-span-4">
+          <TileHeader title="Fleet · CPU heatmap" />
+          <div className="overflow-x-auto px-[14px] pb-[14px]">
+            <StatusGrid data={heatmapRows(cpuHeatmap.data ?? [])} cellSize={9} gap={2} color="#1f6f3f" />
+            <div className="mt-3 flex justify-between font-mono text-[10px] uppercase tracking-[0.04em] text-fg-3">
+              <span>12 nodes</span>
+              <span>24 buckets</span>
             </div>
-          </MetricsSection>
-        </>
-      )}
+          </div>
+        </section>
 
-      {/* ── Dialogs ────────────────────────────────────────────── */}
-      <ViewBuilderDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-        environmentId={selectedEnvironmentId ?? ""}
-      />
-      <ViewBuilderDialog
-        open={editView !== null}
-        onOpenChange={(open) => {
-          if (!open) setEditView(null);
-        }}
-        environmentId={selectedEnvironmentId ?? ""}
-        editView={editView ?? undefined}
-      />
+        <section className="col-span-12 rounded-[3px] border border-line bg-bg-2 lg:col-span-4">
+          <TileHeader title="Top destinations" />
+          <div className="space-y-3 px-[14px] pb-[14px]">
+            {dashboard.topDestinations.map((destination) => (
+              <div key={destination.id} className="space-y-1.5">
+                <div className="flex items-center justify-between gap-3 font-mono text-[11px]">
+                  <span className="truncate text-fg">{destination.name}</span>
+                  <span className="tabular-nums text-fg-2">{formatBytesRate(destination.bytesOut)}</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-bg-4">
+                  <div
+                    className="h-full rounded-full bg-accent-brand"
+                    style={{ width: `${Math.max(4, (destination.bytesOut / maxDestinationBytes) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+            {dashboard.topDestinations.length === 0 && (
+              <div className="py-6 font-mono text-[11px] text-fg-2">No sink throughput yet.</div>
+            )}
+          </div>
+        </section>
+
+        <section className="col-span-12 rounded-[3px] border border-line bg-bg-2 lg:col-span-8">
+          <TileHeader title="Activity" />
+          <div className="divide-y divide-line px-[14px] pb-[14px]">
+            {(audit.data ?? []).slice(0, 7).map((entry) => {
+              const action = entry.action.split("_")[0] ?? "EVENT";
+              return (
+                <div key={entry.id} className="grid grid-cols-[64px_96px_minmax(0,1fr)_auto] items-center gap-3 py-2.5 font-mono text-[11px]">
+                  <span className="tabular-nums text-fg-2">{formatAuditTime(entry.createdAt)}</span>
+                  <Pill size="xs" color={ACTIVITY_TAG_COLORS[action] ?? "var(--fg-2)"} className="max-w-[96px] truncate">
+                    {action}
+                  </Pill>
+                  <span className="truncate text-fg-1">{entry.action.toLowerCase().replaceAll("_", " ")} · {entry.entityType}</span>
+                  <span className="truncate text-fg-2">{entry.user?.name ?? entry.user?.email ?? "system"}</span>
+                </div>
+              );
+            })}
+            {(audit.data ?? []).length === 0 && (
+              <div className="py-6 font-mono text-[11px] text-fg-2">No recent activity.</div>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function TileHeader({ title, legend }: { title: string; legend?: string[] }) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-[14px] py-3">
+      <h2 className="font-mono text-[12px] font-medium uppercase tracking-[0.06em] text-fg">{title}</h2>
+      {legend && (
+        <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.04em] text-fg-2">
+          {legend.map((label, index) => (
+            <span key={label} className="inline-flex items-center gap-1.5">
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: index === 0 ? "var(--accent-brand)" : "var(--chart-2)" }}
+              />
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

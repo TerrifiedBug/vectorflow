@@ -25,9 +25,9 @@ const SHORTCUT_GROUPS = [
     category: "Edit",
     shortcuts: [
       { keys: "Cmd+Z", action: "Undo" },
-      { keys: "Cmd+Shift+Z", action: "Redo" },
-      { keys: "Cmd+C", action: "Copy selected node" },
-      { keys: "Cmd+V", action: "Paste node" },
+      { keys: "Cmd+Shift+Z / Cmd+Y", action: "Redo" },
+      { keys: "Cmd+C", action: "Copy selected node(s)" },
+      { keys: "Cmd+V", action: "Paste node(s)" },
       { keys: "Cmd+D", action: "Duplicate selected node" },
       { keys: "Del / Backspace", action: "Delete selected" },
     ],

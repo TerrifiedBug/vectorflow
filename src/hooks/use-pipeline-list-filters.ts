@@ -1,5 +1,5 @@
 "use client";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 export interface PipelineListFilters {
@@ -32,8 +32,16 @@ export function usePipelineListFilters(): {
   const router = useRouter();
 
   const search = searchParams.get("search") ?? "";
-  const statusFilter = searchParams.get("status")?.split(",").filter(Boolean) ?? [];
-  const tagFilter = searchParams.get("tags")?.split(",").filter(Boolean) ?? [];
+  const statusParam = searchParams.get("status") ?? "";
+  const tagsParam = searchParams.get("tags") ?? "";
+  const statusFilter = useMemo(
+    () => statusParam.split(",").filter(Boolean),
+    [statusParam],
+  );
+  const tagFilter = useMemo(
+    () => tagsParam.split(",").filter(Boolean),
+    [tagsParam],
+  );
   const groupId = searchParams.get("groupId") ?? null;
   const sortBy = (searchParams.get("sortBy") as PipelineListFilters["sortBy"]) ?? "updatedAt";
   const sortOrder = (searchParams.get("sortOrder") as PipelineListFilters["sortOrder"]) ?? "desc";

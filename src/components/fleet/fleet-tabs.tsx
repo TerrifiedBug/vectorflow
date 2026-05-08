@@ -6,7 +6,7 @@ const ACTIVE_CLASSES =
 const INACTIVE_CLASSES =
   "bg-transparent text-muted-foreground border-border hover:bg-muted";
 const BASE_CLASSES =
-  "rounded-full px-3 h-7 text-xs font-medium border transition-colors inline-flex items-center";
+  "rounded-[3px] px-3 h-7 font-mono text-[11px] font-medium border transition-colors inline-flex items-center";
 
 interface FleetTabsProps {
   active: "nodes" | "overview" | "health";

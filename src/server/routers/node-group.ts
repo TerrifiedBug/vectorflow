@@ -136,7 +136,7 @@ export const nodeGroupRouter = router({
    * Single round trip: 3 parallel queries, application-layer aggregation.
    */
   groupHealthStats: protectedProcedure
-    .input(z.object({ environmentId: z.string() }))
+    .input(z.object({ environmentId: z.string(), labels: z.record(z.string(), z.string()).optional() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const { environmentId } = input;
@@ -182,6 +182,8 @@ export const nodeGroupRouter = router({
         }),
       ]);
 
+      const scopedNodes = filterNodesByLabels(nodes, input.labels);
+
       // Build latest version map for drift detection
       const latestVersionMap = new Map<string, number>();
       for (const p of pipelines) {
@@ -206,7 +208,7 @@ export const nodeGroupRouter = router({
         const criteria = group.criteria as Record<string, string>;
         const requiredLabels = group.requiredLabels as string[];
 
-        const matchedNodes = nodes.filter((n) => {
+        const matchedNodes = scopedNodes.filter((n) => {
           const nodeLabels = (n.labels as Record<string, string>) ?? {};
           return nodeMatchesGroup(nodeLabels, criteria);
         });
@@ -269,7 +271,7 @@ export const nodeGroupRouter = router({
       });
 
       // Synthetic "Ungrouped" entry for nodes not matching any group
-      const ungroupedNodes = nodes.filter((n) => !assignedNodeIds.has(n.id));
+      const ungroupedNodes = scopedNodes.filter((n) => !assignedNodeIds.has(n.id));
       if (ungroupedNodes.length > 0) {
         const ungroupedOnlineCount = ungroupedNodes.filter((n) => n.status === "HEALTHY").length;
         const ungroupedAlertCount = ungroupedNodes.filter((n) => firingNodeIds.has(n.id)).length;
@@ -300,7 +302,7 @@ export const nodeGroupRouter = router({
    * Used for the drill-down view in the fleet health dashboard.
    */
   nodesInGroup: protectedProcedure
-    .input(z.object({ groupId: z.string(), environmentId: z.string() }))
+    .input(z.object({ groupId: z.string(), environmentId: z.string(), labels: z.record(z.string(), z.string()).optional() }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ input }) => {
       const { groupId, environmentId } = input;
@@ -341,7 +343,8 @@ export const nodeGroupRouter = router({
           }
         }
 
-        const ungroupedNodes = allNodes.filter((n) => !assignedIds.has(n.id));
+        const scopedNodes = filterNodesByLabels(allNodes, input.labels);
+        const ungroupedNodes = scopedNodes.filter((n) => !assignedIds.has(n.id));
         return sortAndMapNodes(ungroupedNodes, []);
       }
 
@@ -375,7 +378,8 @@ export const nodeGroupRouter = router({
         },
       });
 
-      const matchedNodes = allNodes.filter((n) => {
+      const scopedNodes = filterNodesByLabels(allNodes, input.labels);
+      const matchedNodes = scopedNodes.filter((n) => {
         const nodeLabels = (n.labels as Record<string, string>) ?? {};
         return nodeMatchesGroup(nodeLabels, groupCriteria);
       });
@@ -392,6 +396,17 @@ const STATUS_ORDER: Record<string, number> = {
   UNKNOWN: 2,
   HEALTHY: 3,
 };
+
+function filterNodesByLabels<T extends { labels: unknown }>(
+  nodes: T[],
+  labels?: Record<string, string>,
+): T[] {
+  if (!labels || Object.keys(labels).length === 0) return nodes;
+  return nodes.filter((node) => {
+    const nodeLabels = (node.labels as Record<string, string>) ?? {};
+    return Object.entries(labels).every(([key, value]) => nodeLabels[key] === value);
+  });
+}
 
 function sortAndMapNodes(
   nodes: Array<{

@@ -136,34 +136,49 @@ export function FieldRenderer({
   }
 
   const showHelpIcon = isComplexField(name, schema);
+  const labelClass =
+    "font-mono uppercase tracking-[0.04em] text-[10.5px] text-fg-2";
+  const descriptionClass = "text-[11px] text-fg-2";
 
   const labelRow = (
-    <div className="flex items-center gap-1">
-      <Label>
-        {label}
-        {required && <span className="text-destructive ml-0.5">*</span>}
-      </Label>
-      {showHelpIcon && schema.description && (
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs text-xs">{schema.description}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1">
+        <Label className={labelClass}>
+          {label}
+          {required && (
+            <span className="ml-0.5 text-status-error" aria-hidden>
+              *
+            </span>
+          )}
+        </Label>
+        {showHelpIcon && schema.description && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-3 w-3 cursor-help text-fg-2" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs text-[11px]">
+                {schema.description}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
     </div>
   );
 
   const errorMessage = touched && error ? (
-    <p className="text-xs text-destructive mt-1">{error}</p>
+    <p className={cn("mt-1 font-mono text-[10.5px] text-status-error")}>
+      {error}
+    </p>
   ) : null;
+
+  const errorInputClass = "border-status-error aria-invalid:border-status-error focus-visible:border-status-error focus-visible:ring-[color:var(--status-error)]/20";
 
   // ---- Enum select ----
   if (schema.enum && schema.enum.length > 0) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {labelRow}
         <Select
           value={(value as string) ?? ""}
@@ -173,7 +188,7 @@ export function FieldRenderer({
           }}
           onOpenChange={(open) => { if (!open) handleBlur(); }}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger className="h-7 w-full rounded-[3px] border-line-2 bg-bg-2 text-[12px]">
             <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
           </SelectTrigger>
           <SelectContent>
@@ -185,7 +200,7 @@ export function FieldRenderer({
           </SelectContent>
         </Select>
         {schema.description && (
-          <p className="text-xs text-muted-foreground">{schema.description}</p>
+          <p className={descriptionClass}>{schema.description}</p>
         )}
         {errorMessage}
       </div>
@@ -195,13 +210,11 @@ export function FieldRenderer({
   // ---- Boolean switch ----
   if (schema.type === "boolean") {
     return (
-      <div className="flex items-center justify-between gap-4">
-        <div className="space-y-0.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-0.5">
           {labelRow}
           {schema.description && (
-            <p className="text-xs text-muted-foreground">
-              {schema.description}
-            </p>
+            <p className={descriptionClass}>{schema.description}</p>
           )}
         </div>
         <Switch
@@ -215,7 +228,7 @@ export function FieldRenderer({
   // ---- Number / Integer ----
   if (schema.type === "number" || schema.type === "integer") {
     return (
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {labelRow}
         <Input
           type="number"
@@ -236,10 +249,11 @@ export function FieldRenderer({
           placeholder={
             schema.default !== undefined ? String(schema.default) : undefined
           }
-          className={cn("w-full", touched && error && "border-destructive focus-visible:ring-destructive")}
+          aria-invalid={touched && !!error}
+          className={cn(touched && error && errorInputClass)}
         />
         {schema.description && (
-          <p className="text-xs text-muted-foreground">{schema.description}</p>
+          <p className={descriptionClass}>{schema.description}</p>
         )}
         {errorMessage}
       </div>
@@ -250,7 +264,7 @@ export function FieldRenderer({
   if (schema.type === "array" && schema.items?.type === "string") {
     const arr = Array.isArray(value) ? (value as string[]) : [];
     return (
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {labelRow}
         <Input
           value={arr.join(", ")}
@@ -264,10 +278,11 @@ export function FieldRenderer({
           }}
           onBlur={handleBlur}
           placeholder="value1, value2, value3"
-          className={cn("w-full", touched && error && "border-destructive focus-visible:ring-destructive")}
+          aria-invalid={touched && !!error}
+          className={cn(touched && error && errorInputClass)}
         />
         {schema.description && (
-          <p className="text-xs text-muted-foreground">{schema.description}</p>
+          <p className={descriptionClass}>{schema.description}</p>
         )}
         {errorMessage}
       </div>
@@ -284,16 +299,14 @@ export function FieldRenderer({
       (value as Record<string, string>) ?? {},
     );
     return (
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {labelRow}
         {schema.description && (
-          <p className="text-xs text-muted-foreground">
-            {schema.description}
-          </p>
+          <p className={descriptionClass}>{schema.description}</p>
         )}
-        <div className="space-y-2 border-l-2 border-border pl-4">
+        <div className="space-y-2 border-l border-line pl-3">
           {entries.map(([k, v], i) => (
-            <div key={i} className="flex items-center gap-2">
+            <div key={i} className="flex items-center gap-1.5">
               <Input
                 className="flex-1"
                 placeholder="Key"
@@ -319,20 +332,21 @@ export function FieldRenderer({
               />
               <button
                 type="button"
-                className="text-muted-foreground hover:text-destructive text-sm px-1"
+                aria-label={`Remove ${k}`}
+                className="px-1 text-fg-2 hover:text-status-error"
                 onClick={() => {
                   const obj = { ...((value as Record<string, string>) ?? {}) };
                   delete obj[k];
                   onChange(obj);
                 }}
               >
-                ✕
+                <span className="font-mono text-[12px]">✕</span>
               </button>
             </div>
           ))}
           <button
             type="button"
-            className="text-xs text-muted-foreground hover:text-foreground"
+            className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2 hover:text-fg"
             onClick={() => {
               onChange({
                 ...((value as Record<string, string>) ?? {}),
@@ -352,12 +366,12 @@ export function FieldRenderer({
     const objValue = (value as Record<string, unknown>) ?? {};
     const requiredFields = schema.required ?? [];
     return (
-      <div className="space-y-3">
+      <div className="space-y-2">
         {labelRow}
         {schema.description && (
-          <p className="text-xs text-muted-foreground">{schema.description}</p>
+          <p className={descriptionClass}>{schema.description}</p>
         )}
-        <div className="space-y-3 border-l-2 border-border pl-4">
+        <div className="space-y-3 border-l border-line pl-3">
           {Object.entries(schema.properties).map(([key, propSchema]) => (
             <FieldRenderer
               key={key}
@@ -383,7 +397,7 @@ export function FieldRenderer({
   const placeholder = schema.default !== undefined ? String(schema.default) : undefined;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       {labelRow}
       {isMultiline ? (
         <Textarea
@@ -392,7 +406,11 @@ export function FieldRenderer({
           onBlur={handleBlur}
           placeholder={placeholder}
           rows={4}
-          className={cn(touched && error && "border-destructive focus-visible:ring-destructive")}
+          aria-invalid={touched && !!error}
+          className={cn(
+            "rounded-[3px] border-line-2 bg-bg-2 text-[12px]",
+            touched && error && errorInputClass,
+          )}
         />
       ) : isSensitive ? (
         <SecretPickerInput
@@ -412,13 +430,15 @@ export function FieldRenderer({
           onChange={(e) => onChange(e.target.value)}
           onBlur={handleBlur}
           placeholder={placeholder}
-          className={cn("w-full", touched && error && "border-destructive focus-visible:ring-destructive")}
+          aria-invalid={touched && !!error}
+          className={cn(touched && error && errorInputClass)}
         />
       )}
       {schema.description && (
-        <p className="text-xs text-muted-foreground">{schema.description}</p>
+        <p className={descriptionClass}>{schema.description}</p>
       )}
       {errorMessage}
     </div>
   );
 }
+

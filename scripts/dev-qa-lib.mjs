@@ -23,6 +23,25 @@ export function getQaDatabaseUrl(env = process.env) {
   return env.DATABASE_URL ?? DEFAULT_QA_DATABASE_URL;
 }
 
+
+export function buildQaDevEnv(
+  env = process.env,
+  databaseUrl = getQaDatabaseUrl(env),
+  qaUser,
+) {
+  return {
+    ...env,
+    DATABASE_URL: databaseUrl,
+    NEXTAUTH_SECRET: env.NEXTAUTH_SECRET ?? "qa-dev-nextauth-secret-at-least-16",
+    NEXTAUTH_URL: env.NEXTAUTH_URL ?? "http://localhost:3000",
+    NODE_ENV: "development",
+    DEV_AUTH_BYPASS: "1",
+    DEV_AUTH_BYPASS_USER_ID: qaUser.id,
+    DEV_AUTH_BYPASS_USER_EMAIL: qaUser.email,
+    DEV_AUTH_BYPASS_USER_NAME: qaUser.name,
+    VF_TRUST_PROXY_HEADERS: env.VF_TRUST_PROXY_HEADERS ?? "true",
+  };
+}
 export function getPostgresEndpoint(databaseUrl) {
   const url = new URL(databaseUrl);
   return {

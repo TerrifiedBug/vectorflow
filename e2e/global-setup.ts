@@ -24,14 +24,15 @@ setup("seed database and authenticate", async ({ page }) => {
   }
 
   await page.goto("/login");
-  await page.getByRole("button", { name: /sign in/i }).waitFor({
+  const submitButton = page.getByRole("button", { name: /continue|sign in/i });
+  await submitButton.waitFor({
     state: "visible",
     timeout: 15_000,
   });
 
   await page.getByRole("textbox", { name: /email/i }).fill(TEST_USER.email);
   await page.locator('input[type="password"]').fill(TEST_USER.password);
-  await page.getByRole("button", { name: /sign in/i }).click();
+  await submitButton.click();
 
   await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 15_000 });
 

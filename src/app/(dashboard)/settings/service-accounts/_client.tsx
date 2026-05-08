@@ -23,9 +23,6 @@ import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Select,
@@ -45,7 +42,6 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Breadcrumb } from "@/components/breadcrumb";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import {
@@ -62,6 +58,7 @@ import {
   SERVICE_ACCOUNT_PERMISSION_GROUPS,
   type ServiceAccountPermission,
 } from "@/lib/service-account-permissions";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -228,17 +225,14 @@ export function ServiceAccountsSettings() {
   if (serviceAccountsQuery.isError) return <QueryError message="Failed to load service accounts" onRetry={() => serviceAccountsQuery.refetch()} />;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Manage API keys for programmatic access to the REST API
-        </p>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Service Account
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={() => setCreateOpen(true)} size="sm" variant="primary" className="h-8 gap-1.5 font-mono text-[11px] uppercase tracking-[0.04em]">
+          <Plus className="h-3.5 w-3.5" />
+          Create service account
         </Button>
       </div>
+
 
       {/* Environment Selector */}
       {environments.length > 1 && (
@@ -261,25 +255,15 @@ export function ServiceAccountsSettings() {
 
       {/* Service Accounts Table */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5" />
-            Service Accounts
-          </CardTitle>
-          <CardDescription>
-            Service accounts provide API keys for the REST API. Keys are shown
-            once at creation and cannot be retrieved afterwards.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {isLoading ? (
-            <div className="space-y-2">
+            <div className="space-y-2 p-6">
               {[...Array(3)].map((_, i) => (
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
           ) : serviceAccounts.length === 0 ? (
-            <EmptyState icon={KeyRound} title="No service accounts" description="Create a service account to authenticate external systems." />
+            <EmptyState icon={KeyRound} title="No service accounts" description="Create a service account to authenticate external systems." compact className="m-6 min-h-0" />
           ) : (
             <div className="overflow-x-auto">
             <Table>
@@ -612,15 +596,14 @@ export function ServiceAccountsSettings() {
 
 export default function ServiceAccountsPage() {
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="space-y-2 mb-6">
-        <Breadcrumb items={[
-          { label: "Settings", href: "/settings" },
-          { label: "Service Accounts" },
-        ]} />
-        <h1 className="text-2xl font-semibold">Service Accounts</h1>
+    <div className="min-h-full bg-bg">
+      <PageHeader
+        title="Service Accounts"
+        subtitle="Manage API keys for programmatic access to the REST API."
+      />
+      <div className="p-4">
+        <ServiceAccountsSettings />
       </div>
-      <ServiceAccountsSettings />
     </div>
   );
 }

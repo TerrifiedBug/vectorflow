@@ -134,6 +134,7 @@ test.describe("PR smoke e2e", () => {
       where: { id: seed.nodeId },
       data: {
         nodeTokenHash: nodeToken.hash,
+        nodeTokenId: nodeToken.identifier,
         status: "UNREACHABLE",
       },
     });

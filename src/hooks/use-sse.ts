@@ -40,20 +40,37 @@ const subscribers = new Map<string, SSESubscriber>();
 // ── Hook ─────────────────────────────────────────────────────────────
 
 /**
- * Manages a single SSE connection to `/api/sse` with exponential backoff
- * reconnect and typed event dispatch.
+ * Subscription API for the shared SSE event bus.
  *
- * **Call this hook once at the app root** (e.g., in a layout component).
- * Multiple mount points will skip connection setup and log a warning.
- *
- * Consumers subscribe to specific event types via `subscribe(type, cb)`
- * and receive only events matching that type, already JSON-parsed and typed.
+ * Call `useSSEConnection()` once at the app root to own the EventSource
+ * connection. Consumers elsewhere call `useSSE()` only to subscribe to typed
+ * events without opening another connection.
  */
 export function useSSE() {
   const status = useSSEStore((s) => s.status);
+
+  const subscribe = useCallback(
+    (
+      eventType: SSEEvent["type"],
+      callback: (event: SSEEvent) => void,
+    ): string => {
+      const id = generateId();
+      subscribers.set(id, { eventType, callback });
+      return id;
+    },
+    [],
+  );
+
+  const unsubscribe = useCallback((id: string): void => {
+    subscribers.delete(id);
+  }, []);
+
+  return { status, subscribe, unsubscribe };
+}
+
+export function useSSEConnection() {
   const setStatus = useSSEStore((s) => s.setStatus);
   const setLastConnectedAt = useSSEStore((s) => s.setLastConnectedAt);
-
   const visible = useDocumentVisibility();
   const eventBufferRef = useRef<SSEEvent[]>([]);
   const visibleRef = useRef(visible);
@@ -61,6 +78,7 @@ export function useSSE() {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backoffRef = useRef(INITIAL_BACKOFF_MS);
   const isOwnerRef = useRef(false);
+
 
   // ── Dispatch to subscribers ──────────────────────────────────────
 
@@ -178,25 +196,7 @@ export function useSSE() {
     };
   }, [connect, setStatus]);
 
-  // ── Public API ───────────────────────────────────────────────────
 
-  const subscribe = useCallback(
-    (
-      eventType: SSEEvent["type"],
-      callback: (event: SSEEvent) => void,
-    ): string => {
-      const id = generateId();
-      subscribers.set(id, { eventType, callback });
-      return id;
-    },
-    [],
-  );
-
-  const unsubscribe = useCallback((id: string): void => {
-    subscribers.delete(id);
-  }, []);
-
-  return { status, subscribe, unsubscribe };
 }
 
 // ── Test-only exports ────────────────────────────────────────────────

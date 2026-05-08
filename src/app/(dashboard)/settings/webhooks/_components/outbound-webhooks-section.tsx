@@ -31,9 +31,6 @@ import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -758,11 +755,17 @@ export function OutboundWebhooksSection() {
 
   if (!selectedTeamId) {
     return (
-      <div className="space-y-2 p-6">
-        {[...Array(3)].map((_, i) => (
-          <Skeleton key={i} className="h-12 w-full" />
-        ))}
-      </div>
+      <EmptyState
+        icon={Webhook}
+        title="Select a team to manage webhooks"
+        description="Outbound webhook endpoints are scoped to the active team. Choose a team from the header selector before creating endpoints or reviewing delivery history."
+        helperLines={[
+          { icon: "scope", text: "No team is selected, so the endpoint list query is intentionally paused." },
+          { icon: "next", text: "After a team is selected, existing endpoints, empty state, and create actions will load here." },
+        ]}
+        compact
+        className="min-h-[220px]"
+      />
     );
   }
 
@@ -776,30 +779,17 @@ export function OutboundWebhooksSection() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Send HMAC-signed event notifications to external systems
-        </p>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Endpoint
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={() => setCreateOpen(true)} size="sm" variant="primary" className="h-8 gap-1.5 font-mono text-[11px] uppercase tracking-[0.04em]">
+          <Plus className="h-3.5 w-3.5" />
+          New endpoint
         </Button>
       </div>
 
+
       {/* Endpoints Table */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Webhook className="h-5 w-5" />
-            Webhook Endpoints
-          </CardTitle>
-          <CardDescription>
-            Endpoints receive signed HTTP POST requests when subscribed events occur.
-            Expand a row to view delivery history.
-          </CardDescription>
-        </CardHeader>
         <CardContent className="p-0">
           {listQuery.isLoading ? (
             <div className="space-y-2 p-6">
@@ -808,7 +798,14 @@ export function OutboundWebhooksSection() {
               ))}
             </div>
           ) : endpoints.length === 0 ? (
-            <EmptyState icon={Webhook} title="No webhook endpoints" description="Add a webhook endpoint to start receiving events." />
+            <EmptyState
+              icon={Webhook}
+              title="No webhook endpoints"
+              description="Add an endpoint to receive HMAC-signed deploy, fleet, and promotion events."
+              action={{ label: "New endpoint", onClick: () => setCreateOpen(true) }}
+              compact
+              className="m-6 min-h-[180px]"
+            />
           ) : (
             <div className="overflow-x-auto">
             <Table>

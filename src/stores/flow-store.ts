@@ -44,7 +44,7 @@ interface Snapshot {
   edges: Edge[];
 }
 
-const MAX_HISTORY = 50;
+const MAX_HISTORY = 100;
 
 export interface ClipboardData {
   componentDef: VectorComponentDef;
@@ -159,6 +159,25 @@ interface InternalState extends FlowState {
   _past: Snapshot[];
   _future: Snapshot[];
   _savedSnapshot: string | null;
+}
+
+function getNodeKind(nodes: Node[], id: string): VectorComponentDef["kind"] | undefined {
+  const node = nodes.find((n) => n.id === id);
+  return ((node?.data as Partial<FlowNodeData> | undefined)?.componentDef as VectorComponentDef | undefined)?.kind;
+}
+
+function toMetricEdge(edge: Edge, nodes: Node[]): Edge {
+  const data = (edge.data ?? {}) as Record<string, unknown>;
+
+  return {
+    ...edge,
+    type: "metric",
+    data: {
+      ...data,
+      sourceKind: data.sourceKind ?? getNodeKind(nodes, edge.source),
+      targetKind: data.targetKind ?? getNodeKind(nodes, edge.target),
+    },
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -301,7 +320,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   onConnect: (connection) => {
     set((state) => ({
       edges: addEdge(
-        { ...connection, id: generateId() },
+        toMetricEdge({ ...connection, id: generateId() } as Edge, state.nodes),
         state.edges,
       ),
       isDirty: true,
@@ -820,12 +839,15 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
           (n) => (n.data as unknown as FlowNodeData).componentKey === keyMap.get(pe.targetKey)
         );
         if (!sourceNode || !targetNode) return null;
-        return {
-          id: generateId(),
-          source: sourceNode.id,
-          target: targetNode.id,
-          ...(pe.sourcePort ? { sourceHandle: pe.sourcePort } : {}),
-        };
+        return toMetricEdge(
+          {
+            id: generateId(),
+            source: sourceNode.id,
+            target: targetNode.id,
+            ...(pe.sourcePort ? { sourceHandle: pe.sourcePort } : {}),
+          },
+          newNodes,
+        );
       })
       .filter(Boolean) as Edge[];
 
@@ -865,7 +887,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
           results.push({ suggestionId: suggestion.id, success: false, error: result.error });
         } else {
           nodes = result.nodes;
-          edges = result.edges;
+          edges = result.edges.map((edge) => toMetricEdge(edge, nodes));
           anyApplied = true;
           results.push({ suggestionId: suggestion.id, success: true });
         }
@@ -913,12 +935,13 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       return { ...n, data, draggable: isLocked ? false : undefined };
     });
 
+    const processedEdges = edges.map((edge) => toMetricEdge(edge, processedNodes));
     const gc = globalConfig ?? null;
-    const snapshot = computeFlowFingerprint(nodes, edges, gc);
+    const snapshot = computeFlowFingerprint(processedNodes, processedEdges, gc);
 
     set({
       nodes: processedNodes,
-      edges,
+      edges: processedEdges,
       globalConfig: gc,
       isSystemPipeline: isSystem,
       selectedNodeId: null,
