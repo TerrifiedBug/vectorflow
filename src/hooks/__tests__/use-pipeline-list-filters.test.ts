@@ -129,4 +129,16 @@ describe("usePipelineListFilters", () => {
     expect(params.get("sortBy")).toBe("name");
     expect(params.get("sortOrder")).toBe("asc");
   });
+
+  it("keeps parsed filter arrays stable across rerenders when URL params do not change", () => {
+    currentSearchParams = new URLSearchParams("status=running,stopped&tags=prod,staging");
+    const { result, rerender } = renderHook(() => usePipelineListFilters());
+    const firstStatusFilter = result.current.statusFilter;
+    const firstTagFilter = result.current.tagFilter;
+
+    rerender();
+
+    expect(result.current.statusFilter).toBe(firstStatusFilter);
+    expect(result.current.tagFilter).toBe(firstTagFilter);
+  });
 });

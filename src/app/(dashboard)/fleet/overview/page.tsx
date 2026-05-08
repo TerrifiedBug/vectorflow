@@ -20,6 +20,7 @@ import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
 import { TimeRangeSelector } from "@/components/time-range-selector";
+import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
 import { aggregateProcessStatus } from "@/lib/pipeline-status";
 
 type TimeRange = "1h" | "6h" | "1d" | "7d" | "30d";
@@ -184,8 +185,12 @@ export default function FleetOverviewPage() {
 
   if (!selectedEnvironmentId) {
     return (
-      <div className="space-y-6">
-        <EmptyState title="Select an environment to view fleet overview" />
+      <div className="min-h-full bg-bg text-fg">
+        <PageHeader
+          title="Fleet overview"
+          subtitle="Select an environment to load fleet volume, capacity, data-loss, and deployment matrix surfaces."
+        />
+        <EmptyState title="Select an environment to view fleet overview" className="p-4 text-sm" />
       </div>
     );
   }
@@ -202,11 +207,21 @@ export default function FleetOverviewPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="min-h-full bg-bg text-fg">
+      <PageHeader
+        title="Fleet overview"
+        subtitle="Nodes, traffic, capacity, loss, and deployment coverage for the selected environment."
+        meta={
+          <>
+            <span>{range}</span>
+            <PageHeaderMetaSep />
+            <span>refreshes every 15s</span>
+          </>
+        }
+        actions={<TimeRangeSelector value={range} onChange={setRange} />}
+      />
+      <div className="space-y-5 p-4">
         <FleetTabs active="overview" />
-        <TimeRangeSelector value={range} onChange={setRange} />
-      </div>
 
       <FleetKpiCards data={overview.data} isLoading={overview.isLoading} />
 
@@ -235,7 +250,7 @@ export default function FleetOverviewPage() {
       />
 
       <div className="space-y-3">
-        <h3 className="text-base font-semibold">Deployment Matrix</h3>
+        <h2 className="font-mono text-[14px] font-medium uppercase tracking-[0.06em] text-fg">Deployment matrix</h2>
         {matrixQuery.data && (
           <DeploymentMatrixToolbar
             search={matrixSearch}
@@ -271,23 +286,35 @@ export default function FleetOverviewPage() {
             }
           />
         )}
-        {matrixHasActiveFilters ? (
+        {matrixHasActiveFilters || exceptionsOnly ? (
           <DeploymentMatrix
             environmentId={selectedEnvironmentId}
             filteredPipelines={matrixQuery.data ? filteredDeployedPipelines : undefined}
-            hasActiveFilters={matrixHasActiveFilters}
+            hasActiveFilters={matrixHasActiveFilters || exceptionsOnly}
             onClearFilters={() => {
               setMatrixSearch("");
               setMatrixStatusFilter([]);
               setMatrixTagFilter([]);
+              setExceptionsOnly(false);
             }}
           />
         ) : (
-          <div className="flex items-center justify-center rounded-lg border border-dashed p-12 text-center">
-            <p className="text-sm text-muted-foreground">
-              Filter by group, tag, or status to load the deployment matrix.
-            </p>
-          </div>
+          <EmptyState
+            glyph="▦"
+            title="Matrix intentionally scoped"
+            description="The full pipeline-by-node matrix can get noisy at fleet scale. Apply a search, tag, status, or exceptions-only scope to load the rows you need."
+            action={{ label: "Show exceptions", onClick: () => setExceptionsOnly(true) }}
+            secondary={{
+              label: "Clear filters",
+              onClick: () => {
+                setMatrixSearch("");
+                setMatrixStatusFilter([]);
+                setMatrixTagFilter([]);
+                setExceptionsOnly(false);
+              },
+            }}
+            compact
+          />
         )}
       </div>
 
@@ -303,5 +330,6 @@ export default function FleetOverviewPage() {
         }}
       />
     </div>
+      </div>
   );
 }

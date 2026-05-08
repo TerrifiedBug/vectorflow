@@ -24,6 +24,7 @@ interface NodeGroupHealthCardProps {
     configDriftCount: number;
     overallCompliance: number;
   };
+  labelFilter?: Record<string, string>;
   isExpanded: boolean;
   onToggle: () => void;
   labelFilterActive?: boolean;
@@ -31,6 +32,7 @@ interface NodeGroupHealthCardProps {
 
 export function NodeGroupHealthCard({
   group,
+  labelFilter,
   isExpanded,
   onToggle,
   labelFilterActive = false,
@@ -199,6 +201,7 @@ export function NodeGroupHealthCard({
             <NodeGroupDetailTable
               groupId={group.id}
               environmentId={group.environmentId}
+              labelFilter={labelFilter}
             />
           </div>
         </CollapsibleContent>

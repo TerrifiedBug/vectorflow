@@ -541,6 +541,7 @@ export const dashboardRouter = router({
         pipelineIds: z.array(z.string()).default([]),
         range: z.enum(["1h", "6h", "1d", "7d"]).default("1h"),
         groupBy: z.enum(["pipeline", "node", "aggregate"]).default("pipeline"),
+        chartWidth: z.number().int().min(120).max(4000).optional(),
       })
     )
     .query(async ({ input }) => {
@@ -647,6 +648,7 @@ export const dashboardRouter = router({
           nodes: allNodes.map((n: { id: string; name: string }) => ({ id: n.id, name: n.name })),
           pipelines: allPipelines.map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })),
         },
+        maxPoints: input.chartWidth ? Math.max(60, Math.floor(input.chartWidth / 2)) : undefined,
       });
     }),
 

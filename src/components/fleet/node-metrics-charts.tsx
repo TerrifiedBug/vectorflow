@@ -216,13 +216,10 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
             <ChartContainer config={cpuChartConfig} className="w-full" style={{ height: CHART_HEIGHT }}>
               <AreaChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                <YAxis
-                  tick={{ fontSize: 10 }}
-                  width={40}
-                  domain={[0, 100]}
-                  tickFormatter={(v) => `${v}%`}
-                />
+                <XAxis dataKey="time" tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={40}
+                domain={[0, 100]}
+                tickFormatter={(v) => `${v}%`} />
                 <ChartTooltip
                   content={
                     <ChartTooltipContent
@@ -260,13 +257,10 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
             <ChartContainer config={memoryChartConfig} className="w-full" style={{ height: CHART_HEIGHT }}>
               <AreaChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                <YAxis
-                  tick={{ fontSize: 10 }}
-                  width={40}
-                  domain={[0, 100]}
-                  tickFormatter={(v) => `${v}%`}
-                />
+                <XAxis dataKey="time" tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={40}
+                domain={[0, 100]}
+                tickFormatter={(v) => `${v}%`} />
                 <ChartTooltip
                   content={
                     <ChartTooltipContent
@@ -304,12 +298,9 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
             <ChartContainer config={diskChartConfig} className="w-full" style={{ height: CHART_HEIGHT }}>
               <AreaChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                <YAxis
-                  tick={{ fontSize: 10 }}
-                  width={55}
-                  tickFormatter={(v) => formatBytesRate(v)}
-                />
+                <XAxis dataKey="time" tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={55}
+                tickFormatter={(v) => formatBytesRate(v)} />
                 <ChartTooltip
                   content={
                     <ChartTooltipContent
@@ -355,12 +346,9 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
             <ChartContainer config={networkChartConfig} className="w-full" style={{ height: CHART_HEIGHT }}>
               <AreaChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                <YAxis
-                  tick={{ fontSize: 10 }}
-                  width={55}
-                  tickFormatter={(v) => formatBytesRate(v)}
-                />
+                <XAxis dataKey="time" tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={55}
+                tickFormatter={(v) => formatBytesRate(v)} />
                 <ChartTooltip
                   content={
                     <ChartTooltipContent

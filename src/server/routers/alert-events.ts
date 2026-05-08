@@ -88,6 +88,7 @@ export const alertEventsRouter = router({
               metric: true,
               condition: true,
               threshold: true,
+              severity: true,
               pipeline: { select: { id: true, name: true } },
             },
           },

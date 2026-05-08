@@ -90,11 +90,8 @@ export function FleetThroughputChart({ data, isLoading }: FleetThroughputChartPr
                 textAnchor={chartData.length > 6 ? "end" : "middle"}
                 height={chartData.length > 6 ? 60 : 30}
               />
-              <YAxis
-                tick={{ fontSize: 10 }}
-                width={65}
-                tickFormatter={formatBytes}
-              />
+              <YAxis tick={{ fontSize: 11, fontFamily: "var(--font-mono)" }} width={65}
+              tickFormatter={formatBytes} />
               <ChartTooltip
                 content={
                   <ChartTooltipContent

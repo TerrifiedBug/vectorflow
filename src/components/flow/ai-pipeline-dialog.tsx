@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { Loader2, RotateCcw, Sparkles, AlertTriangle, MessageSquarePlus, Undo2, Bot, User, Send } from "lucide-react";
+import { Loader2, RotateCcw, Sparkles, AlertTriangle, MessageSquarePlus, Undo2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -459,30 +459,32 @@ export function AiPipelineDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col min-h-0 overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4" />
+      <DialogContent className="flex max-h-[85vh] min-h-0 flex-col gap-0 overflow-hidden rounded-[3px] border-line-2 bg-bg-2 p-0 text-fg shadow-[0_24px_60px_rgba(0,0,0,0.6)] sm:max-w-[720px]">
+        <DialogHeader className="border-b border-line bg-bg-2 px-5 py-4 pr-12">
+          <DialogTitle className="flex items-center gap-2 font-mono text-[15px] font-semibold">
+            <Sparkles className="h-4 w-4 text-accent-brand" />
             AI Assistant
           </DialogTitle>
-          <DialogDescription>
-            Generate pipeline components, review your configuration, or debug issues.
+          <DialogDescription className="text-[12px] text-fg-2">
+            Generate pipeline components, review config, or debug issues.
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={mode} onValueChange={(v) => setMode(v as "generate" | "review" | "debug")} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="generate">Generate</TabsTrigger>
-            <TabsTrigger value="review" disabled={nodes.length === 0}>
-              Review
-            </TabsTrigger>
-            <TabsTrigger value="debug">Debug</TabsTrigger>
-          </TabsList>
+        <Tabs value={mode} onValueChange={(v) => setMode(v as "generate" | "review" | "debug")} className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden">
+          <div className="border-b border-line bg-bg-1 px-4 py-2.5">
+            <TabsList variant="mono" className="grid h-8 w-full grid-cols-3 bg-bg">
+              <TabsTrigger value="generate">Generate</TabsTrigger>
+              <TabsTrigger value="review" disabled={nodes.length === 0}>
+                Review
+              </TabsTrigger>
+              <TabsTrigger value="debug">Debug</TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* ---- Generate tab (unchanged) ---- */}
-          <TabsContent value="generate" className="space-y-4 mt-4 overflow-y-auto">
+          <TabsContent value="generate" className="mt-0 space-y-4 overflow-y-auto p-5">
             <div className="space-y-2">
-              <Label htmlFor="ai-pipeline-prompt">Describe your pipeline</Label>
+              <Label htmlFor="ai-pipeline-prompt" className="font-mono text-[10px] uppercase tracking-[0.08em] text-fg-2">Describe your pipeline</Label>
               <form onSubmit={handleGenSubmit} className="flex gap-2">
                 <textarea
                   ref={genTextareaRef}
@@ -493,7 +495,7 @@ export function AiPipelineDialog({
                   placeholder="Collect K8s logs, drop debug, send to Datadog and S3"
                   disabled={genIsStreaming}
                   rows={1}
-                  className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                  className="min-h-8 flex-1 resize-none rounded-[3px] border border-line-2 bg-bg px-3 py-2 font-mono text-[12px] text-fg placeholder:text-fg-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
                 />
                 {genIsStreaming ? (
                   <Button type="button" variant="outline" size="sm" onClick={handleGenCancel}>
@@ -508,7 +510,7 @@ export function AiPipelineDialog({
             </div>
 
             {genError && (
-              <div className="flex items-start gap-2 rounded border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="flex items-start gap-2 rounded-[3px] border border-destructive/50 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                 {genError}
               </div>
@@ -516,10 +518,10 @@ export function AiPipelineDialog({
 
             {(genResult || genIsStreaming) && (
               <div className="space-y-3">
-                <Label>Result</Label>
-                <div className="relative rounded border bg-muted/50 p-3 font-mono text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+                <Label className="font-mono text-[10px] uppercase tracking-[0.08em] text-fg-2">Result</Label>
+                <div className="relative max-h-[300px] overflow-y-auto whitespace-pre-wrap rounded-[3px] border border-line bg-bg p-3 font-mono text-[12px] text-fg-1">
                   {genResult || (
-                    <span className="text-muted-foreground flex items-center gap-2">
+                    <span className="flex items-center gap-2 text-fg-2">
                       <Loader2 className="h-3 w-3 animate-spin" />
                       Generating pipeline...
                     </span>
@@ -541,18 +543,18 @@ export function AiPipelineDialog({
           </TabsContent>
 
           {/* ---- Review tab (conversation thread) ---- */}
-          <TabsContent value="review" className="flex flex-col flex-1 mt-4 min-h-0 overflow-hidden">
+          <TabsContent value="review" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
             {conversation.isLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <Loader2 className="h-5 w-5 animate-spin text-fg-2" />
               </div>
             ) : (
               <>
                 {/* Message thread */}
-                <div className="flex-1 min-h-0 overflow-y-auto pr-4">
+                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                   <div className="space-y-4 pb-4">
                     {conversation.messages.length === 0 && !conversation.isStreaming && (
-                      <p className="text-sm text-muted-foreground text-center py-8">
+                      <p className="py-8 text-center font-mono text-[12px] text-fg-2">
                         Ask the AI to review your pipeline configuration.
                       </p>
                     )}
@@ -569,11 +571,11 @@ export function AiPipelineDialog({
 
                     {conversation.isStreaming && conversation.streamingContent && (
                       <div className="flex items-start gap-3">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500/10">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-600 dark:text-violet-400" />
+                        <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border border-accent-line bg-accent-soft">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-accent-brand" />
                         </div>
                         <div className="flex-1 pt-0.5">
-                          <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+                          <div className="whitespace-pre-wrap text-[12.5px] leading-6 text-fg-1">
                             {conversation.streamingContent}
                           </div>
                         </div>
@@ -581,7 +583,7 @@ export function AiPipelineDialog({
                     )}
 
                     {conversation.isStreaming && !conversation.streamingContent && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                      <div className="flex items-center gap-2 py-2 font-mono text-[12px] text-fg-2">
                         <Loader2 className="h-3 w-3 animate-spin" />
                         Analyzing pipeline...
                       </div>
@@ -592,15 +594,15 @@ export function AiPipelineDialog({
                 </div>
 
                 {conversation.error && (
-                  <div className="flex items-start gap-2 rounded border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive mb-3">
+                  <div className="mx-5 mb-3 flex items-start gap-2 rounded-[3px] border border-destructive/50 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
                     <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                     {conversation.error}
                   </div>
                 )}
 
                 {/* Input pinned at bottom */}
-                <div className="pt-3 border-t space-y-2">
-                  <form onSubmit={handleReviewSubmit} className="flex gap-2">
+                <div className="border-t border-line bg-bg-1 px-4 py-3">
+                  <form onSubmit={handleReviewSubmit} className="flex items-end gap-2 rounded-[3px] border border-line-2 bg-bg p-2">
                     <textarea
                       ref={reviewTextareaRef}
                       value={reviewPrompt}
@@ -609,7 +611,7 @@ export function AiPipelineDialog({
                       placeholder="Ask about your pipeline..."
                       disabled={conversation.isStreaming}
                       rows={1}
-                      className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                      className="min-h-[22px] flex-1 resize-none rounded-none border-0 bg-transparent px-0 py-0 font-mono text-[12px] text-fg placeholder:text-fg-2 focus-visible:outline-none disabled:opacity-50"
                     />
                     {conversation.isStreaming ? (
                       <Button type="button" variant="outline" size="sm" onClick={conversation.cancelStreaming}>
@@ -621,7 +623,7 @@ export function AiPipelineDialog({
                       </Button>
                     )}
                   </form>
-                  <div className="flex items-center gap-2">
+                  <div className="mt-2 flex items-center gap-3 font-mono text-[11px] text-fg-2">
                     {showUndo && canUndo ? (
                       <Button
                         variant="outline"
@@ -634,17 +636,17 @@ export function AiPipelineDialog({
                         className="gap-1.5"
                       >
                         <Undo2 className="h-3.5 w-3.5" />
-                        Undo AI Changes
+                        Undo AI changes
                       </Button>
                     ) : null}
                     {conversation.messages.length > 0 ? (
                       <button
                         type="button"
                         onClick={conversation.startNewConversation}
-                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        className="flex items-center gap-1.5 text-[11px] text-fg-2 transition-colors hover:text-fg"
                       >
                         <MessageSquarePlus className="h-3 w-3" />
-                        New Conversation
+                        New conversation
                       </button>
                     ) : null}
                   </div>
@@ -654,18 +656,18 @@ export function AiPipelineDialog({
           </TabsContent>
 
           {/* ---- Debug tab (chat with AI about errors) ---- */}
-          <TabsContent value="debug" className="flex flex-col flex-1 mt-4 min-h-0 overflow-hidden">
+          <TabsContent value="debug" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
             {debugConversation.isLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <Loader2 className="h-5 w-5 animate-spin text-fg-2" />
               </div>
             ) : (
               <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-                <div className="flex-1 min-h-0 overflow-y-auto pr-2">
+                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                   <div className="space-y-4 pb-4">
                     {debugConversation.messages.length === 0 &&
                       !debugConversation.isStreaming && (
-                        <p className="text-sm text-muted-foreground text-center py-8">
+                        <p className="py-8 text-center text-[12px] leading-5 text-fg-2">
                           Ask the AI to help debug your pipeline — it has access to
                           your configuration, metrics, SLI health, and recent error
                           logs.
@@ -684,11 +686,11 @@ export function AiPipelineDialog({
 
                     {debugConversation.isStreaming && debugConversation.streamingContent && (
                       <div className="flex items-start gap-3">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500/10">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-600 dark:text-violet-400" />
+                        <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border border-accent-line bg-accent-soft">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-accent-brand" />
                         </div>
                         <div className="flex-1 pt-0.5">
-                          <div className="inline-block rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap">
+                          <div className="whitespace-pre-wrap rounded-[3px] border border-line bg-bg px-3 py-2 text-[12.5px] text-fg-1">
                             {debugConversation.streamingContent}
                           </div>
                         </div>
@@ -696,7 +698,7 @@ export function AiPipelineDialog({
                     )}
 
                     {debugConversation.isStreaming && !debugConversation.streamingContent && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                      <div className="flex items-center gap-2 py-2 font-mono text-[12px] text-fg-2">
                         <Loader2 className="h-3 w-3 animate-spin" />
                         Analyzing pipeline...
                       </div>
@@ -707,14 +709,14 @@ export function AiPipelineDialog({
                 </div>
 
                 {debugConversation.error && (
-                  <div className="flex items-start gap-2 rounded border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive mb-3">
+                  <div className="mx-5 mb-3 flex items-start gap-2 rounded-[3px] border border-destructive/50 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
                     <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                     {debugConversation.error}
                   </div>
                 )}
 
-                <div className="pt-3 border-t space-y-2">
-                  <form onSubmit={handleDebugSubmit} className="flex gap-2">
+                <div className="border-t border-line bg-bg-1 px-4 py-3">
+                  <form onSubmit={handleDebugSubmit} className="flex items-end gap-2 rounded-[3px] border border-line-2 bg-bg p-2">
                     <textarea
                       ref={debugTextareaRef}
                       value={debugPrompt}
@@ -723,7 +725,7 @@ export function AiPipelineDialog({
                       placeholder="Why is this pipeline dropping events?"
                       disabled={debugConversation.isStreaming}
                       rows={1}
-                      className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                      className="min-h-[22px] flex-1 resize-none rounded-none border-0 bg-transparent px-0 py-0 font-mono text-[12px] text-fg placeholder:text-fg-2 focus-visible:outline-none disabled:opacity-50"
                     />
                     {debugConversation.isStreaming ? (
                       <Button
@@ -749,10 +751,10 @@ export function AiPipelineDialog({
                     <button
                       type="button"
                       onClick={debugConversation.startNewConversation}
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      className="mt-2 flex items-center gap-1.5 font-mono text-[11px] text-fg-2 transition-colors hover:text-fg"
                     >
                       <MessageSquarePlus className="h-3 w-3" />
-                      New Conversation
+                      New conversation
                     </button>
                   )}
                 </div>

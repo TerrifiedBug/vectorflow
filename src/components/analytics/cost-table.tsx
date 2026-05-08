@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/ui/loading-skeletons";
 import { formatBytes, formatCost } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { PipelineCostRow } from "@/server/services/cost-attribution";
@@ -54,13 +54,7 @@ export function CostTable({ rows, isLoading }: CostTableProps) {
   });
 
   if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="p-4">
-          <Skeleton className="h-48 w-full" />
-        </CardContent>
-      </Card>
-    );
+    return <TableSkeleton rows={6} />;
   }
 
   return (

@@ -4,6 +4,8 @@ import { router, protectedProcedure, withTeamAccess, denyInDemo } from "@/trpc/i
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { withAudit } from "@/server/middleware/audit";
+import { decryptNodeConfig } from "@/server/services/config-crypto";
+import { collectSecretRefs } from "@/server/services/secret-resolver";
 
 export const secretRouter = router({
   list: protectedProcedure
@@ -98,5 +100,64 @@ export const secretRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: `Secret "${input.name}" not found` });
       }
       return { value: decrypt(secret.encryptedValue) };
+    }),
+
+  /**
+   * Usage: returns the pipeline nodes in the secret's environment whose
+   * (decrypted) config references this secret as `SECRET[name]`.
+   *
+   * Note: secret refs may live inside fields that config-crypto encrypts
+   * at rest (e.g. `password`, `token`). We decrypt each node config in JS
+   * before scanning, so a Prisma JSON `string_contains` filter would miss
+   * those occurrences. Bounded by the env's pipeline-node count.
+   */
+  usage: protectedProcedure
+    .input(z.object({ secretId: z.string(), environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const secret = await prisma.secret.findUnique({
+        where: { id: input.secretId },
+        select: { id: true, name: true, environmentId: true },
+      });
+      if (!secret || secret.environmentId !== input.environmentId) {
+        return { count: 0, pipelineCount: 0, refs: [] as Array<{
+          id: string;
+          componentType: string;
+          pipeline: { id: string; name: string; environment: { id: string; name: string } };
+        }> };
+      }
+
+      const nodes = await prisma.pipelineNode.findMany({
+        where: { pipeline: { environmentId: secret.environmentId } },
+        select: {
+          id: true,
+          componentType: true,
+          config: true,
+          pipeline: {
+            select: {
+              id: true,
+              name: true,
+              environment: { select: { id: true, name: true } },
+            },
+          },
+        },
+      });
+
+      const refs = nodes
+        .filter((node) => {
+          const decrypted = decryptNodeConfig(
+            node.componentType,
+            (node.config ?? {}) as Record<string, unknown>,
+          );
+          return collectSecretRefs(decrypted).has(secret.name);
+        })
+        .map((node) => ({
+          id: node.id,
+          componentType: node.componentType,
+          pipeline: node.pipeline,
+        }));
+
+      const pipelineCount = new Set(refs.map((r) => r.pipeline.id)).size;
+      return { count: refs.length, pipelineCount, refs };
     }),
 });

@@ -6,8 +6,31 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { isEventMetric } from "@/server/services/event-alerts";
 import { FLEET_METRICS, PIPELINE_FLEET_METRICS } from "@/server/services/alert-evaluator";
+import { queryPipelineMetricsAggregated } from "@/server/services/metrics-query";
+import {
+  evaluateRuleHistory,
+  unsupportedPreviewReason,
+} from "@/server/services/alert-test";
 
 export const alertRulesRouter = router({
+  getRule: protectedProcedure
+    .input(z.object({ id: z.string(), teamId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const rule = await prisma.alertRule.findUnique({
+        where: { id: input.id },
+        include: {
+          environment: { select: { id: true, name: true } },
+          pipeline: { select: { id: true, name: true } },
+          channels: { include: { channel: true } },
+        },
+      });
+      if (!rule || rule.teamId !== input.teamId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Alert rule not found" });
+      }
+      return rule;
+    }),
+
   listRules: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("VIEWER"))
@@ -313,5 +336,159 @@ export const alertRulesRouter = router({
         where: { id: input.id },
         data: { snoozedUntil: null },
       });
+    }),
+
+  /**
+   * Live-preview helper for the alert rule editor.
+   *
+   * Replays the rule's condition + threshold + duration over the last
+   * N hours of pipeline metric history and returns:
+   *   - the projected metric series
+   *   - the breach windows that would have produced an alert event
+   *   - the count of distinct fires
+   *
+   * For metrics that aren't time-series (event-based, drift, fleet aggregates,
+   * node-scoped), returns `{ supported: false, reason: "..." }` with a hint
+   * the UI surfaces verbatim.
+   */
+  /**
+   * Surfaces existing alert rules that overlap with the rule the user is
+   * currently authoring (same team + same metric + overlapping scope).
+   *
+   * The editor uses this to render an inline warning so users don't end up
+   * with two near-duplicate rules firing on the same pipeline.
+   *
+   * Scope-overlap rules:
+   *   - If a pipeline is selected: any rule on the same pipelineId.
+   *   - If only an environment is selected: env-wide rules in that env
+   *     (pipelineId=null) — note these would overlap with any future
+   *     pipeline-scoped rule in the same env.
+   *   - If neither is selected: team-wide rules (both null).
+   *
+   * `excludeId` lets the edit form omit the rule being edited from results.
+   */
+  findSimilar: protectedProcedure
+    .input(
+      z.object({
+        teamId: z.string(),
+        pipelineId: z.string().nullish(),
+        environmentId: z.string().nullish(),
+        metric: z.nativeEnum(AlertMetric),
+        excludeId: z.string().nullish(),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const orClauses: Array<Record<string, unknown>> = [];
+
+      if (input.pipelineId) {
+        orClauses.push({ pipelineId: input.pipelineId });
+      } else {
+        orClauses.push({
+          pipelineId: null,
+          environmentId: input.environmentId ?? null,
+        });
+      }
+
+      if (input.environmentId) {
+        orClauses.push({
+          environmentId: input.environmentId,
+          pipelineId: null,
+        });
+      }
+
+      const matches = await prisma.alertRule.findMany({
+        where: {
+          teamId: input.teamId,
+          metric: input.metric,
+          ...(input.excludeId ? { id: { not: input.excludeId } } : {}),
+          OR: orClauses,
+        },
+        take: 3,
+        select: {
+          id: true,
+          name: true,
+          metric: true,
+          condition: true,
+          threshold: true,
+          environment: { select: { id: true, name: true } },
+          pipeline: { select: { id: true, name: true } },
+        },
+        orderBy: { updatedAt: "desc" },
+      });
+
+      return { matches };
+    }),
+
+  testRule: protectedProcedure
+    .input(
+      z.object({
+        teamId: z.string(),
+        pipelineId: z.string().nullish(),
+        environmentId: z.string().nullish(),
+        metric: z.nativeEnum(AlertMetric),
+        condition: z.nativeEnum(AlertCondition),
+        threshold: z.number(),
+        durationSeconds: z.number().int().min(0),
+        lookbackHours: z.number().int().min(1).max(72).default(6),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const reason = unsupportedPreviewReason(input.metric);
+      if (reason) {
+        return {
+          supported: false as const,
+          reason,
+          lookbackHours: input.lookbackHours,
+        };
+      }
+
+      if (!input.pipelineId) {
+        // Environment-wide preview is not implemented for Phase A — preview
+        // requires a specific pipeline because the metric source query is
+        // pipeline-scoped.
+        return {
+          supported: false as const,
+          reason: input.environmentId
+            ? "Environment-wide preview isn't supported yet — pick a specific pipeline."
+            : "Pick a pipeline to preview historical breaches.",
+          lookbackHours: input.lookbackHours,
+        };
+      }
+
+      const pipeline = await prisma.pipeline.findUnique({
+        where: { id: input.pipelineId },
+        select: { environmentId: true, environment: { select: { teamId: true } } },
+      });
+      if (
+        !pipeline ||
+        pipeline.environment.teamId !== input.teamId ||
+        (input.environmentId && pipeline.environmentId !== input.environmentId)
+      ) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline not found" });
+      }
+
+      const { rows } = await queryPipelineMetricsAggregated({
+        pipelineId: input.pipelineId,
+        minutes: input.lookbackHours * 60,
+      });
+
+      const { series, breaches, wouldHaveFired } = evaluateRuleHistory({
+        rows,
+        metric: input.metric,
+        condition: input.condition,
+        threshold: input.threshold,
+        durationSeconds: input.durationSeconds,
+      });
+
+      return {
+        supported: true as const,
+        series,
+        threshold: input.threshold,
+        breaches,
+        wouldHaveFired,
+        lookbackHours: input.lookbackHours,
+      };
     }),
 });

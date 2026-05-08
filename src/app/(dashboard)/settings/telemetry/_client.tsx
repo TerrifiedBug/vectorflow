@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/ui/page-header";
 
 export default function TelemetrySettingsPage() {
   const trpc = useTRPC();
@@ -37,39 +38,47 @@ export default function TelemetrySettingsPage() {
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Telemetry</CardTitle>
-        <CardDescription>
-          Send anonymous, aggregate usage stats to help improve VectorFlow.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {isLoading ? (
-          <Skeleton className="h-6 w-48" />
-        ) : (
-          <div className="flex items-center gap-3">
-            <Switch
-              id="telemetry-toggle"
-              checked={data?.enabled ?? false}
-              disabled={isLoading || update.isPending}
-              onCheckedChange={(checked) => update.mutate({ enabled: checked })}
-            />
-            <Label htmlFor="telemetry-toggle">
-              {data?.enabled ? "Enabled" : "Disabled"}
-            </Label>
-          </div>
-        )}
+    <div className="min-h-full bg-bg text-fg">
+      <PageHeader
+        title="Telemetry"
+        subtitle="Opt in to anonymous usage telemetry that helps shape VectorFlow."
+      />
+      <div className="space-y-4 p-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Telemetry</CardTitle>
+            <CardDescription>
+              Send anonymous, aggregate usage stats to help improve VectorFlow.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {isLoading ? (
+              <Skeleton className="h-6 w-48" />
+            ) : (
+              <div className="flex items-center gap-3">
+                <Switch
+                  id="telemetry-toggle"
+                  checked={data?.enabled ?? false}
+                  disabled={isLoading || update.isPending}
+                  onCheckedChange={(checked) => update.mutate({ enabled: checked })}
+                />
+                <Label htmlFor="telemetry-toggle">
+                  {data?.enabled ? "Enabled" : "Disabled"}
+                </Label>
+              </div>
+            )}
 
-        <a
-          href="https://vectorflow.sh/docs/operations/telemetry"
-          target="_blank"
-          rel="noreferrer"
-          className="text-sm text-primary underline inline-block"
-        >
-          Read what we collect →
-        </a>
-      </CardContent>
-    </Card>
+            <a
+              href="https://vectorflow.sh/docs/operations/telemetry"
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm text-primary underline inline-block"
+            >
+              Read what we collect →
+            </a>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }

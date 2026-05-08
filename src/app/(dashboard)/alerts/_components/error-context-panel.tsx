@@ -65,7 +65,7 @@ export function ErrorContextPanel({
               className="h-auto gap-1 p-0 text-xs"
               asChild
             >
-              <a href={`/pipelines/${pipelineId}?logs=1`}>
+              <a href={`/pipelines/${pipelineId}/edit?logs=1`}>
                 <ExternalLink className="h-3 w-3" />
                 View full logs
               </a>

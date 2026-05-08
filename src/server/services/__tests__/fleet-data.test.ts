@@ -16,6 +16,7 @@ import {
   getVolumeTrend,
   getNodeThroughput,
   getNodeCapacity,
+  getCpuHeatmap,
   getDataLoss,
   getMatrixThroughput,
   type TimeRange,
@@ -350,6 +351,30 @@ describe("getNodeCapacity", () => {
       diskPct: 0,
       cpuLoad: 0,
     });
+  });
+});
+
+describe("getCpuHeatmap", () => {
+  it("maps CPU load buckets", async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      {
+        node_id: "node-1",
+        node_name: "Node 1",
+        bucket: new Date("2024-01-01T00:00:00Z"),
+        cpu_load: 1.234,
+      },
+    ]);
+
+    const result = await getCpuHeatmap("env-1", "1h");
+
+    expect(result).toEqual([
+      {
+        nodeId: "node-1",
+        nodeName: "Node 1",
+        bucket: "2024-01-01T00:00:00.000Z",
+        cpuLoad: 1.23,
+      },
+    ]);
   });
 });
 

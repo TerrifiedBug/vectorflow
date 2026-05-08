@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/card";
 import { TotpSetupCard } from "@/components/totp-setup-card";
 import { useTeamStore } from "@/stores/team-store";
+import { PageHeader } from "@/components/page-header";
 
 export default function ProfilePage() {
   const trpc = useTRPC();
@@ -91,7 +92,13 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 p-6">
+      <PageHeader
+        title="Profile"
+        description="Manage identity, local password, and two-factor authentication for this account."
+        className="px-0 pt-0"
+      />
+      <div className="max-w-2xl space-y-6">
       {/* Personal Info */}
       <Card>
         <CardHeader>
@@ -239,6 +246,7 @@ export default function ProfilePage() {
           <TotpSetupCard totpEnabled={me.totpEnabled} authMethod={me.authMethod} />
         </>
       )}
+      </div>
     </div>
   );
 }

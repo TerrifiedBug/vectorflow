@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
+import { useTeamStore } from "@/stores/team-store";
 import { ChevronDown, Link2, Plus, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { NODE_KIND_META } from "@/lib/node-kind-colors";
 import { EmptyState } from "@/components/empty-state";
 import { QueryError } from "@/components/query-error";
+import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -85,12 +87,18 @@ export default function SharedComponentsPage() {
   const selectedEnvironmentId = useEnvironmentStore(
     (s) => s.selectedEnvironmentId,
   );
+  const selectedTeamId = useTeamStore((s) => s.selectedTeamId);
   const [search, setSearch] = useState("");
+  const listScope = selectedTeamId
+    ? { teamId: selectedTeamId }
+    : selectedEnvironmentId
+      ? { environmentId: selectedEnvironmentId }
+      : null;
 
   const componentsQuery = useQuery(
     trpc.sharedComponent.list.queryOptions(
-      { environmentId: selectedEnvironmentId! },
-      { enabled: !!selectedEnvironmentId },
+      listScope ?? { environmentId: "" },
+      { enabled: !!listScope },
     ),
   );
 
@@ -112,33 +120,55 @@ export default function SharedComponentsPage() {
     items: filtered.filter((sc) => sc.kind === kind),
   }));
 
-  if (!selectedEnvironmentId) {
+  if (!listScope) {
     return (
-      <div className="space-y-6">
-        <EmptyState title="Select an environment from the header to view shared components" className="p-4 text-sm" />
+      <div className="min-h-full bg-bg text-fg">
+        <PageHeader title="Shared components" subtitle="Reusable source, transform, and sink blocks scoped to the selected team." />
+        <div className="p-4">
+          <EmptyState title="Select a team from the header to view shared components" className="p-4 text-sm" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-end">
-        <Button onClick={() => router.push("/library/shared-components/new")}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Shared Component
-        </Button>
-      </div>
+    <div className="min-h-full bg-bg text-fg">
+      <PageHeader
+        title="Shared components"
+        subtitle="Reusable source, transform, and sink blocks scoped to the selected team."
+        meta={
+          <>
+            <span>{components.length} components</span>
+            <PageHeaderMetaSep />
+            <span>{grouped.find((group) => group.kind === "SOURCE")?.items.length ?? 0} sources</span>
+            <PageHeaderMetaSep />
+            <span>{grouped.find((group) => group.kind === "TRANSFORM")?.items.length ?? 0} transforms</span>
+            <PageHeaderMetaSep />
+            <span>{grouped.find((group) => group.kind === "SINK")?.items.length ?? 0} sinks</span>
+          </>
+        }
+        actions={
+          <Button onClick={() => router.push("/library/shared-components/new")} size="sm" variant="primary">
+            <Plus className="h-3.5 w-3.5" />
+            New shared component
+          </Button>
+        }
+      />
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search by name or type..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      <div className="space-y-4 p-4">
+        <Card className="border-line bg-bg-2">
+          <CardContent className="p-3">
+            <div className="relative max-w-md">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-2" />
+              <Input
+                placeholder="Search by name or type…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-8 border-line-2 bg-bg-1 pl-8 font-mono text-[12px]"
+              />
+            </div>
+          </CardContent>
+        </Card>
 
       {componentsQuery.isError ? (
         <QueryError message="Failed to load shared components" onRetry={() => componentsQuery.refetch()} />
@@ -169,6 +199,7 @@ export default function SharedComponentsPage() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

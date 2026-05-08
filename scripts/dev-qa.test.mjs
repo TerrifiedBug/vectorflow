@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   buildPrerequisiteFailureMessage,
+  buildQaDevEnv,
   getQaDatabaseMode,
   getQaDatabaseUrl,
   POSTGRES_REACHABILITY_TIMEOUT_MS,
@@ -35,5 +36,25 @@ describe("dev QA database mode", () => {
 
   test("uses a longer Postgres reachability timeout for managed endpoints", () => {
     expect(POSTGRES_REACHABILITY_TIMEOUT_MS).toBe(5000);
+  });
+
+  test("enables trusted proxy headers for the local auth bypass", () => {
+    const env = buildQaDevEnv(
+      { NODE_ENV: "development" },
+      "postgresql://qa",
+      { id: "qa-user", email: "qa@example.test", name: "QA User" },
+    );
+    expect(env.DEV_AUTH_BYPASS).toBe("1");
+    expect(env.VF_TRUST_PROXY_HEADERS).toBe("true");
+    expect(env.NEXTAUTH_URL).toBe("http://localhost:3000");
+  });
+
+  test("preserves an explicit PORT override in the QA env", () => {
+    const env = buildQaDevEnv(
+      { NODE_ENV: "development", PORT: "3001" },
+      "postgresql://qa",
+      { id: "qa-user", email: "qa@example.test", name: "QA User" },
+    );
+    expect(env.PORT).toBe("3001");
   });
 });

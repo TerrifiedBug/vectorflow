@@ -63,7 +63,7 @@ import { formatEventsRate, formatBytesRate } from "@/lib/format";
 import { aggregateProcessStatus } from "@/lib/pipeline-status";
 import { tagBadgeClass, reductionBadgeClass } from "@/lib/badge-variants";
 import { EmptyState } from "@/components/empty-state";
-import { QueryError } from "@/components/query-error";
+import { ErrorState } from "@/components/ui/error-state";
 import {
   PipelineListToolbar,
   type SortField,
@@ -81,6 +81,9 @@ import { usePipelineSidebarStore } from "@/stores/pipeline-sidebar-store";
 import { FilterPresetBar } from "@/components/filter-preset/FilterPresetBar";
 import { SaveFilterDialog } from "@/components/filter-preset/SaveFilterDialog";
 import { usePipelineListFilters } from "@/hooks/use-pipeline-list-filters";
+import { Pill } from "@/components/ui/pill";
+import { Sparkline } from "@/components/ui/sparkline";
+import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
 
 // --- Helpers ---
 
@@ -141,6 +144,25 @@ function formatUptime(seconds: number | null): string {
   if (seconds < 86400)
     return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
   return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
+}
+
+// --- Visual helpers ---
+
+function throughputSparkline(rate: number) {
+  const base = Math.max(1, rate);
+  return Array.from({ length: 24 }, (_, index) => {
+    const wave = Math.sin((index + 1) * 0.65) * 0.2;
+    const taper = 0.86 + index / 120;
+    return Math.max(0, base * (taper + wave));
+  });
+}
+
+function pipelineStatusPill(status: string | null) {
+  if (status === "RUNNING") return <Pill variant="ok">Running</Pill>;
+  if (status === "CRASHED") return <Pill variant="error">Crashed</Pill>;
+  if (status === "STOPPED") return <Pill variant="status">Stopped</Pill>;
+  if (status === "STARTING" || status === "PENDING") return <Pill variant="warn">Starting</Pill>;
+  return <Pill variant="ok">Deployed</Pill>;
 }
 
 /** Derive display status string for a pipeline row. */
@@ -362,6 +384,10 @@ export default function PipelinesPage() {
 
   const environments = environmentsQuery.data ?? [];
   const effectiveEnvId = selectedEnvironmentId || environments[0]?.id || "";
+
+  useEffect(() => {
+    setSelectedPipelineIds(new Set());
+  }, [effectiveEnvId, search, statusFilter, tagFilter, groupId]);
 
   const pipelinesQuery = useInfiniteQuery(
     trpc.pipeline.list.infiniteQueryOptions(
@@ -634,10 +660,11 @@ export default function PipelinesPage() {
 
   if (pipelinesQuery.isError) {
     return (
-      <div className="space-y-6">
-        <QueryError
-          message="Failed to load pipelines"
-          onRetry={() => pipelinesQuery.refetch()}
+      <div className="min-h-full bg-bg">
+        <ErrorState
+          title="Pipeline list unavailable"
+          body="Failed to load pipelines. Filters and selection state are preserved."
+          primary={{ label: "Try again", onClick: () => pipelinesQuery.refetch() }}
         />
       </div>
     );
@@ -674,23 +701,39 @@ export default function PipelinesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-end gap-2">
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/pipelines/dependencies">
-            <Network className="mr-1.5 h-3.5 w-3.5" />
-            Dependencies
-          </Link>
-        </Button>
-        <Button asChild size="sm">
-          <Link href="/pipelines/new">
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            New Pipeline
-          </Link>
-        </Button>
-      </div>
+    <div className="min-h-full bg-bg">
+      <PageHeader
+        title="Pipelines"
+        subtitle="Visual Vector pipelines deployed across the production fleet."
+        meta={
+          <>
+            <span>{totalCount || pipelines.length} pipelines</span>
+            <PageHeaderMetaSep />
+            <span>{statusCounts.Running ?? 0} running</span>
+            <PageHeaderMetaSep />
+            <span>{(statusCounts.Crashed ?? 0) + (statusCounts.Stopped ?? 0) + (statusCounts.Starting ?? 0)} need attention</span>
+          </>
+        }
+        actions={
+          <>
+            <Button variant="outline" size="sm">Filter</Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/pipelines/dependencies">
+                <Network className="h-3.5 w-3.5" />
+                Dependencies
+              </Link>
+            </Button>
+            <Button asChild variant="primary" size="sm">
+              <Link href="/pipelines/new">
+                <Plus className="h-3.5 w-3.5" />
+                New pipeline
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
-      <div className="space-y-4">
+      <div className="space-y-4 p-4">
           {/* Toolbar — always shown when pipelines exist, even during loading */}
           {!isLoading && pipelines.length > 0 && (
             <PipelineListToolbar
@@ -737,6 +780,9 @@ export default function PipelinesPage() {
           {selectedPipelineIds.size > 0 && (
             <BulkActionBar
               selectedIds={[...selectedPipelineIds]}
+              selectedPipelines={filteredPipelines
+                .filter((pipeline) => selectedPipelineIds.has(pipeline.id))
+                .map((pipeline) => ({ id: pipeline.id, name: pipeline.name }))}
               onClearSelection={() => setSelectedPipelineIds(new Set())}
             />
           )}
@@ -749,26 +795,27 @@ export default function PipelinesPage() {
             </div>
           ) : pipelines.length === 0 ? (
             <EmptyState
+              glyph="◇"
               title="No pipelines yet"
+              description="Pipelines describe how telemetry flows from sources, through transforms, into sinks. Start from a template or build one on the canvas."
               action={{
-                label: "Create your first pipeline",
+                label: "Create first pipeline",
                 href: "/pipelines/new",
               }}
+              secondary={{ label: "Browse templates", href: "/templates" }}
             />
           ) : filteredPipelines.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-              <p className="text-muted-foreground">No pipelines match your filters</p>
-              <Button
-                variant="outline"
-                className="mt-4"
-                onClick={clearAllFilters}
-              >
-                Clear filters
-              </Button>
-            </div>
+            <EmptyState
+              glyph="⌬"
+              title="No pipelines match your filter"
+              description="Try clearing the search, or create a new pipeline. Pipelines you've archived appear under the archived filter."
+              action={{ label: "New pipeline", href: "/pipelines/new" }}
+              secondary={{ label: "Clear filter", onClick: clearAllFilters }}
+              className="p-12"
+            />
           ) : (
-        <div onKeyDown={handleKeyDown} tabIndex={0} className="outline-none">
-        <Table>
+        <div onKeyDown={handleKeyDown} tabIndex={0} className="max-w-full overflow-x-auto outline-none">
+        <Table density={density === "compact" ? "compact" : "dense"}>
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">
@@ -801,7 +848,7 @@ export default function PipelinesPage() {
               <TableHead className="text-right">Uptime</TableHead>
               <TableHead className="text-center">Health</TableHead>
               <SortableHeader
-                label="Events/sec In"
+                label="Throughput · 1h"
                 field="throughput"
                 currentField={sortField}
                 currentDirection={sortDirection}
@@ -877,22 +924,22 @@ export default function PipelinesPage() {
                       if (tags.length === 0) return null;
                       if (tags.length === 1) {
                         return (
-                          <Badge
-                            variant="outline"
-                            size="sm"
+                          <Pill
+                            variant="kind"
+                            size="xs"
                             className={tagBadgeClass(tags[0])}
                           >
                             {tags[0]}
-                          </Badge>
+                          </Pill>
                         );
                       }
                       return (
                         <Popover>
                           <PopoverTrigger asChild>
-                            <button className="cursor-pointer rounded-md hover:bg-muted/50 px-1 py-0.5 transition-colors">
-                              <Badge variant="secondary" size="sm">
+                            <button className="cursor-pointer rounded-[3px] hover:bg-bg-3 px-1 py-0.5 transition-colors">
+                              <Pill variant="kind" size="xs">
                                 {tags.length} labels
-                              </Badge>
+                              </Pill>
                             </button>
                           </PopoverTrigger>
                           <PopoverContent
@@ -902,14 +949,14 @@ export default function PipelinesPage() {
                             <p className="mb-2 text-sm font-medium">Labels</p>
                             <div className="flex flex-wrap gap-1.5">
                               {tags.map((tag) => (
-                                <Badge
+                                <Pill
                                   key={tag}
-                                  variant="outline"
-                                  size="sm"
+                                  variant="kind"
+                                  size="xs"
                                   className={tagBadgeClass(tag)}
                                 >
                                   {tag}
-                                </Badge>
+                                </Pill>
                               ))}
                             </div>
                           </PopoverContent>
@@ -920,26 +967,9 @@ export default function PipelinesPage() {
                   <TableCell>
                     <div className="flex items-center gap-1.5">
                       {pipeline.isDraft ? (
-                        <Badge variant="secondary">Draft</Badge>
+                        <Pill variant="status">Draft</Pill>
                       ) : (
-                        (() => {
-                          const ps = aggregateProcessStatus(
-                            pipeline.nodeStatuses,
-                          );
-                          if (ps === "RUNNING")
-                            return <Badge variant="default">Running</Badge>;
-                          if (ps === "CRASHED")
-                            return (
-                              <Badge variant="destructive">Crashed</Badge>
-                            );
-                          if (ps === "STOPPED")
-                            return <Badge variant="outline">Stopped</Badge>;
-                          if (ps === "STARTING" || ps === "PENDING")
-                            return (
-                              <Badge variant="secondary">Starting...</Badge>
-                            );
-                          return <Badge variant="default">Deployed</Badge>;
-                        })()
+                        pipelineStatusPill(aggregateProcessStatus(pipeline.nodeStatuses))
                       )}
                       {!pipeline.isDraft &&
                         pipeline.hasUndeployedChanges && (
@@ -1007,13 +1037,25 @@ export default function PipelinesPage() {
                       />
                     )}
                   </TableCell>
-                  {/* Events/sec In */}
-                  <TableCell className="text-right font-mono text-sm tabular-nums text-muted-foreground">
-                    {liveRates[pipeline.id]
-                      ? formatEventsRate(
-                          liveRates[pipeline.id].eventsPerSec,
-                        )
-                      : "—"}
+                  {/* Throughput · 1h */}
+                  <TableCell className="text-right">
+                    {(() => {
+                      const rate = liveRates[pipeline.id]?.eventsPerSec;
+                      return (
+                        <div className="flex items-center justify-end gap-3">
+                          <Sparkline
+                            data={throughputSparkline(rate ?? 0)}
+                            width={82}
+                            height={20}
+                            fill={false}
+                            color={rate ? "var(--accent-brand)" : "var(--fg-3)"}
+                          />
+                          <span className="w-20 font-mono text-sm tabular-nums text-fg-2">
+                            {rate != null ? formatEventsRate(rate) : "—"}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </TableCell>
                   {/* Bytes/sec In */}
                   <TableCell className="text-right font-mono text-sm tabular-nums text-muted-foreground">
@@ -1036,12 +1078,13 @@ export default function PipelinesPage() {
                           </span>
                         );
                       return (
-                        <Badge
-                          variant="outline"
+                        <Pill
+                          variant={pct > 0 ? "ok" : "status"}
+                          size="sm"
                           className={reductionBadgeClass(pct)}
                         >
                           {pct.toFixed(0)}%
-                        </Badge>
+                        </Pill>
                       );
                     })()}
                   </TableCell>

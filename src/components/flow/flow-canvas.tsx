@@ -4,7 +4,6 @@ import { useCallback, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   ReactFlow,
-  Background,
   Controls,
   useReactFlow,
   type ReactFlowInstance,
@@ -12,10 +11,12 @@ import {
   type Connection,
   type NodeMouseHandler,
 } from "@xyflow/react";
+import { toast } from "sonner";
 import "@xyflow/react/dist/style.css";
 import { useFlowStore } from "@/stores/flow-store";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { nodeTypes } from "./node-types";
+import { edgeTypes } from "./edge-types";
 import { NodeContextMenu } from "./node-context-menu";
 import { EdgeContextMenu } from "./edge-context-menu";
 import { SaveSharedComponentDialog } from "./save-shared-component-dialog";
@@ -39,6 +40,55 @@ function hasOverlappingTypes(a: DataType[], b: DataType[]): boolean {
   return a.some((t) => b.includes(t));
 }
 
+type ValidationResult =
+  | { valid: true }
+  | { valid: false; reason: "missing-node" | "self" }
+  | {
+      valid: false;
+      reason: "type-mismatch";
+      sourceTypes: DataType[];
+      targetTypes: DataType[];
+      sourceTypeName: string;
+      targetTypeName: string;
+    };
+
+/**
+ * Single source of truth for whether a Connection should be allowed.
+ *
+ * Used by both `isValidConnection` (live drag feedback — boolean only) and
+ * `onConnect` (final commit gate — needs the failure reason + type info to
+ * shape a toast). Keeping the policy in one place avoids drift between the
+ * two callers.
+ */
+function validateConnection(
+  connection: { source: string | null; target: string | null },
+  nodes: Array<{ id: string; data: Record<string, unknown> }>,
+): ValidationResult {
+  const sourceNode = nodes.find((n) => n.id === connection.source);
+  const targetNode = nodes.find((n) => n.id === connection.target);
+  if (!sourceNode || !targetNode) return { valid: false, reason: "missing-node" };
+  if (connection.source === connection.target) return { valid: false, reason: "self" };
+
+  const sourceTypes = getNodeDataTypes(sourceNode, "output");
+  const targetTypes = getNodeDataTypes(targetNode, "input");
+
+  // Type-agnostic on either side → permissive (preserves existing behaviour
+  // for nodes whose VectorComponentDef has no declared types).
+  if (sourceTypes.length === 0 || targetTypes.length === 0) return { valid: true };
+  if (hasOverlappingTypes(sourceTypes, targetTypes)) return { valid: true };
+
+  const sourceDef = sourceNode.data.componentDef as VectorComponentDef | undefined;
+  const targetDef = targetNode.data.componentDef as VectorComponentDef | undefined;
+  return {
+    valid: false,
+    reason: "type-mismatch",
+    sourceTypes,
+    targetTypes,
+    sourceTypeName: sourceDef?.type ?? "unknown",
+    targetTypeName: targetDef?.type ?? "unknown",
+  };
+}
+
 
 export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   useKeyboardShortcuts({ onSave, onExport, onImport });
@@ -48,7 +98,7 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   const edges = useFlowStore((s) => s.edges);
   const onNodesChange = useFlowStore((s) => s.onNodesChange);
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange);
-  const onConnect = useFlowStore((s) => s.onConnect);
+  const onConnectStore = useFlowStore((s) => s.onConnect);
   const addNode = useFlowStore((s) => s.addNode);
   const hasFitRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
@@ -80,22 +130,35 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   }, []);
 
   const isValidConnection = useCallback(
-    (connection: Edge | Connection) => {
-      const sourceNode = nodes.find((n) => n.id === connection.source);
-      const targetNode = nodes.find((n) => n.id === connection.target);
-      if (!sourceNode || !targetNode) return false;
-
-      // Prevent self-connections
-      if (connection.source === connection.target) return false;
-
-      // Enforce DataType compatibility
-      const sourceTypes = getNodeDataTypes(sourceNode as { data: Record<string, unknown> }, "output");
-      const targetTypes = getNodeDataTypes(targetNode as { data: Record<string, unknown> }, "input");
-
-      if (sourceTypes.length === 0 || targetTypes.length === 0) return true;
-      return hasOverlappingTypes(sourceTypes, targetTypes);
-    },
+    (connection: Edge | Connection) =>
+      validateConnection(
+        connection,
+        nodes as Array<{ id: string; data: Record<string, unknown> }>,
+      ).valid,
     [nodes],
+  );
+
+  // Validate connection on drop: reject mismatched types with a toast and
+  // never add the edge. React Flow already calls isValidConnection live during
+  // the drag, but onConnect is the final gate before the edge is committed.
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      const result = validateConnection(
+        connection,
+        nodes as Array<{ id: string; data: Record<string, unknown> }>,
+      );
+      if (result.valid) {
+        onConnectStore(connection);
+        return;
+      }
+      if (result.reason === "type-mismatch") {
+        toast.error(
+          `Type mismatch: ${result.sourceTypeName}(${result.sourceTypes.join("|")}) → ${result.targetTypeName}(${result.targetTypes.join("|")})`,
+        );
+      }
+      // self / missing-node → silent drop
+    },
+    [nodes, onConnectStore],
   );
 
   const onDrop = useCallback(
@@ -170,7 +233,15 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
   );
 
   return (
-    <div className="h-full w-full" role="region" aria-label="Pipeline editor canvas">
+    <div
+      className="relative h-full w-full"
+      role="region"
+      aria-label="Pipeline editor canvas"
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-bg"
+      />
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -185,13 +256,14 @@ export function FlowCanvas({ onSave, onExport, onImport }: FlowCanvasProps) {
         onPaneClick={() => { setContextMenu(null); setEdgeContextMenu(null); }}
         isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={null}
         selectionKeyCode="Shift"
         multiSelectionKeyCode="Meta"
+        style={{ background: "transparent" }}
         aria-roledescription="Pipeline editor canvas. Use arrow keys to navigate between nodes, Enter to select, Escape to deselect."
       >
-        <Background gap={16} size={1} />
         <Controls className="!bg-card !border-border !shadow-md [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-accent [&>button:focus-visible]:!ring-2 [&>button:focus-visible]:!ring-ring [&>button:focus-visible]:!outline-none" />
       </ReactFlow>
       {contextMenu && (

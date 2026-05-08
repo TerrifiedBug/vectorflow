@@ -421,49 +421,38 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
       ) : rules.length === 0 ? (
         <EmptyState title="No alert rules configured" description="Create an alert rule to monitor metrics and receive notifications." />
       ) : (
-        <Table>
+        <Table density="dense" className="table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Metric</TableHead>
-              <TableHead>Severity</TableHead>
-              <TableHead>Owner</TableHead>
-              <TableHead>Condition</TableHead>
-              <TableHead>Threshold</TableHead>
-              <TableHead>Duration</TableHead>
-              <TableHead>Pipeline</TableHead>
-              <TableHead>Enabled</TableHead>
-              <TableHead className="w-[100px]">Actions</TableHead>
+              <TableHead className="w-[26%]">Name</TableHead>
+              <TableHead className="w-[16%]">Metric</TableHead>
+              <TableHead className="w-[10%]">Severity</TableHead>
+              <TableHead className="hidden xl:table-cell w-[10%]">Owner</TableHead>
+              <TableHead className="hidden lg:table-cell w-[10%]">Condition</TableHead>
+              <TableHead className="hidden lg:table-cell w-[8%]">Threshold</TableHead>
+              <TableHead className="hidden xl:table-cell w-[8%]">Duration</TableHead>
+              <TableHead className="w-[16%]">Pipeline</TableHead>
+              <TableHead className="w-[8%]">Enabled</TableHead>
+              <TableHead className="w-[88px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <StaggerList as="tbody" className="[&_tr:last-child]:border-0">
             {rules.map((rule) => (
               <StaggerItem as="tr" key={rule.id} className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors">
-                <TableCell className="font-medium">
+                <TableCell className="font-medium align-top">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      {rule.name}
-                      {(() => {
-                        const mins = snoozedMinutesLeft(rule.snoozedUntil);
-                        if (mins == null) return null;
-                        return (
-                          <Badge variant="secondary" className="text-xs whitespace-nowrap">
-                            Snoozed · {formatSnoozeRemaining(mins)}
-                          </Badge>
-                        );
-                      })()}
-                    </div>
-                    <p className="max-w-[28rem] text-xs font-normal text-muted-foreground">
+                    <div className="truncate">{rule.name}</div>
+                    <div className="line-clamp-2 text-[10.5px] text-fg-2">
                       {rule.suggestedAction}
-                    </p>
+                    </div>
                   </div>
                 </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">
+                <TableCell className="align-top">
+                  <Badge variant="secondary" className="max-w-full truncate">
                     {METRIC_LABELS[rule.metric] ?? rule.metric}
                   </Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell className="align-top">
                   <Badge
                     variant={rule.severity === "critical" ? "destructive" : "outline"}
                     className="capitalize"
@@ -471,30 +460,30 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                     {rule.severity}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell className="hidden xl:table-cell align-top text-muted-foreground">
                   {rule.ownerHint}
                 </TableCell>
-                <TableCell className="font-mono">
+                <TableCell className="hidden lg:table-cell align-top font-mono">
                   {BINARY_METRICS.has(rule.metric) || !rule.condition ? "—" : (CONDITION_LABELS[rule.condition] ?? rule.condition)}
                 </TableCell>
-                <TableCell className="font-mono">
+                <TableCell className="hidden lg:table-cell align-top font-mono">
                   {BINARY_METRICS.has(rule.metric) ? "—" : (rule.threshold ?? "—")}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell className="hidden xl:table-cell align-top text-muted-foreground">
                   {BINARY_METRICS.has(rule.metric) || rule.durationSeconds == null ? "—" : `${rule.durationSeconds}s`}
                 </TableCell>
-                <TableCell>
+                <TableCell className="align-top">
                   {isClusterFleetMetric(rule.metric) ? (
                     <Badge variant="secondary">Fleet</Badge>
                   ) : GLOBAL_METRICS.has(rule.metric) ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : rule.pipeline ? (
-                    <Badge variant="outline">{rule.pipeline.name}</Badge>
+                    <Badge variant="outline">Global</Badge>
                   ) : (
-                    <span className="text-muted-foreground">All</span>
+                    <span className="block truncate text-fg-2">
+                      {pipelines.find((p) => p.id === rule.pipelineId)?.name ?? "All pipelines"}
+                    </span>
                   )}
                 </TableCell>
-                <TableCell>
+                <TableCell className="align-top">
                   <Switch
                     checked={rule.enabled}
                     disabled={toggleMutation.isPending}
@@ -503,7 +492,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                     }
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell className="align-top">
                   <div className="flex items-center gap-1">
                     {snoozedMinutesLeft(rule.snoozedUntil) != null ? (
                       <Button
@@ -530,7 +519,7 @@ export function AlertRulesSection({ environmentId }: { environmentId: string }) 
                         </PopoverTrigger>
                         <PopoverContent className="w-40 p-2" align="end">
                           <div className="flex flex-col gap-1">
-                            <p className="text-xs font-medium text-muted-foreground px-2 pb-1">
+                            <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">
                               Snooze for
                             </p>
                             {SNOOZE_PRESETS.map((preset) => (

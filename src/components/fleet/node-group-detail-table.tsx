@@ -20,16 +20,22 @@ import { formatLastSeen } from "@/lib/format";
 interface NodeGroupDetailTableProps {
   groupId: string;
   environmentId: string;
+  labelFilter?: Record<string, string>;
 }
 
 export function NodeGroupDetailTable({
   groupId,
   environmentId,
+  labelFilter,
 }: NodeGroupDetailTableProps) {
   const trpc = useTRPC();
 
   const nodesQuery = useQuery(
-    trpc.nodeGroup.nodesInGroup.queryOptions({ groupId, environmentId }),
+    trpc.nodeGroup.nodesInGroup.queryOptions({
+      groupId,
+      environmentId,
+      ...(labelFilter && Object.keys(labelFilter).length > 0 ? { labels: labelFilter } : {}),
+    }),
   );
 
   if (nodesQuery.isLoading) {

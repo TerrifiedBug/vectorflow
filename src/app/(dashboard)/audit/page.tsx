@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, Fragment } from "react";
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ChevronDown, ChevronRight, Rocket, ScrollText, Search } from "lucide-react";
+import { Rocket, ScrollText, Search } from "lucide-react";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
 
@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/ui/loading-skeletons";
 import { useTeamStore } from "@/stores/team-store";
 import { formatTimestamp } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
@@ -37,6 +37,7 @@ import { QueryError } from "@/components/query-error";
 import { PageHeader } from "@/components/page-header";
 import { DeploymentHistory } from "./deployments/page";
 import { getAuditActionLabel } from "@/lib/audit-actions";
+import { AuditDetailDrawer } from "@/components/ui/audit-detail-drawer";
 
 const ALL_VALUE = "__all__";
 const SCIM_VALUE = "__SCIM__";
@@ -71,8 +72,7 @@ export default function AuditPage() {
   const [endDate, setEndDate] = useState<string>("");
   const [search, setSearch] = useState<string>("");
 
-  // Expanded row tracking
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
 
   // Fetch filter options
   const actionsQuery = useQuery(trpc.audit.actions.queryOptions());
@@ -87,8 +87,8 @@ export default function AuditPage() {
   );
   const environments = environmentsQuery.data ?? [];
 
-  // Build query input — explicit team filter overrides global team selector
-  const effectiveTeamId = teamFilter || selectedTeamId;
+  // Build query input — explicit page filters only. The global team selector should not hide audit activity by default.
+  const effectiveTeamId = teamFilter || undefined;
   const effectiveEnvironmentId = environmentFilter || undefined;
   // Map entity type filter to entityTypes array for the query
   const entityTypesParam = entityTypeFilter
@@ -98,6 +98,7 @@ export default function AuditPage() {
     : undefined;
 
   const queryInput = {
+    limit: 100,
     ...(actionFilter ? { action: actionFilter } : {}),
     ...(entityTypesParam ? { entityTypes: entityTypesParam } : {}),
     ...(userFilter ? { userId: userFilter } : {}),
@@ -116,22 +117,21 @@ export default function AuditPage() {
   );
 
   const allItems = logsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const selectedAuditEntry = allItems.find((entry) => entry.id === selectedAuditId);
+  const selectedAuditTeamId = selectedAuditEntry?.teamId ?? effectiveTeamId ?? null;
+
+  const detailQuery = useQuery({
+    ...trpc.audit.getDetail.queryOptions({
+      id: selectedAuditId ?? "",
+      teamId: selectedAuditTeamId ?? "",
+    }),
+    enabled: !!selectedAuditId && !!selectedAuditTeamId,
+  });
+
   const actions = actionsQuery.data ?? [];
   const entityTypes = entityTypesQuery.data ?? [];
   const users = usersQuery.data ?? [];
   const teams = teamsQuery.data ?? [];
-
-  function toggleRow(id: string) {
-    setExpandedRows((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }
 
   // Show full-page skeleton on initial load (before filter options are ready)
   const isInitialLoad = logsQuery.isLoading && actionsQuery.isLoading;
@@ -145,8 +145,10 @@ export default function AuditPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-full bg-bg">
       <PageHeader title="Audit Log" description="Track all changes and actions across your VectorFlow instance." />
+
+      <div className="space-y-6 p-4">
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
@@ -349,16 +351,33 @@ export default function AuditPage() {
 
       {/* Table */}
       {logsQuery.isLoading ? (
-        <div className="space-y-3">
-          {isInitialLoad && <Skeleton className="h-40 w-full" />}
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
+        <TableSkeleton rows={isInitialLoad ? 8 : 5} />
       ) : allItems.length === 0 ? (
         <EmptyState
-          title="No audit log entries found"
-          description="Actions will appear here as they are performed"
+          title={
+            actionFilter ||
+            entityTypeFilter ||
+            userFilter ||
+            teamFilter ||
+            environmentFilter ||
+            startDate ||
+            endDate ||
+            search
+              ? "No audit entries match the current filters"
+              : "Audit log returned no visible entries"
+          }
+          description={
+            actionFilter ||
+            entityTypeFilter ||
+            userFilter ||
+            teamFilter ||
+            environmentFilter ||
+            startDate ||
+            endDate ||
+            search
+              ? "Clear filters to inspect seeded or recent activity across teams."
+              : "No activity was returned for your audit scope. If seed data is expected, verify the current user has access to the seeded teams."
+          }
         />
       ) : (
         <>
@@ -376,128 +395,42 @@ export default function AuditPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {allItems.map((entry) => {
-                const isExpanded = expandedRows.has(entry.id);
-                const hasDiff = entry.diff !== null;
-                const hasMetadata = entry.metadata !== null;
-                const hasDetails = hasDiff || hasMetadata;
-
-                return (
-                  <Fragment key={entry.id}>
-                    <TableRow
-                      className={
-                        hasDetails
-                          ? "cursor-pointer"
-                          : ""
-                      }
-                      onClick={() => hasDetails && toggleRow(entry.id)}
+              {allItems.map((entry) => (
+                <TableRow
+                  key={entry.id}
+                  className="cursor-pointer font-mono text-[11.5px] hover:bg-bg-3/40"
+                  onClick={() => setSelectedAuditId(entry.id)}
+                >
+                  <TableCell className="whitespace-nowrap text-fg-2">
+                    {formatTimestamp(entry.createdAt)}
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-fg-1">
+                      {entry.userName || entry.userEmail || entry.user?.name || entry.user?.email || "system"}
+                    </span>
+                  </TableCell>
+                  <TableCell className="hidden xl:table-cell whitespace-nowrap text-fg-2">
+                    {entry.ipAddress || "—"}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={`max-w-full truncate rounded-[3px] font-mono text-[10px] uppercase tracking-[0.04em] ${getActionColor(entry.action)}`}
+                      title={entry.action}
                     >
-                      <TableCell className="w-[30px] px-2">
-                        {hasDetails &&
-                          (isExpanded ? (
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                          ))}
-                      </TableCell>
-                      <TableCell className="text-sm whitespace-nowrap">
-                        {formatTimestamp(entry.createdAt)}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm">
-                          {entry.userName || entry.userEmail || entry.user?.name || entry.user?.email}
-                        </span>
-                      </TableCell>
-                      <TableCell className="hidden xl:table-cell text-sm text-muted-foreground whitespace-nowrap">
-                        {entry.ipAddress || "\u2014"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={`max-w-full truncate ${getActionColor(entry.action)}`}
-                          title={entry.action}
-                        >
-                          {getAuditActionLabel(entry.action)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {entry.entityType}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden xl:table-cell font-mono text-xs tabular-nums max-w-[180px] truncate" title={entry.entityId}>
-                        {entry.entityId}
-                      </TableCell>
-                    </TableRow>
-                    {isExpanded && hasDetails && (
-                      <TableRow className="bg-muted/30 hover:bg-muted/30">
-                        <TableCell colSpan={99} className="p-4">
-                          <div className="space-y-3 min-w-0">
-                            {entry.ipAddress && (
-                              <div className="xl:hidden">
-                                <p className="text-xs font-medium text-muted-foreground mb-1">IP Address</p>
-                                <span className="text-xs font-mono tabular-nums">{entry.ipAddress}</span>
-                              </div>
-                            )}
-                            {entry.entityId && (
-                              <div className="xl:hidden">
-                                <p className="text-xs font-medium text-muted-foreground mb-1">Entity ID</p>
-                                <span className="text-xs font-mono tabular-nums break-all">{entry.entityId}</span>
-                              </div>
-                            )}
-                            {hasMetadata && (
-                              <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-2">Details</p>
-                                <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-xs">
-                                  {Object.entries(entry.metadata as Record<string, unknown>).map(([key, value]) => (
-                                    <Fragment key={key}>
-                                      <span className="font-medium text-muted-foreground capitalize whitespace-nowrap">
-                                        {key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").trim()}
-                                      </span>
-                                      {typeof value === "object" && value !== null ? (
-                                        <pre className="font-mono whitespace-pre-wrap break-all overflow-hidden">
-                                          {JSON.stringify(value, null, 2)}
-                                        </pre>
-                                      ) : (
-                                        <span className="font-mono break-all">
-                                          {String(value ?? "\u2014")}
-                                        </span>
-                                      )}
-                                    </Fragment>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {hasDiff && (
-                              <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-2">Changes</p>
-                                <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-xs">
-                                  {Object.entries(entry.diff as Record<string, unknown>).map(([key, value]) => (
-                                    <Fragment key={key}>
-                                      <span className="font-medium text-muted-foreground capitalize whitespace-nowrap">
-                                        {key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").trim()}
-                                      </span>
-                                      {typeof value === "object" && value !== null ? (
-                                        <pre className="font-mono whitespace-pre-wrap break-all overflow-hidden">
-                                          {JSON.stringify(value, null, 2)}
-                                        </pre>
-                                      ) : (
-                                        <span className="font-mono break-all">
-                                          {String(value ?? "\u2014")}
-                                        </span>
-                                      )}
-                                    </Fragment>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </Fragment>
-                );
-              })}
+                      {getAuditActionLabel(entry.action)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className="rounded-[3px] font-mono text-[10px] uppercase tracking-[0.04em]">
+                      {entry.entityType}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden xl:table-cell max-w-[180px] truncate font-mono text-[11px] tabular-nums text-fg-2" title={entry.entityId}>
+                    {entry.entityId}
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
 
@@ -525,6 +458,16 @@ export default function AuditPage() {
           <DeploymentHistory />
         </TabsContent>
       </Tabs>
+      <AuditDetailDrawer
+        open={!!selectedAuditId}
+        onOpenChange={(open) => {
+          if (!open) setSelectedAuditId(null);
+        }}
+        entry={detailQuery.data ?? null}
+        isLoading={detailQuery.isLoading}
+      />
+
+      </div>
     </div>
   );
 }

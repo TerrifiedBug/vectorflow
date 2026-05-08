@@ -12,6 +12,20 @@ import { createPromotionPR } from "@/server/services/gitops-promotion";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
 
+const PROMOTION_STATUS_KEYS = [
+  "PENDING",
+  "APPROVED",
+  "DEPLOYED",
+  "REJECTED",
+  "CANCELLED",
+  "AWAITING_PR_MERGE",
+  "DEPLOYING",
+] as const;
+
+type PromotionStatusKey = (typeof PROMOTION_STATUS_KEYS)[number];
+
+const promotionStatusSchema = z.enum(PROMOTION_STATUS_KEYS);
+
 export const promotionRouter = router({
   /**
    * Preflight check: validates all SECRET[name] references in the source pipeline
@@ -405,6 +419,80 @@ export const promotionRouter = router({
       }
 
       return { cancelled: true };
+    }),
+
+  summaryForTeam: protectedProcedure
+    .input(z.object({ teamId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const grouped = await prisma.promotionRequest.groupBy({
+        by: ["status"],
+        where: { sourcePipeline: { environment: { teamId: input.teamId } } },
+        _count: { _all: true },
+      });
+
+      const summary = Object.fromEntries(
+        PROMOTION_STATUS_KEYS.map((status) => [status, 0]),
+      ) as Record<PromotionStatusKey, number>;
+
+      for (const row of grouped) {
+        summary[row.status as PromotionStatusKey] = row._count._all;
+      }
+
+      return summary;
+    }),
+
+  /**
+   * Returns recent promotion requests across an entire team, ordered by
+   * createdAt desc. Powers the team-scoped Promotions hub view.
+   *
+   * Team scope is enforced via `sourcePipeline.environment.teamId` — every
+   * promotion is anchored to a source pipeline whose environment belongs to
+   * exactly one team.
+   *
+   * Cursor pagination uses the `id` of the last item in the page.
+   */
+  recentForTeam: protectedProcedure
+    .input(
+      z.object({
+        teamId: z.string(),
+        status: promotionStatusSchema.optional(),
+        statuses: z.array(promotionStatusSchema).optional(),
+        limit: z.number().int().min(1).max(200).default(50),
+        cursor: z.string().optional(),
+      }),
+    )
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const statusWhere = input.status
+        ? { status: input.status }
+        : input.statuses?.length
+          ? { status: { in: input.statuses } }
+          : {};
+
+      const records = await prisma.promotionRequest.findMany({
+        where: {
+          sourcePipeline: { environment: { teamId: input.teamId } },
+          ...statusWhere,
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: input.limit + 1,
+        ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+        include: {
+          sourcePipeline: { select: { id: true, name: true } },
+          targetPipeline: { select: { id: true, name: true } },
+          promotedBy: { select: { name: true, email: true } },
+          approvedBy: { select: { name: true, email: true } },
+          sourceEnvironment: { select: { name: true } },
+          targetEnvironment: { select: { name: true } },
+        },
+      });
+
+      const hasMore = records.length > input.limit;
+      const items = hasMore ? records.slice(0, input.limit) : records;
+      const last = items[items.length - 1];
+      const nextCursor = hasMore && last ? last.id : null;
+      return { items, nextCursor };
     }),
 
   /**
