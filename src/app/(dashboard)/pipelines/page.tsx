@@ -716,7 +716,6 @@ export default function PipelinesPage() {
         }
         actions={
           <>
-            <Button variant="outline" size="sm">Filter</Button>
             <Button variant="outline" size="sm" asChild>
               <Link href="/pipelines/dependencies">
                 <Network className="h-3.5 w-3.5" />

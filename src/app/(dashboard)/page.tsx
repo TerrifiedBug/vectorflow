@@ -3,12 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Filter, Rocket } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader, PageHeaderMetaSep } from "@/components/ui/page-header";
 import { KpiTile } from "@/components/ui/kpi-tile";
@@ -64,6 +62,23 @@ function sumSeries(series?: SeriesMap, fallbackLength = 24) {
 
 function chartSeries(series?: SeriesMap, color = "var(--accent-brand)", name = "total") {
   return [{ name, color, data: sumSeries(series) }];
+}
+
+function axisLabels(values: number[], formatter: (value: number) => string) {
+  const max = Math.max(...values, 0);
+  return Array.from({ length: 5 }, (_, index) => formatter((max * index) / 4));
+}
+
+function pointLabels(length: number, range: TimeRange) {
+  const totalMinutes = range === "1h" ? 60 : range === "6h" ? 360 : range === "1d" ? 1440 : 10080;
+  if (length <= 1) return ["now"];
+  return Array.from({ length }, (_, index) => {
+    const minutesAgo = Math.round(((length - 1 - index) / (length - 1)) * totalMinutes);
+    if (minutesAgo <= 0) return "now";
+    if (minutesAgo >= 1440) return `-${Math.round(minutesAgo / 1440)}d`;
+    if (minutesAgo >= 60) return `-${Math.round(minutesAgo / 60)}h`;
+    return `-${minutesAgo}m`;
+  });
 }
 
 function rateSparkline(seed: number, length = 24) {
@@ -249,6 +264,17 @@ export default function DashboardPage() {
   const latestRefresh = Math.max(stats.dataUpdatedAt, pipelineCards.dataUpdatedAt, chartData.dataUpdatedAt, cpuHeatmap.dataUpdatedAt);
   const maxDestinationBytes = Math.max(1, ...dashboard.topDestinations.map((pipeline) => pipeline.bytesOut));
 
+  const eventSeries = [
+    ...chartSeries(chartData.data?.pipeline.eventsIn, "var(--accent-brand)", "in"),
+    ...chartSeries(chartData.data?.pipeline.eventsOut, "var(--chart-2)", "out"),
+  ];
+  const errorSeries = [
+    ...chartSeries(chartData.data?.pipeline.errors, "var(--status-error)", "errors"),
+    ...chartSeries(chartData.data?.pipeline.discarded, "var(--chart-4)", "discarded"),
+  ];
+  const eventPointLabels = pointLabels(eventSeries[0]?.data.length ?? 0, timeRange);
+  const errorPointLabels = pointLabels(errorSeries[0]?.data.length ?? 0, timeRange);
+
   return (
     <div role="region" aria-label="Overview" className="min-h-full bg-bg">
       <PageHeader
@@ -266,33 +292,21 @@ export default function DashboardPage() {
           </>
         }
         actions={
-          <>
-            <Button variant="outline" size="sm" className="h-8 rounded-[3px] font-mono text-[11px] uppercase tracking-[0.04em]">
-              <Filter className="h-3.5 w-3.5" />
-              Filters
-            </Button>
-            <div className="flex overflow-hidden rounded-[3px] border border-line bg-bg-2">
-              {TIME_RANGES.map((range) => (
-                <button
-                  key={range.value}
-                  type="button"
-                  onClick={() => setTimeRange(range.value)}
-                  className={cn(
-                    "h-8 px-2.5 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-2 transition-colors hover:text-fg",
-                    timeRange === range.value && "bg-accent-soft text-accent-brand",
-                  )}
-                >
-                  {range.label}
-                </button>
-              ))}
-            </div>
-            <Button variant="primary" size="sm" asChild className="h-8 rounded-[3px] font-mono text-[11px] uppercase tracking-[0.04em]">
-              <Link href="/deploy">
-                <Rocket className="h-3.5 w-3.5" />
-                Deploy
-              </Link>
-            </Button>
-          </>
+          <div className="flex overflow-hidden rounded-[3px] border border-line bg-bg-2">
+            {TIME_RANGES.map((range) => (
+              <button
+                key={range.value}
+                type="button"
+                onClick={() => setTimeRange(range.value)}
+                className={cn(
+                  "h-8 px-2.5 font-mono text-[11px] uppercase tracking-[0.04em] text-fg-2 transition-colors hover:text-fg",
+                  timeRange === range.value && "bg-accent-soft text-accent-brand",
+                )}
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
         }
       />
 
@@ -360,12 +374,11 @@ export default function DashboardPage() {
               width={820}
               height={250}
               className="h-[250px] w-full"
-              series={[
-                ...chartSeries(chartData.data?.pipeline.eventsIn, "var(--accent-brand)", "in"),
-                ...chartSeries(chartData.data?.pipeline.eventsOut, "var(--chart-2)", "out"),
-              ]}
-              yLabels={["0", "25%", "50%", "75%", "max"]}
+              series={eventSeries}
+              yLabels={axisLabels(eventSeries.flatMap((series) => series.data), formatEventsRate)}
               xLabels={["-60m", "-45m", "-30m", "-15m", "now"]}
+              pointLabels={eventPointLabels}
+              valueFormatter={formatEventsRate}
             />
           </div>
         </section>
@@ -396,12 +409,11 @@ export default function DashboardPage() {
               width={390}
               height={190}
               className="h-[190px] w-full"
-              series={[
-                ...chartSeries(chartData.data?.pipeline.errors, "var(--status-error)", "errors"),
-                ...chartSeries(chartData.data?.pipeline.discarded, "var(--chart-4)", "discarded"),
-              ]}
-              yLabels={["0", "", "", "", "max"]}
+              series={errorSeries}
+              yLabels={axisLabels(errorSeries.flatMap((series) => series.data), formatSI)}
               xLabels={["", "", "now"]}
+              pointLabels={errorPointLabels}
+              valueFormatter={formatSI}
             />
           </div>
         </section>
