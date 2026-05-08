@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useTRPC } from "@/trpc/client";
 import { useTeamStore } from "@/stores/team-store";
@@ -32,7 +33,10 @@ type PromotionPipeline = {
 
 type PipelineListResult =
   | Array<{ id: string; name: string }>
-  | { pipelines: Array<{ id: string; name: string }> };
+  | {
+      pipelines: Array<{ id: string; name: string }>;
+      nextCursor?: string;
+    };
 
 type NewPromotionButtonProps = {
   label: string;
@@ -41,6 +45,67 @@ type NewPromotionButtonProps = {
   size?: React.ComponentProps<typeof Button>["size"];
 };
 
+type PromotionEnvironment = {
+  id: string;
+  name: string;
+};
+
+type PromotionPipelineFetcher = {
+  queryClient: Pick<QueryClient, "fetchQuery">;
+  environments: PromotionEnvironment[];
+  getQueryOptions: (input: {
+    environmentId: string;
+    cursor?: string;
+    limit: number;
+  }) => unknown;
+};
+
+function getPipelineItems(data: PipelineListResult | undefined) {
+  return Array.isArray(data) ? data : data?.pipelines ?? [];
+}
+
+function getNextCursor(data: PipelineListResult | undefined) {
+  return Array.isArray(data) ? undefined : data?.nextCursor;
+}
+
+export async function fetchPromotionPipelinesForEnvironments({
+  queryClient,
+  environments,
+  getQueryOptions,
+}: PromotionPipelineFetcher): Promise<PromotionPipeline[]> {
+  const pipelines: PromotionPipeline[] = [];
+
+  for (const environment of environments) {
+    let cursor: string | undefined;
+
+    do {
+      const data = (await queryClient.fetchQuery(
+        getQueryOptions({
+          environmentId: environment.id,
+          cursor,
+          limit: 200,
+        }) as never,
+      )) as PipelineListResult;
+
+      pipelines.push(
+        ...getPipelineItems(data).map((pipeline) => ({
+          id: pipeline.id,
+          name: pipeline.name,
+          environmentId: environment.id,
+          environmentName: environment.name,
+        })),
+      );
+
+      cursor = getNextCursor(data);
+    } while (cursor);
+  }
+
+  return pipelines.sort((left, right) => {
+    const byName = left.name.localeCompare(right.name);
+    return byName !== 0 ? byName : left.environmentName.localeCompare(right.environmentName);
+  });
+}
+
 export function NewPromotionButton({
   label,
   icon,
@@ -48,6 +113,7 @@ export function NewPromotionButton({
   size = "sm",
 }: NewPromotionButtonProps) {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const selectedTeamId = useTeamStore((state) => state.selectedTeamId);
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [promoteTarget, setPromoteTarget] = React.useState<PromotionPipeline | null>(null);
@@ -59,37 +125,28 @@ export function NewPromotionButton({
     ),
   );
 
-  const environments = environmentsQuery.data ?? [];
-  const pipelineQueries = useQueries({
-    queries: environments.map((environment) =>
-      trpc.pipeline.list.queryOptions(
-        { environmentId: environment.id },
-        { enabled: pickerOpen && Boolean(selectedTeamId) },
-      ),
-    ),
+  const environments = (environmentsQuery.data ?? []) as PromotionEnvironment[];
+  const pipelinesQuery = useQuery({
+    queryKey: [
+      "promotion-pipeline-picker",
+      selectedTeamId,
+      environments.map((environment) => environment.id).join(","),
+    ],
+    enabled: pickerOpen && Boolean(selectedTeamId) && environments.length > 0,
+    queryFn: () =>
+      fetchPromotionPipelinesForEnvironments({
+        queryClient,
+        environments,
+        getQueryOptions: (input) =>
+          trpc.pipeline.list.queryOptions(input, {
+            staleTime: 30_000,
+          }),
+      }),
   });
 
-  const isLoadingPipelines = pickerOpen && pipelineQueries.some((query) => query.isLoading || query.isPending);
-  const hasPipelineError = pipelineQueries.some((query) => query.isError);
-
-  const pipelines = React.useMemo<PromotionPipeline[]>(() => {
-    return environments
-      .flatMap((environment, index) => {
-        const query = pipelineQueries[index];
-        const data = query?.data as PipelineListResult | undefined;
-        const items = Array.isArray(data) ? data : data?.pipelines ?? [];
-        return items.map((pipeline) => ({
-          id: pipeline.id,
-          name: pipeline.name,
-          environmentId: environment.id,
-          environmentName: environment.name,
-        }));
-      })
-      .sort((left, right) => {
-        const byName = left.name.localeCompare(right.name);
-        return byName !== 0 ? byName : left.environmentName.localeCompare(right.environmentName);
-      });
-  }, [environments, pipelineQueries]);
+  const pipelines = pipelinesQuery.data ?? [];
+  const isLoadingPipelines = pickerOpen && pipelinesQuery.isLoading;
+  const hasPipelineError = pipelinesQuery.isError;
 
   const handleSelectPipeline = React.useCallback((pipeline: PromotionPipeline) => {
     setPickerOpen(false);
