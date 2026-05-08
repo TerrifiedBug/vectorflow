@@ -28,8 +28,8 @@ interface NodeShellProps {
   badge?: ReactNode;
 }
 
-const NODE_W = 156;
-const NODE_H = 60;
+const NODE_W = 180;
+const NODE_H = 72;
 
 const COLOR_VAR: Record<NodeKind, string> = {
   source: "var(--node-source)",
@@ -46,7 +46,7 @@ const GLOW_VAR: Record<NodeKind, string> = {
 /**
  * NodeShell — shared visual chrome for the v2 source/transform/sink node cards.
  *
- * 156×60 rounded card, 1px line-2 border, bg-bg-2 fill, 3px coloured accent
+ * 180×72 rounded card, 1px line-2 border, bg-bg-2 fill, 3px coloured accent
  * stripe on the left, and an absolute-positioned 3.5px React Flow handle on
  * each port that the node kind supports.
  */

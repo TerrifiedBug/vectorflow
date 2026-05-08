@@ -5,6 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 const capturedMetricRequests = vi.hoisted((): Array<{ pipelineId: string; minutes: number }> => []);
+const capturedScorecardRequests = vi.hoisted((): Array<{ pipelineId: string }> => []);
 
 const pipeline = vi.hoisted(() => ({
   id: "pipe-qa",
@@ -76,6 +77,27 @@ const versions = vi.hoisted(() => [
   },
 ]);
 
+const scorecard = vi.hoisted(() => ({
+  health: {
+    status: "degraded",
+    slis: [
+      { metric: "error_rate", status: "breached", value: 0.05, threshold: 0.01, condition: "lt" },
+    ],
+  },
+  alerts: { firingCount: 2 },
+  anomalies: { openCount: 3, maxSeverity: "warning" },
+  cost: {
+    last24h: { costCents: 1234 },
+    prior24h: { costCents: 1000 },
+    deltaPercent: 23.4,
+  },
+  trend: {
+    throughput: { currentEventsPerSec: 9, baseline7dEventsPerSec: 7, deltaRatio: 1.29 },
+    errorRate: { current: 0.05, baseline7d: 0.02, deltaRatio: 2.5 },
+  },
+  recommendedAction: { kind: "investigate_sli", message: "Review recent error-rate regression." },
+}));
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "pipe-qa" }),
   useRouter: () => ({ push: vi.fn() }),
@@ -100,7 +122,9 @@ vi.mock("@tanstack/react-query", () => ({
       case "pipelineDependency.deploymentImpact":
         return { data: { total: 2, deployed: [{ id: "down-1" }], draft: [{ id: "down-2" }] }, isLoading: false, isError: false, error: null, refetch: vi.fn() };
       case "metrics.getPipelineMetrics":
-        return { data: { rows: [{ timestamp: new Date(), eventsIn: BigInt(10), eventsOut: BigInt(9), eventsDiscarded: BigInt(1), errorsTotal: BigInt(0), bytesIn: BigInt(100), bytesOut: BigInt(90), utilization: 0.4, latencyMeanMs: 7 }] }, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+        return { data: { rows: [{ timestamp: new Date(), eventsIn: BigInt(600), eventsOut: BigInt(540), eventsDiscarded: BigInt(6), errorsTotal: BigInt(30), bytesIn: BigInt(100), bytesOut: BigInt(90), utilization: 0.4, latencyMeanMs: 7 }] }, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+      case "pipeline.scorecard":
+        return { data: scorecard, isLoading: false, isError: false, error: null, refetch: vi.fn() };
       case "metrics.getComponentLatencyHistory":
         return { data: { components: {} }, isLoading: false, isError: false, error: null, refetch: vi.fn() };
       case "metrics.getComponentMetrics":
@@ -142,6 +166,12 @@ vi.mock("@/trpc/client", () => ({
       discardChanges: { mutationOptions: (options: unknown) => options },
       delete: { mutationOptions: (options: unknown) => options },
       update: { mutationOptions: (options: unknown) => options },
+      scorecard: {
+        queryOptions: (input: { pipelineId: string }) => {
+          capturedScorecardRequests.push(input);
+          return { __name: "pipeline.scorecard", input };
+        },
+      },
     },
     deploy: { undeploy: { mutationOptions: (options: unknown) => options } },
     team: { get: { queryOptions: (input: { id: string }) => ({ __name: "team.get", input }) } },
@@ -207,15 +237,39 @@ describe("pipeline operational pages", () => {
   afterEach(() => {
     cleanup();
     capturedMetricRequests.length = 0;
+    capturedScorecardRequests.length = 0;
   });
 
-  it("promotes pipeline detail from manifest summary to operational surface", () => {
+  it("surfaces live operating metrics instead of manifest-only summary cards", () => {
     render(<PipelineDetailPage />);
 
-    expect(screen.getByText(/Operational activity/i)).toBeInTheDocument();
-    expect(screen.getByText(/Attached runtime/i)).toBeInTheDocument();
-    expect(screen.getByText(/Dependency impact/i)).toBeInTheDocument();
-    expect(screen.getByText(/Value delivery/i)).toBeInTheDocument();
+    expect(capturedMetricRequests[0]).toMatchObject({ pipelineId: "pipe-qa", minutes: 60 });
+    expect(capturedScorecardRequests[0]).toMatchObject({ pipelineId: "pipe-qa" });
+    expect(screen.getByText(/Events In/i)).toBeInTheDocument();
+    expect(screen.getByText(/Events Out/i)).toBeInTheDocument();
+    expect(screen.getByText(/Latency/i)).toBeInTheDocument();
+    expect(screen.getByText(/Error Rate/i)).toBeInTheDocument();
+    expect(screen.getByText(/Cost \(24h\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Anomalies$/i)).toBeInTheDocument();
+    expect(screen.getByText(/Throughput/i)).toBeInTheDocument();
+    expect(screen.getByText(/Recent Activity/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pipeline Health/i)).toBeInTheDocument();
+    expect(screen.getByText(/Configuration/i)).toBeInTheDocument();
+    expect(screen.getByText("$12.34")).toBeInTheDocument();
+    expect(screen.getAllByText("5.0%").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Operational activity/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Attached runtime/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Dependency impact/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Value delivery/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Aggregate process/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Guardrails & recovery/i)).not.toBeInTheDocument();
+  });
+
+  it("renames the primary edit action to canvas language", () => {
+    render(<PipelineDetailPage />);
+
+    expect(screen.getByRole("link", { name: /edit canvas/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /edit draft/i })).not.toBeInTheDocument();
   });
 
   it("shows deployed versus draft banner when the editor has pending changes", () => {
