@@ -155,40 +155,40 @@ export async function queryEnvironmentPipelineMetricsAggregated(input: {
   const since = new Date(Date.now() - input.minutes * 60 * 1000);
 
   if (source === "raw") {
-    const rows = await prisma.pipelineMetric.groupBy({
-      by: ["timestamp"],
-      where: {
-        pipeline: { environmentId: input.environmentId },
-        nodeId: null,
-        componentId: null,
-        timestamp: { gte: since },
-      },
-      _sum: {
-        eventsIn: true,
-        eventsOut: true,
-        eventsDiscarded: true,
-        errorsTotal: true,
-        bytesIn: true,
-        bytesOut: true,
-      },
-      _avg: {
-        utilization: true,
-        latencyMeanMs: true,
-      },
-      orderBy: { timestamp: "asc" },
-    });
+    const rows = await prisma.$queryRawUnsafe<EnvironmentAggregateRow[]>(
+      `SELECT
+         date_trunc('minute', pm.timestamp) AS bucket,
+         SUM(pm."eventsIn")::bigint AS events_in,
+         SUM(pm."eventsOut")::bigint AS events_out,
+         SUM(pm."eventsDiscarded")::bigint AS events_discarded,
+         SUM(pm."errorsTotal")::bigint AS errors_total,
+         SUM(pm."bytesIn")::bigint AS bytes_in,
+         SUM(pm."bytesOut")::bigint AS bytes_out,
+         AVG(pm.utilization) AS avg_utilization,
+         AVG(pm."latencyMeanMs") AS avg_latency_ms
+       FROM "PipelineMetric" pm
+       JOIN "Pipeline" p ON p.id = pm."pipelineId"
+       WHERE p."environmentId" = $1
+         AND pm."nodeId" IS NULL
+         AND pm."componentId" IS NULL
+         AND pm.timestamp >= $2
+       GROUP BY bucket
+       ORDER BY bucket ASC`,
+      input.environmentId,
+      since,
+    );
 
     return {
       rows: rows.map((r) => ({
-        timestamp: r.timestamp,
-        eventsIn: r._sum.eventsIn ?? BigInt(0),
-        eventsOut: r._sum.eventsOut ?? BigInt(0),
-        eventsDiscarded: r._sum.eventsDiscarded ?? BigInt(0),
-        errorsTotal: r._sum.errorsTotal ?? BigInt(0),
-        bytesIn: r._sum.bytesIn ?? BigInt(0),
-        bytesOut: r._sum.bytesOut ?? BigInt(0),
-        utilization: r._avg.utilization ?? 0,
-        latencyMeanMs: r._avg.latencyMeanMs,
+        timestamp: r.bucket,
+        eventsIn: r.events_in,
+        eventsOut: r.events_out,
+        eventsDiscarded: r.events_discarded,
+        errorsTotal: r.errors_total,
+        bytesIn: r.bytes_in,
+        bytesOut: r.bytes_out,
+        utilization: r.avg_utilization ?? 0,
+        latencyMeanMs: r.avg_latency_ms,
       })),
     };
   }
