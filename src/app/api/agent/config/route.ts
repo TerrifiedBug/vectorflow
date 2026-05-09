@@ -4,10 +4,49 @@ import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
 import { collectSecretRefs, convertSecretRefsToEnvVars, resolveCertRefs, secretNameToEnvVar } from "@/server/services/secret-resolver";
 import { decrypt } from "@/server/services/crypto";
+import { fetchVaultSecrets, readVaultSecretObject, type VaultBackendConfig } from "@/server/services/vault-client";
 import { createHash } from "crypto";
 import { setExpectedChecksum } from "@/server/services/drift-metrics";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { warnLog, errorLog } from "@/lib/logger";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function decryptVaultConfig(config: unknown): VaultBackendConfig {
+  if (!isRecord(config)) {
+    throw new Error("Vault secret backend config is missing");
+  }
+
+  const decrypted = { ...config } as Record<string, unknown>;
+  for (const key of ["token", "secretId"]) {
+    const value = decrypted[key];
+    if (typeof value === "string" && value.length > 0) {
+      decrypted[key] = decrypt(value);
+    }
+  }
+  return decrypted as unknown as VaultBackendConfig;
+}
+function resolveVaultSecretsFromObject(
+  data: Record<string, unknown>,
+  basePath: string,
+  secretNames: Iterable<string>,
+): Map<string, string> {
+  const secrets = new Map<string, string>();
+  for (const secretName of secretNames) {
+    const value = data[secretName];
+    if (typeof value === "string") {
+      secrets.set(secretName, value);
+      continue;
+    }
+    if (!(secretName in data)) {
+      throw new Error(`Vault field "${secretName}" was not found in "${basePath}"`);
+    }
+    throw new Error(`Vault field "${secretName}" in "${basePath}" must be a string`);
+  }
+  return secrets;
+}
 
 export async function GET(request: Request) {
   const rateLimited = await checkTokenRateLimit(request, "config", 30);
@@ -93,8 +132,10 @@ export async function GET(request: Request) {
     // Collect secret names actually referenced across all pipeline configs,
     // then fetch and decrypt only those — not every secret in the environment.
     const secrets: Record<string, string> = {};
-    if (environment.secretBackend === "BUILTIN") {
-      const referencedNames = new Set<string>();
+    const referencedNames = new Set<string>();
+    let sharedVaultData: Record<string, unknown> | null = null;
+    let vaultConfig: VaultBackendConfig | null = null;
+    if (environment.secretBackend === "BUILTIN" || environment.secretBackend === "VAULT") {
       for (const p of pipelines) {
         try {
           const ver = p.versions[0];
@@ -110,7 +151,7 @@ export async function GET(request: Request) {
         }
       }
 
-      if (referencedNames.size > 0) {
+      if (environment.secretBackend === "BUILTIN" && referencedNames.size > 0) {
         const envSecrets = await prisma.secret.findMany({
           where: {
             environmentId: agent.environmentId,
@@ -125,6 +166,13 @@ export async function GET(request: Request) {
           secrets[envKey] = decrypt(s.encryptedValue);
         }
       }
+
+      if (environment.secretBackend === "VAULT") {
+        vaultConfig = decryptVaultConfig(environment.secretBackendConfig);
+        if (vaultConfig.basePath && referencedNames.size > 0) {
+          sharedVaultData = await readVaultSecretObject(vaultConfig, vaultConfig.basePath);
+        }
+      }
     }
 
     for (const pipeline of pipelines) {
@@ -135,12 +183,34 @@ export async function GET(request: Request) {
         const version = latestVersion.version;
         let configYaml = latestVersion.configYaml;
         let certFiles: Array<{ name: string; filename: string; data: string }> = [];
+        let pipelineSecrets = secrets;
 
-        if (environment.secretBackend === "BUILTIN") {
+        if (environment.secretBackend === "BUILTIN" || environment.secretBackend === "VAULT") {
           // Parse versioned YAML back to objects so we can resolve references
           // at the object level. This ensures js-yaml properly quotes values
           // containing special characters when we re-dump.
           const parsedConfig = yaml.load(configYaml) as Record<string, unknown>;
+
+          if (environment.secretBackend === "VAULT") {
+            pipelineSecrets = {};
+            const pipelineSecretRefs = collectSecretRefs(parsedConfig);
+            if (pipelineSecretRefs.size > 0) {
+              const vaultSecrets = sharedVaultData && vaultConfig?.basePath
+                ? resolveVaultSecretsFromObject(sharedVaultData, vaultConfig.basePath, pipelineSecretRefs)
+                : await fetchVaultSecrets(
+                    vaultConfig ?? decryptVaultConfig(environment.secretBackendConfig),
+                    Array.from(pipelineSecretRefs),
+                    vaultConfig?.basePath ? { basePath: vaultConfig.basePath } : {},
+                  );
+              for (const [name, value] of vaultSecrets.entries()) {
+                const envKey = secretNameToEnvVar(name);
+                if (pipelineSecrets[envKey] !== undefined) {
+                  warnLog("agent-config", `Secret name collision: "${name}" normalizes to "${envKey}" which is already set`);
+                }
+                pipelineSecrets[envKey] = value;
+              }
+            }
+          }
 
           // Convert SECRET[name] → ${VF_SECRET_NAME} env var placeholders.
           // Vector interpolates these from environment variables set by the agent.
@@ -157,11 +227,11 @@ export async function GET(request: Request) {
           // Re-dump to YAML with proper quoting for special characters
           configYaml = yaml.dump(withCerts, { indent: 2, lineWidth: -1, noRefs: true, forceQuotes: true, quotingType: '"' });
         }
-        // External backend: configYaml is used as-is with references intact
+        // Other external backends: configYaml is used as-is with references intact
 
         // Include secrets in checksum so secret rotation triggers agent restart
-        const checksumInput = Object.keys(secrets).length > 0
-          ? configYaml + JSON.stringify(secrets, Object.keys(secrets).sort())
+        const checksumInput = Object.keys(pipelineSecrets).length > 0
+          ? configYaml + JSON.stringify(pipelineSecrets, Object.keys(pipelineSecrets).sort())
           : configYaml;
         const checksum = createHash("sha256").update(checksumInput).digest("hex");
         setExpectedChecksum(pipeline.id, checksum);
@@ -173,8 +243,8 @@ export async function GET(request: Request) {
           configYaml,
           checksum,
           ...(latestVersion.logLevel ? { logLevel: latestVersion.logLevel } : {}),
-          ...(environment.secretBackend === "BUILTIN" && Object.keys(secrets).length > 0
-            ? { secrets }
+          ...((environment.secretBackend === "BUILTIN" || environment.secretBackend === "VAULT") && Object.keys(pipelineSecrets).length > 0
+            ? { secrets: pipelineSecrets }
             : {}),
           ...(certFiles.length > 0 ? { certFiles } : {}),
         });
@@ -215,7 +285,7 @@ export async function GET(request: Request) {
       pollIntervalMs: settings?.fleetPollIntervalMs ?? 15000,
       pushUrl,
       secretBackend: environment.secretBackend,
-      ...(environment.secretBackend !== "BUILTIN"
+      ...(environment.secretBackend !== "BUILTIN" && environment.secretBackend !== "VAULT"
         ? { secretBackendConfig: environment.secretBackendConfig }
         : {}),
       ...(pendingSamples.length > 0

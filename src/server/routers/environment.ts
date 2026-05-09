@@ -6,7 +6,108 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { generateEnrollmentToken } from "@/server/services/agent-token";
 import { encrypt, decrypt } from "@/server/services/crypto";
+import { testVaultConnection as testVaultClientConnection, listVaultFields, type VaultBackendConfig } from "@/server/services/vault-client";
 
+
+const VAULT_AUTH_METHODS = ["token", "approle", "kubernetes"] as const;
+
+function hasNoVaultDotSegments(path: string): boolean {
+  return path.trim().split("/").filter(Boolean).every((segment) => segment !== "." && segment !== "..");
+}
+
+
+const vaultConfigSchema = z.object({
+  address: z.string().trim().url("Vault address must be a valid URL").refine((value) => new URL(value).protocol === "https:", "Vault address must use HTTPS"),
+  authMethod: z.enum(VAULT_AUTH_METHODS),
+  mountPath: z.string().trim().min(1, "Vault mount path is required").refine(hasNoVaultDotSegments, "Vault paths cannot contain . or .. segments"),
+  basePath: z.string().trim().optional().refine((value) => !value || hasNoVaultDotSegments(value), "Vault paths cannot contain . or .. segments"),
+  namespace: z.string().trim().optional(),
+  token: z.string().optional(),
+  roleId: z.string().trim().optional(),
+  secretId: z.string().optional(),
+  role: z.string().trim().optional(),
+});
+
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function nonEmpty(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function sanitizeVaultConfigForClient(config: unknown): Record<string, unknown> | null {
+  if (!isRecord(config)) return null;
+  const safe = { ...config };
+  delete safe.token;
+  delete safe.secretId;
+  delete safe.jwt;
+  delete safe.jwtPath;
+  return {
+    ...safe,
+    ...(typeof config.basePath === "string" && config.basePath.trim() ? { basePath: config.basePath.trim() } : {}),
+    ...(typeof config.token === "string" && config.token.length > 0 ? { hasToken: true } : {}),
+    ...(typeof config.secretId === "string" && config.secretId.length > 0 ? { hasSecretId: true } : {}),
+  };
+}
+
+function prepareVaultConfigForStorage(inputConfig: unknown, existingConfig: unknown): VaultBackendConfig {
+  const parsed = vaultConfigSchema.parse(inputConfig);
+  const existing = isRecord(existingConfig) ? existingConfig : {};
+  const config: VaultBackendConfig = {
+    address: parsed.address,
+    authMethod: parsed.authMethod,
+    mountPath: parsed.mountPath,
+    ...(nonEmpty(parsed.basePath) ? { basePath: nonEmpty(parsed.basePath) } : {}),
+    ...(parsed.namespace ? { namespace: parsed.namespace } : {}),
+  };
+
+  if (parsed.authMethod === "token") {
+    const token = nonEmpty(parsed.token);
+    const storedToken = nonEmpty(existing.token);
+    if (!token && !storedToken) throw new TRPCError({ code: "BAD_REQUEST", message: "Vault token is required" });
+    config.token = token ? encrypt(token) : storedToken;
+  }
+
+  if (parsed.authMethod === "approle") {
+    const secretId = nonEmpty(parsed.secretId);
+    const storedSecretId = nonEmpty(existing.secretId);
+    if (!parsed.roleId) throw new TRPCError({ code: "BAD_REQUEST", message: "Vault AppRole role_id is required" });
+    if (!secretId && !storedSecretId) throw new TRPCError({ code: "BAD_REQUEST", message: "Vault AppRole secret_id is required" });
+    config.roleId = parsed.roleId;
+    if (parsed.role) config.role = parsed.role;
+    config.secretId = secretId ? encrypt(secretId) : storedSecretId;
+  }
+
+  if (parsed.authMethod === "kubernetes") {
+    if (!parsed.role) throw new TRPCError({ code: "BAD_REQUEST", message: "Vault role is required" });
+    config.role = parsed.role;
+  }
+
+  return config;
+}
+
+function prepareVaultConfigForConnection(inputConfig: unknown, existingConfig?: unknown): VaultBackendConfig {
+  const parsed = vaultConfigSchema.parse(inputConfig);
+  const existing = isRecord(existingConfig) ? existingConfig : {};
+  const storedToken = nonEmpty(existing.token);
+  const storedSecretId = nonEmpty(existing.secretId);
+  const token = nonEmpty(parsed.token);
+  const secretId = nonEmpty(parsed.secretId);
+
+  return {
+    address: parsed.address,
+    authMethod: parsed.authMethod,
+    mountPath: parsed.mountPath,
+    ...(nonEmpty(parsed.basePath) ? { basePath: nonEmpty(parsed.basePath) } : nonEmpty(existing.basePath) ? { basePath: nonEmpty(existing.basePath) } : {}),
+    ...(parsed.namespace ? { namespace: parsed.namespace } : {}),
+    ...(token ? { token } : storedToken ? { token: decrypt(storedToken) } : {}),
+    ...(parsed.roleId ? { roleId: parsed.roleId } : nonEmpty(existing.roleId) ? { roleId: nonEmpty(existing.roleId) } : {}),
+    ...(secretId ? { secretId } : storedSecretId ? { secretId: decrypt(storedSecretId) } : {}),
+    ...(parsed.role ? { role: parsed.role } : nonEmpty(existing.role) ? { role: nonEmpty(existing.role) } : {}),
+  };
+}
 export const environmentRouter = router({
   list: protectedProcedure
     .input(z.object({ teamId: z.string() }))
@@ -18,6 +119,7 @@ export const environmentRouter = router({
           id: true,
           name: true,
           teamId: true,
+          secretBackend: true,
           createdAt: true,
           gitOpsMode: true,
           gitRepoUrl: true,
@@ -73,6 +175,7 @@ export const environmentRouter = router({
       const { gitToken, enrollmentTokenHash, gitWebhookSecret: encryptedWebhookSecret, ...safe } = environment;
       return {
         ...safe,
+        secretBackendConfig: sanitizeVaultConfigForClient(safe.secretBackendConfig),
         hasEnrollmentToken: !!enrollmentTokenHash,
         hasGitToken: !!gitToken,
         hasWebhookSecret: !!encryptedWebhookSecret,
@@ -158,8 +261,18 @@ export const environmentRouter = router({
       }
 
       // Build update data, encrypting git token if provided
-      const { gitOpsMode: gitOpsModeInput, ...restWithoutGitOps } = rest;
+      const { gitOpsMode: gitOpsModeInput, secretBackendConfig, secretBackend, ...restWithoutGitOps } = rest;
       const data: Record<string, unknown> = { ...restWithoutGitOps };
+      if (secretBackend !== undefined) {
+        data.secretBackend = secretBackend;
+      }
+      if (secretBackend === "VAULT" || (secretBackend === undefined && existing.secretBackend === "VAULT" && secretBackendConfig !== undefined)) {
+        data.secretBackendConfig = prepareVaultConfigForStorage(secretBackendConfig, existing.secretBackendConfig);
+      } else if (secretBackend !== undefined) {
+        data.secretBackendConfig = secretBackend === "BUILTIN" ? null : (secretBackendConfig ?? null);
+      } else if (secretBackendConfig !== undefined) {
+        data.secretBackendConfig = secretBackendConfig;
+      }
       if (requireDeployApproval !== undefined) {
         data.requireDeployApproval = requireDeployApproval;
       }
@@ -196,10 +309,82 @@ export const environmentRouter = router({
       // never decrypt and return the stored secret on unrelated updates.
       return {
         ...safeUpdate,
+        secretBackendConfig: sanitizeVaultConfigForClient(safeUpdate.secretBackendConfig),
         hasEnrollmentToken: !!_eth,
         hasGitToken: !!_gt,
         hasWebhookSecret: !!_gws,
         gitWebhookSecret: plaintextWebhookSecret,
+      };
+    }),
+
+  testVaultConnection: protectedProcedure
+    .input(z.object({
+      environmentId: z.string(),
+      config: vaultConfigSchema,
+      testSecretPath: z.string().trim().refine((value) => !value || hasNoVaultDotSegments(value), "Vault paths cannot contain . or .. segments").optional(),
+    }))
+    .use(denyInDemo())
+    .use(withTeamAccess("EDITOR"))
+    .use(withAudit("environment.vaultConnection.tested", "Environment"))
+    .mutation(async ({ input }) => {
+      const parsed = vaultConfigSchema.parse(input.config);
+      const needsStoredCredential =
+        (parsed.authMethod === "token" && !nonEmpty(parsed.token)) ||
+        (parsed.authMethod === "approle" && (!nonEmpty(parsed.secretId) || !parsed.roleId));
+      const existing = needsStoredCredential
+        ? await prisma.environment.findUnique({
+            where: { id: input.environmentId },
+            select: { secretBackendConfig: true },
+          })
+        : null;
+
+      return testVaultClientConnection(
+        prepareVaultConfigForConnection(input.config, existing?.secretBackendConfig),
+        input.testSecretPath,
+      );
+    }),
+  listVaultSecrets: protectedProcedure
+    .input(z.object({ environmentId: z.string() }))
+    .use(withTeamAccess("VIEWER"))
+    .query(async ({ input }) => {
+      const environment = await prisma.environment.findUnique({
+        where: { id: input.environmentId },
+        select: {
+          secretBackend: true,
+          secretBackendConfig: true,
+        },
+      });
+      if (!environment) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Environment not found",
+        });
+      }
+
+      if (environment.secretBackend !== "VAULT") {
+        return {
+          backend: environment.secretBackend,
+          secrets: [],
+        };
+      }
+
+      const config = prepareVaultConfigForConnection(
+        isRecord(environment.secretBackendConfig)
+          ? { ...environment.secretBackendConfig, token: "", secretId: "" }
+          : environment.secretBackendConfig,
+        environment.secretBackendConfig,
+      );
+      const basePath = nonEmpty(config.basePath);
+      if (!basePath) {
+        return {
+          backend: environment.secretBackend,
+          secrets: [],
+        };
+      }
+
+      return {
+        backend: environment.secretBackend,
+        secrets: await listVaultFields(config, basePath),
       };
     }),
 
