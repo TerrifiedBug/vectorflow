@@ -6,8 +6,8 @@ import { PageHeader } from "@/components/ui/page-header";
 
 const TABS = [
   { id: "users", label: "Users", href: "/settings/users", icon: Users },
-  { id: "roles", label: "Roles", href: "/settings", icon: ShieldCheck },
-  { id: "sso", label: "SSO", href: "/settings", icon: ShieldCheck },
+  { id: "roles", label: "Roles", href: "/settings/roles", icon: ShieldCheck },
+  { id: "sso", label: "SSO", href: "/settings/sso", icon: ShieldCheck },
 ] as const;
 
 export function AccessSettingsShell({

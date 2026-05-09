@@ -386,7 +386,7 @@ describe("settingsRouter", () => {
       mockSettings(overrides);
       // @ts-expect-error - groupBy mock typing is complex
       prismaMock.vectorNode.groupBy.mockResolvedValue([]);
-      prismaMock.webhookEndpoint.count.mockResolvedValue(0);
+      prismaMock.alertRule.count.mockResolvedValue(0);
       prismaMock.pipeline.findFirst.mockResolvedValue(null);
       prismaMock.$queryRaw.mockResolvedValue([{ "?column?": 1 }] as never);
     }
@@ -403,7 +403,7 @@ describe("settingsRouter", () => {
       prismaMock.vectorNode.groupBy.mockResolvedValue([
         { status: "HEALTHY", _count: { id: 3 } },
       ]);
-      prismaMock.webhookEndpoint.count.mockResolvedValue(2);
+      prismaMock.alertRule.count.mockResolvedValue(3);
       prismaMock.pipeline.findFirst.mockResolvedValue({
         isDraft: false,
         deployedAt: new Date(),
@@ -411,7 +411,7 @@ describe("settingsRouter", () => {
 
       const result = await caller.productionReadiness();
 
-      expect(result.signals).toHaveLength(9);
+      expect(result.signals).toHaveLength(8);
       expect(result.checkedAt).toBeDefined();
       const signals = result.signals as ReadinessSignal[];
       const dbSignal = signals.find((s) => s.id === "database");
@@ -420,6 +420,11 @@ describe("settingsRouter", () => {
       expect(backupSignal?.status).toBe("ok");
       const fleetSignal = signals.find((s) => s.id === "fleet");
       expect(fleetSignal?.status).toBe("ok");
+      const alertSignal = signals.find((s) => s.id === "alerts");
+      expect(alertSignal?.status).toBe("ok");
+      expect(alertSignal?.detail).toBe("3 alert rules configured");
+      expect(signals.map((s) => s.id)).not.toContain("webhooks");
+      expect(signals.map((s) => s.id)).not.toContain("sentry");
     });
 
     it("sets database signal to error when DB query fails", async () => {
@@ -548,7 +553,7 @@ describe("settingsRouter", () => {
         prismaMock.vectorNode.groupBy.mockResolvedValue([
           { status: "HEALTHY", _count: { id: 2 } },
         ]);
-        prismaMock.webhookEndpoint.count.mockResolvedValue(1);
+        prismaMock.alertRule.count.mockResolvedValue(1);
         prismaMock.pipeline.findFirst.mockResolvedValue({
           isDraft: false,
           deployedAt: new Date(),
@@ -577,7 +582,7 @@ describe("settingsRouter", () => {
       prismaMock.systemSettings.create.mockRejectedValue(new Error("connection refused"));
       // @ts-expect-error - groupBy mock typing is complex
       prismaMock.vectorNode.groupBy.mockRejectedValue(new Error("connection refused"));
-      prismaMock.webhookEndpoint.count.mockRejectedValue(new Error("connection refused"));
+      prismaMock.alertRule.count.mockRejectedValue(new Error("connection refused"));
       prismaMock.pipeline.findFirst.mockRejectedValue(new Error("connection refused"));
 
       // Should not throw — must return a structured payload
@@ -587,7 +592,7 @@ describe("settingsRouter", () => {
       const dbSignal = signals.find((s) => s.id === "database");
       expect(dbSignal?.status).toBe("error");
       // Config-dependent signals should all be unknown
-      const configSignals = signals.filter((s) => s.id !== "database" && s.id !== "sentry");
+      const configSignals = signals.filter((s) => s.id !== "database");
       expect(configSignals.every((s) => s.status === "unknown")).toBe(true);
       expect(result.overallStatus).not.toBe("ok");
     });
