@@ -6,7 +6,10 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { isEventMetric } from "@/server/services/event-alerts";
 import { FLEET_METRICS, PIPELINE_FLEET_METRICS } from "@/server/services/alert-evaluator";
-import { queryPipelineMetricsAggregated } from "@/server/services/metrics-query";
+import {
+  queryEnvironmentPipelineMetricsAggregated,
+  queryPipelineMetricsAggregated,
+} from "@/server/services/metrics-query";
 import {
   evaluateRuleHistory,
   unsupportedPreviewReason,
@@ -76,7 +79,7 @@ export const alertRulesRouter = router({
       const env = await prisma.environment.findUnique({
         where: { id: input.environmentId },
       });
-      if (!env) {
+      if (!env || env.teamId !== input.teamId) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Environment not found",
@@ -445,14 +448,41 @@ export const alertRulesRouter = router({
       }
 
       if (!input.pipelineId) {
-        // Environment-wide preview is not implemented for Phase A — preview
-        // requires a specific pipeline because the metric source query is
-        // pipeline-scoped.
+        if (!input.environmentId) {
+          return {
+            supported: false as const,
+            reason: "Pick a pipeline to preview historical breaches.",
+            lookbackHours: input.lookbackHours,
+          };
+        }
+
+        const environment = await prisma.environment.findUnique({
+          where: { id: input.environmentId },
+          select: { teamId: true },
+        });
+        if (!environment || environment.teamId !== input.teamId) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Environment not found" });
+        }
+
+        const { rows } = await queryEnvironmentPipelineMetricsAggregated({
+          environmentId: input.environmentId,
+          minutes: input.lookbackHours * 60,
+        });
+
+        const { series, breaches, wouldHaveFired } = evaluateRuleHistory({
+          rows,
+          metric: input.metric,
+          condition: input.condition,
+          threshold: input.threshold,
+          durationSeconds: input.durationSeconds,
+        });
+
         return {
-          supported: false as const,
-          reason: input.environmentId
-            ? "Environment-wide preview isn't supported yet — pick a specific pipeline."
-            : "Pick a pipeline to preview historical breaches.",
+          supported: true as const,
+          series,
+          threshold: input.threshold,
+          breaches,
+          wouldHaveFired,
           lookbackHours: input.lookbackHours,
         };
       }
