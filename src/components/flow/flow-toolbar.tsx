@@ -871,7 +871,6 @@ export function FlowToolbar({
             open={shortcutsOpen}
             onOpenChange={setShortcutsOpen}
           />
-        </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-2 border-l border-line pl-2">
           {/* Pending approval indicator */}
