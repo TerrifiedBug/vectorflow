@@ -62,6 +62,19 @@ export async function GET(
     where: { filename: safe, status: "success" },
     select: { storageLocation: true },
   });
+  if (!record) {
+    // Check if an orphaned record exists to give a better error
+    const orphaned = await prisma.backupRecord.findFirst({
+      where: { filename: safe, status: "orphaned" },
+      select: { id: true },
+    });
+    if (orphaned) {
+      return jsonError(
+        "This backup's file has been removed from storage. The record is marked as orphaned.",
+        410
+      );
+    }
+  }
 
   if (record?.storageLocation?.startsWith("s3://")) {
     // Serve from S3 using direct streaming (no temp file)
