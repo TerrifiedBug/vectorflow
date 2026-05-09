@@ -22,6 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { isTimescaleDbAvailable } from "@/server/services/timescaledb";
 import {
   resolveMetricsSource,
+  queryEnvironmentPipelineMetricsAggregated,
   queryPipelineMetricsAggregated,
 } from "../metrics-query";
 
@@ -121,6 +122,43 @@ describe("metrics-query", () => {
       expect(prisma.pipelineMetric.findMany).toHaveBeenCalled();
       expect(mockQueryRaw).not.toHaveBeenCalled();
       expect(result.rows).toEqual([]);
+    });
+  });
+
+  describe("queryEnvironmentPipelineMetricsAggregated", () => {
+    it("buckets raw environment metrics by minute before aggregating across pipelines", async () => {
+      mockIsTimescale.mockReturnValue(true);
+      mockQueryRaw.mockResolvedValueOnce([
+        {
+          bucket: new Date("2026-03-29T10:00:00Z"),
+          events_in: BigInt(300),
+          events_out: BigInt(290),
+          events_discarded: BigInt(1),
+          errors_total: BigInt(3),
+          bytes_in: BigInt(3000),
+          bytes_out: BigInt(2900),
+          avg_utilization: 0.6,
+          avg_latency_ms: 42,
+        },
+      ]);
+
+      const result = await queryEnvironmentPipelineMetricsAggregated({
+        environmentId: "env-1",
+        minutes: 30,
+      });
+
+      expect(mockQueryRaw).toHaveBeenCalledTimes(1);
+      expect(prisma.pipelineMetric.groupBy).not.toHaveBeenCalled();
+      const sql = mockQueryRaw.mock.calls[0][0] as string;
+      expect(sql).toContain("date_trunc('minute'");
+      expect(sql).toContain("JOIN \"Pipeline\"");
+      expect(result.rows).toHaveLength(1);
+      expect(result.rows[0]).toMatchObject({
+        timestamp: new Date("2026-03-29T10:00:00Z"),
+        eventsIn: BigInt(300),
+        eventsOut: BigInt(290),
+        latencyMeanMs: 42,
+      });
     });
   });
 });
