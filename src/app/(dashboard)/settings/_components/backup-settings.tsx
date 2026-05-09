@@ -81,7 +81,11 @@ function formatDuration(ms: number | null | undefined): string {
 function StatusBadge({ status }: { status: string }) {
   if (status === "success") return <Badge variant="secondary">Success</Badge>;
   if (status === "failed") return <Badge variant="destructive">Failed</Badge>;
-  if (status === "orphaned") return <Badge variant="outline" className="text-muted-foreground">Orphaned</Badge>;
+  if (status === "orphaned") return (
+    <Badge variant="outline" className="text-muted-foreground" title="Backing file was removed from storage">
+      Orphaned
+    </Badge>
+  );
   return <Badge variant="outline">In progress</Badge>;
 }
 
@@ -354,25 +358,27 @@ export function BackupSettings() {
             </div>
           )}
 
-          <Button
-            onClick={() =>
-              updateStorageBackendMutation.mutate({
-                backend: storageBackend,
-                bucket: s3Bucket,
-                region: s3Region,
-                prefix: s3Prefix,
-                accessKeyId: s3AccessKeyId,
-                secretAccessKey: s3SecretAccessKey || "unchanged",
-                endpoint: s3Endpoint,
-              })
-            }
-            disabled={updateStorageBackendMutation.isPending}
-          >
-            {updateStorageBackendMutation.isPending && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            )}
-            Save Storage Settings
-          </Button>
+          <div className="border-t border-line pt-4">
+            <Button
+              onClick={() =>
+                updateStorageBackendMutation.mutate({
+                  backend: storageBackend,
+                  bucket: s3Bucket,
+                  region: s3Region,
+                  prefix: s3Prefix,
+                  accessKeyId: s3AccessKeyId,
+                  secretAccessKey: s3SecretAccessKey || "unchanged",
+                  endpoint: s3Endpoint,
+                })
+              }
+              disabled={updateStorageBackendMutation.isPending}
+            >
+              {updateStorageBackendMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Save Storage Settings
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

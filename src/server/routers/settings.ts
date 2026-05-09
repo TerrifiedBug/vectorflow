@@ -649,18 +649,23 @@ export const settingsRouter = router({
       type NodeStatRow = { status: string; _count: { id: number } };
       let settings: Awaited<ReturnType<typeof getOrCreateSettings>> | null = null;
       let nodeStats: NodeStatRow[] = [];
-      let webhookCount = 0;
+      let alertRuleCount = 0;
       let auditPipeline: { isDraft: boolean; deployedAt: Date | null } | null = null;
       let configAvailable = false;
       if (dbOk) {
         try {
-          [settings, nodeStats, webhookCount, auditPipeline] = await Promise.all([
+          [settings, nodeStats, alertRuleCount, auditPipeline] = await Promise.all([
             getOrCreateSettings(),
             prisma.vectorNode.groupBy({
               by: ["status"],
               _count: { id: true },
             }),
-            prisma.webhookEndpoint.count({ where: { enabled: true } }),
+            prisma.alertRule.count({
+              where: {
+                enabled: true,
+                OR: [{ snoozedUntil: null }, { snoozedUntil: { lt: new Date() } }],
+              },
+            }),
             prisma.pipeline.findFirst({
               where: { isSystem: true },
               select: { isDraft: true, deployedAt: true },
@@ -805,26 +810,17 @@ export const settingsRouter = router({
             : "Not deployed — audit events stay local only",
           href: "/settings/audit-shipping",
         },
-        // Outbound webhooks
+        // Alert rules
         {
-          id: "webhooks",
-          label: "Outbound webhooks",
-          status: !configAvailable ? "unknown" : webhookCount > 0 ? "ok" : "warn",
+          id: "alerts",
+          label: "Alert rules",
+          status: !configAvailable ? "unknown" : alertRuleCount > 0 ? "ok" : "warn",
           detail: !configAvailable
-            ? "Could not read webhook configuration"
-            : webhookCount > 0
-            ? `${webhookCount} active webhook${webhookCount !== 1 ? "s" : ""}`
-            : "No outbound webhooks configured",
-          href: "/settings/webhooks",
-        },
-        // Sentry
-        {
-          id: "sentry",
-          label: "Error tracking (Sentry)",
-          status: process.env.SENTRY_DSN ? "ok" : "warn",
-          detail: process.env.SENTRY_DSN
-            ? "DSN configured"
-            : "SENTRY_DSN not set — frontend errors not tracked",
+            ? "Could not read alert configuration"
+            : alertRuleCount > 0
+            ? `${alertRuleCount} alert rule${alertRuleCount !== 1 ? "s" : ""} configured`
+            : "No alert rules configured — failures may go undetected",
+          href: "/alerts",
         },
       ];
 
