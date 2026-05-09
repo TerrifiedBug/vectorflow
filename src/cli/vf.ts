@@ -92,14 +92,27 @@ export async function runVfCli(args: string[], deps: CliDeps = {}): Promise<CliR
     return { exitCode: 0, stdout: usage(), stderr: "" };
   }
 
-  const config = requireConfig(deps.env ?? process.env);
-  if ("error" in config) {
-    return { exitCode: 2, stdout: "", stderr: `${config.error}\n` };
-  }
-
-  const fetchImpl = deps.fetch ?? fetch;
 
   try {
+    if (command === "validate") {
+      const path = args[1];
+      if (!path) return { exitCode: 2, stdout: "", stderr: usage(command) };
+
+      const content = await readConfig(path);
+      const result = importVectorConfig(content);
+      return {
+        exitCode: 0,
+        stdout: json({ valid: true, nodeCount: result.nodes.length, edgeCount: result.edges.length, warnings: result.warnings }),
+        stderr: "",
+      };
+    }
+
+    const config = requireConfig(deps.env ?? process.env);
+    if ("error" in config) {
+      return { exitCode: 2, stdout: "", stderr: `${config.error}\n` };
+    }
+
+    const fetchImpl = deps.fetch ?? fetch;
     if (command === "deploy-status") {
       const pipelineId = args[1];
       if (!pipelineId) return { exitCode: 2, stdout: "", stderr: usage(command) };
@@ -137,18 +150,6 @@ export async function runVfCli(args: string[], deps: CliDeps = {}): Promise<CliR
       return { exitCode: 0, stdout: json(data), stderr: "" };
     }
 
-    if (command === "validate") {
-      const path = args[1];
-      if (!path) return { exitCode: 2, stdout: "", stderr: usage(command) };
-
-      const content = await readConfig(path);
-      const result = importVectorConfig(content);
-      return {
-        exitCode: 0,
-        stdout: json({ valid: true, nodeCount: result.nodes.length, edgeCount: result.edges.length, warnings: result.warnings }),
-        stderr: "",
-      };
-    }
 
     return { exitCode: 2, stdout: "", stderr: `Unknown command: ${command}\n${usage()}` };
   } catch (error) {

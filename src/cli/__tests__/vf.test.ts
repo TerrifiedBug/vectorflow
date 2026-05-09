@@ -116,7 +116,10 @@ describe("vf CLI", () => {
   it("validates a Vector config locally without mutating the server", async () => {
     const fetchMock = vi.fn();
 
-    const result = await runVfCli(["validate", vectorConfigFile()], { env: env(), fetch: fetchMock as never });
+    const result = await runVfCli(["validate", vectorConfigFile()], {
+      env: { VECTORFLOW_URL: undefined, VECTORFLOW_TOKEN: undefined },
+      fetch: fetchMock as never,
+    });
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("valid");
