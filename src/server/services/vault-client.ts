@@ -94,7 +94,8 @@ export async function testVaultConnection(
 ): Promise<{ success: true } | { success: false; error: string }> {
   try {
     if (testSecretPath?.trim()) {
-      await fetchVaultSecrets(config, [testSecretPath.trim()]);
+      const secretPath = testSecretPath.trim();
+      await readVaultSecretObject(config, secretPath, undefined, `Vault read failed for ${secretPath}`);
     } else {
       await authenticateVault(config, { verifyToken: true });
     }

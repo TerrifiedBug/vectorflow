@@ -195,9 +195,18 @@ export function SecretsVaultPage() {
     secretQueries.some((query) => query.isPending) ||
     certificateQueries.some((query) => query.isPending) ||
     bundleQueries.some((query) => query.isPending);
+  const failedVaultSecretEnvs = React.useMemo(
+    () =>
+      secretQueries.flatMap((query, index) =>
+        query.isError && envs[index]?.secretBackend === "VAULT"
+          ? [envs[index]!.name]
+          : [],
+      ),
+    [envs, secretQueries],
+  );
   const hasLoadError =
     envsQ.isError ||
-    secretQueries.some((query) => query.isError) ||
+    secretQueries.some((query, index) => query.isError && envs[index]?.secretBackend !== "VAULT") ||
     certificateQueries.some((query) => query.isError) ||
     bundleQueries.some((query) => query.isError);
 
@@ -853,7 +862,13 @@ export function SecretsVaultPage() {
           description="Secrets and certificates are stored per environment. Add an environment before creating vault entries."
         />
       )}
+      {teamId && failedVaultSecretEnvs.length > 0 && !hasLoadError && (
+        <div className="mx-6 rounded-[3px] border border-[color:var(--status-degraded)]/40 bg-[color:var(--status-degraded-bg)] px-4 py-3 text-sm text-status-degraded">
+          Vault unavailable for {failedVaultSecretEnvs.join(", ")}. Showing secrets from other environments.
+        </div>
+      )}
 
+ 
       {teamId && hasEnvironments && !hasLoadError && (
         <Tabs value={activeVaultTab} onValueChange={(value) => setActiveVaultTab(value as "entries" | "bundles")} className="min-h-0 flex-1 px-6">
           <TabsList variant="mono">

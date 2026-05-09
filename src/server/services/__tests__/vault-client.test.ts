@@ -302,4 +302,20 @@ describe("vault-client", () => {
       expect.any(Object),
     );
   });
+  it("tests connectivity against an explicit Vault path even when basePath is configured", async () => {
+    const config: VaultBackendConfig = {
+      address: "https://vault.example.com",
+      authMethod: "token",
+      mountPath: "secret",
+      basePath: "vectorflow",
+      token: "vault-token",
+    };
+    fetchMock.mockResolvedValueOnce(jsonResponse({ data: { data: { value: "ok" } } }));
+
+    await expect(testVaultConnection(config, "health/check")).resolves.toEqual({ success: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://vault.example.com/v1/secret/data/health/check",
+      expect.any(Object),
+    );
+  });
 });

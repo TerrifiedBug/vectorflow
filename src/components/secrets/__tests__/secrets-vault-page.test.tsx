@@ -85,6 +85,7 @@ const queryState = vi.hoisted(() => ({
     "env-1": { backend: "BUILTIN", secrets: [] },
     "env-2": { backend: "VAULT", secrets: ["OPENSEARCH_PROD"] },
   } as Record<string, { backend: string; secrets: string[] }>,
+  vaultSecretErrorsByEnvironment: {} as Record<string, string | undefined>,
   certificatesByEnvironment: {
     "env-1": [
       {
@@ -287,12 +288,14 @@ vi.mock("@tanstack/react-query", () => ({
         };
       }
       if (query.__name === "environment.listVaultSecrets") {
+        const environmentId = query.input?.environmentId ?? "";
+        const error = queryState.vaultSecretErrorsByEnvironment[environmentId];
         return {
-          data: queryState.vaultSecretsByEnvironment[query.input?.environmentId ?? ""] ?? { backend: "BUILTIN", secrets: [] },
+          data: error ? undefined : queryState.vaultSecretsByEnvironment[environmentId] ?? { backend: "BUILTIN", secrets: [] },
           isPending: false,
-          isError: false,
-          isSuccess: true,
-          error: null,
+          isError: Boolean(error),
+          isSuccess: !error,
+          error: error ? new Error(error) : null,
         };
       }
       if (query.__name === "certificate.bundleList") {
@@ -398,6 +401,7 @@ describe("SecretsVaultPage", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    queryState.vaultSecretErrorsByEnvironment = {};
   });
 
   it("renders secret and certificate rows and shows certificate usage details", async () => {
@@ -429,6 +433,15 @@ describe("SecretsVaultPage", () => {
     expect(screen.getAllByText("Vault").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /^rotate$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^delete$/i })).not.toBeInTheDocument();
+  });
+  it("degrades Vault lookup failures per environment instead of failing the whole page", async () => {
+    queryState.vaultSecretErrorsByEnvironment = { "env-2": "Vault unavailable" };
+
+    render(<SecretsVaultPage />);
+
+    expect(await screen.findByRole("button", { name: /api_key/i })).toBeInTheDocument();
+    expect(screen.queryByText(/failed to load vault entries/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/vault unavailable for staging/i)).toBeInTheDocument();
   });
   it("creates a secret from the header dropdown", async () => {
     render(<SecretsVaultPage />);
