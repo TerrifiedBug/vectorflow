@@ -358,6 +358,35 @@ describe("metrics.getNodePipelineRates", () => {
     });
   });
 
+  it("uses sent rates for SOURCE components that do not report received rates", async () => {
+    const dockerLogsSample = {
+      timestamp: Date.now(),
+      receivedEventsRate: 0,
+      sentEventsRate: 75,
+      receivedBytesRate: 0,
+      sentBytesRate: 4096,
+      errorCount: 0,
+      errorsRate: 0,
+      discardedRate: 0,
+      latencyMeanMs: null,
+    };
+
+    (metricStore.getAllForNode as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Map([["docker_logs", [dockerLogsSample]]]),
+    );
+
+    prismaMock.pipelineNode.findMany.mockResolvedValue([
+      { pipelineId: "pipe-1", componentKey: "docker_logs", displayName: "Docker logs", kind: "SOURCE" },
+    ] as never);
+
+    const result = await caller.getNodePipelineRates({ nodeId: "vnode-1" });
+
+    expect(result.rates["pipe-1"]).toMatchObject({
+      eventsInRate: 75,
+      bytesInRate: 4096,
+    });
+  });
+
   it("skips components with no samples", async () => {
     (metricStore.getAllForNode as ReturnType<typeof vi.fn>).mockReturnValue(
       new Map([["source-key", []]]),
@@ -481,6 +510,39 @@ describe("metrics.getLiveRates", () => {
     expect(result.rates["pipe-1"]).toMatchObject({
       eventsPerSec: 50,
       bytesPerSec: 5120,
+    });
+  });
+
+  it("uses sent rates for SOURCE components that do not report received rates", async () => {
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      {
+        id: "pipe-1",
+        nodes: [{ componentKey: "docker_logs", kind: "SOURCE" }],
+      },
+    ] as never);
+    prismaMock.vectorNode.findMany.mockResolvedValue([{ id: "vnode-1" }] as never);
+
+    const dockerLogsSample = {
+      timestamp: Date.now(),
+      receivedEventsRate: 0,
+      sentEventsRate: 75,
+      receivedBytesRate: 0,
+      sentBytesRate: 4096,
+      errorCount: 0,
+      errorsRate: 0,
+      discardedRate: 0,
+      latencyMeanMs: null,
+    };
+
+    (metricStore.getAllForPipeline as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Map([["docker_logs", [dockerLogsSample]]]),
+    );
+
+    const result = await caller.getLiveRates({ environmentId: "env-1" });
+
+    expect(result.rates["pipe-1"]).toMatchObject({
+      eventsPerSec: 75,
+      bytesPerSec: 4096,
     });
   });
 
