@@ -18,6 +18,7 @@
     "test:e2e:qa": "playwright test e2e/tests/qa-seeded-pipeline.spec.ts --project=qa-chromium",
     "postinstall": "prisma generate",
     "generate:openapi": "tsx scripts/generate-openapi.ts",
+    "vf": "tsx src/cli/vf.ts",
     "backfill:channel-secrets": "tsx scripts/backfill-channel-secrets.ts"
   },
   "dependencies": {
