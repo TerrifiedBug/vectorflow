@@ -423,9 +423,9 @@ export function FlowToolbar({
   return (
     <TooltipProvider>
       <div className="flex h-11 min-w-0 items-center gap-2 px-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden pr-1">
+        <div data-testid="pipeline-toolbar-identity" className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
           {showPipelineMeta && (
-            <div className="flex min-w-0 shrink items-center gap-1.5">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
               {pipelineName && (
                 renameEditing && onRename ? (
                   <input
@@ -491,6 +491,9 @@ export function FlowToolbar({
           {gitOpsMode === "bidirectional" && (
             <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
           )}
+        </div>
+
+        <div data-testid="pipeline-toolbar-actions" className="flex shrink-0 items-center gap-2">
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -757,6 +760,7 @@ export function FlowToolbar({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+        </div>
 
           <Dialog open={importOpen} onOpenChange={setImportOpen}>
             <DialogContent className="sm:max-w-[460px]">
@@ -867,7 +871,6 @@ export function FlowToolbar({
             open={shortcutsOpen}
             onOpenChange={setShortcutsOpen}
           />
-        </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-2 border-l border-line pl-2">
           {/* Pending approval indicator */}
