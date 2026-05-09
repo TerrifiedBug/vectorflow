@@ -54,6 +54,7 @@ export const alertRulesRouter = router({
     .input(
       z.object({
         name: z.string().min(1).max(200),
+        description: z.string().trim().max(1000).nullable().optional(),
         environmentId: z.string(),
         pipelineId: z.string().optional(),
         metric: z.nativeEnum(AlertMetric),
@@ -162,6 +163,7 @@ export const alertRulesRouter = router({
       const rule = await prisma.alertRule.create({
         data: {
           name: input.name,
+          description: input.description,
           environmentId: input.environmentId,
           pipelineId: input.pipelineId,
           teamId: input.teamId,
@@ -197,6 +199,7 @@ export const alertRulesRouter = router({
       z.object({
         id: z.string(),
         name: z.string().min(1).max(200).optional(),
+        description: z.string().trim().max(1000).nullable().optional(),
         enabled: z.boolean().optional(),
         threshold: z.number().optional(),
         durationSeconds: z.number().int().min(1).optional(),

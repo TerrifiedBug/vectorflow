@@ -217,6 +217,33 @@ describe("alertRulesRouter", () => {
       );
     });
 
+    it("persists and returns an optional description", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
+      prismaMock.alertRule.create.mockResolvedValue(
+        makeAlertRule({ description: "Escalate to the pipeline owner with recent metrics." }) as never,
+      );
+
+      const result = await caller.createRule({
+        name: "High CPU",
+        description: "Escalate to the pipeline owner with recent metrics.",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+        condition: "gt" as never,
+        threshold: 90,
+        durationSeconds: 60,
+        teamId: "team-1",
+      });
+
+      expect(result.description).toBe("Escalate to the pipeline owner with recent metrics.");
+      expect(prismaMock.alertRule.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            description: "Escalate to the pipeline owner with recent metrics.",
+          }),
+        }),
+      );
+    });
+
     it("creates a rule with operational metadata", async () => {
       prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
       prismaMock.alertRule.create.mockResolvedValue(
@@ -510,6 +537,29 @@ describe("alertRulesRouter", () => {
       const result = await caller.updateRule({ id: "rule-1", name: "Renamed" });
 
       expect(result.name).toBe("Renamed");
+    });
+
+    it("persists and returns description changes", async () => {
+      const existing = makeAlertRule({ description: null });
+      prismaMock.alertRule.findUnique.mockResolvedValue(existing as never);
+      prismaMock.alertRule.update.mockResolvedValue(
+        { ...existing, description: "Notify the owning team before remediation." } as never,
+      );
+
+      const result = await caller.updateRule({
+        id: "rule-1",
+        description: "Notify the owning team before remediation.",
+      });
+
+      expect(result.description).toBe("Notify the owning team before remediation.");
+      expect(prismaMock.alertRule.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "rule-1" },
+          data: expect.objectContaining({
+            description: "Notify the owning team before remediation.",
+          }),
+        }),
+      );
     });
 
     it("updates suggestedAction when editing description", async () => {
