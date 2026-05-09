@@ -21,34 +21,34 @@ type PipelineMetrics struct {
 
 // ComponentMetrics holds per-component metrics for editor node overlays.
 type ComponentMetrics struct {
-	ComponentID     string
-	ComponentKind   string // source, transform, sink
-	ReceivedEvents  int64
-	SentEvents      int64
-	ReceivedBytes   int64
-	SentBytes       int64
-	ErrorsTotal     int64
+	ComponentID        string
+	ComponentKind      string // source, transform, sink
+	ReceivedEvents     int64
+	SentEvents         int64
+	ReceivedBytes      int64
+	SentBytes          int64
+	ErrorsTotal        int64
 	DiscardedEvents    int64
 	LatencyMeanSeconds float64 // mean event time in component (seconds)
 }
 
 // HostMetrics holds system-level metrics from Vector's host_metrics source.
 type HostMetrics struct {
-	MemoryTotalBytes  int64
-	MemoryUsedBytes   int64
-	MemoryFreeBytes   int64
-	CpuSecondsTotal   float64
-	CpuSecondsIdle    float64
-	LoadAvg1          float64
-	LoadAvg5          float64
-	LoadAvg15         float64
-	FsTotalBytes      int64
-	FsUsedBytes       int64
-	FsFreeBytes       int64
-	DiskReadBytes     int64
-	DiskWrittenBytes  int64
-	NetRxBytes        int64
-	NetTxBytes        int64
+	MemoryTotalBytes int64
+	MemoryUsedBytes  int64
+	MemoryFreeBytes  int64
+	CpuSecondsTotal  float64
+	CpuSecondsIdle   float64
+	LoadAvg1         float64
+	LoadAvg5         float64
+	LoadAvg15        float64
+	FsTotalBytes     int64
+	FsUsedBytes      int64
+	FsFreeBytes      int64
+	DiskReadBytes    int64
+	DiskWrittenBytes int64
+	NetRxBytes       int64
+	NetTxBytes       int64
 }
 
 // ScrapeResult contains all metrics from a single Prometheus scrape.
@@ -98,9 +98,6 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 		switch name {
 		case "vector_component_received_events_total", "component_received_events_total":
 			v := int64(value)
-			if componentKind == "source" && !isInternal {
-				sr.Pipeline.EventsIn += v
-			}
 			getOrCreate(componentMap, componentID, componentKind).ReceivedEvents = v
 
 		case "vector_component_sent_events_total", "component_sent_events_total":
@@ -112,9 +109,6 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 
 		case "vector_component_received_bytes_total", "component_received_bytes_total":
 			v := int64(value)
-			if componentKind == "source" && !isInternal {
-				sr.Pipeline.BytesIn += v
-			}
 			getOrCreate(componentMap, componentID, componentKind).ReceivedBytes = v
 
 		case "vector_component_sent_bytes_total", "component_sent_bytes_total":
@@ -181,6 +175,28 @@ func ScrapePrometheus(metricsPort int) ScrapeResult {
 
 	if err := scanner.Err(); err != nil {
 		return ScrapeResult{}
+	}
+
+	// Source components usually expose received_* counters, but some pull-based
+	// sources (docker_logs) only expose sent_* counters for emitted events.
+	// Compute pipeline input totals after all component counters are known so
+	// received counters are preferred without dropping sent-only sources.
+	sr.Pipeline.EventsIn = 0
+	sr.Pipeline.BytesIn = 0
+	for _, cm := range componentMap {
+		if strings.HasPrefix(cm.ComponentID, "vf_") || cm.ComponentKind != "source" {
+			continue
+		}
+		if cm.ReceivedEvents > 0 {
+			sr.Pipeline.EventsIn += cm.ReceivedEvents
+		} else {
+			sr.Pipeline.EventsIn += cm.SentEvents
+		}
+		if cm.ReceivedBytes > 0 {
+			sr.Pipeline.BytesIn += cm.ReceivedBytes
+		} else {
+			sr.Pipeline.BytesIn += cm.SentBytes
+		}
 	}
 
 	// Convert component map to slice, filtering out injected vf_ components

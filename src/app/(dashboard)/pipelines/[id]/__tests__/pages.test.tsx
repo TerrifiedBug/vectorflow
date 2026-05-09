@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 const capturedMetricRequests = vi.hoisted((): Array<{ pipelineId: string; minutes: number }> => []);
 const capturedScorecardRequests = vi.hoisted((): Array<{ pipelineId: string }> => []);
+const mockUpdateNodeMetrics = vi.hoisted(() => vi.fn());
 
 const pipeline = vi.hoisted(() => ({
   id: "pipe-qa",
@@ -128,6 +129,33 @@ vi.mock("@tanstack/react-query", () => ({
       case "metrics.getComponentLatencyHistory":
         return { data: { components: {} }, isLoading: false, isError: false, error: null, refetch: vi.fn() };
       case "metrics.getComponentMetrics":
+        return {
+          data: {
+            components: {
+              "source-0": {
+                componentKey: "source-0",
+                displayName: "Docker logs",
+                componentType: "docker_logs",
+                kind: "SOURCE",
+                samples: [{
+                  timestamp: Date.now(),
+                  receivedEventsRate: 0,
+                  sentEventsRate: 250,
+                  receivedBytesRate: 0,
+                  sentBytesRate: 3000,
+                  errorCount: 0,
+                  errorsRate: 0,
+                  discardedRate: 0,
+                  latencyMeanMs: null,
+                }],
+              },
+            },
+          },
+          isLoading: false,
+          isError: false,
+          error: null,
+          refetch: vi.fn(),
+        };
       case "pipeline.logs":
       case "team.get":
       case "promotion.history":
@@ -186,7 +214,7 @@ vi.mock("@/stores/flow-store", () => {
     loadGraph: vi.fn(),
     isDirty: true,
     markClean: vi.fn(),
-    updateNodeMetrics: vi.fn(),
+    updateNodeMetrics: mockUpdateNodeMetrics,
     nodes: pipeline.nodes.map((node) => ({ id: node.id, type: node.kind.toLowerCase(), position: { x: node.positionX, y: node.positionY }, data: { componentKey: node.componentKey, componentDef: { type: node.componentType, configSchema: {} }, config: node.config } })),
     edges: [{ id: "edge-1", source: "node-source", target: "node-sink" }],
     selectedNodeId: null,
@@ -238,6 +266,7 @@ describe("pipeline operational pages", () => {
     cleanup();
     capturedMetricRequests.length = 0;
     capturedScorecardRequests.length = 0;
+    mockUpdateNodeMetrics.mockClear();
   });
 
   it("surfaces live operating metrics instead of manifest-only summary cards", () => {
@@ -277,6 +306,18 @@ describe("pipeline operational pages", () => {
 
     expect(screen.getByText(/Unsaved draft/i)).toBeInTheDocument();
     expect(screen.getByText(/deployed v7/i)).toBeInTheDocument();
+  });
+
+  it("uses source sent metrics when docker logs reports no received metrics", async () => {
+    render(<PipelineBuilderPage />);
+
+    await waitFor(() => expect(mockUpdateNodeMetrics).toHaveBeenCalled());
+    const metricsMap = mockUpdateNodeMetrics.mock.calls.at(-1)?.[0] as Map<string, { eventsPerSec: number; bytesPerSec: number }>;
+
+    expect(metricsMap.get("source-0")).toMatchObject({
+      eventsPerSec: 250,
+      bytesPerSec: 3000,
+    });
   });
 
   it("defaults metrics to the seeded QA data window", () => {

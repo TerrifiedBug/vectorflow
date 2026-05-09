@@ -5,6 +5,7 @@ import type { MetricUpdateEvent } from "@/lib/sse/types";
 import type { MetricSample } from "@/server/services/metric-store";
 import type { NodeMetricsData } from "@/stores/flow-store";
 import { useSSE } from "@/hooks/use-sse";
+import { sourceBytesRate, sourceEventsRate } from "@/lib/metrics/component-rates";
 import { useFlowStore } from "@/stores/flow-store";
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -12,9 +13,11 @@ import { useFlowStore } from "@/stores/flow-store";
 const MAX_SAMPLES = 60;
 
 // ── Kind → rate field mapping ────────────────────────────────────────
-// Matches the existing logic in pipelines/[id]/page.tsx lines 200–210.
-// - events: received rate for sources/sinks, sent rate for transforms (post-filter output)
-// - bytes: received for sources/transforms (I/O in), sent for sinks (I/O out)
+// Matches the editor polling path.
+// - events: sources use received rate with sent-rate fallback, sinks use
+//   received rate, transforms use sent rate (post-filter output)
+// - bytes: sources use received rate with sent-rate fallback, transforms use
+//   received rate, sinks use sent rate
 // - transforms also carry eventsInPerSec (received = pre-filter input)
 
 export type NodeKind = "source" | "transform" | "sink";
@@ -32,13 +35,15 @@ export function deriveMetrics(
     kind === "transform"
       ? latest.sentEventsRate
       : kind === "source"
-        ? (latest.receivedEventsRate || latest.sentEventsRate)
+        ? sourceEventsRate(latest)
         : latest.receivedEventsRate;
 
   const bytesPerSec =
     kind === "sink"
       ? latest.sentBytesRate
-      : latest.receivedBytesRate;
+      : kind === "source"
+        ? sourceBytesRate(latest)
+        : latest.receivedBytesRate;
 
   return {
     eventsPerSec,

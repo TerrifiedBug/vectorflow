@@ -45,6 +45,7 @@ import { useTeamStore } from "@/stores/team-store";
 import { QueryError } from "@/components/query-error";
 import { useFlowMetrics } from "@/hooks/use-flow-metrics";
 import { usePollingInterval } from "@/hooks/use-polling-interval";
+import { sourceBytesRate, sourceEventsRate } from "@/lib/metrics/component-rates";
 
 /**
  * Convert database PipelineNode rows into React Flow nodes.
@@ -261,10 +262,20 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
     for (const [, entry] of Object.entries(components)) {
       const latest = entry.samples[entry.samples.length - 1];
       if (!latest) continue;
-      // Events: received rate for sources/sinks, sent rate for transforms (post-filter)
-      // Bytes: received for sources (I/O in), sent for sinks (I/O out), neither for transforms
-      const eventsPerSec = entry.kind === "TRANSFORM" ? latest.sentEventsRate : latest.receivedEventsRate;
-      const bytesPerSec = entry.kind === "SINK" ? latest.sentBytesRate : latest.receivedBytesRate;
+      // Events/bytes: sources usually report received rates, but some pull-based
+      // sources (docker_logs) only expose sent rates as their emitted event count.
+      const eventsPerSec =
+        entry.kind === "TRANSFORM"
+          ? latest.sentEventsRate
+          : entry.kind === "SOURCE"
+            ? sourceEventsRate(latest)
+            : latest.receivedEventsRate;
+      const bytesPerSec =
+        entry.kind === "SINK"
+          ? latest.sentBytesRate
+          : entry.kind === "SOURCE"
+            ? sourceBytesRate(latest)
+            : latest.receivedBytesRate;
       metricsMap.set(entry.componentKey, {
         eventsPerSec,
         bytesPerSec,
