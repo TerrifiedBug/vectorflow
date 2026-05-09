@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeInput, SENSITIVE_KEYS } from "../audit-sanitize";
+import { computeDiff, sanitizeInput, SENSITIVE_KEYS } from "../audit-sanitize";
 
 describe("sanitizeInput", () => {
   it("redacts top-level sensitive keys", () => {
@@ -36,6 +36,27 @@ describe("sanitizeInput", () => {
     });
   });
 
+  it("redacts Vault credential fields", () => {
+    const out = sanitizeInput({
+      secretBackendConfig: {
+        token: "vault-token",
+        secretId: "approle-secret-id",
+      },
+      config: {
+        secretId: "test-secret-id",
+      },
+    });
+    expect(out).toEqual({
+      secretBackendConfig: {
+        token: "[REDACTED]",
+        secretId: "[REDACTED]",
+      },
+      config: {
+        secretId: "[REDACTED]",
+      },
+    });
+  });
+
   it("recurses into nested objects and arrays", () => {
     const out = sanitizeInput({
       channels: [
@@ -66,5 +87,39 @@ describe("sanitizeInput", () => {
     expect(SENSITIVE_KEYS.has("smtpPass")).toBe(true);
     expect(SENSITIVE_KEYS.has("integrationKey")).toBe(true);
     expect(SENSITIVE_KEYS.has("webhookUrl")).toBe(true);
+  });
+
+  it("redacts nested sensitive fields in diffs", () => {
+    const diff = computeDiff(
+      {
+        secretBackendConfig: {
+          token: "old-token-ciphertext",
+          secretId: "old-secret-id-ciphertext",
+          mountPath: "secret",
+        },
+      },
+      {
+        secretBackendConfig: {
+          token: "new-token-ciphertext",
+          secretId: "new-secret-id-ciphertext",
+          mountPath: "secret",
+        },
+      },
+    );
+
+    expect(diff).toEqual({
+      secretBackendConfig: {
+        old: {
+          token: "[REDACTED]",
+          secretId: "[REDACTED]",
+          mountPath: "secret",
+        },
+        new: {
+          token: "[REDACTED]",
+          secretId: "[REDACTED]",
+          mountPath: "secret",
+        },
+      },
+    });
   });
 });

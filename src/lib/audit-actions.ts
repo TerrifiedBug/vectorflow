@@ -44,6 +44,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "environment.updated": "Environment updated",
   "environment.deleted": "Environment deleted",
   "environment.gitConnection.tested": "Git connection tested",
+  "environment.vaultConnection.tested": "Vault connection tested",
   "environment.enrollmentToken.generated": "Enrollment token generated",
   "environment.enrollmentToken.revoked": "Enrollment token revoked",
 
