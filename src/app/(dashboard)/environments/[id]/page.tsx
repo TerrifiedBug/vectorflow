@@ -61,6 +61,27 @@ import { isDemoMode } from "@/lib/is-demo-mode";
 
 const DEMO_EXAMPLE_ENROLL_TOKEN = "vf_enroll_demo_example_REPLACE_WHEN_SELF_HOSTED";
 
+type SecretBackend = "BUILTIN" | "VAULT" | "AWS_SM" | "EXEC";
+
+function isSupportedSecretBackend(backend: SecretBackend): backend is "BUILTIN" | "VAULT" {
+  return backend === "BUILTIN" || backend === "VAULT";
+}
+
+function secretBackendLabel(backend: SecretBackend | null | undefined) {
+  switch (backend) {
+    case "VAULT":
+      return "HashiCorp Vault";
+    case "AWS_SM":
+      return "AWS Secrets Manager (unsupported)";
+    case "EXEC":
+      return "Exec (custom script, unsupported)";
+    case "BUILTIN":
+    default:
+      return "Built-in";
+  }
+}
+
+
 type KpiTone = "default" | "ok" | "warn" | "error";
 
 export default function EnvironmentDetailPage({
@@ -87,7 +108,7 @@ export default function EnvironmentDetailPage({
   const [editing, setEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editName, setEditName] = useState("");
-  const [editSecretBackend, setEditSecretBackend] = useState<"BUILTIN" | "VAULT" | "AWS_SM" | "EXEC">("BUILTIN");
+  const [editSecretBackend, setEditSecretBackend] = useState<SecretBackend>("BUILTIN");
   const [editVaultConfig, setEditVaultConfig] = useState({
     address: "",
     authMethod: "token" as "token" | "approle" | "kubernetes",
@@ -195,16 +216,24 @@ export default function EnvironmentDetailPage({
   }
 
   function handleSave() {
-    updateMutation.mutate({
+    const payload: {
+      id: string;
+      name: string;
+      secretBackend?: "BUILTIN" | "VAULT";
+      secretBackendConfig?: Record<string, unknown>;
+    } = {
       id,
       name: editName,
-      secretBackend: editSecretBackend,
-      ...(editSecretBackend === "VAULT" ? {
-        secretBackendConfig: vaultConfigPayload(),
-      } : editSecretBackend !== "BUILTIN" ? {
-        secretBackendConfig: { backend: editSecretBackend },
-      } : {}),
-    });
+    };
+
+    if (isSupportedSecretBackend(editSecretBackend)) {
+      payload.secretBackend = editSecretBackend;
+      if (editSecretBackend === "VAULT") {
+        payload.secretBackendConfig = vaultConfigPayload();
+      }
+    }
+
+    updateMutation.mutate(payload);
   }
 
   function handleTestVaultConnection() {
@@ -507,23 +536,25 @@ export default function EnvironmentDetailPage({
             <CardContent className="space-y-4">
               <div>
                 {editing ? (
-                  <Select value={editSecretBackend} onValueChange={(val) => setEditSecretBackend(val as "BUILTIN" | "VAULT" | "AWS_SM" | "EXEC")}>
+                  <>
+                  <Select value={editSecretBackend} onValueChange={(val) => setEditSecretBackend(val as SecretBackend)}>
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="BUILTIN">Built-in (VectorFlow delivers secrets as env vars)</SelectItem>
                       <SelectItem value="VAULT">HashiCorp Vault</SelectItem>
-                      <SelectItem value="AWS_SM">AWS Secrets Manager</SelectItem>
-                      <SelectItem value="EXEC">Exec (custom script)</SelectItem>
                     </SelectContent>
                   </Select>
+                  {!isSupportedSecretBackend(editSecretBackend) && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {secretBackendLabel(editSecretBackend)} is not available in this UI. Choose Built-in or Vault to change backends.
+                    </p>
+                  )}
+                  </>
                 ) : (
                   <Badge variant="secondary">
-                    {env.secretBackend === "VAULT" ? "HashiCorp Vault" :
-                     env.secretBackend === "AWS_SM" ? "AWS Secrets Manager" :
-                     env.secretBackend === "EXEC" ? "Exec (custom script)" :
-                     "Built-in"}
+                    {secretBackendLabel(env.secretBackend)}
                   </Badge>
                 )}
               </div>
