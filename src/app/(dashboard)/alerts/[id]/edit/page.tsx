@@ -8,6 +8,7 @@ import { useTeamStore } from "@/stores/team-store";
 import {
   AlertRuleForm,
   DEFAULT_FORM_VALUES,
+  DEFAULT_SUGGESTED_ACTION,
   type AlertRuleFormValues,
   type Severity,
 } from "@/components/alerts/alert-rule-form";
@@ -97,14 +98,18 @@ type RuleFromApi = {
   channels: { channelId: string }[];
 };
 
-function mapRuleToFormValues(rule: RuleFromApi): AlertRuleFormValues {
+export function mapRuleToFormValues(rule: RuleFromApi): AlertRuleFormValues {
   const severity: Severity =
     rule.severity === "info" || rule.severity === "warning" || rule.severity === "critical"
       ? rule.severity
       : "warning";
   return {
     name: rule.name,
-    description: rule.description ?? rule.suggestedAction ?? "",
+    description:
+      rule.description ??
+      (rule.suggestedAction && rule.suggestedAction !== DEFAULT_SUGGESTED_ACTION
+        ? rule.suggestedAction
+        : ""),
     severity,
     pipelineId: rule.pipelineId ?? "",
     metric: rule.metric,

@@ -56,7 +56,7 @@ export type AlertRuleFormValues = {
   channelIds: string[];
 };
 
-const DEFAULT_SUGGESTED_ACTION = "Review the alert context, then inspect the affected pipeline, node, and recent deployment changes.";
+export const DEFAULT_SUGGESTED_ACTION = "Review the alert context, then inspect the affected pipeline, node, and recent deployment changes.";
 export const DEFAULT_FORM_VALUES: AlertRuleFormValues = {
   name: "pipeline error rate breach",
   description: "",

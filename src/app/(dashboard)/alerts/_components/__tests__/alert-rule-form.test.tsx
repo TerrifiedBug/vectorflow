@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import React from "react";
-import { readFileSync } from "node:fs";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
@@ -108,7 +107,8 @@ vi.mock("@tanstack/react-query", () => ({
   }),
 }));
 
-import { AlertRuleForm, type AlertRuleFormValues } from "@/components/alerts/alert-rule-form";
+import { AlertRuleForm, DEFAULT_SUGGESTED_ACTION, type AlertRuleFormValues } from "@/components/alerts/alert-rule-form";
+import { mapRuleToFormValues } from "@/app/(dashboard)/alerts/[id]/edit/page";
 
 const formValues: AlertRuleFormValues = {
   name: "High CPU",
@@ -177,9 +177,39 @@ describe("AlertRuleForm", () => {
     );
   });
 
-  it("preserves suggestedAction as legacy description fallback in edit mapping", () => {
-    const editPageSource = readFileSync("src/app/(dashboard)/alerts/[id]/edit/page.tsx", "utf8");
+  it("uses legacy suggestedAction as edit description fallback only when it is custom", () => {
+    expect(
+      mapRuleToFormValues({
+        id: "rule-1",
+        name: "High CPU",
+        pipelineId: null,
+        metric: "cpu_usage",
+        condition: "gt",
+        threshold: 90,
+        durationSeconds: 300,
+        severity: "warning",
+        description: null,
+        suggestedAction: "Legacy guidance text",
+        cooldownMinutes: 15,
+        channels: [],
+      }).description,
+    ).toBe("Legacy guidance text");
 
-    expect(editPageSource).toContain("description: rule.description ?? rule.suggestedAction ?? \"\"");
+    expect(
+      mapRuleToFormValues({
+        id: "rule-2",
+        name: "High CPU",
+        pipelineId: null,
+        metric: "cpu_usage",
+        condition: "gt",
+        threshold: 90,
+        durationSeconds: 300,
+        severity: "warning",
+        description: null,
+        suggestedAction: DEFAULT_SUGGESTED_ACTION,
+        cooldownMinutes: 15,
+        channels: [],
+      }).description,
+    ).toBe("");
   });
 });
