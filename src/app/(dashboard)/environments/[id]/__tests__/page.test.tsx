@@ -3,7 +3,7 @@ vi.mock("react", async () => {
   const actual = await vi.importActual<typeof import("react")>("react");
   return {
     ...actual,
-    default: actual.default ?? actual,
+    default: actual,
     use: (value: unknown) =>
       value && typeof value === "object" && "then" in (value as Record<string, unknown>)
         ? { id: "env-1" }
