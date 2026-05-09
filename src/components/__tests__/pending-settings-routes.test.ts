@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 const pendingRouteFiles = [
   "src/app/(dashboard)/settings/auth/page.tsx",
-  "src/app/(dashboard)/settings/roles/page.tsx",
 ];
 
 describe("pending settings routes", () => {
@@ -23,6 +22,21 @@ describe("pending settings routes", () => {
     expect(source).toContain('from "./_client"');
     expect(source).not.toContain('redirect("/settings")');
     expect(source).not.toContain("not yet designed");
+  });
+
+  it("renders the approved roles management route", () => {
+    const source = readFileSync("src/app/(dashboard)/settings/roles/page.tsx", "utf8");
+
+    expect(source).toContain('from "../_components/access-settings-shell"');
+    expect(source).not.toContain('redirect("/settings")');
+  });
+
+  it("renders the approved SSO management route", () => {
+    const source = readFileSync("src/app/(dashboard)/settings/sso/page.tsx", "utf8");
+
+    expect(source).toContain('from "../_components/access-settings-shell"');
+    expect(source).toContain('from "../_components/auth-settings"');
+    expect(source).not.toContain('redirect("/settings")');
   });
 
   it("does not expose pending-design auth or role routes from global shortcuts or readiness links", () => {
