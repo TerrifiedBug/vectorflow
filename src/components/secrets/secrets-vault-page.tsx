@@ -51,9 +51,14 @@ import { certExpiryBadgeClass } from "@/lib/badge-variants";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type VaultKind = "secret" | "ca" | "cert" | "key";
+type VaultSource = "builtin" | "vault";
 type VaultStatus = "ok" | "fresh" | "aging" | "unused" | "valid" | "expiring" | "expired" | "na";
 
-type EnvironmentOption = { id: string; name: string };
+type EnvironmentOption = {
+  id: string;
+  name: string;
+  secretBackend: "BUILTIN" | "VAULT" | "AWS_SM" | "EXEC";
+};
 type RotateTarget = { rowKey: string; occurrenceId: string | null } | null;
 
 type DeleteTarget =
@@ -75,6 +80,7 @@ interface VaultRow {
   id: string;
   key: string;
   kind: VaultKind;
+  source: VaultSource;
   name: string;
   envs: string[];
   occurrences: VaultOccurrence[];
@@ -102,6 +108,10 @@ type RawSecret = {
   name: string;
   createdAt: string | Date;
   updatedAt: string | Date;
+};
+type RawVaultSecretList = {
+  backend: string;
+  secrets: string[];
 };
 
 type RawCertificate = {
@@ -146,16 +156,27 @@ export function SecretsVaultPage() {
     enabled: !!teamId,
   });
   const envs = React.useMemo(
-    () => (envsQ.data ?? []) as EnvironmentOption[],
+    () => ((envsQ.data ?? []) as EnvironmentOption[]),
     [envsQ.data],
+  );
+  const builtinSecretEnvs = React.useMemo(
+    () => envs.filter((env) => env.secretBackend === "BUILTIN"),
+    [envs],
   );
   const hasEnvironments = envs.length > 0;
 
   const secretQueries = useQueries({
-    queries: envs.map((env) => ({
-      ...trpc.secret.list.queryOptions({ environmentId: env.id }),
-      enabled: !!env.id,
-    })),
+    queries: envs.map((env) =>
+      env.secretBackend === "VAULT"
+        ? {
+            ...trpc.environment.listVaultSecrets.queryOptions({ environmentId: env.id }),
+            enabled: !!env.id,
+          }
+        : {
+            ...trpc.secret.list.queryOptions({ environmentId: env.id }),
+            enabled: !!env.id,
+          },
+    ),
   });
   const certificateQueries = useQueries({
     queries: envs.map((env) => ({
@@ -174,9 +195,18 @@ export function SecretsVaultPage() {
     secretQueries.some((query) => query.isPending) ||
     certificateQueries.some((query) => query.isPending) ||
     bundleQueries.some((query) => query.isPending);
+  const failedVaultSecretEnvs = React.useMemo(
+    () =>
+      secretQueries.flatMap((query, index) =>
+        query.isError && envs[index]?.secretBackend === "VAULT"
+          ? [envs[index]!.name]
+          : [],
+      ),
+    [envs, secretQueries],
+  );
   const hasLoadError =
     envsQ.isError ||
-    secretQueries.some((query) => query.isError) ||
+    secretQueries.some((query, index) => query.isError && envs[index]?.secretBackend !== "VAULT") ||
     certificateQueries.some((query) => query.isError) ||
     bundleQueries.some((query) => query.isError);
 
@@ -185,9 +215,30 @@ export function SecretsVaultPage() {
     secretQueries.forEach((query, index) => {
       const env = envs[index];
       const envName = env?.name ?? "—";
+      if (env?.secretBackend === "VAULT") {
+        const list = ((query.data as RawVaultSecretList | undefined)?.secrets ?? []);
+        for (const secretName of list) {
+          const key = `vault:secret:${secretName}`;
+          const existing = map.get(key);
+          const occurrence: VaultOccurrence = {
+            id: `vault:${env.id}:${secretName}`,
+            environmentId: env.id,
+            environmentName: envName,
+          };
+          if (existing) {
+            if (!existing.envs.includes(envName)) existing.envs.push(envName);
+            existing.occurrences.push(occurrence);
+          } else {
+            map.set(key, vaultSecretToRow(secretName, [envName], [occurrence]));
+          }
+        }
+        return;
+      }
+
       const list = (query.data ?? []) as RawSecret[];
       for (const secret of list) {
-        const existing = map.get(secret.name);
+        const key = `builtin:secret:${secret.name}`;
+        const existing = map.get(key);
         const occurrence: VaultOccurrence = {
           id: secret.id,
           environmentId: env?.id ?? "",
@@ -203,7 +254,7 @@ export function SecretsVaultPage() {
             existing.status = secretStatus(existing.updatedAt, existing.uses);
           }
         } else {
-          map.set(secret.name, secretToRow(secret, [envName], [occurrence]));
+          map.set(key, secretToRow(secret, [envName], [occurrence]));
         }
       }
     });
@@ -289,8 +340,11 @@ export function SecretsVaultPage() {
   const selected = rows.find((row) => row.key === selectedRowKey) ?? rows[0];
   const selectedOccurrences = selected?.occurrences ?? [];
 
+  const selectedUsageSupported = selected
+    ? selected.kind !== "secret" || selected.source === "builtin"
+    : false;
   const selectedUsageQueries = useQueries({
-    queries: selected
+    queries: selected && selectedUsageSupported
       ? selectedOccurrences.map((occurrence) =>
           selected.kind === "secret"
             ? {
@@ -323,10 +377,17 @@ export function SecretsVaultPage() {
     () => new Set(usageRefs.map((ref) => ref.pipeline.id)).size,
     [usageRefs],
   );
-  const usageLoading = selectedOccurrences.length > 0 && selectedUsageQueries.some((query) => query.isPending);
-  const usageError = selectedUsageQueries.find((query) => query.isError)?.error as Error | undefined;
+  const usageLoading =
+    selectedUsageSupported &&
+    selectedOccurrences.length > 0 &&
+    selectedUsageQueries.some((query) => query.isPending);
+  const usageError = selectedUsageSupported
+    ? selectedUsageQueries.find((query) => query.isError)?.error as Error | undefined
+    : undefined;
   const selectedUsageLoaded =
-    selectedOccurrences.length > 0 && selectedUsageQueries.every((query) => query.isSuccess);
+    selectedUsageSupported &&
+    selectedOccurrences.length > 0 &&
+    selectedUsageQueries.every((query) => query.isSuccess);
 
   const rowsWithUsage = React.useMemo(
     () =>
@@ -352,39 +413,47 @@ export function SecretsVaultPage() {
     () => ({
       total: rowsWithUsage.length,
       rotated30d: rowsWithUsage.filter(
-        (row) => row.kind === "secret" && row.updatedAt && isWithin(row.updatedAt, 30),
+        (row) => row.kind === "secret" && row.source === "builtin" && row.updatedAt && isWithin(row.updatedAt, 30),
       ).length,
-      aging: rowsWithUsage.filter((row) => row.kind === "secret" && row.status === "aging").length,
+      aging: rowsWithUsage.filter(
+        (row) => row.kind === "secret" && row.source === "builtin" && row.status === "aging",
+      ).length,
     }),
     [rowsWithUsage],
   );
 
   const selectedUnusedValue = !selectedWithUsage
     ? "—"
-    : usageLoading
-      ? "…"
-      : usageError
-        ? "!"
-        : selectedUsageLoaded
-          ? usagePipelineCount === 0
-            ? 1
-            : 0
-          : "—";
+    : selectedWithUsage.kind === "secret" && selectedWithUsage.source === "vault"
+      ? "—"
+      : usageLoading
+        ? "…"
+        : usageError
+          ? "!"
+          : selectedUsageLoaded
+            ? usagePipelineCount === 0
+              ? 1
+              : 0
+            : "—";
   const usedByValue = !selectedWithUsage
     ? "—"
-    : usageLoading
-      ? "…"
-      : usageError
-        ? "!"
-        : selectedUsageLoaded
-          ? usagePipelineCount
-          : "—";
+    : selectedWithUsage.kind === "secret" && selectedWithUsage.source === "vault"
+      ? "—"
+      : usageLoading
+        ? "…"
+        : usageError
+          ? "!"
+          : selectedUsageLoaded
+            ? usagePipelineCount
+            : "—";
   const usedBySub = selectedWithUsage
-    ? usageLoading
-      ? "loading references"
-      : usageError
-        ? "usage unavailable"
-        : `${selectedWithUsage.name} · ${usagePipelineCount === 1 ? "pipeline" : "pipelines"}`
+    ? selectedWithUsage.kind === "secret" && selectedWithUsage.source === "vault"
+      ? "managed in Vault"
+      : usageLoading
+        ? "loading references"
+        : usageError
+          ? "usage unavailable"
+          : `${selectedWithUsage.name} · ${usagePipelineCount === 1 ? "pipeline" : "pipelines"}`
     : "select a vault entry";
 
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -420,12 +489,14 @@ export function SecretsVaultPage() {
     }
 
     setCreateEnvId((current) =>
-      envs.some((env) => env.id === current) ? current : envs[0]!.id,
+      builtinSecretEnvs.some((env) => env.id === current)
+        ? current
+        : builtinSecretEnvs[0]?.id ?? "",
     );
     setUploadEnvId((current) =>
       envs.some((env) => env.id === current) ? current : envs[0]!.id,
     );
-  }, [envs]);
+  }, [builtinSecretEnvs, envs]);
 
   const createMutation = useMutation(
     trpc.secret.create.mutationOptions({
@@ -576,7 +647,7 @@ export function SecretsVaultPage() {
   const rotateOccurrence = rotateOccurrences.find((occurrence) => occurrence.id === selectedRotateOccurrenceId) ?? null;
 
   function openCreateDialog() {
-    if (!hasEnvironments) return;
+    if (builtinSecretEnvs.length === 0) return;
     setCreateOpen(true);
   }
 
@@ -614,7 +685,7 @@ export function SecretsVaultPage() {
   }
 
   function openRotateDialog(row: VaultRow, occurrenceId: string | null) {
-    if (row.kind !== "secret") return;
+    if (row.kind !== "secret" || row.source === "vault") return;
     setRotateTarget({ rowKey: row.key, occurrenceId });
     setRotateValue("");
   }
@@ -732,7 +803,7 @@ export function SecretsVaultPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                disabled={!selectedWithUsage || selectedWithUsage.kind !== "secret" || selectedWithUsage.occurrences.length === 0}
+                disabled={!selectedWithUsage || selectedWithUsage.kind !== "secret" || selectedWithUsage.source === "vault" || selectedWithUsage.occurrences.length === 0}
                 onClick={() =>
                   selectedWithUsage?.kind === "secret"
                     ? openRotateDialog(selectedWithUsage, selectedWithUsage.occurrences[0]?.id ?? null)
@@ -750,7 +821,7 @@ export function SecretsVaultPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={openCreateDialog}>New secret</DropdownMenuItem>
+                  <DropdownMenuItem onClick={openCreateDialog} disabled={builtinSecretEnvs.length === 0}>New secret</DropdownMenuItem>
                   <DropdownMenuItem onClick={openUploadDialog}>Upload certificate</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => openCreateBundleDialog()}>New bundle</DropdownMenuItem>
                 </DropdownMenuContent>
@@ -791,7 +862,13 @@ export function SecretsVaultPage() {
           description="Secrets and certificates are stored per environment. Add an environment before creating vault entries."
         />
       )}
+      {teamId && failedVaultSecretEnvs.length > 0 && !hasLoadError && (
+        <div className="mx-6 rounded-[3px] border border-[color:var(--status-degraded)]/40 bg-[color:var(--status-degraded-bg)] px-4 py-3 text-sm text-status-degraded">
+          Vault unavailable for {failedVaultSecretEnvs.join(", ")}. Showing secrets from other environments.
+        </div>
+      )}
 
+ 
       {teamId && hasEnvironments && !hasLoadError && (
         <Tabs value={activeVaultTab} onValueChange={(value) => setActiveVaultTab(value as "entries" | "bundles")} className="min-h-0 flex-1 px-6">
           <TabsList variant="mono">
@@ -804,8 +881,12 @@ export function SecretsVaultPage() {
               <EmptyState
                 glyph="K"
                 title="No vault entries yet"
-                description="Create a secret or upload a certificate to reference from pipelines as SECRET[name] or CERT[name]."
-                action={{ label: "New", onClick: openCreateDialog }}
+                description={
+                  builtinSecretEnvs.length > 0
+                    ? "Create a secret or upload a certificate to reference from pipelines as SECRET[name] or CERT[name]."
+                    : "Vault-backed secrets are managed externally. Add fields in Vault or upload a certificate to reference from pipelines as SECRET[name] or CERT[name]."
+                }
+                action={builtinSecretEnvs.length > 0 ? { label: "New", onClick: openCreateDialog } : undefined}
               />
             ) : rows.length > 0 ? (
               <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: "1fr 440px" }}>
@@ -824,15 +905,17 @@ export function SecretsVaultPage() {
                   <div className="flex-1 overflow-auto">
                     {visibleRows.map((row) => {
                       const isSelected = row.key === selectedWithUsage?.key;
-                      const usageDisplay = isSelected
-                        ? usageLoading
-                          ? "…"
-                          : usageError
-                            ? "!"
-                            : selectedUsageLoaded
-                              ? row.uses
-                              : "—"
-                        : "—";
+                      const usageDisplay = row.kind === "secret" && row.source === "vault"
+                        ? "—"
+                        : isSelected
+                          ? usageLoading
+                            ? "…"
+                            : usageError
+                              ? "!"
+                              : selectedUsageLoaded
+                                ? row.uses
+                                : "—"
+                          : "—";
                       const usageClass =
                         usageError && isSelected
                           ? "text-status-error"
@@ -854,8 +937,11 @@ export function SecretsVaultPage() {
                           <span className="flex items-center gap-1.5 truncate text-fg">
                             <VFIcon name={row.kind === "secret" ? "key" : "shield"} size={13} className="text-fg-2" />
                             {row.name}
+                            {row.kind === "secret" && row.source === "vault" ? (
+                              <Badge variant="outline" className="ml-1">Vault</Badge>
+                            ) : null}
                           </span>
-                          <span className="text-fg-2">{typeLabel(row.kind)}</span>
+                          <span className="text-fg-2">{typeLabel(row)}</span>
                           <span className={row.rotated === "—" || row.rotated === "never" ? "text-fg-2" : "text-fg-1"}>
                             {row.rotated}
                           </span>
@@ -1050,7 +1136,7 @@ export function SecretsVaultPage() {
                   <SelectValue placeholder="Select environment" />
                 </SelectTrigger>
                 <SelectContent>
-                  {envs.map((env) => (
+                  {builtinSecretEnvs.map((env) => (
                     <SelectItem key={env.id} value={env.id}>
                       {env.name}
                     </SelectItem>
@@ -1330,7 +1416,7 @@ export function SecretsVaultPage() {
 }
 
 function withUsageStatus(row: VaultRow, useCount: number): VaultRow {
-  if (row.kind !== "secret") return { ...row, uses: useCount };
+  if (row.kind !== "secret" || row.source === "vault") return { ...row, uses: useCount };
   if (useCount === 0) return { ...row, uses: 0, status: "unused" };
   if (row.status === "unused") return { ...row, uses: useCount, status: "ok" };
   return { ...row, uses: useCount };
@@ -1338,6 +1424,9 @@ function withUsageStatus(row: VaultRow, useCount: number): VaultRow {
 
 function VaultStatusBadge({ row }: { row: VaultRow }) {
   if (row.kind === "secret") {
+    if (row.source === "vault") {
+      return <span className="text-[10px] tracking-[0.04em] text-fg-2">VAULT</span>;
+    }
     if (row.status === "ok") return <span className="text-[10px] tracking-[0.04em] text-accent-brand">OK</span>;
     if (row.status === "fresh") return <span className="text-[10px] tracking-[0.04em] text-status-info">FRESH</span>;
     if (row.status === "unused") return <span className="text-[10px] tracking-[0.04em] text-fg-2">UNUSED</span>;
@@ -1390,9 +1479,12 @@ function SecretDetail({
     <>
       <div className="border-b border-line bg-bg-1 px-5 py-3.5">
         <div className="font-mono text-[10.5px] tracking-[0.04em] text-fg-2">
-          created {timeAgo(row.createdAt)} ago
+          {row.source === "vault" ? "managed externally" : `created ${timeAgo(row.createdAt)} ago`}
         </div>
-        <div className="mt-1 font-mono text-[16px] text-fg">{row.name}</div>
+        <div className="mt-1 flex items-center gap-2">
+          <div className="font-mono text-[16px] text-fg">{row.name}</div>
+          {row.source === "vault" ? <Badge variant="outline">Vault</Badge> : null}
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-5">
@@ -1415,11 +1507,11 @@ function SecretDetail({
           <div className="rounded-[3px] border border-line bg-bg-2 p-3 font-mono text-[11.5px] leading-[1.7]">
             <div className="flex justify-between">
               <span className="text-fg-2">last rotated</span>
-              <span className="text-fg">{row.rotated}</span>
+              <span className="text-fg">{row.source === "vault" ? "Managed in Vault" : row.rotated}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-fg-2">cadence</span>
-              <span className="text-fg">manual</span>
+              <span className="text-fg">{row.source === "vault" ? "external" : "manual"}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-fg-2">occurrences</span>
@@ -1453,17 +1545,21 @@ function SecretDetail({
                       </Pill>
                       <span className="min-w-0 flex-1 truncate text-current">{occurrence.id}</span>
                     </button>
-                    <Button variant="ghost" size="xs" onClick={() => onRotateOccurrence(occurrence)}>
-                      Rotate
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      className="text-status-error"
-                      onClick={() => onDeleteOccurrence(occurrence)}
-                    >
-                      Delete
-                    </Button>
+                    {row.source === "builtin" ? (
+                      <>
+                        <Button variant="ghost" size="xs" onClick={() => onRotateOccurrence(occurrence)}>
+                          Rotate
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          className="text-status-error"
+                          onClick={() => onDeleteOccurrence(occurrence)}
+                        >
+                          Delete
+                        </Button>
+                      </>
+                    ) : null}
                   </div>
                 );
               })}
@@ -1475,10 +1571,14 @@ function SecretDetail({
       </div>
 
       <div className="flex items-center gap-2 border-t border-line bg-bg-1 px-4 py-3">
-        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => selectedOccurrence && onViewAudit(selectedOccurrence)} disabled={!selectedOccurrence}>
-          <VFIcon name="external-link" />
-          View audit
-        </Button>
+        {row.source === "vault" ? (
+          <div className="ml-auto text-sm text-fg-2">Managed in HashiCorp Vault</div>
+        ) : (
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => selectedOccurrence && onViewAudit(selectedOccurrence)} disabled={!selectedOccurrence}>
+            <VFIcon name="external-link" />
+            View audit
+          </Button>
+        )}
       </div>
     </>
   );
@@ -1671,11 +1771,13 @@ function UsageSection({
 function compareVaultRows(a: VaultRow, b: VaultRow) {
   const nameComparison = a.name.localeCompare(b.name);
   if (nameComparison !== 0) return nameComparison;
-  return typeLabel(a.kind).localeCompare(typeLabel(b.kind));
+  return typeLabel(a).localeCompare(typeLabel(b));
 }
 
-function typeLabel(kind: VaultKind): string {
-  if (kind === "secret") return "SECRET";
+function typeLabel(rowOrKind: VaultRow | VaultKind): string {
+  const kind = typeof rowOrKind === "string" ? rowOrKind : rowOrKind.kind;
+  const source = typeof rowOrKind === "string" ? "builtin" : rowOrKind.source;
+  if (kind === "secret") return source === "vault" ? "VAULT SECRET" : "SECRET";
   if (kind === "ca") return "CA CERT";
   if (kind === "cert") return "CERT";
   return "KEY";
@@ -1755,8 +1857,9 @@ function secretToRow(
   const updatedAt = toIsoString(secret.updatedAt);
   return {
     id: secret.id,
-    key: `secret:${secret.name}`,
+    key: `builtin:secret:${secret.name}`,
     kind: "secret",
+    source: "builtin",
     name: secret.name,
     envs,
     occurrences,
@@ -1765,6 +1868,26 @@ function secretToRow(
     uses: 1,
     status: secretStatus(updatedAt, 1),
     rotated: secretRotatedLabel(updatedAt),
+  };
+}
+function vaultSecretToRow(
+  name: string,
+  envs: string[],
+  occurrences: VaultOccurrence[],
+): VaultRow {
+  return {
+    id: `vault:${name}`,
+    key: `vault:secret:${name}`,
+    kind: "secret",
+    source: "vault",
+    name,
+    envs,
+    occurrences,
+    createdAt: new Date(0).toISOString(),
+    updatedAt: null,
+    uses: 0,
+    status: "na",
+    rotated: "—",
   };
 }
 
@@ -1777,6 +1900,7 @@ function certificateToRow(
     id: certificate.id,
     key: `${certificate.fileType}:${certificate.name}`,
     kind: certificate.fileType,
+    source: "builtin",
     name: certificate.name,
     envs,
     occurrences,

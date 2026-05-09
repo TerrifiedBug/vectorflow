@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { useEnvironmentStore } from "@/stores/environment-store";
@@ -32,6 +32,7 @@ interface SecretPickerInputProps {
   value: string;
   onChange: (value: string) => void;
 }
+type SecretOption = { id: string; name: string; source: "builtin" | "vault" };
 
 export function SecretPickerInput({ value, onChange }: SecretPickerInputProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -42,14 +43,37 @@ export function SecretPickerInput({ value, onChange }: SecretPickerInputProps) {
   const queryClient = useQueryClient();
   const environmentId = useEnvironmentStore((s) => s.selectedEnvironmentId);
 
+  const vaultSecretsQuery = useQuery(
+    trpc.environment.listVaultSecrets.queryOptions(
+      { environmentId: environmentId! },
+      { enabled: !!environmentId && popoverOpen },
+    ),
+  );
   const secretsQuery = useQuery(
     trpc.secret.list.queryOptions(
       { environmentId: environmentId! },
       { enabled: !!environmentId && popoverOpen },
-    )
+    ),
   );
-  const secrets = secretsQuery.data ?? [];
+  const isVaultBackend = vaultSecretsQuery.data?.backend === "VAULT";
+  const secretOptions = useMemo<SecretOption[]>(
+    () =>
+      isVaultBackend
+        ? (vaultSecretsQuery.data?.secrets ?? []).map((name) => ({
+            id: `vault:${name}`,
+            name,
+            source: "vault",
+          }))
+        : (secretsQuery.data ?? []).map((secret) => ({
+            id: secret.id,
+            name: secret.name,
+            source: "builtin",
+          })),
+    [isVaultBackend, secretsQuery.data, vaultSecretsQuery.data?.secrets],
+  );
+  const vaultBackendResolved = vaultSecretsQuery.isSuccess;
 
+  const canCreateBuiltinSecret = vaultBackendResolved && !isVaultBackend;
   const createMutation = useMutation(
     trpc.secret.create.mutationOptions({
       onSuccess: (created) => {
@@ -123,37 +147,40 @@ export function SecretPickerInput({ value, onChange }: SecretPickerInputProps) {
         <div className="p-3 pb-2">
           <p className="text-sm font-medium">Select Secret</p>
           <p className="text-xs text-muted-foreground">
-            Choose a secret from this environment
+            {isVaultBackend ? "Choose a Vault field from this environment" : "Choose a secret from this environment"}
           </p>
         </div>
         <div className="max-h-48 overflow-y-auto border-t">
-          {secrets.length === 0 && !secretsQuery.isLoading ? (
+          {secretOptions.length === 0 && !secretsQuery.isLoading && !vaultSecretsQuery.isLoading ? (
             <p className="p-3 text-xs text-muted-foreground text-center">
-              No secrets yet
+              {isVaultBackend ? "No Vault fields found" : "No secrets yet"}
             </p>
-          ) : secretsQuery.isLoading ? (
+          ) : secretsQuery.isLoading || vaultSecretsQuery.isLoading ? (
             <p className="p-3 text-xs text-muted-foreground text-center">
               Loading...
             </p>
           ) : (
-            secrets.map((secret) => (
+            secretOptions.map((secret) => (
               <button
                 key={secret.id}
                 type="button"
-                className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors font-mono"
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm font-mono transition-colors hover:bg-accent"
                 onClick={() => {
                   onChange(makeSecretRef(secret.name));
                   setPopoverOpen(false);
                   resetCreateForm();
                 }}
               >
-                {secret.name}
+                <span>{secret.name}</span>
+                {secret.source === "vault" ? (
+                  <Badge variant="outline" className="text-[10px]">Vault</Badge>
+                ) : null}
               </button>
             ))
           )}
         </div>
         <div className="border-t p-2">
-          {showCreate ? (
+          {canCreateBuiltinSecret && (showCreate ? (
             <div className="space-y-2">
               <div className="space-y-1">
                 <Label className="text-xs">Name</Label>
@@ -207,7 +234,7 @@ export function SecretPickerInput({ value, onChange }: SecretPickerInputProps) {
               <Plus className="h-3.5 w-3.5 mr-1.5" />
               Create new secret
             </Button>
-          )}
+          ))}
         </div>
       </PopoverContent>
     </Popover>
