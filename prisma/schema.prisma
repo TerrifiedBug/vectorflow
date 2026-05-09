@@ -1029,6 +1029,7 @@ enum AlertStatus {
 model AlertRule {
   id              String         @id @default(cuid())
   name            String
+  description     String?
   enabled         Boolean        @default(true)
   environmentId   String
   environment     Environment    @relation(fields: [environmentId], references: [id], onDelete: Cascade)
