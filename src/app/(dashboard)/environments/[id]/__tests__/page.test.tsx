@@ -13,7 +13,7 @@ vi.mock("react", async () => {
 
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 vi.mock("next/navigation", () => ({
@@ -107,6 +107,15 @@ vi.mock("@/components/demo-disabled", () => ({
   DemoDisabledBadge: () => <div>Demo disabled</div>,
 }));
 vi.mock("@/lib/is-demo-mode", () => ({ isDemoMode: () => false }));
+vi.mock("@/components/ui/select", () => ({
+  Select: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SelectContent: ({ children }: { children: React.ReactNode }) => <div role="listbox">{children}</div>,
+  SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) => (
+    <div role="option" data-value={value}>{children}</div>
+  ),
+  SelectTrigger: ({ children }: { children: React.ReactNode }) => <button type="button" role="combobox">{children}</button>,
+  SelectValue: () => null,
+}));
 
 import EnvironmentDetailPage from "../page";
 
@@ -114,6 +123,37 @@ describe("environment detail secret backend actions", () => {
   afterEach(() => {
     cleanup();
     mutateMock.mockReset();
+    environment.secretBackend = "VAULT";
+  });
+
+  it("only offers implemented secret backends while editing", async () => {
+    render(
+      <React.Suspense fallback={<div>loading</div>}>
+        <EnvironmentDetailPage params={Promise.resolve({ id: "env-1" })} />
+      </React.Suspense>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("tab", { name: /secret backend/i }));
+
+    const listbox = screen.getAllByRole("listbox")[0]!;
+
+    expect(within(listbox).getByText("Built-in (VectorFlow delivers secrets as env vars)")).toBeInTheDocument();
+    expect(within(listbox).getByText("HashiCorp Vault")).toBeInTheDocument();
+    expect(within(listbox).queryByText("AWS Secrets Manager")).not.toBeInTheDocument();
+    expect(within(listbox).queryByText("Exec (custom script)")).not.toBeInTheDocument();
+  });
+
+  it("labels existing unimplemented secret backends as unsupported", async () => {
+    environment.secretBackend = "AWS_SM";
+
+    render(
+      <React.Suspense fallback={<div>loading</div>}>
+        <EnvironmentDetailPage params={Promise.resolve({ id: "env-1" })} />
+      </React.Suspense>,
+    );
+
+    expect(await screen.findByText("AWS Secrets Manager (unsupported)")).toBeInTheDocument();
   });
 
   it("shows local save and cancel actions inside the secret backend section while editing", async () => {
