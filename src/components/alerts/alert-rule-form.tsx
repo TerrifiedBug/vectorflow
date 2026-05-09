@@ -58,7 +58,7 @@ export type AlertRuleFormValues = {
 
 export const DEFAULT_FORM_VALUES: AlertRuleFormValues = {
   name: "pipeline error rate breach",
-  description: "Triggers when pipeline error rate sustains above threshold.",
+  description: "",
   severity: "critical",
   pipelineId: "",
   metric: "error_rate",
@@ -253,7 +253,7 @@ export function AlertRuleForm(props: Props) {
         pipelineId: pipelineId || undefined,
         metric: metric as never,
         condition: condition as never,
-        suggestedAction: description.trim() || DEFAULT_FORM_VALUES.description,
+        description: description.trim() || undefined,
         threshold: numericOrUndefined(threshold),
         durationSeconds: durationMinutesToSeconds(durationMinutes),
         severity,
@@ -264,7 +264,7 @@ export function AlertRuleForm(props: Props) {
       updateRule.mutate({
         id: props.ruleId,
         name,
-        suggestedAction: description.trim() || DEFAULT_FORM_VALUES.description,
+        description: description.trim(),
         ...(numericOrUndefined(threshold) !== undefined ? { threshold: numericOrUndefined(threshold) } : {}),
         ...(durationMinutesToSeconds(durationMinutes) !== undefined ? { durationSeconds: durationMinutesToSeconds(durationMinutes)! } : {}),
         severity,

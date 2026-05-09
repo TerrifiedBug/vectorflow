@@ -187,7 +187,7 @@ describe("alertRulesRouter", () => {
 
   describe("createRule", () => {
     it("creates a rule with condition and threshold", async () => {
-      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
       prismaMock.alertRule.create.mockResolvedValue(makeAlertRule() as never);
 
       const result = await caller.createRule({
@@ -213,8 +213,35 @@ describe("alertRulesRouter", () => {
       );
     });
 
+    it("persists and returns an optional description", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
+      prismaMock.alertRule.create.mockResolvedValue(
+        makeAlertRule({ description: "Escalate to the pipeline owner with recent metrics." }) as never,
+      );
+
+      const result = await caller.createRule({
+        name: "High CPU",
+        description: "Escalate to the pipeline owner with recent metrics.",
+        environmentId: "env-1",
+        metric: "cpu_usage" as never,
+        condition: "gt" as never,
+        threshold: 90,
+        durationSeconds: 60,
+        teamId: "team-1",
+      });
+
+      expect(result.description).toBe("Escalate to the pipeline owner with recent metrics.");
+      expect(prismaMock.alertRule.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            description: "Escalate to the pipeline owner with recent metrics.",
+          }),
+        }),
+      );
+    });
+
     it("creates a rule with operational metadata", async () => {
-      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
       prismaMock.alertRule.create.mockResolvedValue(
         makeAlertRule({
           severity: "critical",
@@ -248,7 +275,7 @@ describe("alertRulesRouter", () => {
     });
 
     it("creates a rule with channelIds", async () => {
-      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
       prismaMock.notificationChannel.count.mockResolvedValue(2);
       prismaMock.alertRule.create.mockResolvedValue(makeAlertRule({ id: "rule-new" }) as never);
       prismaMock.alertRuleChannel.createMany.mockResolvedValue({ count: 2 } as never);
@@ -289,8 +316,24 @@ describe("alertRulesRouter", () => {
       ).rejects.toMatchObject({ code: "NOT_FOUND" });
     });
 
+    it("throws NOT_FOUND if environment belongs to another team", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-2" } as never);
+
+      await expect(
+        caller.createRule({
+          name: "Cross-team",
+          environmentId: "env-1",
+          metric: "cpu_usage" as never,
+          condition: "gt" as never,
+          threshold: 90,
+          teamId: "team-1",
+        }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+      expect(prismaMock.alertRule.create).not.toHaveBeenCalled();
+    });
+
     it("throws NOT_FOUND if pipeline does not exist or is in wrong environment", async () => {
-      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
       prismaMock.pipeline.findUnique.mockResolvedValue(null);
 
       await expect(
@@ -307,7 +350,7 @@ describe("alertRulesRouter", () => {
     });
 
     it("throws BAD_REQUEST for fleet metric with pipelineId", async () => {
-      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
       prismaMock.pipeline.findUnique.mockResolvedValue({ id: "pipe-1", environmentId: "env-1" } as never);
 
       await expect(
@@ -324,7 +367,7 @@ describe("alertRulesRouter", () => {
     });
 
     it("throws BAD_REQUEST for pipeline-scoped fleet metric without pipelineId", async () => {
-      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
 
       await expect(
         caller.createRule({
@@ -339,7 +382,7 @@ describe("alertRulesRouter", () => {
     });
 
     it("creates a pipeline-scoped fleet metric rule when pipelineId is provided", async () => {
-      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
       prismaMock.pipeline.findUnique.mockResolvedValue({ id: "pipe-1", environmentId: "env-1" } as never);
       prismaMock.alertRule.create.mockResolvedValue(
         makeAlertRule({ metric: "latency_mean", pipelineId: "pipe-1" }) as never,
@@ -368,7 +411,7 @@ describe("alertRulesRouter", () => {
 
     it("nullifies condition/threshold for event metrics", async () => {
       mockIsEventMetric.mockReturnValue(true);
-      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
       prismaMock.alertRule.create.mockResolvedValue(
         makeAlertRule({ condition: null, threshold: null, durationSeconds: null }) as never,
       );
@@ -394,7 +437,7 @@ describe("alertRulesRouter", () => {
     });
 
     it("throws BAD_REQUEST for infra metric without condition/threshold", async () => {
-      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
 
       await expect(
         caller.createRule({
@@ -407,7 +450,7 @@ describe("alertRulesRouter", () => {
     });
 
     it("throws BAD_REQUEST if channelIds reference invalid channels", async () => {
-      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
       prismaMock.notificationChannel.count.mockResolvedValue(1); // Only 1 of 2 found
 
       await expect(
@@ -452,7 +495,7 @@ describe("alertRulesRouter", () => {
     });
 
     it("trims leading/trailing whitespace from ownerHint and suggestedAction", async () => {
-      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1" } as never);
+      prismaMock.environment.findUnique.mockResolvedValue({ id: "env-1", teamId: "team-1" } as never);
       prismaMock.alertRule.create.mockResolvedValue(
         makeAlertRule({ ownerHint: "sre-team", suggestedAction: "Check logs." }) as never,
       );
@@ -490,6 +533,29 @@ describe("alertRulesRouter", () => {
       const result = await caller.updateRule({ id: "rule-1", name: "Renamed" });
 
       expect(result.name).toBe("Renamed");
+    });
+
+    it("persists and returns description changes", async () => {
+      const existing = makeAlertRule({ description: null });
+      prismaMock.alertRule.findUnique.mockResolvedValue(existing as never);
+      prismaMock.alertRule.update.mockResolvedValue(
+        { ...existing, description: "Notify the owning team before remediation." } as never,
+      );
+
+      const result = await caller.updateRule({
+        id: "rule-1",
+        description: "Notify the owning team before remediation.",
+      });
+
+      expect(result.description).toBe("Notify the owning team before remediation.");
+      expect(prismaMock.alertRule.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "rule-1" },
+          data: expect.objectContaining({
+            description: "Notify the owning team before remediation.",
+          }),
+        }),
+      );
     });
 
     it("updates suggestedAction when editing description", async () => {

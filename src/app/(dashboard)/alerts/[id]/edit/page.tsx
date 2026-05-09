@@ -91,6 +91,7 @@ type RuleFromApi = {
   threshold: number | null;
   durationSeconds: number | null;
   severity: string;
+  description: string | null;
   suggestedAction: string;
   cooldownMinutes: number | null;
   channels: { channelId: string }[];
@@ -103,7 +104,7 @@ function mapRuleToFormValues(rule: RuleFromApi): AlertRuleFormValues {
       : "warning";
   return {
     name: rule.name,
-    description: rule.suggestedAction || DEFAULT_FORM_VALUES.description,
+    description: rule.description ?? "",
     severity,
     pipelineId: rule.pipelineId ?? "",
     metric: rule.metric,
