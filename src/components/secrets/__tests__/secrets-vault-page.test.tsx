@@ -67,8 +67,8 @@ const {
 
 const queryState = vi.hoisted(() => ({
   envs: [
-    { id: "env-1", name: "prod-eu" },
-    { id: "env-2", name: "staging" },
+    { id: "env-1", name: "prod-eu", secretBackend: "BUILTIN" },
+    { id: "env-2", name: "staging", secretBackend: "VAULT" },
   ],
   secretsByEnvironment: {
     "env-1": [
@@ -81,6 +81,10 @@ const queryState = vi.hoisted(() => ({
     ],
     "env-2": [],
   } as Record<string, Array<{ id: string; name: string; createdAt: Date; updatedAt: Date }>>,
+  vaultSecretsByEnvironment: {
+    "env-1": { backend: "BUILTIN", secrets: [] },
+    "env-2": { backend: "VAULT", secrets: ["OPENSEARCH_PROD"] },
+  } as Record<string, { backend: string; secrets: string[] }>,
   certificatesByEnvironment: {
     "env-1": [
       {
@@ -191,6 +195,9 @@ vi.mock("@/trpc/client", () => ({
       list: {
         queryOptions: (input: { teamId: string }) => ({ __name: "environment.list", input, queryKey: ["environment.list", input.teamId] }),
       },
+      listVaultSecrets: {
+        queryOptions: (input: { environmentId: string }) => ({ __name: "environment.listVaultSecrets", input, queryKey: ["environment.listVaultSecrets", input.environmentId] }),
+      },
     },
     secret: {
       list: {
@@ -273,6 +280,15 @@ vi.mock("@tanstack/react-query", () => ({
       if (query.__name === "certificate.list") {
         return {
           data: queryState.certificatesByEnvironment[query.input?.environmentId ?? ""] ?? [],
+          isPending: false,
+          isError: false,
+          isSuccess: true,
+          error: null,
+        };
+      }
+      if (query.__name === "environment.listVaultSecrets") {
+        return {
+          data: queryState.vaultSecretsByEnvironment[query.input?.environmentId ?? ""] ?? { backend: "BUILTIN", secrets: [] },
           isPending: false,
           isError: false,
           isSuccess: true,
@@ -399,6 +415,21 @@ describe("SecretsVaultPage", () => {
     expect(screen.getByText(/kafka\.sink/i)).toBeInTheDocument();
   });
 
+  it("renders Vault field rows as read-only secrets", async () => {
+    render(<SecretsVaultPage />);
+
+    const vaultRow = await screen.findByRole("button", { name: /opensearch_prod/i });
+    expect(vaultRow).toBeInTheDocument();
+    expect(screen.getByText("VAULT SECRET")).toBeInTheDocument();
+
+    fireEvent.click(vaultRow);
+
+    expect(screen.getByRole("button", { name: /rotate selected/i })).toBeDisabled();
+    expect(screen.getByText("Managed in HashiCorp Vault")).toBeInTheDocument();
+    expect(screen.getAllByText("Vault").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /^rotate$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^delete$/i })).not.toBeInTheDocument();
+  });
   it("creates a secret from the header dropdown", async () => {
     render(<SecretsVaultPage />);
 
@@ -415,6 +446,7 @@ describe("SecretsVaultPage", () => {
     });
   });
 
+ 
   it("uploads a certificate from the header dropdown", async () => {
     render(<SecretsVaultPage />);
 

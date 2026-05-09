@@ -91,8 +91,14 @@ export default function EnvironmentDetailPage({
   const [editVaultConfig, setEditVaultConfig] = useState({
     address: "",
     authMethod: "token" as "token" | "approle" | "kubernetes",
-    mountPath: "secret/data/vectorflow",
+    mountPath: "secret",
+    basePath: "",
+    namespace: "",
+    token: "",
+    roleId: "",
+    secretId: "",
     role: "",
+    testSecretPath: "",
   });
   const [enrollmentToken, setEnrollmentToken] = useState<string | null>(null);
   const searchParams = useSearchParams();
@@ -103,6 +109,21 @@ export default function EnvironmentDetailPage({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: trpc.environment.get.queryKey({ id }) });
         setEditing(false);
+      },
+    })
+  );
+
+  const testVaultMutation = useMutation(
+    trpc.environment.testVaultConnection.mutationOptions({
+      onSuccess: (data) => {
+        if (data.success) {
+          toast.success("Vault connection succeeded");
+        } else {
+          toast.error(data.error || "Vault connection failed", { duration: 6000 });
+        }
+      },
+      onError: (error) => {
+        toast.error(error.message || "Vault connection failed", { duration: 6000 });
       },
     })
   );
@@ -143,14 +164,34 @@ export default function EnvironmentDetailPage({
     if (!env) return;
     setEditName(env.name);
     setEditSecretBackend(env.secretBackend ?? "BUILTIN");
-    const vaultCfg = (env.secretBackendConfig as Record<string, string>) ?? {};
+    const vaultCfg = (env.secretBackendConfig as Record<string, unknown>) ?? {};
     setEditVaultConfig({
-      address: vaultCfg.address ?? "",
+      address: typeof vaultCfg.address === "string" ? vaultCfg.address : "",
       authMethod: (vaultCfg.authMethod as "token" | "approle" | "kubernetes") ?? "token",
-      mountPath: vaultCfg.mountPath ?? "secret/data/vectorflow",
-      role: vaultCfg.role ?? "",
+      mountPath: typeof vaultCfg.mountPath === "string" ? vaultCfg.mountPath : "secret",
+      basePath: typeof vaultCfg.basePath === "string" ? vaultCfg.basePath : "",
+      namespace: typeof vaultCfg.namespace === "string" ? vaultCfg.namespace : "",
+      token: "",
+      roleId: typeof vaultCfg.roleId === "string" ? vaultCfg.roleId : "",
+      secretId: "",
+      role: typeof vaultCfg.role === "string" ? vaultCfg.role : "",
+      testSecretPath: "",
     });
     setEditing(true);
+  }
+
+  function vaultConfigPayload() {
+    return {
+      address: editVaultConfig.address,
+      authMethod: editVaultConfig.authMethod,
+      mountPath: editVaultConfig.mountPath,
+      basePath: editVaultConfig.basePath,
+      namespace: editVaultConfig.namespace,
+      token: editVaultConfig.token,
+      roleId: editVaultConfig.roleId,
+      secretId: editVaultConfig.secretId,
+      role: editVaultConfig.role,
+    };
   }
 
   function handleSave() {
@@ -159,10 +200,18 @@ export default function EnvironmentDetailPage({
       name: editName,
       secretBackend: editSecretBackend,
       ...(editSecretBackend === "VAULT" ? {
-        secretBackendConfig: editVaultConfig,
+        secretBackendConfig: vaultConfigPayload(),
       } : editSecretBackend !== "BUILTIN" ? {
         secretBackendConfig: { backend: editSecretBackend },
       } : {}),
+    });
+  }
+
+  function handleTestVaultConnection() {
+    testVaultMutation.mutate({
+      environmentId: id,
+      config: vaultConfigPayload(),
+      testSecretPath: editVaultConfig.testSecretPath || undefined,
     });
   }
 
@@ -198,6 +247,8 @@ export default function EnvironmentDetailPage({
   const degradedNodes = env.nodes.filter((node) => node.status === "DEGRADED").length;
   const unreachableNodes = env.nodes.filter((node) => node.status === "UNREACHABLE").length;
   const deployTrend = Array.from({ length: 20 }, (_, index) => 30 + ((env._count.pipelines + index * 11) % 44));
+  const vaultConfig = (env.secretBackendConfig as Record<string, unknown>) ?? {};
+  const vaultAuthMethod = typeof vaultConfig.authMethod === "string" ? vaultConfig.authMethod : "token";
 
   return (
     <div className="min-h-full bg-bg text-fg">
@@ -481,10 +532,10 @@ export default function EnvironmentDetailPage({
               {((editing && editSecretBackend === "VAULT") || (!editing && env.secretBackend === "VAULT")) && (
                 <div className="space-y-3 border-t pt-3">
                   <div>
-                    <label className="text-sm font-medium">Vault Address</label>
+                    <Label className="text-sm font-medium">Vault Address</Label>
                     {editing ? (
                       <Input
-                        type="text"
+                        type="url"
                         value={editVaultConfig.address}
                         onChange={(e) => setEditVaultConfig(prev => ({ ...prev, address: e.target.value }))}
                         placeholder="https://vault.internal:8200"
@@ -492,12 +543,12 @@ export default function EnvironmentDetailPage({
                       />
                     ) : (
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {(env.secretBackendConfig as Record<string, string>)?.address || "Not configured"}
+                        {typeof vaultConfig.address === "string" ? vaultConfig.address : "Not configured"}
                       </p>
                     )}
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Auth Method</label>
+                    <Label className="text-sm font-medium">Auth Method</Label>
                     {editing ? (
                       <Select value={editVaultConfig.authMethod} onValueChange={(val) => setEditVaultConfig(prev => ({ ...prev, authMethod: val as "token" | "approle" | "kubernetes" }))}>
                         <SelectTrigger className="mt-1 w-full">
@@ -511,30 +562,129 @@ export default function EnvironmentDetailPage({
                       </Select>
                     ) : (
                       <p className="mt-1 text-sm text-muted-foreground capitalize">
-                        {(env.secretBackendConfig as Record<string, string>)?.authMethod || "token"}
+                        {vaultAuthMethod}
                       </p>
                     )}
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Mount Path</label>
+                    <Label className="text-sm font-medium">KV v2 Mount Path</Label>
                     {editing ? (
                       <Input
                         type="text"
                         value={editVaultConfig.mountPath}
                         onChange={(e) => setEditVaultConfig(prev => ({ ...prev, mountPath: e.target.value }))}
-                        placeholder="secret/data/vectorflow"
+                        placeholder="secret"
                         className="mt-1"
                       />
                     ) : (
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {(env.secretBackendConfig as Record<string, string>)?.mountPath || "secret/data/vectorflow"}
+                        {typeof vaultConfig.mountPath === "string" ? vaultConfig.mountPath : "secret"}
                       </p>
                     )}
                   </div>
-                  {((editing && (editVaultConfig.authMethod === "approle" || editVaultConfig.authMethod === "kubernetes")) ||
-                    (!editing && ((env.secretBackendConfig as Record<string, string>)?.authMethod === "approle" || (env.secretBackendConfig as Record<string, string>)?.authMethod === "kubernetes"))) && (
+                  <div>
+                    <Label htmlFor="vault-secret-path" className="text-sm font-medium">Secret Path</Label>
+                    {editing ? (
+                      <Input
+                        id="vault-secret-path"
+                        type="text"
+                        value={editVaultConfig.basePath}
+                        onChange={(e) => setEditVaultConfig(prev => ({ ...prev, basePath: e.target.value }))}
+                        placeholder="vectorflow"
+                        className="mt-1"
+                      />
+                    ) : (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {typeof vaultConfig.basePath === "string" && vaultConfig.basePath ? vaultConfig.basePath : "—"}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Vault Namespace</Label>
+                    {editing ? (
+                      <Input
+                        type="text"
+                        value={editVaultConfig.namespace}
+                        onChange={(e) => setEditVaultConfig(prev => ({ ...prev, namespace: e.target.value }))}
+                        placeholder="admin/team-a (optional)"
+                        className="mt-1"
+                      />
+                    ) : (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {typeof vaultConfig.namespace === "string" && vaultConfig.namespace ? vaultConfig.namespace : "—"}
+                      </p>
+                    )}
+                  </div>
+ 
+
+                  {editing && editVaultConfig.authMethod === "token" && (
                     <div>
-                      <label className="text-sm font-medium">Role</label>
+                      <Label className="text-sm font-medium">Vault Token</Label>
+                      <Input
+                        type="password"
+                        value={editVaultConfig.token}
+                        onChange={(e) => setEditVaultConfig(prev => ({ ...prev, token: e.target.value }))}
+                        placeholder={vaultConfig.hasToken ? "Leave blank to keep existing token" : "s.xxxxx"}
+                        className="mt-1"
+                        autoComplete="off"
+                      />
+                    </div>
+                  )}
+                  {!editing && vaultAuthMethod === "token" && (
+                    <div>
+                      <Label className="text-sm font-medium">Vault Token</Label>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {vaultConfig.hasToken ? "Configured" : "Not configured"}
+                      </p>
+                    </div>
+                  )}
+
+                  {editing && editVaultConfig.authMethod === "approle" && (
+                    <>
+                      <div>
+                        <Label className="text-sm font-medium">AppRole Role ID</Label>
+                        <Input
+                          type="text"
+                          value={editVaultConfig.roleId}
+                          onChange={(e) => setEditVaultConfig(prev => ({ ...prev, roleId: e.target.value }))}
+                          placeholder="role-id"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">AppRole Secret ID</Label>
+                        <Input
+                          type="password"
+                          value={editVaultConfig.secretId}
+                          onChange={(e) => setEditVaultConfig(prev => ({ ...prev, secretId: e.target.value }))}
+                          placeholder={vaultConfig.hasSecretId ? "Leave blank to keep existing secret ID" : "secret-id"}
+                          className="mt-1"
+                          autoComplete="off"
+                        />
+                      </div>
+                    </>
+                  )}
+                  {!editing && vaultAuthMethod === "approle" && (
+                    <>
+                      <div>
+                        <Label className="text-sm font-medium">AppRole Role ID</Label>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {typeof vaultConfig.roleId === "string" ? vaultConfig.roleId : "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">AppRole Secret ID</Label>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {vaultConfig.hasSecretId ? "Configured" : "Not configured"}
+                        </p>
+                      </div>
+                    </>
+                  )}
+
+                  {((editing && editVaultConfig.authMethod === "kubernetes") ||
+                    (!editing && vaultAuthMethod === "kubernetes")) && (
+                    <div>
+                      <Label className="text-sm font-medium">Vault Role</Label>
                       {editing ? (
                         <Input
                           type="text"
@@ -545,11 +695,49 @@ export default function EnvironmentDetailPage({
                         />
                       ) : (
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {(env.secretBackendConfig as Record<string, string>)?.role || "\u2014"}
+                          {typeof vaultConfig.role === "string" ? vaultConfig.role : "—"}
                         </p>
                       )}
                     </div>
                   )}
+
+                  {editing && (
+                    <div className="space-y-2 rounded-md border border-line p-3">
+                      <div>
+                        <Label className="text-sm font-medium">Test Secret Path</Label>
+                        <Input
+                          type="text"
+                          value={editVaultConfig.testSecretPath}
+                          onChange={(e) => setEditVaultConfig(prev => ({ ...prev, testSecretPath: e.target.value }))}
+                          placeholder="optional/path"
+                          className="mt-1"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleTestVaultConnection}
+                        disabled={testVaultMutation.isPending}
+                      >
+                        {testVaultMutation.isPending ? "Testing..." : "Test Connection"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {editing && (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+                  <p className="text-xs text-muted-foreground">
+                    Changes in this section are staged until you save them.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button onClick={handleSave} disabled={updateMutation.isPending}>
+                      {updateMutation.isPending ? "Saving..." : "Save"}
+                    </Button>
+                    <Button variant="outline" onClick={() => setEditing(false)}>
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>
