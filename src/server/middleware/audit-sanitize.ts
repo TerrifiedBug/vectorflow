@@ -2,6 +2,7 @@ export const SENSITIVE_KEYS = new Set([
   "password", "currentPassword", "newPassword",
   "token", "secret", "key", "keyBase64",
   "passwordHash", "httpsToken", "sshKey",
+  "secretId", "clientSecret", "jwt",
   "aiApiKey",
   "hmacSecret", "smtpPass", "integrationKey", "webhookUrl",
 ]);
@@ -43,7 +44,10 @@ export function computeDiff(
     const oldVal = before[key];
     const newVal = after[key];
     if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
-      diff[key] = { old: oldVal, new: newVal };
+      diff[key] = {
+        old: sanitizeInput(oldVal),
+        new: sanitizeInput(newVal),
+      };
     }
   }
 

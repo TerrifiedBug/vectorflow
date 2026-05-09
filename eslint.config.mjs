@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Generated code (Prisma, etc.)
     "src/generated/**",
+    // Internal design prototypes are not production source.
+    "docs/internal/**",
   ]),
 ]);
 
