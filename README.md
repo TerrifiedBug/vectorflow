@@ -92,6 +92,29 @@ Per-pipeline, per-team, and per-environment cost rollups based on event volume. 
 
 Sync pipeline definitions from Git (GitHub, GitLab, Bitbucket) with PR-based promotion between environments. Bearer-token REST API and SCIM 2.0 user provisioning for platform-team workflows.
 
+### Platform automation
+
+VectorFlow's automation path is service-account first:
+
+1. Create a service account in **Settings → Service accounts** with the narrow API permissions your workflow needs.
+2. Export its token locally or in CI:
+
+```bash
+export VECTORFLOW_URL=https://vectorflow.example.com
+export VECTORFLOW_TOKEN=vf_...
+```
+
+Use the local CLI wrapper for common workflows:
+
+```bash
+pnpm vf validate ./vector.yaml
+pnpm vf export <pipeline-id> > vector.yaml
+pnpm vf import ./vector.yaml --name edge-logs
+pnpm vf deploy-status <pipeline-id>
+```
+
+For GitOps, store exported pipeline config in Git, open a PR for review, then use VectorFlow promotion/deploy requests to apply reviewed changes. Terraform/OpenTofu examples live in [`examples/terraform`](examples/terraform/README.md); they use REST API v1 and the CLI rather than a first-party provider.
+
 ### AI debugging
 
 Optional AI suggestions for failing pipelines: feed pipeline metrics, recent deploys, and SLI breaches into a model to surface likely causes. Bring your own OpenAI/Anthropic key.
