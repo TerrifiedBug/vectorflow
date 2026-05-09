@@ -4,6 +4,7 @@ import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { metricStore } from "@/server/services/metric-store";
 import { prisma } from "@/lib/prisma";
 import { queryPipelineMetricsAggregated } from "@/server/services/metrics-query";
+import { sourceBytesRate, sourceEventsRate } from "@/lib/metrics/component-rates";
 
 export const metricsRouter = router({
   /**
@@ -239,8 +240,8 @@ export const metricsRouter = router({
           latencyMeanMs: null,
         };
         if (matchingNode.kind === "SOURCE") {
-          existing.eventsInRate += latest.receivedEventsRate;
-          existing.bytesInRate += latest.receivedBytesRate;
+          existing.eventsInRate += sourceEventsRate(latest);
+          existing.bytesInRate += sourceBytesRate(latest);
         } else if (matchingNode.kind === "SINK") {
           existing.eventsOutRate += latest.sentEventsRate;
           existing.bytesOutRate += latest.sentBytesRate;
@@ -306,8 +307,8 @@ export const metricsRouter = router({
             const matchesSource = sourceKeys.some((key) => componentId === key);
             if (matchesSource) {
               const latest = samples[samples.length - 1];
-              eventsPerSec += latest.receivedEventsRate;
-              bytesPerSec += latest.receivedBytesRate;
+              eventsPerSec += sourceEventsRate(latest);
+              bytesPerSec += sourceBytesRate(latest);
             }
           }
         }

@@ -312,7 +312,6 @@ export default function NodeDetailPage() {
               <>Confirm the agent process: <span className="font-mono text-fg">systemctl status vectorflow-agent</span></>,
               "If decommissioning, delete the node to stop the alert.",
             ]}
-            primary={{ label: "Retry connection", onClick: () => nodeQuery.refetch() }}
             secondary={[
               {
                 label: node.maintenanceMode ? "Exit maintenance" : "Maintenance",
