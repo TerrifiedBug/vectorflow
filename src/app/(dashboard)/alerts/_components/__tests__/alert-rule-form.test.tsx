@@ -145,6 +145,7 @@ describe("AlertRuleForm", () => {
     expect(createRuleMutate).toHaveBeenCalledWith(
       expect.objectContaining({
         description: "Escalate to platform ops with recent node metrics.",
+        suggestedAction: "Escalate to platform ops with recent node metrics.",
       }),
     );
   });
@@ -171,6 +172,7 @@ describe("AlertRuleForm", () => {
       expect.objectContaining({
         id: "rule-1",
         description: "Update the incident channel before restarting services.",
+        suggestedAction: "Update the incident channel before restarting services.",
       }),
     );
   });

@@ -56,6 +56,7 @@ export type AlertRuleFormValues = {
   channelIds: string[];
 };
 
+const DEFAULT_SUGGESTED_ACTION = "Review the alert context, then inspect the affected pipeline, node, and recent deployment changes.";
 export const DEFAULT_FORM_VALUES: AlertRuleFormValues = {
   name: "pipeline error rate breach",
   description: "",
@@ -245,6 +246,7 @@ export function AlertRuleForm(props: Props) {
       toast.error("Select a team and environment");
       return;
     }
+    const trimmedDescription = description.trim();
     if (props.mode === "create") {
       createRule.mutate({
         name,
@@ -253,7 +255,8 @@ export function AlertRuleForm(props: Props) {
         pipelineId: pipelineId || undefined,
         metric: metric as never,
         condition: condition as never,
-        description: description.trim() || undefined,
+        description: trimmedDescription || undefined,
+        suggestedAction: trimmedDescription || DEFAULT_SUGGESTED_ACTION,
         threshold: numericOrUndefined(threshold),
         durationSeconds: durationMinutesToSeconds(durationMinutes),
         severity,
@@ -264,7 +267,8 @@ export function AlertRuleForm(props: Props) {
       updateRule.mutate({
         id: props.ruleId,
         name,
-        description: description.trim(),
+        description: trimmedDescription,
+        suggestedAction: trimmedDescription || DEFAULT_SUGGESTED_ACTION,
         ...(numericOrUndefined(threshold) !== undefined ? { threshold: numericOrUndefined(threshold) } : {}),
         ...(durationMinutesToSeconds(durationMinutes) !== undefined ? { durationSeconds: durationMinutesToSeconds(durationMinutes)! } : {}),
         severity,
