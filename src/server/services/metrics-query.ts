@@ -56,6 +56,18 @@ interface AggregateRow {
   avg_latency_ms: number | null;
 }
 
+interface EnvironmentAggregateRow {
+  bucket: Date;
+  events_in: bigint;
+  events_out: bigint;
+  events_discarded: bigint;
+  errors_total: bigint;
+  bytes_in: bigint;
+  bytes_out: bigint;
+  avg_utilization: number | null;
+  avg_latency_ms: number | null;
+}
+
 /**
  * Query pipeline metrics, automatically routing to the appropriate
  * data source (raw table or continuous aggregate) based on time range.
@@ -129,6 +141,95 @@ export async function queryPipelineMetricsAggregated(input: {
   }));
 
   return { rows };
+}
+
+/**
+ * Query environment-level pipeline metrics by aggregating all pipeline-level
+ * rows for pipelines in the environment into a single time series.
+ */
+export async function queryEnvironmentPipelineMetricsAggregated(input: {
+  environmentId: string;
+  minutes: number;
+}): Promise<{ rows: PipelineMetricRow[] }> {
+  const source = resolveMetricsSource(input.minutes);
+  const since = new Date(Date.now() - input.minutes * 60 * 1000);
+
+  if (source === "raw") {
+    const rows = await prisma.$queryRawUnsafe<EnvironmentAggregateRow[]>(
+      `SELECT
+         date_trunc('minute', pm.timestamp) AS bucket,
+         SUM(pm."eventsIn")::bigint AS events_in,
+         SUM(pm."eventsOut")::bigint AS events_out,
+         SUM(pm."eventsDiscarded")::bigint AS events_discarded,
+         SUM(pm."errorsTotal")::bigint AS errors_total,
+         SUM(pm."bytesIn")::bigint AS bytes_in,
+         SUM(pm."bytesOut")::bigint AS bytes_out,
+         AVG(pm.utilization) AS avg_utilization,
+         AVG(pm."latencyMeanMs") AS avg_latency_ms
+       FROM "PipelineMetric" pm
+       JOIN "Pipeline" p ON p.id = pm."pipelineId"
+       WHERE p."environmentId" = $1
+         AND pm."nodeId" IS NULL
+         AND pm."componentId" IS NULL
+         AND pm.timestamp >= $2
+       GROUP BY bucket
+       ORDER BY bucket ASC`,
+      input.environmentId,
+      since,
+    );
+
+    return {
+      rows: rows.map((r) => ({
+        timestamp: r.bucket,
+        eventsIn: r.events_in,
+        eventsOut: r.events_out,
+        eventsDiscarded: r.events_discarded,
+        errorsTotal: r.errors_total,
+        bytesIn: r.bytes_in,
+        bytesOut: r.bytes_out,
+        utilization: r.avg_utilization ?? 0,
+        latencyMeanMs: r.avg_latency_ms,
+      })),
+    };
+  }
+
+  const viewName =
+    source === "1m" ? "pipeline_metrics_1m" : "pipeline_metrics_1h";
+
+  const aggRows = await prisma.$queryRawUnsafe<EnvironmentAggregateRow[]>(
+    `SELECT
+       m.bucket,
+       SUM(m.events_in)::bigint AS events_in,
+       SUM(m.events_out)::bigint AS events_out,
+       SUM(m.events_discarded)::bigint AS events_discarded,
+       SUM(m.errors_total)::bigint AS errors_total,
+       SUM(m.bytes_in)::bigint AS bytes_in,
+       SUM(m.bytes_out)::bigint AS bytes_out,
+       AVG(m.avg_utilization) AS avg_utilization,
+       AVG(m.avg_latency_ms) AS avg_latency_ms
+     FROM ${viewName} m
+     JOIN "Pipeline" p ON p.id = m."pipelineId"
+     WHERE p."environmentId" = $1
+       AND m.bucket >= $2
+     GROUP BY m.bucket
+     ORDER BY m.bucket ASC`,
+    input.environmentId,
+    since,
+  );
+
+  return {
+    rows: aggRows.map((r) => ({
+      timestamp: r.bucket,
+      eventsIn: r.events_in,
+      eventsOut: r.events_out,
+      eventsDiscarded: r.events_discarded,
+      errorsTotal: r.errors_total,
+      bytesIn: r.bytes_in,
+      bytesOut: r.bytes_out,
+      utilization: r.avg_utilization ?? 0,
+      latencyMeanMs: r.avg_latency_ms,
+    })),
+  };
 }
 
 // ─── Node Metrics ────────────────────────────────────────────────────────────
