@@ -10,6 +10,7 @@ export const SENSITIVE_KEYS = new Set([
 export function sanitizeInput(input: unknown): unknown {
   if (input === null || input === undefined) return input;
   if (typeof input !== "object") return input;
+  if (input instanceof Date) return input.toISOString();
   if (Array.isArray(input)) return input.map(sanitizeInput);
 
   const result: Record<string, unknown> = {};

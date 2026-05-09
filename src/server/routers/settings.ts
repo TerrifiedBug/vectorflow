@@ -660,7 +660,12 @@ export const settingsRouter = router({
               by: ["status"],
               _count: { id: true },
             }),
-            prisma.alertRule.count(),
+            prisma.alertRule.count({
+              where: {
+                enabled: true,
+                OR: [{ snoozedUntil: null }, { snoozedUntil: { lt: new Date() } }],
+              },
+            }),
             prisma.pipeline.findFirst({
               where: { isSystem: true },
               select: { isDraft: true, deployedAt: true },
