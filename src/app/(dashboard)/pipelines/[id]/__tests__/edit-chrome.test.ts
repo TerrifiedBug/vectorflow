@@ -14,6 +14,13 @@ describe("pipeline editor chrome", () => {
     expect(toolbarSource).toContain('label="Settings"');
   });
 
+  it("keeps the pipeline identity region from crowding toolbar actions", () => {
+    expect(toolbarSource).toContain('data-testid="pipeline-toolbar-identity"');
+    expect(toolbarSource).toContain('className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden"');
+    expect(toolbarSource).toContain('data-testid="pipeline-toolbar-actions"');
+    expect(toolbarSource).toContain('className="flex shrink-0 items-center gap-2"');
+  });
+
   it("opts the editor out of server rendering to avoid browser-only crashes in dev", () => {
     expect(editorPageSource).toContain("ssr: false");
   });
