@@ -104,7 +104,7 @@ function mapRuleToFormValues(rule: RuleFromApi): AlertRuleFormValues {
       : "warning";
   return {
     name: rule.name,
-    description: rule.description ?? "",
+    description: rule.description ?? rule.suggestedAction ?? "",
     severity,
     pipelineId: rule.pipelineId ?? "",
     metric: rule.metric,

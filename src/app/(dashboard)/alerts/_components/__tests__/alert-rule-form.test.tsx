@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
+import { readFileSync } from "node:fs";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
@@ -172,5 +173,11 @@ describe("AlertRuleForm", () => {
         description: "Update the incident channel before restarting services.",
       }),
     );
+  });
+
+  it("preserves suggestedAction as legacy description fallback in edit mapping", () => {
+    const editPageSource = readFileSync("src/app/(dashboard)/alerts/[id]/edit/page.tsx", "utf8");
+
+    expect(editPageSource).toContain("description: rule.description ?? rule.suggestedAction ?? \"\"");
   });
 });

@@ -50,6 +50,7 @@ function makeAlertRule(overrides: Partial<AlertRule> = {}): AlertRule {
   return {
     id: overrides.id ?? "rule-1",
     name: overrides.name ?? "Test Rule",
+    description: overrides.description ?? null,
     enabled: overrides.enabled ?? true,
     environmentId: overrides.environmentId ?? "env-1",
     pipelineId: overrides.pipelineId ?? null,
