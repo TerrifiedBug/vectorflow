@@ -15,13 +15,14 @@ export interface SchemaFormProps {
   values: Record<string, unknown>;
   onChange: (values: Record<string, unknown>) => void;
   environmentId?: string;
+  pipelineId?: string;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export function SchemaForm({ schema, values, onChange, environmentId }: SchemaFormProps) {
+export function SchemaForm({ schema, values, onChange, environmentId, pipelineId }: SchemaFormProps) {
   if (!schema.properties || Object.keys(schema.properties).length === 0) {
     return (
       <p className="text-[12px] text-fg-2">No configurable properties.</p>
@@ -44,6 +45,7 @@ export function SchemaForm({ schema, values, onChange, environmentId }: SchemaFo
           required={requiredFields.includes(key)}
           parentValues={values}
           environmentId={environmentId}
+          pipelineId={pipelineId}
         />
       ))}
     </div>

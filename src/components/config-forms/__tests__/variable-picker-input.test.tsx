@@ -26,6 +26,10 @@ vi.mock("@/trpc/client", () => ({
         }),
       },
     },
+    pipeline: {
+      get: { queryKey: vi.fn(() => ["pipeline", "get"]) },
+      update: { mutationOptions: vi.fn((opts) => opts) },
+    },
   }),
 }));
 
@@ -34,6 +38,8 @@ vi.mock("@tanstack/react-query", async () => {
   return {
     ...actual,
     useQuery: () => ({ data: [], isLoading: false, isPending: false, isError: false }),
+    useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   };
 });
 

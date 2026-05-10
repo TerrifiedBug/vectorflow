@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Variable, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,7 @@ interface VariablePickerInputProps {
   value: string;
   onChange: (value: string) => void;
   environmentId: string;
+  pipelineId?: string;
   className?: string;
 }
 
@@ -30,6 +31,7 @@ export function VariablePickerInput({
   value,
   onChange,
   environmentId,
+  pipelineId,
   className,
 }: VariablePickerInputProps) {
   const [open, setOpen] = useState(false);
@@ -43,6 +45,7 @@ export function VariablePickerInput({
   const varName = varMatch?.[1];
 
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const envVarsQuery = useQuery(
     trpc.variable.list.queryOptions(
       { environmentId },
@@ -50,6 +53,15 @@ export function VariablePickerInput({
     ),
   );
   const envVars = envVarsQuery.data ?? [];
+
+  // Persist pipeline variable additions to the database
+  const persistMutation = useMutation(
+    trpc.pipeline.update.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: trpc.pipeline.get.queryKey() });
+      },
+    }),
+  );
 
   const previewValue = varName
     ? pipelineVariables[varName] ?? envVars.find((v) => v.name === varName)?.value ?? "(unresolved)"
@@ -64,7 +76,11 @@ export function VariablePickerInput({
   const handleAddInline = () => {
     const trimmed = newName.trim();
     if (!VARIABLE_NAME_PATTERN.test(trimmed)) return;
+    const updated = { ...pipelineVariables, [trimmed]: newValue };
     updatePipelineVariable(trimmed, newValue);
+    if (pipelineId) {
+      persistMutation.mutate({ id: pipelineId, variables: updated });
+    }
     onChange(`VAR[${trimmed}]`);
     setNewName("");
     setNewValue("");

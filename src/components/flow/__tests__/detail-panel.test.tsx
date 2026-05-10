@@ -50,6 +50,10 @@ vi.mock("@/trpc/client", () => ({
     },
     pipeline: {
       get: { queryKey: vi.fn(() => ["pipeline", "get"]), queryOptions: vi.fn(() => ({ queryKey: ["pipeline", "get"], queryFn: vi.fn(), enabled: false })) },
+      update: { mutationOptions: vi.fn((opts) => opts) },
+    },
+    variable: {
+      list: { queryOptions: vi.fn(() => ({ queryKey: ["variable", "list"], queryFn: vi.fn(), enabled: false })) },
     },
   }),
 }));

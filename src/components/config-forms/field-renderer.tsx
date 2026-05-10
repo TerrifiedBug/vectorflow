@@ -51,6 +51,7 @@ export interface FieldRendererProps {
   required?: boolean;
   parentValues?: Record<string, unknown>;
   environmentId?: string;
+  pipelineId?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -125,6 +126,7 @@ export function FieldRenderer({
   required,
   parentValues,
   environmentId,
+  pipelineId,
 }: FieldRendererProps) {
   const label = toTitleCase(name);
 
@@ -426,6 +428,7 @@ export function FieldRenderer({
           value={currentStringValue}
           onChange={(v) => onChange(v)}
           environmentId={environmentId}
+          pipelineId={pipelineId}
         />
       ) : isMultiline ? (
         <div className="flex items-start gap-1.5">
@@ -446,6 +449,7 @@ export function FieldRenderer({
               value={currentStringValue}
               onChange={(v) => onChange(v)}
               environmentId={environmentId}
+              pipelineId={pipelineId}
             />
           ) : null}
         </div>
@@ -476,6 +480,7 @@ export function FieldRenderer({
               value={currentStringValue}
               onChange={(v) => onChange(v)}
               environmentId={environmentId}
+              pipelineId={pipelineId}
             />
           ) : null}
         </div>

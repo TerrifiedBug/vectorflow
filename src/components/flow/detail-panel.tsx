@@ -230,6 +230,16 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
     ),
   );
   const environmentId = pipelineQuery.data?.environmentId ?? "";
+  const envVarsQuery = useQuery(
+    trpc.variable.list.queryOptions(
+      { environmentId },
+      { enabled: !!environmentId },
+    ),
+  );
+  const envVarNames = useMemo(
+    () => new Set((envVarsQuery.data ?? []).map((v: { name: string }) => v.name)),
+    [envVarsQuery.data],
+  );
 
   const selectedNode = selectedNodeId
     ? nodes.find((n) => n.id === selectedNodeId)
@@ -239,6 +249,7 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
     const config = (selectedNode?.data as { config?: Record<string, unknown> } | undefined)?.config ?? {};
     const serverVariables = (pipelineQuery.data?.variables as Record<string, string> | null) ?? {};
     const knownVariables = { ...serverVariables, ...pipelineVariables };
+    // Also consider environment-scoped variables as "known"
     const unresolved = new Set<string>();
     const varPattern = /^VAR\[(.+)]$/;
 
@@ -248,7 +259,7 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
           const match = val.match(varPattern);
           if (match) {
             const name = match[1];
-            if (!(name in knownVariables)) unresolved.add(name);
+            if (!(name in knownVariables) && !envVarNames.has(name)) unresolved.add(name);
           }
         } else if (val && typeof val === "object" && !Array.isArray(val)) {
           walk(val as Record<string, unknown>);
@@ -258,7 +269,7 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
 
     walk(config);
     return [...unresolved];
-  }, [selectedNode, pipelineVariables, pipelineQuery.data?.variables]);
+  }, [selectedNode, pipelineVariables, pipelineQuery.data?.variables, envVarNames]);
 
   const isShared = !!selectedNode?.data.sharedComponentId;
   const isStale = isShared &&
@@ -770,6 +781,7 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
                     values={config}
                     onChange={handleConfigChange}
                     environmentId={environmentId}
+                    pipelineId={pipelineId}
                   />
                 </>
               )}
