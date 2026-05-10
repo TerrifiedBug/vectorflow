@@ -2,9 +2,11 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { metricStore } from "@/server/services/metric-store";
+import type { MetricSample } from "@/server/services/metric-store";
 import { prisma } from "@/lib/prisma";
 import { queryPipelineMetricsAggregated } from "@/server/services/metrics-query";
 import { sourceBytesRate, sourceEventsRate } from "@/lib/metrics/component-rates";
+import { isDemoMode } from "@/lib/is-demo-mode";
 
 export const metricsRouter = router({
   /**
@@ -154,6 +156,65 @@ export const metricsRouter = router({
               displayName: matchingNode.displayName,
               componentType: matchingNode.componentType,
               kind: matchingNode.kind,
+              samples,
+            };
+          }
+        }
+      }
+
+      // Demo-mode fallback: when no live metricStore samples are available
+      // (no real agents pushing data), synthesise per-component samples from
+      // the pipeline-level rows backfilled by the demo seed. This lets the
+      // flow editor light up its node throughput overlays + nudge xyflow into
+      // recomputing edge geometry on the first render — without it, edges
+      // that load before ResizeObserver finishes measuring stay zero-length
+      // until the user drags a node.
+      if (Object.keys(components).length === 0 && isDemoMode() && pipeline.nodes.length > 0) {
+        const since = new Date(Date.now() - input.minutes * 60 * 1000);
+        const rows = await prisma.pipelineMetric.findMany({
+          where: {
+            pipelineId: input.pipelineId,
+            nodeId: null,
+            componentId: null,
+            timestamp: { gte: since },
+          },
+          orderBy: { timestamp: "asc" },
+          select: {
+            timestamp: true,
+            eventsIn: true,
+            eventsOut: true,
+            bytesIn: true,
+            bytesOut: true,
+            eventsDiscarded: true,
+            errorsTotal: true,
+            latencyMeanMs: true,
+          },
+        });
+
+        if (rows.length > 0) {
+          // PipelineMetric rows are per-5-minute counters — convert to rates.
+          const INTERVAL_SECONDS = 300;
+          const samples: MetricSample[] = rows.map((r) => ({
+            timestamp: r.timestamp.getTime(),
+            receivedEventsRate: Number(r.eventsIn) / INTERVAL_SECONDS,
+            sentEventsRate: Number(r.eventsOut) / INTERVAL_SECONDS,
+            receivedBytesRate: Number(r.bytesIn) / INTERVAL_SECONDS,
+            sentBytesRate: Number(r.bytesOut) / INTERVAL_SECONDS,
+            errorCount: Number(r.errorsTotal),
+            errorsRate: Number(r.errorsTotal) / INTERVAL_SECONDS,
+            discardedRate: Number(r.eventsDiscarded) / INTERVAL_SECONDS,
+            latencyMeanMs: r.latencyMeanMs,
+          }));
+
+          // Apply the same series to every node in the pipeline. The
+          // edge-overlay code in flow-store.updateNodeMetrics keys off
+          // componentKey, so the kind-specific rates are picked downstream.
+          for (const node of pipeline.nodes) {
+            components[node.componentKey] = {
+              componentKey: node.componentKey,
+              displayName: node.displayName,
+              componentType: node.componentType,
+              kind: node.kind,
               samples,
             };
           }
