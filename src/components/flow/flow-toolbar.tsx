@@ -40,7 +40,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/pill";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -131,8 +130,6 @@ interface FlowToolbarProps {
   pipelineName?: string;
   /** Optional environment name to render as a Pill next to the pipeline name. */
   environmentName?: string;
-  /** Optional environment color used to tint the Pill (CSS color). */
-  environmentColor?: string;
   /** Optional human-readable "last saved" label (e.g. "14s ago"). */
   lastSavedLabel?: string;
   /** Total node count, surfaced in the running/paused status text. */
@@ -220,7 +217,6 @@ export function FlowToolbar({
   deployedVersionNumber,
   pipelineName,
   environmentName,
-  environmentColor,
   lastSavedLabel,
   nodeCount,
   onRename,
