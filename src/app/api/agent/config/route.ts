@@ -112,9 +112,8 @@ export async function GET(request: Request) {
         versions: {
           orderBy: { version: "desc" },
           take: 1,
-          select: { version: true, configYaml: true, logLevel: true },
+          select: { version: true, configYaml: true, logLevel: true, variablesSnapshot: true },
         },
-        variables: true,
       },
     });
 
@@ -198,9 +197,9 @@ export async function GET(request: Request) {
         // at the object level. This ensures js-yaml properly quotes values
         // containing special characters when we re-dump.
         const parsedConfig = yaml.load(configYaml) as Record<string, unknown>;
-        const pipelineVars = isRecord(pipeline.variables)
+        const pipelineVars = isRecord(latestVersion.variablesSnapshot)
           ? Object.fromEntries(
-              Object.entries(pipeline.variables).filter(
+              Object.entries(latestVersion.variablesSnapshot).filter(
                 (entry): entry is [string, string] => typeof entry[1] === "string",
               ),
             )

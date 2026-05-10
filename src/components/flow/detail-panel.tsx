@@ -253,17 +253,17 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
     const unresolved = new Set<string>();
     const varPattern = /^VAR\[(.+)]$/;
 
-    function walk(obj: Record<string, unknown>) {
-      for (const val of Object.values(obj)) {
-        if (typeof val === "string") {
-          const match = val.match(varPattern);
-          if (match) {
-            const name = match[1];
-            if (!(name in knownVariables) && !envVarNames.has(name)) unresolved.add(name);
-          }
-        } else if (val && typeof val === "object" && !Array.isArray(val)) {
-          walk(val as Record<string, unknown>);
+    function walk(obj: unknown) {
+      if (typeof obj === "string") {
+        const match = obj.match(varPattern);
+        if (match) {
+          const name = match[1];
+          if (!(name in knownVariables) && !envVarNames.has(name)) unresolved.add(name);
         }
+      } else if (Array.isArray(obj)) {
+        for (const item of obj) walk(item);
+      } else if (obj && typeof obj === "object") {
+        for (const val of Object.values(obj)) walk(val);
       }
     }
 
