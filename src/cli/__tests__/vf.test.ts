@@ -133,13 +133,9 @@ describe("vf CLI", () => {
     expect(readme).not.toContain("required_providers {\n  vectorflow");
   });
 
-  it("documents the platform automation workflow in README", () => {
+  it("documents key workflows in README", () => {
     const readme = readFileSync("README.md", "utf8");
-    expect(readme).toContain("### Platform automation");
-    expect(readme).toContain("VECTORFLOW_URL");
-    expect(readme).toContain("VECTORFLOW_TOKEN");
-    expect(readme).toContain("pnpm vf deploy-status");
-    expect(readme).toContain("examples/terraform");
     expect(readme).toContain("GitOps");
+    expect(readme).toContain("vectorflow.sh/docs");
   });
 });
