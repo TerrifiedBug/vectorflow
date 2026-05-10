@@ -67,7 +67,23 @@ function MetricEdgeComponent({
   return (
     <>
       <defs>
-        <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="0%">
+        {/*
+          gradientUnits="userSpaceOnUse" anchors the gradient to absolute
+          source/target coordinates instead of the path's bounding box. The
+          default `objectBoundingBox` falls apart when the path renders with
+          zero geometry on first paint (handleBounds not yet measured) — the
+          gradient's coord space collapses and the stroke renders invisible.
+          With userSpaceOnUse the gradient still has valid endpoints even
+          before xyflow finishes laying out the edge.
+        */}
+        <linearGradient
+          id={gradId}
+          gradientUnits="userSpaceOnUse"
+          x1={sourceX}
+          y1={sourceY}
+          x2={targetX}
+          y2={targetY}
+        >
           <stop offset="0%" stopColor={startColor} stopOpacity="0.55" />
           <stop offset="100%" stopColor={endColor} stopOpacity="0.95" />
         </linearGradient>
