@@ -120,19 +120,6 @@ function dbEdgesToFlowEdges(
   }));
 }
 
-/**
- * Map common environment names to a CSS variable color so the toolbar Pill
- * shows a tone-appropriate tint. Falls back to undefined for unknown names,
- * which renders the neutral env Pill.
- */
-function envPillColor(envName?: string | null): string | undefined {
-  if (!envName) return undefined;
-  const lower = envName.toLowerCase();
-  if (lower === "prod" || lower === "production") return "var(--status-error)";
-  if (lower === "staging" || lower === "stage" || lower === "preprod") return "var(--status-degraded)";
-  if (lower === "dev" || lower === "development" || lower === "local") return "var(--accent-brand)";
-  return undefined;
-}
 
 
 
@@ -562,7 +549,6 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
             deployedVersionNumber={pipelineQuery.data?.deployedVersionNumber}
             pipelineName={pipelineQuery.data?.name ?? "Untitled"}
             environmentName={pipelineQuery.data?.environment?.name}
-            environmentColor={envPillColor(pipelineQuery.data?.environment?.name)}
             nodeCount={nodes.length}
             lastSavedLabel={lastSavedLabel}
             onRename={handleConfirmRename}
