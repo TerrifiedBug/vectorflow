@@ -168,7 +168,22 @@ model Environment {
   costRecommendations     CostRecommendation[]
   anomalyEvents       AnomalyEvent[]
   correlationGroups       AlertCorrelationGroup[]
+  variables               Variable[]
   createdAt               DateTime      @default(now())
+}
+
+model Variable {
+  id            String      @id @default(cuid())
+  name          String
+  value         String
+  description   String?
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([environmentId, name])
+  @@index([environmentId])
 }
 
 model VectorNode {
@@ -358,6 +373,7 @@ model Pipeline {
   autoRollbackThreshold      Float    @default(5.0)
   autoRollbackWindowMinutes  Int      @default(5)
   deploymentStrategy    Json?                // DeploymentStrategy | null (null = direct deploy)
+  variables             Json?                // Record<string, string> — pipeline-scoped variable key-value pairs
   aiConversations AiConversation[]
   deployRequests  DeployRequest[]
   stagedRollouts  StagedRollout[]
@@ -644,6 +660,7 @@ model PipelineVersion {
   globalConfig Json?
   nodesSnapshot Json?
   edgesSnapshot Json?
+  variablesSnapshot Json?  // Snapshot of pipeline variables at deploy time
   createdById String?
   createdBy   User?    @relation("PipelineVersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   changelog   String?

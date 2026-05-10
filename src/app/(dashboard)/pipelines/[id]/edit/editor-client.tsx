@@ -614,6 +614,15 @@ function PipelineBuilderInner({ pipelineId }: { pipelineId: string }) {
           <span className="font-mono text-[10.5px] uppercase tracking-[0.05em] text-fg-2">{draftSaveLabel}</span>
         </div>
       )}
+      {validationErrors.length > 0 && (
+        <div className="flex items-center gap-2 border-b border-status-error/30 bg-status-error/5 px-4 py-1.5 text-[12px]">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-status-error" />
+          <span className="font-mono uppercase tracking-[0.05em] text-status-error">
+            {validationErrors.length} validation {validationErrors.length === 1 ? "error" : "errors"}
+          </span>
+          <span className="truncate text-fg-1">{firstValidationError}</span>
+        </div>
+      )}
       <div className="flex min-w-0 flex-1 overflow-hidden">
         <ComponentPalette />
         <div className="relative min-w-0 flex-1 overflow-hidden">

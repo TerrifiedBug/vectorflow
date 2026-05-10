@@ -229,4 +229,33 @@ describe("flow-store metric edge runtime metadata", () => {
       },
     });
   });
+
+  it("tracks pipeline variables separately from graph dirty state and resets them on graph changes", () => {
+    useFlowStore.getState().loadGraph(nodes, []);
+    useFlowStore.getState().setPipelineVariables({ endpoint: "https://example.internal" });
+
+    expect(useFlowStore.getState().pipelineVariables).toEqual({
+      endpoint: "https://example.internal",
+    });
+    expect(useFlowStore.getState().isDirty).toBe(false);
+
+    useFlowStore.getState().updatePipelineVariable("region", "us-east-1");
+    expect(useFlowStore.getState().pipelineVariables).toEqual({
+      endpoint: "https://example.internal",
+      region: "us-east-1",
+    });
+    expect(useFlowStore.getState().isDirty).toBe(false);
+
+    useFlowStore.getState().removePipelineVariable("endpoint");
+    expect(useFlowStore.getState().pipelineVariables).toEqual({ region: "us-east-1" });
+    expect(useFlowStore.getState().isDirty).toBe(false);
+
+    // loadGraph preserves pipeline variables (they're managed separately via pipeline.update)
+    useFlowStore.getState().loadGraph(nodes, []);
+    expect(useFlowStore.getState().pipelineVariables).toEqual({ region: "us-east-1" });
+
+    useFlowStore.getState().setPipelineVariables({ token: "abc" });
+    useFlowStore.getState().clearGraph();
+    expect(useFlowStore.getState().pipelineVariables).toEqual({});
+  });
 });

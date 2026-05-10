@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { SecretPickerInput } from "./secret-picker-input";
 import { CertPickerInput, isCertFileField } from "./cert-picker-input";
 import { CertBundlePickerInput } from "./cert-bundle-picker";
+import { VariablePickerInput } from "./variable-picker-input";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -49,6 +50,8 @@ export interface FieldRendererProps {
   onChange: (value: unknown) => void;
   required?: boolean;
   parentValues?: Record<string, unknown>;
+  environmentId?: string;
+  pipelineId?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -122,6 +125,8 @@ export function FieldRenderer({
   onChange,
   required,
   parentValues,
+  environmentId,
+  pipelineId,
 }: FieldRendererProps) {
   const label = toTitleCase(name);
 
@@ -399,6 +404,7 @@ export function FieldRenderer({
               }
               required={requiredFields.includes(key)}
               parentValues={objValue}
+              environmentId={environmentId}
             />
           ))}
         </div>
@@ -411,44 +417,73 @@ export function FieldRenderer({
   const isSensitive = schema.sensitive === true || /password|secret|token|api_key/i.test(name);
   const isCertFile = isCertFileField(name);
   const placeholder = schema.default !== undefined ? String(schema.default) : undefined;
+  const currentStringValue = (value as string) ?? "";
+  const isVarRef = /^VAR\[.+]$/.test(currentStringValue);
 
   return (
     <div className="space-y-1.5">
       {labelRow}
-      {isMultiline ? (
-        <Textarea
-          value={(value as string) ?? ""}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={handleBlur}
-          placeholder={placeholder}
-          rows={4}
-          aria-invalid={touched && !!error}
-          className={cn(
-            "rounded-[3px] border-line-2 bg-bg-2 text-[12px]",
-            touched && error && errorInputClass,
-          )}
+      {!isSensitive && !isCertFile && environmentId && isVarRef ? (
+        <VariablePickerInput
+          value={currentStringValue}
+          onChange={(v) => onChange(v)}
+          environmentId={environmentId}
+          pipelineId={pipelineId}
         />
+      ) : isMultiline ? (
+        <div className="flex items-start gap-1.5">
+          <Textarea
+            value={currentStringValue}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={handleBlur}
+            placeholder={placeholder}
+            rows={4}
+            aria-invalid={touched && !!error}
+            className={cn(
+              "rounded-[3px] border-line-2 bg-bg-2 text-[12px]",
+              touched && error && errorInputClass,
+            )}
+          />
+          {!isSensitive && !isCertFile && environmentId ? (
+            <VariablePickerInput
+              value={currentStringValue}
+              onChange={(v) => onChange(v)}
+              environmentId={environmentId}
+              pipelineId={pipelineId}
+            />
+          ) : null}
+        </div>
       ) : isSensitive ? (
         <SecretPickerInput
-          value={(value as string) ?? ""}
+          value={currentStringValue}
           onChange={(v) => onChange(v)}
         />
       ) : isCertFile ? (
         <CertPickerInput
           fieldName={name}
-          value={(value as string) ?? ""}
+          value={currentStringValue}
           onChange={(v) => onChange(v)}
         />
       ) : (
-        <Input
-          type="text"
-          value={(value as string) ?? ""}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={handleBlur}
-          placeholder={placeholder}
-          aria-invalid={touched && !!error}
-          className={cn(touched && error && errorInputClass)}
-        />
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="text"
+            value={currentStringValue}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={handleBlur}
+            placeholder={placeholder}
+            aria-invalid={touched && !!error}
+            className={cn(touched && error && errorInputClass)}
+          />
+          {environmentId ? (
+            <VariablePickerInput
+              value={currentStringValue}
+              onChange={(v) => onChange(v)}
+              environmentId={environmentId}
+              pipelineId={pipelineId}
+            />
+          ) : null}
+        </div>
       )}
       {schema.description && (
         <p className={descriptionClass}>{schema.description}</p>

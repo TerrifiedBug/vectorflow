@@ -3,6 +3,7 @@ import yaml from "js-yaml";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgent } from "@/server/services/agent-auth";
 import { collectSecretRefs, convertSecretRefsToEnvVars, resolveCertRefs, secretNameToEnvVar } from "@/server/services/secret-resolver";
+import { collectVarRefs, resolveVarRefs } from "@/server/services/variable-resolver";
 import { decrypt } from "@/server/services/crypto";
 import { fetchVaultSecrets, readVaultSecretObject, type VaultBackendConfig } from "@/server/services/vault-client";
 import { createHash } from "crypto";
@@ -111,7 +112,7 @@ export async function GET(request: Request) {
         versions: {
           orderBy: { version: "desc" },
           take: 1,
-          select: { version: true, configYaml: true, logLevel: true },
+          select: { version: true, configYaml: true, logLevel: true, variablesSnapshot: true },
         },
       },
     });
@@ -125,6 +126,13 @@ export async function GET(request: Request) {
         ([key, value]) => nodeLabels[key] === value,
       );
     });
+
+
+    const envVariables = await (prisma.variable?.findMany({
+      where: { environmentId: agent.environmentId },
+      select: { name: true, value: true },
+    }) ?? Promise.resolve([]));
+    const envVarMap = new Map(envVariables.map((variable) => [variable.name, variable.value]));
 
     const pipelineConfigs = [];
     const certBasePath = "/var/lib/vf-agent/certs";
@@ -185,15 +193,34 @@ export async function GET(request: Request) {
         let certFiles: Array<{ name: string; filename: string; data: string }> = [];
         let pipelineSecrets = secrets;
 
-        if (environment.secretBackend === "BUILTIN" || environment.secretBackend === "VAULT") {
-          // Parse versioned YAML back to objects so we can resolve references
-          // at the object level. This ensures js-yaml properly quotes values
-          // containing special characters when we re-dump.
-          const parsedConfig = yaml.load(configYaml) as Record<string, unknown>;
+        // Parse versioned YAML back to objects so we can resolve references
+        // at the object level. This ensures js-yaml properly quotes values
+        // containing special characters when we re-dump.
+        const parsedConfig = yaml.load(configYaml) as Record<string, unknown>;
+        const pipelineVars = isRecord(latestVersion.variablesSnapshot)
+          ? Object.fromEntries(
+              Object.entries(latestVersion.variablesSnapshot).filter(
+                (entry): entry is [string, string] => typeof entry[1] === "string",
+              ),
+            )
+          : {};
+        let configForDelivery = parsedConfig;
+        let shouldDumpConfig = false;
+        const varRefs = collectVarRefs(parsedConfig);
 
+        if (varRefs.size > 0) {
+          try {
+            configForDelivery = resolveVarRefs(parsedConfig, pipelineVars, envVarMap);
+            shouldDumpConfig = true;
+          } catch (err) {
+            warnLog("agent-config", `Unresolved variables in pipeline ${pipeline.id}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+
+        if (environment.secretBackend === "BUILTIN" || environment.secretBackend === "VAULT") {
           if (environment.secretBackend === "VAULT") {
             pipelineSecrets = {};
-            const pipelineSecretRefs = collectSecretRefs(parsedConfig);
+            const pipelineSecretRefs = collectSecretRefs(configForDelivery);
             if (pipelineSecretRefs.size > 0) {
               const vaultSecrets = sharedVaultData && vaultConfig?.basePath
                 ? resolveVaultSecretsFromObject(sharedVaultData, vaultConfig.basePath, pipelineSecretRefs)
@@ -214,7 +241,7 @@ export async function GET(request: Request) {
 
           // Convert SECRET[name] → ${VF_SECRET_NAME} env var placeholders.
           // Vector interpolates these from environment variables set by the agent.
-          const withEnvVars = convertSecretRefsToEnvVars(parsedConfig);
+          const withEnvVars = convertSecretRefsToEnvVars(configForDelivery);
 
           // Walk config objects and resolve all CERT[name] → deploy file paths
           const { config: withCerts, certFiles: certs } = await resolveCertRefs(
@@ -223,11 +250,14 @@ export async function GET(request: Request) {
             certBasePath,
           );
           certFiles = certs;
-
-          // Re-dump to YAML with proper quoting for special characters
-          configYaml = yaml.dump(withCerts, { indent: 2, lineWidth: -1, noRefs: true, forceQuotes: true, quotingType: '"' });
+          configForDelivery = withCerts;
+          shouldDumpConfig = true;
         }
-        // Other external backends: configYaml is used as-is with references intact
+
+        if (shouldDumpConfig) {
+          // Re-dump to YAML with proper quoting for special characters
+          configYaml = yaml.dump(configForDelivery, { indent: 2, lineWidth: -1, noRefs: true, forceQuotes: true, quotingType: '"' });
+        }
 
         // Include secrets in checksum so secret rotation triggers agent restart
         const checksumInput = Object.keys(pipelineSecrets).length > 0
