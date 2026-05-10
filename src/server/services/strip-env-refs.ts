@@ -1,5 +1,6 @@
 const SECRET_REF_PATTERN = /^SECRET\[(.+)]$/;
 const CERT_REF_PATTERN = /^CERT\[(.+)]$/;
+const VAR_REF_PATTERN = /^VAR\[(.+)]$/;
 
 export interface StrippedRef {
   name: string;
@@ -10,6 +11,7 @@ export interface StripResult {
   config: Record<string, unknown>;
   strippedSecrets: StrippedRef[];
   strippedCertificates: StrippedRef[];
+  strippedVariables: StrippedRef[];
 }
 
 /**
@@ -23,15 +25,17 @@ export function stripEnvRefs(
 ): StripResult {
   const strippedSecrets: StrippedRef[] = [];
   const strippedCertificates: StrippedRef[] = [];
+  const strippedVariables: StrippedRef[] = [];
 
   const cleaned = walkAndStrip(
     config,
     componentKey,
     strippedSecrets,
     strippedCertificates,
+    strippedVariables,
   );
 
-  return { config: cleaned, strippedSecrets, strippedCertificates };
+  return { config: cleaned, strippedSecrets, strippedCertificates, strippedVariables };
 }
 
 function walkAndStrip(
@@ -39,6 +43,7 @@ function walkAndStrip(
   componentKey: string,
   strippedSecrets: StrippedRef[],
   strippedCertificates: StrippedRef[],
+  strippedVariables: StrippedRef[],
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
@@ -58,6 +63,13 @@ function walkAndStrip(
         continue;
       }
 
+      const varMatch = value.match(VAR_REF_PATTERN);
+      if (varMatch) {
+        strippedVariables.push({ name: varMatch[1], componentKey });
+        result[key] = "";
+        continue;
+      }
+
       result[key] = value;
     } else if (
       typeof value === "object" &&
@@ -69,6 +81,7 @@ function walkAndStrip(
         componentKey,
         strippedSecrets,
         strippedCertificates,
+        strippedVariables,
       );
     } else {
       result[key] = value;

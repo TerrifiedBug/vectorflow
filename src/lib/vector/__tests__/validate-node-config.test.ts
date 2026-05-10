@@ -87,6 +87,25 @@ describe("validateNodeConfig", () => {
     expect(result.firstErrorMessage).toBe("Must be a valid URL (e.g. https://...)");
   });
 
+  it("accepts variable and secret references for required formatted fields", () => {
+    const schema = {
+      properties: {
+        endpoint: { type: "string", format: "uri" },
+        password: { type: "string" },
+        ca_file: { type: "string" },
+      },
+      required: ["endpoint", "password", "ca_file"],
+    };
+
+    const result = validateNodeConfig(
+      { endpoint: "VAR[endpoint]", password: "SECRET[password]", ca_file: "CERT[ca]" },
+      schema,
+    );
+
+    expect(result.hasError).toBe(false);
+    expect(result.firstErrorMessage).toBeUndefined();
+  });
+
   it("returns first error alphabetically by field name when multiple required fields are missing", () => {
     const schema = {
       properties: {

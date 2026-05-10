@@ -173,6 +173,48 @@ describe("deployAgent", () => {
     expect(createVersionMock).toHaveBeenCalledOnce();
   });
 
+  it("resolves pipeline variables before validation and version creation", async () => {
+    const pipeline = makePipelineWithGraph({
+      globalConfig: {},
+    }) as ReturnType<typeof makePipelineWithGraph> & { variables: Record<string, string> };
+    pipeline.variables = { endpoint: "https://vector.example.com" };
+    prismaMock.pipeline.findUnique.mockResolvedValue(pipeline as never);
+    generateYamlMock.mockReturnValue(
+      "sources:\n  my_source:\n    type: http_client\n    endpoint: VAR[endpoint]\n",
+    );
+    validateConfigMock.mockResolvedValue({ valid: true, errors: [], warnings: [] });
+    createVersionMock.mockResolvedValue({
+      id: "version-vars",
+      version: 1,
+      configYaml: "sources:\n  my_source:\n    type: \"http_client\"\n    endpoint: \"https://vector.example.com\"\n",
+    });
+    prismaMock.environment.findUnique.mockResolvedValue({
+      id: "env-1",
+      gitRepoUrl: null,
+      gitToken: null,
+    } as never);
+    prismaMock.vectorNode.findMany.mockResolvedValue([]);
+
+    const result = await deployAgent("pipeline-1", "user-1");
+
+    expect(result.success).toBe(true);
+    expect(validateConfigMock).toHaveBeenCalledWith(
+      "sources:\n  my_source:\n    type: \"http_client\"\n    endpoint: \"https://vector.example.com\"\n",
+    );
+    expect(createVersionMock).toHaveBeenCalledWith(
+      "pipeline-1",
+      "sources:\n  my_source:\n    type: \"http_client\"\n    endpoint: \"https://vector.example.com\"\n",
+      "user-1",
+      "Deployed via agent mode",
+      null,
+      {},
+      expect.any(Array),
+      expect.any(Array),
+      { endpoint: "https://vector.example.com" },
+    );
+  });
+
+
   it("uses prebuiltConfigYaml when provided", async () => {
     const pipeline = makePipelineWithGraph();
     prismaMock.pipeline.findUnique.mockResolvedValue(pipeline as never);

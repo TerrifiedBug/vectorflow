@@ -3,7 +3,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { ComponentKind, Prisma } from "@/generated/prisma";
+import { Prisma } from "@/generated/prisma";
 
 // Literal enum values for use in Zod schemas where nativeEnum causes
 // issues with the Prisma-generated enum at schema-build time.
@@ -213,12 +213,13 @@ export const pipelineCrudRouter = router({
         autoRollbackThreshold: z.number().positive().max(100).optional(),
         autoRollbackWindowMinutes: z.number().int().positive().max(60).optional(),
         deploymentStrategy: deploymentStrategySchema.nullable().optional(),
+        variables: z.record(z.string(), z.string()).nullable().optional(),
       })
     )
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("pipeline.updated", "Pipeline"))
     .mutation(async ({ input, ctx }) => {
-      const { id, tags, enrichMetadata, groupId, autoRollbackEnabled, autoRollbackThreshold, autoRollbackWindowMinutes, deploymentStrategy, ...data } = input;
+      const { id, tags, enrichMetadata, groupId, autoRollbackEnabled, autoRollbackThreshold, autoRollbackWindowMinutes, deploymentStrategy, variables, ...data } = input;
       const existing = await prisma.pipeline.findUnique({
         where: { id },
         select: { id: true, tags: true, environmentId: true, environment: { select: { teamId: true } } },
@@ -278,6 +279,9 @@ export const pipelineCrudRouter = router({
           ...(autoRollbackWindowMinutes !== undefined ? { autoRollbackWindowMinutes } : {}),
           ...(deploymentStrategy !== undefined
             ? { deploymentStrategy: deploymentStrategy === null ? Prisma.DbNull : deploymentStrategy }
+            : {}),
+          ...(variables !== undefined
+            ? { variables: variables === null ? Prisma.DbNull : variables }
             : {}),
           updatedById: ctx.session.user?.id,
         },

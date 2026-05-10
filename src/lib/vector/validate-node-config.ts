@@ -59,6 +59,11 @@ export function validateNodeConfig(
       continue;
     }
 
+    // Accept deploy-time references as valid placeholder values.
+    if (typeof value === "string" && /^(VAR|SECRET|CERT)\[.+]$/.test(value)) {
+      continue;
+    }
+
     // Format validation for non-empty values
     if (typeof value === "string" && value) {
       if (fieldSchema.format === "uri") {

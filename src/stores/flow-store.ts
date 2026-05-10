@@ -75,6 +75,12 @@ export interface FlowState {
   isDirty: boolean;
   isSystemPipeline: boolean;
 
+  // Pipeline variables
+  pipelineVariables: Record<string, string>;
+  setPipelineVariables: (vars: Record<string, string>) => void;
+  updatePipelineVariable: (name: string, value: string) => void;
+  removePipelineVariable: (name: string) => void;
+
   // React Flow callbacks
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
@@ -216,6 +222,16 @@ function takeSnapshot(state: InternalState): Snapshot {
   };
 }
 
+function getInitialDetailPanelCollapsed(): boolean {
+  if (typeof window === "undefined" || !("localStorage" in window)) return false;
+  try {
+    return window.localStorage.getItem("vf-detail-panel-collapsed") === "true";
+  } catch {
+    return false;
+  }
+}
+
+
 function pushSnapshot(state: InternalState): Partial<InternalState> {
   const snapshot = takeSnapshot(state);
   const past = [...state._past, snapshot].slice(-MAX_HISTORY);
@@ -237,6 +253,8 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   isDirty: false,
   isSystemPipeline: false,
 
+  pipelineVariables: {},
+
   _past: [],
   _future: [],
   _savedSnapshot: null,
@@ -249,9 +267,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
   canvasSearchActiveIndex: -1,
 
   // Detail panel collapse
-  detailPanelCollapsed: typeof window !== "undefined"
-    ? localStorage.getItem("vf-detail-panel-collapsed") === "true"
-    : false,
+  detailPanelCollapsed: getInitialDetailPanelCollapsed(),
 
   /* ---- React Flow callbacks ---- */
 
@@ -633,6 +649,25 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
     });
   },
 
+
+  setPipelineVariables: (vars) => {
+    set({ pipelineVariables: vars });
+  },
+
+  updatePipelineVariable: (name, value) => {
+    set((state) => ({
+      pipelineVariables: { ...state.pipelineVariables, [name]: value },
+    }));
+  },
+
+  removePipelineVariable: (name) => {
+    set((state) => {
+      const { [name]: _, ...rest } = state.pipelineVariables;
+      void _;
+      return { pipelineVariables: rest };
+    });
+  },
+
   /* ---- Copy / Paste ---- */
 
   copyNode: (id) => {
@@ -981,6 +1016,7 @@ export const useFlowStore = create<InternalState>()((set, get) => ({
       nodes: [],
       edges: [],
       globalConfig: null,
+      pipelineVariables: {},
       isSystemPipeline: false,
       selectedNodeId: null,
       selectedNodeIds: new Set(),
