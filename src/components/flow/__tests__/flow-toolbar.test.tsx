@@ -150,8 +150,8 @@ function renderToolbar(overrides: Partial<FlowState> = {}, propOverrides: Partia
   );
 }
 
-function openExportMenu(getByLabelText: (text: string) => HTMLElement) {
-  fireEvent.pointerDown(getByLabelText("Export actions"), { button: 0, ctrlKey: false });
+function openToolsMenu(getByLabelText: (text: string) => HTMLElement) {
+  fireEvent.pointerDown(getByLabelText("Tools actions"), { button: 0, ctrlKey: false });
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ describe("FlowToolbar", () => {
 
       const { getByLabelText, getByText } = renderToolbar();
 
-      openExportMenu(getByLabelText);
+      openToolsMenu(getByLabelText);
       fireEvent.click(getByText("Import config"));
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  orphan_source:\n    type: demo_logs" },
@@ -220,7 +220,7 @@ describe("FlowToolbar", () => {
 
       const { getByLabelText, getByText } = renderToolbar();
 
-      openExportMenu(getByLabelText);
+      openToolsMenu(getByLabelText);
       fireEvent.click(getByText("Import config"));
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  bad_source:\n    type: bad_source" },
@@ -259,7 +259,7 @@ describe("FlowToolbar", () => {
 
       const { getByLabelText, getByText, queryByText } = renderToolbar();
 
-      openExportMenu(getByLabelText);
+      openToolsMenu(getByLabelText);
       fireEvent.click(getByText("Import config"));
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  demo:\n    type: demo_logs" },
@@ -287,7 +287,7 @@ describe("FlowToolbar", () => {
 
       const { getByLabelText, getByText, queryByText } = renderToolbar();
 
-      openExportMenu(getByLabelText);
+      openToolsMenu(getByLabelText);
       fireEvent.click(getByText("Import config"));
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  orphan_source:\n    type: demo_logs" },
@@ -333,7 +333,7 @@ describe("FlowToolbar", () => {
 
       const { getByLabelText, getByText, queryByText } = renderToolbar();
 
-      openExportMenu(getByLabelText);
+      openToolsMenu(getByLabelText);
       fireEvent.click(getByText("Import config"));
       fireEvent.change(getByLabelText("Vector config"), {
         target: { value: "sources:\n  first:\n    type: demo_logs" },
@@ -405,14 +405,14 @@ describe("FlowToolbar", () => {
   });
 
   describe("toolbar grouping", () => {
-    it("groups import and export actions under Export", () => {
+    it("groups import and export actions under Tools", () => {
       const onSaveAsTemplate = vi.fn();
       const { getByLabelText, getByText, queryByText } = renderToolbar(
         { nodes: [{ id: "n1" } as never] },
         { pipelineId: "pipe-1", onSaveAsTemplate },
       );
 
-      openExportMenu(getByLabelText);
+      openToolsMenu(getByLabelText);
 
       expect(getByText("Import config")).toBeTruthy();
       expect(getByText("Download YAML")).toBeTruthy();
@@ -474,8 +474,6 @@ describe("FlowToolbar", () => {
       fireEvent.pointerDown(getByLabelText("More actions"), { button: 0, ctrlKey: false });
 
       expect(getByText("Validate pipeline")).toBeTruthy();
-      expect(getByText("Import config")).toBeTruthy();
-      expect(getByText("Download YAML")).toBeTruthy();
       expect(getByText("Delete selected")).toBeTruthy();
     });
 
@@ -502,47 +500,49 @@ describe("FlowToolbar", () => {
   });
 
   describe("process status indicator", () => {
-    it("shows 'running' label when processStatus is RUNNING", () => {
-      const { getByText } = renderToolbar({}, { processStatus: "RUNNING" });
-      expect(getByText(/running/)).toBeTruthy();
+    it("renders a status dot when processStatus is RUNNING", () => {
+      const { container } = renderToolbar({}, { processStatus: "RUNNING" });
+      const identity = container.querySelector('[data-testid="pipeline-toolbar-identity"]');
+      expect(identity).toBeTruthy();
     });
 
-    it("shows 'crashed' label when processStatus is CRASHED", () => {
-      const { getByText } = renderToolbar({}, { processStatus: "CRASHED" });
-      expect(getByText(/crashed/)).toBeTruthy();
+    it("renders a status dot when processStatus is CRASHED", () => {
+      const { container } = renderToolbar({}, { processStatus: "CRASHED" });
+      const identity = container.querySelector('[data-testid="pipeline-toolbar-identity"]');
+      expect(identity).toBeTruthy();
     });
 
-    it("shows 'paused' label when processStatus is STOPPED", () => {
-      const { getByText } = renderToolbar({}, { processStatus: "STOPPED" });
-      expect(getByText(/paused/)).toBeTruthy();
+    it("renders a status dot when processStatus is STOPPED", () => {
+      const { container } = renderToolbar({}, { processStatus: "STOPPED" });
+      const identity = container.querySelector('[data-testid="pipeline-toolbar-identity"]');
+      expect(identity).toBeTruthy();
     });
 
-    it("shows 'starting' label when processStatus is STARTING", () => {
-      const { getByText } = renderToolbar({}, { processStatus: "STARTING" });
-      expect(getByText(/starting/)).toBeTruthy();
+    it("renders a status dot when processStatus is STARTING", () => {
+      const { container } = renderToolbar({}, { processStatus: "STARTING" });
+      const identity = container.querySelector('[data-testid="pipeline-toolbar-identity"]');
+      expect(identity).toBeTruthy();
     });
 
-    it("appends node count when nodeCount is provided", () => {
-      const { getByText } = renderToolbar(
+    it("keeps node count out of visible toolbar text (tooltip only)", () => {
+      const { container } = renderToolbar(
         {},
         { processStatus: "RUNNING", nodeCount: 12 },
       );
-      expect(getByText(/running · 12 nodes/)).toBeTruthy();
+      expect(container.textContent).not.toContain("12 nodes");
     });
   });
 
   describe("pipeline metadata", () => {
-    it("renders pipeline name, env pill, and version label when provided", () => {
+    it("renders pipeline name and version label when provided", () => {
       const { getByText } = renderToolbar(
         {},
         {
           pipelineName: "auditbeat.logs",
-          environmentName: "prod",
           deployedVersionNumber: 11,
         },
       );
       expect(getByText("auditbeat.logs")).toBeTruthy();
-      expect(getByText("prod")).toBeTruthy();
       expect(getByText("v11")).toBeTruthy();
     });
 

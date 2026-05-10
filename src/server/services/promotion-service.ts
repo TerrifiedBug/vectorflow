@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { prisma } from "@/lib/prisma";
 import { collectSecretRefs, convertSecretRefsToEnvVars } from "./secret-resolver";
+import { collectVarRefs } from "@/server/services/variable-resolver";
 import { decryptNodeConfig } from "./config-crypto";
 import { copyPipelineGraph } from "./copy-pipeline-graph";
 import { fireOutboundWebhooks } from "./outbound-webhook";
@@ -83,6 +84,70 @@ export async function preflightSecrets(
     canProceed: missing.length === 0,
   };
 }
+
+/**
+ * Checks whether all VAR[name] references used in the source pipeline's
+ * node configs exist in either the target pipeline variables or the target
+ * environment's variables.
+ *
+ * Returns { missing, present, canProceed } without throwing.
+ */
+export async function preflightVariables(
+  pipelineId: string,
+  targetEnvironmentId: string,
+  targetPipelineVariables: Record<string, string> = {},
+): Promise<PreflightResult> {
+  const nodes = await prisma.pipelineNode.findMany({
+    where: { pipelineId },
+    select: { componentType: true, config: true },
+  });
+
+  const allRefs = new Set<string>();
+  for (const node of nodes) {
+    const config = (node.config ?? {}) as Record<string, unknown>;
+    const decrypted = decryptNodeConfig(node.componentType, config);
+    const refs = collectVarRefs(decrypted);
+    for (const ref of refs) {
+      allRefs.add(ref);
+    }
+  }
+
+  if (allRefs.size === 0) {
+    return { missing: [], present: [], canProceed: true };
+  }
+
+  const envRefsToCheck = Array.from(allRefs).filter(
+    (ref) => targetPipelineVariables[ref] === undefined,
+  );
+  const existingVariables = envRefsToCheck.length > 0
+    ? await prisma.variable.findMany({
+        where: {
+          environmentId: targetEnvironmentId,
+          name: { in: envRefsToCheck },
+        },
+        select: { name: true },
+      })
+    : [];
+
+  const envPresentNames = new Set(existingVariables.map((variable) => variable.name));
+  const present: string[] = [];
+  const missing: string[] = [];
+
+  for (const ref of allRefs) {
+    if (targetPipelineVariables[ref] !== undefined || envPresentNames.has(ref)) {
+      present.push(ref);
+    } else {
+      missing.push(ref);
+    }
+  }
+
+  return {
+    missing,
+    present,
+    canProceed: missing.length === 0,
+  };
+}
+
 
 /**
  * Executes the promotion by creating the target pipeline via copyPipelineGraph.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ChevronRight, ChevronsUpDown, Plus, Trash2, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
@@ -267,6 +267,14 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
         </>
       )}
 
+      {/* Pipeline Variables */}
+      {pipelineId && (
+        <>
+          <Separator />
+          <VariablesSection pipelineId={pipelineId} />
+        </>
+      )}
+
       {/* Auto-Rollback Configuration */}
       {pipelineId && (
         <>
@@ -338,6 +346,148 @@ export function PipelineSettings({ pipelineId }: PipelineSettingsProps) {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Variables settings sub-component
+// ---------------------------------------------------------------------------
+
+function VariablesSection({ pipelineId }: { pipelineId: string }) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const pipelineVariables = useFlowStore((s) => s.pipelineVariables);
+  const updatePipelineVariable = useFlowStore((s) => s.updatePipelineVariable);
+  const removePipelineVariable = useFlowStore((s) => s.removePipelineVariable);
+  const setPipelineVariables = useFlowStore((s) => s.setPipelineVariables);
+
+  const [newName, setNewName] = useState("");
+  const [newValue, setNewValue] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
+
+  const pipelineQuery = useQuery(
+    trpc.pipeline.get.queryOptions(
+      { id: pipelineId },
+      { enabled: !!pipelineId },
+    ),
+  );
+
+  // Sync pipeline variables from server to store on initial load only.
+  // After the first sync the Zustand store is the source of truth;
+  // mutations update both store and server without needing to round-trip.
+  const initialVarsSynced = useRef(false);
+  useEffect(() => {
+    if (initialVarsSynced.current) return;
+    if (pipelineQuery.data == null) return; // still loading
+    const vars = (pipelineQuery.data.variables as Record<string, string>) ?? {};
+    setPipelineVariables(vars);
+    initialVarsSynced.current = true;
+  }, [pipelineQuery.data, setPipelineVariables]);
+
+  const pipelineQueryKey = trpc.pipeline.get.queryKey({ id: pipelineId });
+  const previousVarsRef = useRef<Record<string, string>>({});
+  const updateMutation = useMutation(
+    trpc.pipeline.update.mutationOptions({
+      onMutate: () => {
+        // Snapshot current variables for rollback
+        previousVarsRef.current = { ...pipelineVariables };
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: pipelineQueryKey });
+        queryClient.invalidateQueries({ queryKey: trpc.pipeline.list.queryKey() });
+        toast.success("Variables updated");
+      },
+      onError: (error) => {
+        // Rollback store to pre-mutation state
+        setPipelineVariables(previousVarsRef.current);
+        toast.error(error.message || "Failed to update variables", { duration: 6000 });
+      },
+    }),
+  );
+
+  const entries = Object.entries(pipelineVariables);
+
+  const handleAdd = () => {
+    const trimmedName = newName.trim();
+    if (!trimmedName) return;
+    if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(trimmedName)) {
+      setNameError("Must start with a letter, only letters/numbers/underscores");
+      return;
+    }
+    if (pipelineVariables[trimmedName] !== undefined) {
+      setNameError("Variable already exists");
+      return;
+    }
+    const updated = { ...pipelineVariables, [trimmedName]: newValue };
+    updatePipelineVariable(trimmedName, newValue);
+    updateMutation.mutate({ id: pipelineId, variables: updated });
+    setNewName("");
+    setNewValue("");
+    setNameError(null);
+  };
+
+  const handleRemove = (name: string) => {
+    const { [name]: _, ...rest } = pipelineVariables;
+    void _;
+    removePipelineVariable(name);
+    updateMutation.mutate({ id: pipelineId, variables: Object.keys(rest).length > 0 ? rest : null });
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label>Pipeline Variables</Label>
+      <p className="text-xs text-muted-foreground">
+        Define variables to parameterize component configs. Reference with <code className="text-[11px]">VAR[name]</code>.
+      </p>
+      {entries.length > 0 && (
+        <div className="space-y-1.5">
+          {entries.map(([name, value]) => (
+            <div key={name} className="flex items-center gap-2">
+              <code className="min-w-[100px] shrink-0 text-xs font-medium">{name}</code>
+              <span className="flex-1 truncate text-xs text-muted-foreground">{value}</span>
+              <button
+                type="button"
+                className="shrink-0 cursor-pointer rounded p-0.5 text-muted-foreground transition-colors hover:text-destructive"
+                onClick={() => handleRemove(name)}
+                aria-label={`Remove ${name}`}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex items-start gap-2">
+        <div className="flex-1 space-y-1">
+          <Input
+            placeholder="name"
+            value={newName}
+            onChange={(e) => {
+              setNewName(e.target.value);
+              setNameError(null);
+            }}
+            className="h-8 text-xs"
+          />
+          {nameError && <p className="text-xs text-destructive">{nameError}</p>}
+        </div>
+        <Input
+          placeholder="value"
+          value={newValue}
+          onChange={(e) => setNewValue(e.target.value)}
+          className="h-8 flex-1 text-xs"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8"
+          onClick={handleAdd}
+          disabled={!newName.trim() || updateMutation.isPending}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 
 // ---------------------------------------------------------------------------
 // Auto-rollback settings sub-component

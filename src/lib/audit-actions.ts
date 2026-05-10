@@ -115,6 +115,11 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "certificate.deleted": "Certificate deleted",
   "certificate.accessed": "Certificate accessed",
 
+  // Variables
+  "variable.created": "Variable created",
+  "variable.updated": "Variable updated",
+  "variable.deleted": "Variable deleted",
+
   // Settings
   "settings.oidc_updated": "OIDC settings updated",
   "settings.oidc_role_mapping_updated": "OIDC role mapping updated",

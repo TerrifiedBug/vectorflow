@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import yaml from "js-yaml";
 import { TRPCError } from "@trpc/server";
 import { errorLog } from "@/lib/logger";
 import { generateVectorYaml } from "@/lib/config-generator";
@@ -8,7 +9,72 @@ import { decryptNodeConfig } from "@/server/services/config-crypto";
 import { startSystemVector, stopSystemVector } from "@/server/services/system-vector";
 import { gitSyncCommitPipeline, toFilenameSlug } from "@/server/services/git-sync";
 import { relayPush } from "@/server/services/push-broadcast";
+import { collectVarRefs, resolveVarRefs } from "@/server/services/variable-resolver";
 
+
+type VariableLocation = {
+  name: string;
+  component: string;
+};
+
+function jsonRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const entries = Object.entries(value as Record<string, unknown>).filter(
+    (entry): entry is [string, string] => typeof entry[1] === "string",
+  );
+  return Object.fromEntries(entries);
+}
+
+function collectVarRefLocations(config: Record<string, unknown>): VariableLocation[] {
+  const locations: VariableLocation[] = [];
+  for (const section of ["sources", "transforms", "sinks"] as const) {
+    const components = config[section];
+    if (!components || typeof components !== "object" || Array.isArray(components)) continue;
+    for (const [componentKey, componentConfig] of Object.entries(components as Record<string, unknown>)) {
+      if (!componentConfig || typeof componentConfig !== "object" || Array.isArray(componentConfig)) continue;
+      for (const name of collectVarRefs(componentConfig as Record<string, unknown>)) {
+        locations.push({ name, component: `${section}.${componentKey}` });
+      }
+    }
+  }
+
+  const componentRefs = new Set(locations.map((location) => `${location.name}:${location.component}`));
+  for (const name of collectVarRefs(config)) {
+    if (![...componentRefs].some((key) => key.startsWith(`${name}:`))) {
+      locations.push({ name, component: "global" });
+    }
+  }
+  return locations;
+}
+
+function resolveConfigYamlVariables(
+  configYaml: string,
+  pipelineVars: Record<string, string>,
+  envVars: Map<string, string>,
+): string {
+  const parsed = yaml.load(configYaml);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return configYaml;
+
+  const config = parsed as Record<string, unknown>;
+  const varRefs = collectVarRefs(config);
+  if (varRefs.size === 0) return configYaml;
+
+  const missing = collectVarRefLocations(config).filter(
+    ({ name }) => pipelineVars[name] === undefined && !envVars.has(name),
+  );
+  if (missing.length > 0) {
+    const details = missing
+      .map(({ name, component }) => `VAR[${name}] in ${component}`)
+      .join(", ");
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Unresolved variable references: ${details}`,
+    });
+  }
+
+  const resolved = resolveVarRefs(config, pipelineVars, envVars);
+  return yaml.dump(resolved, { indent: 2, lineWidth: -1, noRefs: true, forceQuotes: true, quotingType: "\"" });
+}
 export interface AgentDeployResult {
   success: boolean;
   error?: string;
@@ -44,6 +110,14 @@ export async function deployAgent(
       message: "Pipeline not found",
     });
   }
+
+  const pipelineVars = jsonRecord(pipeline.variables);
+  const envVariables = await (prisma.variable?.findMany({
+    where: { environmentId: pipeline.environmentId },
+    select: { name: true, value: true },
+  }) ?? Promise.resolve([]));
+  const envVarMap = new Map(envVariables.map((variable) => [variable.name, variable.value]));
+
 
   let configYaml: string;
   let configYamlBuilder: ((version: number) => string) | null = null;
@@ -95,6 +169,14 @@ export async function deployAgent(
     }
   }
 
+  configYaml = resolveConfigYamlVariables(configYaml, pipelineVars, envVarMap);
+  if (configYamlBuilder) {
+    const unresolvedConfigYamlBuilder = configYamlBuilder;
+    configYamlBuilder = (version: number) =>
+      resolveConfigYamlVariables(unresolvedConfigYamlBuilder(version), pipelineVars, envVarMap);
+  }
+
+
   const validation = await validateConfig(configYaml);
   if (!validation.valid) {
     return {
@@ -134,6 +216,7 @@ export async function deployAgent(
     gc,
     nodesSnapshot,
     edgesSnapshot,
+    pipelineVars,
   );
 
   // 3b. Git sync (non-blocking side effect)

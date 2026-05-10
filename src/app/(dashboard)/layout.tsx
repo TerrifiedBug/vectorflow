@@ -87,12 +87,13 @@ export default function DashboardLayout({
 
   const breadcrumb = (() => {
     const segments = pathname.split("/").filter(Boolean);
-    if (segments.length === 0) return ["Dashboard"];
-    return segments.map((segment) =>
-      segment
+    if (segments.length === 0) return [{ label: "Dashboard", href: "/" }];
+    return segments.map((segment, i) => ({
+      label: segment
         .replaceAll("-", " ")
         .replace(/^\w/, (letter) => letter.toUpperCase()),
-    );
+      href: "/" + segments.slice(0, i + 1).join("/"),
+    }));
   })();
 
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
@@ -215,11 +216,20 @@ export default function DashboardLayout({
         <header className="flex h-13 shrink-0 items-center gap-3 border-b border-line px-[18px] bg-bg" aria-label="Dashboard header">
           <nav aria-label="Breadcrumb" className="flex shrink-0 items-center gap-1.5 text-[13px]">
             {breadcrumb.map((item, index) => (
-              <span key={`${item}-${index}`} className="inline-flex items-center gap-1.5">
+              <span key={`${item.label}-${index}`} className="inline-flex items-center gap-1.5">
                 {index > 0 && <span className="font-mono text-[10px] text-fg-3">/</span>}
-                <span className={cn("capitalize", index === breadcrumb.length - 1 ? "font-medium text-fg" : "text-fg-1")}>
-                  {item}
-                </span>
+                {index < breadcrumb.length - 1 ? (
+                  <Link
+                    href={item.href}
+                    className="capitalize text-fg-1 hover:text-fg transition-colors"
+                  >
+                    {item.label}
+                  </Link>
+                ) : (
+                  <span className="capitalize font-medium text-fg">
+                    {item.label}
+                  </span>
+                )}
               </span>
             ))}
           </nav>

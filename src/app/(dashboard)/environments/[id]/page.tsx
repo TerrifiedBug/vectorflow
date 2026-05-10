@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { ArrowLeft, Copy, Database, GitBranch, KeyRound, Network, Pencil, ServerCog, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, Database, GitBranch, KeyRound, Network, Pencil, Plus, ServerCog, ShieldCheck, Trash2, Variable } from "lucide-react";
 import { toast } from "sonner";
 
 import { copyToClipboard } from "@/lib/utils";
@@ -399,6 +399,10 @@ export default function EnvironmentDetailPage({
           <TabsTrigger value="enrollment" className="gap-1.5">
             <ServerCog className="h-4 w-4" />
             Enrollment
+          </TabsTrigger>
+          <TabsTrigger value="variables" className="gap-1.5">
+            <Variable className="h-4 w-4" />
+            Variables
           </TabsTrigger>
         </TabsList>
 
@@ -929,6 +933,11 @@ export default function EnvironmentDetailPage({
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* -- Variables Tab -- */}
+        <TabsContent value="variables" className="space-y-4">
+          <EnvironmentVariablesTab environmentId={id} />
+        </TabsContent>
       </Tabs>
 
       {/* Created info */}
@@ -939,6 +948,215 @@ export default function EnvironmentDetailPage({
     </div>
   );
 }
+
+function EnvironmentVariablesTab({ environmentId }: { environmentId: string }) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const varsQuery = useQuery(
+    trpc.variable.list.queryOptions({ environmentId }),
+  );
+  const variables = varsQuery.data ?? [];
+
+  const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [value, setValue] = useState("");
+  const [description, setDescription] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const queryKey = trpc.variable.list.queryKey({ environmentId });
+
+  const createMutation = useMutation(
+    trpc.variable.create.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey });
+        setCreating(false);
+        setName("");
+        setValue("");
+        setDescription("");
+        toast.success("Variable created");
+      },
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
+    }),
+  );
+
+  const updateMutation = useMutation(
+    trpc.variable.update.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey });
+        setEditingId(null);
+        toast.success("Variable updated");
+      },
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
+    }),
+  );
+
+  const deleteMutation = useMutation(
+    trpc.variable.delete.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey });
+        setDeleteId(null);
+        toast.success("Variable deleted");
+      },
+      onError: (error) => toast.error(error.message, { duration: 6000 }),
+    }),
+  );
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-base">Environment Variables</CardTitle>
+          <CardDescription>
+            Shared values available to all pipelines in this environment. Override per-pipeline in Pipeline Settings.
+          </CardDescription>
+        </div>
+        <Button size="sm" onClick={() => setCreating(true)} disabled={creating}>
+          <Plus className="h-3.5 w-3.5" />
+          Add Variable
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {creating && (
+          <div className="mb-4 space-y-3 rounded-md border p-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>Name</Label>
+                <Input
+                  placeholder="e.g. opensearch_endpoint"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Value</Label>
+                <Input
+                  placeholder="e.g. https://search.internal:9200"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Description (optional)</Label>
+              <Input
+                placeholder="What this variable is used for"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="text-sm"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={() => createMutation.mutate({ environmentId, name, value, description: description || undefined })}
+                disabled={!name.trim() || !value.trim() || createMutation.isPending}
+              >
+                {createMutation.isPending ? "Creating..." : "Create"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setCreating(false);
+                  setName("");
+                  setValue("");
+                  setDescription("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {variables.length === 0 && !creating ? (
+          <div className="py-8 text-center">
+            <Variable className="mx-auto h-8 w-8 text-muted-foreground/50" />
+            <p className="mt-2 text-sm text-muted-foreground">No environment variables defined</p>
+            <p className="text-xs text-muted-foreground">
+              Environment variables are shared across all pipelines. Reference with <code>VAR[name]</code>.
+            </p>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Value</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="w-[100px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {variables.map((v) => (
+                <TableRow key={v.id}>
+                  <TableCell className="font-mono text-sm">{v.name}</TableCell>
+                  <TableCell>
+                    {editingId === v.id ? (
+                      <Input
+                        defaultValue={v.value}
+                        className="h-7 text-sm"
+                        onBlur={(e) => {
+                          if (e.target.value !== v.value) {
+                            updateMutation.mutate({ id: v.id, environmentId, value: e.target.value });
+                          } else {
+                            setEditingId(null);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const target = e.target as HTMLInputElement;
+                            if (target.value !== v.value) {
+                              updateMutation.mutate({ id: v.id, environmentId, value: target.value });
+                            } else {
+                              setEditingId(null);
+                            }
+                          }
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
+                        autoFocus
+                      />
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        {v.value.length > 60 ? `${v.value.slice(0, 60)}...` : v.value}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{v.description ?? "—"}</TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingId(v.id)} title="Edit">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-destructive"
+                        onClick={() => {
+                          setDeleteId(v.id);
+                          deleteMutation.mutate({ id: v.id, environmentId });
+                        }}
+                        disabled={deleteMutation.isPending && deleteId === v.id}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 
 function EnvironmentKpi({
   icon: Icon,

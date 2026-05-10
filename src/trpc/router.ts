@@ -15,6 +15,7 @@ import { userRouter } from "@/server/routers/user";
 import { adminRouter } from "@/server/routers/admin";
 import { secretRouter } from "@/server/routers/secret";
 import { certificateRouter } from "@/server/routers/certificate";
+import { variableRouter } from "@/server/routers/variable";
 import { vrlSnippetRouter } from "@/server/routers/vrl-snippet";
 import { alertRouter } from "@/server/routers/alert";
 import { serviceAccountRouter } from "@/server/routers/service-account";
@@ -53,6 +54,7 @@ export const appRouter = router({
   admin: adminRouter,
   secret: secretRouter,
   certificate: certificateRouter,
+  variable: variableRouter,
   vrlSnippet: vrlSnippetRouter,
   alert: alertRouter,
   serviceAccount: serviceAccountRouter,
