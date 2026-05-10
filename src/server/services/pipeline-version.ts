@@ -18,6 +18,7 @@ export async function createVersion(
   globalConfig?: Record<string, unknown> | null,
   nodesSnapshot?: unknown,
   edgesSnapshot?: unknown,
+  variablesSnapshot?: Record<string, string> | null,
 ) {
   // Find the highest existing version number for this pipeline
   const latest = await prisma.pipelineVersion.findFirst({
@@ -38,6 +39,7 @@ export async function createVersion(
       globalConfig: (globalConfig as Prisma.InputJsonValue) ?? undefined,
       nodesSnapshot: nodesSnapshot ? (nodesSnapshot as Prisma.InputJsonValue) : undefined,
       edgesSnapshot: edgesSnapshot ? (edgesSnapshot as Prisma.InputJsonValue) : undefined,
+      variablesSnapshot: variablesSnapshot ? (variablesSnapshot as Prisma.InputJsonValue) : undefined,
       createdById: userId,
       changelog,
     },

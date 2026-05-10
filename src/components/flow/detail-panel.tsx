@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
 import { useFlowStore } from "@/stores/flow-store";
@@ -219,13 +219,46 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
   const unlinkNodeStore = useFlowStore((s) => s.unlinkNode);
   const detailPanelCollapsed = useFlowStore((s) => s.detailPanelCollapsed);
   const toggleDetailPanel = useFlowStore((s) => s.toggleDetailPanel);
+  const pipelineVariables = useFlowStore((s) => s.pipelineVariables);
 
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const pipelineQuery = useQuery(
+    trpc.pipeline.get.queryOptions(
+      { id: pipelineId },
+      { enabled: !!pipelineId },
+    ),
+  );
+  const environmentId = pipelineQuery.data?.environmentId ?? "";
 
   const selectedNode = selectedNodeId
     ? nodes.find((n) => n.id === selectedNodeId)
     : null;
+
+  const unresolvedVars = useMemo(() => {
+    const config = (selectedNode?.data as { config?: Record<string, unknown> } | undefined)?.config ?? {};
+    const serverVariables = (pipelineQuery.data?.variables as Record<string, string> | null) ?? {};
+    const knownVariables = { ...serverVariables, ...pipelineVariables };
+    const unresolved = new Set<string>();
+    const varPattern = /^VAR\[(.+)]$/;
+
+    function walk(obj: Record<string, unknown>) {
+      for (const val of Object.values(obj)) {
+        if (typeof val === "string") {
+          const match = val.match(varPattern);
+          if (match) {
+            const name = match[1];
+            if (!(name in knownVariables)) unresolved.add(name);
+          }
+        } else if (val && typeof val === "object" && !Array.isArray(val)) {
+          walk(val as Record<string, unknown>);
+        }
+      }
+    }
+
+    walk(config);
+    return [...unresolved];
+  }, [selectedNode, pipelineVariables, pipelineQuery.data?.variables]);
 
   const isShared = !!selectedNode?.data.sharedComponentId;
   const isStale = isShared &&
@@ -534,6 +567,13 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
               </div>
             )}
 
+            {unresolvedVars.length > 0 && (
+              <div className="flex items-center gap-1.5 rounded bg-yellow-500/10 px-2 py-1 text-xs text-yellow-600 dark:text-yellow-400">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                Unresolved variable{unresolvedVars.length > 1 ? "s" : ""}: {unresolvedVars.join(", ")}
+              </div>
+            )}
+
             {/* ---- Identity fields (name + key + enabled + delete) ---- */}
             <div className="space-y-3">
               {/* Name */}
@@ -729,6 +769,7 @@ export function DetailPanel({ pipelineId }: DetailPanelProps) {
                     )}
                     values={config}
                     onChange={handleConfigChange}
+                    environmentId={environmentId}
                   />
                 </>
               )}

@@ -35,7 +35,6 @@ import {
   AlertTriangle,
   ChevronDown,
   Eye,
-  FileCog,
   MoreHorizontal,
   Wrench,
 } from "lucide-react";
@@ -423,9 +422,26 @@ export function FlowToolbar({
   return (
     <TooltipProvider>
       <div className="flex h-11 min-w-0 items-center gap-2 px-3">
-        <div data-testid="pipeline-toolbar-identity" className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+        <div data-testid="pipeline-toolbar-identity" className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+          {/* Process status dot — first element, before pipeline name */}
+          {processStatus && processDotVariant && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex shrink-0 items-center">
+                  <StatusDot
+                    variant={processDotVariant}
+                    pulse={processStatus === "RUNNING"}
+                    halo={processStatus === "RUNNING"}
+                  />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {processLabel}{nodeCount != null && ` · ${nodeCount} node${nodeCount === 1 ? "" : "s"}`}
+              </TooltipContent>
+            </Tooltip>
+          )}
           {showPipelineMeta && (
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <div className="flex min-w-0 items-center gap-1.5">
               {pipelineName && (
                 renameEditing && onRename ? (
                   <input
@@ -452,31 +468,37 @@ export function FlowToolbar({
                     type="button"
                     onClick={startRename}
                     title="Click to rename"
-                    className="max-w-[160px] rounded-[3px] px-1 font-mono text-[13px] font-medium text-fg transition-colors hover:bg-bg-3 xl:max-w-[220px]"
+                    className="max-w-[240px] rounded-[3px] px-1 font-mono text-[13px] font-medium text-fg transition-colors hover:bg-bg-3 xl:max-w-[320px]"
                   >
                     <span className="block truncate">{pipelineName}</span>
                   </button>
                 ) : (
-                  <span className="block max-w-[160px] truncate font-mono text-[13px] font-medium text-fg xl:max-w-[220px]">
+                  <span className="block max-w-[240px] truncate font-mono text-[13px] font-medium text-fg xl:max-w-[320px]">
                     {pipelineName}
                   </span>
                 )
-              )}
-              {environmentName && (
-                <Pill
-                  size="xs"
-                  variant={environmentColor ? "status" : "env"}
-                  color={environmentColor}
-                >
-                  {environmentName}
-                </Pill>
               )}
               {deployedVersionNumber != null && (
                 <span className="font-mono text-[11px] text-fg-2">
                   v{deployedVersionNumber}
                 </span>
               )}
-              <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
+              {/* Validation status badge */}
+              {validationErrorCount > 0 ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 rounded-[3px] border border-status-error/35 bg-status-error/10 px-1.5 py-0.5 font-mono text-[10px] text-status-error">
+                      <AlertTriangle className="h-3 w-3" />
+                      {validationErrorCount}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{validationMessage ?? "Fix validation errors before deploying"}</TooltipContent>
+                </Tooltip>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-[3px] border border-status-healthy/30 bg-status-healthy/10 px-1.5 py-0.5 font-mono text-[10px] text-status-healthy">
+                  <CircleCheck className="h-3 w-3" />
+                </span>
+              )}
             </div>
           )}
 
@@ -493,7 +515,7 @@ export function FlowToolbar({
           )}
         </div>
 
-        <div data-testid="pipeline-toolbar-actions" className="flex shrink-0 items-center gap-2">
+        <div data-testid="pipeline-toolbar-actions" className="flex shrink-0 items-center gap-2 border-l border-line pl-2">
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -556,36 +578,9 @@ export function FlowToolbar({
                 <TooltipContent>Delete selected (Del)</TooltipContent>
               </Tooltip>
 
-              <Separator orientation="vertical" className="mx-1 h-[18px] bg-line-2" />
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <ToolbarMenuButton icon={FileCog} label="Export" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52">
-                  <DropdownMenuLabel>Config actions</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => setImportOpen(true)}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Import config
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleExportYaml}>
-                    <FileDown className="mr-2 h-4 w-4" />
-                    Download YAML
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExportToml}>
-                    <FileDown className="mr-2 h-4 w-4" />
-                    Download TOML
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={onSaveAsTemplate} disabled={nodes.length === 0}>
-                    <BookTemplate className="mr-2 h-4 w-4" />
-                    Save as template
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </>
           )}
+
 
           {showInlineViewActions && (
             <DropdownMenu>
@@ -656,6 +651,24 @@ export function FlowToolbar({
                   <Keyboard className="mr-2 h-4 w-4" />
                   Keyboard shortcuts
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Import / Export</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Import config
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportYaml}>
+                  <FileDown className="mr-2 h-4 w-4" />
+                  Download YAML
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportToml}>
+                  <FileDown className="mr-2 h-4 w-4" />
+                  Download TOML
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onSaveAsTemplate} disabled={nodes.length === 0}>
+                  <BookTemplate className="mr-2 h-4 w-4" />
+                  Save as template
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -692,24 +705,6 @@ export function FlowToolbar({
                     <DropdownMenuItem onClick={handleDeleteSelected} disabled={!canDeleteSelected}>
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete selected
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setImportOpen(true)}>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Import config
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleExportYaml}>
-                      <FileDown className="mr-2 h-4 w-4" />
-                      Download YAML
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleExportToml}>
-                      <FileDown className="mr-2 h-4 w-4" />
-                      Download TOML
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={onSaveAsTemplate} disabled={nodes.length === 0}>
-                      <BookTemplate className="mr-2 h-4 w-4" />
-                      Save as template
                     </DropdownMenuItem>
                   </>
                 )}
@@ -754,6 +749,24 @@ export function FlowToolbar({
                     <DropdownMenuItem onClick={() => setShortcutsOpen(true)}>
                       <Keyboard className="mr-2 h-4 w-4" />
                       Keyboard shortcuts
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Import / Export</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Import config
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExportYaml}>
+                      <FileDown className="mr-2 h-4 w-4" />
+                      Download YAML
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExportToml}>
+                      <FileDown className="mr-2 h-4 w-4" />
+                      Download TOML
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onSaveAsTemplate} disabled={nodes.length === 0}>
+                      <BookTemplate className="mr-2 h-4 w-4" />
+                      Save as template
                     </DropdownMenuItem>
                   </>
                 )}
@@ -872,7 +885,7 @@ export function FlowToolbar({
             onOpenChange={setShortcutsOpen}
           />
 
-        <div className="ml-auto flex shrink-0 items-center gap-2 border-l border-line pl-2">
+        <div className="flex shrink-0 items-center gap-2 border-l border-line pl-2">
           {/* Pending approval indicator */}
           {pendingRequest && (
             <div className="flex items-center gap-0.5 px-1">
@@ -907,33 +920,6 @@ export function FlowToolbar({
                 </Tooltip>
               )}
             </div>
-          )}
-
-          {/* Process status indicator */}
-          {processStatus && processDotVariant && processLabel && (
-            <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-fg-1">
-              <StatusDot
-                variant={processDotVariant}
-                pulse={processStatus === "RUNNING"}
-                halo={processStatus === "RUNNING"}
-              />
-              <span>
-                {processLabel}
-                {nodeCount != null && ` · ${nodeCount} nodes`}
-              </span>
-            </span>
-          )}
-
-          {validationErrorCount > 0 ? (
-            <span className="inline-flex items-center gap-1.5 rounded-[3px] border border-status-error/35 bg-status-error/10 px-2 py-1 font-mono text-[10px] text-status-error">
-              <AlertTriangle className="h-3 w-3" />
-              {validationErrorCount} validation {validationErrorCount === 1 ? "error" : "errors"}
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-[3px] border border-status-healthy/30 bg-status-healthy/10 px-2 py-1 font-mono text-[10px] text-status-healthy">
-              <CircleCheck className="h-3 w-3" />
-              valid
-            </span>
           )}
 
           {lastSavedLabel && (
