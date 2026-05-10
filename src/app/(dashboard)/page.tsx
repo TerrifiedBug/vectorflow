@@ -188,7 +188,7 @@ export default function DashboardPage() {
     const reduction = eventsIn > 0
       ? Math.max(0, (1 - eventsOut / eventsIn) * 100)
       : stats.data?.reduction.percent ?? 0;
-    const errorRate = eventsIn > 0 ? ((errors + discarded) / eventsIn) * 100 : 0;
+    const errorRate = eventsIn > 0 ? (errors / eventsIn) * 100 : 0;
 
     const pipelines = (pipelineCards.data ?? [])
       .map((pipeline) => ({
@@ -344,7 +344,7 @@ export default function DashboardPage() {
               className="col-span-12 min-h-[118px] sm:col-span-6 lg:col-span-2"
               label="Error rate"
               value={`${dashboard.errorRate.toFixed(2)}%`}
-              sub={`${formatSI(dashboard.errors + dashboard.discarded)}/s combined`}
+              sub={`${formatSI(dashboard.errors)}/s errors`}
               trend={<Sparkline data={sumSeries(chartData.data?.pipeline.errors)} width={88} height={24} color="var(--status-error)" />}
               accent={dashboard.errorRate > 1 ? "var(--status-error)" : undefined}
             />
