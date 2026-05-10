@@ -1,0 +1,27 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the previous tag for --notes-start-tag
+          PREV_TAG=$(git tag --list 'v*' --sort=-version:refname | sed -n '2p')
+          ARGS=(--title "${GITHUB_REF_NAME}" --generate-notes --latest)
+          if [ -n "$PREV_TAG" ]; then
+            ARGS+=(--notes-start-tag "$PREV_TAG")
+          fi
+          gh release create "${GITHUB_REF_NAME}" "${ARGS[@]}"
