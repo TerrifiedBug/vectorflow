@@ -59,18 +59,29 @@ Stop hand-editing YAML. Build observability pipelines with drag-and-drop<br>and 
 
 ## Deployment
 
-### Server
+### Server + Agent
 
 ```bash
 cd vectorflow/docker/server
+cp .env.example .env      # fill in POSTGRES_PASSWORD, NEXTAUTH_SECRET
 docker compose up -d
 ```
 
-For high-availability, Helm charts, and production hardening, see the [deployment docs](https://vectorflow.sh/docs/operations/production-hardening).
+After setup, generate an enrollment token in the UI and add `VF_ENROLLMENT_TOKEN` to `.env`, then restart the agent: `docker compose up -d vf-agent`.
 
-### Agent
+### Server + Agent + OpenSearch
 
-The quickest option is Docker:
+An all-in-one stack that bundles OpenSearch and OpenSearch Dashboards:
+
+```bash
+cd vectorflow/docker/server
+cp .env.example .env      # fill in POSTGRES_PASSWORD, NEXTAUTH_SECRET
+docker compose -f docker-compose.opensearch.yml up -d
+```
+
+### Standalone Agent
+
+To run the agent on a separate host:
 
 ```bash
 cd vectorflow/docker/agent
@@ -81,7 +92,7 @@ EOF
 docker compose up -d
 ```
 
-Alternative install methods (systemd, standalone binary, Kubernetes Helm) and all configuration options are covered in the [agent docs](https://vectorflow.sh/docs/reference/agent).
+For high-availability, Helm charts, and production hardening, see the [deployment docs](https://vectorflow.sh/docs/operations/production-hardening). Alternative agent install methods (systemd, standalone binary, Kubernetes Helm) and all configuration options are covered in the [agent docs](https://vectorflow.sh/docs/reference/agent).
 
 ## Contributing
 
