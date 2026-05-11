@@ -70,6 +70,7 @@ describe("setup service", () => {
           },
           team: {
             create: vi.fn().mockResolvedValue(mockTeam),
+            update: vi.fn().mockResolvedValue(mockTeam),
           },
           teamMember: {
             create: vi.fn().mockResolvedValue({
@@ -77,6 +78,9 @@ describe("setup service", () => {
               teamId: "team-1",
               role: "ADMIN",
             }),
+          },
+          environment: {
+            create: vi.fn().mockResolvedValue({ id: "env-1", name: "Production" }),
           },
           systemSettings: {
             upsert: vi.fn().mockResolvedValue({ id: "singleton" }),
@@ -91,6 +95,8 @@ describe("setup service", () => {
         password: "securePassword123",
         teamName: "My Org",
         telemetryChoice: "yes",
+        requireTwoFactor: false,
+        environmentName: "Production",
       });
 
       expect(result.user.email).toBe("admin@example.com");
@@ -117,8 +123,9 @@ describe("setup service", () => {
               };
             }),
           },
-          team: { create: vi.fn().mockResolvedValue({ id: "team-1", name: "T" }) },
+          team: { create: vi.fn().mockResolvedValue({ id: "team-1", name: "T" }), update: vi.fn().mockResolvedValue({}) },
           teamMember: { create: vi.fn().mockResolvedValue({}) },
+          environment: { create: vi.fn().mockResolvedValue({ id: "env-1", name: "Prod" }) },
           systemSettings: { upsert: vi.fn().mockResolvedValue({}) },
         };
         return fn(tx);
@@ -130,6 +137,8 @@ describe("setup service", () => {
         password: "myPassword",
         teamName: "Test Team",
         telemetryChoice: "no",
+        requireTwoFactor: false,
+        environmentName: "Production",
       });
 
       expect(bcrypt.default.hash).toHaveBeenCalledWith("myPassword", 12);
@@ -144,13 +153,16 @@ describe("setup service", () => {
       email: "admin@example.com",
       password: "secret123",
       teamName: "Default",
+      requireTwoFactor: false,
+      environmentName: "Production",
     };
 
     function makeTx(upsertMock: ReturnType<typeof vi.fn>) {
       return {
         user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "admin@example.com", name: "Admin", isSuperAdmin: true }) },
-        team: { create: vi.fn().mockResolvedValue({ id: "t1", name: "Default" }) },
+        team: { create: vi.fn().mockResolvedValue({ id: "t1", name: "Default" }), update: vi.fn().mockResolvedValue({}) },
         teamMember: { create: vi.fn().mockResolvedValue({}) },
+        environment: { create: vi.fn().mockResolvedValue({ id: "e1", name: "Production" }) },
         systemSettings: { upsert: upsertMock },
       };
     }

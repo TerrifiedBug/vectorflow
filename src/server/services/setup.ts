@@ -28,6 +28,8 @@ export async function completeSetup(input: {
   password: string;
   teamName: string;
   telemetryChoice: "yes" | "no";
+  requireTwoFactor: boolean;
+  environmentName: string;
 }) {
   const passwordHash = await bcrypt.hash(input.password, 12);
 
@@ -43,7 +45,10 @@ export async function completeSetup(input: {
     });
 
     const team = await tx.team.create({
-      data: { name: input.teamName },
+      data: {
+        name: input.teamName,
+        requireTwoFactor: input.requireTwoFactor,
+      },
     });
 
     await tx.teamMember.create({
@@ -54,6 +59,18 @@ export async function completeSetup(input: {
       },
     });
 
+    const environment = await tx.environment.create({
+      data: {
+        name: input.environmentName,
+        teamId: team.id,
+      },
+    });
+
+    await tx.team.update({
+      where: { id: team.id },
+      data: { defaultEnvironmentId: environment.id },
+    });
+
     const telemetryFields = buildTelemetryFields(input.telemetryChoice);
 
     await tx.systemSettings.upsert({
@@ -62,6 +79,6 @@ export async function completeSetup(input: {
       create: { id: "singleton", ...telemetryFields },
     });
 
-    return { user, team };
+    return { user, team, environment };
   });
 }

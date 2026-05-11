@@ -42,7 +42,7 @@ export const userRouter = router({
       mustChangePassword: user?.mustChangePassword ?? false,
       totpEnabled: user?.totpEnabled ?? false,
       isSuperAdmin: user?.isSuperAdmin ?? false,
-      twoFactorRequired: user?.authMethod !== "OIDC" && (user?.isSuperAdmin || teamRequires2fa),
+      twoFactorRequired: user?.authMethod !== "OIDC" && teamRequires2fa,
     };
   }),
 

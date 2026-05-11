@@ -74,7 +74,7 @@ export function NodeMetricsCharts({ nodeId }: NodeMetricsChartsProps) {
       <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
         <p className="text-muted-foreground">No system metrics yet</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Metrics appear after the agent starts reporting heartbeats with host data.
+          Host metrics are collected by Vector. Deploy a pipeline to this agent to start reporting.
         </p>
       </div>
     );

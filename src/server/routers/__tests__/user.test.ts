@@ -118,7 +118,7 @@ describe("userRouter", () => {
       expect(result.twoFactorRequired).toBe(true);
     });
 
-    it("sets twoFactorRequired true for super admins", async () => {
+    it("does not require 2FA for super admins without team policy", async () => {
       prismaMock.user.findUnique.mockResolvedValue({
         name: "Admin",
         email: "admin@test.com",
@@ -127,6 +127,22 @@ describe("userRouter", () => {
         totpEnabled: false,
         isSuperAdmin: true,
         memberships: [],
+      } as never);
+
+      const result = await caller.me();
+
+      expect(result.twoFactorRequired).toBe(false);
+    });
+
+    it("requires 2FA for super admins when team policy is enabled", async () => {
+      prismaMock.user.findUnique.mockResolvedValue({
+        name: "Admin",
+        email: "admin@test.com",
+        authMethod: "LOCAL",
+        mustChangePassword: false,
+        totpEnabled: false,
+        isSuperAdmin: true,
+        memberships: [{ team: { requireTwoFactor: true } }],
       } as never);
 
       const result = await caller.me();
