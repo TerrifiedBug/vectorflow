@@ -397,6 +397,11 @@ if [ -f "${ENV_FILE}" ]; then
         sed -i "s|^VF_TOKEN=.*|VF_TOKEN=$(_sed_escape "${VF_TOKEN}")|" "${ENV_FILE}"
         ok "Updated VF_TOKEN"
         _updated=true
+        # Remove persisted node token so the agent re-enrolls with the new VF_TOKEN
+        if [ -f "${DATA_DIR}/node-token" ]; then
+            rm -f "${DATA_DIR}/node-token"
+            ok "Removed stale node-token (agent will re-enroll on next start)"
+        fi
     fi
     if [ "${_CLI_LABELS:-}" = true ]; then
         sed -i "s|^VF_NODE_LABELS=.*|VF_NODE_LABELS=$(_sed_escape "${VF_NODE_LABELS}")|" "${ENV_FILE}"
