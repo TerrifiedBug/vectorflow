@@ -317,7 +317,7 @@ ok "Installed vf-agent $(${INSTALL_DIR}/vf-agent --version 2>/dev/null || echo "
 
 install_vector=false
 if command -v vector >/dev/null; then
-    INSTALLED_VECTOR=$(vector --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    INSTALLED_VECTOR=$(vector --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
     if [ "${INSTALLED_VECTOR}" = "${VECTOR_VERSION}" ]; then
         ok "Vector v${VECTOR_VERSION} already installed"
     else
@@ -385,18 +385,21 @@ if [ -f "${ENV_FILE}" ]; then
     info "Existing ${ENV_FILE} found — merging explicit overrides..."
     _updated=false
 
+    # Escape sed replacement metacharacters (\, &, and | delimiter) in values
+    _sed_escape() { printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'; }
+
     if [ "${_CLI_URL:-}" = true ]; then
-        sed -i "s|^VF_URL=.*|VF_URL=${VF_URL}|" "${ENV_FILE}"
+        sed -i "s|^VF_URL=.*|VF_URL=$(_sed_escape "${VF_URL}")|" "${ENV_FILE}"
         ok "Updated VF_URL"
         _updated=true
     fi
     if [ "${_CLI_TOKEN:-}" = true ]; then
-        sed -i "s|^VF_TOKEN=.*|VF_TOKEN=${VF_TOKEN}|" "${ENV_FILE}"
+        sed -i "s|^VF_TOKEN=.*|VF_TOKEN=$(_sed_escape "${VF_TOKEN}")|" "${ENV_FILE}"
         ok "Updated VF_TOKEN"
         _updated=true
     fi
     if [ "${_CLI_LABELS:-}" = true ]; then
-        sed -i "s|^VF_NODE_LABELS=.*|VF_NODE_LABELS=${VF_NODE_LABELS}|" "${ENV_FILE}"
+        sed -i "s|^VF_NODE_LABELS=.*|VF_NODE_LABELS=$(_sed_escape "${VF_NODE_LABELS}")|" "${ENV_FILE}"
         ok "Updated VF_NODE_LABELS"
         _updated=true
     fi
