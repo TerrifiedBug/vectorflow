@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { email, name, password, teamName, telemetryChoice } = body;
+    const { email, name, password, teamName, telemetryChoice, requireTwoFactor, environmentName } = body;
 
     if (!email || !name || !password || !teamName || !telemetryChoice) {
       return NextResponse.json(
@@ -66,7 +66,21 @@ export async function POST(request: Request) {
       );
     }
 
-    await completeSetup({ email, name, password, teamName, telemetryChoice });
+    if (typeof requireTwoFactor !== "boolean") {
+      return NextResponse.json(
+        { error: "requireTwoFactor must be a boolean." },
+        { status: 400 }
+      );
+    }
+
+    if (typeof environmentName !== "string" || !environmentName.trim() || environmentName.length > 100) {
+      return NextResponse.json(
+        { error: "environmentName must be a non-empty string (max 100 characters)." },
+        { status: 400 }
+      );
+    }
+
+    await completeSetup({ email, name, password, teamName, telemetryChoice, requireTwoFactor, environmentName: environmentName.trim() });
 
     if (telemetryChoice === "yes") {
       void Promise.resolve(sendTelemetryHeartbeat()).catch(() => {});

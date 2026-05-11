@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Check, Loader2, ShieldCheck, Users, BarChart3 } from "lucide-react";
+import { Check, Loader2, ShieldCheck, Users, BarChart3, Shield, Globe } from "lucide-react";
 import * as m from "motion/react-m";
 import type { TargetAndTransition } from "motion/react";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { VFLogo } from "@/components/ui/vf-logo";
 import {
   Form,
@@ -38,7 +39,7 @@ const setupStep1Schema = z
   });
 
 type SetupStep1Values = z.infer<typeof setupStep1Schema>;
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4 | 5;
 
 const STEPS = [
   {
@@ -55,6 +56,18 @@ const STEPS = [
   },
   {
     id: 3,
+    title: "Security",
+    description: "Choose whether to enforce two-factor authentication.",
+    icon: Shield,
+  },
+  {
+    id: 4,
+    title: "Environment",
+    description: "Create the first environment for your pipelines.",
+    icon: Globe,
+  },
+  {
+    id: 5,
     title: "Telemetry",
     description: "Choose whether to share anonymous operational stats.",
     icon: BarChart3,
@@ -72,7 +85,9 @@ export default function SetupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [teamName, setTeamName] = useState("");
-  const [telemetryChoice, setTelemetryChoice] = useState<"yes" | "no" | null>(null);
+  const [telemetryChoice, setTelemetryChoice] = useState<"yes" | "no">("yes");
+  const [requireTwoFactor, setRequireTwoFactor] = useState(false);
+  const [environmentName, setEnvironmentName] = useState("");
 
   useEffect(() => {
     fetch("/api/setup")
@@ -110,6 +125,8 @@ export default function SetupPage() {
           password: step1Data.password,
           teamName,
           telemetryChoice,
+          requireTwoFactor,
+          environmentName,
         }),
       });
 
@@ -141,7 +158,7 @@ export default function SetupPage() {
             Bring your instance online.
           </h1>
           <p className="mt-3 text-[12px] leading-relaxed text-fg-1">
-            Configure the initial owner, workspace, and telemetry preference. You can change everything later in Settings.
+            Configure the initial owner, workspace, security, and environment. You can change everything later in Settings.
           </p>
 
           <div className="mt-10 space-y-0">
@@ -180,7 +197,7 @@ export default function SetupPage() {
 
         <main className="flex flex-col bg-bg p-6 sm:p-8">
           <div className="mb-8 flex items-center justify-between border-b border-line pb-4 font-mono text-[11px] text-fg-2">
-            <span>step {step} / 3</span>
+            <span>step {step} / 5</span>
             <span>{STEPS[step - 1].title}</span>
           </div>
 
@@ -194,6 +211,10 @@ export default function SetupPage() {
               <AdminStep form={form} onSubmit={handleNext} />
             ) : step === 2 ? (
               <TeamStep teamName={teamName} setTeamName={setTeamName} onSubmit={() => setStep(3)} />
+            ) : step === 3 ? (
+              <TwoFactorStep requireTwoFactor={requireTwoFactor} setRequireTwoFactor={setRequireTwoFactor} />
+            ) : step === 4 ? (
+              <EnvironmentStep environmentName={environmentName} setEnvironmentName={setEnvironmentName} onSubmit={() => setStep(5)} />
             ) : (
               <TelemetryStep choice={telemetryChoice} setChoice={setTelemetryChoice} />
             )}
@@ -204,11 +225,11 @@ export default function SetupPage() {
               type="button"
               variant="ghost"
               disabled={step === 1 || loading}
-              onClick={() => setStep((current) => (current === 3 ? 2 : 1))}
+              onClick={() => setStep((current) => (current - 1) as Step)}
             >
               Back
             </Button>
-            <div className="font-mono text-[11px] text-fg-2">{step === 1 ? "admin" : step === 2 ? "workspace" : "complete"}</div>
+            <div className="font-mono text-[11px] text-fg-2">{STEPS[step - 1].title.toLowerCase()}</div>
             {step === 1 ? (
               <Button variant="primary" type="submit" form="setup-admin-form">
                 Continue
@@ -217,8 +238,16 @@ export default function SetupPage() {
               <Button variant="primary" type="submit" form="setup-team-form" disabled={!teamName.trim()}>
                 Continue
               </Button>
+            ) : step === 3 ? (
+              <Button variant="primary" type="button" onClick={() => setStep(4)}>
+                Continue
+              </Button>
+            ) : step === 4 ? (
+              <Button variant="primary" type="submit" form="setup-env-form" disabled={!environmentName.trim()}>
+                Continue
+              </Button>
             ) : (
-              <Button variant="primary" type="button" onClick={handleSubmit} disabled={telemetryChoice === null || loading}>
+              <Button variant="primary" type="button" onClick={handleSubmit} disabled={loading}>
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 {loading ? "Setting up..." : "Complete setup"}
               </Button>
@@ -312,14 +341,49 @@ function TeamStep({ teamName, setTeamName, onSubmit }: { teamName: string; setTe
         <form id="setup-team-form" onSubmit={(event) => { event.preventDefault(); onSubmit(); }} className="mt-5 space-y-3">
           <Label htmlFor="teamName" className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2">Team name</Label>
           <Input id="teamName" type="text" placeholder="My Team" value={teamName} onChange={(event) => setTeamName(event.target.value)} required autoFocus />
-          <p className="font-mono text-[11px] text-fg-2">Default environment and admin membership are created automatically.</p>
+          <p className="font-mono text-[11px] text-fg-2">Admin membership is created automatically. You&apos;ll name your first environment next.</p>
         </form>
       </CardContent>
     </Card>
   );
 }
 
-function TelemetryStep({ choice, setChoice }: { choice: "yes" | "no" | null; setChoice: (value: "yes" | "no") => void }) {
+function TwoFactorStep({ requireTwoFactor, setRequireTwoFactor }: { requireTwoFactor: boolean; setRequireTwoFactor: (value: boolean) => void }) {
+  return (
+    <Card className="border-line bg-bg-2 hover:translate-y-0 hover:shadow-none">
+      <CardContent className="p-5">
+        <SectionHeader title="Security" description="Two-factor authentication adds a TOTP code on every login." />
+        <div className="mt-5 space-y-4">
+          <div className="flex items-center justify-between rounded-[3px] border border-line bg-bg-1 px-4 py-3">
+            <div>
+              <div className="font-mono text-[13px] font-medium text-fg">Require 2FA for this team</div>
+              <p className="mt-1 text-[12px] leading-relaxed text-fg-1">All team members will be required to set up two-factor authentication before accessing the dashboard.</p>
+            </div>
+            <Switch checked={requireTwoFactor} onCheckedChange={setRequireTwoFactor} />
+          </div>
+          <p className="font-mono text-[11px] text-fg-2">You can change this later in team settings. Individual users can always opt in from their profile.</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EnvironmentStep({ environmentName, setEnvironmentName, onSubmit }: { environmentName: string; setEnvironmentName: (value: string) => void; onSubmit: () => void }) {
+  return (
+    <Card className="border-line bg-bg-2 hover:translate-y-0 hover:shadow-none">
+      <CardContent className="p-5">
+        <SectionHeader title="Environment" description="Environments isolate pipelines, secrets, and agents. Create your first one now." />
+        <form id="setup-env-form" onSubmit={(event) => { event.preventDefault(); onSubmit(); }} className="mt-5 space-y-3">
+          <Label htmlFor="environmentName" className="font-mono text-[10.5px] uppercase tracking-[0.04em] text-fg-2">Environment name</Label>
+          <Input id="environmentName" type="text" placeholder="Production" value={environmentName} onChange={(event) => setEnvironmentName(event.target.value)} required maxLength={100} autoFocus />
+          <p className="font-mono text-[11px] text-fg-2">This becomes the default environment. You can create more environments later.</p>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TelemetryStep({ choice, setChoice }: { choice: "yes" | "no"; setChoice: (value: "yes" | "no") => void }) {
   return (
     <Card className="border-line bg-bg-2 hover:translate-y-0 hover:shadow-none">
       <CardContent className="p-5">

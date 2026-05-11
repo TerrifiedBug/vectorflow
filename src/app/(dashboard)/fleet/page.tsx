@@ -371,11 +371,11 @@ export default function FleetPage() {
           </>
         }
         actions={
-          <>
-            <Button variant="outline" size="sm">Sync</Button>
-            <Button variant="outline" size="sm">Install agent</Button>
-            <Button variant="primary" size="sm">Deploy to fleet</Button>
-          </>
+          <Button variant="primary" size="sm" asChild>
+            <Link href={selectedEnvironmentId ? `/environments/${selectedEnvironmentId}?tab=enrollment` : "/environments"}>
+              Deploy an agent
+            </Link>
+          </Button>
         }
       />
 
