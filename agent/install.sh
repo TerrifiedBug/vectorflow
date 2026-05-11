@@ -21,6 +21,8 @@ VF_NODE_LABELS=""
 VERSION="latest"
 CHANNEL="stable"
 VF_USER=""
+UNINSTALL=false
+REMOVE_VECTOR=false
 
 # ─────────────────────────────────────────────────
 # Helpers
@@ -45,7 +47,9 @@ Options:
   --labels <labels>  Node labels as comma-separated key=value pairs
   --version <tag>    Release version to install (default: latest)
   --channel <name>   Release channel: stable or dev (default: stable)
-  --user <name>    Run agent as non-root user (created if needed)
+  --user <name>      Run agent as non-root user (created if needed)
+  --uninstall        Remove vf-agent, its config, data, and systemd unit
+  --remove-vector    Also remove Vector binary and data (use with --uninstall)
   --help             Show this help message
 
 Examples:
@@ -59,6 +63,9 @@ Examples:
   # Upgrade to latest
   curl -sSfL .../install.sh | sudo bash
 
+  # Upgrade and replace enrollment token
+  curl -sSfL .../install.sh | sudo bash -s -- --token NEW_TOKEN
+
   # Install specific version
   curl -sSfL .../install.sh | sudo bash -s -- --version v0.3.0
 
@@ -67,6 +74,12 @@ Examples:
 
   # Install dev channel
   curl -sSfL .../install.sh | sudo bash -s -- --channel dev --url https://vf.example.com --token abc123
+
+  # Uninstall (interactive — prompts to remove Vector)
+  sudo bash install.sh --uninstall
+
+  # Uninstall including Vector (non-interactive)
+  curl -sSfL .../install.sh | sudo bash -s -- --uninstall --remove-vector
 EOF
     exit 0
 }
@@ -77,12 +90,14 @@ EOF
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --url)    VF_URL="$2";          shift 2 ;;
-        --token)  VF_TOKEN="$2";        shift 2 ;;
-        --labels) VF_NODE_LABELS="$2";  shift 2 ;;
+        --url)    VF_URL="$2"; _CLI_URL=true;          shift 2 ;;
+        --token)  VF_TOKEN="$2"; _CLI_TOKEN=true;       shift 2 ;;
+        --labels) VF_NODE_LABELS="$2"; _CLI_LABELS=true; shift 2 ;;
         --version) VERSION="$2";        shift 2 ;;
         --channel) CHANNEL="$2";         shift 2 ;;
         --user)   VF_USER="$2";          shift 2 ;;
+        --uninstall) UNINSTALL=true;      shift ;;
+        --remove-vector) REMOVE_VECTOR=true; shift ;;
         --help)   usage ;;
         *)        fatal "Unknown option: $1 (use --help for usage)" ;;
     esac
@@ -92,11 +107,23 @@ if [ "${CHANNEL}" = "dev" ] && [ "${VERSION}" != "latest" ]; then
     fatal "--channel dev and --version are mutually exclusive"
 fi
 
+if [ "${REMOVE_VECTOR}" = true ] && [ "${UNINSTALL}" = false ]; then
+    fatal "--remove-vector can only be used with --uninstall"
+fi
+
 # ─────────────────────────────────────────────────
 # Interactive mode (TTY detected, missing values)
 # ─────────────────────────────────────────────────
 
-if [ -t 0 ]; then
+# On re-install, pre-load existing env values so interactive prompts
+# only fire for values the user hasn't configured yet.
+if [ -f "${ENV_FILE}" ]; then
+    [ -z "${VF_URL}" ] && VF_URL=$(sed -n 's/^VF_URL=//p' "${ENV_FILE}" 2>/dev/null || true)
+    [ -z "${VF_TOKEN}" ] && VF_TOKEN=$(sed -n 's/^VF_TOKEN=//p' "${ENV_FILE}" 2>/dev/null || true)
+    [ -z "${VF_NODE_LABELS}" ] && VF_NODE_LABELS=$(sed -n 's/^VF_NODE_LABELS=//p' "${ENV_FILE}" 2>/dev/null || true)
+fi
+
+if [ -t 0 ] && [ "${UNINSTALL}" = false ]; then
     # At least one promptable value is missing — enter interactive mode
     _needs_prompt=false
     [ -z "${VF_URL}" ] && _needs_prompt=true
@@ -151,6 +178,74 @@ info "Running preflight checks..."
 [ "$(id -u)" -eq 0 ]        || fatal "Please run as root (use sudo)"
 command -v curl >/dev/null   || fatal "curl is required but not found"
 command -v systemctl >/dev/null || fatal "systemd is required but not found"
+
+# ─────────────────────────────────────────────────
+# Uninstall mode
+# ─────────────────────────────────────────────────
+
+if [ "${UNINSTALL}" = true ]; then
+    info "Uninstalling VectorFlow Agent..."
+
+    # Stop and disable service
+    if systemctl is-active "${SERVICE_NAME}" --quiet 2>/dev/null; then
+        info "Stopping ${SERVICE_NAME}..."
+        systemctl stop "${SERVICE_NAME}"
+    fi
+    if systemctl is-enabled "${SERVICE_NAME}" --quiet 2>/dev/null; then
+        systemctl disable "${SERVICE_NAME}" --quiet
+    fi
+
+    # Remove systemd unit
+    rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+    systemctl daemon-reload
+    ok "Removed systemd unit"
+
+    # Remove agent binary
+    rm -f "${INSTALL_DIR}/vf-agent"
+    ok "Removed vf-agent binary"
+
+    # Remove config and data
+    if [ -d "${CONFIG_DIR}" ]; then
+        rm -rf "${CONFIG_DIR}"
+        ok "Removed config directory ${CONFIG_DIR}"
+    fi
+    if [ -d "${DATA_DIR}" ]; then
+        rm -rf "${DATA_DIR}"
+        ok "Removed data directory ${DATA_DIR}"
+    fi
+
+    # Vector removal — interactive prompt or explicit flag
+    remove_vector=false
+    if [ "${REMOVE_VECTOR}" = true ]; then
+        remove_vector=true
+    elif [ -t 0 ]; then
+        printf "  Also remove Vector binary and data? [y/N]: "
+        read -r _remove_vector
+        case "${_remove_vector}" in
+            [yY]|[yY][eE][sS]) remove_vector=true ;;
+        esac
+    fi
+
+    if [ "${remove_vector}" = true ]; then
+        rm -f "${INSTALL_DIR}/vector"
+        if [ -d "${VECTOR_DATA_DIR}" ]; then
+            rm -rf "${VECTOR_DATA_DIR}"
+        fi
+        ok "Removed Vector binary and data"
+    else
+        info "Vector left in place (remove manually or re-run with --remove-vector)"
+    fi
+
+    # Remove system user if one exists
+    if id "vfagent" >/dev/null 2>&1; then
+        info "Removing system user vfagent..."
+        userdel "vfagent" 2>/dev/null && ok "Removed user vfagent" || warn "Could not remove user vfagent"
+    fi
+
+    echo ""
+    ok "VectorFlow Agent uninstalled."
+    exit 0
+fi
 
 # ─────────────────────────────────────────────────
 # Detect architecture
@@ -217,14 +312,24 @@ install -m 755 "${TMPDIR}/${BINARY_NAME}" "${INSTALL_DIR}/vf-agent"
 ok "Installed vf-agent $(${INSTALL_DIR}/vf-agent --version 2>/dev/null || echo "${VERSION}")"
 
 # ─────────────────────────────────────────────────
-# Install Vector (if not present)
+# Install or upgrade Vector
 # ─────────────────────────────────────────────────
 
+install_vector=false
 if command -v vector >/dev/null; then
-    ok "Vector already installed: $(vector --version 2>/dev/null || echo 'unknown version')"
+    INSTALLED_VECTOR=$(vector --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    if [ "${INSTALLED_VECTOR}" = "${VECTOR_VERSION}" ]; then
+        ok "Vector v${VECTOR_VERSION} already installed"
+    else
+        info "Upgrading Vector ${INSTALLED_VECTOR:-unknown} → ${VECTOR_VERSION}..."
+        install_vector=true
+    fi
 else
     info "Vector not found — installing v${VECTOR_VERSION}..."
+    install_vector=true
+fi
 
+if [ "${install_vector}" = true ]; then
     case "${ARCH}" in
         amd64) VECTOR_ARCH="x86_64" ;;
         arm64) VECTOR_ARCH="aarch64" ;;
@@ -273,11 +378,32 @@ if [ -n "${VF_USER}" ]; then
 fi
 
 # ─────────────────────────────────────────────────
-# Write environment file (preserve on upgrade)
+# Write environment file (merge on upgrade)
 # ─────────────────────────────────────────────────
 
 if [ -f "${ENV_FILE}" ]; then
-    warn "Existing ${ENV_FILE} found — preserving (edit manually to change settings)"
+    info "Existing ${ENV_FILE} found — merging explicit overrides..."
+    _updated=false
+
+    if [ "${_CLI_URL:-}" = true ]; then
+        sed -i "s|^VF_URL=.*|VF_URL=${VF_URL}|" "${ENV_FILE}"
+        ok "Updated VF_URL"
+        _updated=true
+    fi
+    if [ "${_CLI_TOKEN:-}" = true ]; then
+        sed -i "s|^VF_TOKEN=.*|VF_TOKEN=${VF_TOKEN}|" "${ENV_FILE}"
+        ok "Updated VF_TOKEN"
+        _updated=true
+    fi
+    if [ "${_CLI_LABELS:-}" = true ]; then
+        sed -i "s|^VF_NODE_LABELS=.*|VF_NODE_LABELS=${VF_NODE_LABELS}|" "${ENV_FILE}"
+        ok "Updated VF_NODE_LABELS"
+        _updated=true
+    fi
+
+    if [ "${_updated}" = false ]; then
+        ok "No overrides provided — existing config preserved"
+    fi
 else
     info "Writing ${ENV_FILE}..."
     cat > "${ENV_FILE}" <<ENVEOF
