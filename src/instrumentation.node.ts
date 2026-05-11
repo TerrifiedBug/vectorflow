@@ -65,6 +65,20 @@ export async function registerNodeInstrumentation() {
   }
 
   async function startSingletonServices(): Promise<void> {
+    // Demo-mode only: synthesise missing PipelineVersion rows for seeded
+    // pipelines so the editor shows them as properly deployed instead of
+    // permanently flagging "Saved draft pending deploy". No-op otherwise.
+    // Gated behind leader election because the (findMany none → create v1)
+    // pattern would race with no unique on (pipelineId, version).
+    try {
+      const { bootstrapDemoDeployments } = await import(
+        "@/server/services/demo-bootstrap"
+      );
+      await bootstrapDemoDeployments();
+    } catch (error) {
+      errorLog("instrumentation", "Demo deployment bootstrap failed", error);
+    }
+
     try {
       const { importLegacyBackups } = await import("@/server/services/backup");
       const result = await importLegacyBackups();
