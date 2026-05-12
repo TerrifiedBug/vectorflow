@@ -48,7 +48,7 @@ export default function AlertsPage() {
         : "rules",
   );
   const [alertView, setAlertView] = useState<"grouped" | "flat">(
-    initialTab === "anomalies" || initialTab === "flat" ? "flat" : "grouped"
+    initialTab === "grouped" ? "grouped" : "flat"
   );
 
   const trpc = useTRPC();
@@ -74,8 +74,6 @@ export default function AlertsPage() {
 
   const rules = rulesQuery.data ?? [];
   const firingEvents = firingEventsQuery.data?.items ?? [];
-  const criticalCount = rules.filter((rule) => rule.severity === "critical").length;
-  const warningCount = rules.filter((rule) => rule.severity === "warning").length;
   const totalAnomalies = Object.values(anomalyCountQuery.data ?? {}).reduce(
     (sum, count) => sum + count,
     0,
@@ -160,17 +158,6 @@ export default function AlertsPage() {
 
       <div className="space-y-6 p-4">
 
-      <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] text-fg-2">
-        <Pill variant="error" size="xs">
-          {criticalCount} critical
-        </Pill>
-        <Pill variant="warn" size="xs">
-          {warningCount} warning
-        </Pill>
-        <span>{rules.length} rules</span>
-        <span>·</span>
-        <span>{firingEvents.length} firing now</span>
-      </div>
 
       <FiringAndRecentCard events={firingEvents} />
 
@@ -222,15 +209,22 @@ export default function AlertsPage() {
               }
             >
               <TabsList>
-                <TabsTrigger value="grouped" className="gap-1.5">
-                  <Layers className="h-4 w-4" />
-                  Grouped
-                </TabsTrigger>
                 <TabsTrigger value="flat" className="gap-1.5">
                   <List className="h-4 w-4" />
                   All Events
                 </TabsTrigger>
+                <TabsTrigger value="grouped" className="gap-1.5">
+                  <Layers className="h-4 w-4" />
+                  Grouped
+                </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="flat">
+                <AlertHistorySection
+                  environmentId={selectedEnvironmentId}
+                  initialCategory={initialTab === "anomalies" ? "anomalies" : undefined}
+                />
+              </TabsContent>
 
               <TabsContent value="grouped">
                 <div className="space-y-6">
@@ -238,13 +232,6 @@ export default function AlertsPage() {
                     environmentId={selectedEnvironmentId}
                   />
                 </div>
-              </TabsContent>
-
-              <TabsContent value="flat">
-                <AlertHistorySection
-                  environmentId={selectedEnvironmentId}
-                  initialCategory={initialTab === "anomalies" ? "anomalies" : undefined}
-                />
               </TabsContent>
             </Tabs>
 

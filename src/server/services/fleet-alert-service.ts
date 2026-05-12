@@ -7,11 +7,12 @@ import {
   getFleetErrorRate,
   getFleetEventVolume,
   getFleetThroughputDrop,
+  getFleetThroughputDropDetail,
   getNodeLoadImbalance,
   getPipelineLatencyMean,
   getPipelineThroughputFloor,
 } from "@/server/services/fleet-metrics";
-import type { LoadImbalanceResult } from "@/server/services/fleet-metrics";
+import type { LoadImbalanceResult, ThroughputDropDetail } from "@/server/services/fleet-metrics";
 import { getVersionDrift } from "@/server/services/drift-metrics";
 import { checkCertificateExpiry } from "@/server/services/cert-expiry-checker";
 import { evaluateCostAlerts } from "@/server/services/cost-alert";
@@ -34,6 +35,8 @@ interface FiredFleetAlertEvent {
   };
   /** For node_load_imbalance: the host of the most imbalanced node */
   nodeHost?: string;
+  /** For fleet_throughput_drop: per-pipeline breakdown */
+  throughputDetail?: ThroughputDropDetail;
 }
 
 // ─── FleetAlertService ──────────────────────────────────────────────────────
@@ -191,7 +194,19 @@ export class FleetAlertService {
         });
 
         if (!existingEvent) {
-          const message = this.buildMessage(rule, value);
+          // For throughput drops, fetch per-pipeline breakdown for a richer message.
+          // Failure here must not block alert creation — fall back to base message.
+          let throughputDetail: ThroughputDropDetail | undefined;
+          if (rule.metric === "fleet_throughput_drop") {
+            try {
+              const detail = await getFleetThroughputDropDetail(rule.environmentId);
+              if (detail) throughputDetail = detail;
+            } catch (detailErr) {
+              errorLog("fleet-alert", "Throughput detail enrichment failed, using base message", detailErr);
+            }
+          }
+
+          const message = this.buildMessage(rule, value, throughputDetail);
           const nodeId = rule.metric === "node_load_imbalance"
             ? imbalanceNodeId
             : null;
@@ -216,7 +231,7 @@ export class FleetAlertService {
             nodeHost = node?.host ?? undefined;
           }
 
-          return { event, rule, nodeHost };
+          return { event, rule, nodeHost, throughputDetail };
         }
       }
     } else {
@@ -286,7 +301,7 @@ export class FleetAlertService {
   /**
    * Build a human-readable message for a fleet alert event.
    */
-  private buildMessage(rule: AlertRule, value: number): string {
+  private buildMessage(rule: AlertRule, value: number, throughputDetail?: ThroughputDropDetail): string {
     const METRIC_LABELS: Record<string, string> = {
       fleet_error_rate: "Fleet error rate",
       fleet_throughput_drop: "Fleet throughput drop",
@@ -306,7 +321,16 @@ export class FleetAlertService {
     const metricLabel = METRIC_LABELS[rule.metric] ?? rule.metric;
     const condLabel = CONDITION_LABELS[rule.condition ?? ""] ?? rule.condition;
 
-    return `${metricLabel} at ${value.toFixed(2)} (threshold: ${condLabel} ${rule.threshold})`;
+    let msg = `${metricLabel} at ${value.toFixed(2)} (threshold: ${condLabel} ${rule.threshold})`;
+
+    if (throughputDetail && throughputDetail.breakdown.length > 0) {
+      const parts = throughputDetail.breakdown.map(
+        (b) => `${b.pipelineName} (-${b.dropPercent.toFixed(0)}%)`,
+      );
+      msg += `. Top drops: ${parts.join(", ")}`;
+    }
+
+    return msg;
   }
 
   /**

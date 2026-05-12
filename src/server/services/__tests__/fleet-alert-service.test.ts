@@ -14,6 +14,7 @@ vi.mock("@/server/services/fleet-metrics", () => ({
   getFleetErrorRate: vi.fn(),
   getFleetEventVolume: vi.fn(),
   getFleetThroughputDrop: vi.fn(),
+  getFleetThroughputDropDetail: vi.fn(),
   getNodeLoadImbalance: vi.fn(),
 }));
 
@@ -32,6 +33,7 @@ import {
   getFleetErrorRate,
   getFleetEventVolume,
   getFleetThroughputDrop,
+  getFleetThroughputDropDetail,
   getNodeLoadImbalance,
 } from "@/server/services/fleet-metrics";
 import { deliverToChannels } from "@/server/services/channels";
@@ -44,6 +46,7 @@ const mockGetFleetEventVolume = getFleetEventVolume as ReturnType<typeof vi.fn>;
 const mockGetFleetThroughputDrop = getFleetThroughputDrop as ReturnType<typeof vi.fn>;
 const mockGetNodeLoadImbalance = getNodeLoadImbalance as ReturnType<typeof vi.fn>;
 const mockGetVersionDrift = getVersionDrift as ReturnType<typeof vi.fn>;
+const mockGetFleetThroughputDropDetail = getFleetThroughputDropDetail as ReturnType<typeof vi.fn>;
 
 // ─── Fixture helpers ────────────────────────────────────────────────────────
 
@@ -319,6 +322,13 @@ describe("FleetAlertService", () => {
 
     // 50% drop > 20% threshold
     mockGetFleetThroughputDrop.mockResolvedValue(50);
+    mockGetFleetThroughputDropDetail.mockResolvedValue({
+      value: 50,
+      breakdown: [
+        { pipelineId: "p1", pipelineName: "logs-pipeline", dropPercent: 60 },
+        { pipelineId: "p2", pipelineName: "metrics-pipeline", dropPercent: 30 },
+      ],
+    });
 
     prismaMock.alertEvent.findFirst.mockResolvedValue(null);
 
@@ -328,6 +338,40 @@ describe("FleetAlertService", () => {
     const results = await service.evaluateFleetAlerts();
     expect(results).toHaveLength(1);
     expect(results[0]!.event.status).toBe("firing");
+
+    // Verify the message includes per-pipeline breakdown
+    const createCall = prismaMock.alertEvent.create.mock.calls[0]![0] as { data: { message: string } };
+    expect(createCall.data.message).toContain("Top drops:");
+    expect(createCall.data.message).toContain("logs-pipeline (-60%)");
+    expect(createCall.data.message).toContain("metrics-pipeline (-30%)");
+  });
+
+  it("still fires fleet_throughput_drop when detail enrichment fails", async () => {
+    const rule = makeRule({
+      metric: "fleet_throughput_drop",
+      condition: "gt",
+      threshold: 20,
+      durationSeconds: 0,
+    });
+    prismaMock.alertRule.findMany.mockResolvedValue([rule] as never);
+
+    mockGetFleetThroughputDrop.mockResolvedValue(50);
+    // Detail enrichment throws — should not block alert creation
+    mockGetFleetThroughputDropDetail.mockRejectedValue(new Error("DB timeout"));
+
+    prismaMock.alertEvent.findFirst.mockResolvedValue(null);
+
+    const createdEvent = makeEvent({ value: 50, status: "firing" });
+    prismaMock.alertEvent.create.mockResolvedValue(createdEvent as never);
+
+    const results = await service.evaluateFleetAlerts();
+    expect(results).toHaveLength(1);
+    expect(results[0]!.event.status).toBe("firing");
+
+    // Message should still be present but without breakdown
+    const createCall = prismaMock.alertEvent.create.mock.calls[0]![0] as { data: { message: string } };
+    expect(createCall.data.message).toContain("Fleet throughput drop at 50.00");
+    expect(createCall.data.message).not.toContain("Top drops:");
   });
 
   // ── Snoozed rules are skipped ──────────────────────────────────────────

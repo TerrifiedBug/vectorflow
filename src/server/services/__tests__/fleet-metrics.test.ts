@@ -11,6 +11,7 @@ import {
   getFleetErrorRate,
   getFleetEventVolume,
   getFleetThroughputDrop,
+  getFleetThroughputDropDetail,
   getNodeLoadImbalance,
   getPipelineLatencyMean,
   getPipelineThroughputFloor,
@@ -38,9 +39,10 @@ function nps(overrides: {
 }
 
 /** Shorthand for a PipelineMetric row fragment. */
-function pm(overrides: { eventsIn?: number }) {
+function pm(overrides: { eventsIn?: number; pipelineId?: string }) {
   return {
     eventsIn: BigInt(overrides.eventsIn ?? 0),
+    pipelineId: overrides.pipelineId ?? "pipe-1",
   };
 }
 
@@ -177,6 +179,67 @@ describe("getFleetThroughputDrop", () => {
       .mockResolvedValueOnce([pm({ eventsIn: 12_000 })] as never);
 
     expect(await getFleetThroughputDrop(ENV_ID)).toBe(50);
+  });
+});
+
+// ─── getFleetThroughputDropDetail ────────────────────────────────────────────
+
+describe("getFleetThroughputDropDetail", () => {
+  it("returns null when no previous data exists", async () => {
+    prismaMock.pipelineMetric.findMany
+      .mockResolvedValueOnce([pm({ eventsIn: 1000 })] as never)
+      .mockResolvedValueOnce([]);
+    expect(await getFleetThroughputDropDetail(ENV_ID)).toBeNull();
+  });
+
+  it("returns aggregate and per-pipeline breakdown", async () => {
+    prismaMock.pipelineMetric.findMany
+      .mockResolvedValueOnce([
+        pm({ eventsIn: 500, pipelineId: "p1" }),
+        pm({ eventsIn: 800, pipelineId: "p2" }),
+      ] as never)
+      .mockResolvedValueOnce([
+        pm({ eventsIn: 1000, pipelineId: "p1" }),
+        pm({ eventsIn: 1000, pipelineId: "p2" }),
+      ] as never);
+
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "p1", name: "logs-pipeline" },
+      { id: "p2", name: "metrics-pipeline" },
+    ] as never);
+
+    const result = await getFleetThroughputDropDetail(ENV_ID);
+    expect(result).not.toBeNull();
+    // Aggregate: (2000 - 1300) / 2000 * 100 = 35
+    expect(result!.value).toBe(35);
+    expect(result!.breakdown).toHaveLength(2);
+    // p1 dropped 50%, p2 dropped 20% — sorted descending
+    expect(result!.breakdown[0]!.pipelineName).toBe("logs-pipeline");
+    expect(result!.breakdown[0]!.dropPercent).toBe(50);
+    expect(result!.breakdown[1]!.pipelineName).toBe("metrics-pipeline");
+    expect(result!.breakdown[1]!.dropPercent).toBe(20);
+  });
+
+  it("excludes pipelines with no drop", async () => {
+    prismaMock.pipelineMetric.findMany
+      .mockResolvedValueOnce([
+        pm({ eventsIn: 500, pipelineId: "p1" }),
+        pm({ eventsIn: 1200, pipelineId: "p2" }),
+      ] as never)
+      .mockResolvedValueOnce([
+        pm({ eventsIn: 1000, pipelineId: "p1" }),
+        pm({ eventsIn: 1000, pipelineId: "p2" }),
+      ] as never);
+
+    prismaMock.pipeline.findMany.mockResolvedValue([
+      { id: "p1", name: "logs-pipeline" },
+    ] as never);
+
+    const result = await getFleetThroughputDropDetail(ENV_ID);
+    expect(result).not.toBeNull();
+    // Only p1 dropped (50%), p2 increased (-20%)
+    expect(result!.breakdown).toHaveLength(1);
+    expect(result!.breakdown[0]!.pipelineId).toBe("p1");
   });
 });
 
