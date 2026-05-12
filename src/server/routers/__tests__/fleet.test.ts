@@ -486,15 +486,15 @@ describe("fleet.nodeMetrics", () => {
 
     expect(result).toHaveLength(2);
     expect(result[0]).toMatchObject({
-      timestamp: new Date("2024-01-01T00:00:00Z"),
+      timestamp: new Date("2024-01-01T00:01:00Z"),
       memoryUsedBytes: BigInt(200),
       memoryFreeBytes: BigInt(800),
-      cpuSecondsTotal: 15,
-      cpuSecondsIdle: 11,
+      cpuSecondsTotal: 20,
+      cpuSecondsIdle: 14,
       loadAvg1: 2,
       fsUsedBytes: BigInt(300),
-      diskReadBytes: BigInt(2000),
-      netRxBytes: BigInt(600),
+      diskReadBytes: BigInt(3000),
+      netRxBytes: BigInt(900),
     });
     expect(result[1]?.timestamp).toEqual(new Date("2024-01-01T00:02:00Z"));
   });

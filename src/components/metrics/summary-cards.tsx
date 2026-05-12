@@ -38,11 +38,17 @@ function formatCount(n: number): string {
 
 function bucketSecondsAt(rows: MetricRow[], index: number): number {
   const current = new Date(rows[index]!.timestamp).getTime();
-  const prev = rows[index - 1] ? new Date(rows[index - 1]!.timestamp).getTime() : 0;
-  if (current > prev) return (current - prev) / 1000;
+  const prevRow = rows[index - 1];
+  if (prevRow) {
+    const prev = new Date(prevRow.timestamp).getTime();
+    if (current > prev) return (current - prev) / 1000;
+  }
 
-  const next = rows[index + 1] ? new Date(rows[index + 1]!.timestamp).getTime() : 0;
-  if (next > current) return (next - current) / 1000;
+  const nextRow = rows[index + 1];
+  if (nextRow) {
+    const next = new Date(nextRow.timestamp).getTime();
+    if (next > current) return (next - current) / 1000;
+  }
 
   return 60;
 }
