@@ -818,6 +818,7 @@ model SystemSettings {
   lastBackupAt         DateTime?
   lastBackupStatus     String?
   lastBackupError      String?
+  encryptionCanary    String?
 
   // S3 remote storage configuration
   backupStorageBackend  String   @default("local")   // "local" | "s3"

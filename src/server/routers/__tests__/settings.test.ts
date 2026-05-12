@@ -40,7 +40,7 @@ vi.mock("@/server/services/backup", () => ({
   createBackup: vi.fn().mockResolvedValue({ filename: "backup-1.tar.gz", size: 1024, createdAt: new Date().toISOString() }),
   listBackups: vi.fn().mockResolvedValue([]),
   deleteBackup: vi.fn().mockResolvedValue(undefined),
-  restoreFromBackup: vi.fn().mockResolvedValue(undefined),
+  restoreFromBackup: vi.fn().mockResolvedValue({ success: true, warnings: [] }),
   runRetentionCleanup: vi.fn().mockResolvedValue(undefined),
   previewBackup: vi.fn().mockResolvedValue({}),
 }));
@@ -291,7 +291,7 @@ describe("settingsRouter", () => {
       const result = await caller.restoreBackup({ filename: "backup-1.tar.gz" });
 
       expect(restoreFromBackup).toHaveBeenCalledWith("backup-1.tar.gz");
-      expect(result).toEqual({ success: true });
+      expect(result).toEqual({ success: true, warnings: [] });
     });
   });
 

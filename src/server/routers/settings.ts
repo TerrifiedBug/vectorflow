@@ -448,8 +448,7 @@ export const settingsRouter = router({
     .input(z.object({ filename: z.string().min(1) }))
     .use(withAudit("settings.backup_restored", "SystemSettings"))
     .mutation(async ({ input }) => {
-      await restoreFromBackup(input.filename);
-      return { success: true };
+      return restoreFromBackup(input.filename);
     }),
 
   updateBackupSchedule: protectedProcedure

@@ -22,6 +22,19 @@ import { cn } from "@/lib/utils";
 
 type Step = "preview" | "confirm" | "executing" | "done" | "error";
 
+interface PreflightWarning {
+  severity: "info" | "warning" | "error";
+  code: string;
+  title: string;
+  message: string;
+}
+
+interface RestoreResult {
+  success: true;
+  warnings: string[];
+  pgRestoreOutput?: string;
+}
+
 interface RestoreDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -78,6 +91,16 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function warningStyles(severity: PreflightWarning["severity"]) {
+  if (severity === "error") {
+    return "border-destructive/30 bg-destructive/10 text-destructive";
+  }
+  if (severity === "warning") {
+    return "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300";
+  }
+  return "border-blue-500/30 bg-blue-500/10 text-blue-800 dark:text-blue-300";
+}
+
 // ─── RestoreDialog ────────────────────────────────────────────────────────────
 
 export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogProps) {
@@ -87,12 +110,16 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
   const [step, setStep] = useState<Step>("preview");
   const [confirmText, setConfirmText] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [acknowledgedWarnings, setAcknowledgedWarnings] = useState(false);
+  const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null);
 
   const handleClose = (openState: boolean) => {
     if (!openState && step !== "executing") {
       setStep("preview");
       setConfirmText("");
       setErrorMessage("");
+      setAcknowledgedWarnings(false);
+      setRestoreResult(null);
     }
     if (step !== "executing") {
       onOpenChange(openState);
@@ -108,7 +135,8 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
 
   const restoreMutation = useMutation(
     trpc.settings.restoreBackup.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (result) => {
+        setRestoreResult(result);
         setStep("done");
         queryClient.invalidateQueries({ queryKey: trpc.settings.listBackups.queryKey() });
       },
@@ -125,6 +153,9 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
 
   if (step === "preview") {
     const data = previewQuery.data;
+    const warnings = (data?.warnings ?? []) as PreflightWarning[];
+    const hasBlockingErrors = warnings.some((warning) => warning.severity === "error");
+    const hasAcknowledgementWarnings = warnings.some((warning) => warning.severity === "warning");
 
     return (
       <Dialog open={open} onOpenChange={handleClose}>
@@ -199,6 +230,37 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
                     {data.tablesPresent.join(", ")}
                   </p>
                 )}
+                {warnings.length > 0 && (
+                  <div className="space-y-2">
+                    {warnings.map((warning) => (
+                      <div
+                        key={warning.code}
+                        className={cn("rounded-md border p-3", warningStyles(warning.severity))}
+                      >
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                          <div>
+                            <p className="font-medium">{warning.title}</p>
+                            <p className="mt-1 leading-relaxed">{warning.message}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {hasAcknowledgementWarnings && !hasBlockingErrors && (
+                      <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={acknowledgedWarnings}
+                          onChange={(event) => setAcknowledgedWarnings(event.target.checked)}
+                        />
+                        <span>
+                          I understand the warnings and have verified this backup is safe to restore.
+                        </span>
+                      </label>
+                    )}
+                  </div>
+                )}
               </div>
             ) : null}
           </div>
@@ -208,7 +270,12 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
               Cancel
             </Button>
             <Button
-              disabled={!data || previewQuery.isLoading}
+              disabled={
+                !data ||
+                previewQuery.isLoading ||
+                hasBlockingErrors ||
+                (hasAcknowledgementWarnings && !acknowledgedWarnings)
+              }
               onClick={() => setStep("confirm")}
             >
               Continue to Confirmation
@@ -309,6 +376,11 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
   // ─── Step: done ──────────────────────────────────────────────────────────────
 
   if (step === "done") {
+    const backupDate = previewQuery.data
+      ? new Date(previewQuery.data.startedAt).toLocaleString()
+      : filename;
+    const restoreWarnings = restoreResult?.warnings ?? [];
+
     return (
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent>
@@ -317,16 +389,45 @@ export function RestoreDialog({ open, onOpenChange, filename }: RestoreDialogPro
           </DialogHeader>
           <StepIndicator currentStep={step} />
 
-          <div className="rounded-md border border-green-500/30 bg-green-500/10 p-4">
-            <div className="flex items-start gap-3">
-              <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
-              <div className="text-sm text-green-800 dark:text-green-300">
-                <p className="font-medium">Database restored successfully</p>
-                <p className="mt-1">
-                  Please restart the application for changes to take full effect.
-                </p>
+          <div className="space-y-3">
+            <div className="rounded-md border border-green-500/30 bg-green-500/10 p-4">
+              <div className="flex items-start gap-3">
+                <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
+                <div className="text-sm text-green-800 dark:text-green-300">
+                  <p className="font-medium">
+                    Database restored successfully from backup taken on {backupDate}
+                  </p>
+                  <p className="mt-1">
+                    Restart the application for changes to take full effect.
+                  </p>
+                </div>
               </div>
             </div>
+
+            {restoreWarnings.length > 0 && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-300">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                  <div>
+                    <p className="font-medium">Restore completed with warnings</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5">
+                      {restoreWarnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {restoreResult?.pgRestoreOutput ? (
+              <details className="rounded-md border p-3 text-sm">
+                <summary className="cursor-pointer font-medium">Technical Details</summary>
+                <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                  {restoreResult.pgRestoreOutput}
+                </pre>
+              </details>
+            ) : null}
           </div>
 
           <DialogFooter>

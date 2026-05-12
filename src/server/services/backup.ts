@@ -10,6 +10,7 @@ import { pipeline } from "stream/promises";
 import { prisma } from "@/lib/prisma";
 import { debugLog } from "@/lib/logger";
 import type { BackupRecord } from "@/generated/prisma";
+import { encrypt, decrypt } from "@/server/services/crypto";
 import {
   getActiveBackend,
   buildS3Key,
@@ -27,6 +28,11 @@ const BACKUP_DIR = process.env.VF_BACKUP_DIR ?? "/backups";
 const VF_VERSION = process.env.VF_VERSION ?? "dev";
 const PG_DUMP_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const PG_RESTORE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const ENCRYPTION_CANARY_PLAINTEXT = "vectorflow-canary-ok";
+const ENCRYPTION_KEY_MISMATCH_WARNING =
+  "Encryption key mismatch: secrets from the backup were encrypted with a different key. " +
+  "All encrypted credentials (OIDC, git, API keys) are unreadable. " +
+  "Update VF_ENCRYPTION_KEY_V2 or NEXTAUTH_SECRET to match the source instance, then restart.";
 // Lazy: defer process.cwd() to call time so the Edge bundler doesn't trip on
 // module-level Node API usage. See PR fixing the Edge-bundle build failure.
 let _migrationsDir: string | null = null;
@@ -57,6 +63,13 @@ export interface BackupMetadata {
   pgVersion: string;
 }
 
+export interface PreflightWarning {
+  severity: "info" | "warning" | "error";
+  code: string;
+  title: string;
+  message: string;
+}
+
 export interface BackupPreview {
   filename: string;
   vfVersion: string;
@@ -66,6 +79,13 @@ export interface BackupPreview {
   pgVersion: string;
   startedAt: Date;
   tablesPresent: string[];
+  warnings: PreflightWarning[];
+}
+
+export interface RestoreResult {
+  success: true;
+  warnings: string[];
+  pgRestoreOutput?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +175,250 @@ function sanitizeFilename(filename: string): string {
   return base;
 }
 
+async function ensureEncryptionCanary(): Promise<void> {
+  const settings = await prisma.systemSettings.findUnique({
+    where: { id: "singleton" },
+    select: { encryptionCanary: true },
+  });
+
+  if (settings?.encryptionCanary) {
+    try {
+      if (decrypt(settings.encryptionCanary) === ENCRYPTION_CANARY_PLAINTEXT) {
+        return;
+      }
+    } catch {
+      // Preserve an unreadable canary so backups continue to surface the mismatch.
+      return;
+    }
+    return;
+  }
+
+  await prisma.systemSettings.update({
+    where: { id: "singleton" },
+    data: { encryptionCanary: encrypt(ENCRYPTION_CANARY_PLAINTEXT) },
+  });
+}
+
+async function verifyRestoredDatabase(warnings: string[]): Promise<void> {
+  let settings: { encryptionCanary: string | null } | null = null;
+  let canaryQueryFailed = false;
+  try {
+    settings = await prisma.systemSettings.findUnique({
+      where: { id: "singleton" },
+      select: { encryptionCanary: true },
+    });
+  } catch {
+    canaryQueryFailed = true;
+    warnings.push(
+      "Encryption compatibility could not be verified: this backup predates the encryption canary migration. Encrypted credentials may be unreadable after a cross-instance restore.",
+    );
+  }
+
+  if (canaryQueryFailed) {
+    // Warning already recorded above.
+  } else if (settings === null) {
+    warnings.push(
+      "Encryption compatibility could not be verified: restored backup does not contain a SystemSettings canary record. Encrypted credentials may be unreadable after a cross-instance restore.",
+    );
+  } else if (!settings.encryptionCanary) {
+    warnings.push(
+      "Encryption compatibility could not be verified: this backup does not contain an encryption canary. Encrypted credentials may be unreadable after a cross-instance restore.",
+    );
+  } else {
+    try {
+      if (decrypt(settings.encryptionCanary) !== ENCRYPTION_CANARY_PLAINTEXT) {
+        warnings.push(ENCRYPTION_KEY_MISMATCH_WARNING);
+      }
+    } catch {
+      warnings.push(ENCRYPTION_KEY_MISMATCH_WARNING);
+    }
+  }
+
+  try {
+    const teamRows = await prisma.$queryRaw<Array<{ count: bigint | number | string }>>`
+      SELECT count(*) FROM "Team"
+    `;
+    const rawCount = teamRows?.[0]?.count;
+    if (rawCount !== undefined && Number(rawCount) === 0) {
+      warnings.push("Restore sanity check: restored database contains no teams.");
+    }
+  } catch {
+    warnings.push(
+      'Restore sanity check could not verify the "Team" table. The restored dump may not be a complete VectorFlow backup.',
+    );
+  }
+}
+
+function parsePgRestoreList(output: string): {
+  tablesPresent: string[];
+  pgVersion: string;
+} {
+  const tableSet = new Set<string>();
+  let pgVersion = "unknown";
+
+  for (const line of output.split("\n")) {
+    const tableMatch = /TABLE DATA\s+\S+\s+(\S+)/.exec(line);
+    if (tableMatch) {
+      tableSet.add(tableMatch[1]);
+    }
+
+    const sourceVersionMatch = /Dumped from database version:\s*(.+)$/i.exec(line);
+    if (sourceVersionMatch) {
+      pgVersion = sourceVersionMatch[1].trim().split(/\s+/)[0] ?? "unknown";
+      continue;
+    }
+
+
+  }
+
+  return {
+    tablesPresent: Array.from(tableSet),
+    pgVersion,
+  };
+}
+
+async function extractImportedMigrationInfo(dumpPath: string): Promise<{
+  migrationCount: number;
+  lastMigration: string;
+}> {
+  try {
+    const { stdout } = await execFileAsync(
+      "pg_restore",
+      ["--data-only", "--table=_prisma_migrations", dumpPath],
+      { timeout: 30_000 },
+    );
+    const lines = stdout.split("\n");
+    const copyStart = lines.findIndex((line) =>
+      /^COPY .*_prisma_migrations/i.test(line.trim()),
+    );
+    if (copyStart === -1) {
+      return { migrationCount: 0, lastMigration: "" };
+    }
+
+    const headerMatch = /^COPY .*_prisma_migrations \((.+)\) FROM stdin;$/i.exec(
+      lines[copyStart]?.trim() ?? "",
+    );
+    const columns = headerMatch?.[1]
+      ?.split(",")
+      .map((column) => column.trim().replace(/^"|"$/g, "")) ?? [];
+    const migrationNameIndex = columns.indexOf("migration_name");
+    const rolledBackAtIndex = columns.indexOf("rolled_back_at");
+
+    const appliedMigrationNames: string[] = [];
+    for (let i = copyStart + 1; i < lines.length; i += 1) {
+      const line = lines[i]?.trimEnd() ?? "";
+      if (line === "\\.") break;
+      if (line.length === 0) continue;
+
+      const fields = line.split("\t");
+      const rolledBackAt =
+        rolledBackAtIndex >= 0 ? (fields[rolledBackAtIndex] ?? "\\N") : "\\N";
+      if (rolledBackAt !== "\\N") {
+        continue;
+      }
+
+      const migrationName =
+        migrationNameIndex >= 0 ? (fields[migrationNameIndex] ?? "") : "";
+      if (migrationName.length > 0) {
+        appliedMigrationNames.push(migrationName);
+      }
+    }
+
+    return {
+      migrationCount: appliedMigrationNames.length,
+      lastMigration: appliedMigrationNames[appliedMigrationNames.length - 1] ?? "",
+    };
+  } catch {
+    return { migrationCount: 0, lastMigration: "" };
+  }
+}
+
+function parseMajorVersion(version: string | null | undefined): number | null {
+  if (!version) return null;
+  const match = /^(\d+)/.exec(version.trim());
+  return match ? Number(match[1]) : null;
+}
+
+async function buildPreflightWarnings(backup: {
+  type: string;
+  migrationCount: number | null;
+  pgVersion: string | null;
+  startedAt: Date;
+}): Promise<PreflightWarning[]> {
+  const warnings: PreflightWarning[] = [];
+  const backupMigrationCount = backup.migrationCount ?? 0;
+
+  if (backup.type === "imported") {
+    warnings.push({
+      severity: "warning",
+      code: "ENCRYPTION_UNKNOWN",
+      title: "Encryption key compatibility unknown",
+      message:
+        "This backup was imported from an external source. Encrypted data (OIDC credentials, git tokens, API keys) will only be readable if both instances share the same encryption key.",
+    });
+  }
+
+  const currentMigrations = await getMigrationInfo();
+  if (backupMigrationCount > currentMigrations.count) {
+    warnings.push({
+      severity: "error",
+      code: "MIGRATION_AHEAD",
+      title: "Backup is from a newer VectorFlow version",
+      message:
+        `This backup has ${backupMigrationCount} migrations, but this instance only has ${currentMigrations.count}. Upgrade VectorFlow before restoring this backup.`,
+    });
+  } else if (backupMigrationCount < currentMigrations.count) {
+    warnings.push({
+      severity: "warning",
+      code: "MIGRATION_BEHIND",
+      title: "Backup is from an older VectorFlow version",
+      message:
+        `This backup has ${backupMigrationCount} migrations, but this instance has ${currentMigrations.count}. Some newer features may not have data after restore.`,
+    });
+  }
+
+  const backupPgMajor = parseMajorVersion(backup.pgVersion);
+  const currentPgVersion = await getPgVersion();
+  const currentPgMajor = parseMajorVersion(currentPgVersion);
+  if (
+    backupPgMajor !== null &&
+    currentPgMajor !== null &&
+    backupPgMajor !== currentPgMajor
+  ) {
+    warnings.push({
+      severity: "warning",
+      code: "PG_VERSION_MISMATCH",
+      title: "PostgreSQL major version differs",
+      message:
+        `This backup was created with PostgreSQL ${backup.pgVersion}, but this instance is running PostgreSQL ${currentPgVersion}. Restore compatibility should be verified before proceeding.`,
+    });
+  }
+
+  const ageMs = Date.now() - backup.startedAt.getTime();
+  if (ageMs > 30 * 24 * 60 * 60 * 1000) {
+    warnings.push({
+      severity: "info",
+      code: "BACKUP_OLD",
+      title: "Backup is more than 30 days old",
+      message: "This backup is more than 30 days old. Restoring it may discard recent configuration and operational data.",
+    });
+  }
+
+  if (backup.type === "imported" && backupMigrationCount === 0) {
+    warnings.push({
+      severity: "warning",
+      code: "IMPORTED_METADATA_UNKNOWN",
+      title: "Imported backup metadata is incomplete",
+      message: "This imported backup has no migration metadata, so version compatibility cannot be fully verified.",
+    });
+  }
+
+  return warnings;
+}
+
+
+
+
 /**
  * Ensure the backup directory exists.
  */
@@ -235,6 +499,7 @@ export async function createBackup(
 
   try {
     await ensureBackupDir();
+    await ensureEncryptionCanary();
 
     // Check disk space (warn but do NOT abort -- RELY-02)
     try {
@@ -500,9 +765,10 @@ export async function importLegacyBackups(): Promise<{
  * 2. Verifies checksum against BackupRecord if one exists (skips for legacy backups).
  * 3. Creates a safety backup first.
  * 4. Runs pg_restore --clean --if-exists.
- * 5. Returns success status (operator restarts the application manually).
+ * 5. Verifies restored data is readable with the active encryption key.
+ * 6. Returns success status plus non-fatal warnings.
  */
-export async function restoreFromBackup(filename: string): Promise<{ success: true }> {
+export async function restoreFromBackup(filename: string): Promise<RestoreResult> {
   if (restoreInProgress) {
     throw new Error("A restore is already in progress");
   }
@@ -594,17 +860,33 @@ export async function restoreFromBackup(filename: string): Promise<{ success: tr
 
     // Run pg_restore
     const db = parseDatabaseUrl();
-    await execFileAsync(
-      "pg_restore",
-      ["--clean", "--if-exists", ...pgConnectionArgs(db), dumpPath],
-      {
-        env: { ...process.env, PGPASSWORD: db.password },
-        timeout: PG_RESTORE_TIMEOUT_MS,
-      },
-    );
+    let pgRestoreOutput: string | undefined;
+    try {
+      const { stderr } = await execFileAsync(
+        "pg_restore",
+        ["--clean", "--if-exists", "--single-transaction", ...pgConnectionArgs(db), dumpPath],
+        {
+          env: { ...process.env, PGPASSWORD: db.password },
+          timeout: PG_RESTORE_TIMEOUT_MS,
+        },
+      );
+      pgRestoreOutput = stderr.trim() || undefined;
+    } catch (err) {
+      const stderr = typeof (err as { stderr?: unknown }).stderr === "string"
+        ? (err as { stderr: string }).stderr.trim()
+        : "";
+      const message = err instanceof Error ? err.message : "pg_restore failed";
+      throw new Error(stderr ? `${message}: ${stderr}` : message);
+    }
+
+    const warnings: string[] = [];
+    await verifyRestoredDatabase(warnings);
 
     debugLog("backup", "Restore complete — application restart required.");
-    return { success: true } as const;
+    if (pgRestoreOutput) {
+      return { success: true, warnings, pgRestoreOutput } as const;
+    }
+    return { success: true, warnings } as const;
   } finally {
     restoreInProgress = false;
     // Always delete the S3 temp file after restore (success or failure)
@@ -734,14 +1016,17 @@ export async function previewBackup(filename: string): Promise<BackupPreview> {
       timeout: 30_000,
     });
 
-    // Parse TABLE DATA entries to extract table names (deduplicated)
-    const tableSet = new Set<string>();
-    for (const line of stdout.split("\n")) {
-      const match = /TABLE DATA\s+\S+\s+(\S+)/.exec(line);
-      if (match) {
-        tableSet.add(match[1]);
-      }
-    }
+    const archiveInfo = parsePgRestoreList(stdout);
+    const previewBackupInfo = {
+      type: record.type,
+      migrationCount: record.migrationCount,
+      pgVersion:
+        archiveInfo.pgVersion !== "unknown"
+          ? archiveInfo.pgVersion
+          : (record.pgVersion ?? "unknown"),
+      startedAt: record.startedAt,
+    };
+    const warnings = await buildPreflightWarnings(previewBackupInfo);
 
     return {
       filename: safe,
@@ -749,9 +1034,10 @@ export async function previewBackup(filename: string): Promise<BackupPreview> {
       migrationCount: record.migrationCount ?? 0,
       lastMigration: record.lastMigration ?? "",
       sizeBytes: Number(record.sizeBytes ?? 0),
-      pgVersion: record.pgVersion ?? "unknown",
+      pgVersion: previewBackupInfo.pgVersion,
       startedAt: record.startedAt,
-      tablesPresent: Array.from(tableSet),
+      tablesPresent: archiveInfo.tablesPresent,
+      warnings,
     };
   } finally {
     if (tempPath) {
@@ -873,11 +1159,13 @@ export async function importBackup(
     createWriteStream(dumpPath),
   );
 
+  let archiveInfo: ReturnType<typeof parsePgRestoreList>;
   try {
     // Validate: pg_restore --list should succeed on a valid custom-format dump
-    await execFileAsync("pg_restore", ["--list", dumpPath], {
+    const { stdout } = await execFileAsync("pg_restore", ["--list", dumpPath], {
       timeout: 30_000,
     });
+    archiveInfo = parsePgRestoreList(stdout);
   } catch {
     // Clean up invalid file
     await fs.unlink(dumpPath).catch(() => {});
@@ -887,6 +1175,9 @@ export async function importBackup(
     );
   }
 
+  const migrationInfo = archiveInfo.tablesPresent.includes("_prisma_migrations")
+    ? await extractImportedMigrationInfo(dumpPath)
+    : { migrationCount: 0, lastMigration: "" };
   const stat = await fs.stat(dumpPath);
   const checksum = await computeChecksum(dumpPath);
 
@@ -916,6 +1207,9 @@ export async function importBackup(
       vfVersion: VF_VERSION,
       sizeBytes: BigInt(stat.size),
       checksum,
+      migrationCount: migrationInfo.migrationCount,
+      lastMigration: migrationInfo.lastMigration,
+      pgVersion: archiveInfo.pgVersion,
       completedAt: new Date(),
     },
   });
@@ -923,10 +1217,10 @@ export async function importBackup(
   const metadata: BackupMetadata = {
     version: VF_VERSION,
     timestamp,
-    migrationCount: 0,
-    lastMigration: "",
+    migrationCount: migrationInfo.migrationCount,
+    lastMigration: migrationInfo.lastMigration,
     sizeBytes: stat.size,
-    pgVersion: "unknown (imported)",
+    pgVersion: archiveInfo.pgVersion,
   };
 
   debugLog("backup", "Backup imported", { filename: dumpFilename, originalFilename });
