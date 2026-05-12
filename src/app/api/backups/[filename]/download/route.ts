@@ -107,11 +107,11 @@ export async function GET(
       forcePathStyle: !!settings.s3Endpoint,
     });
 
-    const { key } = parseS3StorageLocation(record.storageLocation);
+    const { bucket: recordBucket, key } = parseS3StorageLocation(record.storageLocation);
 
     try {
       const response = await client.send(new GetObjectCommand({
-        Bucket: settings.s3Bucket,
+        Bucket: recordBucket,
         Key: key,
       }));
 
@@ -157,16 +157,21 @@ export async function GET(
 
   try {
     await fs.access(filePath);
-  } catch {
-    // File is gone but record says success — mark orphaned
-    await prisma.backupRecord.update({
-      where: { id: record.id },
-      data: { status: "orphaned" },
-    });
-    return jsonError(
-      "This backup's file has been removed from storage. The record is marked as orphaned.",
-      410
-    );
+  } catch (err: unknown) {
+    // Only orphan on definitive not-found (ENOENT). Transient FS errors
+    // (EACCES, EIO) should not mutate the record.
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code === "ENOENT") {
+      await prisma.backupRecord.update({
+        where: { id: record.id },
+        data: { status: "orphaned" },
+      });
+      return jsonError(
+        "This backup's file has been removed from storage. The record is marked as orphaned.",
+        410
+      );
+    }
+    return jsonError("Failed to access backup file", 502);
   }
 
   const stat = await fs.stat(filePath);

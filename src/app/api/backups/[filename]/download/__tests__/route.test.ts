@@ -80,8 +80,9 @@ describe("GET /api/backups/[filename]/download", () => {
     } as never);
     prismaMock.backupRecord.update.mockResolvedValue({} as never);
 
-    // fs.access rejects — file is missing
-    fsMock.access.mockRejectedValue(new Error("ENOENT"));
+    // fs.access rejects — file is missing (ENOENT)
+    const enoent = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    fsMock.access.mockRejectedValue(enoent);
 
     const response = await GET(new Request("http://localhost"), {
       params: Promise.resolve({ filename: "vectorflow-gone.dump" }),
