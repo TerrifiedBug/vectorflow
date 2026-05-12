@@ -1,9 +1,11 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import crypto from "crypto";
-import { createReadStream } from "fs";
+import { createReadStream, createWriteStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 
 import { prisma } from "@/lib/prisma";
 import { debugLog } from "@/lib/logger";
@@ -846,11 +848,15 @@ export async function runOrphanCleanup(): Promise<{
 
 /**
  * Import a backup file uploaded by the user.
- * Validates the file is a valid pg_dump custom format via `pg_restore --list`,
- * saves it to the backup directory (or S3), and creates a BackupRecord.
+ * Streams the upload to disk, validates the file is a valid pg_dump custom
+ * format via `pg_restore --list`, saves it to S3 if configured, and creates
+ * a BackupRecord.
+ *
+ * Accepts a ReadableStream (from the Web File API) to avoid buffering the
+ * entire upload in memory.
  */
 export async function importBackup(
-  fileBuffer: Buffer,
+  fileStream: ReadableStream<Uint8Array>,
   originalFilename: string
 ): Promise<BackupMetadata> {
   await ensureBackupDir();
@@ -861,8 +867,11 @@ export async function importBackup(
   const dumpFilename = `${safeName}.dump`;
   const dumpPath = path.join(BACKUP_DIR, dumpFilename);
 
-  // Write buffer to temp location for validation
-  await fs.writeFile(dumpPath, fileBuffer);
+  // Stream upload to disk (avoids buffering entire file in memory)
+  await pipeline(
+    Readable.fromWeb(fileStream as import("stream/web").ReadableStream),
+    createWriteStream(dumpPath),
+  );
 
   try {
     // Validate: pg_restore --list should succeed on a valid custom-format dump

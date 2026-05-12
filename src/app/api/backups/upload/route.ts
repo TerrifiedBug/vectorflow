@@ -58,9 +58,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const metadata = await importBackup(buffer, file.name);
+    const fileStream = file.stream();
+    const metadata = await importBackup(fileStream, file.name);
 
     return new Response(JSON.stringify(metadata), {
       status: 201,

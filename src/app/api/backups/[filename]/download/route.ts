@@ -128,16 +128,27 @@ export async function GET(
           ...(response.ContentLength ? { "Content-Length": response.ContentLength.toString() } : {}),
         },
       });
-    } catch {
-      // S3 object is gone — mark the record as orphaned
-      await prisma.backupRecord.update({
-        where: { id: record.id },
-        data: { status: "orphaned" },
-      });
-      return jsonError(
-        "This backup's file has been removed from storage. The record is marked as orphaned.",
-        410
-      );
+    } catch (err: unknown) {
+      // Only mark orphaned for definitive not-found errors (NoSuchKey / 404).
+      // Transient errors (network, auth, throttling) should surface as 5xx
+      // without mutating the record.
+      const isNotFound =
+        err instanceof Error &&
+        ("name" in err && (err.name === "NoSuchKey" || err.name === "NotFound")) ||
+        (err as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404;
+
+      if (isNotFound) {
+        await prisma.backupRecord.update({
+          where: { id: record.id },
+          data: { status: "orphaned" },
+        });
+        return jsonError(
+          "This backup's file has been removed from storage. The record is marked as orphaned.",
+          410
+        );
+      }
+
+      return jsonError("Failed to retrieve backup from S3", 502);
     }
   }
 

@@ -27,10 +27,27 @@ vi.mock("fs/promises", () => ({
   },
 }));
 
-// Mock fs (for createReadStream used by computeChecksum)
+// Mock fs (for createReadStream used by computeChecksum, createWriteStream for importBackup)
 vi.mock("fs", () => ({
   createReadStream: vi.fn(),
+  createWriteStream: vi.fn(),
 }));
+
+// Mock stream/promises (pipeline used by importBackup)
+vi.mock("stream/promises", () => ({
+  pipeline: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Mock Readable.fromWeb used by importBackup (preserve rest of stream module)
+vi.mock("stream", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("stream")>();
+  return {
+    ...actual,
+    Readable: class extends actual.Readable {
+      static fromWeb = vi.fn().mockReturnValue(new actual.Readable({ read() {} }));
+    },
+  };
+});
 
 // Mock logger
 vi.mock("@/lib/logger", () => ({
@@ -1455,7 +1472,9 @@ describe("importBackup", () => {
       backupStorageBackend: "local",
     } as never);
 
-    const result = await backupModule.importBackup(Buffer.from("pgdump-data"), "external-backup.dump");
+    // Create a mock ReadableStream (pipeline is mocked, so it won't be consumed)
+    const mockStream = new ReadableStream({ start(c) { c.close(); } });
+    const result = await backupModule.importBackup(mockStream, "external-backup.dump");
 
     expect(result.version).toBeDefined();
     expect(result.sizeBytes).toBe(2048);
@@ -1477,8 +1496,9 @@ describe("importBackup", () => {
       return {};
     });
 
+    const mockStream = new ReadableStream({ start(c) { c.close(); } });
     await expect(
-      backupModule.importBackup(Buffer.from("not-a-dump"), "bad-file.dump")
+      backupModule.importBackup(mockStream, "bad-file.dump")
     ).rejects.toThrow("Invalid backup file");
 
     // Should have cleaned up the written file
