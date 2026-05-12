@@ -346,6 +346,34 @@ describe("FleetAlertService", () => {
     expect(createCall.data.message).toContain("metrics-pipeline (-30%)");
   });
 
+  it("still fires fleet_throughput_drop when detail enrichment fails", async () => {
+    const rule = makeRule({
+      metric: "fleet_throughput_drop",
+      condition: "gt",
+      threshold: 20,
+      durationSeconds: 0,
+    });
+    prismaMock.alertRule.findMany.mockResolvedValue([rule] as never);
+
+    mockGetFleetThroughputDrop.mockResolvedValue(50);
+    // Detail enrichment throws — should not block alert creation
+    mockGetFleetThroughputDropDetail.mockRejectedValue(new Error("DB timeout"));
+
+    prismaMock.alertEvent.findFirst.mockResolvedValue(null);
+
+    const createdEvent = makeEvent({ value: 50, status: "firing" });
+    prismaMock.alertEvent.create.mockResolvedValue(createdEvent as never);
+
+    const results = await service.evaluateFleetAlerts();
+    expect(results).toHaveLength(1);
+    expect(results[0]!.event.status).toBe("firing");
+
+    // Message should still be present but without breakdown
+    const createCall = prismaMock.alertEvent.create.mock.calls[0]![0] as { data: { message: string } };
+    expect(createCall.data.message).toContain("Fleet throughput drop at 50.00");
+    expect(createCall.data.message).not.toContain("Top drops:");
+  });
+
   // ── Snoozed rules are skipped ──────────────────────────────────────────
 
   it("skips snoozed rules", async () => {

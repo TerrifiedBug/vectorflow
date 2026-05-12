@@ -194,11 +194,16 @@ export class FleetAlertService {
         });
 
         if (!existingEvent) {
-          // For throughput drops, fetch per-pipeline breakdown for a richer message
+          // For throughput drops, fetch per-pipeline breakdown for a richer message.
+          // Failure here must not block alert creation — fall back to base message.
           let throughputDetail: ThroughputDropDetail | undefined;
           if (rule.metric === "fleet_throughput_drop") {
-            const detail = await getFleetThroughputDropDetail(rule.environmentId);
-            if (detail) throughputDetail = detail;
+            try {
+              const detail = await getFleetThroughputDropDetail(rule.environmentId);
+              if (detail) throughputDetail = detail;
+            } catch (detailErr) {
+              errorLog("fleet-alert", "Throughput detail enrichment failed, using base message", detailErr);
+            }
           }
 
           const message = this.buildMessage(rule, value, throughputDetail);
