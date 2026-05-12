@@ -54,6 +54,17 @@ vi.mock("@/lib/logger", () => ({
   debugLog: vi.fn(),
 }));
 
+// Mock crypto service
+vi.mock("@/server/services/crypto", () => ({
+  encrypt: vi.fn((plaintext: string) => `encrypted:${plaintext}`),
+  decrypt: vi.fn((ciphertext: string) => {
+    if (ciphertext === "encrypted:vectorflow-canary-ok") {
+      return "vectorflow-canary-ok";
+    }
+    throw new Error("decrypt failed");
+  }),
+}));
+
 // Mock storage-backend
 vi.mock("@/server/services/storage-backend", () => ({
   getActiveBackend: vi.fn(),
@@ -79,8 +90,11 @@ import * as fsSync from "fs";
 import { checkDiskSpace, computeChecksum, createBackup } from "../backup";
 import * as backupModule from "../backup";
 import { getActiveBackend } from "@/server/services/storage-backend";
+import { encrypt, decrypt } from "@/server/services/crypto";
 
 const mockGetActiveBackend = vi.mocked(getActiveBackend);
+const mockEncrypt = vi.mocked(encrypt);
+const mockDecrypt = vi.mocked(decrypt);
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -253,6 +267,39 @@ describe("createBackup", () => {
     );
   });
 
+  it("seeds encryption canary before pg_dump when missing", async () => {
+    prismaMock.systemSettings.findUnique.mockResolvedValueOnce({
+      encryptionCanary: null,
+    } as never);
+
+    await createBackup();
+
+    expect(mockEncrypt).toHaveBeenCalledWith("vectorflow-canary-ok");
+    expect(prismaMock.systemSettings.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "singleton" },
+        data: { encryptionCanary: "encrypted:vectorflow-canary-ok" },
+      })
+    );
+  });
+
+  it("preserves an unreadable encryption canary instead of overwriting it", async () => {
+    prismaMock.systemSettings.findUnique.mockResolvedValueOnce({
+      encryptionCanary: "unreadable-canary",
+    } as never);
+
+    await createBackup();
+
+    expect(mockEncrypt).not.toHaveBeenCalled();
+    expect(prismaMock.systemSettings.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { encryptionCanary: expect.any(String) },
+      })
+    );
+  });
+
+
+
   it("updates BackupRecord to failed with error on pg_dump failure", async () => {
     // Mock execFile to fail on the first call (pg_dump), succeed on psql
     let callCount = 0;
@@ -367,6 +414,12 @@ describe("restoreFromBackup - checksum verification", () => {
     } as never);
     prismaMock.backupRecord.update.mockResolvedValue({} as never);
     prismaMock.systemSettings.update.mockResolvedValue({} as never);
+    prismaMock.systemSettings.findUnique.mockResolvedValue({
+      encryptionCanary: "encrypted:vectorflow-canary-ok",
+      backupStorageBackend: "local",
+      s3Bucket: null,
+      s3Prefix: null,
+    } as never);
 
     // Spy on createBackup (note: vi.spyOn cannot intercept internal module calls,
     // so this is only used in the mismatch test to verify it's NOT called before throw)
@@ -386,7 +439,7 @@ describe("restoreFromBackup - checksum verification", () => {
 
     // Should not throw checksum error — proceeds to safety backup + pg_restore
     const result = await backupModule.restoreFromBackup(testFilename);
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, warnings: [] });
 
     // Safety backup was created (BackupRecord.create called with pre_restore type)
     expect(prismaMock.backupRecord.create).toHaveBeenCalledWith(
@@ -395,6 +448,165 @@ describe("restoreFromBackup - checksum verification", () => {
       })
     );
   });
+
+  it("returns encryption mismatch warning when restored canary cannot decrypt", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      checksum: knownHash,
+    } as never);
+    prismaMock.systemSettings.findUnique
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
+      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never)
+      .mockResolvedValueOnce({ encryptionCanary: "external-instance-canary" } as never);
+    prismaMock.$queryRaw.mockResolvedValue([{ count: BigInt(3) }] as never);
+
+    const result = await backupModule.restoreFromBackup(testFilename);
+
+    expect(result.success).toBe(true);
+    expect(result.warnings).toEqual([
+      expect.stringContaining("Encryption key mismatch"),
+    ]);
+    expect(mockDecrypt).toHaveBeenCalledWith("external-instance-canary");
+  });
+
+  it("warns when restored backup has no encryption canary", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      checksum: knownHash,
+    } as never);
+    prismaMock.systemSettings.findUnique
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
+      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never)
+      .mockResolvedValueOnce({ encryptionCanary: null } as never);
+    prismaMock.$queryRaw.mockResolvedValue([{ count: BigInt(3) }] as never);
+
+    const result = await backupModule.restoreFromBackup(testFilename);
+
+    expect(result.warnings).toEqual([
+      expect.stringContaining("could not be verified"),
+    ]);
+  });
+
+  it("warns instead of failing when the restored schema predates encryptionCanary", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      checksum: knownHash,
+    } as never);
+    prismaMock.systemSettings.findUnique
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
+      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never)
+      .mockRejectedValueOnce(new Error("column \"encryptionCanary\" does not exist"));
+    prismaMock.$queryRaw.mockResolvedValue([{ count: BigInt(3) }] as never);
+
+    const result = await backupModule.restoreFromBackup(testFilename);
+
+    expect(result.warnings).toEqual([
+      expect.stringContaining("predates the encryption canary migration"),
+    ]);
+  });
+
+  it("warns when the restored database has no SystemSettings row", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      checksum: knownHash,
+    } as never);
+    prismaMock.systemSettings.findUnique
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
+      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never)
+      .mockResolvedValueOnce(null);
+    prismaMock.$queryRaw.mockResolvedValue([{ count: BigInt(3) }] as never);
+
+    const result = await backupModule.restoreFromBackup(testFilename);
+
+    expect(result.warnings).toEqual([
+      expect.stringContaining("does not contain a SystemSettings canary record"),
+    ]);
+  });
+
+  it("warns instead of throwing when the restored dump has no Team table", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      checksum: knownHash,
+    } as never);
+    prismaMock.systemSettings.findUnique
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
+      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never)
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never);
+    prismaMock.$queryRaw.mockRejectedValue(new Error('relation "Team" does not exist'));
+
+    const result = await backupModule.restoreFromBackup(testFilename);
+
+    expect(result.warnings).toEqual([
+      expect.stringContaining('could not verify the "Team" table'),
+    ]);
+  });
+
+
+
+
+  it("passes --single-transaction to pg_restore", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      checksum: knownHash,
+    } as never);
+    prismaMock.systemSettings.findUnique
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
+      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never)
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never);
+    prismaMock.$queryRaw.mockResolvedValue([{ count: BigInt(1) }] as never);
+
+    await backupModule.restoreFromBackup(testFilename);
+
+    const restoreCall = mockExecFile.mock.calls.find(([cmd]) => cmd === "pg_restore");
+    expect(restoreCall?.[1]).toContain("--single-transaction");
+  });
+
+  it("returns trimmed pg_restore stderr output on success", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      checksum: knownHash,
+    } as never);
+    prismaMock.systemSettings.findUnique
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
+      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never)
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never);
+    prismaMock.$queryRaw.mockResolvedValue([{ count: BigInt(1) }] as never);
+    mockExecFile.mockImplementation(
+      (cmd: string, _args: unknown, _opts: unknown, callback: unknown) => {
+        const stderr = cmd === "pg_restore" ? "warning: skipped owner\n" : "";
+        (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+          null,
+          { stdout: "16.1", stderr }
+        );
+      }
+    );
+
+    const result = await backupModule.restoreFromBackup(testFilename);
+
+    expect(result.pgRestoreOutput).toBe("warning: skipped owner");
+  });
+
+  it("includes pg_restore stderr when restore fails", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      checksum: knownHash,
+    } as never);
+    prismaMock.systemSettings.findUnique
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
+      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never);
+    mockExecFile.mockImplementation(
+      (cmd: string, _args: unknown, _opts: unknown, callback: unknown) => {
+        if (cmd === "pg_restore") {
+          const error = new Error("pg_restore failed") as Error & { stderr?: string };
+          error.stderr = "pg_restore: error: could not execute query";
+          (callback as (err: Error) => void)(error);
+          return;
+        }
+        (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+          null,
+          { stdout: "16.1", stderr: "" }
+        );
+      }
+    );
+
+    await expect(backupModule.restoreFromBackup(testFilename)).rejects.toThrow(
+      "pg_restore: error: could not execute query"
+    );
+  });
+
+
 
   it("throws on checksum mismatch", async () => {
     // BackupRecord has an expected checksum that won't match "hello world"
@@ -416,7 +628,7 @@ describe("restoreFromBackup - checksum verification", () => {
 
     // Should not throw a checksum error — proceeds to safety backup + pg_restore
     const result = await backupModule.restoreFromBackup(testFilename);
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, warnings: [] });
 
     // Safety backup was created (BackupRecord.create called with pre_restore type)
     expect(prismaMock.backupRecord.create).toHaveBeenCalledWith(
@@ -771,6 +983,7 @@ describe("restoreFromBackup with S3 backend", () => {
     prismaMock.backupRecord.update.mockResolvedValue({} as never);
     prismaMock.systemSettings.update.mockResolvedValue({} as never);
     prismaMock.systemSettings.findUnique.mockResolvedValue({
+      encryptionCanary: "encrypted:vectorflow-canary-ok",
       backupStorageBackend: "local",
       s3Bucket: null,
       s3Prefix: null,
@@ -803,7 +1016,7 @@ describe("restoreFromBackup with S3 backend", () => {
     const result = await backupModule.restoreFromBackup("backup.dump");
 
     expect(mockDownload).toHaveBeenCalled();
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, warnings: [] });
   });
 });
 
@@ -986,6 +1199,144 @@ describe("previewBackup", () => {
     // Deduplicated
     expect(result.tablesPresent.filter((t) => t === "User")).toHaveLength(1);
   });
+
+  it("warns that imported backups have unknown encryption compatibility", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      id: "rec-imported",
+      filename: testFilename,
+      status: "success",
+      type: "imported",
+      storageLocation: "/backups/" + testFilename,
+      vfVersion: "1.2.0",
+      migrationCount: 1,
+      lastMigration: "20250101_init",
+      sizeBytes: BigInt(1024),
+      pgVersion: "16.1",
+      startedAt: new Date(),
+    } as never);
+    fsMock.readdir.mockResolvedValue(["20250101_init"] as never);
+
+    const result = await backupModule.previewBackup(testFilename);
+
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "warning",
+          code: "ENCRYPTION_UNKNOWN",
+        }),
+      ])
+    );
+  });
+
+  it("returns an error warning when backup has more migrations than current code", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      id: "rec-newer",
+      filename: testFilename,
+      status: "success",
+      type: "manual",
+      storageLocation: "/backups/" + testFilename,
+      vfVersion: "1.2.0",
+      migrationCount: 3,
+      lastMigration: "20250103_newer",
+      sizeBytes: BigInt(1024),
+      pgVersion: "16.1",
+      startedAt: new Date(),
+    } as never);
+    fsMock.readdir.mockResolvedValue(["20250101_init"] as never);
+
+    const result = await backupModule.previewBackup(testFilename);
+
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "error",
+          code: "MIGRATION_AHEAD",
+        }),
+      ])
+    );
+  });
+
+  it("warns when PostgreSQL major versions differ", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      id: "rec-pg",
+      filename: testFilename,
+      status: "success",
+      type: "manual",
+      storageLocation: "/backups/" + testFilename,
+      vfVersion: "1.2.0",
+      migrationCount: 1,
+      lastMigration: "20250101_init",
+      sizeBytes: BigInt(1024),
+      pgVersion: "15.6",
+      startedAt: new Date(),
+    } as never);
+    fsMock.readdir.mockResolvedValue(["20250101_init"] as never);
+    mockExecFile.mockImplementation(
+      (cmd: string, _args: string[], _opts: unknown, callback: unknown) => {
+        const stdout = cmd === "psql"
+          ? "16.1"
+          : "1259; 0 32768 TABLE DATA public Team postgres";
+        (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+          null,
+          { stdout, stderr: "" }
+        );
+      }
+    );
+
+    const result = await backupModule.previewBackup(testFilename);
+
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "warning",
+          code: "PG_VERSION_MISMATCH",
+        }),
+      ])
+    );
+  });
+
+  it("uses the dump header PostgreSQL version when the record metadata is stale", async () => {
+    prismaMock.backupRecord.findFirst.mockResolvedValue({
+      id: "rec-pg-stale",
+      filename: testFilename,
+      status: "success",
+      type: "imported",
+      storageLocation: "/backups/" + testFilename,
+      vfVersion: "1.2.0",
+      migrationCount: 1,
+      lastMigration: "20250101_init",
+      sizeBytes: BigInt(1024),
+      pgVersion: "unknown",
+      startedAt: new Date(),
+    } as never);
+    fsMock.readdir.mockResolvedValue(["20250101_init"] as never);
+    mockExecFile.mockImplementation(
+      (cmd: string, _args: string[], _opts: unknown, callback: unknown) => {
+        const stdout = cmd === "psql"
+          ? "16.1"
+          : [
+              ";     Dumped from database version: 15.6",
+              "1259; 0 32768 TABLE DATA public Team postgres",
+            ].join("\n");
+        (callback as (err: null, result: { stdout: string; stderr: string }) => void)(
+          null,
+          { stdout, stderr: "" }
+        );
+      }
+    );
+
+    const result = await backupModule.previewBackup(testFilename);
+
+    expect(result.pgVersion).toBe("15.6");
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "warning",
+          code: "PG_VERSION_MISMATCH",
+        }),
+      ])
+    );
+  });
 });
 
 // ─── restoreFromBackup - graceful ────────────────────────────────────────────
@@ -1037,6 +1388,7 @@ describe("restoreFromBackup - graceful", () => {
     prismaMock.backupRecord.update.mockResolvedValue({} as never);
     prismaMock.systemSettings.update.mockResolvedValue({} as never);
     prismaMock.systemSettings.findUnique.mockResolvedValue({
+      encryptionCanary: "encrypted:vectorflow-canary-ok",
       backupStorageBackend: "local",
       s3Bucket: null,
       s3Prefix: null,
@@ -1066,7 +1418,7 @@ describe("restoreFromBackup - graceful", () => {
 
     const result = await backupModule.restoreFromBackup(testFilename);
 
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, warnings: [] });
     // process.exit should NOT be called
     expect(exitSpy).not.toHaveBeenCalled();
   });
@@ -1300,6 +1652,12 @@ describe("restoreFromBackup - BackupRecord fallback", () => {
     } as never);
     prismaMock.backupRecord.update.mockResolvedValue({} as never);
     prismaMock.systemSettings.update.mockResolvedValue({} as never);
+    prismaMock.systemSettings.findUnique.mockResolvedValue({
+      encryptionCanary: "encrypted:vectorflow-canary-ok",
+      backupStorageBackend: "local",
+      s3Bucket: null,
+      s3Prefix: null,
+    } as never);
 
     mockCreateReadStream.mockImplementation(() =>
       makeReadableStream(Buffer.from("hello world")) as never
@@ -1323,7 +1681,7 @@ describe("restoreFromBackup - BackupRecord fallback", () => {
 
     // Should NOT throw "Backup metadata file not found" — should fall back to BackupRecord
     const result = await backupModule.restoreFromBackup(testFilename);
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, warnings: [] });
   });
 });
 
@@ -1488,6 +1846,64 @@ describe("importBackup", () => {
       })
     );
   });
+
+  it("stores source postgres version and actual migration rows from imported dump metadata", async () => {
+    const listOutput = [
+      "; Archive created at 2026-05-12 20:00:00 UTC",
+      ";     dbname: vectorflow",
+      ";     TOC Entries: 4",
+      ";     Compression: -1",
+      ";     Dump Version: 1.16-0",
+      ";     Format: CUSTOM",
+      ";     Integer: 4 bytes",
+      ";     Offset: 8 bytes",
+      ";     Dumped from database version: 16.4",
+      ";     Dumped by pg_dump version: 17.1",
+      "1259; 0 32768 TABLE DATA public _prisma_migrations postgres",
+      "1260; 0 32769 TABLE DATA public Team postgres",
+    ].join("\n");
+    const migrationDataOutput = [
+      'COPY public._prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count) FROM stdin;',
+      'id-1\tchecksum-1\t2026-05-11 00:00:00\t20250101000000_init\t\\N\t\\N\t2026-05-11 00:00:00\t1',
+      'id-2\tchecksum-2\t2026-05-12 00:00:00\t20250102000000_add_alerts\t\\N\t\\N\t2026-05-12 00:00:00\t1',
+      'id-rolled\tchecksum-r\t2026-05-12 00:00:00\t20250101595959_rolled_back\t\\N\t2026-05-12 01:00:00\t2026-05-12 00:30:00\t1',
+      '\\.',
+    ].join("\n");
+    mockExecFile.mockImplementation((cmd: string, args: string[], _opts: unknown, cb?: CallableFunction) => {
+      if (cmd === "pg_restore" && args.includes("--list")) {
+        cb?.(null, { stdout: listOutput, stderr: "" });
+        return {};
+      }
+      if (cmd === "pg_restore" && args.includes("--table=_prisma_migrations")) {
+        cb?.(null, { stdout: migrationDataOutput, stderr: "" });
+        return {};
+      }
+      cb?.(null, { stdout: "", stderr: "" });
+      return {};
+    });
+    mockCreateReadStream.mockReturnValue(makeReadableStream("test-data") as never);
+    prismaMock.backupRecord.create.mockResolvedValue({ id: "rec-imported" } as never);
+    prismaMock.systemSettings.findUnique.mockResolvedValue({
+      backupStorageBackend: "local",
+    } as never);
+
+    const mockStream = new ReadableStream({ start(c) { c.close(); } });
+    const result = await backupModule.importBackup(mockStream, "external-backup.dump");
+
+    expect(result.migrationCount).toBe(2);
+    expect(result.lastMigration).toBe("20250102000000_add_alerts");
+    expect(result.pgVersion).toBe("16.4");
+    expect(prismaMock.backupRecord.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          migrationCount: 2,
+          lastMigration: "20250102000000_add_alerts",
+          pgVersion: "16.4",
+        }),
+      })
+    );
+  });
+
 
   it("throws and cleans up for invalid dump file", async () => {
     // pg_restore --list fails (invalid dump)

@@ -1,7 +1,7 @@
 import { test, expect } from "../fixtures/test.fixture";
 
 test.describe("Backup & Restore", () => {
-  test("should create a backup, download it, and restore round-trip", async ({
+  test("should create a backup, import it, show warnings, and restore round-trip", async ({
     page,
   }) => {
     await page.goto("/settings/backup");
@@ -25,27 +25,49 @@ test.describe("Backup & Restore", () => {
     await actionsCell.locator("button").first().click();
     const download = await downloadPromise;
     expect(download.suggestedFilename().length).toBeGreaterThan(0);
+    const downloadPath = await download.path();
+    expect(downloadPath).toBeTruthy();
 
-    // Open restore dialog
-    await actionsCell.getByRole("button", { name: /restore/i }).click();
+    // Import the downloaded dump so the restore preflight exercises imported-backup warnings.
+    await page.locator('input[type="file"][accept=".dump"]').setInputFiles(downloadPath!);
+    await expect(page.getByText("Backup imported successfully")).toBeVisible({
+      timeout: 30_000,
+    });
 
-    // Preview step: wait for metadata to load then advance
+    const importedRow = page
+      .locator("tr", { has: page.getByText("Imported") })
+      .filter({ has: page.getByText("Success") })
+      .first();
+    await expect(importedRow).toBeVisible({ timeout: 15_000 });
+
+    // Open restore dialog for the imported backup.
+    await importedRow.locator("td").last().getByRole("button", { name: /restore/i }).click();
+
+    // Preview step: imported backups warn about encryption compatibility and require acknowledgement.
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Encryption key compatibility unknown")).toBeVisible({
+      timeout: 15_000,
+    });
     const continueBtn = dialog.getByRole("button", {
       name: /continue to confirmation/i,
     });
-    await expect(continueBtn).toBeEnabled({ timeout: 15_000 });
+    await expect(continueBtn).toBeDisabled();
+    await dialog.getByLabel(/I understand the warnings/i).check();
+    await expect(continueBtn).toBeEnabled();
     await continueBtn.click();
 
     // Confirm step: type the required confirmation word
     await dialog.locator("#restore-confirm-input").fill("RESTORE");
     await dialog.getByRole("button", { name: /restore database/i }).click();
 
-    // Done step: restore completed
+    // Done step: restore completed with the enhanced result panel
     await expect(
-      dialog.getByText("Database restored successfully"),
+      dialog.getByText(/Database restored successfully from backup taken on/i),
     ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      dialog.getByText(/Restart the application for changes to take full effect/i),
+    ).toBeVisible();
 
     await dialog.getByRole("button", { name: /close/i }).click();
     await expect(dialog).not.toBeVisible();
