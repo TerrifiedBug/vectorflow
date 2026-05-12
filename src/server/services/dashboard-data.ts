@@ -105,6 +105,112 @@ interface ChartMetricsInput {
   maxPoints?: number;
 }
 
+interface FleetHotnessInput {
+  nodeNameMap: Map<string, string>;
+  nodeRows: ChartMetricsInput["nodeRows"];
+}
+
+export interface FleetHotnessNode {
+  nodeId: string;
+  nodeName: string;
+  cpuPct: number;
+  memoryPct: number;
+  hotness: number;
+}
+
+export interface FleetHotnessSummary {
+  averages: {
+    cpuPct: number;
+    memoryPct: number;
+  };
+  nodes: FleetHotnessNode[];
+  series: {
+    cpu: number[];
+    memory: number[];
+  };
+}
+
+
+function roundPct(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+export function computeFleetHotness(input: FleetHotnessInput): FleetHotnessSummary {
+  const rowsByNode = new Map<string, ChartMetricsInput["nodeRows"]>();
+  for (const row of input.nodeRows) {
+    const rows = rowsByNode.get(row.nodeId) ?? [];
+    rows.push(row);
+    rowsByNode.set(row.nodeId, rows);
+  }
+
+  const nodes: FleetHotnessNode[] = [];
+  const cpuSeriesByTimestamp = new Map<number, { sum: number; count: number }>();
+  const memSeriesByTimestamp = new Map<number, { sum: number; count: number }>();
+
+  for (const [nodeId, nodeRows] of rowsByNode) {
+    const rows = [...nodeRows].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    if (rows.length < 2) continue;
+
+    let latestCpuPct = 0;
+    let latestMemoryPct = 0;
+    for (let index = 1; index < rows.length; index++) {
+      const prev = rows[index - 1]!;
+      const curr = rows[index]!;
+      const timestamp = new Date(curr.timestamp).getTime();
+      const totalDelta = curr.cpuSecondsTotal - prev.cpuSecondsTotal;
+      const idleDelta = curr.cpuSecondsIdle - prev.cpuSecondsIdle;
+      const cpuPct = totalDelta > 0
+        ? Math.max(0, Math.min(100, ((totalDelta - idleDelta) / totalDelta) * 100))
+        : 0;
+      const memoryTotal = Number(curr.memoryTotalBytes);
+      const memoryPct = memoryTotal > 0 ? (Number(curr.memoryUsedBytes) / memoryTotal) * 100 : 0;
+
+      latestCpuPct = cpuPct;
+      latestMemoryPct = memoryPct;
+
+      const cpuBucket = cpuSeriesByTimestamp.get(timestamp) ?? { sum: 0, count: 0 };
+      cpuBucket.sum += cpuPct;
+      cpuBucket.count += 1;
+      cpuSeriesByTimestamp.set(timestamp, cpuBucket);
+
+      const memBucket = memSeriesByTimestamp.get(timestamp) ?? { sum: 0, count: 0 };
+      memBucket.sum += memoryPct;
+      memBucket.count += 1;
+      memSeriesByTimestamp.set(timestamp, memBucket);
+    }
+
+    const cpuPct = roundPct(latestCpuPct);
+    const memoryPct = roundPct(latestMemoryPct);
+    nodes.push({
+      nodeId,
+      nodeName: input.nodeNameMap.get(nodeId) ?? nodeId,
+      cpuPct,
+      memoryPct,
+      hotness: roundPct(Math.max(cpuPct, memoryPct)),
+    });
+  }
+
+  nodes.sort((a, b) => b.hotness - a.hotness || a.nodeName.localeCompare(b.nodeName));
+
+  const nodeCount = nodes.length || 1;
+
+  const cpu = Array.from(cpuSeriesByTimestamp.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([, value]) => roundPct(value.sum / value.count));
+  const memory = Array.from(memSeriesByTimestamp.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([, value]) => roundPct(value.sum / value.count));
+
+  return {
+    averages: {
+      cpuPct: roundPct(nodes.reduce((sum, node) => sum + node.cpuPct, 0) / nodeCount),
+      memoryPct: roundPct(nodes.reduce((sum, node) => sum + node.memoryPct, 0) / nodeCount),
+    },
+    nodes,
+    series: { cpu, memory },
+  };
+}
+
 export function computeChartMetrics(input: ChartMetricsInput) {
   const {
     range,

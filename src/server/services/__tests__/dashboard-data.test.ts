@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeChartMetrics } from "@/server/services/dashboard-data";
+import { computeChartMetrics, computeFleetHotness } from "@/server/services/dashboard-data";
 
 // ─── Fixture helpers ────────────────────────────────────────────────────────
 
@@ -474,6 +474,72 @@ describe("computeChartMetrics", () => {
       });
 
       expect(result.filterOptions).toBe(filterOptions);
+    });
+  });
+});
+
+describe("computeFleetHotness", () => {
+  it("ranks nodes by worst CPU or memory pressure and returns fleet averages", () => {
+    const t1 = new Date("2025-01-01T00:00:00Z");
+    const t2 = new Date("2025-01-01T00:01:00Z");
+    const nodeNameMap = new Map([
+      ["n1", "Node A"],
+      ["n2", "Node B"],
+    ]);
+
+    const result = computeFleetHotness({
+      nodeNameMap,
+      nodeRows: [
+        makeNodeRow({ nodeId: "n1", timestamp: t1, cpuSecondsTotal: 100, cpuSecondsIdle: 50 }),
+        makeNodeRow({
+          nodeId: "n1",
+          timestamp: t2,
+          cpuSecondsTotal: 200,
+          cpuSecondsIdle: 80,
+          memoryUsedBytes: BigInt(400),
+          memoryTotalBytes: BigInt(1000),
+        }),
+        makeNodeRow({ nodeId: "n2", timestamp: t1, cpuSecondsTotal: 100, cpuSecondsIdle: 80 }),
+        makeNodeRow({
+          nodeId: "n2",
+          timestamp: t2,
+          cpuSecondsTotal: 200,
+          cpuSecondsIdle: 160,
+          memoryUsedBytes: BigInt(900),
+          memoryTotalBytes: BigInt(1000),
+        }),
+      ],
+    });
+
+    expect(result.averages.cpuPct).toBeCloseTo(45, 1);
+    expect(result.averages.memoryPct).toBeCloseTo(65, 1);
+    expect(result.nodes).toEqual([
+      { nodeId: "n2", nodeName: "Node B", cpuPct: 20, memoryPct: 90, hotness: 90 },
+      { nodeId: "n1", nodeName: "Node A", cpuPct: 70, memoryPct: 40, hotness: 70 },
+    ]);
+    expect(result.series.cpu).toEqual([45]);
+    expect(result.series.memory).toEqual([65]);
+  });
+
+  it("returns an empty hotness summary when there are not enough samples", () => {
+    const result = computeFleetHotness({
+      nodeNameMap: new Map([["n1", "Node A"]]),
+      nodeRows: [
+        makeNodeRow({
+          nodeId: "n1",
+          timestamp: new Date("2025-01-01T00:00:00Z"),
+          cpuSecondsTotal: 100,
+          cpuSecondsIdle: 50,
+          memoryUsedBytes: BigInt(500),
+          memoryTotalBytes: BigInt(1000),
+        }),
+      ],
+    });
+
+    expect(result).toEqual({
+      averages: { cpuPct: 0, memoryPct: 0 },
+      nodes: [],
+      series: { cpu: [], memory: [] },
     });
   });
 });
