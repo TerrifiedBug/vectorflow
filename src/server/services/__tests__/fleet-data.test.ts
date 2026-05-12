@@ -214,10 +214,10 @@ describe("getVolumeTrend", () => {
     expect(result).toEqual([
       {
         bucket: "2026-03-25T10:00:00.000Z",
-        bytesIn: 200,
-        bytesOut: 120,
-        eventsIn: 20,
-        eventsOut: 12,
+        bytesIn: 400,
+        bytesOut: 240,
+        eventsIn: 40,
+        eventsOut: 24,
       },
       {
         bucket: "2026-03-25T10:02:00.000Z",

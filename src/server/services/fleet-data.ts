@@ -114,10 +114,10 @@ function downsampleVolumeBuckets(rows: VolumeBucket[], bucketMs: number): Volume
     .sort((a, b) => a[0] - b[0])
     .map(([bucket, values]) => ({
       bucket: new Date(bucket).toISOString(),
-      bytesIn: values.bytesIn / values.count,
-      bytesOut: values.bytesOut / values.count,
-      eventsIn: values.eventsIn / values.count,
-      eventsOut: values.eventsOut / values.count,
+      bytesIn: values.bytesIn,
+      bytesOut: values.bytesOut,
+      eventsIn: values.eventsIn,
+      eventsOut: values.eventsOut,
     }));
 }
 

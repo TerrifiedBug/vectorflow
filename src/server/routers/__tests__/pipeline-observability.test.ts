@@ -157,12 +157,12 @@ describe("pipelineObservabilityRouter", () => {
       expect(result).toHaveLength(2);
       expect(result[0]).toMatchObject({
         timestamp: new Date("2024-01-01T00:00:00Z"),
-        eventsIn: BigInt(120),
-        eventsOut: BigInt(60),
-        eventsDiscarded: BigInt(3),
-        errorsTotal: BigInt(6),
-        bytesIn: BigInt(1200),
-        bytesOut: BigInt(600),
+        eventsIn: BigInt(240),
+        eventsOut: BigInt(120),
+        eventsDiscarded: BigInt(6),
+        errorsTotal: BigInt(12),
+        bytesIn: BigInt(2400),
+        bytesOut: BigInt(1200),
         utilization: 0.4,
         latencyMeanMs: 20,
       });

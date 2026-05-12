@@ -49,18 +49,33 @@ const labelMap = {
   latency: { in: "Mean Latency", out: "Mean Latency" },
 } as const;
 
+function bucketSecondsAt(rows: MetricRow[], index: number): number {
+  const current = new Date(rows[index]!.timestamp).getTime();
+  const next = rows[index + 1] ? new Date(rows[index + 1]!.timestamp).getTime() : 0;
+  if (next > current) return (next - current) / 1000;
+
+  const prev = rows[index - 1] ? new Date(rows[index - 1]!.timestamp).getTime() : 0;
+  if (current > prev) return (current - prev) / 1000;
+
+  return 60;
+}
+
+
 export function MetricsChart({ rows, dataKey, height = 200 }: MetricsChartProps) {
-  const data = rows.map((m) => ({
-    time: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    in: dataKey === "events" ? Number(m.eventsIn) / 60
-      : dataKey === "bytes" ? Number(m.bytesIn) / 60
-      : dataKey === "latency" ? (m.latencyMeanMs ?? 0)
-      : Number(m.errorsTotal) / 60,
-    out: dataKey === "events" ? Number(m.eventsOut) / 60
-      : dataKey === "bytes" ? Number(m.bytesOut) / 60
-      : dataKey === "latency" ? (m.latencyMeanMs ?? 0)
-      : Number(m.eventsDiscarded) / 60,
-  }));
+  const data = rows.map((m, index) => {
+    const bucketSeconds = bucketSecondsAt(rows, index);
+    return {
+      time: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      in: dataKey === "events" ? Number(m.eventsIn) / bucketSeconds
+        : dataKey === "bytes" ? Number(m.bytesIn) / bucketSeconds
+        : dataKey === "latency" ? (m.latencyMeanMs ?? 0)
+        : Number(m.errorsTotal) / bucketSeconds,
+      out: dataKey === "events" ? Number(m.eventsOut) / bucketSeconds
+        : dataKey === "bytes" ? Number(m.bytesOut) / bucketSeconds
+        : dataKey === "latency" ? (m.latencyMeanMs ?? 0)
+        : Number(m.eventsDiscarded) / bucketSeconds,
+    };
+  });
 
   const chartConfig = useMemo<ChartConfig>(() => ({
     in: { label: labelMap[dataKey].in, color: colorMap[dataKey].in },

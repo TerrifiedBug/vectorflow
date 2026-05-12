@@ -32,10 +32,6 @@ function toBigInt(value: bigint | number | null | undefined): bigint {
   return typeof value === "bigint" ? value : BigInt(Math.round(Number(value ?? 0)));
 }
 
-function averageBigInt(sum: bigint, count: number): bigint {
-  const divisor = BigInt(count);
-  return (sum + divisor / BigInt(2)) / divisor;
-}
 
 function downsamplePipelineMetricRows(
   rows: PipelineMetricChartRow[],
@@ -88,12 +84,12 @@ function downsamplePipelineMetricRows(
     .sort((a, b) => a[0] - b[0])
     .map(([bucket, acc]) => ({
       timestamp: new Date(bucket),
-      eventsIn: averageBigInt(acc.eventsIn, acc.count),
-      eventsOut: averageBigInt(acc.eventsOut, acc.count),
-      eventsDiscarded: averageBigInt(acc.eventsDiscarded, acc.count),
-      errorsTotal: averageBigInt(acc.errorsTotal, acc.count),
-      bytesIn: averageBigInt(acc.bytesIn, acc.count),
-      bytesOut: averageBigInt(acc.bytesOut, acc.count),
+      eventsIn: acc.eventsIn,
+      eventsOut: acc.eventsOut,
+      eventsDiscarded: acc.eventsDiscarded,
+      errorsTotal: acc.errorsTotal,
+      bytesIn: acc.bytesIn,
+      bytesOut: acc.bytesOut,
       utilization: acc.utilization / acc.count,
       latencyMeanMs: acc.latencyCount > 0 ? acc.latencyMeanMs / acc.latencyCount : null,
     }));
