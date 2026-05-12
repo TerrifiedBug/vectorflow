@@ -27,10 +27,27 @@ vi.mock("fs/promises", () => ({
   },
 }));
 
-// Mock fs (for createReadStream used by computeChecksum)
+// Mock fs (for createReadStream used by computeChecksum, createWriteStream for importBackup)
 vi.mock("fs", () => ({
   createReadStream: vi.fn(),
+  createWriteStream: vi.fn(),
 }));
+
+// Mock stream/promises (pipeline used by importBackup)
+vi.mock("stream/promises", () => ({
+  pipeline: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Mock Readable.fromWeb used by importBackup (preserve rest of stream module)
+vi.mock("stream", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("stream")>();
+  return {
+    ...actual,
+    Readable: class extends actual.Readable {
+      static fromWeb = vi.fn().mockReturnValue(new actual.Readable({ read() {} }));
+    },
+  };
+});
 
 // Mock logger
 vi.mock("@/lib/logger", () => ({
@@ -810,8 +827,12 @@ describe("runRetentionCleanup (DB-backed)", () => {
       { id: "rec-1", filename: "vectorflow-oldest.dump", status: "success", startedAt: new Date("2025-01-01") },
     ];
 
-    prismaMock.backupRecord.findMany.mockResolvedValue(records as never);
+    prismaMock.backupRecord.findMany
+      .mockResolvedValueOnce(records as never) // success/pre_restore for retention
+      .mockResolvedValueOnce([] as never) // failed records
+      .mockResolvedValueOnce([] as never); // stale in_progress
     prismaMock.backupRecord.deleteMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.backupRecord.findFirst.mockResolvedValue(null);
 
     const deletedCount = await backupModule.runRetentionCleanup();
 
@@ -1303,5 +1324,186 @@ describe("restoreFromBackup - BackupRecord fallback", () => {
     // Should NOT throw "Backup metadata file not found" — should fall back to BackupRecord
     const result = await backupModule.restoreFromBackup(testFilename);
     expect(result).toEqual({ success: true });
+  });
+});
+
+// ─── runRetentionCleanup - fixed (only counts success/pre_restore) ────────────
+
+describe("runRetentionCleanup - scoped retention", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+    fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+  });
+
+  it("ignores failed/orphaned records when counting toward retention", async () => {
+    prismaMock.systemSettings.findUnique.mockResolvedValue({
+      backupRetentionCount: 3,
+    } as never);
+
+    // 2 success records + 5 failed records — only the 2 success should matter
+    const successRecords = [
+      { id: "s1", filename: "backup-1.dump", status: "success", startedAt: new Date("2025-03-01") },
+      { id: "s2", filename: "backup-2.dump", status: "success", startedAt: new Date("2025-02-01") },
+    ];
+
+    const failedRecords = [
+      { id: "f1", filename: "failed-1.dump", status: "failed", startedAt: new Date("2025-03-02") },
+      { id: "f2", filename: "failed-2.dump", status: "failed", startedAt: new Date("2025-02-15") },
+      { id: "f3", filename: "failed-3.dump", status: "failed", startedAt: new Date("2025-02-10") },
+      { id: "f4", filename: "failed-4.dump", status: "failed", startedAt: new Date("2025-01-15") },
+    ];
+
+    // findMany call 1: success/pre_restore records for retention
+    prismaMock.backupRecord.findMany
+      .mockResolvedValueOnce(successRecords as never)
+      // findMany call 2: failed records for cleanup
+      .mockResolvedValueOnce(failedRecords as never)
+      // findMany call 3: stale in_progress
+      .mockResolvedValueOnce([] as never);
+
+    prismaMock.backupRecord.deleteMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.backupRecord.findFirst.mockResolvedValue(null);
+
+    const deletedCount = await backupModule.runRetentionCleanup();
+
+    // Retention=3, only 2 success records: no success records should be deleted
+    // But 4 failed records > 3 kept: 1 stale failure should be deleted
+    expect(deletedCount).toBe(1);
+  });
+
+  it("cleans up stale in_progress records older than 1 hour", async () => {
+    prismaMock.systemSettings.findUnique.mockResolvedValue({
+      backupRetentionCount: 7,
+    } as never);
+
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const staleRecords = [
+      { id: "ip1", filename: "in-progress-old.dump", status: "in_progress", startedAt: twoHoursAgo },
+    ];
+
+    prismaMock.backupRecord.findMany
+      .mockResolvedValueOnce([] as never) // success/pre_restore
+      .mockResolvedValueOnce([] as never) // failed
+      .mockResolvedValueOnce(staleRecords as never); // stale in_progress
+
+    prismaMock.backupRecord.deleteMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.backupRecord.findFirst.mockResolvedValue(null);
+
+    const deletedCount = await backupModule.runRetentionCleanup();
+
+    expect(deletedCount).toBe(1);
+  });
+});
+
+// ─── runOrphanCleanup - S3 bucket mismatch guard ─────────────────────────────
+
+describe("runOrphanCleanup - S3 bucket mismatch", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+
+    fsMock.readdir = vi.fn().mockResolvedValue([]);
+    fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+    fsMock.access = vi.fn().mockResolvedValue(undefined);
+
+    prismaMock.backupRecord.findFirst.mockResolvedValue(null);
+    prismaMock.backupRecord.findMany.mockResolvedValue([]);
+    prismaMock.backupRecord.update.mockResolvedValue({} as never);
+  });
+
+  it("skips orphaning records whose S3 bucket differs from current config", async () => {
+    prismaMock.backupRecord.findMany.mockResolvedValue([
+      {
+        id: "rec-old-bucket",
+        filename: "vectorflow-old-bucket.dump",
+        storageLocation: "s3://old-bucket/backups/vectorflow-old-bucket.dump",
+      },
+    ] as never);
+
+    // Current settings point to a different bucket
+    prismaMock.systemSettings.findUnique.mockResolvedValue({
+      s3Bucket: "new-bucket",
+    } as never);
+
+    const mockExists = vi.fn().mockResolvedValue(false);
+    mockGetActiveBackend.mockResolvedValue({
+      upload: vi.fn(),
+      download: vi.fn(),
+      delete: vi.fn(),
+      exists: mockExists,
+    });
+
+    const result = await backupModule.runOrphanCleanup();
+
+    // Should NOT have called exists — skipped due to bucket mismatch
+    expect(mockExists).not.toHaveBeenCalled();
+    // Should NOT have marked as orphaned
+    expect(prismaMock.backupRecord.update).not.toHaveBeenCalled();
+    expect(result.recordsOrphaned).toBe(0);
+  });
+});
+
+// ─── importBackup ────────────────────────────────────────────────────────────
+
+describe("importBackup", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.clearAllMocks();
+
+    fsMock.mkdir = vi.fn().mockResolvedValue(undefined);
+    fsMock.writeFile = vi.fn().mockResolvedValue(undefined);
+    fsMock.stat = vi.fn().mockResolvedValue({ size: 2048 });
+    fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+  });
+
+  it("creates a BackupRecord with type=imported on valid file", async () => {
+    // pg_restore --list succeeds (valid dump)
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: unknown, cb?: CallableFunction) => {
+      if (cb) cb(null, { stdout: "table list output", stderr: "" });
+      return {};
+    });
+
+    // computeChecksum mock
+    mockCreateReadStream.mockReturnValue(makeReadableStream("test-data") as never);
+
+    prismaMock.backupRecord.create.mockResolvedValue({ id: "rec-imported" } as never);
+    prismaMock.systemSettings.findUnique.mockResolvedValue({
+      backupStorageBackend: "local",
+    } as never);
+
+    // Create a mock ReadableStream (pipeline is mocked, so it won't be consumed)
+    const mockStream = new ReadableStream({ start(c) { c.close(); } });
+    const result = await backupModule.importBackup(mockStream, "external-backup.dump");
+
+    expect(result.version).toBeDefined();
+    expect(result.sizeBytes).toBe(2048);
+
+    expect(prismaMock.backupRecord.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "imported",
+          status: "success",
+        }),
+      })
+    );
+  });
+
+  it("throws and cleans up for invalid dump file", async () => {
+    // pg_restore --list fails (invalid dump)
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: unknown, cb?: CallableFunction) => {
+      if (cb) cb(new Error("pg_restore: error: invalid format"), { stdout: "", stderr: "" });
+      return {};
+    });
+
+    const mockStream = new ReadableStream({ start(c) { c.close(); } });
+    await expect(
+      backupModule.importBackup(mockStream, "bad-file.dump")
+    ).rejects.toThrow("Invalid backup file");
+
+    // Should have cleaned up the written file
+    expect(fsMock.unlink).toHaveBeenCalled();
+    // Should NOT have created a record
+    expect(prismaMock.backupRecord.create).not.toHaveBeenCalled();
   });
 });
