@@ -618,6 +618,9 @@ export async function restoreFromBackup(filename: string): Promise<{ success: tr
 
 /**
  * Delete the oldest backups beyond the configured retention count.
+ * Only counts 'success' and 'pre_restore' records toward the retention budget.
+ * Also cleans up 'failed' records (keeps most recent 3 for diagnostics)
+ * and stale 'in_progress' records older than 1 hour.
  */
 export async function runRetentionCleanup(): Promise<number> {
   const settings = await prisma.systemSettings.findUnique({
@@ -626,21 +629,59 @@ export async function runRetentionCleanup(): Promise<number> {
   });
 
   const retentionCount = settings?.backupRetentionCount ?? 7;
-  const backups = await listBackups(); // already sorted newest-first
-
-  if (backups.length <= retentionCount) {
-    return 0;
-  }
-
-  const toDelete = backups.slice(retentionCount);
   let deletedCount = 0;
 
-  for (const backup of toDelete) {
+  // 1. Retention for successful backups — only count success + pre_restore
+  const successBackups = await prisma.backupRecord.findMany({
+    where: { status: { in: ["success", "pre_restore"] } },
+    orderBy: { startedAt: "desc" },
+  });
+
+  if (successBackups.length > retentionCount) {
+    const toDelete = successBackups.slice(retentionCount);
+    for (const backup of toDelete) {
+      try {
+        await deleteBackup(backup.filename);
+        deletedCount++;
+      } catch {
+        // best-effort deletion
+      }
+    }
+  }
+
+  // 2. Clean up failed records — keep the most recent 3 for diagnostics
+  const failedBackups = await prisma.backupRecord.findMany({
+    where: { status: "failed" },
+    orderBy: { startedAt: "desc" },
+  });
+
+  if (failedBackups.length > 3) {
+    const staleFailures = failedBackups.slice(3);
+    for (const backup of staleFailures) {
+      try {
+        await deleteBackup(backup.filename);
+        deletedCount++;
+      } catch {
+        // best-effort — file may already be gone for failed records
+        await prisma.backupRecord.deleteMany({ where: { filename: backup.filename } });
+        deletedCount++;
+      }
+    }
+  }
+
+  // 3. Clean up stale in_progress records older than 1 hour (stuck)
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const staleInProgress = await prisma.backupRecord.findMany({
+    where: { status: "in_progress", startedAt: { lt: oneHourAgo } },
+  });
+
+  for (const backup of staleInProgress) {
     try {
       await deleteBackup(backup.filename);
       deletedCount++;
     } catch {
-      // best-effort deletion
+      await prisma.backupRecord.deleteMany({ where: { filename: backup.filename } });
+      deletedCount++;
     }
   }
 
@@ -757,8 +798,25 @@ export async function runOrphanCleanup(): Promise<{
     let fileExists = false;
     try {
       if (record.storageLocation?.startsWith("s3://")) {
+        const { bucket: recordBucket, key } = parseS3StorageLocation(record.storageLocation);
         const backend = await getActiveBackend();
-        const { key } = parseS3StorageLocation(record.storageLocation);
+
+        // Guard: if the record's bucket doesn't match the current backend's
+        // bucket, skip — the record belongs to a different config and we
+        // can't verify its existence with the current credentials.
+        const settings = await prisma.systemSettings.findUnique({
+          where: { id: "singleton" },
+          select: { s3Bucket: true },
+        });
+        if (settings?.s3Bucket && recordBucket !== settings.s3Bucket) {
+          debugLog("backup", "Orphan check: skipping record with different S3 bucket", {
+            recordBucket,
+            currentBucket: settings.s3Bucket,
+            filename: record.filename,
+          });
+          continue;
+        }
+
         fileExists = await backend.exists(key);
       } else {
         await fs.access(path.join(BACKUP_DIR, record.filename));
@@ -780,4 +838,89 @@ export async function runOrphanCleanup(): Promise<{
   const result = { filesDeleted, recordsOrphaned };
   debugLog("backup", "Orphan cleanup complete", result);
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// importBackup
+// ---------------------------------------------------------------------------
+
+/**
+ * Import a backup file uploaded by the user.
+ * Validates the file is a valid pg_dump custom format via `pg_restore --list`,
+ * saves it to the backup directory (or S3), and creates a BackupRecord.
+ */
+export async function importBackup(
+  fileBuffer: Buffer,
+  originalFilename: string
+): Promise<BackupMetadata> {
+  await ensureBackupDir();
+
+  // Generate a safe filename with import timestamp
+  const timestamp = new Date().toISOString();
+  const safeName = `vectorflow-imported-${timestamp.replace(/[:.]/g, "-")}`;
+  const dumpFilename = `${safeName}.dump`;
+  const dumpPath = path.join(BACKUP_DIR, dumpFilename);
+
+  // Write buffer to temp location for validation
+  await fs.writeFile(dumpPath, fileBuffer);
+
+  try {
+    // Validate: pg_restore --list should succeed on a valid custom-format dump
+    await execFileAsync("pg_restore", ["--list", dumpPath], {
+      timeout: 30_000,
+    });
+  } catch {
+    // Clean up invalid file
+    await fs.unlink(dumpPath).catch(() => {});
+    throw new Error(
+      "Invalid backup file: not a valid pg_dump custom format (.dump). " +
+      "Ensure the file was created with pg_dump --format=custom."
+    );
+  }
+
+  const stat = await fs.stat(dumpPath);
+  const checksum = await computeChecksum(dumpPath);
+
+  // Upload to S3 if configured
+  const storageSettings = await prisma.systemSettings.findUnique({
+    where: { id: "singleton" },
+    select: { backupStorageBackend: true, s3Bucket: true, s3Prefix: true },
+  });
+  const useS3 = storageSettings?.backupStorageBackend === "s3";
+  let storageLocation = dumpPath;
+
+  if (useS3) {
+    const backend = await getActiveBackend();
+    const s3Key = buildS3Key(storageSettings?.s3Prefix ?? "", dumpFilename);
+    await backend.upload(dumpPath, s3Key);
+    storageLocation = buildS3StorageLocation(storageSettings!.s3Bucket!, s3Key);
+    await fs.unlink(dumpPath).catch(() => {});
+  }
+
+  // Create BackupRecord
+  await prisma.backupRecord.create({
+    data: {
+      filename: dumpFilename,
+      status: "success",
+      type: "imported",
+      storageLocation,
+      vfVersion: VF_VERSION,
+      sizeBytes: BigInt(stat.size),
+      checksum,
+      completedAt: new Date(),
+    },
+  });
+
+  const metadata: BackupMetadata = {
+    version: VF_VERSION,
+    timestamp,
+    migrationCount: 0,
+    lastMigration: "",
+    sizeBytes: stat.size,
+    pgVersion: "unknown (imported)",
+  };
+
+  debugLog("backup", "Backup imported", { filename: dumpFilename, originalFilename });
+
+  return metadata;
 }

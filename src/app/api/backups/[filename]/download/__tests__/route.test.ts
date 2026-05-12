@@ -42,8 +42,8 @@ describe("GET /api/backups/[filename]/download", () => {
 
   it("returns 410 with a storage removal message for orphaned backup records", async () => {
     prismaMock.backupRecord.findFirst
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: "backup-1" } as never);
+      .mockResolvedValueOnce(null) // no success record
+      .mockResolvedValueOnce({ id: "backup-1" } as never); // orphaned record found
 
     const response = await GET(new Request("http://localhost"), {
       params: Promise.resolve({ filename: "vectorflow-orphaned.dump" }),
@@ -61,8 +61,8 @@ describe("GET /api/backups/[filename]/download", () => {
 
   it("returns 404 for unknown missing backup files", async () => {
     prismaMock.backupRecord.findFirst
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null);
+      .mockResolvedValueOnce(null) // no success record
+      .mockResolvedValueOnce(null); // no orphaned record
 
     const response = await GET(new Request("http://localhost"), {
       params: Promise.resolve({ filename: "unknown.dump" }),
@@ -70,5 +70,32 @@ describe("GET /api/backups/[filename]/download", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "Backup not found" });
+  });
+
+  it("marks success record as orphaned and returns 410 when local file is missing", async () => {
+    // Record exists with status=success but file is gone
+    prismaMock.backupRecord.findFirst.mockResolvedValueOnce({
+      id: "backup-success",
+      storageLocation: "/backups/vectorflow-gone.dump",
+    } as never);
+    prismaMock.backupRecord.update.mockResolvedValue({} as never);
+
+    // fs.access rejects — file is missing
+    fsMock.access.mockRejectedValue(new Error("ENOENT"));
+
+    const response = await GET(new Request("http://localhost"), {
+      params: Promise.resolve({ filename: "vectorflow-gone.dump" }),
+    });
+
+    expect(response.status).toBe(410);
+    await expect(response.json()).resolves.toEqual({
+      error: "This backup's file has been removed from storage. The record is marked as orphaned.",
+    });
+
+    // Should have updated the record to orphaned
+    expect(prismaMock.backupRecord.update).toHaveBeenCalledWith({
+      where: { id: "backup-success" },
+      data: { status: "orphaned" },
+    });
   });
 });

@@ -59,8 +59,8 @@ export async function GET(
 
   // Look up BackupRecord to determine storage location
   const record = await prisma.backupRecord.findFirst({
-    where: { filename: safe, status: "success" },
-    select: { storageLocation: true },
+    where: { filename: safe, status: { in: ["success", "pre_restore"] } },
+    select: { id: true, storageLocation: true },
   });
   if (!record) {
     // Check if an orphaned record exists to give a better error
@@ -74,9 +74,10 @@ export async function GET(
         410
       );
     }
+    return jsonError("Backup not found", 404);
   }
 
-  if (record?.storageLocation?.startsWith("s3://")) {
+  if (record.storageLocation?.startsWith("s3://")) {
     // Serve from S3 using direct streaming (no temp file)
     const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
     const settings = await prisma.systemSettings.findUnique({
@@ -107,33 +108,54 @@ export async function GET(
     });
 
     const { key } = parseS3StorageLocation(record.storageLocation);
-    const response = await client.send(new GetObjectCommand({
-      Bucket: settings.s3Bucket,
-      Key: key,
-    }));
 
-    if (!response.Body) {
-      return jsonError("S3 object body is empty", 500);
+    try {
+      const response = await client.send(new GetObjectCommand({
+        Bucket: settings.s3Bucket,
+        Key: key,
+      }));
+
+      if (!response.Body) {
+        return jsonError("S3 object body is empty", 500);
+      }
+
+      const webStream = response.Body.transformToWebStream();
+
+      return new Response(webStream, {
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Disposition": `attachment; filename="${safe}"`,
+          ...(response.ContentLength ? { "Content-Length": response.ContentLength.toString() } : {}),
+        },
+      });
+    } catch {
+      // S3 object is gone — mark the record as orphaned
+      await prisma.backupRecord.update({
+        where: { id: record.id },
+        data: { status: "orphaned" },
+      });
+      return jsonError(
+        "This backup's file has been removed from storage. The record is marked as orphaned.",
+        410
+      );
     }
-
-    const webStream = response.Body.transformToWebStream();
-
-    return new Response(webStream, {
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${safe}"`,
-        ...(response.ContentLength ? { "Content-Length": response.ContentLength.toString() } : {}),
-      },
-    });
   }
 
-  // Local file fallback
+  // Local file
   const filePath = path.join(BACKUP_DIR, safe);
 
   try {
     await fs.access(filePath);
   } catch {
-    return jsonError("Backup not found", 404);
+    // File is gone but record says success — mark orphaned
+    await prisma.backupRecord.update({
+      where: { id: record.id },
+      data: { status: "orphaned" },
+    });
+    return jsonError(
+      "This backup's file has been removed from storage. The record is marked as orphaned.",
+      410
+    );
   }
 
   const stat = await fs.stat(filePath);

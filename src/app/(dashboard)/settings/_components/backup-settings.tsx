@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import {
   Loader2,
   Trash2,
   Download,
+  Upload,
   AlertTriangle,
   Clock,
   Cloud,
@@ -93,6 +94,7 @@ const TYPE_LABELS: Record<string, string> = {
   manual: "Manual",
   scheduled: "Scheduled",
   pre_restore: "Pre-restore",
+  imported: "Imported",
 };
 
 // ─── Backup Settings ────────────────────────────────────────────────────────────
@@ -109,6 +111,8 @@ export function BackupSettings() {
   const [retentionCount, setRetentionCount] = useState(7);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [importPending, setImportPending] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Storage backend form state
   const [storageBackend, setStorageBackend] = useState<"local" | "s3">("local");
@@ -217,6 +221,43 @@ export function BackupSettings() {
       URL.revokeObjectURL(url);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Download failed", { duration: 6000 });
+    }
+  }
+
+  async function handleImport(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Reset the input so the same file can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    if (!file.name.endsWith(".dump")) {
+      toast.error("File must have a .dump extension");
+      return;
+    }
+
+    setImportPending(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/backups/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(data.error || `Import failed (${res.status})`, { duration: 6000 });
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: trpc.settings.listBackups.queryKey() });
+      toast.success("Backup imported successfully");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Import failed", { duration: 6000 });
+    } finally {
+      setImportPending(false);
     }
   }
 
@@ -477,21 +518,42 @@ export function BackupSettings() {
         <CardHeader>
           <CardTitle>Manual Backup</CardTitle>
           <CardDescription>
-            Create an on-demand backup of the database.
+            Create an on-demand backup or import a .dump file from another system.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Button
-            onClick={() => createBackupMutation.mutate()}
-            disabled={createBackupMutation.isPending}
-          >
-            {createBackupMutation.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="mr-2 h-4 w-4" />
-            )}
-            Create Backup Now
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => createBackupMutation.mutate()}
+              disabled={createBackupMutation.isPending}
+            >
+              {createBackupMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              Create Backup Now
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importPending}
+            >
+              {importPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-4 w-4" />
+              )}
+              Import Backup
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".dump"
+              className="hidden"
+              onChange={handleImport}
+            />
+          </div>
           {backupsQuery.data?.[0] && (
             <p className="text-sm text-muted-foreground">
               Last backup: {formatRelativeTime(backupsQuery.data[0].startedAt)}
