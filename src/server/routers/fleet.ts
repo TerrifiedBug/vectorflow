@@ -1,3 +1,4 @@
+import { bucketMsForMinutes } from "@/lib/chart-buckets";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
@@ -10,6 +11,106 @@ import { relayPush } from "@/server/services/push-broadcast";
 import { getFleetOverview, getVolumeTrend, getNodeThroughput, getNodeCapacity, getCpuHeatmap, getDataLoss, getMatrixThroughput } from "@/server/services/fleet-data";
 import { isVersionOlder } from "@/lib/version";
 
+
+interface NodeMetricChartRow {
+  timestamp: Date;
+  memoryTotalBytes: bigint;
+  memoryUsedBytes: bigint;
+  memoryFreeBytes: bigint;
+  cpuSecondsTotal: number;
+  cpuSecondsIdle: number;
+  loadAvg1: number;
+  loadAvg5: number;
+  loadAvg15: number;
+  fsTotalBytes: bigint;
+  fsUsedBytes: bigint;
+  fsFreeBytes: bigint;
+  diskReadBytes: bigint;
+  diskWrittenBytes: bigint;
+  netRxBytes: bigint;
+  netTxBytes: bigint;
+}
+
+function toBigInt(value: bigint | number | null | undefined): bigint {
+  return typeof value === "bigint" ? value : BigInt(Math.round(Number(value ?? 0)));
+}
+
+function averageBigInt(sum: bigint, count: number): bigint {
+  const divisor = BigInt(count);
+  return (sum + divisor / BigInt(2)) / divisor;
+}
+
+function downsampleNodeMetricRows(rows: NodeMetricChartRow[], bucketMs: number): NodeMetricChartRow[] {
+  const buckets = new Map<number, {
+    count: number;
+    timestamp: Date;
+    memoryTotalBytes: bigint;
+    memoryUsedBytes: bigint;
+    memoryFreeBytes: bigint;
+    loadAvg1: number;
+    loadAvg5: number;
+    loadAvg15: number;
+    fsTotalBytes: bigint;
+    fsUsedBytes: bigint;
+    fsFreeBytes: bigint;
+    last: NodeMetricChartRow;
+  }>();
+
+  for (const row of rows) {
+    const bucket = Math.floor(row.timestamp.getTime() / bucketMs) * bucketMs;
+    const acc = buckets.get(bucket) ?? {
+      count: 0,
+      timestamp: row.timestamp,
+      memoryTotalBytes: BigInt(0),
+      memoryUsedBytes: BigInt(0),
+      memoryFreeBytes: BigInt(0),
+      loadAvg1: 0,
+      loadAvg5: 0,
+      loadAvg15: 0,
+      fsTotalBytes: BigInt(0),
+      fsUsedBytes: BigInt(0),
+      fsFreeBytes: BigInt(0),
+      last: row,
+    };
+
+    acc.count++;
+    acc.memoryTotalBytes += toBigInt(row.memoryTotalBytes);
+    acc.memoryUsedBytes += toBigInt(row.memoryUsedBytes);
+    acc.memoryFreeBytes += toBigInt(row.memoryFreeBytes);
+    acc.loadAvg1 += Number(row.loadAvg1 ?? 0);
+    acc.loadAvg5 += Number(row.loadAvg5 ?? 0);
+    acc.loadAvg15 += Number(row.loadAvg15 ?? 0);
+    acc.fsTotalBytes += toBigInt(row.fsTotalBytes);
+    acc.fsUsedBytes += toBigInt(row.fsUsedBytes);
+    acc.fsFreeBytes += toBigInt(row.fsFreeBytes);
+    if (row.timestamp.getTime() >= acc.timestamp.getTime()) {
+      acc.timestamp = row.timestamp;
+      acc.last = row;
+    }
+    buckets.set(bucket, acc);
+  }
+
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([, acc]) => ({
+      timestamp: acc.timestamp,
+      memoryTotalBytes: averageBigInt(acc.memoryTotalBytes, acc.count),
+      memoryUsedBytes: averageBigInt(acc.memoryUsedBytes, acc.count),
+      memoryFreeBytes: averageBigInt(acc.memoryFreeBytes, acc.count),
+      cpuSecondsTotal: acc.last.cpuSecondsTotal,
+      cpuSecondsIdle: acc.last.cpuSecondsIdle,
+      loadAvg1: acc.loadAvg1 / acc.count,
+      loadAvg5: acc.loadAvg5 / acc.count,
+      loadAvg15: acc.loadAvg15 / acc.count,
+      fsTotalBytes: averageBigInt(acc.fsTotalBytes, acc.count),
+      fsUsedBytes: averageBigInt(acc.fsUsedBytes, acc.count),
+      fsFreeBytes: averageBigInt(acc.fsFreeBytes, acc.count),
+      diskReadBytes: acc.last.diskReadBytes,
+      diskWrittenBytes: acc.last.diskWrittenBytes,
+      netRxBytes: acc.last.netRxBytes,
+      netTxBytes: acc.last.netTxBytes,
+    }));
+}
 const maintenanceWindowSchema = z.object({
   startAt: z.string().datetime(),
   endAt: z.string().datetime(),
@@ -567,7 +668,7 @@ export const fleetRouter = router({
     .query(async ({ input }) => {
       const since = new Date(Date.now() - input.hours * 60 * 60 * 1000);
 
-      return prisma.nodeMetric.findMany({
+      const rows = await prisma.nodeMetric.findMany({
         where: {
           nodeId: input.nodeId,
           timestamp: { gte: since },
@@ -592,6 +693,8 @@ export const fleetRouter = router({
           netTxBytes: true,
         },
       });
+
+      return downsampleNodeMetricRows(rows, bucketMsForMinutes(input.hours * 60));
     }),
 
   revokeNode: protectedProcedure

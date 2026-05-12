@@ -39,6 +39,27 @@ const latencyChartConfig = {
   latency: { label: "Mean Latency", color: "#ec4899" },
 } satisfies ChartConfig;
 
+interface MetricRow {
+  timestamp: Date;
+}
+
+function bucketSecondsAt<T extends MetricRow>(rows: T[], index: number): number {
+  const current = new Date(rows[index]!.timestamp).getTime();
+  const nextRow = rows[index + 1];
+  if (nextRow) {
+    const next = new Date(nextRow.timestamp).getTime();
+    if (next > current) return (next - current) / 1000;
+  }
+
+  const prevRow = rows[index - 1];
+  if (prevRow) {
+    const prev = new Date(prevRow.timestamp).getTime();
+    if (current > prev) return (current - prev) / 1000;
+  }
+
+  return 60;
+}
+
 export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetricsChartProps) {
   const trpc = useTRPC();
 
@@ -47,16 +68,19 @@ export function PipelineMetricsChart({ pipelineId, hours = 24 }: PipelineMetrics
     refetchInterval: 60_000,
   });
 
-  // Convert minute-bucket deltas to per-second rates
-  const data = (metricsQuery.data ?? []).map((m) => ({
-    time: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    eventsIn: Number(m.eventsIn) / 60,
-    eventsOut: Number(m.eventsOut) / 60,
-    bytesIn: Number(m.bytesIn) / 60,
-    bytesOut: Number(m.bytesOut) / 60,
-    errors: Number(m.errorsTotal),
-    latency: m.latencyMeanMs ?? 0,
-  }));
+  const raw = metricsQuery.data ?? [];
+  const data = raw.map((m, index) => {
+    const bucketSeconds = bucketSecondsAt(raw, index);
+    return {
+      time: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      eventsIn: Number(m.eventsIn) / bucketSeconds,
+      eventsOut: Number(m.eventsOut) / bucketSeconds,
+      bytesIn: Number(m.bytesIn) / bucketSeconds,
+      bytesOut: Number(m.bytesOut) / bucketSeconds,
+      errors: Number(m.errorsTotal),
+      latency: m.latencyMeanMs ?? 0,
+    };
+  });
 
   if (metricsQuery.isLoading) {
     return <Skeleton className="h-48 w-full rounded-lg" />;

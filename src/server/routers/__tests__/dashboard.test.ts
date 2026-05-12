@@ -54,6 +54,7 @@ vi.mock("@/server/services/dashboard-data", () => ({
   computeChartMetrics: vi.fn(() => ({})),
   assembleNodeCards: vi.fn(() => []),
   assemblePipelineCards: vi.fn(() => []),
+  computeFleetHotness: vi.fn(() => ({ averages: { cpuPct: 0, memoryPct: 0 }, nodes: [], series: { cpu: [], memory: [] } })),
 }));
 
 vi.mock("@/server/services/metrics-query", () => ({
@@ -64,6 +65,8 @@ vi.mock("@/server/services/metrics-query", () => ({
 
 import { prisma } from "@/lib/prisma";
 import { dashboardRouter } from "@/server/routers/dashboard";
+import { computeFleetHotness } from "@/server/services/dashboard-data";
+import { queryNodeMetricsAggregated } from "@/server/services/metrics-query";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(dashboardRouter)({
@@ -416,6 +419,44 @@ describe("dashboard.deleteView", () => {
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
 
     expect(prismaMock.dashboardView.delete).not.toHaveBeenCalled();
+  });
+});
+
+// ── dashboard.fleetHotness ────────────────────────────────────────────────────
+
+describe("dashboard.fleetHotness", () => {
+  it("loads environment nodes for the selected range and computes hotness", async () => {
+    prismaMock.vectorNode.findMany.mockResolvedValue([
+      { id: "node-1", name: "Node 1" },
+      { id: "node-2", name: "Node 2" },
+    ] as never);
+    (queryNodeMetricsAggregated as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      rows: [{ nodeId: "node-1", timestamp: new Date("2025-01-01T00:00:00Z") }],
+    });
+    (computeFleetHotness as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      averages: { cpuPct: 42, memoryPct: 64 },
+      nodes: [{ nodeId: "node-1", nodeName: "Node 1", cpuPct: 42, memoryPct: 64, hotness: 64 }],
+      series: { cpu: [42], memory: [64] },
+    });
+
+    const result = await caller.fleetHotness({ environmentId: "env-1", range: "6h" });
+
+    expect(prismaMock.vectorNode.findMany).toHaveBeenCalledWith({
+      where: { environment: { id: "env-1" } },
+      select: { id: true, name: true },
+    });
+    expect(queryNodeMetricsAggregated).toHaveBeenCalledWith({
+      nodeIds: ["node-1", "node-2"],
+      minutes: 360,
+    });
+    expect(computeFleetHotness).toHaveBeenCalledWith({
+      nodeNameMap: new Map([
+        ["node-1", "Node 1"],
+        ["node-2", "Node 2"],
+      ]),
+      nodeRows: [{ nodeId: "node-1", timestamp: new Date("2025-01-01T00:00:00Z") }],
+    });
+    expect(result.averages.memoryPct).toBe(64);
   });
 });
 

@@ -1,3 +1,4 @@
+import { bucketMsForMinutes } from "@/lib/chart-buckets";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
@@ -14,6 +15,85 @@ import {
 } from "@/server/services/cost-attribution";
 
 const ANOMALY_SEVERITY_RANK = ["critical", "warning", "info"] as const;
+
+interface PipelineMetricChartRow {
+  timestamp: Date;
+  eventsIn: bigint;
+  eventsOut: bigint;
+  eventsDiscarded: bigint;
+  errorsTotal: bigint;
+  bytesIn: bigint;
+  bytesOut: bigint;
+  utilization: number;
+  latencyMeanMs: number | null;
+}
+
+function toBigInt(value: bigint | number | null | undefined): bigint {
+  return typeof value === "bigint" ? value : BigInt(Math.round(Number(value ?? 0)));
+}
+
+
+function downsamplePipelineMetricRows(
+  rows: PipelineMetricChartRow[],
+  bucketMs: number,
+): PipelineMetricChartRow[] {
+  const buckets = new Map<number, {
+    count: number;
+    eventsIn: bigint;
+    eventsOut: bigint;
+    eventsDiscarded: bigint;
+    errorsTotal: bigint;
+    bytesIn: bigint;
+    bytesOut: bigint;
+    utilization: number;
+    latencyMeanMs: number;
+    latencyCount: number;
+  }>();
+
+  for (const row of rows) {
+    const bucket = Math.floor(row.timestamp.getTime() / bucketMs) * bucketMs;
+    const acc = buckets.get(bucket) ?? {
+      count: 0,
+      eventsIn: BigInt(0),
+      eventsOut: BigInt(0),
+      eventsDiscarded: BigInt(0),
+      errorsTotal: BigInt(0),
+      bytesIn: BigInt(0),
+      bytesOut: BigInt(0),
+      utilization: 0,
+      latencyMeanMs: 0,
+      latencyCount: 0,
+    };
+
+    acc.count++;
+    acc.eventsIn += toBigInt(row.eventsIn);
+    acc.eventsOut += toBigInt(row.eventsOut);
+    acc.eventsDiscarded += toBigInt(row.eventsDiscarded);
+    acc.errorsTotal += toBigInt(row.errorsTotal);
+    acc.bytesIn += toBigInt(row.bytesIn);
+    acc.bytesOut += toBigInt(row.bytesOut);
+    acc.utilization += Number(row.utilization ?? 0);
+    if (row.latencyMeanMs != null) {
+      acc.latencyMeanMs += row.latencyMeanMs;
+      acc.latencyCount++;
+    }
+    buckets.set(bucket, acc);
+  }
+
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([bucket, acc]) => ({
+      timestamp: new Date(bucket),
+      eventsIn: acc.eventsIn,
+      eventsOut: acc.eventsOut,
+      eventsDiscarded: acc.eventsDiscarded,
+      errorsTotal: acc.errorsTotal,
+      bytesIn: acc.bytesIn,
+      bytesOut: acc.bytesOut,
+      utilization: acc.utilization / acc.count,
+      latencyMeanMs: acc.latencyCount > 0 ? acc.latencyMeanMs / acc.latencyCount : null,
+    }));
+}
 type AnomalySeverity = (typeof ANOMALY_SEVERITY_RANK)[number];
 
 function pickMaxSeverity(
@@ -126,7 +206,6 @@ const sweepTimer = setInterval(() => {
   // Catch DB errors so a transient failure during the sweep doesn't surface
   // as an unhandled rejection (which can terminate the process).
   cleanupStaleTaps().catch((err) => {
-    // eslint-disable-next-line no-console
     console.error("cleanupStaleTaps failed", err);
   });
 }, TAP_TTL_MS);
@@ -148,7 +227,7 @@ export const pipelineObservabilityRouter = router({
     .query(async ({ input }) => {
       const since = new Date(Date.now() - input.hours * 60 * 60 * 1000);
 
-      return prisma.pipelineMetric.findMany({
+      const rows = await prisma.pipelineMetric.findMany({
         where: {
           pipelineId: input.pipelineId,
           nodeId: null,
@@ -168,6 +247,8 @@ export const pipelineObservabilityRouter = router({
           latencyMeanMs: true,
         },
       });
+
+      return downsamplePipelineMetricRows(rows, bucketMsForMinutes(input.hours * 60));
     }),
 
   logs: protectedProcedure

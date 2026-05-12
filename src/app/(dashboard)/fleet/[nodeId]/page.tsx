@@ -375,7 +375,6 @@ export default function NodeDetailPage() {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="health">Health</TabsTrigger>
-          <TabsTrigger value="metrics">Metrics</TabsTrigger>
           <TabsTrigger value="logs">Logs</TabsTrigger>
         </TabsList>
 
@@ -635,9 +634,6 @@ export default function NodeDetailPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="metrics">
-          <NodeMetricsCharts nodeId={params.nodeId} />
-        </TabsContent>
 
         <TabsContent value="logs">
           <NodeLogs

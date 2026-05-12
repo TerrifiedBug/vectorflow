@@ -72,7 +72,7 @@ describe("metrics.getPipelineMetrics", () => {
   it("delegates to queryPipelineMetricsAggregated with correct params", async () => {
     const mockRows = [
       {
-        timestamp: new Date(),
+        timestamp: new Date("2024-01-01T00:00:00Z"),
         eventsIn: BigInt(100),
         eventsOut: BigInt(80),
         eventsDiscarded: BigInt(0),
@@ -83,7 +83,7 @@ describe("metrics.getPipelineMetrics", () => {
         latencyMeanMs: 2.5,
       },
     ];
-    (queryPipelineMetricsAggregated as ReturnType<typeof vi.fn>).mockResolvedValue(mockRows);
+    (queryPipelineMetricsAggregated as ReturnType<typeof vi.fn>).mockResolvedValue({ rows: mockRows });
 
     const result = await caller.getPipelineMetrics({ pipelineId: "pipe-1", minutes: 30 });
 
@@ -91,11 +91,11 @@ describe("metrics.getPipelineMetrics", () => {
       pipelineId: "pipe-1",
       minutes: 30,
     });
-    expect(result).toEqual(mockRows);
+    expect(result).toEqual({ rows: mockRows });
   });
 
   it("uses default minutes=60 when not specified", async () => {
-    (queryPipelineMetricsAggregated as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (queryPipelineMetricsAggregated as ReturnType<typeof vi.fn>).mockResolvedValue({ rows: [] });
 
     await caller.getPipelineMetrics({ pipelineId: "pipe-1" });
 
@@ -106,12 +106,68 @@ describe("metrics.getPipelineMetrics", () => {
   });
 
   it("returns empty array when no metrics exist", async () => {
-    (queryPipelineMetricsAggregated as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (queryPipelineMetricsAggregated as ReturnType<typeof vi.fn>).mockResolvedValue({ rows: [] });
 
     const result = await caller.getPipelineMetrics({ pipelineId: "pipe-1" });
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ rows: [] });
   });
+  it("downsamples pipeline metrics using the requested time window", async () => {
+    (queryPipelineMetricsAggregated as ReturnType<typeof vi.fn>).mockResolvedValue({
+      rows: [
+        {
+          timestamp: new Date("2024-01-01T00:00:00Z"),
+          eventsIn: BigInt(60),
+          eventsOut: BigInt(30),
+          eventsDiscarded: BigInt(0),
+          errorsTotal: BigInt(3),
+          bytesIn: BigInt(600),
+          bytesOut: BigInt(300),
+          utilization: 0.2,
+          latencyMeanMs: 10,
+        },
+        {
+          timestamp: new Date("2024-01-01T00:01:00Z"),
+          eventsIn: BigInt(180),
+          eventsOut: BigInt(90),
+          eventsDiscarded: BigInt(6),
+          errorsTotal: BigInt(9),
+          bytesIn: BigInt(1800),
+          bytesOut: BigInt(900),
+          utilization: 0.6,
+          latencyMeanMs: 30,
+        },
+        {
+          timestamp: new Date("2024-01-01T00:02:00Z"),
+          eventsIn: BigInt(300),
+          eventsOut: BigInt(150),
+          eventsDiscarded: BigInt(12),
+          errorsTotal: BigInt(15),
+          bytesIn: BigInt(3000),
+          bytesOut: BigInt(1500),
+          utilization: 0.8,
+          latencyMeanMs: null,
+        },
+      ],
+    });
+
+    const result = await caller.getPipelineMetrics({ pipelineId: "pipe-1", minutes: 60 });
+
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0]).toMatchObject({
+      timestamp: new Date("2024-01-01T00:00:00Z"),
+      eventsIn: BigInt(240),
+      eventsOut: BigInt(120),
+      eventsDiscarded: BigInt(6),
+      errorsTotal: BigInt(12),
+      bytesIn: BigInt(2400),
+      bytesOut: BigInt(1200),
+      utilization: 0.4,
+      latencyMeanMs: 20,
+    });
+    expect(result.rows[1]?.timestamp).toEqual(new Date("2024-01-01T00:02:00Z"));
+  });
+
 });
 
 // ── metrics.getComponentLatencyHistory ────────────────────────────────────────
@@ -172,6 +228,27 @@ describe("metrics.getComponentLatencyHistory", () => {
       }),
     );
   });
+  it("downsamples component latency into range-aware buckets", async () => {
+    prismaMock.pipelineMetric.findMany.mockResolvedValue([
+      { componentId: "comp-1", timestamp: new Date("2024-01-01T00:00:00Z"), latencyMeanMs: 10 },
+      { componentId: "comp-1", timestamp: new Date("2024-01-01T00:01:00Z"), latencyMeanMs: 30 },
+      { componentId: "comp-1", timestamp: new Date("2024-01-01T00:02:00Z"), latencyMeanMs: 50 },
+    ] as never);
+
+    const result = await caller.getComponentLatencyHistory({ pipelineId: "pipe-1", minutes: 60 });
+
+    expect(result.components["comp-1"]).toEqual([
+      {
+        timestamp: new Date("2024-01-01T00:00:00Z"),
+        latencyMeanMs: 20,
+      },
+      {
+        timestamp: new Date("2024-01-01T00:02:00Z"),
+        latencyMeanMs: 50,
+      },
+    ]);
+  });
+
 });
 
 // ── metrics.getComponentMetrics ────────────────────────────────────────────────

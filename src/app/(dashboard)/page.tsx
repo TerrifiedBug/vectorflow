@@ -14,7 +14,6 @@ import { MetricChart } from "@/components/ui/metric-chart";
 import { Pill } from "@/components/ui/pill";
 import { Sparkline } from "@/components/ui/sparkline";
 import { StatusDot } from "@/components/ui/status-dot";
-import { StatusGrid } from "@/components/ui/status-grid";
 import { formatBytesRate, formatEventsRate, formatSI } from "@/lib/format";
 import { derivePipelineStatus } from "@/lib/pipeline-status";
 import { cn } from "@/lib/utils";
@@ -90,30 +89,6 @@ function rateSparkline(seed: number, length = 24) {
   });
 }
 
-function heatmapRows(
-  cells: Array<{ nodeName: string; bucket: string; cpuLoad: number }>,
-  rowCount = 12,
-  colCount = 24,
-) {
-  if (cells.length === 0) {
-    return Array.from({ length: rowCount }, (_, row) =>
-      Array.from({ length: colCount }, (_, col) => ((row * 7 + col * 3) % 11) / 14),
-    );
-  }
-
-  const byNode = new Map<string, Array<{ bucket: string; cpuLoad: number }>>();
-  for (const cell of cells) {
-    const row = byNode.get(cell.nodeName) ?? [];
-    row.push({ bucket: cell.bucket, cpuLoad: cell.cpuLoad });
-    byNode.set(cell.nodeName, row);
-  }
-
-  return [...byNode.values()].slice(0, rowCount).map((row) => {
-    const sorted = [...row].sort((a, b) => a.bucket.localeCompare(b.bucket)).slice(-colCount);
-    const padded = Array.from({ length: Math.max(0, colCount - sorted.length) }, () => -1);
-    return [...padded, ...sorted.map((cell) => Math.max(0, Math.min(1, cell.cpuLoad / 4)))];
-  });
-}
 
 function formatRefreshAge(timestamp: number) {
   if (!timestamp) return "last refresh pending";
@@ -125,6 +100,17 @@ function formatRefreshAge(timestamp: number) {
 function formatAuditTime(value: Date | string) {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
+
+function formatPct(value: number) {
+  return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
+}
+
+function hotnessTone(value: number) {
+  if (value >= 85) return "var(--status-error)";
+  if (value >= 70) return "var(--status-warning)";
+  return "var(--status-healthy)";
+}
+
 
 export default function DashboardPage() {
   const trpc = useTRPC();
@@ -166,8 +152,8 @@ export default function DashboardPage() {
     enabled: !!selectedEnvironmentId,
     refetchInterval: polling,
   });
-  const cpuHeatmap = useQuery({
-    ...trpc.fleet.cpuHeatmap.queryOptions({ environmentId: selectedEnvironmentId ?? "", range: "1h" }),
+  const fleetHotness = useQuery({
+    ...trpc.dashboard.fleetHotness.queryOptions({ environmentId: selectedEnvironmentId ?? "", range: timeRange }),
     enabled: !!selectedEnvironmentId,
     refetchInterval: polling,
   });
@@ -220,7 +206,7 @@ export default function DashboardPage() {
     return <EmptyState glyph="◇" title="Select an environment" description="Choose an environment to view pipeline, fleet, and telemetry health." />;
   }
 
-  if (stats.isError || pipelineCards.isError || chartData.isError || cpuHeatmap.isError || audit.isError) {
+  if (stats.isError || pipelineCards.isError || chartData.isError || fleetHotness.isError || audit.isError) {
     return (
       <ErrorState
         title="Dashboard data unavailable"
@@ -231,7 +217,7 @@ export default function DashboardPage() {
             stats.refetch();
             pipelineCards.refetch();
             chartData.refetch();
-            cpuHeatmap.refetch();
+            fleetHotness.refetch();
             audit.refetch();
           },
         }}
@@ -258,10 +244,10 @@ export default function DashboardPage() {
     );
   }
 
-  const isPending = stats.isPending || pipelineCards.isPending || chartData.isPending;
+  const isPending = stats.isPending || pipelineCards.isPending || chartData.isPending || fleetHotness.isPending;
   const healthyNodes = stats.data?.fleet.healthy ?? 0;
   const totalNodes = stats.data?.nodes ?? 0;
-  const latestRefresh = Math.max(stats.dataUpdatedAt, pipelineCards.dataUpdatedAt, chartData.dataUpdatedAt, cpuHeatmap.dataUpdatedAt);
+  const latestRefresh = Math.max(stats.dataUpdatedAt, pipelineCards.dataUpdatedAt, chartData.dataUpdatedAt, fleetHotness.dataUpdatedAt);
   const maxDestinationBytes = Math.max(1, ...dashboard.topDestinations.map((pipeline) => pipeline.bytesOut));
 
   const eventSeries = [
@@ -419,12 +405,56 @@ export default function DashboardPage() {
         </section>
 
         <section className="col-span-12 rounded-[3px] border border-line bg-bg-2 lg:col-span-4">
-          <TileHeader title="Fleet · CPU heatmap" />
-          <div className="overflow-x-auto px-[14px] pb-[14px]">
-            <StatusGrid data={heatmapRows(cpuHeatmap.data ?? [])} cellSize={9} gap={2} color="#1f6f3f" />
-            <div className="mt-3 flex justify-between font-mono text-[10px] uppercase tracking-[0.04em] text-fg-3">
-              <span>12 nodes</span>
-              <span>24 buckets</span>
+          <TileHeader title="Fleet hotness" />
+          <div className="space-y-4 px-[14px] pb-[14px]">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-[3px] border border-line bg-bg px-3 py-2">
+                <div className="font-mono text-[10px] uppercase tracking-[0.04em] text-fg-3">Avg CPU</div>
+                <div className="mt-1 flex items-end justify-between gap-2">
+                  <span className="font-mono text-[22px] leading-none tabular-nums text-fg">
+                    {formatPct(fleetHotness.data?.averages.cpuPct ?? 0)}
+                  </span>
+                  <Sparkline data={fleetHotness.data?.series.cpu ?? []} width={56} height={20} fill={false} color="var(--accent-brand)" />
+                </div>
+              </div>
+              <div className="rounded-[3px] border border-line bg-bg px-3 py-2">
+                <div className="font-mono text-[10px] uppercase tracking-[0.04em] text-fg-3">Avg MEM</div>
+                <div className="mt-1 flex items-end justify-between gap-2">
+                  <span className="font-mono text-[22px] leading-none tabular-nums text-fg">
+                    {formatPct(fleetHotness.data?.averages.memoryPct ?? 0)}
+                  </span>
+                  <Sparkline data={fleetHotness.data?.series.memory ?? []} width={56} height={20} fill={false} color="var(--chart-2)" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              {(fleetHotness.data?.nodes ?? []).slice(0, 3).map((node) => {
+                const tone = hotnessTone(node.hotness);
+                return (
+                  <Link key={node.nodeId} href={`/fleet/${node.nodeId}`} className="block space-y-1.5 rounded-[3px] border border-transparent px-1 py-0.5 hover:border-line hover:bg-bg">
+                    <div className="flex items-center justify-between gap-3 font-mono text-[11px]">
+                      <span className="truncate text-fg">{node.nodeName}</span>
+                      <span className="tabular-nums" style={{ color: tone }}>{formatPct(node.hotness)}</span>
+                    </div>
+                    <div className="grid grid-cols-[32px_1fr_42px] items-center gap-2 font-mono text-[10px] text-fg-3">
+                      <span>CPU</span>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-bg-4">
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(3, node.cpuPct))}%`, background: hotnessTone(node.cpuPct) }} />
+                      </div>
+                      <span className="text-right tabular-nums">{formatPct(node.cpuPct)}</span>
+                      <span>MEM</span>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-bg-4">
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(3, node.memoryPct))}%`, background: hotnessTone(node.memoryPct) }} />
+                      </div>
+                      <span className="text-right tabular-nums">{formatPct(node.memoryPct)}</span>
+                    </div>
+                  </Link>
+                );
+              })}
+              {(fleetHotness.data?.nodes ?? []).length === 0 && (
+                <div className="py-6 font-mono text-[11px] text-fg-2">No node metrics yet.</div>
+              )}
             </div>
           </div>
         </section>

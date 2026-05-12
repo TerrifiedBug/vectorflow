@@ -7,6 +7,7 @@ import { metricStore } from "@/server/services/metric-store";
 import type { AlertMetric } from "@/generated/prisma";
 import {
   computeChartMetrics,
+  computeFleetHotness,
   assembleNodeCards,
   assemblePipelineCards,
 } from "@/server/services/dashboard-data";
@@ -15,6 +16,14 @@ import {
   queryNodeMetricsAggregated,
   resolveMetricsSource,
 } from "@/server/services/metrics-query";
+
+
+const DASHBOARD_RANGE_MS = {
+  "1h": 60 * 60 * 1000,
+  "6h": 6 * 60 * 60 * 1000,
+  "1d": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+} as const;
 
 export const dashboardRouter = router({
   stats: protectedProcedure
@@ -532,6 +541,32 @@ export const dashboardRouter = router({
       return { current, previous, perPipeline, timeSeries };
     }),
 
+  fleetHotness: protectedProcedure
+    .use(withTeamAccess("VIEWER"))
+    .input(
+      z.object({
+        environmentId: z.string(),
+        range: z.enum(["1h", "6h", "1d", "7d"]).default("1h"),
+      })
+    )
+    .query(async ({ input }) => {
+      const nodes = await prisma.vectorNode.findMany({
+        where: { environment: { id: input.environmentId } },
+        select: { id: true, name: true },
+      });
+      const nodeIds = nodes.map((node: { id: string; name: string }) => node.id);
+      const nodeRowsResult = await queryNodeMetricsAggregated({
+        nodeIds,
+        minutes: DASHBOARD_RANGE_MS[input.range] / 60000,
+      });
+
+      return computeFleetHotness({
+        nodeNameMap: new Map(nodes.map((node: { id: string; name: string }) => [node.id, node.name])),
+        nodeRows: nodeRowsResult.rows,
+      });
+    }),
+
+
   chartMetrics: protectedProcedure
     .use(withTeamAccess("VIEWER"))
     .input(
@@ -545,12 +580,7 @@ export const dashboardRouter = router({
       })
     )
     .query(async ({ input }) => {
-      const rangeMs: Record<string, number> = {
-        "1h": 60 * 60 * 1000,
-        "6h": 6 * 60 * 60 * 1000,
-        "1d": 24 * 60 * 60 * 1000,
-        "7d": 7 * 24 * 60 * 60 * 1000,
-      };
+      const rangeMs = DASHBOARD_RANGE_MS;
       const since = new Date(Date.now() - rangeMs[input.range]);
 
       const envFilter = { environment: { id: input.environmentId } };

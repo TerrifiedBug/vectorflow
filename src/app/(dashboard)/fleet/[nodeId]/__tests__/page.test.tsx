@@ -99,4 +99,11 @@ describe("fleet node detail", () => {
     expect(screen.getAllByRole("button", { name: /maintenance/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /delete node/i }).length).toBeGreaterThan(0);
   });
+
+  it("renders resource metrics once outside the tab set", () => {
+    render(<NodeDetailPage />);
+
+    expect(screen.getAllByText("Metrics charts")).toHaveLength(1);
+    expect(screen.queryByRole("tab", { name: "Metrics" })).not.toBeInTheDocument();
+  });
 });

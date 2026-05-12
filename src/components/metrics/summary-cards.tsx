@@ -3,6 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 
 interface MetricRow {
+  timestamp: Date;
   eventsIn: bigint;
   eventsOut: bigint;
   errorsTotal: bigint;
@@ -15,16 +16,14 @@ interface SummaryCardsProps {
   rows: MetricRow[];
 }
 
-function formatRate(perMin: number): string {
-  const perSec = perMin / 60;
+function formatRate(perSec: number): string {
   if (perSec >= 1_000_000) return `${(perSec / 1_000_000).toFixed(1)}M/s`;
   if (perSec >= 1_000) return `${(perSec / 1_000).toFixed(1)}K/s`;
   if (perSec >= 1) return `${perSec.toFixed(1)}/s`;
   return `${perSec.toFixed(2)}/s`;
 }
 
-function formatBytes(perMin: number): string {
-  const perSec = perMin / 60;
+function formatBytes(perSec: number): string {
   if (perSec >= 1_073_741_824) return `${(perSec / 1_073_741_824).toFixed(1)} GB/s`;
   if (perSec >= 1_048_576) return `${(perSec / 1_048_576).toFixed(1)} MB/s`;
   if (perSec >= 1_024) return `${(perSec / 1_024).toFixed(1)} KB/s`;
@@ -37,12 +36,30 @@ function formatCount(n: number): string {
   return String(n);
 }
 
+function bucketSecondsAt(rows: MetricRow[], index: number): number {
+  const current = new Date(rows[index]!.timestamp).getTime();
+  const prevRow = rows[index - 1];
+  if (prevRow) {
+    const prev = new Date(prevRow.timestamp).getTime();
+    if (current > prev) return (current - prev) / 1000;
+  }
+
+  const nextRow = rows[index + 1];
+  if (nextRow) {
+    const next = new Date(nextRow.timestamp).getTime();
+    if (next > current) return (next - current) / 1000;
+  }
+
+  return 60;
+}
+
 export function SummaryCards({ rows }: SummaryCardsProps) {
   // Use the latest row for "current" rates
   const latest = rows.length > 0 ? rows[rows.length - 1] : null;
-  const eventsInRate = latest ? Number(latest.eventsIn) : 0;
-  const eventsOutRate = latest ? Number(latest.eventsOut) : 0;
-  const bytesInRate = latest ? Number(latest.bytesIn) : 0;
+  const latestBucketSeconds = latest ? bucketSecondsAt(rows, rows.length - 1) : 60;
+  const eventsInRate = latest ? Number(latest.eventsIn) / latestBucketSeconds : 0;
+  const eventsOutRate = latest ? Number(latest.eventsOut) / latestBucketSeconds : 0;
+  const bytesInRate = latest ? Number(latest.bytesIn) / latestBucketSeconds : 0;
   const errorsTotal = rows.reduce((sum, r) => sum + Number(r.errorsTotal), 0);
   const discardedTotal = rows.reduce((sum, r) => sum + Number(r.eventsDiscarded), 0);
 
