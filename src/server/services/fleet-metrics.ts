@@ -125,6 +125,101 @@ export async function getFleetThroughputDrop(
   );
 }
 
+/**
+ * Per-pipeline throughput drop breakdown for enriched alert messages.
+ * Returns the aggregate drop plus each pipeline's individual contribution.
+ * Returns `null` when there is insufficient previous-period data.
+ */
+export interface ThroughputDropDetail {
+  value: number;
+  breakdown: Array<{ pipelineId: string; pipelineName: string; dropPercent: number }>;
+}
+
+export async function getFleetThroughputDropDetail(
+  environmentId: string,
+): Promise<ThroughputDropDetail | null> {
+  const now = new Date();
+  const thirtyMinAgo = new Date(now.getTime() - 30 * 60 * 1000);
+  const sixtyMinAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+  const currentRows = await prisma.pipelineMetric.findMany({
+    where: {
+      nodeId: null,
+      componentId: null,
+      timestamp: { gte: thirtyMinAgo, lt: now },
+      pipeline: { environmentId },
+    },
+    select: { eventsIn: true, pipelineId: true },
+  });
+
+  const previousRows = await prisma.pipelineMetric.findMany({
+    where: {
+      nodeId: null,
+      componentId: null,
+      timestamp: { gte: sixtyMinAgo, lt: thirtyMinAgo },
+      pipeline: { environmentId },
+    },
+    select: { eventsIn: true, pipelineId: true },
+  });
+
+  if (previousRows.length === 0) return null;
+
+  // Aggregate per-pipeline totals
+  const currentByPipeline = new Map<string, bigint>();
+  for (const r of currentRows) {
+    currentByPipeline.set(r.pipelineId, (currentByPipeline.get(r.pipelineId) ?? BigInt(0)) + r.eventsIn);
+  }
+
+  const previousByPipeline = new Map<string, bigint>();
+  for (const r of previousRows) {
+    previousByPipeline.set(r.pipelineId, (previousByPipeline.get(r.pipelineId) ?? BigInt(0)) + r.eventsIn);
+  }
+
+  // Compute aggregate
+  let currentTotal = BigInt(0);
+  for (const v of currentByPipeline.values()) currentTotal += v;
+  let previousTotal = BigInt(0);
+  for (const v of previousByPipeline.values()) previousTotal += v;
+
+  if (previousTotal === BigInt(0)) return { value: 0, breakdown: [] };
+
+  const aggregateDrop = (Number(previousTotal - currentTotal) / Number(previousTotal)) * 100;
+
+  // Per-pipeline breakdown — only include pipelines with positive drops
+  const pipelineIds = new Set([...previousByPipeline.keys(), ...currentByPipeline.keys()]);
+  const rawBreakdown: Array<{ pipelineId: string; dropPercent: number }> = [];
+
+  for (const pid of pipelineIds) {
+    const prev = previousByPipeline.get(pid) ?? BigInt(0);
+    const curr = currentByPipeline.get(pid) ?? BigInt(0);
+    if (prev === BigInt(0)) continue;
+    const drop = (Number(prev - curr) / Number(prev)) * 100;
+    if (drop > 0) rawBreakdown.push({ pipelineId: pid, dropPercent: drop });
+  }
+
+  // Sort descending by drop and take top 5
+  rawBreakdown.sort((a, b) => b.dropPercent - a.dropPercent);
+  const top = rawBreakdown.slice(0, 5);
+
+  // Resolve pipeline names in a single query
+  const names = top.length > 0
+    ? await prisma.pipeline.findMany({
+        where: { id: { in: top.map((t) => t.pipelineId) } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const nameMap = new Map(names.map((n) => [n.id, n.name]));
+
+  return {
+    value: aggregateDrop,
+    breakdown: top.map((t) => ({
+      pipelineId: t.pipelineId,
+      pipelineName: nameMap.get(t.pipelineId) ?? t.pipelineId,
+      dropPercent: t.dropPercent,
+    })),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Pipeline-scoped SLI readers used by latency_mean and throughput_floor
 // alert rules. These aggregate the cross-node PipelineMetric rollups
