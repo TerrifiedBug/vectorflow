@@ -1,3 +1,4 @@
+import { bucketMsForMinutes, rangeToMinutes } from "@/lib/chart-buckets";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
 
@@ -82,14 +83,85 @@ const RANGE_MS: Record<TimeRange, number> = {
 
 const BUCKET_SIZE: Record<TimeRange, string> = {
   "1h": "minute",
-  "6h": "hour",
+  "6h": "minute",
   "1d": "hour",
-  "7d": "day",
+  "7d": "hour",
   "30d": "day",
 };
 
 function sinceDate(range: TimeRange): Date {
   return new Date(Date.now() - RANGE_MS[range]);
+}
+
+function bucketStartMs(timestamp: string, bucketMs: number): number {
+  return Math.floor(new Date(timestamp).getTime() / bucketMs) * bucketMs;
+}
+
+function downsampleVolumeBuckets(rows: VolumeBucket[], bucketMs: number): VolumeBucket[] {
+  const buckets = new Map<number, { bytesIn: number; bytesOut: number; eventsIn: number; eventsOut: number; count: number }>();
+  for (const row of rows) {
+    const key = bucketStartMs(row.bucket, bucketMs);
+    const bucket = buckets.get(key) ?? { bytesIn: 0, bytesOut: 0, eventsIn: 0, eventsOut: 0, count: 0 };
+    bucket.bytesIn += row.bytesIn;
+    bucket.bytesOut += row.bytesOut;
+    bucket.eventsIn += row.eventsIn;
+    bucket.eventsOut += row.eventsOut;
+    bucket.count++;
+    buckets.set(key, bucket);
+  }
+
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([bucket, values]) => ({
+      bucket: new Date(bucket).toISOString(),
+      bytesIn: values.bytesIn / values.count,
+      bytesOut: values.bytesOut / values.count,
+      eventsIn: values.eventsIn / values.count,
+      eventsOut: values.eventsOut / values.count,
+    }));
+}
+
+function downsampleCapacityBuckets(rows: NodeCapacityBucket[], bucketMs: number): NodeCapacityBucket[] {
+  const buckets = new Map<number, { memoryPct: number; diskPct: number; cpuLoad: number; count: number }>();
+  for (const row of rows) {
+    const key = bucketStartMs(row.bucket, bucketMs);
+    const bucket = buckets.get(key) ?? { memoryPct: 0, diskPct: 0, cpuLoad: 0, count: 0 };
+    bucket.memoryPct += row.memoryPct;
+    bucket.diskPct += row.diskPct;
+    bucket.cpuLoad += row.cpuLoad;
+    bucket.count++;
+    buckets.set(key, bucket);
+  }
+
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([bucket, values]) => ({
+      bucket: new Date(bucket).toISOString(),
+      memoryPct: Math.round((values.memoryPct / values.count) * 10) / 10,
+      diskPct: Math.round((values.diskPct / values.count) * 10) / 10,
+      cpuLoad: Math.round((values.cpuLoad / values.count) * 100) / 100,
+    }));
+}
+
+function downsampleCpuHeatmap(rows: CpuHeatmapCell[], bucketMs: number): CpuHeatmapCell[] {
+  const buckets = new Map<string, { nodeId: string; nodeName: string; bucket: number; cpuLoad: number; count: number }>();
+  for (const row of rows) {
+    const bucket = bucketStartMs(row.bucket, bucketMs);
+    const key = `${row.nodeId}\0${bucket}`;
+    const acc = buckets.get(key) ?? { nodeId: row.nodeId, nodeName: row.nodeName, bucket, cpuLoad: 0, count: 0 };
+    acc.cpuLoad += row.cpuLoad;
+    acc.count++;
+    buckets.set(key, acc);
+  }
+
+  return Array.from(buckets.values())
+    .sort((a, b) => a.nodeName.localeCompare(b.nodeName) || a.bucket - b.bucket)
+    .map((row) => ({
+      nodeId: row.nodeId,
+      nodeName: row.nodeName,
+      bucket: new Date(row.bucket).toISOString(),
+      cpuLoad: Math.round((row.cpuLoad / row.count) * 100) / 100,
+    }));
 }
 
 // ─── Fleet Overview ─────────────────────────────────────────────────────────
@@ -254,13 +326,16 @@ export async function getVolumeTrend(
     ORDER BY 1
   `);
 
-  return rows.map((r) => ({
-    bucket: (r.bucket instanceof Date ? r.bucket : new Date(r.bucket)).toISOString(),
-    bytesIn: Number(r.bytes_in ?? 0),
-    bytesOut: Number(r.bytes_out ?? 0),
-    eventsIn: Number(r.events_in ?? 0),
-    eventsOut: Number(r.events_out ?? 0),
-  }));
+  return downsampleVolumeBuckets(
+    rows.map((r) => ({
+      bucket: (r.bucket instanceof Date ? r.bucket : new Date(r.bucket)).toISOString(),
+      bytesIn: Number(r.bytes_in ?? 0),
+      bytesOut: Number(r.bytes_out ?? 0),
+      eventsIn: Number(r.events_in ?? 0),
+      eventsOut: Number(r.events_out ?? 0),
+    })),
+    bucketMsForMinutes(rangeToMinutes(range)),
+  );
 }
 
 // ─── Node Throughput Comparison ──────────────────────────────────────────────
@@ -362,7 +437,10 @@ export async function getNodeCapacity(
     });
   }
 
-  return Array.from(nodeMap.values());
+  return Array.from(nodeMap.values()).map((node) => ({
+    ...node,
+    buckets: downsampleCapacityBuckets(node.buckets, bucketMsForMinutes(rangeToMinutes(range))),
+  }));
 }
 
 // ─── CPU Heatmap ─────────────────────────────────────────────────────────────
@@ -395,12 +473,15 @@ export async function getCpuHeatmap(
     ORDER BY 2, 3
   `);
 
-  return rows.map((r) => ({
-    nodeId: r.node_id,
-    nodeName: r.node_name,
-    bucket: (r.bucket instanceof Date ? r.bucket : new Date(r.bucket)).toISOString(),
-    cpuLoad: Math.round((r.cpu_load ?? 0) * 100) / 100,
-  }));
+  return downsampleCpuHeatmap(
+    rows.map((r) => ({
+      nodeId: r.node_id,
+      nodeName: r.node_name,
+      bucket: (r.bucket instanceof Date ? r.bucket : new Date(r.bucket)).toISOString(),
+      cpuLoad: Math.round((r.cpu_load ?? 0) * 100) / 100,
+    })),
+    bucketMsForMinutes(rangeToMinutes(range)),
+  );
 }
 
 // ─── Data Loss Detection ────────────────────────────────────────────────────

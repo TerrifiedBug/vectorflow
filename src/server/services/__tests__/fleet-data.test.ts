@@ -184,6 +184,51 @@ describe("getVolumeTrend", () => {
     });
   });
 
+  it("downsamples 1h volume buckets to 2-minute averages", async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      {
+        bucket: new Date("2026-03-25T10:00:00Z"),
+        bytes_in: BigInt(100),
+        bytes_out: BigInt(80),
+        events_in: BigInt(10),
+        events_out: BigInt(8),
+      },
+      {
+        bucket: new Date("2026-03-25T10:01:00Z"),
+        bytes_in: BigInt(300),
+        bytes_out: BigInt(160),
+        events_in: BigInt(30),
+        events_out: BigInt(16),
+      },
+      {
+        bucket: new Date("2026-03-25T10:02:00Z"),
+        bytes_in: BigInt(500),
+        bytes_out: BigInt(320),
+        events_in: BigInt(50),
+        events_out: BigInt(32),
+      },
+    ]);
+
+    const result = await getVolumeTrend("env-1", "1h");
+
+    expect(result).toEqual([
+      {
+        bucket: "2026-03-25T10:00:00.000Z",
+        bytesIn: 200,
+        bytesOut: 120,
+        eventsIn: 20,
+        eventsOut: 12,
+      },
+      {
+        bucket: "2026-03-25T10:02:00.000Z",
+        bytesIn: 500,
+        bytesOut: 320,
+        eventsIn: 50,
+        eventsOut: 32,
+      },
+    ]);
+  });
+
   it("returns empty array when no data exists", async () => {
     mockQueryRaw.mockResolvedValueOnce([]);
 
@@ -323,6 +368,53 @@ describe("getNodeCapacity", () => {
     expect(result[1].buckets).toHaveLength(1);
   });
 
+  it("downsamples 6h capacity buckets to 5-minute averages per node", async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      {
+        node_id: "node-1",
+        node_name: "us-east-1",
+        bucket: new Date("2026-03-25T10:00:00Z"),
+        memory_pct: 70,
+        disk_pct: 40,
+        cpu_load: 1,
+      },
+      {
+        node_id: "node-1",
+        node_name: "us-east-1",
+        bucket: new Date("2026-03-25T10:01:00Z"),
+        memory_pct: 80,
+        disk_pct: 50,
+        cpu_load: 2,
+      },
+      {
+        node_id: "node-1",
+        node_name: "us-east-1",
+        bucket: new Date("2026-03-25T10:05:00Z"),
+        memory_pct: 90,
+        disk_pct: 60,
+        cpu_load: 3,
+      },
+    ]);
+
+    const result = await getNodeCapacity("env-1", "6h");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].buckets).toEqual([
+      {
+        bucket: "2026-03-25T10:00:00.000Z",
+        memoryPct: 75,
+        diskPct: 45,
+        cpuLoad: 1.5,
+      },
+      {
+        bucket: "2026-03-25T10:05:00.000Z",
+        memoryPct: 90,
+        diskPct: 60,
+        cpuLoad: 3,
+      },
+    ]);
+  });
+
   it("returns empty array when no node metrics exist", async () => {
     mockQueryRaw.mockResolvedValueOnce([]);
 
@@ -376,6 +468,46 @@ describe("getCpuHeatmap", () => {
       },
     ]);
   });
+  it("downsamples 1h heatmap buckets to 2-minute averages", async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      {
+        node_id: "node-1",
+        node_name: "Node 1",
+        bucket: new Date("2024-01-01T00:00:00Z"),
+        cpu_load: 1,
+      },
+      {
+        node_id: "node-1",
+        node_name: "Node 1",
+        bucket: new Date("2024-01-01T00:01:00Z"),
+        cpu_load: 3,
+      },
+      {
+        node_id: "node-1",
+        node_name: "Node 1",
+        bucket: new Date("2024-01-01T00:02:00Z"),
+        cpu_load: 5,
+      },
+    ]);
+
+    const result = await getCpuHeatmap("env-1", "1h");
+
+    expect(result).toEqual([
+      {
+        nodeId: "node-1",
+        nodeName: "Node 1",
+        bucket: "2024-01-01T00:00:00.000Z",
+        cpuLoad: 2,
+      },
+      {
+        nodeId: "node-1",
+        nodeName: "Node 1",
+        bucket: "2024-01-01T00:02:00.000Z",
+        cpuLoad: 5,
+      },
+    ]);
+  });
+
 });
 
 describe("getDataLoss", () => {

@@ -1,3 +1,4 @@
+import { bucketMsForMinutes, rangeToMinutes } from "@/lib/chart-buckets";
 import type { MetricSample } from "@/server/services/metric-store";
 import { generateVectorYaml } from "@/lib/config-generator";
 import { decryptNodeConfig } from "@/server/services/config-crypto";
@@ -223,7 +224,7 @@ export function computeChartMetrics(input: ChartMetricsInput) {
     maxPoints,
   } = input;
 
-  const bucketMs = range === "7d" ? 5 * 60 * 1000 : 0;
+  const bucketMs = bucketMsForMinutes(rangeToMinutes(range));
 
   const eventsIn: TSMap = {};
   const eventsOut: TSMap = {};

@@ -63,7 +63,7 @@ describe("computeChartMetrics", () => {
   describe("groupBy: pipeline", () => {
     it("buckets eventsIn/eventsOut by pipeline name", () => {
       const t1 = new Date("2025-01-01T00:00:00Z");
-      const t2 = new Date("2025-01-01T00:01:00Z");
+      const t2 = new Date("2025-01-01T00:02:00Z");
       const pipelineNameMap = new Map([
         ["p1", "Pipeline Alpha"],
         ["p2", "Pipeline Beta"],
@@ -249,16 +249,14 @@ describe("computeChartMetrics", () => {
     });
   });
 
-  describe("downsampling with range: 7d", () => {
-    it("averages values into 5-minute buckets", () => {
-      // 5 min = 300_000 ms. Create 3 points within a single 5-min bucket.
+  describe("range-aware downsampling", () => {
+    it("averages 7d values into 1-hour buckets", () => {
       const base = new Date("2025-01-01T00:00:00Z").getTime();
       const rows = [
         makePipelineRow({ pipelineId: "p1", timestamp: new Date(base), eventsIn: BigInt(60) }),
-        makePipelineRow({ pipelineId: "p1", timestamp: new Date(base + 60_000), eventsIn: BigInt(120) }),
-        makePipelineRow({ pipelineId: "p1", timestamp: new Date(base + 120_000), eventsIn: BigInt(180) }),
-        // One point in the next bucket (5 min later)
-        makePipelineRow({ pipelineId: "p1", timestamp: new Date(base + 300_000), eventsIn: BigInt(240) }),
+        makePipelineRow({ pipelineId: "p1", timestamp: new Date(base + 15 * 60_000), eventsIn: BigInt(120) }),
+        makePipelineRow({ pipelineId: "p1", timestamp: new Date(base + 45 * 60_000), eventsIn: BigInt(180) }),
+        makePipelineRow({ pipelineId: "p1", timestamp: new Date(base + 60 * 60_000), eventsIn: BigInt(240) }),
       ];
 
       const result = computeChartMetrics({
@@ -272,13 +270,33 @@ describe("computeChartMetrics", () => {
       });
 
       const series = result.pipeline.eventsIn["Pipeline"]!;
-      expect(series).toHaveLength(2); // two buckets
-
-      // First bucket: avg of (60/60, 120/60, 180/60) = avg(1, 2, 3) = 2
+      expect(series).toHaveLength(2);
       expect(series[0]!.v).toBeCloseTo(2, 5);
-
-      // Second bucket: 240/60 = 4
       expect(series[1]!.v).toBeCloseTo(4, 5);
+    });
+
+    it("averages 1h values into 2-minute buckets", () => {
+      const base = new Date("2025-01-01T00:00:00Z").getTime();
+      const rows = [
+        makePipelineRow({ pipelineId: "p1", timestamp: new Date(base), eventsIn: BigInt(60) }),
+        makePipelineRow({ pipelineId: "p1", timestamp: new Date(base + 60_000), eventsIn: BigInt(180) }),
+        makePipelineRow({ pipelineId: "p1", timestamp: new Date(base + 120_000), eventsIn: BigInt(300) }),
+      ];
+
+      const result = computeChartMetrics({
+        range: "1h",
+        groupBy: "pipeline",
+        nodeNameMap: new Map(),
+        pipelineNameMap: new Map([["p1", "Pipeline"]]),
+        pipelineRows: rows,
+        nodeRows: [],
+        filterOptions: emptyFilterOptions,
+      });
+
+      const series = result.pipeline.eventsIn["Pipeline"]!;
+      expect(series).toHaveLength(2);
+      expect(series[0]!.v).toBeCloseTo(2, 5);
+      expect(series[1]!.v).toBeCloseTo(5, 5);
     });
   });
 

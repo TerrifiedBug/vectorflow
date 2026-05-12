@@ -88,13 +88,13 @@ describe("pipelineObservabilityRouter", () => {
     it("returns pipeline metrics for the given time window", async () => {
       const metrics = [
         {
-          timestamp: new Date(),
-          eventsIn: 100,
-          eventsOut: 95,
-          eventsDiscarded: 5,
-          errorsTotal: 0,
-          bytesIn: 1000,
-          bytesOut: 950,
+          timestamp: new Date("2024-01-01T00:00:00Z"),
+          eventsIn: BigInt(100),
+          eventsOut: BigInt(95),
+          eventsDiscarded: BigInt(5),
+          errorsTotal: BigInt(0),
+          bytesIn: BigInt(1000),
+          bytesOut: BigInt(950),
           utilization: 0.5,
           latencyMeanMs: 12.5,
         },
@@ -115,6 +115,60 @@ describe("pipelineObservabilityRouter", () => {
         }),
       );
     });
+    it("downsamples pipeline metrics for 1h charts into 2-minute buckets", async () => {
+      prismaMock.pipelineMetric.findMany.mockResolvedValue([
+        {
+          timestamp: new Date("2024-01-01T00:00:00Z"),
+          eventsIn: BigInt(60),
+          eventsOut: BigInt(30),
+          eventsDiscarded: BigInt(0),
+          errorsTotal: BigInt(3),
+          bytesIn: BigInt(600),
+          bytesOut: BigInt(300),
+          utilization: 0.2,
+          latencyMeanMs: 10,
+        },
+        {
+          timestamp: new Date("2024-01-01T00:01:00Z"),
+          eventsIn: BigInt(180),
+          eventsOut: BigInt(90),
+          eventsDiscarded: BigInt(6),
+          errorsTotal: BigInt(9),
+          bytesIn: BigInt(1800),
+          bytesOut: BigInt(900),
+          utilization: 0.6,
+          latencyMeanMs: 30,
+        },
+        {
+          timestamp: new Date("2024-01-01T00:02:00Z"),
+          eventsIn: BigInt(300),
+          eventsOut: BigInt(150),
+          eventsDiscarded: BigInt(12),
+          errorsTotal: BigInt(15),
+          bytesIn: BigInt(3000),
+          bytesOut: BigInt(1500),
+          utilization: 0.8,
+          latencyMeanMs: null,
+        },
+      ] as never);
+
+      const result = await caller.metrics({ pipelineId: "p-1", hours: 1 });
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({
+        timestamp: new Date("2024-01-01T00:00:00Z"),
+        eventsIn: BigInt(120),
+        eventsOut: BigInt(60),
+        eventsDiscarded: BigInt(3),
+        errorsTotal: BigInt(6),
+        bytesIn: BigInt(1200),
+        bytesOut: BigInt(600),
+        utilization: 0.4,
+        latencyMeanMs: 20,
+      });
+      expect(result[1]?.timestamp).toEqual(new Date("2024-01-01T00:02:00Z"));
+    });
+
   });
 
   // ── logs ──────────────────────────────────────────────────────────────────

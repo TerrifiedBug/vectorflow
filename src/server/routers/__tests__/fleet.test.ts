@@ -423,6 +423,82 @@ describe("fleet.nodeMetrics", () => {
 
     expect(result).toHaveLength(2);
   });
+  it("downsamples metric rows for 1h charts into 2-minute buckets", async () => {
+    const metrics = [
+      {
+        timestamp: new Date("2024-01-01T00:00:00Z"),
+        memoryTotalBytes: BigInt(1000),
+        memoryUsedBytes: BigInt(100),
+        memoryFreeBytes: BigInt(900),
+        cpuSecondsTotal: 10,
+        cpuSecondsIdle: 8,
+        loadAvg1: 1,
+        loadAvg5: 1.5,
+        loadAvg15: 2,
+        fsTotalBytes: BigInt(2000),
+        fsUsedBytes: BigInt(200),
+        fsFreeBytes: BigInt(1800),
+        diskReadBytes: BigInt(1000),
+        diskWrittenBytes: BigInt(500),
+        netRxBytes: BigInt(300),
+        netTxBytes: BigInt(200),
+      },
+      {
+        timestamp: new Date("2024-01-01T00:01:00Z"),
+        memoryTotalBytes: BigInt(1000),
+        memoryUsedBytes: BigInt(300),
+        memoryFreeBytes: BigInt(700),
+        cpuSecondsTotal: 20,
+        cpuSecondsIdle: 14,
+        loadAvg1: 3,
+        loadAvg5: 3.5,
+        loadAvg15: 4,
+        fsTotalBytes: BigInt(2000),
+        fsUsedBytes: BigInt(400),
+        fsFreeBytes: BigInt(1600),
+        diskReadBytes: BigInt(3000),
+        diskWrittenBytes: BigInt(1500),
+        netRxBytes: BigInt(900),
+        netTxBytes: BigInt(600),
+      },
+      {
+        timestamp: new Date("2024-01-01T00:02:00Z"),
+        memoryTotalBytes: BigInt(1000),
+        memoryUsedBytes: BigInt(500),
+        memoryFreeBytes: BigInt(500),
+        cpuSecondsTotal: 30,
+        cpuSecondsIdle: 20,
+        loadAvg1: 5,
+        loadAvg5: 5.5,
+        loadAvg15: 6,
+        fsTotalBytes: BigInt(2000),
+        fsUsedBytes: BigInt(600),
+        fsFreeBytes: BigInt(1400),
+        diskReadBytes: BigInt(5000),
+        diskWrittenBytes: BigInt(2500),
+        netRxBytes: BigInt(1500),
+        netTxBytes: BigInt(1000),
+      },
+    ];
+    prismaMock.nodeMetric.findMany.mockResolvedValue(metrics as never);
+
+    const result = await caller.nodeMetrics({ nodeId: "node-1", hours: 1 });
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({
+      timestamp: new Date("2024-01-01T00:00:00Z"),
+      memoryUsedBytes: BigInt(200),
+      memoryFreeBytes: BigInt(800),
+      cpuSecondsTotal: 15,
+      cpuSecondsIdle: 11,
+      loadAvg1: 2,
+      fsUsedBytes: BigInt(300),
+      diskReadBytes: BigInt(2000),
+      netRxBytes: BigInt(600),
+    });
+    expect(result[1]?.timestamp).toEqual(new Date("2024-01-01T00:02:00Z"));
+  });
+
 });
 
 // ── fleet.revokeNode ──────────────────────────────────────────────────────────
