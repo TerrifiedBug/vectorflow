@@ -190,19 +190,50 @@ export function formatAuditJsonChain(
       hash: item.hash,
     });
   }
-  // The verifier walks rows in forward chain order (oldest → newest).
-  // Defensive sort: callers in the codebase typically pull AuditLog with
-  // `createdAt: "desc"` for UI display, so reverse to ascending here. The
-  // id tiebreak is sound because audit ids are minted with
-  // ulid.monotonicFactory (see audit.ts) — within the same createdAt
-  // millisecond the id-ASC order matches insertion order.
-  rows.sort((a, b) => {
-    if (a.createdAt < b.createdAt) return -1;
-    if (a.createdAt > b.createdAt) return 1;
-    if (a.id < b.id) return -1;
-    if (a.id > b.id) return 1;
-    return 0;
-  });
+  // Sort by chain-link traversal: walk forward via prevHash → hash. This
+  // is the only sort order that's safe under cross-process concurrent
+  // writers (the per-org advisory lock serialises writes, but a paranoid
+  // export should not rely on createdAt+id ordering — same-millisecond
+  // ULID lex order does not match insertion order across pods).
+  //
+  // Topology:
+  //   - byPrev[ prevHash ] = row whose prevHash is that value
+  //   - start = the row whose prevHash is not anyone else's hash
+  //     (i.e. the chain head — its predecessor is the org genesis or
+  //     a row that didn't survive the filter)
+  // If the chain is malformed (cycle, multiple starts, missing links),
+  // we emit the rows as-is and let the verifier surface the issue. This
+  // is strictly less safe than refusing to emit, but a customer-facing
+  // export should still produce something they can audit.
+  const byPrev = new Map<string, ChainExportRow>();
+  for (const r of rows) byPrev.set(r.prevHash, r);
+  const allHashes = new Set(rows.map((r) => r.hash));
+  const starts = rows.filter((r) => !allHashes.has(r.prevHash));
+  const traversal: ChainExportRow[] = [];
+  if (starts.length === 1) {
+    const seen = new Set<string>();
+    let current: ChainExportRow | undefined = starts[0];
+    while (current && !seen.has(current.hash)) {
+      traversal.push(current);
+      seen.add(current.hash);
+      current = byPrev.get(current.hash);
+    }
+    if (traversal.length === rows.length) {
+      rows.length = 0;
+      rows.push(...traversal);
+    }
+  }
+  // Fallback ordering when traversal couldn't reconstruct a single chain:
+  // canonical createdAt-ASC, id-ASC. The verifier will report the break.
+  if (traversal.length !== rows.length) {
+    rows.sort((a, b) => {
+      if (a.createdAt < b.createdAt) return -1;
+      if (a.createdAt > b.createdAt) return 1;
+      if (a.id < b.id) return -1;
+      if (a.id > b.id) return 1;
+      return 0;
+    });
+  }
   const envelope: AuditExportEnvelope = {
     verifierVersion: AUDIT_EXPORT_VERIFIER_VERSION,
     organizationId,

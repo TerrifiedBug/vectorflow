@@ -75,23 +75,31 @@ export const GET = apiRoute(
 
     const where = { AND: conditions };
 
-    // For chain exports, fetch the org's chain from the *beginning* (ASC),
-    // so the cap (`limit`) caps the chain at the front, preserving genesis
-    // anchor. For csv/json display, keep the existing newest-first order.
-    const items = await prisma.auditLog.findMany({
-      where,
-      include: {
-        user: {
-          select: { id: true, name: true, email: true },
-        },
-      },
-      orderBy: { createdAt: format === "chain" ? "asc" : "desc" },
-      take: limit,
-    });
+    // csv/json read the env-scoped, filtered, capped slice. chain format
+    // queries its own slice below (org-scoped, no cap, no filters).
+    const items = format === "chain"
+      ? []
+      : await prisma.auditLog.findMany({
+          where,
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+        });
 
     if (format === "chain") {
-      // Resolve the environment's organizationId — the chain envelope must
-      // declare the org so the verifier can derive the right genesis hash.
+      // Chain export is ORG-scoped, not env-scoped. The verifier anchors
+      // the first row to genesisHashFor(orgId) and requires every prevHash
+      // link to chain forward; any env filter would omit rows whose siblings
+      // belong to a different env in the same org, breaking contiguity.
+      //
+      // Resolve the service account's environment to its organizationId,
+      // then re-query AuditLog by org with NO cap. The customer pays the
+      // bandwidth; partial chain prefixes would silently hide tampering of
+      // rows past the cap.
       const env = await prisma.environment.findUnique({
         where: { id: ctx.environmentId },
         select: { organizationId: true },
@@ -103,8 +111,20 @@ export const GET = apiRoute(
           { status: 400 },
         );
       }
+      // Re-query by org, no cap, ASC, chained rows only. The result will be
+      // sorted by chain-link traversal inside formatAuditJsonChain so that
+      // cross-process inserts with same-ms timestamps still emit in true
+      // chain order (createdAt+id is unsafe under cross-process concurrency
+      // even though the same-org advisory lock makes it rare).
+      const chainItems = await prisma.auditLog.findMany({
+        where: { organizationId: orgId, hash: { not: null } },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      });
       const json = formatAuditJsonChain(
-        items as unknown as ChainAuditLogItem[],
+        chainItems as unknown as ChainAuditLogItem[],
         orgId,
       );
       return new NextResponse(json, {
