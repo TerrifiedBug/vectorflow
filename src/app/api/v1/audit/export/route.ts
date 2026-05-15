@@ -91,15 +91,17 @@ export const GET = apiRoute(
         });
 
     if (format === "chain") {
-      // Chain export is ORG-scoped, not env-scoped. The verifier anchors
-      // the first row to genesisHashFor(orgId) and requires every prevHash
-      // link to chain forward; any env filter would omit rows whose siblings
-      // belong to a different env in the same org, breaking contiguity.
+      // Chain export is ORG-scoped (the verifier anchors to genesisHashFor(orgId)
+      // and requires every prevHash link to chain forward). The service account
+      // auth context, however, only carries one environmentId. Returning the
+      // full org chain would let an env-A service account read env-B's audit
+      // rows in the same org — a privilege escalation.
       //
-      // Resolve the service account's environment to its organizationId,
-      // then re-query AuditLog by org with NO cap. The customer pays the
-      // bandwidth; partial chain prefixes would silently hide tampering of
-      // rows past the cap.
+      // Resolution: chain export only works when the service account's env is
+      // the ONLY env in its org. The OSS single-env-per-org case behaves
+      // exactly as customers expect. Multi-env Cloud orgs must use the
+      // org-admin tRPC procedure (forthcoming) which authenticates against the
+      // customer admin UI rather than service-account-per-env.
       const env = await prisma.environment.findUnique({
         where: { id: ctx.environmentId },
         select: { organizationId: true },
@@ -111,11 +113,22 @@ export const GET = apiRoute(
           { status: 400 },
         );
       }
-      // Re-query by org, no cap, ASC, chained rows only. The result will be
-      // sorted by chain-link traversal inside formatAuditJsonChain so that
-      // cross-process inserts with same-ms timestamps still emit in true
-      // chain order (createdAt+id is unsafe under cross-process concurrency
-      // even though the same-org advisory lock makes it rare).
+      const envCount = await prisma.environment.count({
+        where: { organizationId: orgId },
+      });
+      if (envCount > 1) {
+        return NextResponse.json(
+          {
+            error:
+              "chain export is org-scoped and not permitted for this env-scoped service account in a multi-env organization. Use the org-admin chain export endpoint.",
+          },
+          { status: 403 },
+        );
+      }
+
+      // Single-env org: env-scope == org-scope. Query by org, no cap, asc,
+      // chained rows only. formatAuditJsonChain sorts by chain-link
+      // traversal so cross-process same-ms inserts emit in true order.
       const chainItems = await prisma.auditLog.findMany({
         where: { organizationId: orgId, hash: { not: null } },
         include: {

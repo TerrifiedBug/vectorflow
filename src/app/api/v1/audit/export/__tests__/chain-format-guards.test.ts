@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   findUnique: vi.fn(),
+  count: vi.fn(),
 }));
 
 vi.mock("@/app/api/v1/_lib/api-handler", () => ({
@@ -16,7 +17,7 @@ vi.mock("@/app/api/v1/_lib/api-handler", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     auditLog: { findMany: mocks.findMany },
-    environment: { findUnique: mocks.findUnique },
+    environment: { findUnique: mocks.findUnique, count: mocks.count },
   },
 }));
 
@@ -31,7 +32,9 @@ describe("/api/v1/audit/export?format=chain — contiguity guards", () => {
   beforeEach(() => {
     mocks.findMany.mockReset();
     mocks.findUnique.mockReset();
+    mocks.count.mockReset();
     mocks.findUnique.mockResolvedValue({ organizationId: "org-a" });
+    mocks.count.mockResolvedValue(1);
   });
   afterEach(() => {
     vi.clearAllMocks();
@@ -81,5 +84,20 @@ describe("/api/v1/audit/export?format=chain — contiguity guards", () => {
         orderBy: { createdAt: "desc" },
       }),
     );
+  });
+
+  it("rejects chain format when the org has more than one environment", async () => {
+    mocks.count.mockResolvedValue(2);
+    mocks.findMany.mockResolvedValue([]);
+    const res = await GET(makeReq("format=chain"));
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toMatch(/org-scoped|multi-env/i);
+    // findMany may have run during the unused-branch, but chain query
+    // (org-scoped) MUST NOT have run.
+    const orgQueryCall = mocks.findMany.mock.calls.find(
+      ([args]) => args?.where?.organizationId === "org-a",
+    );
+    expect(orgQueryCall).toBeUndefined();
   });
 });
