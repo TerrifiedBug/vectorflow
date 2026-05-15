@@ -62,4 +62,22 @@ export interface KmsProvider {
 
   /** Identification for audit/logs. */
   describeKey(): KmsKeyDescriptor;
+
+  /**
+   * Perform a *real* round-trip to the wrapping-key provider. Used by the
+   * Cloud readiness probe to detect Vault/KMS outages before requests hit
+   * the cryptographic hot path. Implementations:
+   *   - local-dev:    in-process KEK fingerprint (no I/O).
+   *   - vault-transit: GET on the transit key's metadata endpoint.
+   *   - aws-kms:      KMS:DescribeKey on the org's CMK.
+   */
+  healthCheck(): Promise<KmsHealthResult>;
+}
+
+export interface KmsHealthResult {
+  ok: boolean;
+  /** Round-trip-confirmed keyId on success. */
+  keyId?: string;
+  /** Human-readable failure description on `ok=false`. */
+  error?: string;
 }

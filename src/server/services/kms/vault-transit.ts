@@ -1,4 +1,4 @@
-import type { KmsKeyDescriptor, KmsProvider } from "./types";
+import type { KmsHealthResult, KmsKeyDescriptor, KmsProvider } from "./types";
 
 export interface VaultTransitConfig {
   address: string;
@@ -177,5 +177,35 @@ export class VaultTransitKmsProvider implements KmsProvider {
       provider: "vault-transit",
       keyId: `vault-transit:${this.cfg.transitMount}/${this.cfg.keyName}`,
     };
+  }
+
+  async healthCheck(): Promise<KmsHealthResult> {
+    // GET /v1/<mount>/keys/<name> hits the same Vault path the encrypt and
+    // decrypt ops will use, so a failure here is a true indicator of an
+    // upcoming hot-path failure. Auth is re-acquired automatically by
+    // vaultFetch's 401/403 retry path.
+    const path = `/v1/${this.cfg.transitMount}/keys/${this.cfg.keyName}`;
+    try {
+      const token = await this.getToken();
+      const res = await this.fetchImpl(`${this.cfg.address}${path}`, {
+        method: "GET",
+        headers: { "x-vault-token": token },
+      });
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: `vault-transit healthCheck: HTTP ${res.status}`,
+        };
+      }
+      return {
+        ok: true,
+        keyId: this.describeKey().keyId,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 }

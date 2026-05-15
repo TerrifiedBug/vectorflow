@@ -19,6 +19,7 @@ describe("/api/health/cloud", () => {
   beforeEach(() => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue([{ "?column?": 1 }] as never);
     vi.mocked(getKmsProvider).mockReturnValue({
+      healthCheck: async () => ({ ok: true, keyId: "local-dev:abc" }),
       describeKey: () => ({ provider: "local-dev", keyId: "local-dev:abc" }),
     } as never);
     vi.mocked(checkClockSkew).mockResolvedValue({
@@ -52,14 +53,16 @@ describe("/api/health/cloud", () => {
     expect(body.checks.database.detail).toMatch(/connection refused/);
   });
 
-  it("returns 503 when KMS describeKey returns empty", async () => {
+  it("returns 503 when KMS healthCheck reports failure (Vault/AWS reachable error)", async () => {
     vi.mocked(getKmsProvider).mockReturnValue({
-      describeKey: () => ({ provider: "local-dev", keyId: "" }),
+      healthCheck: async () => ({ ok: false, error: "vault unreachable" }),
+      describeKey: () => ({ provider: "vault-transit", keyId: "vault:k" }),
     } as never);
     const res = await GET();
     expect(res.status).toBe(503);
     const body = await res.json();
     expect(body.checks.kms.ok).toBe(false);
+    expect(body.checks.kms.detail).toMatch(/vault unreachable/);
   });
 
   it("returns 503 when clock skew exceeds threshold", async () => {

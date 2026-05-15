@@ -967,11 +967,13 @@ model AuditLog {
    * Phase 4 tamper-evidence chain.
    * `prevHash` is the previous row's `hash` (or `sha256("vf:audit-genesis:" || orgId)` for the first row).
    * `hash` is `sha256(prevHash || canonical(row))`.
-   * Default '' lets the migration land on existing rows; the populate-chain
-   * backfill walks them in `createdAt` order to fill real values.
+   * NULL means the row pre-dates the chain rollout; `backfillChainForOrg`
+   * walks NULL rows in `createdAt` order and fills them. NULL is treated
+   * as "no tail" by `writeAuditLog`, so new inserts chain off the most
+   * recent already-chained row (or genesis if none exists yet).
    */
-  prevHash      String       @default("")
-  hash          String       @default("")
+  prevHash      String?
+  hash          String?
 
   @@index([entityType, entityId])
   @@index([userId])

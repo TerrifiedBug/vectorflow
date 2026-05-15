@@ -42,15 +42,19 @@ async function checkKms(): Promise<CheckResult> {
   const t = Date.now();
   try {
     const kms = getKmsProvider();
-    // Cheapest possible operation: describeKey is synchronous in OSS adapters.
-    const desc = kms.describeKey();
-    if (!desc?.keyId) {
-      return { ok: false, detail: "describeKey returned no keyId", ms: Date.now() - t };
-    }
+    // Real round-trip: providers issue a network call (Vault metadata
+    // GET / AWS KMS:DescribeKey) so a true KMS outage is visible here.
+    const r = await kms.healthCheck();
     const ms = Date.now() - t;
+    if (!r.ok) {
+      return { ok: false, detail: r.error ?? "kms healthCheck reported not-ok", ms };
+    }
     return {
       ok: ms < KMS_BUDGET_MS,
-      detail: ms >= KMS_BUDGET_MS ? `describeKey exceeded ${KMS_BUDGET_MS}ms budget` : desc.keyId,
+      detail:
+        ms >= KMS_BUDGET_MS
+          ? `kms healthCheck exceeded ${KMS_BUDGET_MS}ms budget (${ms}ms)`
+          : r.keyId,
       ms,
     };
   } catch (err) {

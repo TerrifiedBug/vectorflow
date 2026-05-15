@@ -8,6 +8,13 @@ import {
   type AuditChainTailLookup,
 } from "./audit-chain-insert";
 import type { ChainableAuditRow } from "./audit-chain";
+import { monotonicFactory } from "ulid";
+
+// Lazily-initialised monotonic ULID factory shared across writeAuditLog
+// calls. Required so same-millisecond inserts in one org produce ids whose
+// lexicographic order matches insertion order (the chain-tail lookup ties
+// on id DESC).
+let auditLogMonotonicUlid: (() => string) | null = null;
 
 // Deferred so process.cwd() is not evaluated at module load time.
 // The Edge bundler traces into this file (via auto-rollback.ts → instrumentation.ts)
@@ -54,8 +61,13 @@ export async function writeAuditLog(params: WriteAuditLogParams) {
   const log = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`audit-chain:${organizationId}`}))`;
 
+    // Tail = the most recent row in this org that actually carries a hash.
+    // Un-backfilled rows (hash IS NULL) are skipped so we always chain off
+    // a real predecessor; backfill walks them separately in (createdAt, id)
+    // order. The partial index `AuditLog_organizationId_createdAt_chain_idx
+    // WHERE hash IS NOT NULL` makes this lookup a single-row index probe.
     const tail = await tx.auditLog.findFirst({
-      where: { organizationId },
+      where: { organizationId, hash: { not: null } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: { hash: true },
     });
@@ -80,10 +92,13 @@ export async function writeAuditLog(params: WriteAuditLogParams) {
       createdAt: now,
     };
 
-    // We need a stable id BEFORE computing the hash. Generate one with the
-    // same `cuid` primitive Prisma uses, then INSERT with explicit id.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { ulid } = require("ulid") as { ulid: () => string };
+    // We need a stable id BEFORE computing the hash. ULIDs are sortable
+    // across milliseconds but the standard `ulid()` is random within a
+    // single millisecond, which would let two same-ms inserts in one org
+    // disagree on tail order. Use `monotonicFactory` so within a ms the
+    // random part is incremented monotonically — id-DESC ordering then
+    // matches insertion order.
+    const ulid = (auditLogMonotonicUlid ??= monotonicFactory());
     rowToHash.id = `audit_${ulid()}`;
 
     const { prevHash, hash } = computeAuditChainInsert(rowToHash, tail?.hash ?? null);
