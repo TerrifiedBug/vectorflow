@@ -23,6 +23,12 @@ describe("agent-token", () => {
       expect(a.token).not.toBe(b.token);
       expect(a.hash).not.toBe(b.hash);
     });
+
+    it("throws on invalid org slug", async () => {
+      await expect(generateEnrollmentToken("UPPER")).rejects.toThrow("invalid org slug");
+      await expect(generateEnrollmentToken("has space")).rejects.toThrow("invalid org slug");
+      await expect(generateEnrollmentToken("x")).rejects.toThrow("invalid org slug"); // too short
+    });
   });
 
   describe("verifyEnrollmentToken", () => {
@@ -51,6 +57,11 @@ describe("agent-token", () => {
       expect(identifier).toMatch(/^[a-f0-9]{16}$/);
       expect(getNodeTokenIdentifier(token)).toBe(identifier);
       expect(hash).toMatch(/^\$2[aby]\$/);
+    });
+
+    it("throws on invalid org slug", async () => {
+      await expect(generateNodeToken("UPPER")).rejects.toThrow("invalid org slug");
+      await expect(generateNodeToken("_bad")).rejects.toThrow("invalid org slug");
     });
   });
 

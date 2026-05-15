@@ -49,6 +49,9 @@ const NODE_PATTERN = /^vf_node_([a-z][a-z0-9-]{2,30})_([a-f0-9]{16})_([a-f0-9]{6
 export async function generateEnrollmentToken(
   orgSlug: string = DEFAULT_ORG_SLUG,
 ): Promise<{ token: string; hash: string; hint: string }> {
+  if (!isValidOrgSlug(orgSlug)) {
+    throw new Error(`Cannot mint enrollment token: invalid org slug "${orgSlug}"`);
+  }
   const raw = randomBytes(ENROLLMENT_SECRET_BYTES).toString("hex");
   const token = `${ENROLLMENT_PREFIX}${orgSlug}_${raw}`;
   const hash = await bcrypt.hash(token, 12);
@@ -96,6 +99,9 @@ export function isLegacyEnrollmentToken(token: string): boolean {
 export async function generateNodeToken(
   orgSlug: string = DEFAULT_ORG_SLUG,
 ): Promise<{ token: string; hash: string; identifier: string }> {
+  if (!isValidOrgSlug(orgSlug)) {
+    throw new Error(`Cannot mint node token: invalid org slug "${orgSlug}"`);
+  }
   const identifier = randomBytes(NODE_TOKEN_IDENTIFIER_BYTES).toString("hex");
   const secret = randomBytes(NODE_TOKEN_SECRET_BYTES).toString("hex");
   const token = `${NODE_PREFIX}${orgSlug}_${identifier}_${secret}`;
