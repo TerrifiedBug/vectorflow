@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiRoute } from "@/app/api/v1/_lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { formatAuditCsv, formatAuditJson } from "@/server/services/audit-export";
+import {
+  formatAuditCsv,
+  formatAuditJson,
+  formatAuditJsonChain,
+  type ChainAuditLogItem,
+} from "@/server/services/audit-export";
 
 export const GET = apiRoute(
   "audit.export",
@@ -9,9 +14,9 @@ export const GET = apiRoute(
     const { searchParams } = new URL(req.url);
 
     const format = searchParams.get("format") ?? "csv";
-    if (format !== "csv" && format !== "json") {
+    if (format !== "csv" && format !== "json" && format !== "chain") {
       return NextResponse.json(
-        { error: 'Invalid format — must be "csv" or "json"' },
+        { error: 'Invalid format — must be "csv", "json", or "chain"' },
         { status: 400 },
       );
     }
@@ -63,6 +68,33 @@ export const GET = apiRoute(
       orderBy: { createdAt: "desc" },
       take: limit,
     });
+
+    if (format === "chain") {
+      // Resolve the environment's organizationId — the chain envelope must
+      // declare the org so the verifier can derive the right genesis hash.
+      const env = await prisma.environment.findUnique({
+        where: { id: ctx.environmentId },
+        select: { organizationId: true },
+      });
+      const orgId = env?.organizationId;
+      if (!orgId) {
+        return NextResponse.json(
+          { error: "Could not resolve organization for environment" },
+          { status: 400 },
+        );
+      }
+      const json = formatAuditJsonChain(
+        items as unknown as ChainAuditLogItem[],
+        orgId,
+      );
+      return new NextResponse(json, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Disposition": `attachment; filename="audit-chain-export-${new Date().toISOString().slice(0, 10)}.json"`,
+        },
+      });
+    }
 
     if (format === "json") {
       const json = formatAuditJson(items);
