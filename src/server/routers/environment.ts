@@ -486,14 +486,20 @@ export const environmentRouter = router({
     .use(denyInDemo())
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("environment.enrollmentToken.generated", "Environment"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const env = await prisma.environment.findUnique({
         where: { id: input.environmentId },
       });
       if (!env) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Environment not found" });
       }
-      const { token, hash, hint } = await generateEnrollmentToken();
+      // Look up the org slug so the token carries the correct tenant prefix.
+      // Falls back to DEFAULT_ORG_SLUG for OSS (org.id === DEFAULT_ORG_ID).
+      const org = await prisma.organization.findUnique({
+        where: { id: ctx.organizationId },
+        select: { slug: true },
+      });
+      const { token, hash, hint } = await generateEnrollmentToken(org?.slug);
       await prisma.environment.update({
         where: { id: input.environmentId },
         data: {

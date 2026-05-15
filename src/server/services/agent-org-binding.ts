@@ -40,12 +40,21 @@ export interface AgentOrgContext {
  */
 export async function resolveAgentOrg(
   request: Request,
+  opts?: {
+    /**
+     * Override the token used for slug/legacy detection.
+     * Use this when the agent token is in the request body rather than the
+     * Authorization header (i.e. the enrollment route).
+     */
+    explicitToken?: string;
+  },
 ): Promise<AgentOrgContext | Response> {
   // X-VF-Org-Slug is injected by the Cloud ingress after stripping the raw
   // Host header. Self-hosted deployments never set this header.
   const headerSlug = request.headers.get("x-vf-org-slug");
 
-  const token = extractBearerToken(request.headers.get("authorization"));
+  const token = opts?.explicitToken
+    ?? extractBearerToken(request.headers.get("authorization"));
   const tokenSlug = token ? parseTokenSlug(token) : null;
   const isLegacy = token
     ? isLegacyNodeToken(token) || isLegacyEnrollmentToken(token)

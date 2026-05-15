@@ -31,7 +31,25 @@ export async function POST(request: Request) {
   const rateLimited = await checkIpRateLimit(request, "enroll", 10);
   if (rateLimited) return rateLimited;
 
-  const orgResult = await resolveAgentOrg(request);
+  // Parse the body first — enrollment tokens are in the body, not the
+  // Authorization header. resolveAgentOrg needs the explicit token for
+  // slug extraction and legacy-token detection.
+  let parsed: ReturnType<typeof enrollSchema.safeParse>;
+  try {
+    const body = await request.json();
+    parsed = enrollSchema.safeParse(body);
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  if (!parsed.success) {
+    errorLog("enroll", "invalid input", parsed.error.flatten().fieldErrors);
+    return NextResponse.json(
+      { error: "Invalid input", details: parsed.error.flatten().fieldErrors },
+      { status: 400 },
+    );
+  }
+
+  const orgResult = await resolveAgentOrg(request, { explicitToken: parsed.data.token });
   if (orgResult instanceof Response) return orgResult;
 
   if (orgResult.isLegacyToken) {
@@ -39,15 +57,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json();
-    const parsed = enrollSchema.safeParse(body);
-    if (!parsed.success) {
-      errorLog("enroll", "invalid input", parsed.error.flatten().fieldErrors);
-      return NextResponse.json(
-        { error: "Invalid input", details: parsed.error.flatten().fieldErrors },
-        { status: 400 },
-      );
-    }
 
     const { token, hostname, os, agentVersion, vectorVersion, labels: agentLabels } = parsed.data;
     const safeHostname = hostname.replace(/[\r\n\t"]/g, " ");
