@@ -16,11 +16,20 @@
 -- transaction. The pointer always reflects the most-recent committed
 -- chained row regardless of timestamps or ID ordering.
 --
--- Seed step: for any org that already has hashed AuditLog rows (e.g. a
--- staged rollout has been writing under the previous tail-via-AuditLog
--- design), pick the latest chained row's hash as the tail. Without this
--- seed, the first post-migration write for those orgs would fall back
--- to genesis and permanently fork their chain.
+-- ─── Seed step ────────────────────────────────────────────────────────────
+--
+-- For any org that already has hashed AuditLog rows (e.g. a staged rollout
+-- has been writing under the previous tail-via-AuditLog design), pick the
+-- chain tip and seed it. Without this seed, the first post-migration write
+-- for those orgs would fall back to genesis and permanently fork their
+-- chain.
+--
+-- Critically: we do NOT order by (createdAt, id) — that's the same
+-- ordering Codex correctly flagged as cross-process-unsafe. Instead we
+-- pick by chain-link topology: the tail is the row whose `hash` is not
+-- referenced as anyone's `prevHash`. That's a property of the chain
+-- itself, independent of insertion-time ordering, so it's correct under
+-- any historical contention pattern.
 --
 -- Rollback:
 --   DROP TABLE "AuditChainTail";
@@ -33,12 +42,16 @@ CREATE TABLE IF NOT EXISTS "AuditChainTail" (
 );
 
 INSERT INTO "AuditChainTail" ("organizationId", "lastHash", "lastWriteAt", "updatedAt")
-SELECT DISTINCT ON ("organizationId")
-    "organizationId",
-    "hash",
-    "createdAt",
-    CURRENT_TIMESTAMP
-FROM "AuditLog"
-WHERE "hash" IS NOT NULL
-ORDER BY "organizationId", "createdAt" DESC, "id" DESC
+SELECT a."organizationId",
+       a."hash",
+       a."createdAt",
+       CURRENT_TIMESTAMP
+  FROM "AuditLog" a
+ WHERE a."hash" IS NOT NULL
+   AND NOT EXISTS (
+       SELECT 1
+         FROM "AuditLog" b
+        WHERE b."organizationId" = a."organizationId"
+          AND b."prevHash"       = a."hash"
+   )
 ON CONFLICT ("organizationId") DO NOTHING;

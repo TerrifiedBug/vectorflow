@@ -61,7 +61,16 @@ export class VaultTransitKmsProvider implements KmsProvider {
     return !this.cfg.token && Boolean(this.cfg.roleId && this.cfg.secretId);
   }
 
-  private async getToken(forceRefresh = false): Promise<string> {
+  /**
+   * Acquire or refresh the AppRole client token.
+   * `signal` is honoured for the login network call so a hung Vault
+   * during partial outage doesn't leave the login fetch lingering when
+   * the caller has already timed out.
+   */
+  private async getToken(
+    forceRefresh = false,
+    signal?: AbortSignal,
+  ): Promise<string> {
     if (this.cfg.token) return this.cfg.token;
     if (this.clientToken && !forceRefresh) return this.clientToken;
     if (!this.cfg.roleId || !this.cfg.secretId) {
@@ -75,6 +84,7 @@ export class VaultTransitKmsProvider implements KmsProvider {
         role_id: this.cfg.roleId,
         secret_id: this.cfg.secretId,
       }),
+      signal,
     });
     if (!res.ok) {
       throw new Error(`vault-transit: AppRole login failed (${res.status})`);
@@ -198,11 +208,11 @@ export class VaultTransitKmsProvider implements KmsProvider {
         signal,
       });
     try {
-      let token = await this.getToken();
+      let token = await this.getToken(false, signal);
       let res = await doGet(token);
       if ((res.status === 401 || res.status === 403) && this.canReauth) {
         this.clientToken = null;
-        token = await this.getToken(true);
+        token = await this.getToken(true, signal);
         res = await doGet(token);
       }
       if (!res.ok) {
