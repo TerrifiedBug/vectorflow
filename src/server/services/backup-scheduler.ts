@@ -63,7 +63,14 @@ export function rescheduleBackupForOrg(
   }
 }
 
-/** Tear down the org's task. Called on org suspend or delete. */
+/**
+ * Tear down the org's task. Called on org suspend or delete from the
+ * cloud/ workspace's org-lifecycle handler (suspension flow, hard-delete
+ * job). OSS has no lifecycle wiring today — DEFAULT_ORG_ID is never
+ * suspended or deleted — so this hook has no current OSS caller. It is
+ * the documented integration point that the closed cloud lifecycle
+ * routes import and invoke.
+ */
 export function unscheduleBackupForOrg(organizationId: string): void {
   const existing = scheduledTasks.get(organizationId);
   if (!existing) return;

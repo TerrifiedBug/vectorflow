@@ -124,11 +124,4 @@ export async function runDailyCostAnalysisForOrg(
   return summary;
 }
 
-/**
- * Legacy single-tenant alias retained for any callers that haven't yet
- * threaded `organizationId` through. Routes to the all-orgs fan-out so the
- * OSS default-org case behaves identically.
- */
-export async function runDailyCostAnalysis(): Promise<void> {
-  await runDailyCostAnalysisAllOrgs();
-}
+
