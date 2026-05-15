@@ -50,6 +50,7 @@ vi.mock("bcryptjs", () => ({
 import { prisma } from "@/lib/prisma";
 import { teamRouter, assertManualAssignmentAllowed } from "@/server/routers/team";
 import * as aiService from "@/server/services/ai";
+import { mockOrgSettings } from "@/__tests__/helpers/mock-org-settings";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -57,6 +58,7 @@ const adminCaller = t.createCallerFactory(teamRouter)({
   session: { user: { id: "user-1", email: "admin@test.com", name: "Admin" } },
   userRole: "ADMIN",
   teamId: "team-1",
+  organizationId: "default",
 });
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- available for viewer-permission tests
@@ -64,6 +66,7 @@ const viewerCaller = t.createCallerFactory(teamRouter)({
   session: { user: { id: "user-1", email: "viewer@test.com", name: "Viewer" } },
   userRole: "VIEWER",
   teamId: "team-1",
+  organizationId: "default",
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -72,6 +75,9 @@ describe("team router", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     vi.clearAllMocks();
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.create.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings());
   });
 
   // ─── assertManualAssignmentAllowed ────────────────────────────────────────
@@ -85,7 +91,7 @@ describe("team router", () => {
 
     it("allows OIDC user when neither SCIM nor group sync is enabled", async () => {
       prismaMock.user.findUnique.mockResolvedValue({ authMethod: "OIDC" } as never);
-      prismaMock.systemSettings.findUnique.mockResolvedValue({
+      prismaMock.organizationSettings.findUnique.mockResolvedValue({
         scimEnabled: false,
         oidcGroupSyncEnabled: false,
       } as never);
@@ -95,7 +101,7 @@ describe("team router", () => {
 
     it("blocks OIDC user when SCIM is enabled", async () => {
       prismaMock.user.findUnique.mockResolvedValue({ authMethod: "OIDC" } as never);
-      prismaMock.systemSettings.findUnique.mockResolvedValue({
+      prismaMock.organizationSettings.findUnique.mockResolvedValue({
         scimEnabled: true,
         oidcGroupSyncEnabled: false,
       } as never);
@@ -107,7 +113,7 @@ describe("team router", () => {
 
     it("blocks OIDC user when group sync is enabled", async () => {
       prismaMock.user.findUnique.mockResolvedValue({ authMethod: "OIDC" } as never);
-      prismaMock.systemSettings.findUnique.mockResolvedValue({
+      prismaMock.organizationSettings.findUnique.mockResolvedValue({
         scimEnabled: false,
         oidcGroupSyncEnabled: true,
       } as never);
@@ -119,7 +125,7 @@ describe("team router", () => {
 
     it("blocks OIDC user when both SCIM and group sync are enabled", async () => {
       prismaMock.user.findUnique.mockResolvedValue({ authMethod: "OIDC" } as never);
-      prismaMock.systemSettings.findUnique.mockResolvedValue({
+      prismaMock.organizationSettings.findUnique.mockResolvedValue({
         scimEnabled: true,
         oidcGroupSyncEnabled: true,
       } as never);
@@ -322,7 +328,7 @@ describe("team router", () => {
         id: "user-2",
         authMethod: "LOCAL",
       } as never);
-      prismaMock.systemSettings.findUnique.mockResolvedValue(null);
+      prismaMock.organizationSettings.findUnique.mockResolvedValue(null);
       prismaMock.teamMember.findUnique.mockResolvedValue(null);
       prismaMock.teamMember.create.mockResolvedValue({
         id: "member-1",
@@ -358,7 +364,7 @@ describe("team router", () => {
         id: "user-2",
         authMethod: "LOCAL",
       } as never);
-      prismaMock.systemSettings.findUnique.mockResolvedValue(null);
+      prismaMock.organizationSettings.findUnique.mockResolvedValue(null);
       prismaMock.teamMember.findUnique.mockResolvedValue({ id: "existing" } as never);
 
       await expect(
@@ -375,7 +381,7 @@ describe("team router", () => {
         id: "user-oidc",
         authMethod: "OIDC",
       } as never);
-      prismaMock.systemSettings.findUnique.mockResolvedValue({
+      prismaMock.organizationSettings.findUnique.mockResolvedValue({
         scimEnabled: true,
         oidcGroupSyncEnabled: false,
       } as never);
@@ -465,7 +471,7 @@ describe("team router", () => {
     it("blocks role update for OIDC user when group sync is enabled", async () => {
       prismaMock.teamMember.findUnique.mockResolvedValue({ id: "member-1" } as never);
       prismaMock.user.findUnique.mockResolvedValue({ authMethod: "OIDC" } as never);
-      prismaMock.systemSettings.findUnique.mockResolvedValue({
+      prismaMock.organizationSettings.findUnique.mockResolvedValue({
         scimEnabled: false,
         oidcGroupSyncEnabled: true,
       } as never);

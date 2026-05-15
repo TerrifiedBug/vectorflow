@@ -86,3 +86,4 @@ tmp/
 /blob-report/
 /playwright/.cache/
 e2e/.auth/
+/cloud/

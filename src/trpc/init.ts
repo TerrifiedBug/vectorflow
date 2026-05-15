@@ -4,7 +4,8 @@ import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { isDemoMode } from "@/lib/is-demo-mode";
-import type { Role } from "@/generated/prisma";
+import type { Role, OrgMemberRole } from "@/generated/prisma";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 export const createContext = async () => {
   const session = await auth();
@@ -17,7 +18,30 @@ export const createContext = async () => {
   } catch {
     // headers() may fail outside request context
   }
-  return { session, ipAddress };
+
+  let organizationId: string = DEFAULT_ORG_ID;
+  let orgMemberRole: OrgMemberRole | null = null;
+  if (session?.user?.id) {
+    const membership = await prisma.orgMember.findFirst({
+      where: {
+        userId: session.user.id,
+        // Prefer any real org over the OSS default backfill row.
+        // If the user only has the default membership, fall through to it.
+        NOT: { organizationId: DEFAULT_ORG_ID },
+      },
+      select: { organizationId: true, role: true },
+      orderBy: { createdAt: "desc" },
+    }) ?? await prisma.orgMember.findFirst({
+      where: { userId: session.user.id },
+      select: { organizationId: true, role: true },
+    });
+    if (membership) {
+      organizationId = membership.organizationId;
+      orgMemberRole = membership.role;
+    }
+  }
+
+  return { session, ipAddress, organizationId, orgMemberRole };
 };
 
 type Context = Awaited<ReturnType<typeof createContext>>;
@@ -36,6 +60,21 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   return next({
     ctx: { session: ctx.session },
   });
+});
+
+export const orgProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  // organizationId is already in ctx from createContext
+  // Skip the suspension check for the OSS default org
+  if (ctx.organizationId !== DEFAULT_ORG_ID) {
+    const org = await prisma.organization.findUnique({
+      where: { id: ctx.organizationId },
+      select: { suspendedAt: true, deletedAt: true },
+    });
+    if (!org || org.deletedAt) throw new TRPCError({ code: "NOT_FOUND" });
+    if (org.suspendedAt)
+      throw new TRPCError({ code: "FORBIDDEN", message: "Organization is suspended" });
+  }
+  return next({ ctx: { ...ctx, organizationId: ctx.organizationId } });
 });
 
 const roleLevel: Record<Role, number> = {
@@ -423,11 +462,25 @@ export const withTeamAccess = (minRole: Role) =>
       });
     }
 
-    // Super admins bypass membership check
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isSuperAdmin: true },
-    });
+    // Resolve team org for boundary check; fetch in parallel with isSuperAdmin user lookup
+    const [user, teamOrg] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { isSuperAdmin: true },
+      }),
+      prisma.team.findUnique({
+        where: { id: teamId },
+        select: { organizationId: true },
+      }),
+    ]);
+
+    // Org-boundary check: don't leak cross-org team existence
+    if (
+      ctx.organizationId !== DEFAULT_ORG_ID &&
+      teamOrg?.organizationId !== ctx.organizationId
+    ) {
+      throw new TRPCError({ code: "NOT_FOUND" });
+    }
 
     if (user?.isSuperAdmin) {
       return next({

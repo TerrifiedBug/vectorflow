@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { debugLog } from "@/lib/logger";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 export interface GroupMapping {
   group: string;
@@ -13,10 +15,7 @@ const ROLE_RANK: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
  * Load all group-to-team mappings from SystemSettings.
  */
 export async function loadGroupMappings(): Promise<GroupMapping[]> {
-  const settings = await prisma.systemSettings.findUnique({
-    where: { id: "singleton" },
-    select: { oidcTeamMappings: true },
-  });
+  const settings = await getOrgSettings(DEFAULT_ORG_ID);
 
   if (!settings?.oidcTeamMappings) return [];
 

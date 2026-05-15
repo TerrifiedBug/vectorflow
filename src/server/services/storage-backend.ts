@@ -13,7 +13,8 @@ import {
 } from "@aws-sdk/client-s3";
 
 import { decrypt } from "@/server/services/crypto";
-import { prisma } from "@/lib/prisma";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -205,26 +206,15 @@ export function parseS3StorageLocation(location: string): {
 // ---------------------------------------------------------------------------
 
 /**
- * Read SystemSettings and return the active StorageBackend.
+ * Read OrganizationSettings and return the active StorageBackend.
  * Returns S3Backend when backupStorageBackend === "s3" and all required
  * credentials are present. Falls back to LocalBackend otherwise.
  */
 export async function getActiveBackend(): Promise<StorageBackend> {
-  const settings = await prisma.systemSettings.findUnique({
-    where: { id: "singleton" },
-    select: {
-      backupStorageBackend: true,
-      s3Bucket: true,
-      s3Region: true,
-      s3Prefix: true,
-      s3AccessKeyId: true,
-      s3SecretAccessKey: true,
-      s3Endpoint: true,
-    },
-  });
+  const settings = await getOrgSettings(DEFAULT_ORG_ID);
 
   if (
-    settings?.backupStorageBackend === "s3" &&
+    settings.backupStorageBackend === "s3" &&
     settings.s3Bucket &&
     settings.s3AccessKeyId &&
     settings.s3SecretAccessKey

@@ -2,33 +2,29 @@ import { z } from "zod";
 import { ulid } from "ulid";
 import { router, protectedProcedure, requireSuperAdmin } from "@/trpc/init";
 import { withAudit } from "@/server/middleware/audit";
-import { prisma } from "@/lib/prisma";
+import { getOrgSettings, updateOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { sendTelemetryHeartbeat } from "@/server/services/telemetry-sender";
-
-const SETTINGS_ID = "singleton";
 
 export const telemetryRouter = router({
   get: protectedProcedure
     .use(requireSuperAdmin())
-    .query(async () => {
-      const settings = await prisma.systemSettings.findUnique({
-        where: { id: SETTINGS_ID },
-      });
-      return { enabled: settings?.telemetryEnabled ?? false };
+    .query(async ({ ctx }) => {
+      const settings = await getOrgSettings(ctx.organizationId ?? DEFAULT_ORG_ID);
+      return { enabled: settings.telemetryEnabled };
     }),
 
   update: protectedProcedure
     .use(requireSuperAdmin())
-    .use(withAudit("telemetry.update", "SystemSettings"))
+    .use(withAudit("telemetry.update", "OrganizationSettings"))
     .input(z.object({ enabled: z.boolean() }))
-    .mutation(async ({ input }) => {
-      const settings = await prisma.systemSettings.findUnique({
-        where: { id: SETTINGS_ID },
-      });
+    .mutation(async ({ input, ctx }) => {
+      const orgId = ctx.organizationId ?? DEFAULT_ORG_ID;
+      const settings = await getOrgSettings(orgId);
 
       const isFirstEnable =
         input.enabled &&
-        (!settings || !settings.telemetryInstanceId || !settings.telemetryEnabledAt);
+        (!settings.telemetryInstanceId || !settings.telemetryEnabledAt);
 
       const data: {
         telemetryEnabled: boolean;
@@ -41,10 +37,7 @@ export const telemetryRouter = router({
         data.telemetryEnabledAt = new Date();
       }
 
-      await prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data,
-      });
+      await updateOrgSettings(orgId, data);
 
       // Fire-and-forget: send an immediate heartbeat so the instance appears on
       // Pulse without waiting for the next cron tick.

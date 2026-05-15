@@ -101,7 +101,7 @@ import { pipelineObservabilityRouter } from "@/server/routers/pipeline-observabi
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
-const testContext = { session: { user: { id: "user-1" } }, ipAddress: null };
+const testContext = { session: { user: { id: "user-1" } }, ipAddress: null, organizationId: "default", orgMemberRole: null };
 const metricsCaller = metricsRouter.createCaller(testContext);
 const dashboardCaller = dashboardRouter.createCaller(testContext);
 const auditCaller = auditRouter.createCaller(testContext);

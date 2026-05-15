@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { decrypt } from "@/server/services/crypto";
 
 /**
@@ -12,7 +13,7 @@ export async function authenticateScim(req: NextRequest): Promise<boolean> {
   if (!auth?.startsWith("Bearer ")) return false;
 
   const token = auth.slice(7);
-  const settings = await prisma.systemSettings.findFirst();
+  const settings = await getOrgSettings(DEFAULT_ORG_ID);
   if (!settings?.scimEnabled || !settings?.scimBearerToken) return false;
 
   try {

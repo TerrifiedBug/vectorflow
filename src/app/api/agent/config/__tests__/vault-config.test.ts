@@ -61,9 +61,13 @@ vi.mock("@/lib/prisma", () => ({
       ])),
     },
     eventSampleRequest: { findMany: vi.fn(() => Promise.resolve([])) },
-    systemSettings: {
-      findUnique: vi.fn(() => Promise.resolve({ fleetPollIntervalMs: 15000 })),
-    },
+     systemSettings: {
+       findUnique: vi.fn(() => Promise.resolve({ fleetPollIntervalMs: 15000 })),
+     },
+     organizationSettings: {
+       findUnique: vi.fn(),
+       create: vi.fn(),
+     },
   },
 }));
 
@@ -85,18 +89,25 @@ vi.mock("@/server/services/drift-metrics", () => ({
 
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/server/services/crypto";
+ import { mockOrgSettings } from "@/__tests__/helpers/mock-org-settings";
 import { fetchVaultSecrets, readVaultSecretObject } from "@/server/services/vault-client";
 
 const prismaMock = prisma as unknown as {
   pipeline: { findMany: ReturnType<typeof vi.fn> };
   secret?: { findMany: ReturnType<typeof vi.fn> };
+  organizationSettings: {
+    findUnique: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+  };
 };
 const readVaultSecretObjectMock = vi.mocked(readVaultSecretObject);
 
-describe("GET /api/agent/config — Vault backend", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+ describe("GET /api/agent/config — Vault backend", () => {
+ beforeEach(() => {
+   vi.clearAllMocks();
+   prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+   prismaMock.organizationSettings.create.mockResolvedValue(mockOrgSettings());
+   });
 
   it("resolves Vault secrets into agent env vars without sending Vault config", async () => {
     const { GET } = await import("@/app/api/agent/config/route");

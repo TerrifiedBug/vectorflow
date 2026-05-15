@@ -41,6 +41,7 @@ function makeRule(overrides: Partial<AlertRule> = {}): AlertRule {
     environmentId: overrides.environmentId ?? "env-1",
     pipelineId: overrides.pipelineId ?? null,
     teamId: "team-1",
+    organizationId: "default",
     metric: overrides.metric ?? "cpu_usage",
     condition: overrides.condition ?? "gt",
     threshold: overrides.threshold ?? 80,

@@ -26,6 +26,7 @@ describe("queryErrorContext", () => {
     const mockLogs = Array.from({ length: 7 }, (_, i) => ({
       id: `log-${i}`,
       pipelineId: "pipeline-1",
+      organizationId: "default",
       nodeId: "node-1",
       timestamp: new Date(`2026-04-01T12:00:0${i}Z`),
       level: "ERROR" as const,
@@ -48,6 +49,7 @@ describe("queryErrorContext", () => {
     prismaMock.pipelineLog.findMany.mockResolvedValue([{
       id: "log-1",
       pipelineId: "pipeline-1",
+      organizationId: "default",
       nodeId: "node-1",
       timestamp: new Date(),
       level: "ERROR" as const,
@@ -78,6 +80,7 @@ describe("queryErrorContext", () => {
     prismaMock.pipelineLog.findMany.mockResolvedValue([{
       id: "log-1",
       pipelineId: "pipeline-1",
+      organizationId: "default",
       nodeId: "node-1",
       timestamp: new Date(),
       level: "ERROR" as const,

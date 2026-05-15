@@ -69,6 +69,7 @@ function makeRule(
     environmentId: overrides.environmentId ?? "env-1",
     pipelineId: overrides.pipelineId ?? null,
     teamId: overrides.teamId ?? "team-1",
+    organizationId: overrides.organizationId ?? "default",
     metric: overrides.metric ?? "fleet_error_rate",
     condition: overrides.condition ?? "gt",
     threshold: overrides.threshold ?? 5,
