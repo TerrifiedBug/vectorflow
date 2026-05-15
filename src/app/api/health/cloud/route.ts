@@ -17,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { errorLog } from "@/lib/logger";
 
 const KMS_BUDGET_MS = 500;
+const DB_BUDGET_MS = 500;
 const CLOCK_SKEW_THRESHOLD_SECONDS = 2;
 
 interface CheckResult {
@@ -40,15 +41,35 @@ function logAndRedact(check: string, err: unknown): string {
 
 async function checkDatabase(): Promise<CheckResult> {
   const t = Date.now();
+  // Bound the probe so a hung connection pool, network stall, or
+  // back-pressured DB cannot block the readiness endpoint past the
+  // load balancer's deadline. Prisma does not expose a per-query
+  // cancel hook on $queryRaw, so we race at the route level; the
+  // underlying query may continue running on the server side, but
+  // /api/health/cloud has already returned 503.
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`database probe timed out after ${DB_BUDGET_MS}ms`)),
+          DB_BUDGET_MS,
+        );
+      }),
+    ]);
     return { ok: true, ms: Date.now() - t };
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isTimeout = /timed out|budget/i.test(msg);
+    errorLog("health/cloud", "database check failed", err);
     return {
       ok: false,
-      detail: logAndRedact("database", err),
+      detail: isTimeout ? "database timed out" : "check failed",
       ms: Date.now() - t,
     };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
