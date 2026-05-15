@@ -51,6 +51,14 @@ export async function resolveAgentOrg(
 ): Promise<AgentOrgContext | Response> {
   // X-VF-Org-Slug is injected by the Cloud ingress after stripping the raw
   // Host header. Self-hosted deployments never set this header.
+  //
+  // ⚠️  DEPLOYMENT REQUIREMENT (Cloud): the ingress MUST strip any
+  // client-supplied X-VF-Org-Slug before injecting its own value derived
+  // from the authenticated subdomain. If this header can be set by agents,
+  // the hostname-based isolation knob is degraded to a no-op and the system
+  // falls back to single-factor auth (token only). The DB-layer org scope in
+  // authenticateAgentInOrg still prevents cross-tenant data access, but the
+  // defense-in-depth property is lost.
   const headerSlug = request.headers.get("x-vf-org-slug");
 
   const token = opts?.explicitToken

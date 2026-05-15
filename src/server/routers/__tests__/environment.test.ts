@@ -360,6 +360,19 @@ describe("environment router", () => {
         adminCaller.generateEnrollmentToken({ environmentId: "env-1" }),
       ).rejects.toThrow("Environment's organization not found");
     });
+
+    it("throws INTERNAL_SERVER_ERROR when Cloud org is soft-deleted", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue(
+        makeEnvironment({ organizationId: "org-deleted" }) as never,
+      );
+      prismaMock.organization.findUnique.mockResolvedValue(
+        { id: "org-deleted", slug: "deleted-org", deletedAt: new Date() } as never,
+      );
+
+      await expect(
+        adminCaller.generateEnrollmentToken({ environmentId: "env-1" }),
+      ).rejects.toThrow("Environment's organization not found or deleted");
+    });
   });
 
   // ─── revokeEnrollmentToken ────────────────────────────────────────────────

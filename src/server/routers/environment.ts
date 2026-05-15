@@ -497,19 +497,19 @@ export const environmentRouter = router({
       // Derive the org slug for the token prefix from the environment's owning org.
       // Short-circuit for OSS (DEFAULT_ORG_ID) — the row is always present and we
       // avoid an unnecessary lookup. For real Cloud orgs, fail loudly if the row
-      // is missing rather than silently minting a default-scoped token.
+      // is missing or soft-deleted rather than silently minting a default-scoped token.
       let orgSlug: string;
       if (env.organizationId === DEFAULT_ORG_ID) {
         orgSlug = DEFAULT_ORG_SLUG;
       } else {
         const org = await prisma.organization.findUnique({
           where: { id: env.organizationId },
-          select: { slug: true },
+          select: { slug: true, deletedAt: true },
         });
-        if (!org) {
+        if (!org || org.deletedAt) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: "Environment's organization not found — cannot mint enrollment token",
+            message: "Environment's organization not found or deleted — cannot mint enrollment token",
           });
         }
         orgSlug = org.slug;
