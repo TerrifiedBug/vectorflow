@@ -30,7 +30,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     pipeline: { findMany: vi.fn(() => Promise.resolve([])) },
     eventSampleRequest: { findMany: vi.fn(() => Promise.resolve([])) },
-    systemSettings: {
+    organizationSettings: {
       findUnique: vi.fn(() => Promise.resolve({ fleetPollIntervalMs: 15000 })),
     },
   },

@@ -12,7 +12,6 @@ import { setExpectedChecksum } from "@/server/services/drift-metrics";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { warnLog, errorLog } from "@/lib/logger";
 import { getOrgSettings } from "@/lib/org-settings";
-import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -76,7 +75,7 @@ export async function GET(request: Request) {
         where: { id: agent.environmentId },
         select: { secretBackend: true },
       });
-      const orgSettings = await getOrgSettings(DEFAULT_ORG_ID);
+      const orgSettings = await getOrgSettings(orgResult.orgId);
       return NextResponse.json({
         pipelines: [],
         pollIntervalMs: orgSettings.fleetPollIntervalMs ?? 15_000,
@@ -301,7 +300,7 @@ export async function GET(request: Request) {
       : [];
 
     // Get org settings for poll interval
-    const orgSettings = await getOrgSettings(DEFAULT_ORG_ID);
+    const orgSettings = await getOrgSettings(orgResult.orgId);
 
     // Build push URL from the incoming request's host
     const proto = request.headers.get("x-forwarded-proto") ?? "http";

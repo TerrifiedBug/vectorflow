@@ -87,6 +87,12 @@ export async function resolveAgentOrg(
       return { orgId: DEFAULT_ORG_ID, orgSlug: DEFAULT_ORG_SLUG, isLegacyToken: isLegacy };
     }
 
+    // Tokenless requests on a real Cloud subdomain cannot be attributed to
+    // any org identity — reject early before touching the DB.
+    if (!token) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
     return lookupOrg(headerSlug, isLegacy);
   }
 
