@@ -1,12 +1,19 @@
 import type { KmsProvider } from "./types";
 
 interface CacheEntry {
-  /** The wrapped ciphertext the entry was unwrapped from. Used to detect rotation. */
+  /** Ciphertext the cached key was unwrapped from. Used to detect rotation. */
   ciphertext: string;
   key: Buffer;
   expiresAt: number;
-  /** Pending unwrap. Lets concurrent `get()` calls share a single KMS round-trip. */
-  inflight?: { ciphertext: string; promise: Promise<Buffer> };
+  /** Most recent in-flight unwrap for this org, or null when settled. */
+  inflight: InflightUnwrap | null;
+}
+
+interface InflightUnwrap {
+  ciphertext: string;
+  promise: Promise<Buffer>;
+  /** Identity token; settle handlers commit only when this is still active. */
+  token: symbol;
 }
 
 export interface DekCacheOptions {
@@ -17,17 +24,19 @@ export interface DekCacheOptions {
 /**
  * In-process cache for unwrapped DEKs.
  *
- * - **Keyed by `(orgId, dataKeyCiphertext)`.** When a customer rotates
- *   their DEK, the Organization's stored `dataKeyCiphertext` changes; the
- *   next `get()` observes the mismatch, zeros the stale plaintext, and
- *   unwraps the new ciphertext fresh. Without this, rotation would lag
- *   the cache TTL (defaulted to 5min) — minutes of failing encrypt/decrypt
- *   and stale JWT signing keys.
+ * - **Keyed by `(orgId, dataKeyCiphertext)`.** When a customer rotates their
+ *   DEK the Organization's stored `dataKeyCiphertext` changes; the next
+ *   `get()` observes the mismatch, zeros the stale plaintext, and unwraps
+ *   the new ciphertext fresh.
+ * - **Race-safe.** Concurrent gets for *different* ciphertexts each carry
+ *   an identity token. On settle, an inflight only commits its result if
+ *   its token is still the active one for the org. A late-resolving stale
+ *   unwrap cannot overwrite the fresh entry, and its plaintext is zeroed.
  * - **TTL-based eviction** (default 5 minutes).
  * - **Zero-on-evict.** `invalidate` / `invalidateAll` overwrite the cached
  *   `Buffer` with zeros in place so any retained reference is wiped too.
- * - **Single-flight.** Concurrent `get()` calls for the same `(org, ct)`
- *   share a single underlying `unwrapDataKey` call.
+ * - **Single-flight (same ciphertext).** Concurrent gets for the *same*
+ *   `(org, ct)` share a single underlying `unwrapDataKey` call.
  * - **Warm-up.** `warm()` pre-populates the cache; used at stamp startup
  *   to absorb agent-reconnect storms without an outbound KMS spike.
  */
@@ -55,39 +64,54 @@ export class DekCache {
       return cached.key;
     }
 
-    // Inflight unwrap for the same ciphertext? Join it.
+    // Join an inflight unwrap for the same ciphertext.
     if (cached?.inflight && cached.inflight.ciphertext === dataKeyCiphertext) {
       return cached.inflight.promise;
     }
 
-    // Stale (TTL expired) or rotation (different ciphertext) — discard cleanly.
+    // Different ciphertext (rotation) or TTL-expired — drop the old plaintext.
+    // The previous inflight (if any, for the old ciphertext) is left running
+    // but its result will be discarded when it settles because the token
+    // we register now supersedes it.
     if (cached && cached.ciphertext !== dataKeyCiphertext) {
       cached.key.fill(0);
     }
 
-    const promise = this.kms.unwrapDataKey(dataKeyCiphertext, orgId).then((key) => {
-      this.entries.set(orgId, {
-        ciphertext: dataKeyCiphertext,
-        key,
-        expiresAt: Date.now() + this.ttlMs,
-      });
-      return key;
-    });
+    const token = Symbol("dek-inflight");
+    const promise = this.kms.unwrapDataKey(dataKeyCiphertext, orgId);
 
     this.entries.set(orgId, {
       ciphertext: dataKeyCiphertext,
       key: Buffer.alloc(0),
       expiresAt: 0,
-      inflight: { ciphertext: dataKeyCiphertext, promise },
+      inflight: { ciphertext: dataKeyCiphertext, promise, token },
     });
 
+    let key: Buffer;
     try {
-      return await promise;
+      key = await promise;
     } catch (err) {
       const e = this.entries.get(orgId);
-      if (e?.inflight?.promise === promise) this.entries.delete(orgId);
+      if (e?.inflight?.token === token) this.entries.delete(orgId);
       throw err;
     }
+
+    const e = this.entries.get(orgId);
+    if (e?.inflight?.token === token) {
+      // We are still the active inflight — commit.
+      this.entries.set(orgId, {
+        ciphertext: dataKeyCiphertext,
+        key,
+        expiresAt: Date.now() + this.ttlMs,
+        inflight: null,
+      });
+    } else {
+      // Superseded by a newer unwrap. Zero our plaintext so it does not
+      // linger in memory. The caller still receives it (legitimate),
+      // but the cache reflects the newer ciphertext.
+      key.fill(0);
+    }
+    return key;
   }
 
   invalidate(orgId: string): void {
