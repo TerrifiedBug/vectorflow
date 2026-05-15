@@ -179,10 +179,11 @@ export async function enforceQuotaInTx(
 export async function withQuotaCheck<T>(
   organizationId: string,
   quota: QuotaName,
-  create: (tx: PrismaTxLike) => Promise<T>,
+  create: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
   return prisma.$transaction(async (tx) => {
+    // `Prisma.TransactionClient` satisfies `PrismaTxLike` structurally.
     await enforceQuotaInTx(tx as unknown as PrismaTxLike, organizationId, quota);
-    return create(tx as unknown as PrismaTxLike);
+    return create(tx);
   });
 }
