@@ -50,9 +50,21 @@ export async function measureClockSkewSeconds(
     resolveEnough = res;
   });
 
+  // Per-source AbortControllers tracked here so we can cancel leftover
+  // in-flight fetches when quorum is reached. Otherwise frequent
+  // readiness probes against a slow source would accumulate outbound
+  // requests/sockets.
+  const controllers: AbortController[] = [];
+  const cancelOutstanding = (): void => {
+    for (const ac of controllers) {
+      if (!ac.signal.aborted) ac.abort();
+    }
+  };
+
   const fetchOne = (url: string) =>
     (async () => {
       const ac = new AbortController();
+      controllers.push(ac);
       const timer = setTimeout(() => ac.abort(), timeoutMs);
       try {
         const sentAt = Date.now();
@@ -69,6 +81,7 @@ export async function measureClockSkewSeconds(
         if (samples.length >= minSamples) {
           done = true;
           resolveEnough();
+          cancelOutstanding();
         }
       } catch {
         /* drop failing source */
@@ -79,8 +92,9 @@ export async function measureClockSkewSeconds(
 
   const inflight = sources.map(fetchOne);
   // Race "we have enough" vs "every source has completed" — whichever
-  // settles first returns control. Pending requests keep running but
-  // their results are ignored once `done` is set.
+  // settles first returns control. When `enough` resolves, the abort
+  // path above kicks the remaining in-flight requests so they don't
+  // linger past the caller's awaited return.
   await Promise.race([enough, Promise.allSettled(inflight)]);
 
   if (samples.length === 0) {
