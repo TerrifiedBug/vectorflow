@@ -2,30 +2,26 @@
  * Per-organization plan-tier quotas (plan §10).
  *
  * Quotas are derived from the org's `plan` enum (FREE/PRO/ENTERPRISE).
- * `checkQuota` reads the current usage from the DB; `enforceQuota`
- * throws `QuotaExceededError` when at or over the limit.
+ * `checkQuota` reads the current usage from the DB (read-only — UI
+ * badges, dashboards). `withQuotaCheck` is the canonical creation path:
+ * it opens a transaction, acquires a per-(org, quota) advisory lock,
+ * counts current usage, throws `QuotaExceededError` if at/over the
+ * limit, otherwise runs the supplied creation function with the SAME
+ * tx so the INSERT lands while the lock is still held.
  *
- * ─── Race-safety ────────────────────────────────────────────────────────
- * Quotas have a classic check-then-act race: two concurrent
- * `node.enroll` calls could both read 4/5, both decide they're allowed,
- * and both insert — landing the persisted count at 6/5. To prevent that
- * `enforceQuota` REQUIRES a Prisma transaction client and takes a per-
- * `(org, quota)` `pg_advisory_xact_lock` before the count read. Callers
- * MUST perform the resource INSERT on the SAME tx within the SAME
- * `prisma.$transaction` boundary, otherwise the lock is released before
- * the INSERT and the race is back.
- *
- *   await prisma.$transaction(async (tx) => {
- *     await enforceQuota(tx, orgId, "agents");
- *     await tx.vectorNode.create({ data: { ... } });
+ *   await withQuotaCheck(orgId, "agents", async (tx) => {
+ *     return tx.vectorNode.create({ data: { ... } });
  *   });
  *
- * `checkQuota` is read-only (informational; UI badges, dashboards) and
- * does not need the lock — callers MUST NOT use it as a pre-flight that
- * the create path then trusts.
+ * The wrapper owns the transaction boundary, so the create cannot
+ * accidentally run outside the lock window — a class of misuse that
+ * an in-tx-only "enforceQuotaInTx(tx, …)" function with a structural
+ * `tx` param could not prevent (a caller could pass the root prisma).
  *
- * Foundation only. Wiring quotas into the actual creation paths
- * (`node.enroll`, `pipeline.create`, etc.) is a separate mechanical PR.
+ * `enforceQuotaInTx` is exported for advanced callers who are already
+ * inside a `prisma.$transaction` for unrelated reasons and want to
+ * add a quota check without nesting transactions. Use the wrapper
+ * unless you specifically need this.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -84,12 +80,6 @@ export class QuotaExceededError extends Error {
   }
 }
 
-/**
- * Minimal Prisma TX client shape used by enforceQuota. Mirrors the methods
- * that the official `Prisma.TransactionClient` exposes, but kept as a
- * structural type so tests can pass in stubs without depending on the
- * generated client's exact shape.
- */
 export interface PrismaTxLike {
   $executeRaw(template: TemplateStringsArray, ...values: unknown[]): Promise<number>;
   organization: { findUnique: Prisma.OrganizationDelegate["findUnique"] };
@@ -99,24 +89,23 @@ export interface PrismaTxLike {
 }
 
 async function countCurrentUsage(
-  tx: PrismaTxLike | typeof prisma,
+  client: PrismaTxLike | typeof prisma,
   organizationId: string,
   quota: QuotaName,
 ): Promise<number> {
   switch (quota) {
     case "agents":
-      return tx.vectorNode.count({ where: { organizationId } });
+      return client.vectorNode.count({ where: { organizationId } });
     case "pipelines":
-      return tx.pipeline.count({ where: { organizationId } });
+      return client.pipeline.count({ where: { organizationId } });
     case "environments":
-      return tx.environment.count({ where: { organizationId } });
+      return client.environment.count({ where: { organizationId } });
   }
 }
 
 /**
  * Read-only quota check. Suitable for UI badges / dashboards. NOT a
- * gate for creation paths — use `enforceQuota` inside the create
- * transaction instead.
+ * gate for creation paths — use `withQuotaCheck` instead.
  */
 export async function checkQuota(
   organizationId: string,
@@ -142,23 +131,19 @@ export async function checkQuota(
 }
 
 /**
- * Atomic quota gate. Takes a per-(org, quota) Postgres advisory transaction
- * lock so that concurrent create calls serialise; the lock releases on
- * tx commit/abort. Throws `QuotaExceededError` when at or over the
- * limit.
+ * In-tx quota gate. Acquires the per-(org, quota) `pg_advisory_xact_lock`
+ * and verifies the current count is below the plan limit.
  *
- * MUST be called inside a `prisma.$transaction`, with the resource
- * INSERT performed on the SAME `tx` client. Otherwise the lock is
- * released before the INSERT and the race is reintroduced.
+ * Advanced API — use only when you are already inside a
+ * `prisma.$transaction` boundary for unrelated reasons. The caller
+ * MUST then perform the resource INSERT on the SAME `tx` client.
+ * Most callers want `withQuotaCheck` instead.
  */
-export async function enforceQuota(
+export async function enforceQuotaInTx(
   tx: PrismaTxLike,
   organizationId: string,
   quota: QuotaName,
 ): Promise<void> {
-  // Acquire the per-(org, quota) advisory lock first. The lock auto-
-  // releases on tx commit/abort, so the caller's INSERT immediately
-  // after is also serialised.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`quota:${organizationId}:${quota}`}))`;
 
   const org = await tx.organization.findUnique({
@@ -174,4 +159,30 @@ export async function enforceQuota(
   if (current >= limit) {
     throw new QuotaExceededError(organizationId, plan, quota, limit, current);
   }
+}
+
+/**
+ * Canonical create-with-quota helper. Opens a transaction, takes the
+ * per-(org, quota) advisory lock, verifies the current count is below
+ * the limit, then invokes the supplied `create` callback with the SAME
+ * tx. Both the quota check and the create happen inside the same lock
+ * window — no race possible.
+ *
+ *   await withQuotaCheck(orgId, "agents", (tx) =>
+ *     tx.vectorNode.create({ data: { ... } }),
+ *   );
+ *
+ * Throws `QuotaExceededError` BEFORE invoking `create` when at limit.
+ * Any error from `create` (Prisma constraint violation, your own
+ * validation throw, etc.) propagates and rolls back the transaction.
+ */
+export async function withQuotaCheck<T>(
+  organizationId: string,
+  quota: QuotaName,
+  create: (tx: PrismaTxLike) => Promise<T>,
+): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    await enforceQuotaInTx(tx as unknown as PrismaTxLike, organizationId, quota);
+    return create(tx as unknown as PrismaTxLike);
+  });
 }

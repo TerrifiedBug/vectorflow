@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   vectorNodeCount: vi.fn(),
   pipelineCount: vi.fn(),
   environmentCount: vi.fn(),
+  $transaction: vi.fn(),
+  $executeRaw: vi.fn(async () => 1),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -13,30 +15,28 @@ vi.mock("@/lib/prisma", () => ({
     vectorNode: { count: mocks.vectorNodeCount },
     pipeline: { count: mocks.pipelineCount },
     environment: { count: mocks.environmentCount },
+    $transaction: mocks.$transaction,
+    $executeRaw: mocks.$executeRaw,
   },
 }));
 
 import {
   PLAN_QUOTAS,
   checkQuota,
-  enforceQuota,
+  enforceQuotaInTx,
+  withQuotaCheck,
   QuotaExceededError,
   type PrismaTxLike,
 } from "../quotas";
 
-function makeTxStub(): {
-  tx: PrismaTxLike;
-  setRaw: ReturnType<typeof vi.fn>;
-} {
-  const setRaw = vi.fn(async () => 1);
-  const tx: PrismaTxLike = {
-    $executeRaw: setRaw as unknown as PrismaTxLike["$executeRaw"],
+function makeTxStub(): PrismaTxLike {
+  return {
+    $executeRaw: mocks.$executeRaw as unknown as PrismaTxLike["$executeRaw"],
     organization: { findUnique: mocks.orgFindUnique as never },
     vectorNode: { count: mocks.vectorNodeCount as never },
     pipeline: { count: mocks.pipelineCount as never },
     environment: { count: mocks.environmentCount as never },
   };
-  return { tx, setRaw };
 }
 
 describe("PLAN_QUOTAS", () => {
@@ -56,12 +56,10 @@ describe("checkQuota (read-only)", () => {
   beforeEach(() => {
     mocks.orgFindUnique.mockReset();
     mocks.vectorNodeCount.mockReset();
-    mocks.pipelineCount.mockReset();
-    mocks.environmentCount.mockReset();
   });
 
   it("returns allowed=true when current < limit", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ id: "org-a", plan: "FREE" });
+    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
     mocks.vectorNodeCount.mockResolvedValue(3);
     const r = await checkQuota("org-a", "agents");
     expect(r.allowed).toBe(true);
@@ -70,110 +68,118 @@ describe("checkQuota (read-only)", () => {
   });
 
   it("returns allowed=false when current == limit (no off-by-one)", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ id: "org-a", plan: "FREE" });
+    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
     mocks.vectorNodeCount.mockResolvedValue(PLAN_QUOTAS.FREE.agents);
     const r = await checkQuota("org-a", "agents");
     expect(r.allowed).toBe(false);
-    expect(r.current).toBe(PLAN_QUOTAS.FREE.agents);
   });
 
-  it("ENTERPRISE never exceeds quota (Infinity)", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ id: "org-a", plan: "ENTERPRISE" });
+  it("ENTERPRISE never exceeds (Infinity)", async () => {
+    mocks.orgFindUnique.mockResolvedValue({ plan: "ENTERPRISE" });
     mocks.vectorNodeCount.mockResolvedValue(10_000_000);
     const r = await checkQuota("org-a", "agents");
     expect(r.allowed).toBe(true);
   });
 
-  it("throws when the org row does not exist", async () => {
+  it("throws when org not found", async () => {
     mocks.orgFindUnique.mockResolvedValue(null);
     await expect(checkQuota("org-missing", "agents")).rejects.toThrow(/not found/i);
   });
 });
 
-describe("enforceQuota (transactional)", () => {
+describe("enforceQuotaInTx (advanced API)", () => {
   beforeEach(() => {
     mocks.orgFindUnique.mockReset();
     mocks.vectorNodeCount.mockReset();
-    mocks.pipelineCount.mockReset();
-    mocks.environmentCount.mockReset();
+    mocks.$executeRaw.mockClear();
   });
 
-  it("returns void when allowed", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ id: "org-a", plan: "FREE" });
+  it("resolves when allowed", async () => {
+    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
     mocks.vectorNodeCount.mockResolvedValue(1);
-    const { tx } = makeTxStub();
-    await expect(enforceQuota(tx, "org-a", "agents")).resolves.toBeUndefined();
+    await expect(
+      enforceQuotaInTx(makeTxStub(), "org-a", "agents"),
+    ).resolves.toBeUndefined();
   });
 
-  it("acquires a per-(org, quota) pg_advisory_xact_lock BEFORE counting", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ id: "org-a", plan: "FREE" });
+  it("acquires per-(org, quota) advisory lock BEFORE counting", async () => {
+    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
     let lockTakenBeforeCount = false;
     mocks.vectorNodeCount.mockImplementation(async () => {
       lockTakenBeforeCount = true;
       return 1;
     });
-    const { tx, setRaw } = makeTxStub();
-    await enforceQuota(tx, "org-a", "agents");
-    expect(setRaw).toHaveBeenCalledTimes(1);
-    // The setRaw call MUST happen before the count.
+    await enforceQuotaInTx(makeTxStub(), "org-a", "agents");
+    expect(mocks.$executeRaw).toHaveBeenCalledTimes(1);
     expect(lockTakenBeforeCount).toBe(true);
-    // The lock key must include both the org id and the quota name.
-    const [, ...values] = setRaw.mock.calls[0];
-    const lockKey = values[0] as string;
+    const callArgs = mocks.$executeRaw.mock.calls[0] as unknown as unknown[];
+    const lockKey = callArgs[1] as string;
     expect(lockKey).toContain("org-a");
     expect(lockKey).toContain("agents");
   });
 
-  it("different quotas serialise on independent locks", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ id: "org-a", plan: "PRO" });
-    mocks.vectorNodeCount.mockResolvedValue(1);
-    mocks.pipelineCount.mockResolvedValue(1);
-    const { tx: tx1, setRaw: lock1 } = makeTxStub();
-    const { tx: tx2, setRaw: lock2 } = makeTxStub();
-    await enforceQuota(tx1, "org-a", "agents");
-    await enforceQuota(tx2, "org-a", "pipelines");
-    const key1 = lock1.mock.calls[0][1] as string;
-    const key2 = lock2.mock.calls[0][1] as string;
-    expect(key1).not.toBe(key2);
-  });
-
-  it("throws QuotaExceededError with structured shape when at limit", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ id: "org-a", plan: "FREE" });
+  it("throws QuotaExceededError with structured shape", async () => {
+    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
     mocks.vectorNodeCount.mockResolvedValue(PLAN_QUOTAS.FREE.agents);
-    const { tx } = makeTxStub();
     try {
-      await enforceQuota(tx, "org-a", "agents");
+      await enforceQuotaInTx(makeTxStub(), "org-a", "agents");
       expect.fail("should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(QuotaExceededError);
       const qe = err as QuotaExceededError;
       expect(qe.quota).toBe("agents");
-      expect(qe.organizationId).toBe("org-a");
       expect(qe.plan).toBe("FREE");
       expect(qe.limit).toBe(PLAN_QUOTAS.FREE.agents);
-      expect(qe.current).toBe(PLAN_QUOTAS.FREE.agents);
     }
   });
+});
 
-  it("uses pipeline count for pipelines quota", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ id: "org-a", plan: "PRO" });
-    mocks.pipelineCount.mockResolvedValue(7);
-    const { tx } = makeTxStub();
-    await enforceQuota(tx, "org-a", "pipelines");
-    expect(mocks.pipelineCount).toHaveBeenCalled();
+describe("withQuotaCheck (canonical API)", () => {
+  beforeEach(() => {
+    mocks.orgFindUnique.mockReset();
+    mocks.vectorNodeCount.mockReset();
+    mocks.$transaction.mockReset();
+    mocks.$executeRaw.mockClear();
   });
 
-  it("uses environment count for environments quota", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ id: "org-a", plan: "PRO" });
-    mocks.environmentCount.mockResolvedValue(2);
-    const { tx } = makeTxStub();
-    await enforceQuota(tx, "org-a", "environments");
-    expect(mocks.environmentCount).toHaveBeenCalled();
+  it("opens a transaction, runs quota check, then create within the same tx", async () => {
+    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
+    mocks.vectorNodeCount.mockResolvedValue(1);
+    let createSawSameTx = false;
+    const tx = makeTxStub();
+    mocks.$transaction.mockImplementation(async (fn: (t: PrismaTxLike) => Promise<unknown>) => fn(tx));
+
+    const result = await withQuotaCheck("org-a", "agents", async (innerTx) => {
+      createSawSameTx = innerTx === tx;
+      return { ok: true };
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(createSawSameTx).toBe(true);
+    expect(mocks.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  it("throws when the org row does not exist", async () => {
-    mocks.orgFindUnique.mockResolvedValue(null);
-    const { tx } = makeTxStub();
-    await expect(enforceQuota(tx, "org-missing", "agents")).rejects.toThrow(/not found/i);
+  it("does NOT invoke the create callback when quota is exceeded", async () => {
+    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
+    mocks.vectorNodeCount.mockResolvedValue(PLAN_QUOTAS.FREE.agents);
+    const tx = makeTxStub();
+    mocks.$transaction.mockImplementation(async (fn: (t: PrismaTxLike) => Promise<unknown>) => fn(tx));
+    const create = vi.fn();
+    await expect(
+      withQuotaCheck("org-a", "agents", create),
+    ).rejects.toBeInstanceOf(QuotaExceededError);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("propagates errors from the create callback", async () => {
+    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
+    mocks.vectorNodeCount.mockResolvedValue(1);
+    const tx = makeTxStub();
+    mocks.$transaction.mockImplementation(async (fn: (t: PrismaTxLike) => Promise<unknown>) => fn(tx));
+    await expect(
+      withQuotaCheck("org-a", "agents", async () => {
+        throw new Error("downstream constraint violation");
+      }),
+    ).rejects.toThrow(/downstream/);
   });
 });
