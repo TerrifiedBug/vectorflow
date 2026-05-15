@@ -100,7 +100,7 @@ export class LocalDevKmsProvider implements KmsProvider {
     }
   }
 
-  async healthCheck(): Promise<KmsHealthResult> {
+  async healthCheck(_opts?: { signal?: AbortSignal }): Promise<KmsHealthResult> {
     try {
       // LocalDev has no remote dependency. The "round trip" is verifying
       // that the KEK material is available; this catches misconfigured

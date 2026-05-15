@@ -54,23 +54,21 @@ async function checkDatabase(): Promise<CheckResult> {
 
 async function checkKms(): Promise<CheckResult> {
   const t = Date.now();
+  // Bound the probe with a hard timeout AND abort the inflight network
+  // operation when the deadline fires. Otherwise a TCP-reachable-but-
+  // stalled upstream (blackholed route, hung Vault) leaves a hanging
+  // probe behind on every health check, accumulating sockets during the
+  // incident.
+  const ac = new AbortController();
+  const timer = setTimeout(() => {
+    ac.abort(new Error(`kms healthCheck timed out after ${KMS_BUDGET_MS}ms`));
+  }, KMS_BUDGET_MS);
   try {
     const kms = getKmsProvider();
-    // Real round-trip: providers issue a network call (Vault metadata
-    // GET / AWS KMS:DescribeKey) so a true KMS outage is visible here.
-    //
-    // Bound the probe with a hard timeout so a TCP-reachable-but-stalled
-    // upstream (blackholed route, hung Vault) can't extend the readiness
-    // response past the load balancer's deadline. The provider may
-    // continue running internally — Node doesn't kill the request — but
-    // /api/health/cloud has already returned 503 from the route's POV.
     const r = await Promise.race([
-      kms.healthCheck(),
+      kms.healthCheck({ signal: ac.signal }),
       new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error(`kms healthCheck timed out after ${KMS_BUDGET_MS}ms`)),
-          KMS_BUDGET_MS,
-        ),
+        ac.signal.addEventListener("abort", () => reject(ac.signal.reason)),
       ),
     ]);
     const ms = Date.now() - t;
@@ -94,6 +92,8 @@ async function checkKms(): Promise<CheckResult> {
       detail: isTimeout ? "kms timed out" : "check failed",
       ms: Date.now() - t,
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

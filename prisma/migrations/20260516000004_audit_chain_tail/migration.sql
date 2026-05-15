@@ -16,6 +16,12 @@
 -- transaction. The pointer always reflects the most-recent committed
 -- chained row regardless of timestamps or ID ordering.
 --
+-- Seed step: for any org that already has hashed AuditLog rows (e.g. a
+-- staged rollout has been writing under the previous tail-via-AuditLog
+-- design), pick the latest chained row's hash as the tail. Without this
+-- seed, the first post-migration write for those orgs would fall back
+-- to genesis and permanently fork their chain.
+--
 -- Rollback:
 --   DROP TABLE "AuditChainTail";
 
@@ -25,3 +31,14 @@ CREATE TABLE IF NOT EXISTS "AuditChainTail" (
     "lastWriteAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt"      TIMESTAMP(3) NOT NULL
 );
+
+INSERT INTO "AuditChainTail" ("organizationId", "lastHash", "lastWriteAt", "updatedAt")
+SELECT DISTINCT ON ("organizationId")
+    "organizationId",
+    "hash",
+    "createdAt",
+    CURRENT_TIMESTAMP
+FROM "AuditLog"
+WHERE "hash" IS NOT NULL
+ORDER BY "organizationId", "createdAt" DESC, "id" DESC
+ON CONFLICT ("organizationId") DO NOTHING;

@@ -70,8 +70,12 @@ export interface KmsProvider {
    *   - local-dev:    in-process KEK fingerprint (no I/O).
    *   - vault-transit: GET on the transit key's metadata endpoint.
    *   - aws-kms:      KMS:DescribeKey on the org's CMK.
+   *
+   * `signal` MUST be honoured by network implementations so an abandoned
+   * probe (caller timed out) does not leave a hanging request behind to
+   * accumulate sockets during incidents.
    */
-  healthCheck(): Promise<KmsHealthResult>;
+  healthCheck(opts?: { signal?: AbortSignal }): Promise<KmsHealthResult>;
 }
 
 export interface KmsHealthResult {

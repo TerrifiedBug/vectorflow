@@ -179,17 +179,23 @@ export class VaultTransitKmsProvider implements KmsProvider {
     };
   }
 
-  async healthCheck(): Promise<KmsHealthResult> {
+  async healthCheck(opts?: { signal?: AbortSignal }): Promise<KmsHealthResult> {
     // GET /v1/<mount>/keys/<name> hits the same Vault path the encrypt and
     // decrypt ops will use, so a failure here is a true indicator of an
     // upcoming hot-path failure. The probe goes through the same 401/403
     // re-auth path `vaultFetch` uses for the cryptographic operations so
     // an expired AppRole token does not produce a permanent false-unhealthy.
+    //
+    // The caller's `signal` propagates to fetch so a timed-out probe is
+    // actually cancelled; otherwise socket-level work would linger and
+    // accumulate during repeated readiness checks of a hung upstream.
     const url = `${this.cfg.address}/v1/${this.cfg.transitMount}/keys/${this.cfg.keyName}`;
+    const signal = opts?.signal;
     const doGet = (tok: string) =>
       this.fetchImpl(url, {
         method: "GET",
         headers: { "x-vault-token": tok },
+        signal,
       });
     try {
       let token = await this.getToken();
