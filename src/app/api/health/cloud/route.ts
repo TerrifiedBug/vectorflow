@@ -97,9 +97,27 @@ async function checkKms(): Promise<CheckResult> {
   }
 }
 
+/**
+ * In private-VPC / egress-restricted deployments, the public default
+ * time sources (Cloudflare, Google, Apple) are unreachable, which would
+ * make `/api/health/cloud` permanently report 503 even on a healthy
+ * clock. Operators set `VF_CLOCK_SKEW_SOURCES` (comma-separated URLs
+ * pointing at internal time services) to override. Unset → use defaults.
+ */
+function configuredClockSources(): string[] | undefined {
+  const raw = process.env.VF_CLOCK_SKEW_SOURCES;
+  if (!raw) return undefined;
+  const sources = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  return sources.length > 0 ? sources : undefined;
+}
+
 async function checkClock(): Promise<CheckResult> {
   const t = Date.now();
-  const r = await checkClockSkew(CLOCK_SKEW_THRESHOLD_SECONDS);
+  const sources = configuredClockSources();
+  const r = await checkClockSkew(
+    CLOCK_SKEW_THRESHOLD_SECONDS,
+    sources ? { sources } : {},
+  );
   if (!r.ok) {
     // Log the skew specifics server-side; externally only the failure flag.
     errorLog("health/cloud", "clock skew exceeded", { skewSeconds: r.skewSeconds, threshold: r.thresholdSeconds });
