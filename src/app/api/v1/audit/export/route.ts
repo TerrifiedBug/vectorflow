@@ -3,6 +3,29 @@ import { apiRoute } from "@/app/api/v1/_lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { formatAuditCsv, formatAuditJson } from "@/server/services/audit-export";
 
+/**
+ * Service-account scoped audit log export.
+ *
+ * Two formats:
+ *   - csv  (default) — newest-first, env-scoped, filterable, capped at 10k
+ *   - json           — same, but JSON
+ *
+ * Chain-verifiable exports (`format=chain`) are deliberately NOT served by
+ * this endpoint. The chain envelope is anchored to `organizationId` and
+ * requires every prevHash link to be contiguous across the entire org; the
+ * service-account auth context only carries one environmentId, so:
+ *   - filtering to env-scope omits sibling-env rows and breaks contiguity
+ *   - querying by org-scope leaks audit data the service account isn't
+ *     authorised to see (including rows from since-deleted environments
+ *     that the env FK no longer references — AuditLog.environmentId is
+ *     ON DELETE SET NULL).
+ *
+ * Chain export will be exposed via a future org-admin-authenticated
+ * endpoint (customer admin UI auth, not API key). The chain machinery
+ * (`formatAuditJsonChain`, `verifyAuditExportEnvelope`,
+ * `scripts/verify-audit-chain.ts`) is already shipped and reusable.
+ */
+
 export const GET = apiRoute(
   "audit.export",
   async (req: NextRequest, ctx) => {
