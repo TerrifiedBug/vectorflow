@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
-import { authenticateAgent } from "@/server/services/agent-auth";
+import { authenticateAgentInOrg } from "@/server/services/agent-auth";
+import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { errorLog } from "@/lib/logger";
 import { sampleResultsRequestSchema } from "../../../../../contracts/agent/v1/payloads";
@@ -15,7 +16,10 @@ export async function POST(request: Request) {
   const rateLimited = await checkTokenRateLimit(request, "agent-samples", 60);
   if (rateLimited) return rateLimited;
 
-  const agent = await authenticateAgent(request);
+  const orgResult = await resolveAgentOrg(request);
+  if (orgResult instanceof Response) return orgResult;
+
+  const agent = await authenticateAgentInOrg(request, orgResult.orgId);
   if (!agent) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

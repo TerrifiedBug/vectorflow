@@ -1,12 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // Mock dependencies before importing the route
+vi.mock("@/server/services/agent-org-binding", () => ({
+  resolveAgentOrg: vi.fn().mockResolvedValue({ orgId: "default", orgSlug: "default", isLegacyToken: false }),
+}));
+
 vi.mock("@/app/api/_lib/ip-rate-limit", () => ({
   checkTokenRateLimit: vi.fn(() => null),
 }));
 
 vi.mock("@/server/services/agent-auth", () => ({
-  authenticateAgent: vi.fn(() =>
+  authenticateAgentInOrg: vi.fn(() =>
     Promise.resolve({ nodeId: "node-1", environmentId: "env-1" }),
   ),
 }));
@@ -31,7 +35,7 @@ vi.mock("@/lib/logger", () => ({
   errorLog: vi.fn(),
 }));
 
-import { authenticateAgent } from "@/server/services/agent-auth";
+import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 
 function makeRequest(body: unknown): Request {
@@ -52,7 +56,7 @@ describe("POST /api/agent/tap-events", () => {
   });
 
   it("returns 401 when unauthenticated", async () => {
-    vi.mocked(authenticateAgent).mockResolvedValueOnce(null);
+    vi.mocked(authenticateAgentInOrg).mockResolvedValueOnce(null);
 
     const { POST } = await import("@/app/api/agent/tap-events/route");
     const response = await POST(makeRequest({}));

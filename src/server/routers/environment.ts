@@ -5,6 +5,7 @@ import { router, protectedProcedure, withTeamAccess, requireSuperAdmin, denyInDe
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { generateEnrollmentToken } from "@/server/services/agent-token";
+import { DEFAULT_ORG_ID, DEFAULT_ORG_SLUG } from "@/lib/org-constants";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { testVaultConnection as testVaultClientConnection, listVaultFields, type VaultBackendConfig } from "@/server/services/vault-client";
 
@@ -493,7 +494,27 @@ export const environmentRouter = router({
       if (!env) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Environment not found" });
       }
-      const { token, hash, hint } = await generateEnrollmentToken();
+      // Derive the org slug for the token prefix from the environment's owning org.
+      // Short-circuit for OSS (DEFAULT_ORG_ID) — the row is always present and we
+      // avoid an unnecessary lookup. For real Cloud orgs, fail loudly if the row
+      // is missing or soft-deleted rather than silently minting a default-scoped token.
+      let orgSlug: string;
+      if (env.organizationId === DEFAULT_ORG_ID) {
+        orgSlug = DEFAULT_ORG_SLUG;
+      } else {
+        const org = await prisma.organization.findUnique({
+          where: { id: env.organizationId },
+          select: { slug: true, deletedAt: true },
+        });
+        if (!org || org.deletedAt) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Environment's organization not found or deleted — cannot mint enrollment token",
+          });
+        }
+        orgSlug = org.slug;
+      }
+      const { token, hash, hint } = await generateEnrollmentToken(orgSlug);
       await prisma.environment.update({
         where: { id: input.environmentId },
         data: {

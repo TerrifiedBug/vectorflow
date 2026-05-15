@@ -43,7 +43,7 @@ describe("authenticateAgent", () => {
     const result = await authenticateAgent(makeRequest());
     expect(result).toBeNull();
     expect(prismaMock.vectorNode.findMany).not.toHaveBeenCalled();
-    expect(prismaMock.vectorNode.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.vectorNode.findFirst).not.toHaveBeenCalled();
   });
 
   it("falls back to legacy scan when token has no stable lookup identifier", async () => {
@@ -60,9 +60,9 @@ describe("authenticateAgent", () => {
 
     const result = await authenticateAgent(makeRequest("Bearer vf_node_oldformat64hex"));
     expect(result).toEqual({ nodeId: "legacy-node-1", environmentId: "env-legacy" });
-    expect(prismaMock.vectorNode.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.vectorNode.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.vectorNode.findMany).toHaveBeenCalledWith({
-      where: { nodeTokenHash: { not: null }, nodeTokenId: null },
+      where: { organizationId: "default", nodeTokenHash: { not: null }, nodeTokenId: null },
       select: { id: true, environmentId: true, nodeTokenHash: true },
     });
   });
@@ -86,7 +86,7 @@ describe("authenticateAgent", () => {
   it("returns null when token id matches no node", async () => {
     extractBearerTokenMock.mockReturnValue("vf_node_token-id_secret");
     getNodeTokenIdentifierMock.mockReturnValue("token-id");
-    prismaMock.vectorNode.findUnique.mockResolvedValue(null);
+    prismaMock.vectorNode.findFirst.mockResolvedValue(null);
 
     const result = await authenticateAgent(makeRequest("Bearer vf_node_token-id_secret"));
     expect(result).toBeNull();
@@ -96,7 +96,7 @@ describe("authenticateAgent", () => {
   it("returns nodeId and environmentId when token matches", async () => {
     extractBearerTokenMock.mockReturnValue("vf_node_token-id_secret");
     getNodeTokenIdentifierMock.mockReturnValue("token-id");
-    prismaMock.vectorNode.findUnique.mockResolvedValue({
+    prismaMock.vectorNode.findFirst.mockResolvedValue({
       id: "node-2",
       environmentId: "env-2",
       nodeTokenHash: "hash-2",
@@ -114,7 +114,7 @@ describe("authenticateAgent", () => {
   it("returns null when the candidate node hash does not verify", async () => {
     extractBearerTokenMock.mockReturnValue("vf_node_token-id_secret");
     getNodeTokenIdentifierMock.mockReturnValue("token-id");
-    prismaMock.vectorNode.findUnique.mockResolvedValue({
+    prismaMock.vectorNode.findFirst.mockResolvedValue({
       id: "node-1",
       environmentId: "env-1",
       nodeTokenHash: "hash-1",
@@ -129,7 +129,7 @@ describe("authenticateAgent", () => {
   it("returns null when the candidate node has no token hash", async () => {
     extractBearerTokenMock.mockReturnValue("vf_node_token-id_secret");
     getNodeTokenIdentifierMock.mockReturnValue("token-id");
-    prismaMock.vectorNode.findUnique.mockResolvedValue({
+    prismaMock.vectorNode.findFirst.mockResolvedValue({
       id: "node-1",
       environmentId: "env-1",
       nodeTokenHash: null,
@@ -144,7 +144,7 @@ describe("authenticateAgent", () => {
   it("benchmark: does one indexed lookup and one hash verify with 1000+ enrolled nodes", async () => {
     extractBearerTokenMock.mockReturnValue("vf_node_token-id_secret");
     getNodeTokenIdentifierMock.mockReturnValue("token-id");
-    prismaMock.vectorNode.findUnique.mockResolvedValue({
+    prismaMock.vectorNode.findFirst.mockResolvedValue({
       id: "node-1001",
       environmentId: "env-1",
       nodeTokenHash: "hash-1001",
@@ -155,9 +155,9 @@ describe("authenticateAgent", () => {
 
     expect(result).toEqual({ nodeId: "node-1001", environmentId: "env-1" });
     expect(prismaMock.vectorNode.findMany).not.toHaveBeenCalled();
-    expect(prismaMock.vectorNode.findUnique).toHaveBeenCalledTimes(1);
-    expect(prismaMock.vectorNode.findUnique).toHaveBeenCalledWith({
-      where: { nodeTokenId: "token-id" },
+    expect(prismaMock.vectorNode.findFirst).toHaveBeenCalledTimes(1);
+    expect(prismaMock.vectorNode.findFirst).toHaveBeenCalledWith({
+      where: { organizationId: "default", nodeTokenId: "token-id" },
       select: { id: true, environmentId: true, nodeTokenHash: true },
     });
     expect(verifyNodeTokenMock).toHaveBeenCalledTimes(1);

@@ -12,7 +12,7 @@ describe("agent-token", () => {
   describe("generateEnrollmentToken", () => {
     it("returns token with vf_enroll_ prefix", async () => {
       const { token, hash, hint } = await generateEnrollmentToken();
-      expect(token).toMatch(/^vf_enroll_[a-f0-9]{64}$/);
+      expect(token).toMatch(/^vf_enroll_default_[a-f0-9]{64}$/);
       expect(hash).toMatch(/^\$2[aby]\$/);
       expect(hint).toMatch(/^\*{4}.{4}$/);
     });
@@ -22,6 +22,12 @@ describe("agent-token", () => {
       const b = await generateEnrollmentToken();
       expect(a.token).not.toBe(b.token);
       expect(a.hash).not.toBe(b.hash);
+    });
+
+    it("throws on invalid org slug", async () => {
+      await expect(generateEnrollmentToken("UPPER")).rejects.toThrow("invalid org slug");
+      await expect(generateEnrollmentToken("has space")).rejects.toThrow("invalid org slug");
+      await expect(generateEnrollmentToken("x")).rejects.toThrow("invalid org slug"); // too short
     });
   });
 
@@ -47,10 +53,15 @@ describe("agent-token", () => {
   describe("generateNodeToken", () => {
     it("returns token with stable lookup identifier", async () => {
       const { token, hash, identifier } = await generateNodeToken();
-      expect(token).toMatch(/^vf_node_[a-f0-9]{16}_[a-f0-9]{64}$/);
+      expect(token).toMatch(/^vf_node_default_[a-f0-9]{16}_[a-f0-9]{64}$/);
       expect(identifier).toMatch(/^[a-f0-9]{16}$/);
       expect(getNodeTokenIdentifier(token)).toBe(identifier);
       expect(hash).toMatch(/^\$2[aby]\$/);
+    });
+
+    it("throws on invalid org slug", async () => {
+      await expect(generateNodeToken("UPPER")).rejects.toThrow("invalid org slug");
+      await expect(generateNodeToken("_bad")).rejects.toThrow("invalid org slug");
     });
   });
 

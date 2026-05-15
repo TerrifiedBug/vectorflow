@@ -4,8 +4,12 @@ vi.mock("@/app/api/_lib/ip-rate-limit", () => ({
   checkTokenRateLimit: vi.fn(() => Promise.resolve(null)),
 }));
 
+vi.mock("@/server/services/agent-org-binding", () => ({
+  resolveAgentOrg: vi.fn().mockResolvedValue({ orgId: "default", orgSlug: "default", isLegacyToken: false }),
+}));
+
 vi.mock("@/server/services/agent-auth", () => ({
-  authenticateAgent: vi.fn(() =>
+  authenticateAgentInOrg: vi.fn(() =>
     Promise.resolve({ nodeId: "node-1", environmentId: "env-1" }),
   ),
 }));

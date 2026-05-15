@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
-import { authenticateAgent } from "@/server/services/agent-auth";
+import { authenticateAgentInOrg } from "@/server/services/agent-auth";
+import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { getActiveTap } from "@/server/services/active-taps";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { errorLog } from "@/lib/logger";
@@ -11,7 +12,10 @@ export async function POST(request: Request) {
   const rateLimited = await checkTokenRateLimit(request, "agent-tap-events", 120);
   if (rateLimited) return rateLimited;
 
-  const agent = await authenticateAgent(request);
+  const orgResult = await resolveAgentOrg(request);
+  if (orgResult instanceof Response) return orgResult;
+
+  const agent = await authenticateAgentInOrg(request, orgResult.orgId);
   if (!agent) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

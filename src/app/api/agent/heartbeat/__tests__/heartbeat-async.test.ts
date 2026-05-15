@@ -8,8 +8,12 @@ vi.mock("@/lib/prisma", () => ({
   prisma: mockDeep<PrismaClient>(),
 }));
 
+vi.mock("@/server/services/agent-org-binding", () => ({
+  resolveAgentOrg: vi.fn().mockResolvedValue({ orgId: "default", orgSlug: "default", isLegacyToken: false }),
+}));
+
 vi.mock("@/server/services/agent-auth", () => ({
-  authenticateAgent: vi.fn(),
+  authenticateAgentInOrg: vi.fn(),
 }));
 
 vi.mock("@/server/services/alert-evaluator", () => ({
@@ -59,7 +63,7 @@ vi.mock("@/app/api/_lib/ip-rate-limit", () => ({
 // ── Imports (after mocks) ──
 
 import { prisma } from "@/lib/prisma";
-import { authenticateAgent } from "@/server/services/agent-auth";
+import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { evaluateAlerts } from "@/server/services/alert-evaluator";
 import { checkNodeHealth } from "@/server/services/fleet-health";
 import { batchUpsertPipelineStatuses } from "@/server/services/heartbeat-batch";
@@ -68,7 +72,7 @@ import { ingestLogs } from "@/server/services/log-ingest";
 import { POST } from "../route";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
-const authenticateAgentMock = authenticateAgent as ReturnType<typeof vi.fn>;
+const authenticateAgentInOrgMock = authenticateAgentInOrg as ReturnType<typeof vi.fn>;
 const evaluateAlertsMock = evaluateAlerts as ReturnType<typeof vi.fn>;
 const checkNodeHealthMock = checkNodeHealth as ReturnType<typeof vi.fn>;
 const batchUpsertMock = batchUpsertPipelineStatuses as ReturnType<typeof vi.fn>;
@@ -114,7 +118,7 @@ function makeRequest(overrides: Record<string, unknown> = {}) {
 }
 
 function setupBaseMocks() {
-  authenticateAgentMock.mockResolvedValue({
+  authenticateAgentInOrgMock.mockResolvedValue({
     nodeId: "node-1",
     environmentId: "env-1",
   });

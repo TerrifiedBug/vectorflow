@@ -4,6 +4,10 @@ import type { PrismaClient } from "@/generated/prisma";
 
 // ─── Mock dependencies before importing SUT ─────────────────────────────────
 
+vi.mock("@/server/services/agent-org-binding", () => ({
+  resolveAgentOrg: vi.fn().mockResolvedValue({ orgId: "default", orgSlug: "default", isLegacyToken: false }),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: mockDeep<PrismaClient>(),
 }));

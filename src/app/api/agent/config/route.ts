@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import yaml from "js-yaml";
 import { prisma } from "@/lib/prisma";
-import { authenticateAgent } from "@/server/services/agent-auth";
+import { authenticateAgentInOrg } from "@/server/services/agent-auth";
+import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { collectSecretRefs, convertSecretRefsToEnvVars, resolveCertRefs, secretNameToEnvVar } from "@/server/services/secret-resolver";
 import { collectVarRefs, resolveVarRefs } from "@/server/services/variable-resolver";
 import { decrypt } from "@/server/services/crypto";
@@ -11,7 +12,6 @@ import { setExpectedChecksum } from "@/server/services/drift-metrics";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { warnLog, errorLog } from "@/lib/logger";
 import { getOrgSettings } from "@/lib/org-settings";
-import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -55,7 +55,10 @@ export async function GET(request: Request) {
   const rateLimited = await checkTokenRateLimit(request, "config", 30);
   if (rateLimited) return rateLimited;
 
-  const agent = await authenticateAgent(request);
+  const orgResult = await resolveAgentOrg(request);
+  if (orgResult instanceof Response) return orgResult;
+
+  const agent = await authenticateAgentInOrg(request, orgResult.orgId);
   if (!agent) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -72,7 +75,7 @@ export async function GET(request: Request) {
         where: { id: agent.environmentId },
         select: { secretBackend: true },
       });
-      const orgSettings = await getOrgSettings(DEFAULT_ORG_ID);
+      const orgSettings = await getOrgSettings(orgResult.orgId);
       return NextResponse.json({
         pipelines: [],
         pollIntervalMs: orgSettings.fleetPollIntervalMs ?? 15_000,
@@ -297,7 +300,7 @@ export async function GET(request: Request) {
       : [];
 
     // Get org settings for poll interval
-    const orgSettings = await getOrgSettings(DEFAULT_ORG_ID);
+    const orgSettings = await getOrgSettings(orgResult.orgId);
 
     // Build push URL from the incoming request's host
     const proto = request.headers.get("x-forwarded-proto") ?? "http";

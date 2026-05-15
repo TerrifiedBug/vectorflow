@@ -88,6 +88,7 @@ function makeEnvironment(overrides: Record<string, unknown> = {}) {
     nodes: [],
     _count: { nodes: 0, pipelines: 0 },
     team: { id: "team-1", name: "Test Team" },
+    organizationId: "default",
     pipelines: [],
     ...overrides,
   };
@@ -326,6 +327,51 @@ describe("environment router", () => {
       await expect(
         adminCaller.generateEnrollmentToken({ environmentId: "nonexistent" }),
       ).rejects.toThrow("Environment not found");
+    });
+
+    it("looks up org slug for Cloud org and mints scoped token", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue(
+        makeEnvironment({ organizationId: "org-acme" }) as never,
+      );
+      prismaMock.organization.findUnique.mockResolvedValue(
+        { id: "org-acme", slug: "acme" } as never,
+      );
+      vi.mocked(agentToken.generateEnrollmentToken).mockResolvedValue({
+        token: "vfe_acme_abc123",
+        hash: "hashed-acme",
+        hint: "vfe_acme_abc...",
+      });
+      prismaMock.environment.update.mockResolvedValue({} as never);
+
+      const result = await adminCaller.generateEnrollmentToken({ environmentId: "env-1" });
+
+      expect(agentToken.generateEnrollmentToken).toHaveBeenCalledWith("acme");
+      expect(result.token).toBe("vfe_acme_abc123");
+      expect(result.hint).toBe("vfe_acme_abc...");
+    });
+
+    it("throws INTERNAL_SERVER_ERROR when Cloud org row is missing", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue(
+        makeEnvironment({ organizationId: "org-gone" }) as never,
+      );
+      prismaMock.organization.findUnique.mockResolvedValue(null);
+
+      await expect(
+        adminCaller.generateEnrollmentToken({ environmentId: "env-1" }),
+      ).rejects.toThrow("Environment's organization not found");
+    });
+
+    it("throws INTERNAL_SERVER_ERROR when Cloud org is soft-deleted", async () => {
+      prismaMock.environment.findUnique.mockResolvedValue(
+        makeEnvironment({ organizationId: "org-deleted" }) as never,
+      );
+      prismaMock.organization.findUnique.mockResolvedValue(
+        { id: "org-deleted", slug: "deleted-org", deletedAt: new Date() } as never,
+      );
+
+      await expect(
+        adminCaller.generateEnrollmentToken({ environmentId: "env-1" }),
+      ).rejects.toThrow("Environment's organization not found or deleted");
     });
   });
 

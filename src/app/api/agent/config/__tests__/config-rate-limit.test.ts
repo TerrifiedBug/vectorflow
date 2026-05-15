@@ -1,13 +1,17 @@
 // src/app/api/agent/config/__tests__/config-rate-limit.test.ts
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
+vi.mock("@/server/services/agent-org-binding", () => ({
+  resolveAgentOrg: vi.fn().mockResolvedValue({ orgId: "default", orgSlug: "default", isLegacyToken: false }),
+}));
+
 vi.mock("@/app/api/_lib/ip-rate-limit", () => ({
   checkTokenRateLimit: vi.fn(() => Promise.resolve(null)),
   checkIpRateLimit: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock("@/server/services/agent-auth", () => ({
-  authenticateAgent: vi.fn(() =>
+  authenticateAgentInOrg: vi.fn(() =>
     Promise.resolve({ nodeId: "node-1", environmentId: "env-1" }),
   ),
 }));
@@ -26,7 +30,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     pipeline: { findMany: vi.fn(() => Promise.resolve([])) },
     eventSampleRequest: { findMany: vi.fn(() => Promise.resolve([])) },
-    systemSettings: {
+    organizationSettings: {
       findUnique: vi.fn(() => Promise.resolve({ fleetPollIntervalMs: 15000 })),
     },
   },

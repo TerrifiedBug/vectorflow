@@ -4,8 +4,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyEnrollmentToken, generateNodeToken } from "@/server/services/agent-token";
+import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { fireEventAlert } from "@/server/services/event-alerts";
-import { debugLog, errorLog } from "@/lib/logger";
+import { debugLog, errorLog, warnLog } from "@/lib/logger";
 import { nodeMatchesGroup } from "@/lib/node-group-utils";
 import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { isDemoMode } from "@/lib/is-demo-mode";
@@ -30,16 +31,32 @@ export async function POST(request: Request) {
   const rateLimited = await checkIpRateLimit(request, "enroll", 10);
   if (rateLimited) return rateLimited;
 
+  // Parse the body first — enrollment tokens are in the body, not the
+  // Authorization header. resolveAgentOrg needs the explicit token for
+  // slug extraction and legacy-token detection.
+  let parsed: ReturnType<typeof enrollSchema.safeParse>;
   try {
     const body = await request.json();
-    const parsed = enrollSchema.safeParse(body);
-    if (!parsed.success) {
-      errorLog("enroll", "invalid input", parsed.error.flatten().fieldErrors);
-      return NextResponse.json(
-        { error: "Invalid input", details: parsed.error.flatten().fieldErrors },
-        { status: 400 },
-      );
-    }
+    parsed = enrollSchema.safeParse(body);
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  if (!parsed.success) {
+    errorLog("enroll", "invalid input", parsed.error.flatten().fieldErrors);
+    return NextResponse.json(
+      { error: "Invalid input", details: parsed.error.flatten().fieldErrors },
+      { status: 400 },
+    );
+  }
+
+  const orgResult = await resolveAgentOrg(request, { explicitToken: parsed.data.token });
+  if (orgResult instanceof Response) return orgResult;
+
+  if (orgResult.isLegacyToken) {
+    warnLog("enroll", "enrollment via legacy (pre-slug) token — consider regenerating");
+  }
+
+  try {
 
     const { token, hostname, os, agentVersion, vectorVersion, labels: agentLabels } = parsed.data;
     const safeHostname = hostname.replace(/[\r\n\t"]/g, " ");
@@ -51,6 +68,7 @@ export async function POST(request: Request) {
       where: {
         enrollmentTokenHash: { not: null },
         isSystem: false,
+        organizationId: orgResult.orgId,
       },
       select: {
         id: true,
@@ -79,7 +97,7 @@ export async function POST(request: Request) {
     }
 
     // Generate a unique node token for this agent
-    const nodeToken = await generateNodeToken();
+    const nodeToken = await generateNodeToken(orgResult.orgSlug);
 
     // Create the fleet node entry with agent-provided labels so group matching
     // can use them immediately (fixes the chicken-and-egg problem where nodes
@@ -98,6 +116,7 @@ export async function POST(request: Request) {
         vectorVersion: vectorVersion ?? null,
         os: os ?? null,
         metadata: { enrolledVia: "agent" },
+        organizationId: orgResult.orgId,
         ...(agentLabels && Object.keys(agentLabels).length > 0
           ? { labels: agentLabels }
           : {}),
