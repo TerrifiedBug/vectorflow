@@ -88,6 +88,7 @@ function makeEnvironment(overrides: Record<string, unknown> = {}) {
     nodes: [],
     _count: { nodes: 0, pipelines: 0 },
     team: { id: "team-1", name: "Test Team" },
+    organizationId: "default",
     pipelines: [],
     ...overrides,
   };
