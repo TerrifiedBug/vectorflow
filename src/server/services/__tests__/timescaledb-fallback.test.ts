@@ -4,6 +4,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     $queryRawUnsafe: vi.fn(),
     systemSettings: { findUnique: vi.fn() },
+    organizationSettings: { findUnique: vi.fn(), upsert: vi.fn(), create: vi.fn() },
     pipelineMetric: {
       deleteMany: vi.fn(),
       findMany: vi.fn(),
@@ -28,12 +29,19 @@ import {
   resolveMetricsSource,
   queryPipelineMetricsAggregated,
 } from "../metrics-query";
+ import { mockOrgSettings } from "@/__tests__/helpers/mock-org-settings";
 
 const mockIsTimescale = vi.mocked(isTimescaleDbAvailable);
+ const mockOrgSettingsValue = mockOrgSettings();
 
 describe("TimescaleDB fallback integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+ 
+    vi.mocked(prisma.organizationSettings.findUnique).mockResolvedValue(mockOrgSettingsValue);
+    vi.mocked(prisma.organizationSettings.upsert).mockResolvedValue(mockOrgSettingsValue);
+ 
+    vi.mocked(prisma.organizationSettings.create).mockResolvedValue(mockOrgSettingsValue);
   });
 
   describe("when TimescaleDB is NOT available", () => {

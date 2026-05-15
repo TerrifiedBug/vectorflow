@@ -3,6 +3,8 @@ import { Prisma } from "@/generated/prisma";
 import { infoLog, errorLog } from "@/lib/logger";
 import { queryErrorContext } from "@/server/services/error-context";
 import { correlateAnomalyEvent } from "@/server/services/alert-correlator";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -53,25 +55,16 @@ export async function getAnomalyConfig(): Promise<RuntimeAnomalyConfig> {
   }
 
   try {
-    const settings = await prisma.systemSettings.findUnique({
-      where: { id: "singleton" },
-      select: {
-        anomalyBaselineWindowDays: true,
-        anomalySigmaThreshold: true,
-        anomalyMinStddevFloorPercent: true,
-        anomalyDedupWindowHours: true,
-        anomalyEnabledMetrics: true,
-      },
-    });
+    const settings = await getOrgSettings(DEFAULT_ORG_ID);
 
     cachedConfig = {
-      baselineWindowDays: settings?.anomalyBaselineWindowDays ?? ANOMALY_CONFIG.BASELINE_WINDOW_DAYS,
-      sigmaThreshold: settings?.anomalySigmaThreshold ?? ANOMALY_CONFIG.SIGMA_THRESHOLD,
+      baselineWindowDays: settings.anomalyBaselineWindowDays ?? ANOMALY_CONFIG.BASELINE_WINDOW_DAYS,
+      sigmaThreshold: settings.anomalySigmaThreshold ?? ANOMALY_CONFIG.SIGMA_THRESHOLD,
       minBaselinePoints: ANOMALY_CONFIG.MIN_BASELINE_POINTS, // not user-configurable
-      minStddevFloorPercent: settings?.anomalyMinStddevFloorPercent ?? ANOMALY_CONFIG.MIN_STDDEV_FLOOR_PERCENT,
+      minStddevFloorPercent: settings.anomalyMinStddevFloorPercent ?? ANOMALY_CONFIG.MIN_STDDEV_FLOOR_PERCENT,
       pollIntervalMs: ANOMALY_CONFIG.POLL_INTERVAL_MS, // not user-configurable
-      dedupWindowHours: settings?.anomalyDedupWindowHours ?? ANOMALY_CONFIG.DEDUP_WINDOW_HOURS,
-      enabledMetrics: settings?.anomalyEnabledMetrics
+      dedupWindowHours: settings.anomalyDedupWindowHours ?? ANOMALY_CONFIG.DEDUP_WINDOW_HOURS,
+      enabledMetrics: settings.anomalyEnabledMetrics
         ? settings.anomalyEnabledMetrics.split(",").map((s) => s.trim()).filter(Boolean)
         : ["eventsIn", "errorsTotal", "latencyMeanMs"],
     };

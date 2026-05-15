@@ -15,6 +15,7 @@ vi.mock("@sentry/nextjs", () => ({
 // Import after mocks are declared so vi.mock hoisting resolves correctly.
 import { prisma } from "@/lib/prisma";
 import * as Sentry from "@sentry/nextjs";
+ import { mockOrgSettings } from "@/__tests__/helpers/mock-org-settings";
 import { sendTelemetryHeartbeat, _resetSenderState } from "../telemetry-sender";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -31,13 +32,19 @@ const enabledSettings = {
   oidcIssuer: null, // null → credentials auth method
 };
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  _resetSenderState();
-  vi.stubGlobal("fetch", vi.fn());
-  vi.stubEnv("VF_VERSION", "1.4.2");
-  vi.stubEnv("VF_DEPLOYMENT_MODE", "docker");
-});
+ beforeEach(() => {
+   vi.clearAllMocks();
+   _resetSenderState();
+   vi.stubGlobal("fetch", vi.fn());
+   vi.stubEnv("VF_VERSION", "1.4.2");
+   vi.stubEnv("VF_DEPLOYMENT_MODE", "docker");
+   prismaMock.organizationSettings.findUnique.mockResolvedValue(
+     mockOrgSettings({ telemetryEnabled: true, telemetryInstanceId: "01HX0000000000000000000000", telemetryEnabledAt: new Date("2026-04-25T10:00:00.000Z") })
+   );
+   prismaMock.organizationSettings.create.mockResolvedValue(
+     mockOrgSettings({ telemetryEnabled: true, telemetryInstanceId: "01HX0000000000000000000000", telemetryEnabledAt: new Date("2026-04-25T10:00:00.000Z") })
+   );
+ });
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -60,7 +67,7 @@ function mockCounts(draft: number, active: number, paused: number, nodes: number
 
 describe("sendTelemetryHeartbeat — happy path", () => {
   it("POSTs a V1 payload to the Pulse URL when telemetry is enabled", async () => {
-    prismaMock.systemSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
     mockCounts(3, 12, 2, 5);
 
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
@@ -85,7 +92,7 @@ describe("sendTelemetryHeartbeat — happy path", () => {
   });
 
   it("no-ops when telemetryEnabled is false", async () => {
-    prismaMock.systemSettings.findUnique.mockResolvedValueOnce({
+    prismaMock.organizationSettings.findUnique.mockResolvedValueOnce({
       ...enabledSettings,
       telemetryEnabled: false,
       telemetryInstanceId: null,
@@ -98,7 +105,7 @@ describe("sendTelemetryHeartbeat — happy path", () => {
   });
 
   it("no-ops when telemetryInstanceId is missing even if enabled", async () => {
-    prismaMock.systemSettings.findUnique.mockResolvedValueOnce({
+    prismaMock.organizationSettings.findUnique.mockResolvedValueOnce({
       ...enabledSettings,
       telemetryEnabled: true,
       telemetryInstanceId: null,
@@ -111,7 +118,7 @@ describe("sendTelemetryHeartbeat — happy path", () => {
   });
 
   it("uses oidc auth_method when oidcIssuer is set", async () => {
-    prismaMock.systemSettings.findUnique.mockResolvedValueOnce({
+    prismaMock.organizationSettings.findUnique.mockResolvedValueOnce({
       ...enabledSettings,
       oidcIssuer: "https://sso.example.com",
     } as never);
@@ -130,7 +137,7 @@ describe("sendTelemetryHeartbeat — happy path", () => {
 
   it("falls back to 'unknown' for vf_version and 'bare' for deployment_mode when no env vars are set", async () => {
     vi.unstubAllEnvs();
-    prismaMock.systemSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
     mockCounts(0, 0, 0, 0);
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       new Response(null, { status: 204 })
@@ -150,7 +157,7 @@ describe("sendTelemetryHeartbeat — happy path", () => {
 
   it("returns 'unknown' when VF_DEPLOYMENT_MODE is set to a non-enum value", async () => {
     vi.stubEnv("VF_DEPLOYMENT_MODE", "kubernetes");
-    prismaMock.systemSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
     mockCounts(0, 0, 0, 0);
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       new Response(null, { status: 204 })
@@ -166,7 +173,7 @@ describe("sendTelemetryHeartbeat — happy path", () => {
   it("auto-detects 'helm' when KUBERNETES_SERVICE_HOST is present", async () => {
     vi.unstubAllEnvs();
     vi.stubEnv("KUBERNETES_SERVICE_HOST", "10.0.0.1");
-    prismaMock.systemSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
     mockCounts(0, 0, 0, 0);
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       new Response(null, { status: 204 })
@@ -185,18 +192,18 @@ describe("sendTelemetryHeartbeat — happy path", () => {
     // Re-import to ensure process.env.NEXT_PUBLIC_VF_DEMO_MODE is read fresh
     const { sendTelemetryHeartbeat: senderWithDemo } = await import("../telemetry-sender");
 
-    prismaMock.systemSettings.findUnique.mockResolvedValue(enabledSettings as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(enabledSettings as never);
 
     await senderWithDemo();
 
     expect(globalThis.fetch).not.toHaveBeenCalled();
-    expect(prismaMock.systemSettings.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.organizationSettings.findUnique).not.toHaveBeenCalled();
   });
 });
 
 describe("sendTelemetryHeartbeat — failure paths", () => {
   it("logs and Sentry-captures on network error, does not throw", async () => {
-    prismaMock.systemSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
     mockCounts(0, 0, 0, 0);
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       new TypeError("fetch failed")
@@ -207,7 +214,7 @@ describe("sendTelemetryHeartbeat — failure paths", () => {
   });
 
   it("logs and Sentry-captures on non-2xx response that isn't 503", async () => {
-    prismaMock.systemSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValueOnce(enabledSettings as never);
     mockCounts(0, 0, 0, 0);
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       new Response(null, { status: 500 })
@@ -218,7 +225,7 @@ describe("sendTelemetryHeartbeat — failure paths", () => {
   });
 
   it("on 503 with Retry-After, suppresses next call within the retry window", async () => {
-    prismaMock.systemSettings.findUnique.mockResolvedValue(enabledSettings as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(enabledSettings as never);
     mockCounts(0, 0, 0, 0);
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       new Response(null, { status: 503, headers: { "retry-after": "3600" } })
@@ -236,7 +243,7 @@ describe("sendTelemetryHeartbeat — failure paths", () => {
   });
 
   it("on 503 without Retry-After, does not suppress future calls", async () => {
-    prismaMock.systemSettings.findUnique.mockResolvedValue(enabledSettings as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(enabledSettings as never);
     // Need to mock counts twice because two calls will reach the count phase
     mockCounts(0, 0, 0, 0);
     mockCounts(0, 0, 0, 0);

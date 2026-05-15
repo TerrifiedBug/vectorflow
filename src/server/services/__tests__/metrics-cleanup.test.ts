@@ -5,6 +5,7 @@ vi.mock("@/lib/prisma", () => ({
     systemSettings: {
       findUnique: vi.fn(),
     },
+    organizationSettings: { findUnique: vi.fn(), upsert: vi.fn(), create: vi.fn() },
     pipelineMetric: { deleteMany: vi.fn() },
     nodeMetric: { deleteMany: vi.fn() },
     pipelineLog: { deleteMany: vi.fn() },
@@ -20,6 +21,7 @@ vi.mock("@/server/services/timescaledb", () => ({
 import { prisma } from "@/lib/prisma";
 import { isTimescaleDbAvailable } from "@/server/services/timescaledb";
 import { cleanupOldMetrics } from "../metrics-cleanup";
+ import { mockOrgSettings } from "@/__tests__/helpers/mock-org-settings";
 
 const mockFindUnique = vi.mocked(prisma.systemSettings.findUnique);
 const mockQueryRaw = vi.mocked(prisma.$queryRawUnsafe);
@@ -33,6 +35,11 @@ describe("cleanupOldMetrics", () => {
       metricsRetentionDays: 7,
       logsRetentionDays: 3,
     } as never);
+ 
+    vi.mocked(prisma.organizationSettings.findUnique).mockResolvedValue(mockOrgSettings());
+    vi.mocked(prisma.organizationSettings.upsert).mockResolvedValue(mockOrgSettings());
+ 
+    vi.mocked(prisma.organizationSettings.create).mockResolvedValue(mockOrgSettings());
   });
 
   describe("when TimescaleDB is available", () => {
@@ -58,11 +65,12 @@ describe("cleanupOldMetrics", () => {
     });
 
     it("uses correct retention intervals from system settings", async () => {
-      mockFindUnique.mockResolvedValue({
-        id: "singleton",
-        metricsRetentionDays: 14,
-        logsRetentionDays: 5,
-      } as never);
+      vi.mocked(prisma.organizationSettings.findUnique).mockResolvedValue(
+        mockOrgSettings({
+          metricsRetentionDays: 14,
+          logsRetentionDays: 5,
+        })
+      );
       mockQueryRaw.mockResolvedValue([]);
 
       await cleanupOldMetrics();
@@ -113,7 +121,7 @@ describe("cleanupOldMetrics", () => {
 
   describe("default settings", () => {
     it("uses 7-day metrics retention and 3-day logs retention when settings are missing", async () => {
-      mockFindUnique.mockResolvedValue(null);
+      vi.mocked(prisma.organizationSettings.findUnique).mockResolvedValue(null);
       mockIsTimescale.mockReturnValue(true);
       mockQueryRaw.mockResolvedValue([]);
 

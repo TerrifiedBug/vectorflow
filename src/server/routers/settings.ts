@@ -18,6 +18,7 @@ import {
 } from "@/server/services/backup";
 import { rescheduleBackup, isValidCron } from "@/server/services/backup-scheduler";
 import { validatePublicUrl } from "@/server/services/url-validation";
+import { getOrgSettings, updateOrgSettings, type OrgSettings } from "@/lib/org-settings";
 
 const SETTINGS_ID = "singleton";
 
@@ -28,6 +29,11 @@ function maskSecret(value: string | null | undefined): string | null {
   return "****" + value.slice(-4);
 }
 
+/**
+ * Read (and lazily create) the SystemSettings singleton.
+ * Only used to surface platform-wide release data in productionReadiness.
+ * Per-org fields are now owned by OrganizationSettings.
+ */
 async function getOrCreateSettings() {
   let settings = await prisma.systemSettings.findUnique({
     where: { id: SETTINGS_ID },
@@ -43,8 +49,8 @@ async function getOrCreateSettings() {
 export const settingsRouter = router({
   get: protectedProcedure
     .use(requireSuperAdmin())
-    .query(async () => {
-      const settings = await getOrCreateSettings();
+    .query(async ({ ctx }) => {
+      const settings = await getOrgSettings(ctx.organizationId);
 
       // Decrypt clientSecret for masking
       let maskedClientSecret: string | null = null;
@@ -127,10 +133,8 @@ export const settingsRouter = router({
       })
     )
     .use(withAudit("settings.oidc_updated", "SystemSettings"))
-    .mutation(async ({ input }) => {
-      await getOrCreateSettings();
-
-      const data: Record<string, unknown> = {
+    .mutation(async ({ input, ctx }) => {
+      const data: Partial<Omit<OrgSettings, "id" | "organizationId" | "updatedAt">> = {
         oidcIssuer: input.issuer,
         oidcClientId: input.clientId,
         oidcDisplayName: input.displayName,
@@ -141,10 +145,7 @@ export const settingsRouter = router({
         data.oidcClientSecret = encrypt(input.clientSecret);
       }
 
-      const result = await prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data,
-      });
+      const result = await updateOrgSettings(ctx.organizationId, data);
       invalidateAuthCache();
       return result;
     }),
@@ -161,17 +162,12 @@ export const settingsRouter = router({
       })
     )
     .use(withAudit("settings.oidc_role_mapping_updated", "SystemSettings"))
-    .mutation(async ({ input }) => {
-      await getOrCreateSettings();
-
-      return prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data: {
-          oidcDefaultRole: input.defaultRole,
-          oidcGroupsClaim: input.groupsClaim,
-          oidcAdminGroups: input.adminGroups || null,
-          oidcEditorGroups: input.editorGroups || null,
-        },
+    .mutation(async ({ input, ctx }) => {
+      return updateOrgSettings(ctx.organizationId, {
+        oidcDefaultRole: input.defaultRole,
+        oidcGroupsClaim: input.groupsClaim,
+        oidcAdminGroups: input.adminGroups || null,
+        oidcEditorGroups: input.editorGroups || null,
       });
     }),
 
@@ -191,9 +187,7 @@ export const settingsRouter = router({
       groupsClaim: z.string().min(1),
     }))
     .use(withAudit("settings.oidc_team_mapping_updated", "SystemSettings"))
-    .mutation(async ({ input }) => {
-      await getOrCreateSettings();
-
+    .mutation(async ({ input, ctx }) => {
       // Validate all teamIds exist
       if (input.mappings.length > 0) {
         const teamIds = [...new Set(input.mappings.map((m) => m.teamId))];
@@ -218,28 +212,21 @@ export const settingsRouter = router({
         }
       }
 
-      const result = await prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data: {
-          oidcGroupSyncEnabled: input.groupSyncEnabled,
-          oidcGroupsScope: input.groupsScope || null,
-          oidcTeamMappings: JSON.stringify(input.mappings),
-          oidcDefaultTeamId: input.defaultTeamId || null,
-          oidcDefaultRole: input.defaultRole,
-          oidcGroupsClaim: input.groupsClaim,
-          // Clear legacy fields when saving new team mappings
-          oidcAdminGroups: null,
-          oidcEditorGroups: null,
-        },
+      const result = await updateOrgSettings(ctx.organizationId, {
+        oidcGroupSyncEnabled: input.groupSyncEnabled,
+        oidcGroupsScope: input.groupsScope || null,
+        oidcTeamMappings: JSON.stringify(input.mappings),
+        oidcDefaultTeamId: input.defaultTeamId || null,
+        oidcDefaultRole: input.defaultRole,
+        oidcGroupsClaim: input.groupsClaim,
+        // Clear legacy fields when saving new team mappings
+        oidcAdminGroups: null,
+        oidcEditorGroups: null,
       });
       invalidateAuthCache();
 
       // In SCIM mode, reconcile all users who have ScimGroupMember records
-      const scimSettings = await prisma.systemSettings.findUnique({
-        where: { id: SETTINGS_ID },
-        select: { scimEnabled: true },
-      });
-      if (scimSettings?.scimEnabled) {
+      if (result.scimEnabled) {
         const { reconcileUserTeamMemberships, getScimGroupNamesForUser } =
           await import("@/server/services/group-mappings");
 
@@ -271,17 +258,12 @@ export const settingsRouter = router({
       })
     )
     .use(withAudit("settings.fleet_updated", "SystemSettings"))
-    .mutation(async ({ input }) => {
-      await getOrCreateSettings();
-
-      return prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data: {
-          fleetPollIntervalMs: input.pollIntervalMs,
-          fleetUnhealthyThreshold: input.unhealthyThreshold,
-          ...(input.metricsRetentionDays !== undefined ? { metricsRetentionDays: input.metricsRetentionDays } : {}),
-          ...(input.logsRetentionDays !== undefined ? { logsRetentionDays: input.logsRetentionDays } : {}),
-        },
+    .mutation(async ({ input, ctx }) => {
+      return updateOrgSettings(ctx.organizationId, {
+        fleetPollIntervalMs: input.pollIntervalMs,
+        fleetUnhealthyThreshold: input.unhealthyThreshold,
+        ...(input.metricsRetentionDays !== undefined ? { metricsRetentionDays: input.metricsRetentionDays } : {}),
+        ...(input.logsRetentionDays !== undefined ? { logsRetentionDays: input.logsRetentionDays } : {}),
       });
     }),
 
@@ -298,7 +280,7 @@ export const settingsRouter = router({
       })
     )
     .use(withAudit("settings.anomaly_config_updated", "SystemSettings"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       // Validate enabled metrics
       const validMetrics = new Set(["eventsIn", "errorsTotal", "latencyMeanMs"]);
       const metrics = input.enabledMetrics.split(",").map((s) => s.trim());
@@ -316,17 +298,12 @@ export const settingsRouter = router({
         });
       }
 
-      await getOrCreateSettings();
-
-      const result = await prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data: {
-          anomalyBaselineWindowDays: input.baselineWindowDays,
-          anomalySigmaThreshold: input.sigmaThreshold,
-          anomalyMinStddevFloorPercent: input.minStddevFloorPercent,
-          anomalyDedupWindowHours: input.dedupWindowHours,
-          anomalyEnabledMetrics: input.enabledMetrics,
-        },
+      const result = await updateOrgSettings(ctx.organizationId, {
+        anomalyBaselineWindowDays: input.baselineWindowDays,
+        anomalySigmaThreshold: input.sigmaThreshold,
+        anomalyMinStddevFloorPercent: input.minStddevFloorPercent,
+        anomalyDedupWindowHours: input.dedupWindowHours,
+        anomalyEnabledMetrics: input.enabledMetrics,
       });
 
       // Bust the in-memory cache so the next poll picks up changes
@@ -462,7 +439,7 @@ export const settingsRouter = router({
       })
     )
     .use(withAudit("settings.backup_schedule_updated", "SystemSettings"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       if (!isValidCron(input.cron)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -470,14 +447,10 @@ export const settingsRouter = router({
         });
       }
 
-      await getOrCreateSettings();
-      const result = await prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data: {
-          backupEnabled: input.enabled,
-          backupCron: input.cron,
-          backupRetentionCount: input.retentionCount,
-        },
+      const result = await updateOrgSettings(ctx.organizationId, {
+        backupEnabled: input.enabled,
+        backupCron: input.cron,
+        backupRetentionCount: input.retentionCount,
       });
 
       rescheduleBackup(input.enabled, input.cron);
@@ -541,10 +514,8 @@ export const settingsRouter = router({
       endpoint: z.string().optional(),
     }))
     .use(withAudit("settings.storage_backend_updated", "SystemSettings"))
-    .mutation(async ({ input }) => {
-      await getOrCreateSettings();
-
-      const data: Record<string, unknown> = {
+    .mutation(async ({ input, ctx }) => {
+      const data: Partial<Omit<OrgSettings, "id" | "organizationId" | "updatedAt">> = {
         backupStorageBackend: input.backend,
       };
 
@@ -561,10 +532,7 @@ export const settingsRouter = router({
       // When switching to "local", keep S3 credentials per locked decision:
       // "Switching from S3 back to Local keeps credentials -- user may switch back"
 
-      return prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data,
-      });
+      return updateOrgSettings(ctx.organizationId, data);
     }),
 
   // ─── SCIM Provisioning ────────────────────────────────────────────────────
@@ -574,39 +542,29 @@ export const settingsRouter = router({
     .use(requireSuperAdmin())
     .input(z.object({ enabled: z.boolean() }))
     .use(withAudit("settings.scim_updated", "SystemSettings"))
-    .mutation(async ({ input }) => {
-      await getOrCreateSettings();
-
+    .mutation(async ({ input, ctx }) => {
       // If disabling, also clear the token
-      const data: Record<string, unknown> = {
+      const data: Partial<Omit<OrgSettings, "id" | "organizationId" | "updatedAt">> = {
         scimEnabled: input.enabled,
       };
       if (!input.enabled) {
         data.scimBearerToken = null;
       }
 
-      return prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data,
-      });
+      return updateOrgSettings(ctx.organizationId, data);
     }),
 
   generateScimToken: protectedProcedure
     .use(denyInDemo())
     .use(requireSuperAdmin())
     .use(withAudit("settings.scim_token_generated", "SystemSettings"))
-    .mutation(async () => {
-      await getOrCreateSettings();
-
+    .mutation(async ({ ctx }) => {
       // Generate a secure random token
       const token = crypto.randomBytes(32).toString("hex");
 
       // Store encrypted — does not enable SCIM; admin must toggle via updateScim
-      await prisma.systemSettings.update({
-        where: { id: SETTINGS_ID },
-        data: {
-          scimBearerToken: encrypt(token),
-        },
+      await updateOrgSettings(ctx.organizationId, {
+        scimBearerToken: encrypt(token),
       });
 
       // Return the plaintext token (shown once to the user)
@@ -617,7 +575,7 @@ export const settingsRouter = router({
 
   productionReadiness: protectedProcedure
     .use(requireSuperAdmin())
-    .query(async () => {
+    .query(async ({ ctx }) => {
       const checkedAt = new Date().toISOString();
 
       type SignalStatus = "ok" | "warn" | "error" | "unknown";
@@ -646,14 +604,18 @@ export const settingsRouter = router({
       // additional connection timeouts during an outage. When DB is up, wrapped
       // in try/catch so an unexpected failure still degrades gracefully.
       type NodeStatRow = { status: string; _count: { id: number } };
-      let settings: Awaited<ReturnType<typeof getOrCreateSettings>> | null = null;
+      // Per-org settings (oidc, backup, scim, fleet, anomaly)
+      let orgSettings: OrgSettings | null = null;
+      // Platform-wide settings (latestServerRelease, etc.)
+      let sysSettings: Awaited<ReturnType<typeof getOrCreateSettings>> | null = null;
       let nodeStats: NodeStatRow[] = [];
       let alertRuleCount = 0;
       let auditPipeline: { isDraft: boolean; deployedAt: Date | null } | null = null;
       let configAvailable = false;
       if (dbOk) {
         try {
-          [settings, nodeStats, alertRuleCount, auditPipeline] = await Promise.all([
+          [orgSettings, sysSettings, nodeStats, alertRuleCount, auditPipeline] = await Promise.all([
+            getOrgSettings(ctx.organizationId),
             getOrCreateSettings(),
             prisma.vectorNode.groupBy({
               by: ["status"],
@@ -682,17 +644,18 @@ export const settingsRouter = router({
         .reduce((sum, g) => sum + g._count.id, 0);
 
       const currentVersion = process.env.VF_VERSION ?? "dev";
-      const latestVersion = settings?.latestServerRelease ?? null;
+      // latestServerRelease is a platform-wide field — stays on SystemSettings
+      const latestVersion = sysSettings?.latestServerRelease ?? null;
       const updateAvailable =
         latestVersion &&
         latestVersion !== currentVersion &&
         currentVersion !== "dev";
 
       const backupOk =
-        !!settings?.backupEnabled &&
-        !!settings?.lastBackupAt &&
-        settings?.lastBackupStatus !== "failed" &&
-        Date.now() - new Date(settings.lastBackupAt).getTime() < 48 * 60 * 60 * 1000;
+        !!orgSettings?.backupEnabled &&
+        !!orgSettings?.lastBackupAt &&
+        orgSettings?.lastBackupStatus !== "failed" &&
+        Date.now() - new Date(orgSettings.lastBackupAt).getTime() < 48 * 60 * 60 * 1000;
 
       const auditShippingActive =
         !!auditPipeline && !auditPipeline.isDraft && !!auditPipeline.deployedAt;
@@ -713,21 +676,21 @@ export const settingsRouter = router({
           label: "Backups",
           status: !configAvailable
             ? "unknown"
-            : !settings?.backupEnabled
+            : !orgSettings?.backupEnabled
             ? "warn"
             : backupOk
             ? "ok"
-            : settings?.lastBackupStatus === "failed"
+            : orgSettings?.lastBackupStatus === "failed"
             ? "error"
             : "warn",
           detail: !configAvailable
             ? "Could not read backup configuration"
-            : !settings?.backupEnabled
+            : !orgSettings?.backupEnabled
             ? "Scheduled backups disabled"
-            : settings?.lastBackupStatus === "failed"
-            ? `Last backup failed: ${settings?.lastBackupError ?? "unknown error"}`
-            : settings?.lastBackupAt
-            ? `Last backup ${new Date(settings.lastBackupAt).toLocaleDateString()}`
+            : orgSettings?.lastBackupStatus === "failed"
+            ? `Last backup failed: ${orgSettings?.lastBackupError ?? "unknown error"}`
+            : orgSettings?.lastBackupAt
+            ? `Last backup ${new Date(orgSettings.lastBackupAt).toLocaleDateString()}`
             : "No backup recorded",
           href: "/settings/backup",
         },
@@ -757,11 +720,11 @@ export const settingsRouter = router({
         {
           id: "oidc",
           label: "SSO / OIDC",
-          status: !configAvailable ? "unknown" : settings?.oidcIssuer ? "ok" : "warn",
+          status: !configAvailable ? "unknown" : orgSettings?.oidcIssuer ? "ok" : "warn",
           detail: !configAvailable
             ? "Could not read auth configuration"
-            : settings?.oidcIssuer
-            ? `Configured (${settings.oidcDisplayName ?? "SSO"})`
+            : orgSettings?.oidcIssuer
+            ? `Configured (${orgSettings.oidcDisplayName ?? "SSO"})`
             : "No OIDC provider configured — using local auth only",
           href: "/settings",
         },
@@ -769,10 +732,10 @@ export const settingsRouter = router({
         {
           id: "scim",
           label: "SCIM provisioning",
-          status: !configAvailable ? "unknown" : settings?.scimEnabled ? "ok" : "warn",
+          status: !configAvailable ? "unknown" : orgSettings?.scimEnabled ? "ok" : "warn",
           detail: !configAvailable
             ? "Could not read SCIM configuration"
-            : settings?.scimEnabled
+            : orgSettings?.scimEnabled
             ? "Enabled"
             : "Disabled — user provisioning is manual",
           href: "/settings/scim",

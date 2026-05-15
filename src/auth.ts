@@ -24,6 +24,8 @@ import {
   ACCOUNT_LOCKOUT_THRESHOLD,
   TOTP_RATE_LIMIT,
 } from "@/server/services/login-protection";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 async function getClientIp(): Promise<string | null> {
   try {
@@ -60,9 +62,7 @@ async function getOidcSettings() {
   if (isBuildPhase) return null;
 
   try {
-    const settings = await prisma.systemSettings.findUnique({
-      where: { id: "singleton" },
-    });
+    const settings = await getOrgSettings(DEFAULT_ORG_ID);
     if (settings?.oidcIssuer && settings?.oidcClientId && settings?.oidcClientSecret) {
       let clientSecret: string;
       try {
@@ -286,9 +286,7 @@ async function getAuthInstance() {
           async signIn({ user, account, profile }) {
             // For OIDC sign-ins, auto-create user and team membership with role mapping
             if (account?.provider === "oidc" && user.email) {
-              const settings = await prisma.systemSettings.findUnique({
-                where: { id: "singleton" },
-              });
+              const settings = await getOrgSettings(DEFAULT_ORG_ID);
               const profileData = profile as Record<string, unknown> | undefined;
 
               // Ensure user exists in the database

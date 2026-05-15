@@ -1,17 +1,16 @@
 import { prisma } from "@/lib/prisma";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { fireEventAlert } from "./event-alerts";
 
 /**
  * Check all agent-enrolled nodes and mark unhealthy if heartbeat exceeded threshold.
  */
 export async function checkNodeHealth(): Promise<void> {
-  const settings = await prisma.systemSettings.findUnique({
-    where: { id: "singleton" },
-    select: { fleetPollIntervalMs: true, fleetUnhealthyThreshold: true },
-  });
+  const settings = await getOrgSettings(DEFAULT_ORG_ID);
 
-  const pollMs = settings?.fleetPollIntervalMs ?? 15000;
-  const threshold = settings?.fleetUnhealthyThreshold ?? 3;
+  const pollMs = settings.fleetPollIntervalMs ?? 15000;
+  const threshold = settings.fleetUnhealthyThreshold ?? 3;
   const maxAge = new Date(Date.now() - pollMs * threshold);
 
   // Find nodes that are about to become unreachable so we can fire alerts

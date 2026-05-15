@@ -7,6 +7,162 @@ datasource db {
   provider = "postgresql"
 }
 
+
+// ─── Multi-tenancy ──────────────────────────────────────────────────────────
+
+// Well-known ID for the single default organization (OSS / self-hosted).
+// Every tenant row backfills to this ID; Cloud creates real orgs on signup.
+// Keep this string in sync with DEFAULT_ORG_ID in src/lib/constants.ts.
+
+enum OrgPlan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum OrgMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum PlatformOperatorRole {
+  SUPPORT
+  INFRA
+  BILLING
+  INCIDENT
+}
+
+model Organization {
+  id                String    @id @default(cuid())
+  slug              String    @unique
+  name              String
+  plan              OrgPlan   @default(FREE)
+  region            String    @default("default")
+  // Envelope-encryption fields — null for OSS / self-hosted
+  dataKeyCiphertext String?
+  kmsKeyArn         String?
+  byokKeyArn        String?
+  // Lifecycle
+  suspendedAt       DateTime?
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  members      OrgMember[]
+  settings     OrganizationSettings?
+  accessGrants OrgAccessGrant[]
+}
+
+model OrgMember {
+  id             String        @id @default(cuid())
+  userId         String
+  organizationId String
+  role           OrgMemberRole @default(MEMBER)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+model OrganizationSettings {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // OIDC SSO (moved from SystemSettings singleton)
+  oidcIssuer                  String?
+  oidcClientId                String?
+  oidcClientSecret            String?
+  oidcDisplayName             String? @default("SSO")
+  oidcDefaultRole             Role    @default(VIEWER)
+  oidcGroupSyncEnabled        Boolean @default(false)
+  oidcGroupsScope             String? @default("groups")
+  oidcGroupsClaim             String? @default("groups")
+  oidcAdminGroups             String?
+  oidcEditorGroups            String?
+  oidcTokenEndpointAuthMethod String? @default("client_secret_post")
+  oidcTeamMappings            String?
+  oidcDefaultTeamId           String?
+
+  // Fleet tuning (moved from SystemSettings)
+  fleetPollIntervalMs     Int @default(15000)
+  fleetUnhealthyThreshold Int @default(3)
+  metricsRetentionDays    Int @default(7)
+  logsRetentionDays       Int @default(3)
+
+  // Anomaly detection tuning (moved from SystemSettings)
+  anomalyBaselineWindowDays    Int    @default(7)
+  anomalySigmaThreshold        Float  @default(3)
+  anomalyMinStddevFloorPercent Int    @default(5)
+  anomalyDedupWindowHours      Int    @default(4)
+  anomalyEnabledMetrics        String @default("eventsIn,errorsTotal,latencyMeanMs")
+
+  // Backup configuration (moved from SystemSettings)
+  backupEnabled        Boolean  @default(false)
+  backupCron           String   @default("0 2 * * *")
+  backupRetentionCount Int      @default(7)
+  lastBackupAt         DateTime?
+  lastBackupStatus     String?
+  lastBackupError      String?
+
+  // S3 remote storage (moved from SystemSettings)
+  backupStorageBackend String  @default("local")
+  s3Bucket             String?
+  s3Region             String? @default("us-east-1")
+  s3Prefix             String?
+  s3AccessKeyId        String?
+  s3SecretAccessKey    String?
+  s3Endpoint           String?
+
+  // SCIM (moved from SystemSettings)
+  scimEnabled     Boolean @default(false)
+  scimBearerToken String?
+
+  // Telemetry (moved from SystemSettings)
+  telemetryEnabled    Boolean  @default(false)
+  telemetryInstanceId String?
+  telemetryEnabledAt  DateTime?
+
+  updatedAt DateTime @updatedAt
+}
+
+/// Break-glass access grant. Operator can read encrypted fields only while
+/// this record is active and the customer OWNER has approved it.
+model OrgAccessGrant {
+  id                        String            @id @default(cuid())
+  organizationId            String
+  organization              Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  operatorId                String
+  operator                  PlatformOperator  @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  reason                    String
+  approvedByCustomerAdminId String?
+  kmsGrantToken             String?
+  expiresAt                 DateTime
+  revokedAt                 DateTime?
+  createdAt                 DateTime          @default(now())
+
+  @@index([organizationId])
+  @@index([operatorId])
+  @@index([expiresAt])
+}
+
+/// Platform operator — never a tenant User. Authenticates via separate surface.
+model PlatformOperator {
+  id           String               @id @default(cuid())
+  email        String               @unique
+  name         String
+  role         PlatformOperatorRole @default(SUPPORT)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  accessGrants OrgAccessGrant[]
+}
+
+// ─── End multi-tenancy models ───────────────────────────────────────────────
 model User {
   id                 String       @id @default(cuid())
   email              String       @unique
@@ -15,6 +171,7 @@ model User {
   passwordHash       String?
   authMethod         AuthMethod   @default(LOCAL)
   memberships            TeamMember[]
+  orgMemberships         OrgMember[]
   scimGroupMemberships   ScimGroupMember[]
   accounts               Account[]
   lockedAt           DateTime?
@@ -49,6 +206,7 @@ model User {
 
 model UserPreference {
   id     String @id @default(cuid())
+  organizationId String @default("default")
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   key    String
@@ -56,6 +214,7 @@ model UserPreference {
 
   @@unique([userId, key])
   @@index([userId])
+  @@index([organizationId])
 }
 
 enum AuthMethod {
@@ -65,6 +224,7 @@ enum AuthMethod {
 
 model Team {
   id                   String        @id @default(cuid())
+  organizationId String @default("default")
   name                 String
   requireTwoFactor     Boolean       @default(false)
   defaultEnvironmentId String?
@@ -88,6 +248,7 @@ model Team {
   costRecommendations  CostRecommendation[]
   anomalyEvents     AnomalyEvent[]
   createdAt            DateTime      @default(now())
+  @@index([organizationId])
 }
 
 model ScimGroup {
@@ -129,6 +290,7 @@ enum Role {
 
 model Environment {
   id                  String        @id @default(cuid())
+  organizationId String @default("default")
   name                String
   isSystem            Boolean       @default(false)
   teamId              String?
@@ -170,6 +332,7 @@ model Environment {
   correlationGroups       AlertCorrelationGroup[]
   variables               Variable[]
   createdAt               DateTime      @default(now())
+  @@index([organizationId])
 }
 
 model Variable {
@@ -188,6 +351,7 @@ model Variable {
 
 model VectorNode {
   id               String               @id @default(cuid())
+  organizationId String @default("default")
   name             String
   host             String
   apiPort          Int                  @default(8686)
@@ -216,10 +380,12 @@ model VectorNode {
   alertEvents      AlertEvent[]
   statusEvents     NodeStatusEvent[]
   createdAt        DateTime             @default(now())
+  @@index([organizationId])
 }
 
 model NodeMetric {
   id               String     @id @default(cuid())
+  organizationId String @default("default")
   nodeId           String
   node             VectorNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
   timestamp        DateTime
@@ -241,6 +407,7 @@ model NodeMetric {
 
   @@index([nodeId, timestamp])
   @@index([timestamp])
+  @@index([organizationId])
 }
 
 model NodeStatusEvent {
@@ -279,6 +446,7 @@ enum LogLevel {
 
 model PipelineLog {
   id         String     @id @default(cuid())
+  organizationId String @default("default")
   pipelineId String
   pipeline   Pipeline   @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   nodeId     String
@@ -290,6 +458,7 @@ model PipelineLog {
   @@index([pipelineId, timestamp])
   @@index([nodeId, timestamp])
   @@index([timestamp])
+  @@index([organizationId])
 }
 
 enum SecretBackend {
@@ -341,6 +510,7 @@ model NodeGroup {
 
 model Pipeline {
   id            String               @id @default(cuid())
+  organizationId String @default("default")
   name          String
   description   String?
   environmentId String
@@ -387,6 +557,7 @@ model Pipeline {
   anomalyEvents     AnomalyEvent[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
+  @@index([organizationId])
 }
 
 model PipelineDependency {
@@ -429,6 +600,7 @@ model NodePipelineStatus {
 
 model PipelineMetric {
   id              String   @id @default(cuid())
+  organizationId String @default("default")
   pipelineId      String
   pipeline        Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   nodeId          String?
@@ -446,6 +618,7 @@ model PipelineMetric {
   @@index([pipelineId, timestamp])
   @@index([pipelineId, componentId, timestamp])
   @@index([timestamp])
+  @@index([organizationId])
 }
 
 model PipelineSli {
@@ -477,6 +650,7 @@ enum RecommendationStatus {
 
 model CostRecommendation {
   id              String               @id @default(cuid())
+  organizationId String @default("default")
   teamId          String
   team            Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
   environmentId   String
@@ -504,10 +678,12 @@ model CostRecommendation {
   @@index([pipelineId])
   @@index([environmentId, status])
   @@index([expiresAt])
+  @@index([organizationId])
 }
 
 model EventSampleRequest {
   id            String        @id @default(cuid())
+  organizationId String @default("default")
   pipelineId    String
   pipeline      Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   componentKeys Json
@@ -518,6 +694,7 @@ model EventSampleRequest {
   expiresAt     DateTime
   completedAt   DateTime?
   samples       EventSample[]
+  @@index([organizationId])
 }
 
 /// Live tap authorization state. Persisted (rather than in-memory) so authorization
@@ -536,6 +713,7 @@ model ActiveTap {
 
 model EventSample {
   id            String              @id @default(cuid())
+  organizationId String @default("default")
   requestId     String
   request       EventSampleRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
   pipelineId    String
@@ -548,6 +726,7 @@ model EventSample {
 
   @@unique([requestId, componentKey])
   @@index([pipelineId, componentKey])
+  @@index([organizationId])
 }
 
 model PipelineNode {
@@ -595,6 +774,7 @@ enum MigrationStatus {
 
 model MigrationProject {
   id                  String            @id @default(cuid())
+  organizationId String @default("default")
   teamId              String
   team                Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
   name                String
@@ -617,6 +797,7 @@ model MigrationProject {
 
   @@index([teamId])
   @@index([createdById])
+  @@index([organizationId])
 }
 
 model PipelineEdge {
@@ -632,6 +813,7 @@ model PipelineEdge {
 
 model SharedComponent {
   id              String        @id @default(cuid())
+  organizationId String @default("default")
   name            String
   description     String?
   componentType   String
@@ -647,10 +829,12 @@ model SharedComponent {
 
   @@unique([environmentId, name])
   @@index([environmentId])
+  @@index([organizationId])
 }
 
 model PipelineVersion {
   id          String   @id @default(cuid())
+  organizationId String @default("default")
   pipelineId  String
   pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   version     Int
@@ -670,10 +854,12 @@ model PipelineVersion {
   stagedRolloutsAsPrevious StagedRollout[] @relation("StagedRolloutPreviousVersion")
 
   @@index([pipelineId, version])
+  @@index([organizationId])
 }
 
 model StagedRollout {
   id                      String           @id @default(cuid())
+  organizationId String @default("default")
   pipelineId              String
   pipeline                Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   environmentId           String
@@ -698,6 +884,7 @@ model StagedRollout {
 
   @@index([pipelineId, status])
   @@index([status, healthCheckExpiresAt])
+  @@index([organizationId])
 }
 
 model Secret {
@@ -747,6 +934,7 @@ model CertificateBundle {
 
 model Template {
   id          String   @id @default(cuid())
+  organizationId String @default("default")
   name        String
   description String
   category    String
@@ -755,10 +943,12 @@ model Template {
   nodes       Json
   edges       Json
   createdAt   DateTime @default(now())
+  @@index([organizationId])
 }
 
 model AuditLog {
   id            String       @id @default(cuid())
+  organizationId String @default("default")
   userId        String?
   user          User?        @relation(fields: [userId], references: [id])
   action        String
@@ -780,6 +970,7 @@ model AuditLog {
   @@index([action])
   @@index([teamId])
   @@index([environmentId])
+  @@index([organizationId])
 }
 
 model SystemSettings {
@@ -854,6 +1045,7 @@ model SystemSettings {
 
 model BackupRecord {
   id              String    @id @default(cuid())
+  organizationId String @default("default")
   filename        String
   status          String    // "success" | "failed" | "in_progress" | "orphaned"
   type            String    // "scheduled" | "manual" | "pre_restore"
@@ -871,6 +1063,7 @@ model BackupRecord {
 
   @@index([startedAt])
   @@index([status])
+  @@index([organizationId])
 }
 
 model Account {
@@ -893,6 +1086,7 @@ model Account {
 
 model VrlSnippet {
   id          String   @id @default(cuid())
+  organizationId String @default("default")
   teamId      String
   team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
   name        String
@@ -906,10 +1100,12 @@ model VrlSnippet {
 
   @@unique([teamId, name])
   @@index([teamId])
+  @@index([organizationId])
 }
 
 model DeployRequest {
   id              String      @id @default(cuid())
+  organizationId String @default("default")
   pipelineId      String
   pipeline        Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   environmentId   String
@@ -931,10 +1127,12 @@ model DeployRequest {
 
   @@index([pipelineId, status])
   @@index([environmentId, status])
+  @@index([organizationId])
 }
 
 model PromotionRequest {
   id                    String      @id @default(cuid())
+  organizationId String @default("default")
   sourcePipelineId      String
   sourcePipeline        Pipeline    @relation("PromotionSource", fields: [sourcePipelineId], references: [id], onDelete: Cascade)
   targetPipelineId      String?
@@ -962,10 +1160,12 @@ model PromotionRequest {
   @@index([sourcePipelineId, status])
   @@index([sourceEnvironmentId])
   @@index([targetEnvironmentId])
+  @@index([organizationId])
 }
 
 model GitSyncJob {
   id              String    @id @default(cuid())
+  organizationId String @default("default")
   environmentId   String
   environment     Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
   pipelineId      String
@@ -986,6 +1186,7 @@ model GitSyncJob {
   @@index([status, nextRetryAt])
   @@index([environmentId])
   @@index([pipelineId])
+  @@index([organizationId])
 }
 
 enum AlertMetric {
@@ -1046,6 +1247,7 @@ enum AlertStatus {
 
 model AlertRule {
   id              String         @id @default(cuid())
+  organizationId String @default("default")
   name            String
   description     String?
   enabled         Boolean        @default(true)
@@ -1074,10 +1276,12 @@ model AlertRule {
 
   @@index([environmentId])
   @@index([teamId])
+  @@index([organizationId])
 }
 
 model WebhookEndpoint {
   id              String            @id @default(cuid())
+  organizationId String @default("default")
   teamId          String
   team            Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
   name            String
@@ -1090,6 +1294,7 @@ model WebhookEndpoint {
   deliveries      WebhookDelivery[]
 
   @@index([teamId])
+  @@index([organizationId])
 }
 
 model WebhookDelivery {
@@ -1174,6 +1379,7 @@ model DeliveryAttempt {
 
 model DashboardView {
   id        String   @id @default(cuid())
+  organizationId String @default("default")
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
@@ -1184,10 +1390,12 @@ model DashboardView {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([organizationId])
 }
 
 model NotificationChannel {
   id              String   @id @default(cuid())
+  organizationId String @default("default")
   environmentId   String
   environment     Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
   name            String
@@ -1200,6 +1408,7 @@ model NotificationChannel {
   alertRules      AlertRuleChannel[]
 
   @@index([environmentId])
+  @@index([organizationId])
 }
 
 model AlertRuleChannel {
@@ -1214,6 +1423,7 @@ model AlertRuleChannel {
 
 model ServiceAccount {
   id              String   @id @default(cuid())
+  organizationId String @default("default")
   name            String
   description     String?
   hashedKey       String   @unique
@@ -1231,6 +1441,7 @@ model ServiceAccount {
 
   @@index([hashedKey])
   @@index([environmentId])
+  @@index([organizationId])
 }
 
 model AiConversation {
@@ -1266,6 +1477,7 @@ model AiMessage {
 
 model FilterPreset {
   id            String      @id @default(cuid())
+  organizationId String @default("default")
   name          String
   environmentId String
   environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
@@ -1279,6 +1491,7 @@ model FilterPreset {
 
   @@index([environmentId, scope])
   @@index([createdById])
+  @@index([organizationId])
 }
 
 // ─── Anomaly Detection ─────────────────────────────────────────────────────
@@ -1298,6 +1511,7 @@ enum AnomalySeverity {
 
 model AnomalyEvent {
   id              String           @id @default(cuid())
+  organizationId String @default("default")
   pipelineId      String
   pipeline        Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   environmentId   String
@@ -1329,4 +1543,5 @@ model AnomalyEvent {
   @@index([status])
   @@index([detectedAt])
   @@index([correlationGroupId])
+  @@index([organizationId])
 }

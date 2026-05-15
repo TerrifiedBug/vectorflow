@@ -1,19 +1,18 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { prisma } from "@/lib/prisma";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { debugLog, infoLog, errorLog } from "@/lib/logger";
 import { createBackup, runRetentionCleanup, runOrphanCleanup } from "./backup";
 import { fireEventAlert } from "./event-alerts";
 
 let scheduledTask: ScheduledTask | null = null;
 
-/** Initialize the backup scheduler from SystemSettings. Called on server startup. */
+/** Initialize the backup scheduler from OrganizationSettings. Called on server startup. */
 export async function initBackupScheduler(): Promise<void> {
-  const settings = await prisma.systemSettings.findUnique({
-    where: { id: "singleton" },
-    select: { backupEnabled: true, backupCron: true },
-  });
+  const settings = await getOrgSettings(DEFAULT_ORG_ID);
 
-  if (settings?.backupEnabled && settings.backupCron) {
+  if (settings.backupEnabled && settings.backupCron) {
     scheduleJob(settings.backupCron);
   }
 }

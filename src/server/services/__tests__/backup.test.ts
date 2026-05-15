@@ -91,6 +91,7 @@ import { checkDiskSpace, computeChecksum, createBackup } from "../backup";
 import * as backupModule from "../backup";
 import { getActiveBackend } from "@/server/services/storage-backend";
 import { encrypt, decrypt } from "@/server/services/crypto";
+ import { mockOrgSettings } from "@/__tests__/helpers/mock-org-settings";
 
 const mockGetActiveBackend = vi.mocked(getActiveBackend);
 const mockEncrypt = vi.mocked(encrypt);
@@ -225,6 +226,10 @@ describe("createBackup", () => {
 
     // Prisma SystemSettings update
     prismaMock.systemSettings.update.mockResolvedValue({} as never);
+ 
+    // Prisma OrganizationSettings mocks
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings());
   });
 
   it("creates an in_progress BackupRecord before pg_dump", async () => {
@@ -420,6 +425,11 @@ describe("restoreFromBackup - checksum verification", () => {
       s3Bucket: null,
       s3Prefix: null,
     } as never);
+ 
+    // Prisma OrganizationSettings mocks - default for tests that don't override
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings());
+ 
 
     // Spy on createBackup (note: vi.spyOn cannot intercept internal module calls,
     // so this is only used in the mismatch test to verify it's NOT called before throw)
@@ -455,8 +465,9 @@ describe("restoreFromBackup - checksum verification", () => {
     } as never);
     prismaMock.systemSettings.findUnique
       .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
-      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never)
       .mockResolvedValueOnce({ encryptionCanary: "external-instance-canary" } as never);
+    prismaMock.organizationSettings.findUnique
+      .mockResolvedValueOnce(mockOrgSettings({ backupStorageBackend: "local" }));
     prismaMock.$queryRaw.mockResolvedValue([{ count: BigInt(3) }] as never);
 
     const result = await backupModule.restoreFromBackup(testFilename);
@@ -474,7 +485,6 @@ describe("restoreFromBackup - checksum verification", () => {
     } as never);
     prismaMock.systemSettings.findUnique
       .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
-      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never)
       .mockResolvedValueOnce({ encryptionCanary: null } as never);
     prismaMock.$queryRaw.mockResolvedValue([{ count: BigInt(3) }] as never);
 
@@ -491,7 +501,6 @@ describe("restoreFromBackup - checksum verification", () => {
     } as never);
     prismaMock.systemSettings.findUnique
       .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
-      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never)
       .mockRejectedValueOnce(new Error("column \"encryptionCanary\" does not exist"));
     prismaMock.$queryRaw.mockResolvedValue([{ count: BigInt(3) }] as never);
 
@@ -508,8 +517,7 @@ describe("restoreFromBackup - checksum verification", () => {
     } as never);
     prismaMock.systemSettings.findUnique
       .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
-      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never)
-      .mockResolvedValueOnce(null);
+      .mockResolvedValueOnce(null as never);
     prismaMock.$queryRaw.mockResolvedValue([{ count: BigInt(3) }] as never);
 
     const result = await backupModule.restoreFromBackup(testFilename);
@@ -523,10 +531,10 @@ describe("restoreFromBackup - checksum verification", () => {
     prismaMock.backupRecord.findFirst.mockResolvedValue({
       checksum: knownHash,
     } as never);
-    prismaMock.systemSettings.findUnique
-      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
-      .mockResolvedValueOnce({ backupStorageBackend: "local" } as never)
-      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never);
+    prismaMock.organizationSettings.findUnique
+      .mockResolvedValueOnce(mockOrgSettings({ encryptionCanary: "encrypted:vectorflow-canary-ok" }))
+      .mockResolvedValueOnce(mockOrgSettings({ backupStorageBackend: "local" }))
+      .mockResolvedValueOnce(mockOrgSettings({ encryptionCanary: "encrypted:vectorflow-canary-ok" }));
     prismaMock.$queryRaw.mockRejectedValue(new Error('relation "Team" does not exist'));
 
     const result = await backupModule.restoreFromBackup(testFilename);
@@ -861,14 +869,20 @@ describe("createBackup with S3 backend", () => {
 
     prismaMock.backupRecord.update.mockResolvedValue({} as never);
     prismaMock.systemSettings.update.mockResolvedValue({} as never);
+ 
+    // Prisma OrganizationSettings mocks
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings());
   });
 
   it("uploads to S3 and updates storageLocation when S3 is configured", async () => {
-    prismaMock.systemSettings.findUnique.mockResolvedValue({
-      backupStorageBackend: "s3",
-      s3Bucket: "my-bucket",
-      s3Prefix: "backups",
-    } as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(
+      mockOrgSettings({
+        backupStorageBackend: "s3",
+        s3Bucket: "my-bucket",
+        s3Prefix: "backups",
+      })
+    );
 
     const mockUpload = vi.fn().mockResolvedValue(undefined);
     mockGetActiveBackend.mockResolvedValue({
@@ -891,11 +905,7 @@ describe("createBackup with S3 backend", () => {
   });
 
   it("does not upload to S3 when local storage is configured", async () => {
-    prismaMock.systemSettings.findUnique.mockResolvedValue({
-      backupStorageBackend: "local",
-      s3Bucket: null,
-      s3Prefix: null,
-    } as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
 
     await createBackup();
 
@@ -982,6 +992,10 @@ describe("restoreFromBackup with S3 backend", () => {
     } as never);
     prismaMock.backupRecord.update.mockResolvedValue({} as never);
     prismaMock.systemSettings.update.mockResolvedValue({} as never);
+ 
+    // Prisma OrganizationSettings mocks
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings());
     prismaMock.systemSettings.findUnique.mockResolvedValue({
       encryptionCanary: "encrypted:vectorflow-canary-ok",
       backupStorageBackend: "local",
@@ -1027,12 +1041,16 @@ describe("runRetentionCleanup (DB-backed)", () => {
     mockReset(prismaMock);
     vi.clearAllMocks();
     fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+ 
+    // Prisma OrganizationSettings mocks
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings());
   });
 
   it("deletes oldest backups beyond retention and removes DB records", async () => {
-    prismaMock.systemSettings.findUnique.mockResolvedValue({
-      backupRetentionCount: 2,
-    } as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(
+      mockOrgSettings({ backupRetentionCount: 2 })
+    );
 
     const records = [
       { id: "rec-3", filename: "vectorflow-newest.dump", status: "success", startedAt: new Date("2025-03-01") },
@@ -1393,6 +1411,10 @@ describe("restoreFromBackup - graceful", () => {
       s3Bucket: null,
       s3Prefix: null,
     } as never);
+ 
+    // Prisma OrganizationSettings mocks
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings());
 
     mockCreateReadStream.mockImplementation(() =>
       makeReadableStream(Buffer.from("hello world")) as never
@@ -1504,6 +1526,10 @@ describe("runOrphanCleanup", () => {
     prismaMock.backupRecord.findFirst.mockResolvedValue(null);
     prismaMock.backupRecord.findMany.mockResolvedValue([]);
     prismaMock.backupRecord.update.mockResolvedValue({} as never);
+ 
+    // Prisma OrganizationSettings mocks
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings());
   });
 
   it("deletes .dump files in BACKUP_DIR without matching BackupRecord", async () => {
@@ -1658,6 +1684,10 @@ describe("restoreFromBackup - BackupRecord fallback", () => {
       s3Bucket: null,
       s3Prefix: null,
     } as never);
+ 
+    // Prisma OrganizationSettings mocks
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings());
 
     mockCreateReadStream.mockImplementation(() =>
       makeReadableStream(Buffer.from("hello world")) as never
@@ -1692,12 +1722,16 @@ describe("runRetentionCleanup - scoped retention", () => {
     mockReset(prismaMock);
     vi.clearAllMocks();
     fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+ 
+    // Prisma OrganizationSettings mocks
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings());
   });
 
   it("ignores failed/orphaned records when counting toward retention", async () => {
-    prismaMock.systemSettings.findUnique.mockResolvedValue({
-      backupRetentionCount: 3,
-    } as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(
+      mockOrgSettings({ backupRetentionCount: 3 })
+    );
 
     // 2 success records + 5 failed records — only the 2 success should matter
     const successRecords = [
@@ -1768,6 +1802,10 @@ describe("runOrphanCleanup - S3 bucket mismatch", () => {
     prismaMock.backupRecord.findFirst.mockResolvedValue(null);
     prismaMock.backupRecord.findMany.mockResolvedValue([]);
     prismaMock.backupRecord.update.mockResolvedValue({} as never);
+ 
+    // Prisma OrganizationSettings mocks
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings());
   });
 
   it("skips orphaning records whose S3 bucket differs from current config", async () => {
@@ -1780,9 +1818,10 @@ describe("runOrphanCleanup - S3 bucket mismatch", () => {
     ] as never);
 
     // Current settings point to a different bucket
-    prismaMock.systemSettings.findUnique.mockResolvedValue({
-      s3Bucket: "new-bucket",
-    } as never);
+    // Current settings point to a different bucket
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(
+      mockOrgSettings({ s3Bucket: "new-bucket" })
+    );
 
     const mockExists = vi.fn().mockResolvedValue(false);
     mockGetActiveBackend.mockResolvedValue({
@@ -1813,6 +1852,10 @@ describe("importBackup", () => {
     fsMock.writeFile = vi.fn().mockResolvedValue(undefined);
     fsMock.stat = vi.fn().mockResolvedValue({ size: 2048 });
     fsMock.unlink = vi.fn().mockResolvedValue(undefined);
+ 
+    // Prisma OrganizationSettings mocks
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings());
   });
 
   it("creates a BackupRecord with type=imported on valid file", async () => {
@@ -1826,9 +1869,7 @@ describe("importBackup", () => {
     mockCreateReadStream.mockReturnValue(makeReadableStream("test-data") as never);
 
     prismaMock.backupRecord.create.mockResolvedValue({ id: "rec-imported" } as never);
-    prismaMock.systemSettings.findUnique.mockResolvedValue({
-      backupStorageBackend: "local",
-    } as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
 
     // Create a mock ReadableStream (pipeline is mocked, so it won't be consumed)
     const mockStream = new ReadableStream({ start(c) { c.close(); } });
@@ -1883,9 +1924,7 @@ describe("importBackup", () => {
     });
     mockCreateReadStream.mockReturnValue(makeReadableStream("test-data") as never);
     prismaMock.backupRecord.create.mockResolvedValue({ id: "rec-imported" } as never);
-    prismaMock.systemSettings.findUnique.mockResolvedValue({
-      backupStorageBackend: "local",
-    } as never);
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
 
     const mockStream = new ReadableStream({ start(c) { c.close(); } });
     const result = await backupModule.importBackup(mockStream, "external-backup.dump");

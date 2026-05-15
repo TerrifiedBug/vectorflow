@@ -44,12 +44,14 @@ function makeEndpoint(overrides: Partial<{
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;
+  organizationId: string;
 }> = {}) {
   return {
     id: "ep-1",
     url: "https://example.com/webhook",
     encryptedSecret: "encrypted-secret",
     teamId: "team-1",
+    organizationId: "default",
     name: "Test Endpoint",
     eventTypes: [AlertMetric.deploy_completed],
     enabled: true,

@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { isTimescaleDbAvailable } from "@/server/services/timescaledb";
 
 interface CleanupResultTimescale {
@@ -23,13 +25,10 @@ export type CleanupResult = CleanupResultTimescale | CleanupResultLegacy;
  * which performs a sequential row delete (slow at scale).
  */
 export async function cleanupOldMetrics(): Promise<CleanupResult> {
-  const settings = await prisma.systemSettings.findUnique({
-    where: { id: "singleton" },
-    select: { metricsRetentionDays: true, logsRetentionDays: true },
-  });
+  const settings = await getOrgSettings(DEFAULT_ORG_ID);
 
-  const metricsRetentionDays = settings?.metricsRetentionDays ?? 7;
-  const logsRetentionDays = settings?.logsRetentionDays ?? 3;
+  const metricsRetentionDays = settings.metricsRetentionDays ?? 7;
+  const logsRetentionDays = settings.logsRetentionDays ?? 3;
 
   if (isTimescaleDbAvailable()) {
     return cleanupWithDropChunks(metricsRetentionDays, logsRetentionDays);

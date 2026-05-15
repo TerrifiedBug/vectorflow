@@ -84,12 +84,14 @@ import { createBackup, restoreFromBackup } from "@/server/services/backup";
 import { isValidCron, rescheduleBackup } from "@/server/services/backup-scheduler";
 import { encrypt } from "@/server/services/crypto";
 import { invalidateAuthCache } from "@/auth";
+import { mockOrgSettings } from "@/__tests__/helpers/mock-org-settings";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
 const caller = t.createCallerFactory(settingsRouter)({
   session: { user: { id: "user-1", email: "admin@test.com", name: "Admin" } },
   userRole: "ADMIN",
+  organizationId: "default",
   teamId: "team-1",
 });
 
@@ -140,6 +142,10 @@ function mockSettings(overrides: Record<string, unknown> = {}) {
   };
   prismaMock.systemSettings.findUnique.mockResolvedValue(defaults as never);
   prismaMock.systemSettings.create.mockResolvedValue(defaults as never);
+  // Also mock organizationSettings with the same overrides
+  prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings(overrides) as never);
+  prismaMock.organizationSettings.create.mockResolvedValue(mockOrgSettings(overrides) as never);
+  prismaMock.organizationSettings.upsert.mockResolvedValue(mockOrgSettings(overrides) as never);
   return defaults;
 }
 
@@ -149,6 +155,8 @@ describe("settingsRouter", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     vi.clearAllMocks();
+    prismaMock.organizationSettings.findUnique.mockResolvedValue(mockOrgSettings());
+    prismaMock.organizationSettings.create.mockResolvedValue(mockOrgSettings());
   });
 
   // ─── get ──────────────────────────────────────────────────────────────────
@@ -186,6 +194,7 @@ describe("settingsRouter", () => {
       mockSettings();
       const updated = { id: "singleton" };
       prismaMock.systemSettings.update.mockResolvedValue(updated as never);
+      prismaMock.organizationSettings.upsert.mockResolvedValue(updated as never);
 
       await caller.updateOidc({
         issuer: "https://idp.example.com",
@@ -196,9 +205,10 @@ describe("settingsRouter", () => {
       });
 
       expect(encrypt).toHaveBeenCalledWith("super-secret");
-      expect(prismaMock.systemSettings.update).toHaveBeenCalledWith(
+      expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
+          where: { organizationId: "default" },
+          update: expect.objectContaining({
             oidcIssuer: "https://idp.example.com",
             oidcClientId: "client-123",
             oidcClientSecret: "enc:super-secret",
@@ -211,6 +221,7 @@ describe("settingsRouter", () => {
     it("skips encrypting when clientSecret is 'unchanged'", async () => {
       mockSettings();
       prismaMock.systemSettings.update.mockResolvedValue({} as never);
+      prismaMock.organizationSettings.upsert.mockResolvedValue({} as never);
 
       await caller.updateOidc({
         issuer: "https://idp.example.com",
@@ -316,6 +327,7 @@ describe("settingsRouter", () => {
     it("updates schedule with valid cron", async () => {
       mockSettings();
       prismaMock.systemSettings.update.mockResolvedValue({} as never);
+      prismaMock.organizationSettings.upsert.mockResolvedValue({} as never);
 
       await caller.updateBackupSchedule({
         enabled: true,
@@ -323,9 +335,10 @@ describe("settingsRouter", () => {
         retentionCount: 10,
       });
 
-      expect(prismaMock.systemSettings.update).toHaveBeenCalledWith(
+      expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
+          where: { organizationId: "default" },
+          update: expect.objectContaining({
             backupEnabled: true,
             backupCron: "0 3 * * *",
             backupRetentionCount: 10,
@@ -350,12 +363,15 @@ describe("settingsRouter", () => {
     it("enables SCIM provisioning", async () => {
       mockSettings();
       prismaMock.systemSettings.update.mockResolvedValue({} as never);
+      prismaMock.organizationSettings.upsert.mockResolvedValue({} as never);
 
       await caller.updateScim({ enabled: true });
 
-      expect(prismaMock.systemSettings.update).toHaveBeenCalledWith(
+      expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ scimEnabled: true }),
+          where: { organizationId: "default" },
+          update: expect.objectContaining({        }),
+
         }),
       );
     });
@@ -363,16 +379,18 @@ describe("settingsRouter", () => {
     it("clears bearer token when disabling SCIM", async () => {
       mockSettings();
       prismaMock.systemSettings.update.mockResolvedValue({} as never);
+      prismaMock.organizationSettings.upsert.mockResolvedValue({} as never);
 
       await caller.updateScim({ enabled: false });
 
-      expect(prismaMock.systemSettings.update).toHaveBeenCalledWith(
+      expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            scimEnabled: false,
+          where: { organizationId: "default" },
+          update: expect.objectContaining({            scimEnabled: false,
             scimBearerToken: null,
           }),
         }),
+
       );
     });
   });

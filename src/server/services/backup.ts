@@ -9,6 +9,8 @@ import { pipeline } from "stream/promises";
 
 import { prisma } from "@/lib/prisma";
 import { debugLog } from "@/lib/logger";
+import { getOrgSettings, updateOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import type { BackupRecord } from "@/generated/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import {
@@ -547,18 +549,15 @@ export async function createBackup(
     await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2));
 
     // Upload to active storage backend (S3 or local)
-    const storageSettings = await prisma.systemSettings.findUnique({
-      where: { id: "singleton" },
-      select: { backupStorageBackend: true, s3Bucket: true, s3Prefix: true },
-    });
-    const useS3 = storageSettings?.backupStorageBackend === "s3";
+    const storageSettings = await getOrgSettings(DEFAULT_ORG_ID);
+    const useS3 = storageSettings.backupStorageBackend === "s3";
     let storageLocation = dumpPath;
 
     if (useS3) {
       const backend = await getActiveBackend();
-      const s3Key = buildS3Key(storageSettings?.s3Prefix ?? "", dumpFilename);
+      const s3Key = buildS3Key(storageSettings.s3Prefix ?? "", dumpFilename);
       await backend.upload(dumpPath, s3Key);
-      storageLocation = buildS3StorageLocation(storageSettings!.s3Bucket!, s3Key);
+      storageLocation = buildS3StorageLocation(storageSettings.s3Bucket!, s3Key);
       // Delete local copy after successful S3 upload to prevent disk exhaustion
       await fs.unlink(dumpPath).catch(() => {});
       await fs.unlink(metaPath).catch(() => {});
@@ -580,14 +579,11 @@ export async function createBackup(
       },
     });
 
-    // Update SystemSettings (existing behavior preserved)
-    await prisma.systemSettings.update({
-      where: { id: "singleton" },
-      data: {
-        lastBackupAt: new Date(timestamp),
-        lastBackupStatus: "success",
-        lastBackupError: null,
-      },
+    // Update OrganizationSettings with backup status
+    await updateOrgSettings(DEFAULT_ORG_ID, {
+      lastBackupAt: new Date(timestamp),
+      lastBackupStatus: "success",
+      lastBackupError: null,
     });
 
     return metadata;
@@ -605,15 +601,12 @@ export async function createBackup(
       },
     }).catch(() => {}); // best-effort -- don't mask original error
 
-    // Update SystemSettings (existing behavior preserved)
+    // Update OrganizationSettings with backup status (best-effort)
     try {
-      await prisma.systemSettings.update({
-        where: { id: "singleton" },
-        data: {
-          lastBackupAt: new Date(),
-          lastBackupStatus: "failed",
-          lastBackupError: message,
-        },
+      await updateOrgSettings(DEFAULT_ORG_ID, {
+        lastBackupAt: new Date(),
+        lastBackupStatus: "failed",
+        lastBackupError: message,
       });
     } catch {
       // best-effort
@@ -907,12 +900,8 @@ export async function restoreFromBackup(filename: string): Promise<RestoreResult
  * and stale 'in_progress' records older than 1 hour.
  */
 export async function runRetentionCleanup(): Promise<number> {
-  const settings = await prisma.systemSettings.findUnique({
-    where: { id: "singleton" },
-    select: { backupRetentionCount: true },
-  });
-
-  const retentionCount = settings?.backupRetentionCount ?? 7;
+  const orgSettings = await getOrgSettings(DEFAULT_ORG_ID);
+  const retentionCount = orgSettings.backupRetentionCount ?? 7;
   let deletedCount = 0;
 
   // 1. Retention for successful backups — only count success + pre_restore
@@ -1092,14 +1081,11 @@ export async function runOrphanCleanup(): Promise<{
         // Guard: if the record's bucket doesn't match the current backend's
         // bucket, skip — the record belongs to a different config and we
         // can't verify its existence with the current credentials.
-        const settings = await prisma.systemSettings.findUnique({
-          where: { id: "singleton" },
-          select: { s3Bucket: true },
-        });
-        if (settings?.s3Bucket && recordBucket !== settings.s3Bucket) {
+        const orgSettings = await getOrgSettings(DEFAULT_ORG_ID);
+        if (orgSettings.s3Bucket && recordBucket !== orgSettings.s3Bucket) {
           debugLog("backup", "Orphan check: skipping record with different S3 bucket", {
             recordBucket,
-            currentBucket: settings.s3Bucket,
+            currentBucket: orgSettings.s3Bucket,
             filename: record.filename,
           });
           continue;
@@ -1182,18 +1168,15 @@ export async function importBackup(
   const checksum = await computeChecksum(dumpPath);
 
   // Upload to S3 if configured
-  const storageSettings = await prisma.systemSettings.findUnique({
-    where: { id: "singleton" },
-    select: { backupStorageBackend: true, s3Bucket: true, s3Prefix: true },
-  });
-  const useS3 = storageSettings?.backupStorageBackend === "s3";
+  const storageSettings = await getOrgSettings(DEFAULT_ORG_ID);
+  const useS3 = storageSettings.backupStorageBackend === "s3";
   let storageLocation = dumpPath;
 
   if (useS3) {
     const backend = await getActiveBackend();
-    const s3Key = buildS3Key(storageSettings?.s3Prefix ?? "", dumpFilename);
+    const s3Key = buildS3Key(storageSettings.s3Prefix ?? "", dumpFilename);
     await backend.upload(dumpPath, s3Key);
-    storageLocation = buildS3StorageLocation(storageSettings!.s3Bucket!, s3Key);
+    storageLocation = buildS3StorageLocation(storageSettings.s3Bucket!, s3Key);
     await fs.unlink(dumpPath).catch(() => {});
   }
 

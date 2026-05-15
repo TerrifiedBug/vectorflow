@@ -7,6 +7,8 @@ import crypto from "crypto";
 import { withAudit } from "@/server/middleware/audit";
 import { encrypt } from "@/server/services/crypto";
 import { testAiConnection } from "@/server/services/ai";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 /**
  * Block manual team assignment/role changes for OIDC users when their
@@ -23,10 +25,7 @@ export async function assertManualAssignmentAllowed(userId: string): Promise<voi
   }
   if (user.authMethod !== "OIDC") return;
 
-  const settings = await prisma.systemSettings.findUnique({
-    where: { id: "singleton" },
-    select: { scimEnabled: true, oidcGroupSyncEnabled: true },
-  });
+  const settings = await getOrgSettings(DEFAULT_ORG_ID);
   if (settings?.scimEnabled || settings?.oidcGroupSyncEnabled) {
     throw new TRPCError({
       code: "BAD_REQUEST",

@@ -2,6 +2,8 @@ export const runtime = "nodejs";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { parseS3StorageLocation } from "@/server/services/storage-backend";
 import fs from "fs/promises";
 import path from "path";
@@ -80,18 +82,9 @@ export async function GET(
   if (record.storageLocation?.startsWith("s3://")) {
     // Serve from S3 using direct streaming (no temp file)
     const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
-    const settings = await prisma.systemSettings.findUnique({
-      where: { id: "singleton" },
-      select: {
-        s3Bucket: true,
-        s3Region: true,
-        s3AccessKeyId: true,
-        s3SecretAccessKey: true,
-        s3Endpoint: true,
-      },
-    });
+    const settings = await getOrgSettings(DEFAULT_ORG_ID);
 
-    if (!settings?.s3Bucket || !settings?.s3AccessKeyId || !settings?.s3SecretAccessKey) {
+    if (!settings.s3Bucket || !settings.s3AccessKeyId || !settings.s3SecretAccessKey) {
       return jsonError("S3 not configured", 500);
     }
 

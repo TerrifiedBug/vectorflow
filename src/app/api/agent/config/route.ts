@@ -10,6 +10,8 @@ import { createHash } from "crypto";
 import { setExpectedChecksum } from "@/server/services/drift-metrics";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { warnLog, errorLog } from "@/lib/logger";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -70,13 +72,10 @@ export async function GET(request: Request) {
         where: { id: agent.environmentId },
         select: { secretBackend: true },
       });
-      const settings = await prisma.systemSettings.findUnique({
-        where: { id: "singleton" },
-        select: { fleetPollIntervalMs: true },
-      });
+      const orgSettings = await getOrgSettings(DEFAULT_ORG_ID);
       return NextResponse.json({
         pipelines: [],
-        pollIntervalMs: settings?.fleetPollIntervalMs ?? 15_000,
+        pollIntervalMs: orgSettings.fleetPollIntervalMs ?? 15_000,
         secretBackend: environment?.secretBackend ?? "BUILTIN",
         pendingAction: node.pendingAction ?? undefined,
       });
@@ -297,11 +296,8 @@ export async function GET(request: Request) {
         })
       : [];
 
-    // Get system settings for poll interval
-    const settings = await prisma.systemSettings.findUnique({
-      where: { id: "singleton" },
-      select: { fleetPollIntervalMs: true },
-    });
+    // Get org settings for poll interval
+    const orgSettings = await getOrgSettings(DEFAULT_ORG_ID);
 
     // Build push URL from the incoming request's host
     const proto = request.headers.get("x-forwarded-proto") ?? "http";
@@ -312,7 +308,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       pipelines: pipelineConfigs,
-      pollIntervalMs: settings?.fleetPollIntervalMs ?? 15000,
+      pollIntervalMs: orgSettings.fleetPollIntervalMs ?? 15000,
       pushUrl,
       secretBackend: environment.secretBackend,
       ...(environment.secretBackend !== "BUILTIN" && environment.secretBackend !== "VAULT"

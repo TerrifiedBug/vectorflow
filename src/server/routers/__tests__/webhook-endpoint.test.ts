@@ -75,10 +75,12 @@ function makeEndpoint(overrides: Partial<{
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;
+  organizationId: string;
 }> = {}) {
   return {
     id: "ep-1",
     teamId: "team-1",
+    organizationId: "default",
     name: "My Webhook",
     url: "https://example.com/hook",
     eventTypes: [AlertMetric.deploy_completed],

@@ -2,6 +2,8 @@ import { existsSync } from "fs";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { isDemoMode } from "@/lib/is-demo-mode";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { buildHeartbeatPayload, type BuildPayloadInput } from "./telemetry-payload";
 
 const PULSE_URL = "https://pulse.vectorflow.sh/api/v1/ping";
@@ -64,8 +66,8 @@ export async function sendTelemetryHeartbeat(): Promise<void> {
     return;
   }
 
-  const settings = await prisma.systemSettings.findUnique({ where: { id: "singleton" } });
-  if (!settings || !settings.telemetryEnabled) return;
+  const settings = await getOrgSettings(DEFAULT_ORG_ID);
+  if (!settings.telemetryEnabled) return;
   if (!settings.telemetryInstanceId || !settings.telemetryEnabledAt) return;
 
   const counts = await gatherCounts();

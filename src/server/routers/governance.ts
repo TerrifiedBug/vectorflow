@@ -7,6 +7,8 @@ import {
   evaluateDestinationPolicy,
   summarizeGovernancePosture,
 } from "@/server/services/governance";
+import { getOrgSettings } from "@/lib/org-settings";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 const sinkPolicySchema = z.object({
   allowedSinkTypes: z.array(z.string().min(1)).optional(),
@@ -44,10 +46,7 @@ export const governanceRouter = router({
           },
           orderBy: { updatedAt: "desc" },
         }),
-        prisma.systemSettings.findUnique({
-          where: { id: "singleton" },
-          select: { scimEnabled: true, oidcGroupSyncEnabled: true },
-        }),
+        getOrgSettings(DEFAULT_ORG_ID),
         prisma.auditLog.count({ where: { teamId: input.teamId } }),
         prisma.pipeline.findFirst({
           where: { isSystem: true, isDraft: false, deployedAt: { not: null } },
