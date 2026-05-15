@@ -23,9 +23,17 @@ export const createContext = async () => {
   let orgMemberRole: OrgMemberRole | null = null;
   if (session?.user?.id) {
     const membership = await prisma.orgMember.findFirst({
+      where: {
+        userId: session.user.id,
+        // Prefer any real org over the OSS default backfill row.
+        // If the user only has the default membership, fall through to it.
+        NOT: { organizationId: DEFAULT_ORG_ID },
+      },
+      select: { organizationId: true, role: true },
+      orderBy: { createdAt: "desc" },
+    }) ?? await prisma.orgMember.findFirst({
       where: { userId: session.user.id },
       select: { organizationId: true, role: true },
-      orderBy: { createdAt: "asc" },
     });
     if (membership) {
       organizationId = membership.organizationId;

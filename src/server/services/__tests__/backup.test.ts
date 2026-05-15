@@ -531,10 +531,9 @@ describe("restoreFromBackup - checksum verification", () => {
     prismaMock.backupRecord.findFirst.mockResolvedValue({
       checksum: knownHash,
     } as never);
-    prismaMock.organizationSettings.findUnique
-      .mockResolvedValueOnce(mockOrgSettings({ encryptionCanary: "encrypted:vectorflow-canary-ok" }))
-      .mockResolvedValueOnce(mockOrgSettings({ backupStorageBackend: "local" }))
-      .mockResolvedValueOnce(mockOrgSettings({ encryptionCanary: "encrypted:vectorflow-canary-ok" }));
+    prismaMock.systemSettings.findUnique
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never)
+      .mockResolvedValueOnce({ encryptionCanary: "encrypted:vectorflow-canary-ok" } as never);
     prismaMock.$queryRaw.mockRejectedValue(new Error('relation "Team" does not exist'));
 
     const result = await backupModule.restoreFromBackup(testFilename);

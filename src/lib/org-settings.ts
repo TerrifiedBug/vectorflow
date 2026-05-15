@@ -31,10 +31,21 @@ export async function getOrgSettings(
   });
   if (existing) return existing;
 
-  // Create on first access (handles fresh org signup and OSS first-run)
-  return prisma.organizationSettings.create({
-    data: { organizationId },
-  });
+  // Create on first access. On the rare concurrent first-request race a
+  // unique-constraint violation (P2002) means the row was just created by
+  // the sibling request — read it back rather than surface a 500.
+  try {
+    return await prisma.organizationSettings.create({
+      data: { organizationId },
+    });
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code === "P2002") {
+      return prisma.organizationSettings.findUniqueOrThrow({
+        where: { organizationId },
+      });
+    }
+    throw e;
+  }
 }
 
 /**

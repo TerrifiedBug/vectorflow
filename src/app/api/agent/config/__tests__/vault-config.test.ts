@@ -95,6 +95,10 @@ import { fetchVaultSecrets, readVaultSecretObject } from "@/server/services/vaul
 const prismaMock = prisma as unknown as {
   pipeline: { findMany: ReturnType<typeof vi.fn> };
   secret?: { findMany: ReturnType<typeof vi.fn> };
+  organizationSettings: {
+    findUnique: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+  };
 };
 const readVaultSecretObjectMock = vi.mocked(readVaultSecretObject);
 
