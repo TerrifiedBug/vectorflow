@@ -190,6 +190,19 @@ export function formatAuditJsonChain(
       hash: item.hash,
     });
   }
+  // The verifier walks rows in forward chain order (oldest → newest).
+  // Defensive sort: callers in the codebase typically pull AuditLog with
+  // `createdAt: "desc"` for UI display, so reverse to ascending here. The
+  // id tiebreak is sound because audit ids are minted with
+  // ulid.monotonicFactory (see audit.ts) — within the same createdAt
+  // millisecond the id-ASC order matches insertion order.
+  rows.sort((a, b) => {
+    if (a.createdAt < b.createdAt) return -1;
+    if (a.createdAt > b.createdAt) return 1;
+    if (a.id < b.id) return -1;
+    if (a.id > b.id) return 1;
+    return 0;
+  });
   const envelope: AuditExportEnvelope = {
     verifierVersion: AUDIT_EXPORT_VERIFIER_VERSION,
     organizationId,
@@ -253,29 +266,47 @@ export function verifyAuditExportEnvelope(
       };
     }
     // Reconstruct a ChainableAuditRow with the row's content so we can
-    // re-derive its hash exactly as the writer did.
-    const chainable: ChainableAuditRow = {
-      id: row.id,
-      organizationId: row.organizationId,
-      userId: row.userId,
-      action: row.action,
-      entityType: row.entityType,
-      entityId: row.entityId,
-      diff: row.diff,
-      metadata: row.metadata,
-      ipAddress: row.ipAddress,
-      userEmail: row.userEmail,
-      userName: row.userName,
-      teamId: row.teamId,
-      environmentId: row.environmentId,
-      createdAt: new Date(row.createdAt),
-    };
-    const recomputed = computeChainHash(row.prevHash, chainable);
-    if (recomputed !== row.hash) {
+    // re-derive its hash exactly as the writer did. Any failure here
+    // (e.g. tampered createdAt that JS rejects as Invalid Date) surfaces
+    // as a deterministic row-level failure, NOT an uncaught exception.
+    try {
+      const ts = new Date(row.createdAt);
+      if (Number.isNaN(ts.getTime())) {
+        return {
+          valid: false,
+          brokenAt: i,
+          reason: `row ${i}: createdAt is not a valid ISO-8601 timestamp`,
+        };
+      }
+      const chainable: ChainableAuditRow = {
+        id: row.id,
+        organizationId: row.organizationId,
+        userId: row.userId,
+        action: row.action,
+        entityType: row.entityType,
+        entityId: row.entityId,
+        diff: row.diff,
+        metadata: row.metadata,
+        ipAddress: row.ipAddress,
+        userEmail: row.userEmail,
+        userName: row.userName,
+        teamId: row.teamId,
+        environmentId: row.environmentId,
+        createdAt: ts,
+      };
+      const recomputed = computeChainHash(row.prevHash, chainable);
+      if (recomputed !== row.hash) {
+        return {
+          valid: false,
+          brokenAt: i,
+          reason: `row ${i}: stored hash does not match content (row tampered)`,
+        };
+      }
+    } catch (err) {
       return {
         valid: false,
         brokenAt: i,
-        reason: `row ${i}: stored hash does not match content (row tampered)`,
+        reason: `row ${i}: failed to reconstruct for hash verification (${err instanceof Error ? err.message : String(err)})`,
       };
     }
     expectedPrev = row.hash;
