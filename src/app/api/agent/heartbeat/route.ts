@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
-import { authenticateAgent } from "@/server/services/agent-auth";
+import { authenticateAgentInOrg } from "@/server/services/agent-auth";
+import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { checkNodeHealth } from "@/server/services/fleet-health";
 import { ingestMetrics } from "@/server/services/metrics-ingest";
 import { ingestLogs } from "@/server/services/log-ingest";
@@ -128,7 +129,10 @@ export async function POST(request: Request) {
   const rateLimited = await checkTokenRateLimit(request, "heartbeat", 30);
   if (rateLimited) return rateLimited;
 
-  const agent = await authenticateAgent(request);
+  const orgResult = await resolveAgentOrg(request);
+  if (orgResult instanceof Response) return orgResult;
+
+  const agent = await authenticateAgentInOrg(request, orgResult.orgId);
   if (!agent) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

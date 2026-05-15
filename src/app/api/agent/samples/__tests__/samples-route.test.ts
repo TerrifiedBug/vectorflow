@@ -2,12 +2,16 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockDeep, mockReset, type DeepMockProxy } from "vitest-mock-extended";
 import type { PrismaClient } from "@/generated/prisma";
 
+vi.mock("@/server/services/agent-org-binding", () => ({
+  resolveAgentOrg: vi.fn().mockResolvedValue({ orgId: "default", orgSlug: "default", isLegacyToken: false }),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: mockDeep<PrismaClient>(),
 }));
 
 vi.mock("@/server/services/agent-auth", () => ({
-  authenticateAgent: vi.fn(() =>
+  authenticateAgentInOrg: vi.fn(() =>
     Promise.resolve({ nodeId: "node-1", environmentId: "env-1" }),
   ),
 }));

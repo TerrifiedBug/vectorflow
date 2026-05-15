@@ -1,72 +1,81 @@
 import { prisma } from "@/lib/prisma";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import {
   extractBearerToken,
   getNodeTokenIdentifier,
   verifyNodeToken,
 } from "./agent-token";
+import { warnLog } from "@/lib/logger";
+
+export interface AgentIdentity {
+  nodeId: string;
+  environmentId: string;
+}
+
+// ─── Org-scoped authentication (primary path) ─────────────────────────────────
 
 /**
- * Authenticate an incoming agent request by using the token's stable
- * identifier to fetch one candidate node, then verifying that node's hash.
+ * Authenticate an agent request within a specific organization.
  *
- * Legacy tokens that lack an identifier fall back to scanning nodes that
- * have not yet been migrated (nodeTokenId IS NULL). This keeps pre-existing
- * agents working during the rollout while limiting the scan surface.
+ * All DB queries are scoped to `orgId` so a token from Org A can never
+ * authenticate against Org B's nodes, even if the token itself is valid.
  *
- * Returns the matching node and environment IDs, or null if authentication fails.
+ * Use after `resolveAgentOrg` has established the org context:
+ * ```ts
+ * const orgResult = await resolveAgentOrg(request);
+ * if (orgResult instanceof Response) return orgResult;
+ * const agent = await authenticateAgentInOrg(request, orgResult.orgId);
+ * ```
  */
-export async function authenticateAgent(
+export async function authenticateAgentInOrg(
   request: Request,
-): Promise<{ nodeId: string; environmentId: string } | null> {
+  orgId: string,
+): Promise<AgentIdentity | null> {
   const token = extractBearerToken(request.headers.get("authorization"));
-  if (!token) {
-    return null;
-  }
+  if (!token) return null;
 
   const tokenId = getNodeTokenIdentifier(token);
 
   if (tokenId) {
-    return authenticateByIndex(token, tokenId);
+    return authenticateByIndexInOrg(token, tokenId, orgId);
   }
 
-  // Legacy token — fall back to scanning un-migrated nodes
-  return authenticateLegacy(token);
+  // Legacy token (no embedded identifier) — scan only this org's un-migrated nodes.
+  return authenticateLegacyInOrg(token, orgId);
 }
 
-async function authenticateByIndex(
+async function authenticateByIndexInOrg(
   token: string,
   tokenId: string,
-): Promise<{ nodeId: string; environmentId: string } | null> {
-  const node = await prisma.vectorNode.findUnique({
-    where: { nodeTokenId: tokenId },
-    select: {
-      id: true,
-      environmentId: true,
-      nodeTokenHash: true,
+  orgId: string,
+): Promise<AgentIdentity | null> {
+  const node = await prisma.vectorNode.findFirst({
+    where: {
+      nodeTokenId: tokenId,
+      organizationId: orgId,  // hard org boundary — never cross-tenant
     },
+    select: { id: true, environmentId: true, nodeTokenHash: true },
   });
 
-  if (!node?.nodeTokenHash) {
-    return null;
-  }
+  if (!node?.nodeTokenHash) return null;
 
   const valid = await verifyNodeToken(token, node.nodeTokenHash);
   return valid ? { nodeId: node.id, environmentId: node.environmentId } : null;
 }
 
-async function authenticateLegacy(
+async function authenticateLegacyInOrg(
   token: string,
-): Promise<{ nodeId: string; environmentId: string } | null> {
+  orgId: string,
+): Promise<AgentIdentity | null> {
+  // Legacy tokens don't have an identifier, so we must scan.
+  // We scope to this org's un-migrated nodes to keep the blast radius bounded.
   const nodes = await prisma.vectorNode.findMany({
     where: {
       nodeTokenHash: { not: null },
       nodeTokenId: null,
+      organizationId: orgId,  // scoped to org — not fleet-wide
     },
-    select: {
-      id: true,
-      environmentId: true,
-      nodeTokenHash: true,
-    },
+    select: { id: true, environmentId: true, nodeTokenHash: true },
   });
 
   for (const node of nodes) {
@@ -78,4 +87,23 @@ async function authenticateLegacy(
   }
 
   return null;
+}
+
+// ─── Legacy fleet-wide authentication (OSS backward-compat only) ─────────────
+
+/**
+ * @deprecated Use `authenticateAgentInOrg` instead.
+ *
+ * Fleet-wide authentication with no org scope. Retained for backward
+ * compatibility while agents are being migrated to slug-prefixed tokens.
+ * This function is not used in Cloud deployments.
+ */
+export async function authenticateAgent(
+  request: Request,
+): Promise<AgentIdentity | null> {
+  warnLog(
+    "agent-auth",
+    "authenticateAgent called without org scope — use authenticateAgentInOrg",
+  );
+  return authenticateAgentInOrg(request, DEFAULT_ORG_ID);
 }

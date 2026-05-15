@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/server/services/agent-org-binding", () => ({
+  resolveAgentOrg: vi.fn().mockResolvedValue({ orgId: "default", orgSlug: "default", isLegacyToken: false }),
+}));
+
 vi.mock("@/app/api/_lib/ip-rate-limit", () => ({
   checkTokenRateLimit: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock("@/server/services/agent-auth", () => ({
-  authenticateAgent: vi.fn(() => null),
+  authenticateAgentInOrg: vi.fn(() => null),
 }));
 
 vi.mock("@/lib/prisma", () => ({

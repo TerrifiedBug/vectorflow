@@ -1,10 +1,14 @@
-import { authenticateAgent } from "@/server/services/agent-auth";
+import { authenticateAgentInOrg } from "@/server/services/agent-auth";
+import { resolveAgentOrg } from "@/server/services/agent-org-binding";
 import { pushRegistry } from "@/server/services/push-registry";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request): Promise<Response> {
-  const agent = await authenticateAgent(request);
+  const orgResult = await resolveAgentOrg(request);
+  if (orgResult instanceof Response) return orgResult;
+
+  const agent = await authenticateAgentInOrg(request, orgResult.orgId);
   if (!agent) {
     return new Response("Unauthorized", { status: 401 });
   }

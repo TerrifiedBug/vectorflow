@@ -2,6 +2,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // Mock dependencies before importing the route
+vi.mock("@/server/services/agent-org-binding", () => ({
+  resolveAgentOrg: vi.fn().mockResolvedValue({ orgId: "default", orgSlug: "default", isLegacyToken: false }),
+}));
+
 vi.mock("@/generated/prisma", () => ({
   Prisma: { DbNull: null, InputJsonValue: {} },
   DeploymentMode: { SINGLE: "SINGLE", FLEET: "FLEET" },
@@ -33,7 +37,7 @@ vi.mock("@/app/api/_lib/ip-rate-limit", () => {
 });
 
 vi.mock("@/server/services/agent-auth", () => ({
-  authenticateAgent: vi.fn(() =>
+  authenticateAgentInOrg: vi.fn(() =>
     Promise.resolve({ nodeId: "node-1", environmentId: "env-1" }),
   ),
 }));
