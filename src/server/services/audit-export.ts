@@ -281,12 +281,27 @@ export function verifyAuditExportEnvelope(
 
   let expectedPrev = genesisHashFor(env.organizationId);
   for (let i = 0; i < env.rows.length; i++) {
-    const row = env.rows[i] as ChainExportRow;
+    const raw = env.rows[i];
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      return {
+        valid: false,
+        brokenAt: i,
+        reason: `row ${i}: not a plain object`,
+      };
+    }
+    const row = raw as ChainExportRow;
     if (row.organizationId !== env.organizationId) {
       return {
         valid: false,
         brokenAt: i,
         reason: `row ${i}: organizationId mismatch`,
+      };
+    }
+    if (typeof row.prevHash !== "string" || typeof row.hash !== "string") {
+      return {
+        valid: false,
+        brokenAt: i,
+        reason: `row ${i}: prevHash/hash missing or non-string`,
       };
     }
     if (row.prevHash !== expectedPrev) {
