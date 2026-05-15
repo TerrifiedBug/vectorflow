@@ -963,6 +963,15 @@ model AuditLog {
   environmentId String?
   environment   Environment? @relation(fields: [environmentId], references: [id])
   createdAt     DateTime     @default(now())
+  /**
+   * Phase 4 tamper-evidence chain.
+   * `prevHash` is the previous row's `hash` (or `sha256("vf:audit-genesis:" || orgId)` for the first row).
+   * `hash` is `sha256(prevHash || canonical(row))`.
+   * Default '' lets the migration land on existing rows; the populate-chain
+   * backfill walks them in `createdAt` order to fill real values.
+   */
+  prevHash      String       @default("")
+  hash          String       @default("")
 
   @@index([entityType, entityId])
   @@index([userId])
