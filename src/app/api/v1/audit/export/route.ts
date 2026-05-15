@@ -32,6 +32,23 @@ export const GET = apiRoute(
       10000,
     );
 
+    // ─── Chain-format contiguity guard ────────────────────────────────────
+    // The chain envelope verifier anchors the first row to genesisHashFor(orgId)
+    // and requires every row's prevHash to chain through. Any filter that
+    // omits earlier rows breaks contiguity, so chain exports MUST be
+    // unfiltered and ordered ASC (oldest → newest).
+    if (format === "chain") {
+      if (from || to || action || entityType || userId) {
+        return NextResponse.json(
+          {
+            error:
+              "format=chain exports must be unfiltered — apply filters in a follow-up step on the downloaded envelope. Remove from/to/action/entityType/userId.",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     // Build query conditions — scope to the service account's environment
     const conditions: Record<string, unknown>[] = [
       { environmentId: ctx.environmentId },
@@ -58,6 +75,9 @@ export const GET = apiRoute(
 
     const where = { AND: conditions };
 
+    // For chain exports, fetch the org's chain from the *beginning* (ASC),
+    // so the cap (`limit`) caps the chain at the front, preserving genesis
+    // anchor. For csv/json display, keep the existing newest-first order.
     const items = await prisma.auditLog.findMany({
       where,
       include: {
@@ -65,7 +85,7 @@ export const GET = apiRoute(
           select: { id: true, name: true, email: true },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: format === "chain" ? "asc" : "desc" },
       take: limit,
     });
 
