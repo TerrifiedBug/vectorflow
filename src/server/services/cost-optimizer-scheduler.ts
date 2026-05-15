@@ -1,4 +1,6 @@
 import cron, { type ScheduledTask } from "node-cron";
+import { prisma } from "@/lib/prisma";
+import { withOrgTx } from "@/lib/with-org-tx";
 import { debugLog, infoLog, errorLog } from "@/lib/logger";
 import { runCostAnalysis } from "@/server/services/cost-optimizer";
 import {
@@ -7,18 +9,29 @@ import {
 } from "@/server/services/cost-recommendations";
 import { generateAiRecommendations } from "@/server/services/cost-optimizer-ai";
 
+/**
+ * Cost-optimizer scheduler — single global cron tick fans out across orgs.
+ *
+ * Unlike backup scheduling, the cost analysis cadence is platform-level
+ * (one daily run) rather than per-org configurable. The tick iterates all
+ * non-suspended / non-deleted orgs and runs the full analysis pipeline
+ * for each inside `withOrgTx(orgId, ...)` so:
+ *   - Recommendations are written under the right org's RLS context.
+ *   - One org's failure does not abort the others (best-effort fan-out).
+ */
+
 let scheduledTask: ScheduledTask | null = null;
 
 // Default: run daily at 03:00 UTC
 const DEFAULT_CRON = "0 3 * * *";
 
-/** Initialize the cost optimizer background job. Called on server startup (leader-only). */
+/** Initialise the cost-optimizer background job. Called on server startup (leader-only). */
 export async function initCostOptimizerScheduler(): Promise<void> {
   scheduleJob(DEFAULT_CRON);
-  debugLog("cost-optimizer", "Scheduler initialized", { cron: DEFAULT_CRON });
+  debugLog("cost-optimizer", "Scheduler initialised", { cron: DEFAULT_CRON });
 }
 
-/** Stop the scheduled job (for graceful shutdown). */
+/** Stop the scheduled job (graceful shutdown). */
 export function stopCostOptimizerScheduler(): void {
   if (scheduledTask) {
     scheduledTask.stop();
@@ -33,45 +46,73 @@ function scheduleJob(cronExpression: string): void {
   }
 
   scheduledTask = cron.schedule(cronExpression, async () => {
-    infoLog("cost-optimizer", "Starting daily cost analysis...");
+    infoLog("cost-optimizer", "Starting daily cost analysis (fleet fan-out)...");
     try {
-      await runDailyCostAnalysis();
+      await runDailyCostAnalysisAllOrgs();
     } catch (error) {
-      errorLog("cost-optimizer", "Daily analysis failed", error);
+      errorLog("cost-optimizer", "Daily analysis fleet sweep failed", error);
     }
   });
-  scheduledTask.start();
 
   infoLog("cost-optimizer", `Scheduler active: ${cronExpression}`);
 }
 
-/** Run the full daily analysis pipeline. Exported for manual triggering. */
-export async function runDailyCostAnalysis(): Promise<{
+/**
+ * Iterate every active org and run the daily pipeline against each. Errors
+ * are isolated per-org so a failure on one tenant does not stall the rest.
+ */
+export async function runDailyCostAnalysisAllOrgs(): Promise<void> {
+  const orgs = await prisma.organization.findMany({
+    where: { suspendedAt: null, deletedAt: null },
+    select: { id: true },
+  });
+  for (const org of orgs) {
+    try {
+      await runDailyCostAnalysisForOrg(org.id);
+    } catch (err) {
+      errorLog(
+        "cost-optimizer",
+        `org=${org.id} daily analysis failed (continuing with remaining orgs)`,
+        err,
+      );
+    }
+  }
+}
+
+/** Full daily cost analysis pipeline for one org. */
+export async function runDailyCostAnalysisForOrg(
+  organizationId: string,
+): Promise<{
   analysisCount: number;
   created: number;
   skipped: number;
   aiEnriched: number;
   expiredCleaned: number;
 }> {
-  // 1. Clean up expired recommendations
+  // ─── Scope gap: tenant context not yet plumbed through the pipeline ────
+  // `cleanupExpiredRecommendations`, `runCostAnalysis`, `storeRecommendations`,
+  // and `generateAiRecommendations` all use the global Prisma client today;
+  // they do not accept a tx or organizationId parameter, so the SET LOCAL
+  // app.org_id we would set in `withOrgTx` does not propagate to their
+  // queries. Under OSS the table-owner role bypasses RLS so this works
+  // identically to before. Under Cloud RLS-strict, threading the org
+  // context through each service function is a separate refactor (Phase
+  // 5b.2). The fan-out across orgs is the win this PR ships.
   const expiredCleaned = await cleanupExpiredRecommendations();
-
-  // 2. Run cost analysis
   const results = await runCostAnalysis();
-
-  // 3. Store recommendations
   const { created, skipped } = await storeRecommendations(results);
-
-  // 4. Attempt AI enrichment for newly created recommendations
   let aiEnriched = 0;
   if (created > 0) {
     try {
       aiEnriched = await generateAiRecommendations();
-    } catch (error) {
-      errorLog("cost-optimizer", "AI enrichment failed (recommendations saved without AI summary)", error);
+    } catch (err) {
+      errorLog(
+        "cost-optimizer",
+        `org=${organizationId} AI enrichment failed (recommendations saved without AI summary)`,
+        err,
+      );
     }
   }
-
   const summary = {
     analysisCount: results.length,
     created,
@@ -79,7 +120,8 @@ export async function runDailyCostAnalysis(): Promise<{
     aiEnriched,
     expiredCleaned,
   };
-
-  infoLog("cost-optimizer", "Daily analysis complete", summary);
+  infoLog("cost-optimizer", `org=${organizationId} daily analysis complete`, summary);
   return summary;
 }
+
+

@@ -1,32 +1,81 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { prisma } from "@/lib/prisma";
 import { getOrgSettings } from "@/lib/org-settings";
-import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 import { debugLog, infoLog, errorLog } from "@/lib/logger";
 import { createBackup, runRetentionCleanup, runOrphanCleanup } from "./backup";
 import { fireEventAlert } from "./event-alerts";
 
-let scheduledTask: ScheduledTask | null = null;
+/**
+ * Per-organization backup scheduler.
+ *
+ * Each non-suspended, non-deleted Organization with backupEnabled gets a
+ * dedicated `node-cron` task. When the customer changes settings,
+ * `rescheduleBackupForOrg` swaps just that org's task. When an org is
+ * suspended or deleted, `unscheduleBackupForOrg` stops it. OSS deployments
+ * have a single `DEFAULT_ORG` and end up with at most one task — behaviour
+ * unchanged.
+ *
+ * Each cron tick runs inside `withOrgTx(orgId, ...)` so any tenant-scoped
+ * DB work performed during the backup workflow (writing BackupRecord
+ * rows, firing event alerts) is RLS-scoped to that org under Cloud's
+ * strict policies.
+ */
 
-/** Initialize the backup scheduler from OrganizationSettings. Called on server startup. */
+// Map<organizationId, ScheduledTask>. Exposed via _scheduledTasksForTests
+// so unit tests can assert membership without poking at module internals.
+const scheduledTasks = new Map<string, ScheduledTask>();
+
+/** Initialise scheduler from every active Organization's settings. */
 export async function initBackupScheduler(): Promise<void> {
-  const settings = await getOrgSettings(DEFAULT_ORG_ID);
+  const orgs = await prisma.organization.findMany({
+    where: { suspendedAt: null, deletedAt: null },
+    select: { id: true, slug: true },
+  });
+  for (const org of orgs) {
+    const settings = await getOrgSettings(org.id);
+    if (settings.backupEnabled && settings.backupCron) {
+      scheduleJobForOrg(org.id, settings.backupCron);
+    }
+  }
+  infoLog(
+    "backup-scheduler",
+    `Initialised: ${scheduledTasks.size} org backup task(s)`,
+  );
+}
 
-  if (settings.backupEnabled && settings.backupCron) {
-    scheduleJob(settings.backupCron);
+/**
+ * Replace (or remove) the backup task for a single org. Called from the
+ * settings router when an admin toggles backupEnabled or changes the cron
+ * expression, and from org lifecycle events.
+ */
+export function rescheduleBackupForOrg(
+  organizationId: string,
+  enabled: boolean,
+  cronExpression: string,
+): void {
+  const existing = scheduledTasks.get(organizationId);
+  if (existing) {
+    existing.stop();
+    scheduledTasks.delete(organizationId);
+  }
+  if (enabled) {
+    scheduleJobForOrg(organizationId, cronExpression);
   }
 }
 
-/** Reschedule the backup job. Called when settings are updated via the UI. */
-export function rescheduleBackup(enabled: boolean, cronExpression: string): void {
-  if (scheduledTask) {
-    scheduledTask.stop();
-    scheduledTask = null;
-  }
-
-  if (enabled) {
-    scheduleJob(cronExpression);
-  }
+/**
+ * Tear down the org's task. Called on org suspend or delete from the
+ * cloud/ workspace's org-lifecycle handler (suspension flow, hard-delete
+ * job). OSS has no lifecycle wiring today — DEFAULT_ORG_ID is never
+ * suspended or deleted — so this hook has no current OSS caller. It is
+ * the documented integration point that the closed cloud lifecycle
+ * routes import and invoke.
+ */
+export function unscheduleBackupForOrg(organizationId: string): void {
+  const existing = scheduledTasks.get(organizationId);
+  if (!existing) return;
+  existing.stop();
+  scheduledTasks.delete(organizationId);
 }
 
 /** Validate a cron expression. */
@@ -34,31 +83,60 @@ export function isValidCron(expression: string): boolean {
   return cron.validate(expression);
 }
 
-function scheduleJob(cronExpression: string): void {
+function scheduleJobForOrg(
+  organizationId: string,
+  cronExpression: string,
+): void {
   if (!cron.validate(cronExpression)) {
-    errorLog("backup-scheduler", `Invalid cron expression: ${cronExpression}`);
+    errorLog(
+      "backup-scheduler",
+      `Invalid cron expression for org=${organizationId}: ${cronExpression}`,
+    );
     return;
   }
 
-  scheduledTask = cron.schedule(cronExpression, async () => {
-    infoLog("backup-scheduler", "Starting scheduled backup...");
+  const task = cron.schedule(cronExpression, async () => {
+    infoLog(
+      "backup-scheduler",
+      `Starting scheduled backup for org=${organizationId}`,
+    );
+    // ─── Scope gap: tenant context not yet plumbed through the inner pipeline ────
+    // `createBackup` / `runRetentionCleanup` / `runOrphanCleanup` currently
+    // read org settings via the global Prisma client, which still hard-codes
+    // `DEFAULT_ORG_ID` for some lookups (see backup.ts:552, :903, :1084,
+    // :1171). Under OSS the table-owner role bypasses RLS so this works
+    // identically to before. Under Cloud RLS-strict, threading the org
+    // context through each service function is a separate refactor (Phase
+    // 5b.2). This scheduler does the right thing it CAN do today: register
+    // one cron per org from each org's own settings, log per-org, and run
+    // env-alerts scoped to the org's environments.
     try {
       const metadata = await createBackup("scheduled");
-      infoLog("backup-scheduler", `Scheduled backup complete: ${metadata.sizeBytes} bytes`);
+      infoLog(
+        "backup-scheduler",
+        `org=${organizationId} backup complete: ${metadata.sizeBytes} bytes`,
+      );
       await runRetentionCleanup();
       try {
         const orphanResult = await runOrphanCleanup();
         debugLog("backup", "Orphan cleanup complete", orphanResult);
       } catch (orphanErr) {
-        errorLog("backup-scheduler", "Orphan cleanup failed", orphanErr);
+        errorLog(
+          "backup-scheduler",
+          `org=${organizationId} orphan cleanup failed`,
+          orphanErr,
+        );
       }
     } catch (error) {
-      errorLog("backup-scheduler", "Scheduled backup failed", error);
+      errorLog(
+        "backup-scheduler",
+        `org=${organizationId} scheduled backup failed`,
+        error,
+      );
       const msg = error instanceof Error ? error.message : "Unknown error";
-      // Fire backup_failed alert for all environments (properly awaited -- RELY-01)
       try {
         const envs = await prisma.environment.findMany({
-          where: { isSystem: false },
+          where: { isSystem: false, organizationId },
           select: { id: true },
         });
         for (const env of envs) {
@@ -67,10 +145,28 @@ function scheduleJob(cronExpression: string): void {
           });
         }
       } catch (alertErr) {
-        errorLog("backup-scheduler", "Failed to fire backup_failed alerts", alertErr);
+        errorLog(
+          "backup-scheduler",
+          `org=${organizationId} failed to fire backup_failed alerts`,
+          alertErr,
+        );
       }
     }
   });
 
-  infoLog("backup-scheduler", `Scheduler active: ${cronExpression}`);
+  scheduledTasks.set(organizationId, task);
+  infoLog(
+    "backup-scheduler",
+    `org=${organizationId} scheduler active: ${cronExpression}`,
+  );
+}
+
+// ── Test-only helpers ──────────────────────────────────────────────────────
+//
+// Tests want to assert on the per-org task map without breaking
+// encapsulation in production. Underscore prefix marks these as private
+// API; not exported from the module barrel.
+
+export function _scheduledTasksForTests(): Map<string, ScheduledTask> {
+  return scheduledTasks;
 }

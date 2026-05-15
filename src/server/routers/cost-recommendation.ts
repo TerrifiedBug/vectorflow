@@ -12,7 +12,7 @@ import {
   previewRecommendation,
   applyRecommendation,
 } from "@/server/services/cost-recommendation-procedures";
-import { runDailyCostAnalysis } from "@/server/services/cost-optimizer-scheduler";
+import { runDailyCostAnalysisForOrg } from "@/server/services/cost-optimizer-scheduler";
 
 export const costRecommendationRouter = router({
   /** List pending recommendations for the current environment. */
@@ -166,12 +166,26 @@ export const costRecommendationRouter = router({
       };
     }),
 
-  /** Manually trigger a cost analysis run (admin only). */
+  /** Manually trigger a cost analysis run (admin only). Scoped to the env's org. */
   triggerAnalysis: protectedProcedure
     .input(z.object({ environmentId: z.string() }))
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("cost_recommendation.trigger_analysis", "Environment"))
-    .mutation(async () => {
-      return runDailyCostAnalysis();
+    .mutation(async ({ input, ctx }) => {
+      // Resolve the env's organization so the analysis is scoped to it.
+      // Falls back to ctx.organizationId for safety; fails fast if neither
+      // is available.
+      const env = await prisma.environment.findUnique({
+        where: { id: input.environmentId },
+        select: { organizationId: true },
+      });
+      const orgId = env?.organizationId ?? ctx.organizationId;
+      if (!orgId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot resolve organization for analysis trigger",
+        });
+      }
+      return runDailyCostAnalysisForOrg(orgId);
     }),
 });

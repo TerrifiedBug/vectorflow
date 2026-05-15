@@ -64,7 +64,7 @@ vi.mock("@aws-sdk/client-s3", () => {
 });
 
 vi.mock("@/server/services/backup-scheduler", () => ({
-  rescheduleBackup: vi.fn(),
+  rescheduleBackupForOrg: vi.fn(),
   isValidCron: vi.fn().mockReturnValue(true),
 }));
 
@@ -81,7 +81,7 @@ vi.mock("@/auth", () => ({
 import { prisma } from "@/lib/prisma";
 import { settingsRouter } from "@/server/routers/settings";
 import { createBackup, restoreFromBackup } from "@/server/services/backup";
-import { isValidCron, rescheduleBackup } from "@/server/services/backup-scheduler";
+import { isValidCron, rescheduleBackupForOrg } from "@/server/services/backup-scheduler";
 import { encrypt } from "@/server/services/crypto";
 import { invalidateAuthCache } from "@/auth";
 import { mockOrgSettings } from "@/__tests__/helpers/mock-org-settings";
@@ -345,7 +345,7 @@ describe("settingsRouter", () => {
           }),
         }),
       );
-      expect(rescheduleBackup).toHaveBeenCalledWith(true, "0 3 * * *");
+      expect(rescheduleBackupForOrg).toHaveBeenCalledWith("default", true, "0 3 * * *");
     });
 
     it("throws BAD_REQUEST for invalid cron expression", async () => {

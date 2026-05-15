@@ -16,7 +16,7 @@ import {
   runRetentionCleanup,
   previewBackup,
 } from "@/server/services/backup";
-import { rescheduleBackup, isValidCron } from "@/server/services/backup-scheduler";
+import { rescheduleBackupForOrg, isValidCron } from "@/server/services/backup-scheduler";
 import { validatePublicUrl } from "@/server/services/url-validation";
 import { getOrgSettings, updateOrgSettings, type OrgSettings } from "@/lib/org-settings";
 
@@ -453,7 +453,7 @@ export const settingsRouter = router({
         backupRetentionCount: input.retentionCount,
       });
 
-      rescheduleBackup(input.enabled, input.cron);
+      rescheduleBackupForOrg(ctx.organizationId, input.enabled, input.cron);
       return result;
     }),
 
