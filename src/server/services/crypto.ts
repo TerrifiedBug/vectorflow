@@ -5,6 +5,7 @@ import {
   createHash,
   hkdfSync,
 } from "node:crypto";
+import { getDekCache } from "./kms";
 
 // ─── Encryption domains ────────────────────────────────────────────────────
 
@@ -184,4 +185,111 @@ export function decryptLegacy(ciphertext: string): string {
   const payload = Buffer.from(ciphertext, "base64");
   const key = deriveKeyV1();
   return decryptWithKey(payload, key);
+}
+
+// ─── v3 per-organization envelope encryption ───────────────────────────────
+
+const V3_PREFIX = "v3:";
+const V3_AAD_VERSION = "vf:v3";
+
+export interface OrgEncryptionContext {
+  /** The Organization.id this row belongs to. */
+  orgId: string;
+  /** The Organization.dataKeyCiphertext — wrapped DEK from the KMS provider. */
+  dataKeyCiphertext: string;
+  /** HKDF domain so that, e.g., a Secret key is independent from a Certificate key. */
+  domain: EncryptionDomain;
+  /** Prisma model name (or any stable per-table identifier) this row lives in. */
+  rowTable: string;
+  /** Primary key of the row being encrypted. */
+  rowId: string;
+}
+
+/** Build the AAD that binds a v3 ciphertext to (org, domain, table, rowId). */
+function buildAad(ctx: OrgEncryptionContext): Buffer {
+  return Buffer.from(
+    `${V3_AAD_VERSION}:org=${ctx.orgId}:domain=${ctx.domain}:row=${ctx.rowTable}:${ctx.rowId}`,
+    "utf8",
+  );
+}
+
+/** Per-domain key derived from the unwrapped DEK. Never persisted. */
+function deriveDomainKey(dek: Buffer, domain: EncryptionDomain): Buffer {
+  const info = Buffer.from(`vf:v3:${domain}`, "utf8");
+  return Buffer.from(hkdfSync("sha256", dek, Buffer.alloc(0), info, 32));
+}
+
+/**
+ * Encrypt `plaintext` with the org's DEK (unwrapped from `ctx.dataKeyCiphertext`
+ * via the configured KMS provider). AAD binds the ciphertext to the org, domain,
+ * table, and row — a ciphertext copied to another row or org cannot be decrypted.
+ *
+ * Output format: `v3:<base64(iv || authTag || ciphertext)>`.
+ */
+export async function encryptForOrg(
+  plaintext: string,
+  ctx: OrgEncryptionContext,
+): Promise<string> {
+  const cache = getDekCache();
+  const dek = await cache.get(ctx.orgId, ctx.dataKeyCiphertext);
+  const key = deriveDomainKey(dek, ctx.domain);
+  try {
+    const iv = randomBytes(IV_LENGTH);
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
+    cipher.setAAD(buildAad(ctx));
+    const enc = Buffer.concat([
+      cipher.update(plaintext, "utf8"),
+      cipher.final(),
+    ]);
+    const tag = cipher.getAuthTag();
+    return V3_PREFIX + Buffer.concat([iv, tag, enc]).toString("base64");
+  } finally {
+    key.fill(0);
+  }
+}
+
+/**
+ * Decrypt a `v3:` ciphertext bound to the supplied org context. Throws on AAD
+ * mismatch, MAC failure, or malformed payload.
+ */
+export async function decryptForOrg(
+  ciphertext: string,
+  ctx: OrgEncryptionContext,
+): Promise<string> {
+  if (!ciphertext.startsWith(V3_PREFIX)) {
+    throw new Error(`decryptForOrg: ciphertext missing "${V3_PREFIX}" prefix`);
+  }
+  const payload = Buffer.from(ciphertext.slice(V3_PREFIX.length), "base64");
+  if (payload.length < IV_LENGTH + TAG_LENGTH) {
+    throw new Error("decryptForOrg: ciphertext too short");
+  }
+  const iv = payload.subarray(0, IV_LENGTH);
+  const tag = payload.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
+  const ct = payload.subarray(IV_LENGTH + TAG_LENGTH);
+  const cache = getDekCache();
+  const dek = await cache.get(ctx.orgId, ctx.dataKeyCiphertext);
+  const key = deriveDomainKey(dek, ctx.domain);
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAAD(buildAad(ctx));
+    decipher.setAuthTag(tag);
+    return decipher.update(ct) + decipher.final("utf8");
+  } finally {
+    key.fill(0);
+  }
+}
+
+/**
+ * Derive a 32-byte per-org JWT signing key from the org's DEK using HKDF.
+ *
+ * Rotates automatically with the DEK: when the DEK changes (re-wrap or
+ * customer-initiated rotation), all previously issued tokens are invalidated
+ * — which is exactly the property we want for org-wide session revocation.
+ */
+export function deriveJwtSigningKey(dek: Buffer): Buffer {
+  if (dek.length !== 32) {
+    throw new Error("deriveJwtSigningKey: DEK must be 32 bytes");
+  }
+  const info = Buffer.from("vf:v3:jwt", "utf8");
+  return Buffer.from(hkdfSync("sha256", dek, Buffer.alloc(0), info, 32));
 }
