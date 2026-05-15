@@ -31,7 +31,8 @@ describe("measureClockSkewSeconds", () => {
     };
     const skew = await measureClockSkewSeconds({
       sources: Object.keys(skews),
-      fetchImpl: async (url) => {
+      fetchImpl: async (input) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         const s = skews[url];
         const t = new Date(now.getTime() + s * 1000);
         return fakeResponse(t.toUTCString());
@@ -46,7 +47,8 @@ describe("measureClockSkewSeconds", () => {
     vi.setSystemTime(now);
     const skew = await measureClockSkewSeconds({
       sources: ["https://a.example", "https://b.example", "https://c.example"],
-      fetchImpl: async (url) => {
+      fetchImpl: async (input) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         if (url === "https://b.example") {
           throw new Error("network");
         }
@@ -76,7 +78,8 @@ describe("measureClockSkewSeconds", () => {
     const skewPromise = measureClockSkewSeconds({
       sources: ["https://a.example", "https://b.example"],
       timeoutMs: 100,
-      fetchImpl: (url, init) => {
+      fetchImpl: (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         if (url === "https://a.example") {
           // hang until aborted
           return new Promise<Response>((_, reject) => {

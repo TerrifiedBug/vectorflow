@@ -18,8 +18,15 @@
 
 export interface MeasureOptions {
   sources?: string[];
+  /** Per-source HTTP timeout. */
   timeoutMs?: number;
-  fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
+  /**
+   * Resolve as soon as `minSamples` sources have returned a sample, even
+   * if others are still pending. Defaults to a sensible per-source-count
+   * value (1 when only one source is supplied; otherwise 2).
+   */
+  minSamples?: number;
+  fetchImpl?: (url: string | URL | Request, init?: RequestInit) => Promise<Response>;
 }
 
 const DEFAULT_SOURCES = [
@@ -34,40 +41,52 @@ export async function measureClockSkewSeconds(
   const sources = opts.sources ?? DEFAULT_SOURCES;
   const timeoutMs = opts.timeoutMs ?? 3000;
   const fetchImpl = opts.fetchImpl ?? fetch;
+  const minSamples = opts.minSamples ?? (sources.length >= 2 ? 2 : 1);
 
-  const samples = await Promise.all(
-    sources.map(async (url) => {
+  const samples: number[] = [];
+  let done = false;
+  let resolveEnough!: () => void;
+  const enough = new Promise<void>((res) => {
+    resolveEnough = res;
+  });
+
+  const fetchOne = (url: string) =>
+    (async () => {
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), timeoutMs);
       try {
         const sentAt = Date.now();
-        const res = await fetchImpl(url, {
-          method: "HEAD",
-          signal: ac.signal,
-        });
+        const res = await fetchImpl(url, { method: "HEAD", signal: ac.signal });
         const receivedAt = Date.now();
         const dateHeader = res.headers.get("date");
-        if (!dateHeader) return null;
+        if (!dateHeader) return;
         const serverTime = Date.parse(dateHeader);
-        if (Number.isNaN(serverTime)) return null;
-        // Round-trip-corrected: assume the server stamped the response halfway
-        // between when we sent the request and when we got the headers back.
+        if (Number.isNaN(serverTime)) return;
         const localMid = (sentAt + receivedAt) / 2;
-        return Math.round((serverTime - localMid) / 1000);
+        const sample = Math.round((serverTime - localMid) / 1000);
+        if (done) return;
+        samples.push(sample);
+        if (samples.length >= minSamples) {
+          done = true;
+          resolveEnough();
+        }
       } catch {
-        return null;
+        /* drop failing source */
       } finally {
         clearTimeout(timer);
       }
-    }),
-  );
+    })();
 
-  const valid = samples.filter((s): s is number => s !== null);
-  if (valid.length === 0) {
+  const inflight = sources.map(fetchOne);
+  // Race "we have enough" vs "every source has completed" — whichever
+  // settles first returns control. Pending requests keep running but
+  // their results are ignored once `done` is set.
+  await Promise.race([enough, Promise.allSettled(inflight)]);
+
+  if (samples.length === 0) {
     throw new Error("clock-skew: no clock sources responded");
   }
-  // Median is robust against a single bad sample.
-  const sorted = [...valid].sort((a, b) => a - b);
+  const sorted = [...samples].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1
     ? sorted[mid]

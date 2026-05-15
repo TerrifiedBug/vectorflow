@@ -40,31 +40,43 @@ export interface ChainableAuditRow {
 }
 
 /**
- * Stable JSON canonicalization.
+ * Stable JSON canonicalization that round-trips bit-identically through
+ * Postgres JSONB persistence.
  *
- * - Plain objects: keys sorted lexicographically at every level.
+ * - Plain objects: keys sorted lexicographically at every level. Object
+ *   properties whose value is `undefined` are **omitted** (matching the
+ *   documented behaviour of `JSON.stringify`, which Prisma uses to
+ *   serialise JSONB values).
  * - Arrays: order preserved (arrays are positional, not associative).
- * - `Date` instances: serialized as ISO-8601 strings so a `Date` and the
- *   round-tripped string it would become after a Postgres JSONB cycle hash
- *   identically.
- * - `undefined` is treated as `null` (matches Postgres JSONB semantics —
- *   you cannot store `undefined`).
- * - Other primitives: passed through to JSON.stringify.
+ *   `undefined` elements are emitted as `null` (also matching
+ *   `JSON.stringify`'s array-sentinel behaviour).
+ * - `Date` instances: serialised as ISO-8601 strings so a `Date` and the
+ *   round-tripped string it would become after a Postgres JSONB cycle
+ *   hash identically.
+ * - Top-level `null` is preserved (null is a real JSON value; only
+ *   `undefined` is the omit sentinel).
+ * - Other primitives: passed through verbatim.
  *
  * Necessary because Prisma persists `AuditLog.diff` / `metadata` as JSONB
- * and key insertion order is not preserved across the round-trip. Without
- * deep sorting, `verifyChain` would reject untouched rows whose nested
- * objects came back with different key order.
+ * and Postgres serialises JSON values using JSON.stringify semantics —
+ * dropping `undefined` and re-emitting key insertion order arbitrarily.
+ * Without these rules, `verifyChain` would reject untouched rows whose
+ * stored representation differs from the input shape.
  */
 function stableCanonicalize(value: unknown): unknown {
-  if (value === undefined || value === null) return null;
+  if (value === null) return null;
+  if (value === undefined) return null; // top-level / array element sentinel
   if (value instanceof Date) return value.toISOString();
-  if (Array.isArray(value)) return value.map(stableCanonicalize);
+  if (Array.isArray(value)) {
+    return value.map((v) => (v === undefined ? null : stableCanonicalize(v)));
+  }
   if (typeof value === "object") {
     const obj = value as Record<string, unknown>;
     const out: Record<string, unknown> = {};
     for (const k of Object.keys(obj).sort()) {
-      out[k] = stableCanonicalize(obj[k]);
+      const v = obj[k];
+      if (v === undefined) continue; // omit, match JSON.stringify
+      out[k] = stableCanonicalize(v);
     }
     return out;
   }
