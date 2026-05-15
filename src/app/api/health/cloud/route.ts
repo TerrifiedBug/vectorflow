@@ -44,7 +44,21 @@ async function checkKms(): Promise<CheckResult> {
     const kms = getKmsProvider();
     // Real round-trip: providers issue a network call (Vault metadata
     // GET / AWS KMS:DescribeKey) so a true KMS outage is visible here.
-    const r = await kms.healthCheck();
+    //
+    // Bound the probe with a hard timeout so a TCP-reachable-but-stalled
+    // upstream (blackholed route, hung Vault) can't extend the readiness
+    // response past the load balancer's deadline. The provider may
+    // continue running internally — Node doesn't kill the request — but
+    // /api/health/cloud has already returned 503 from the route's POV.
+    const r = await Promise.race([
+      kms.healthCheck(),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`kms healthCheck timed out after ${KMS_BUDGET_MS}ms`)),
+          KMS_BUDGET_MS,
+        ),
+      ),
+    ]);
     const ms = Date.now() - t;
     if (!r.ok) {
       return { ok: false, detail: r.error ?? "kms healthCheck reported not-ok", ms };

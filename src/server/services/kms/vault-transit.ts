@@ -182,25 +182,30 @@ export class VaultTransitKmsProvider implements KmsProvider {
   async healthCheck(): Promise<KmsHealthResult> {
     // GET /v1/<mount>/keys/<name> hits the same Vault path the encrypt and
     // decrypt ops will use, so a failure here is a true indicator of an
-    // upcoming hot-path failure. Auth is re-acquired automatically by
-    // vaultFetch's 401/403 retry path.
-    const path = `/v1/${this.cfg.transitMount}/keys/${this.cfg.keyName}`;
-    try {
-      const token = await this.getToken();
-      const res = await this.fetchImpl(`${this.cfg.address}${path}`, {
+    // upcoming hot-path failure. The probe goes through the same 401/403
+    // re-auth path `vaultFetch` uses for the cryptographic operations so
+    // an expired AppRole token does not produce a permanent false-unhealthy.
+    const url = `${this.cfg.address}/v1/${this.cfg.transitMount}/keys/${this.cfg.keyName}`;
+    const doGet = (tok: string) =>
+      this.fetchImpl(url, {
         method: "GET",
-        headers: { "x-vault-token": token },
+        headers: { "x-vault-token": tok },
       });
+    try {
+      let token = await this.getToken();
+      let res = await doGet(token);
+      if ((res.status === 401 || res.status === 403) && this.canReauth) {
+        this.clientToken = null;
+        token = await this.getToken(true);
+        res = await doGet(token);
+      }
       if (!res.ok) {
         return {
           ok: false,
           error: `vault-transit healthCheck: HTTP ${res.status}`,
         };
       }
-      return {
-        ok: true,
-        keyId: this.describeKey().keyId,
-      };
+      return { ok: true, keyId: this.describeKey().keyId };
     } catch (err) {
       return {
         ok: false,
