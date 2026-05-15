@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
-  prisma: { costRecommendation: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn(), aggregate: vi.fn() }, pipelineMetric: { groupBy: vi.fn() }, pipeline: { findMany: vi.fn() }, pipelineNode: { findMany: vi.fn() } },
+  prisma: {
+    organization: { findMany: vi.fn().mockResolvedValue([{ id: "default" }]) },
+    costRecommendation: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn(), aggregate: vi.fn() },
+    pipelineMetric: { groupBy: vi.fn() },
+    pipeline: { findMany: vi.fn() },
+    pipelineNode: { findMany: vi.fn() },
+  },
 }));
 vi.mock("@/lib/logger", () => ({ debugLog: vi.fn(), infoLog: vi.fn(), errorLog: vi.fn() }));
 vi.mock("@/server/services/cost-optimizer", () => ({
@@ -14,8 +20,11 @@ vi.mock("@/server/services/cost-recommendations", () => ({
 vi.mock("@/server/services/cost-optimizer-ai", () => ({
   generateAiRecommendations: vi.fn().mockResolvedValue(0),
 }));
+vi.mock("@/lib/with-org-tx", () => ({
+  withOrgTx: async <T>(_orgId: string, fn: (tx: unknown) => Promise<T>) => fn({}),
+}));
 
-import { runDailyCostAnalysis } from "@/server/services/cost-optimizer-scheduler";
+import { runDailyCostAnalysisForOrg } from "@/server/services/cost-optimizer-scheduler";
 import { runCostAnalysis } from "@/server/services/cost-optimizer";
 import { storeRecommendations, cleanupExpiredRecommendations } from "@/server/services/cost-recommendations";
 
@@ -23,9 +32,9 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("runDailyCostAnalysis", () => {
+describe("runDailyCostAnalysisForOrg", () => {
   it("runs cleanup, analysis, storage, and AI enrichment in order", async () => {
-    const result = await runDailyCostAnalysis();
+    const result = await runDailyCostAnalysisForOrg("default");
 
     expect(cleanupExpiredRecommendations).toHaveBeenCalledTimes(1);
     expect(runCostAnalysis).toHaveBeenCalledTimes(1);
@@ -46,7 +55,7 @@ describe("runDailyCostAnalysis", () => {
     vi.mocked(runCostAnalysis).mockResolvedValueOnce(mockResults as never);
     vi.mocked(storeRecommendations).mockResolvedValueOnce({ created: 1, skipped: 0 });
 
-    const result = await runDailyCostAnalysis();
+    const result = await runDailyCostAnalysisForOrg("default");
 
     expect(result.analysisCount).toBe(1);
     expect(result.created).toBe(1);
