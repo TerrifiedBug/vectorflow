@@ -985,6 +985,31 @@ model AuditLog {
 }
 
 /**
+ * Stripe webhook idempotency ledger (plan addendum §6).
+ *
+ * Stripe redelivers webhook events on 5xx responses. To guarantee
+ * once-only processing, the webhook handler in the closed `cloud/`
+ * package records every event's `id` (the Stripe `evt_…` identifier)
+ * here on receipt. Duplicate deliveries observe an existing row and
+ * return 200 without processing.
+ *
+ * The handler lives in cloud/; this model is in OSS schema so the
+ * shared migration sequence stays linear. OSS deployments simply
+ * never insert into this table.
+ */
+model StripeWebhookEvent {
+  /** Stripe event id (e.g. `evt_1Op4...`). PK enforces idempotency. */
+  id          String   @id
+  /** Stripe event type, e.g. `customer.subscription.updated`. */
+  type        String
+  /** When the handler first observed and committed this event. */
+  processedAt DateTime @default(now())
+
+  @@index([processedAt])
+  @@index([type])
+}
+
+/**
  * Per-organization audit-chain tail pointer.
  *
  * Single source of truth for "what is the most recently-chained AuditLog
