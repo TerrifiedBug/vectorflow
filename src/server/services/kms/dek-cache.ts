@@ -98,19 +98,19 @@ export class DekCache {
 
     const e = this.entries.get(orgId);
     if (e?.inflight?.token === token) {
-      // We are still the active inflight — commit.
+      // We are still the active inflight — commit to the cache.
       this.entries.set(orgId, {
         ciphertext: dataKeyCiphertext,
         key,
         expiresAt: Date.now() + this.ttlMs,
         inflight: null,
       });
-    } else {
-      // Superseded by a newer unwrap. Zero our plaintext so it does not
-      // linger in memory. The caller still receives it (legitimate),
-      // but the cache reflects the newer ciphertext.
-      key.fill(0);
     }
+    // If we were superseded, we do NOT cache this result, but we MUST still
+    // return the real plaintext: the caller asked for this exact ciphertext
+    // and an in-flight crypto op depends on the live DEK. Zeroing the buffer
+    // here would hand them a zeroed key. The buffer is dropped when the
+    // caller releases it; GC reclaims the memory.
     return key;
   }
 

@@ -58,9 +58,12 @@ describe("DekCache — rotation race (Codex P1 follow-up)", () => {
     const r2 = await p2;
     expect(r2.equals(pt2)).toBe(true);
 
-    // Now the stale OLD unwrap resolves — it MUST NOT clobber ct-new in the cache.
+    // Now the stale OLD unwrap resolves — it MUST NOT clobber ct-new in the
+    // cache, AND the caller that asked for ct-old MUST still receive the
+    // real ct-old plaintext (not a zeroed buffer).
     resolve("ct-old", pt1);
-    await p1.catch(() => undefined); // p1 may resolve to pt1, but the cache must remain ct-new
+    const r1 = await p1;
+    expect(r1.equals(pt1)).toBe(true);
 
     // A subsequent get for the new ciphertext returns pt2 from cache without a new unwrap
     const r2again = await cache.get("org-a", "ct-new");
