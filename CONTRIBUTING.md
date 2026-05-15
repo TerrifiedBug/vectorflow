@@ -304,3 +304,39 @@ Maintainers aim to leave an initial review comment within **3 business days**. I
 ### After approval
 
 Squash-merge is preferred for feature branches. The PR author merges after approval.
+
+---
+
+## Contributor License Agreement (CLA)
+
+VectorFlow is open-core software. Contributions to this repository are licensed under AGPL-3.0 **and** grant an additional right for us to include your work in the closed-source VectorFlow Cloud product.
+
+**You must sign the CLA before your PR can be merged.**
+
+The CLA bot will comment on your PR with a prompt. Reply with:
+
+```
+I have read the CLA Document and I hereby sign the CLA
+```
+
+Your signature is recorded in `signatures/cla.json`. You only need to sign once — all future PRs from your account are automatically recognized.
+
+Read the full CLA text: [`CLA.md`](./CLA.md)
+
+### Corporate contributors
+
+If you are contributing on behalf of a company, contact [legal@vectorflow.sh](mailto:legal@vectorflow.sh) for a Corporate CLA before opening a PR.
+
+### What the CLA grants
+
+The CLA grants an additional right to use your contribution in closed-source products. It does **not** change the AGPL-3.0 license that governs the OSS edition. Recipients of the OSS build still get all AGPL-3.0 rights.
+
+---
+
+## OSS vs. Cloud
+
+This repository is the OSS core. A separate private repository (`vectorflow-cloud`) holds SaaS-only code (Stripe billing, AWS KMS, operator console). That code is **not** open-source and is **not** in this repo.
+
+The tenancy primitives (`Organization`, `OrgMember`, `OrganizationSettings`) ship in the OSS edition so self-hosted deployments have the schema shape. In the OSS build they default to a single org — no multi-tenant behaviour is active unless you opt in.
+
+See [`LICENSE-CLOUD.md`](./LICENSE-CLOUD.md) for the full boundary explanation.
