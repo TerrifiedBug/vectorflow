@@ -1,9 +1,12 @@
 import type { KmsProvider } from "./types";
 
 interface CacheEntry {
+  /** The wrapped ciphertext the entry was unwrapped from. Used to detect rotation. */
+  ciphertext: string;
   key: Buffer;
   expiresAt: number;
-  inflight?: Promise<Buffer>;
+  /** Pending unwrap. Lets concurrent `get()` calls share a single KMS round-trip. */
+  inflight?: { ciphertext: string; promise: Promise<Buffer> };
 }
 
 export interface DekCacheOptions {
@@ -14,14 +17,19 @@ export interface DekCacheOptions {
 /**
  * In-process cache for unwrapped DEKs.
  *
- * - TTL-based eviction (default 5 minutes).
- * - On `invalidate` / `invalidateAll`, the cached `Buffer` is overwritten
- *   with zeros in place so that any retained references no longer hold
- *   the key material.
- * - Single-flight: concurrent `get()` for the same org dedupes to a
- *   single underlying `unwrapDataKey` call.
- * - `warm()` pre-populates the cache; used at stamp startup to absorb the
- *   reconnect storm without an outbound KMS spike.
+ * - **Keyed by `(orgId, dataKeyCiphertext)`.** When a customer rotates
+ *   their DEK, the Organization's stored `dataKeyCiphertext` changes; the
+ *   next `get()` observes the mismatch, zeros the stale plaintext, and
+ *   unwraps the new ciphertext fresh. Without this, rotation would lag
+ *   the cache TTL (defaulted to 5min) — minutes of failing encrypt/decrypt
+ *   and stale JWT signing keys.
+ * - **TTL-based eviction** (default 5 minutes).
+ * - **Zero-on-evict.** `invalidate` / `invalidateAll` overwrite the cached
+ *   `Buffer` with zeros in place so any retained reference is wiped too.
+ * - **Single-flight.** Concurrent `get()` calls for the same `(org, ct)`
+ *   share a single underlying `unwrapDataKey` call.
+ * - **Warm-up.** `warm()` pre-populates the cache; used at stamp startup
+ *   to absorb agent-reconnect storms without an outbound KMS spike.
  */
 export class DekCache {
   private entries = new Map<string, CacheEntry>();
@@ -37,15 +45,29 @@ export class DekCache {
   async get(orgId: string, dataKeyCiphertext: string): Promise<Buffer> {
     const now = Date.now();
     const cached = this.entries.get(orgId);
-    if (cached && cached.expiresAt > now) {
+
+    // Fast path: same ciphertext, still warm.
+    if (
+      cached &&
+      cached.ciphertext === dataKeyCiphertext &&
+      cached.expiresAt > now
+    ) {
       return cached.key;
     }
-    if (cached?.inflight) {
-      return cached.inflight;
+
+    // Inflight unwrap for the same ciphertext? Join it.
+    if (cached?.inflight && cached.inflight.ciphertext === dataKeyCiphertext) {
+      return cached.inflight.promise;
     }
 
-    const inflight = this.kms.unwrapDataKey(dataKeyCiphertext, orgId).then((key) => {
+    // Stale (TTL expired) or rotation (different ciphertext) — discard cleanly.
+    if (cached && cached.ciphertext !== dataKeyCiphertext) {
+      cached.key.fill(0);
+    }
+
+    const promise = this.kms.unwrapDataKey(dataKeyCiphertext, orgId).then((key) => {
       this.entries.set(orgId, {
+        ciphertext: dataKeyCiphertext,
         key,
         expiresAt: Date.now() + this.ttlMs,
       });
@@ -53,17 +75,17 @@ export class DekCache {
     });
 
     this.entries.set(orgId, {
-      key: cached?.key ?? Buffer.alloc(0),
-      expiresAt: cached?.expiresAt ?? 0,
-      inflight,
+      ciphertext: dataKeyCiphertext,
+      key: Buffer.alloc(0),
+      expiresAt: 0,
+      inflight: { ciphertext: dataKeyCiphertext, promise },
     });
 
     try {
-      return await inflight;
+      return await promise;
     } catch (err) {
-      // On error, drop the inflight marker so retries can proceed.
       const e = this.entries.get(orgId);
-      if (e?.inflight === inflight) this.entries.delete(orgId);
+      if (e?.inflight?.promise === promise) this.entries.delete(orgId);
       throw err;
     }
   }
