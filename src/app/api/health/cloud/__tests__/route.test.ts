@@ -43,26 +43,31 @@ describe("/api/health/cloud", () => {
     expect(body.checks.clock.ok).toBe(true);
   });
 
-  it("returns 503 when database is down", async () => {
+  it("returns 503 with a redacted detail when database is down (no raw error leaked)", async () => {
     vi.mocked(prisma.$queryRaw).mockRejectedValue(new Error("connection refused"));
     const res = await GET();
     expect(res.status).toBe(503);
     const body = await res.json();
     expect(body.status).toBe("error");
     expect(body.checks.database.ok).toBe(false);
-    expect(body.checks.database.detail).toMatch(/connection refused/);
+    // Coarse externally; raw error stays in server logs.
+    expect(body.checks.database.detail).not.toMatch(/connection refused/);
+    expect(body.checks.database.detail).toMatch(/check failed/i);
   });
 
-  it("returns 503 when KMS healthCheck reports failure (Vault/AWS reachable error)", async () => {
+  it("returns 503 when KMS healthCheck reports failure; detail is coarse-grained", async () => {
     vi.mocked(getKmsProvider).mockReturnValue({
-      healthCheck: async () => ({ ok: false, error: "vault unreachable" }),
+      healthCheck: async () => ({ ok: false, error: "vault unreachable: 127.0.0.1:8200" }),
       describeKey: () => ({ provider: "vault-transit", keyId: "vault:k" }),
     } as never);
     const res = await GET();
     expect(res.status).toBe(503);
     const body = await res.json();
     expect(body.checks.kms.ok).toBe(false);
-    expect(body.checks.kms.detail).toMatch(/vault unreachable/);
+    // Raw provider error must NOT leak — that error contains an internal host.
+    expect(body.checks.kms.detail).not.toMatch(/vault unreachable/);
+    expect(body.checks.kms.detail).not.toMatch(/127\.0\.0\.1/);
+    expect(body.checks.kms.detail).toMatch(/kms/i);
   });
 
   it("returns 503 when clock skew exceeds threshold", async () => {
