@@ -39,30 +39,60 @@ export interface ChainableAuditRow {
   createdAt: Date;
 }
 
-/** Canonical JSON: keys sorted, Dates ISO-8601, undefined → null. */
+/**
+ * Stable JSON canonicalization.
+ *
+ * - Plain objects: keys sorted lexicographically at every level.
+ * - Arrays: order preserved (arrays are positional, not associative).
+ * - `Date` instances: serialized as ISO-8601 strings so a `Date` and the
+ *   round-tripped string it would become after a Postgres JSONB cycle hash
+ *   identically.
+ * - `undefined` is treated as `null` (matches Postgres JSONB semantics —
+ *   you cannot store `undefined`).
+ * - Other primitives: passed through to JSON.stringify.
+ *
+ * Necessary because Prisma persists `AuditLog.diff` / `metadata` as JSONB
+ * and key insertion order is not preserved across the round-trip. Without
+ * deep sorting, `verifyChain` would reject untouched rows whose nested
+ * objects came back with different key order.
+ */
+function stableCanonicalize(value: unknown): unknown {
+  if (value === undefined || value === null) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(stableCanonicalize);
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(obj).sort()) {
+      out[k] = stableCanonicalize(obj[k]);
+    }
+    return out;
+  }
+  return value;
+}
+
+/** Canonical JSON for the row: sorted top-level + sorted nested. */
 export function canonicalizeAuditRow(row: ChainableAuditRow): string {
   const ordered: Record<string, unknown> = {
     action: row.action,
     createdAt: row.createdAt.toISOString(),
-    diff: row.diff ?? null,
+    diff: stableCanonicalize(row.diff),
     entityId: row.entityId,
     entityType: row.entityType,
     environmentId: row.environmentId,
     id: row.id,
     ipAddress: row.ipAddress,
-    metadata: row.metadata ?? null,
+    metadata: stableCanonicalize(row.metadata),
     organizationId: row.organizationId,
     teamId: row.teamId,
     userEmail: row.userEmail,
     userId: row.userId,
     userName: row.userName,
   };
-  const sorted = Object.fromEntries(
-    Object.keys(ordered)
-      .sort()
-      .map((k) => [k, ordered[k]]),
-  );
-  return JSON.stringify(sorted);
+  // `ordered` keys are already alphabetical above; `JSON.stringify` walks
+  // them in insertion order, so we get a stable top-level layout. Nested
+  // objects are sorted by `stableCanonicalize`.
+  return JSON.stringify(ordered);
 }
 
 /** Genesis prevHash for the very first row of an org's chain. */

@@ -1,14 +1,23 @@
 /**
- * Audit-chain insert + backfill plumbing.
+ * Audit-chain insert plumbing.
  *
- * Two consumers:
- *   1. The `writeAudit` path (Prisma `audit.create` callers): given the
- *      row about to be inserted and the org's current tail hash, returns
- *      `{ prevHash, hash }` to persist.
- *   2. The backfill script: walks an org's existing rows in `createdAt`
- *      order and fills in the chain for rows whose `prevHash` is empty.
- *      Idempotent — re-running over rows that already have hashes
- *      preserves them.
+ * Forward-only chain semantics:
+ *   - Existing `AuditLog` rows at migration time have `prevHash IS NULL`
+ *     and `hash IS NULL`. They predate the chain feature.
+ *   - The chain starts at the first new write post-migration: that row's
+ *     `prevHash = genesisHashFor(orgId)`. Subsequent writes link to the
+ *     previous row's `hash`.
+ *   - `verifyChain` ONLY validates chained rows (the export endpoint
+ *     emits `WHERE hash IS NOT NULL`). Pre-feature legacy rows are not
+ *     part of the integrity guarantee — they're documented as "outside
+ *     the chain" in the customer audit export.
+ *
+ * We deliberately do NOT provide a retroactive backfill helper. Walking
+ * NULL rows from genesis would create a permanent fork at the migration
+ * boundary (the post-feature chain is already anchored to genesis). If a
+ * customer later needs every historical row hashed, they take a downtime
+ * window, drop the rows from the chain, run a single-pass rewrite, and
+ * resume. That operation belongs in the cloud/ ops runbook, not here.
  */
 
 import {
@@ -22,7 +31,8 @@ import {
  *
  * @param row         The row content (must include `organizationId` and `createdAt`).
  * @param tailHash    The org's current chain tail (`AuditLog.hash` of the
- *                    most recent row), or `null` if this is the first row.
+ *                    most recent CHAINED row), or `null` if this is the
+ *                    first chained row for the org.
  */
 export function computeAuditChainInsert(
   row: ChainableAuditRow,
@@ -31,40 +41,6 @@ export function computeAuditChainInsert(
   const prevHash = tailHash ?? genesisHashFor(row.organizationId);
   const hash = computeChainHash(prevHash, row);
   return { prevHash, hash };
-}
-
-export interface BackfillRow extends ChainableAuditRow {
-  prevHash: string;
-  hash: string;
-}
-
-export interface BackfillCallbacks {
-  /** Yields rows in (organizationId, createdAt) order for the given org. */
-  iterate(): AsyncIterable<BackfillRow> | Iterable<BackfillRow>;
-  /** Persist `prevHash` and `hash` on the row identified by `id`. */
-  write(id: string, prevHash: string, hash: string): Promise<void>;
-}
-
-/**
- * Walk an org's rows in order, computing chain fields for any row whose
- * `hash` is empty. Re-running over already-chained rows leaves them
- * untouched, so the script can resume after interruption.
- */
-export async function backfillChainForOrg(
-  orgId: string,
-  cb: BackfillCallbacks,
-): Promise<void> {
-  let tailHash: string | null = null;
-  for await (const row of cb.iterate()) {
-    if (row.hash && row.hash.length > 0) {
-      // Already chained — trust it and use as the tail for subsequent rows.
-      tailHash = row.hash;
-      continue;
-    }
-    const { prevHash, hash } = computeAuditChainInsert(row, tailHash);
-    await cb.write(row.id, prevHash, hash);
-    tailHash = hash;
-  }
 }
 
 /**
