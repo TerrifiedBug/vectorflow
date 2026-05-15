@@ -20,7 +20,6 @@ const mocks = vi.hoisted(() => {
   const storeRecommendations = vi.fn();
   const cleanupExpiredRecommendations = vi.fn();
   const generateAiRecommendations = vi.fn();
-  const withOrgTxCalls: string[] = [];
   return {
     getRegistered: () => registered,
     resetRegistered: () => {
@@ -33,7 +32,6 @@ const mocks = vi.hoisted(() => {
     storeRecommendations,
     cleanupExpiredRecommendations,
     generateAiRecommendations,
-    withOrgTxCalls,
   };
 });
 
@@ -58,12 +56,8 @@ vi.mock("@/server/services/cost-optimizer-ai", () => ({
   generateAiRecommendations: mocks.generateAiRecommendations,
 }));
 
-vi.mock("@/lib/with-org-tx", () => ({
-  withOrgTx: async <T>(orgId: string, fn: (tx: unknown) => Promise<T>) => {
-    mocks.withOrgTxCalls.push(orgId);
-    return fn({});
-  },
-}));
+// (No withOrgTx mock — production code no longer wraps the per-org pipeline
+//  in a transaction; see scope-gap comment in cost-optimizer-scheduler.ts.)
 
 import {
   initCostOptimizerScheduler,
@@ -81,7 +75,6 @@ describe("cost-optimizer-scheduler — per-org iteration", () => {
     mocks.storeRecommendations.mockReset();
     mocks.cleanupExpiredRecommendations.mockReset();
     mocks.generateAiRecommendations.mockReset();
-    mocks.withOrgTxCalls.length = 0;
   });
 
   it("scheduling registers a single global cron task", async () => {
@@ -102,7 +95,10 @@ describe("cost-optimizer-scheduler — per-org iteration", () => {
     await initCostOptimizerScheduler();
     await mocks.getRegistered()!.cb();
 
-    expect(mocks.withOrgTxCalls).toEqual(["org-a", "org-b", "org-c"]);
+    // The fan-out invokes the full pipeline once per org. cleanupExpiredRecommendations
+    // is the first step of `runDailyCostAnalysisForOrg`, so its call count equals
+    // the number of orgs that were iterated.
+    expect(mocks.cleanupExpiredRecommendations).toHaveBeenCalledTimes(3);
     const findManyArgs = mocks.findManyOrgs.mock.calls[0][0];
     expect(findManyArgs.where.suspendedAt).toBe(null);
     expect(findManyArgs.where.deletedAt).toBe(null);
@@ -115,9 +111,12 @@ describe("cost-optimizer-scheduler — per-org iteration", () => {
       { id: "org-c" },
     ]);
     mocks.cleanupExpiredRecommendations.mockResolvedValue(0);
+    // Fail on the second org's run (when runCostAnalysis has been called once
+    // already and is about to be called for the second time).
+    let costAnalysisCalls = 0;
     mocks.runCostAnalysis.mockImplementation(() => {
-      // Fail on the second org's run; others should still execute.
-      if (mocks.withOrgTxCalls.length === 2) {
+      costAnalysisCalls++;
+      if (costAnalysisCalls === 2) {
         return Promise.reject(new Error("kaboom"));
       }
       return Promise.resolve([]);
@@ -126,8 +125,11 @@ describe("cost-optimizer-scheduler — per-org iteration", () => {
 
     await runDailyCostAnalysisAllOrgs();
 
-    // We attempted withOrgTx for all three orgs even though one failed.
-    expect(mocks.withOrgTxCalls).toEqual(["org-a", "org-b", "org-c"]);
+    // cleanupExpiredRecommendations is called BEFORE runCostAnalysis in the
+    // pipeline, so even the failing org reaches it. All three orgs are
+    // attempted despite the failure on the second.
+    expect(mocks.cleanupExpiredRecommendations).toHaveBeenCalledTimes(3);
+    expect(costAnalysisCalls).toBe(3);
   });
 
   it("runDailyCostAnalysisForOrg runs the full pipeline once for one org", async () => {
@@ -138,7 +140,6 @@ describe("cost-optimizer-scheduler — per-org iteration", () => {
 
     const r = await runDailyCostAnalysisForOrg("org-x");
 
-    expect(mocks.withOrgTxCalls).toEqual(["org-x"]);
     expect(mocks.cleanupExpiredRecommendations).toHaveBeenCalledTimes(1);
     expect(mocks.runCostAnalysis).toHaveBeenCalledTimes(1);
     expect(mocks.storeRecommendations).toHaveBeenCalledTimes(1);

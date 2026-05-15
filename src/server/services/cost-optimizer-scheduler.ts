@@ -89,32 +89,39 @@ export async function runDailyCostAnalysisForOrg(
   aiEnriched: number;
   expiredCleaned: number;
 }> {
-  return withOrgTx(organizationId, async () => {
-    const expiredCleaned = await cleanupExpiredRecommendations();
-    const results = await runCostAnalysis();
-    const { created, skipped } = await storeRecommendations(results);
-    let aiEnriched = 0;
-    if (created > 0) {
-      try {
-        aiEnriched = await generateAiRecommendations();
-      } catch (err) {
-        errorLog(
-          "cost-optimizer",
-          `org=${organizationId} AI enrichment failed (recommendations saved without AI summary)`,
-          err,
-        );
-      }
+  // ─── Scope gap: tenant context not yet plumbed through the pipeline ────
+  // `cleanupExpiredRecommendations`, `runCostAnalysis`, `storeRecommendations`,
+  // and `generateAiRecommendations` all use the global Prisma client today;
+  // they do not accept a tx or organizationId parameter, so the SET LOCAL
+  // app.org_id we would set in `withOrgTx` does not propagate to their
+  // queries. Under OSS the table-owner role bypasses RLS so this works
+  // identically to before. Under Cloud RLS-strict, threading the org
+  // context through each service function is a separate refactor (Phase
+  // 5b.2). The fan-out across orgs is the win this PR ships.
+  const expiredCleaned = await cleanupExpiredRecommendations();
+  const results = await runCostAnalysis();
+  const { created, skipped } = await storeRecommendations(results);
+  let aiEnriched = 0;
+  if (created > 0) {
+    try {
+      aiEnriched = await generateAiRecommendations();
+    } catch (err) {
+      errorLog(
+        "cost-optimizer",
+        `org=${organizationId} AI enrichment failed (recommendations saved without AI summary)`,
+        err,
+      );
     }
-    const summary = {
-      analysisCount: results.length,
-      created,
-      skipped,
-      aiEnriched,
-      expiredCleaned,
-    };
-    infoLog("cost-optimizer", `org=${organizationId} daily analysis complete`, summary);
-    return summary;
-  });
+  }
+  const summary = {
+    analysisCount: results.length,
+    created,
+    skipped,
+    aiEnriched,
+    expiredCleaned,
+  };
+  infoLog("cost-optimizer", `org=${organizationId} daily analysis complete`, summary);
+  return summary;
 }
 
 /**

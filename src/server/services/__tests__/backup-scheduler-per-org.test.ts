@@ -37,7 +37,6 @@ const mocks = vi.hoisted(() => {
     string,
     { backupEnabled: boolean; backupCron: string | null }
   >();
-  const withOrgTxCalls: string[] = [];
   return {
     tasks,
     cronValidate,
@@ -48,7 +47,6 @@ const mocks = vi.hoisted(() => {
     runRetentionCleanup,
     runOrphanCleanup,
     orgSettingsByOrg,
-    withOrgTxCalls,
   };
 });
 
@@ -78,11 +76,8 @@ vi.mock("@/server/services/event-alerts", () => ({
   fireEventAlert: vi.fn(),
 }));
 
-vi.mock("@/lib/with-org-tx", () => ({
-  withOrgTx: async <T>(orgId: string, fn: (tx: unknown) => Promise<T>) => {
-    mocks.withOrgTxCalls.push(orgId);
-    return fn({});
-  },
+vi.mock("@/server/services/event-alerts", () => ({
+  fireEventAlert: vi.fn(),
 }));
 
 vi.mock("@/lib/org-settings", () => ({
@@ -111,7 +106,6 @@ describe("backup-scheduler — per-org tenancy", () => {
     mocks.runRetentionCleanup.mockReset();
     mocks.runOrphanCleanup.mockReset();
     mocks.orgSettingsByOrg.clear();
-    mocks.withOrgTxCalls.length = 0;
     _scheduledTasksForTests().clear();
   });
 
@@ -200,19 +194,26 @@ describe("backup-scheduler — per-org tenancy", () => {
     expect(_scheduledTasksForTests().has("org-b")).toBe(true);
   });
 
-  it("scheduler tick runs inside withOrgTx for the org's ID", async () => {
+  it("scheduler tick on failure scopes the env-alert query to the org", async () => {
     mocks.findManyOrgs.mockResolvedValue([{ id: "org-x" }]);
     mocks.orgSettingsByOrg.set("org-x", {
       backupEnabled: true,
       backupCron: "0 3 * * *",
     });
-    mocks.createBackup.mockResolvedValue({ sizeBytes: 100 });
-    mocks.runRetentionCleanup.mockResolvedValue(0);
-    mocks.runOrphanCleanup.mockResolvedValue({});
+    // Force createBackup to fail so we reach the env-alert path.
+    mocks.createBackup.mockRejectedValue(new Error("kaboom"));
+    // Spy on prisma.environment.findMany via the existing prisma mock
+    const { prisma } = await import("@/lib/prisma");
+    const envFindMany = vi.spyOn(prisma.environment, "findMany").mockResolvedValue([]);
 
     await initBackupScheduler();
     await mocks.tasks[0].cb();
 
-    expect(mocks.withOrgTxCalls).toContain("org-x");
+    // The failure-alert path MUST scope by organizationId, not run fleet-wide.
+    expect(envFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: "org-x" }),
+      }),
+    );
   });
 });

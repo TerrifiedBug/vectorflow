@@ -1,7 +1,6 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { prisma } from "@/lib/prisma";
 import { getOrgSettings } from "@/lib/org-settings";
-import { withOrgTx } from "@/lib/with-org-tx";
 import { debugLog, infoLog, errorLog } from "@/lib/logger";
 import { createBackup, runRetentionCleanup, runOrphanCleanup } from "./backup";
 import { fireEventAlert } from "./event-alerts";
@@ -94,25 +93,33 @@ function scheduleJobForOrg(
       "backup-scheduler",
       `Starting scheduled backup for org=${organizationId}`,
     );
+    // ─── Scope gap: tenant context not yet plumbed through the inner pipeline ────
+    // `createBackup` / `runRetentionCleanup` / `runOrphanCleanup` currently
+    // read org settings via the global Prisma client, which still hard-codes
+    // `DEFAULT_ORG_ID` for some lookups (see backup.ts:552, :903, :1084,
+    // :1171). Under OSS the table-owner role bypasses RLS so this works
+    // identically to before. Under Cloud RLS-strict, threading the org
+    // context through each service function is a separate refactor (Phase
+    // 5b.2). This scheduler does the right thing it CAN do today: register
+    // one cron per org from each org's own settings, log per-org, and run
+    // env-alerts scoped to the org's environments.
     try {
-      await withOrgTx(organizationId, async () => {
-        const metadata = await createBackup("scheduled");
-        infoLog(
+      const metadata = await createBackup("scheduled");
+      infoLog(
+        "backup-scheduler",
+        `org=${organizationId} backup complete: ${metadata.sizeBytes} bytes`,
+      );
+      await runRetentionCleanup();
+      try {
+        const orphanResult = await runOrphanCleanup();
+        debugLog("backup", "Orphan cleanup complete", orphanResult);
+      } catch (orphanErr) {
+        errorLog(
           "backup-scheduler",
-          `org=${organizationId} backup complete: ${metadata.sizeBytes} bytes`,
+          `org=${organizationId} orphan cleanup failed`,
+          orphanErr,
         );
-        await runRetentionCleanup();
-        try {
-          const orphanResult = await runOrphanCleanup();
-          debugLog("backup", "Orphan cleanup complete", orphanResult);
-        } catch (orphanErr) {
-          errorLog(
-            "backup-scheduler",
-            `org=${organizationId} orphan cleanup failed`,
-            orphanErr,
-          );
-        }
-      });
+      }
     } catch (error) {
       errorLog(
         "backup-scheduler",
