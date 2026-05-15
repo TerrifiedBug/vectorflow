@@ -963,6 +963,17 @@ model AuditLog {
   environmentId String?
   environment   Environment? @relation(fields: [environmentId], references: [id])
   createdAt     DateTime     @default(now())
+  /**
+   * Phase 4 tamper-evidence chain.
+   * `prevHash` is the previous row's `hash` (or `sha256("vf:audit-genesis:" || orgId)` for the first row).
+   * `hash` is `sha256(prevHash || canonical(row))`.
+   * NULL means the row pre-dates the chain rollout; `backfillChainForOrg`
+   * walks NULL rows in `createdAt` order and fills them. NULL is treated
+   * as "no tail" by `writeAuditLog`, so new inserts chain off the most
+   * recent already-chained row (or genesis if none exists yet).
+   */
+  prevHash      String?
+  hash          String?
 
   @@index([entityType, entityId])
   @@index([userId])
@@ -971,6 +982,25 @@ model AuditLog {
   @@index([teamId])
   @@index([environmentId])
   @@index([organizationId])
+}
+
+/**
+ * Per-organization audit-chain tail pointer.
+ *
+ * Single source of truth for "what is the most recently-chained AuditLog
+ * row's hash for this org" — used by writeAuditLog to compute prevHash on
+ * the next insert. Maintained inside the same advisory-locked transaction
+ * as the AuditLog insert, so the lookup is atomic and immune to cross-
+ * process / same-millisecond races that ID-based tail ordering cannot
+ * defend against.
+ */
+model AuditChainTail {
+  organizationId String   @id
+  /** Hash of the most recently chained AuditLog row for this org. */
+  lastHash       String
+  /** When that row was written. Informational; not used for ordering. */
+  lastWriteAt    DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model SystemSettings {

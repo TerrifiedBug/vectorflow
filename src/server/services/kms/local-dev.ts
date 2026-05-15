@@ -5,7 +5,7 @@ import {
   hkdfSync,
   randomBytes,
 } from "node:crypto";
-import type { KmsKeyDescriptor, KmsProvider } from "./types";
+import type { KmsHealthResult, KmsKeyDescriptor, KmsProvider } from "./types";
 
 const PREFIX = "lk1:";
 const IV_LEN = 12;
@@ -97,6 +97,21 @@ export class LocalDevKmsProvider implements KmsProvider {
       return { provider: "local-dev", keyId: `local-dev:${fingerprint}` };
     } finally {
       kek.fill(0);
+    }
+  }
+
+  async healthCheck(_opts?: { signal?: AbortSignal }): Promise<KmsHealthResult> {
+    try {
+      // LocalDev has no remote dependency. The "round trip" is verifying
+      // that the KEK material is available; this catches misconfigured
+      // environments where NEXTAUTH_SECRET / VF_LOCAL_KMS_KEY are unset.
+      const desc = this.describeKey();
+      return { ok: true, keyId: desc.keyId };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
     }
   }
 }

@@ -24,6 +24,7 @@ describe("DekCache — rotation race (Codex P1 follow-up)", () => {
         }),
       rewrapDataKey: async () => "",
       describeKey: () => ({ provider: "local-dev", keyId: "test" }),
+      healthCheck: async () => ({ ok: true, keyId: "test" }),
     };
     return {
       kms,

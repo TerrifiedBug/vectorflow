@@ -1,4 +1,4 @@
-import type { KmsKeyDescriptor, KmsProvider } from "./types";
+import type { KmsHealthResult, KmsKeyDescriptor, KmsProvider } from "./types";
 
 export interface VaultTransitConfig {
   address: string;
@@ -61,7 +61,16 @@ export class VaultTransitKmsProvider implements KmsProvider {
     return !this.cfg.token && Boolean(this.cfg.roleId && this.cfg.secretId);
   }
 
-  private async getToken(forceRefresh = false): Promise<string> {
+  /**
+   * Acquire or refresh the AppRole client token.
+   * `signal` is honoured for the login network call so a hung Vault
+   * during partial outage doesn't leave the login fetch lingering when
+   * the caller has already timed out.
+   */
+  private async getToken(
+    forceRefresh = false,
+    signal?: AbortSignal,
+  ): Promise<string> {
     if (this.cfg.token) return this.cfg.token;
     if (this.clientToken && !forceRefresh) return this.clientToken;
     if (!this.cfg.roleId || !this.cfg.secretId) {
@@ -75,6 +84,7 @@ export class VaultTransitKmsProvider implements KmsProvider {
         role_id: this.cfg.roleId,
         secret_id: this.cfg.secretId,
       }),
+      signal,
     });
     if (!res.ok) {
       throw new Error(`vault-transit: AppRole login failed (${res.status})`);
@@ -177,5 +187,46 @@ export class VaultTransitKmsProvider implements KmsProvider {
       provider: "vault-transit",
       keyId: `vault-transit:${this.cfg.transitMount}/${this.cfg.keyName}`,
     };
+  }
+
+  async healthCheck(opts?: { signal?: AbortSignal }): Promise<KmsHealthResult> {
+    // GET /v1/<mount>/keys/<name> hits the same Vault path the encrypt and
+    // decrypt ops will use, so a failure here is a true indicator of an
+    // upcoming hot-path failure. The probe goes through the same 401/403
+    // re-auth path `vaultFetch` uses for the cryptographic operations so
+    // an expired AppRole token does not produce a permanent false-unhealthy.
+    //
+    // The caller's `signal` propagates to fetch so a timed-out probe is
+    // actually cancelled; otherwise socket-level work would linger and
+    // accumulate during repeated readiness checks of a hung upstream.
+    const url = `${this.cfg.address}/v1/${this.cfg.transitMount}/keys/${this.cfg.keyName}`;
+    const signal = opts?.signal;
+    const doGet = (tok: string) =>
+      this.fetchImpl(url, {
+        method: "GET",
+        headers: { "x-vault-token": tok },
+        signal,
+      });
+    try {
+      let token = await this.getToken(false, signal);
+      let res = await doGet(token);
+      if ((res.status === 401 || res.status === 403) && this.canReauth) {
+        this.clientToken = null;
+        token = await this.getToken(true, signal);
+        res = await doGet(token);
+      }
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: `vault-transit healthCheck: HTTP ${res.status}`,
+        };
+      }
+      return { ok: true, keyId: this.describeKey().keyId };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 }
