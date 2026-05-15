@@ -7,6 +7,8 @@ export interface VaultTransitConfig {
   secretId?: string;
   keyName: string;
   transitMount: string;
+  /** Injection seam for tests. Defaults to global `fetch`. */
+  fetchImpl?: typeof fetch;
 }
 
 interface VaultDataKeyResponse {
@@ -33,18 +35,17 @@ interface VaultAuthResponse {
  * `datakey/plaintext`, `encrypt`, and `decrypt` endpoints.
  *
  * The Vault Transit `context` parameter binds wrap/unwrap to a per-org
- * value, providing the AAD-style isolation the rest of the system
- * expects.
+ * value, providing the AAD-style isolation the rest of the system expects.
  *
  * Auth: a static `token` (dev), or AppRole `roleId` + `secretId`
- * (production).
- *
- * For Vault setup see the Cloud operations runbook; OSS users typically
- * either enable Transit on their existing Vault or fall back to
- * `local-dev` for non-production.
+ * (production). AppRole client tokens are time-limited; on a 401/403
+ * response the provider invalidates the cached token, re-authenticates,
+ * and retries the original request once. Static tokens never trigger
+ * re-auth because the user owns rotation in that mode.
  */
 export class VaultTransitKmsProvider implements KmsProvider {
   private clientToken: string | null = null;
+  private readonly fetchImpl: typeof fetch;
 
   constructor(private readonly cfg: VaultTransitConfig) {
     if (!cfg.token && !(cfg.roleId && cfg.secretId)) {
@@ -52,16 +53,22 @@ export class VaultTransitKmsProvider implements KmsProvider {
         "VaultTransitKmsProvider requires either token or roleId+secretId",
       );
     }
+    this.fetchImpl = cfg.fetchImpl ?? fetch;
   }
 
-  private async token(): Promise<string> {
+  /** True when running under AppRole (re-auth is possible). */
+  private get canReauth(): boolean {
+    return !this.cfg.token && Boolean(this.cfg.roleId && this.cfg.secretId);
+  }
+
+  private async getToken(forceRefresh = false): Promise<string> {
     if (this.cfg.token) return this.cfg.token;
-    if (this.clientToken) return this.clientToken;
+    if (this.clientToken && !forceRefresh) return this.clientToken;
     if (!this.cfg.roleId || !this.cfg.secretId) {
       throw new Error("VaultTransitKmsProvider: AppRole credentials missing");
     }
     const url = `${this.cfg.address}/v1/auth/approle/login`;
-    const res = await fetch(url, {
+    const res = await this.fetchImpl(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -87,15 +94,27 @@ export class VaultTransitKmsProvider implements KmsProvider {
     path: string,
     body: Record<string, unknown>,
   ): Promise<unknown> {
-    const token = await this.token();
-    const res = await fetch(`${this.cfg.address}${path}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-vault-token": token,
-      },
-      body: JSON.stringify(body),
-    });
+    const doFetch = async (token: string) =>
+      this.fetchImpl(`${this.cfg.address}${path}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-vault-token": token,
+        },
+        body: JSON.stringify(body),
+      });
+
+    let token = await this.getToken();
+    let res = await doFetch(token);
+
+    // AppRole token expiry surfaces as 401/403. Invalidate the cached
+    // token and retry the request once with a freshly-acquired token.
+    if ((res.status === 401 || res.status === 403) && this.canReauth) {
+      this.clientToken = null;
+      token = await this.getToken(true);
+      res = await doFetch(token);
+    }
+
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(
