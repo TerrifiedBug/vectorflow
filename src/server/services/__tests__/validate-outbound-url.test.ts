@@ -174,5 +174,22 @@ describe("validateOutboundUrl", () => {
         validateOutboundUrl("https://public.example/api"),
       ).resolves.toBeUndefined();
     });
+
+    it("accepts a public IPv4 literal without hitting DNS", async () => {
+      // No mock setup; if we call dns.resolve* this test will throw.
+      await expect(
+        validateOutboundUrl("http://8.8.8.8/api"),
+      ).resolves.toBeUndefined();
+      expect(resolve4Mock).not.toHaveBeenCalled();
+      expect(resolve6Mock).not.toHaveBeenCalled();
+    });
+
+    it("accepts a public IPv6 literal without hitting DNS", async () => {
+      await expect(
+        validateOutboundUrl("http://[2001:4860:4860::8888]/api"),
+      ).resolves.toBeUndefined();
+      expect(resolve4Mock).not.toHaveBeenCalled();
+      expect(resolve6Mock).not.toHaveBeenCalled();
+    });
   });
 });
