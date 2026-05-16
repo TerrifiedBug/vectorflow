@@ -167,14 +167,20 @@ describe("isCallerOrgSuspended (Phase 5t streaming-client path)", () => {
 
   it("returns false for an unauthenticated request", async () => {
     authMock.mockResolvedValue(null);
-    await expect(isCallerOrgSuspended()).resolves.toBe(false);
+    await expect(isCallerOrgSuspended()).resolves.toEqual({
+      suspended: false,
+      deleted: false,
+    });
   });
 
   it("returns false for the OSS default org (suspension is Cloud-only)", async () => {
     authMock.mockResolvedValue({ user: { id: USER_ID, email: "u@example.com" } });
     // Both findFirst calls return null → falls through to DEFAULT_ORG_ID.
     prismaMock.orgMember.findFirst.mockResolvedValue(null);
-    await expect(isCallerOrgSuspended()).resolves.toBe(false);
+    await expect(isCallerOrgSuspended()).resolves.toEqual({
+      suspended: false,
+      deleted: false,
+    });
     // No organization lookup for the default org.
     expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
   });
@@ -188,7 +194,10 @@ describe("isCallerOrgSuspended (Phase 5t streaming-client path)", () => {
       suspendedAt: new Date("2026-05-01"),
     } as never);
 
-    await expect(isCallerOrgSuspended()).resolves.toBe(true);
+    await expect(isCallerOrgSuspended()).resolves.toEqual({
+      suspended: true,
+      deleted: false,
+    });
   });
 
   it("returns false when the caller's org is active", async () => {
@@ -200,6 +209,25 @@ describe("isCallerOrgSuspended (Phase 5t streaming-client path)", () => {
       suspendedAt: null,
     } as never);
 
-    await expect(isCallerOrgSuspended()).resolves.toBe(false);
+    await expect(isCallerOrgSuspended()).resolves.toEqual({
+      suspended: false,
+      deleted: false,
+    });
+  });
+
+  it("preserves deleted-precedence: deleted org returns deleted=true, suspended=false", async () => {
+    authMock.mockResolvedValue({ user: { id: USER_ID, email: "u@example.com" } });
+    prismaMock.orgMember.findFirst.mockResolvedValueOnce({
+      organizationId: SUSPENDED_ORG_ID,
+    } as never);
+    prismaMock.organization.findUnique.mockResolvedValueOnce({
+      suspendedAt: new Date(),
+      deletedAt: new Date(), // both set; deleted wins
+    } as never);
+
+    await expect(isCallerOrgSuspended()).resolves.toEqual({
+      suspended: false,
+      deleted: true,
+    });
   });
 });

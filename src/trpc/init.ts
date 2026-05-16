@@ -79,10 +79,13 @@ export const createContext = async () => {
  * throws (defence in depth: a request that somehow bypasses the
  * route-level check is still rejected at the procedure boundary).
  */
-export async function isCallerOrgSuspended(): Promise<boolean> {
+export async function isCallerOrgSuspended(): Promise<{
+  suspended: boolean;
+  deleted: boolean;
+}> {
   const session = await auth();
   const userId = session?.user?.id;
-  if (!userId) return false;
+  if (!userId) return { suspended: false, deleted: false };
 
   // Resolve the caller's org the same way `createContext` does, but
   // without touching the rest of the ctx graph.
@@ -98,14 +101,22 @@ export async function isCallerOrgSuspended(): Promise<boolean> {
     }));
   const organizationId = membership?.organizationId ?? DEFAULT_ORG_ID;
 
-  // OSS default org never suspends — bail out early.
-  if (organizationId === DEFAULT_ORG_ID) return false;
+  // OSS default org never suspends or deletes — bail out early.
+  if (organizationId === DEFAULT_ORG_ID) {
+    return { suspended: false, deleted: false };
+  }
 
   const org = await prisma.organization.findUnique({
     where: { id: organizationId },
-    select: { suspendedAt: true },
+    select: { suspendedAt: true, deletedAt: true },
   });
-  return Boolean(org?.suspendedAt);
+  // Preserve `orgProcedure`'s precedence: deleted org wins over suspended
+  // so the request returns NOT_FOUND (404), not Locked (423). Same rule
+  // is documented in `src/lib/org-constraints.ts`.
+  if (!org || org.deletedAt) {
+    return { suspended: false, deleted: true };
+  }
+  return { suspended: Boolean(org.suspendedAt), deleted: false };
 }
 
 type Context = Awaited<ReturnType<typeof createContext>>;
