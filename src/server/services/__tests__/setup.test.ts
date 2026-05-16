@@ -85,6 +85,13 @@ describe("setup service", () => {
           systemSettings: {
             upsert: vi.fn().mockResolvedValue({ id: "singleton" }),
           },
+          orgMember: {
+            create: vi.fn().mockResolvedValue({
+              userId: "user-1",
+              organizationId: "default",
+              role: "OWNER",
+            }),
+          },
         };
         return fn(tx);
       });
@@ -127,6 +134,7 @@ describe("setup service", () => {
           teamMember: { create: vi.fn().mockResolvedValue({}) },
           environment: { create: vi.fn().mockResolvedValue({ id: "env-1", name: "Prod" }) },
           systemSettings: { upsert: vi.fn().mockResolvedValue({}) },
+          orgMember: { create: vi.fn().mockResolvedValue({}) },
         };
         return fn(tx);
       });
@@ -164,6 +172,7 @@ describe("setup service", () => {
         teamMember: { create: vi.fn().mockResolvedValue({}) },
         environment: { create: vi.fn().mockResolvedValue({ id: "e1", name: "Production" }) },
         systemSettings: { upsert: upsertMock },
+        orgMember: { create: vi.fn().mockResolvedValue({}) },
       };
     }
 
@@ -200,6 +209,83 @@ describe("setup service", () => {
       expect(args.create.telemetryInstanceId).toBeNull();
       expect(args.create.telemetryEnabledAt).toBeNull();
       expect(ulidGen).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("completeSetup — org wiring", () => {
+    it("creates an OrgMember row binding the new user to DEFAULT_ORG_ID as OWNER", async () => {
+      const orgMemberCreate = vi.fn().mockResolvedValue({});
+      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+        if (typeof fn !== "function") return;
+        const tx = {
+          user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "a@b.c", name: "A", isSuperAdmin: true }) },
+          team: { create: vi.fn().mockResolvedValue({ id: "t1" }), update: vi.fn().mockResolvedValue({}) },
+          teamMember: { create: vi.fn().mockResolvedValue({}) },
+          environment: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
+          systemSettings: { upsert: vi.fn().mockResolvedValue({}) },
+          orgMember: { create: orgMemberCreate },
+        };
+        return fn(tx);
+      });
+
+      await completeSetup({
+        email: "a@b.c",
+        name: "A",
+        password: "pw1234",
+        teamName: "T",
+        telemetryChoice: "no",
+        requireTwoFactor: false,
+        environmentName: "P",
+      });
+
+      expect(orgMemberCreate).toHaveBeenCalledWith({
+        data: {
+          userId: "u1",
+          organizationId: "default",
+          role: "OWNER",
+        },
+      });
+    });
+
+    it("sets organizationId on Team and Environment rows explicitly", async () => {
+      let teamData: Record<string, unknown> | undefined;
+      let envData: Record<string, unknown> | undefined;
+      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+        if (typeof fn !== "function") return;
+        const tx = {
+          user: { create: vi.fn().mockResolvedValue({ id: "u1" }) },
+          team: {
+            create: vi.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => {
+              teamData = args.data;
+              return { id: "t1" };
+            }),
+            update: vi.fn().mockResolvedValue({}),
+          },
+          teamMember: { create: vi.fn().mockResolvedValue({}) },
+          environment: {
+            create: vi.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => {
+              envData = args.data;
+              return { id: "e1" };
+            }),
+          },
+          systemSettings: { upsert: vi.fn().mockResolvedValue({}) },
+          orgMember: { create: vi.fn().mockResolvedValue({}) },
+        };
+        return fn(tx);
+      });
+
+      await completeSetup({
+        email: "a@b.c",
+        name: "A",
+        password: "pw1234",
+        teamName: "T",
+        telemetryChoice: "no",
+        requireTwoFactor: false,
+        environmentName: "P",
+      });
+
+      expect(teamData?.organizationId).toBe("default");
+      expect(envData?.organizationId).toBe("default");
     });
   });
 });
