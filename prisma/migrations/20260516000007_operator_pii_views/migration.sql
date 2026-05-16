@@ -131,10 +131,13 @@ COMMENT ON VIEW public.vw_operator_org_access_grant_log IS
 -- Same idempotent-skip pattern as Phase 4c. The role is Cloud-private; on
 -- OSS this short-circuits and the views simply exist as unused projections.
 DO $$
+DECLARE
+    leak record;
+    leak_count integer := 0;
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vectorflow_operator') THEN
         RAISE NOTICE
-          'phase4d: vectorflow_operator role absent — skipping view grants. Provision the role and run scripts/grant-vectorflow-operator.sql if you intend to use the operator console.';
+          'phase4d: vectorflow_operator role absent \u2014 skipping view grants. Provision the role and run scripts/grant-vectorflow-operator.sql if you intend to use the operator console.';
         RETURN;
     END IF;
 
@@ -144,6 +147,28 @@ BEGIN
     EXECUTE 'GRANT SELECT ON public.vw_operator_audit_summary          TO vectorflow_operator';
     EXECUTE 'GRANT SELECT ON public.vw_operator_org_access_grant_log   TO vectorflow_operator';
 
-    RAISE NOTICE 'phase4d: granted SELECT on four operator views to vectorflow_operator';
+    -- Effective-privilege assertion: after grants land, verify the
+    -- operator role has NO SELECT on any base table (incl. via INHERIT
+    -- from parent roles). has_table_privilege() resolves the effective
+    -- privilege the runtime would see, which is the boundary that
+    -- actually matters. If a pre-existing role was granted INHERIT from
+    -- a parent role that holds table grants, this assertion fires loud.
+    FOR leak IN
+        SELECT c.relname AS tbl
+          FROM pg_catalog.pg_class c
+          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public'
+           AND c.relkind = 'r'  -- ordinary tables; views are relkind = 'v'
+           AND has_table_privilege('vectorflow_operator', c.oid, 'SELECT')
+    LOOP
+        RAISE WARNING 'phase4d boundary leak: vectorflow_operator has effective SELECT on base table %', leak.tbl;
+        leak_count := leak_count + 1;
+    END LOOP;
+
+    IF leak_count > 0 THEN
+        RAISE EXCEPTION 'phase4d: vectorflow_operator has effective SELECT on % base table(s) (incl. via INHERIT). The migration\u2019s GRANTs landed but the masking boundary is leaking \u2014 revoke parent-role table grants or REVOKE INHERIT to restore the boundary.', leak_count;
+    END IF;
+
+    RAISE NOTICE 'phase4d: granted SELECT on four operator views to vectorflow_operator (effective-privilege boundary verified)';
 END
 $$;
