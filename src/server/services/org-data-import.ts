@@ -63,6 +63,7 @@ export type OrgDataImportPrisma = Pick<
   | "pipelineVersion"
   | "alertRule"
   | "notificationChannel"
+  | "alertRuleChannel"
   | "webhookEndpoint"
 >;
 
@@ -83,6 +84,7 @@ export interface ImportOrgDataResult {
     alertRules: number;
     notificationChannels: number;
     webhookEndpoints: number;
+    alertRuleChannels: number;
   };
   /** Source id → target id remaps, one per entity type. */
   remap: {
@@ -221,14 +223,18 @@ export async function importOrgData(
   }
 
   // ── pipelineVersions ────────────────────────────────────────────────
+  // Codex P2 on the initial PR: the remap entry was recorded BEFORE
+  // the parent-pipeline check, so orphan versions inflated `counts` and
+  // the `result.remap` exposed IDs that were never inserted. Reorder:
+  // remap only after the FK guard.
   checkpoint(signal);
   for (const row of data.pipelineVersions) {
     const srcId = row.id as string;
-    const newRowId = newId("pv");
-    remap.pipelineVersions[srcId] = newRowId;
     const sourcePipelineId = row.pipelineId as string;
     const remappedPipelineId = remap.pipelines[sourcePipelineId];
     if (!remappedPipelineId) continue;
+    const newRowId = newId("pv");
+    remap.pipelineVersions[srcId] = newRowId;
     await db.pipelineVersion.create({
       data: {
         ...stripVolatile(row),
@@ -309,6 +315,35 @@ export async function importOrgData(
     });
   }
 
+  // ── alertRuleChannels (join table) ───────────────────────────────────
+  // Restore the per-rule channel routing. Without these rows, runtime
+  // delivery in `src/server/services/channels/index.ts` falls back to
+  // broadcasting to every enabled channel in the environment — alerts
+  // end up at unintended destinations after import.
+  //
+  // Defensive: envelopes from older exports (pre-Phase-5cc) won't have
+  // this field. Treat a missing array as "nothing to restore" rather
+  // than failing the import.
+  let alertRuleChannelInserts = 0;
+  const sourceLinks = (data as { alertRuleChannels?: AnyRow[] }).alertRuleChannels ?? [];
+  checkpoint(signal);
+  for (const row of sourceLinks) {
+    const sourceAlertRuleId = row.alertRuleId as string;
+    const sourceChannelId = row.channelId as string;
+    const remappedAlertRuleId = remap.alertRules[sourceAlertRuleId];
+    const remappedChannelId = remap.notificationChannels[sourceChannelId];
+    if (!remappedAlertRuleId || !remappedChannelId) continue;
+    await db.alertRuleChannel.create({
+      data: {
+        ...stripVolatile(row),
+        id: newId("arc"),
+        alertRuleId: remappedAlertRuleId,
+        channelId: remappedChannelId,
+      } as never,
+    });
+    alertRuleChannelInserts++;
+  }
+
   // ── webhookEndpoints ────────────────────────────────────────────────
   checkpoint(signal);
   for (const row of data.webhookEndpoints) {
@@ -338,6 +373,7 @@ export async function importOrgData(
       alertRules: Object.keys(remap.alertRules).length,
       notificationChannels: Object.keys(remap.notificationChannels).length,
       webhookEndpoints: Object.keys(remap.webhookEndpoints).length,
+      alertRuleChannels: alertRuleChannelInserts,
     },
     remap,
   };

@@ -155,6 +155,9 @@ function setupExportSource() {
   prismaMock.notificationChannel.findMany.mockResolvedValue([
     notificationChannelA,
   ] as never);
+  prismaMock.alertRuleChannel.findMany.mockResolvedValue([
+    { id: "arc-A1", alertRuleId: "ar-A1", channelId: "ch-A1" },
+  ] as never);
   prismaMock.webhookEndpoint.findMany.mockResolvedValue([
     webhookEndpointA,
   ] as never);
@@ -177,6 +180,7 @@ function makeImportSink() {
     alertRules: Array<Record<string, unknown>>;
     notificationChannels: Array<Record<string, unknown>>;
     webhookEndpoints: Array<Record<string, unknown>>;
+    alertRuleChannels: Array<Record<string, unknown>>;
   } = {
     teams: [],
     environments: [],
@@ -185,6 +189,7 @@ function makeImportSink() {
     alertRules: [],
     notificationChannels: [],
     webhookEndpoints: [],
+    alertRuleChannels: [],
   };
 
   const sink = (
@@ -204,6 +209,7 @@ function makeImportSink() {
     alertRule: sink("alertRules") as never,
     notificationChannel: sink("notificationChannels") as never,
     webhookEndpoint: sink("webhookEndpoints") as never,
+    alertRuleChannel: sink("alertRuleChannels") as never,
   };
 
   return { client, inserted };
@@ -283,12 +289,16 @@ describe("export → import round-trip (Phase 5cc)", () => {
       alertRules: 1,
       notificationChannels: 1,
       webhookEndpoints: 1,
+      alertRuleChannels: 1,
     });
 
     // ── 2. every inserted row carries the TARGET org id ──────────────
-    for (const bucket of Object.values(sink.inserted) as Array<
-      Array<Record<string, unknown>>
+    //       (skip the join-table inserts; AlertRuleChannel has no
+    //        organizationId column — it's scoped via AlertRule.) ──────
+    for (const [bucketName, bucket] of Object.entries(sink.inserted) as Array<
+      [string, Array<Record<string, unknown>>]
     >) {
+      if (bucketName === "alertRuleChannels") continue;
       for (const row of bucket) {
         expect(row.organizationId).toBe(TARGET_ORG_ID);
       }
@@ -309,6 +319,12 @@ describe("export → import round-trip (Phase 5cc)", () => {
     expect(sink.inserted.alertRules[0]!.pipelineId).toBe(newPipelineId);
     expect(sink.inserted.notificationChannels[0]!.environmentId).toBe(newEnvId);
     expect(sink.inserted.webhookEndpoints[0]!.teamId).toBe(newTeamId);
+
+    // AlertRuleChannel link survives the round-trip with BOTH FKs remapped.
+    const newAlertRuleId = result.remap.alertRules["ar-A1"];
+    const newChannelId = result.remap.notificationChannels["ch-A1"];
+    expect(sink.inserted.alertRuleChannels[0]!.alertRuleId).toBe(newAlertRuleId);
+    expect(sink.inserted.alertRuleChannels[0]!.channelId).toBe(newChannelId);
 
     // ── 3b. NO `__has_*` redaction marker leaks into the persisted row.
     //       The export rewrites sensitive columns to `__has_<key>: bool`;
