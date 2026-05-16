@@ -67,49 +67,58 @@ const handler = async (req: Request) => {
     });
   }
 
-  // §12.2: a suspended-org request returns HTTP 423 Locked. A deleted-org
-  // request returns 404. The route-level short-circuit produces the right
-  // HTTP status on non-streaming clients (httpLink / httpBatchLink). The
-  // response body is batch-aware: a single envelope for `httpLink`, an
-  // array of one envelope per procedure for `?batch=1` requests.
+  // §12.2: every request hits the lifecycle gate, streaming or not.
+  // Producing the *right body shape* for `httpBatchStreamLink` after the
+  // fact is impractical \u2014 the JSONL framing is internal to
+  // `jsonlStreamProducer` and a HTTP 423 / 404 outer status would
+  // mismatch a per-procedure error inside the stream anyway. The
+  // compromise:
   //
-  // Streaming clients (httpBatchStreamLink, `trpc-accept: application/jsonl`)
-  // send a JSON-Lines stream with per-procedure entries keyed by batch
-  // index. Synthesising a JSONL body that the streaming consumer accepts
-  // is brittle (the format is internal to `jsonlStreamProducer`) and a
-  // 423 outer status would mis-match the per-procedure errors inside the
-  // stream anyway. For streaming requests we therefore let
-  // `fetchRequestHandler` run normally; `orgProcedure` throws the
-  // FORBIDDEN/NOT_FOUND TRPCError for each procedure and the stream
-  // delivers it in-band at HTTP 200. The client reads
-  // `error.data.code === "FORBIDDEN"` either way \u2014 only the outer HTTP
-  // status differs between the two link kinds.
-  const isStreaming = req.headers.get("trpc-accept") === "application/jsonl";
-  if (!isStreaming) {
-    const lifecycle = await isCallerOrgSuspended();
-    const reqUrl = new URL(req.url);
-    if (lifecycle.deleted) {
-      return new Response(
-        trpcErrorEnvelope({
-          url: reqUrl,
-          code: "NOT_FOUND",
-          message: "Organization not found",
-          httpStatus: 404,
-        }),
-        { status: 404, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    if (lifecycle.suspended) {
-      return new Response(
-        trpcErrorEnvelope({
-          url: reqUrl,
-          code: "FORBIDDEN",
-          message: "Organization is suspended",
-          httpStatus: 423,
-        }),
-        { status: 423, headers: { "Content-Type": "application/json" } },
-      );
-    }
+  //   - Non-streaming clients (httpLink, httpBatchLink) get the
+  //     batch-aware tRPC error envelope produced by `trpcErrorEnvelope`,
+  //     with the right outer HTTP status (404 / 423).
+  //   - Streaming clients (httpBatchStreamLink, `trpc-accept:
+  //     application/jsonl`) get the same outer HTTP status (404 / 423)
+  //     and the same non-JSONL body. The streaming consumer will treat
+  //     the response as a transport failure; the HTTP status is what
+  //     the client / monitoring tooling keys on, and the user-visible
+  //     UX (an HTTP-error toast, "Service unavailable") is appropriate
+  //     for a suspended tenant.
+  //
+  // Either way the request NEVER reaches `fetchRequestHandler` for a
+  // suspended / deleted org. The lifecycle check is the gate \u2014 NOT
+  // `responseMeta` (which only fires on non-streaming) and NOT the
+  // orgProcedure throw (which fires inside the stream at HTTP 200).
+  const lifecycle = await isCallerOrgSuspended();
+  const reqUrl = new URL(req.url);
+  if (lifecycle.deleted) {
+    return new Response(
+      trpcErrorEnvelope({
+        url: reqUrl,
+        code: "NOT_FOUND",
+        message: "Organization not found",
+        httpStatus: 404,
+      }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  if (lifecycle.suspended) {
+    return new Response(
+      trpcErrorEnvelope({
+        url: reqUrl,
+        code: "FORBIDDEN",
+        message: "Organization is suspended",
+        httpStatus: 423,
+      }),
+      {
+        status: 423,
+        headers: {
+          "Content-Type": "application/json",
+          // Plan \u00a712.2 retry hint, parallel to `agent-org-binding.ts`.
+          "Retry-After": "86400",
+        },
+      },
+    );
   }
 
   return fetchRequestHandler({
