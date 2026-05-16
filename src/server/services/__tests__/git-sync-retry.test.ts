@@ -184,6 +184,52 @@ describe("GitSyncRetryService", () => {
       expect.objectContaining({ message: expect.stringContaining("auth failed") }),
     );
   });
+
+  describe("per-org tick fan-out", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    it("iterates non-suspended, non-deleted orgs and queries per org", async () => {
+      prismaMock.organization.findMany.mockResolvedValue([
+        { id: "org-a" } as never,
+        { id: "org-b" } as never,
+      ]);
+      prismaMock.gitSyncJob.findMany.mockResolvedValue([]);
+
+      service.start();
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(prismaMock.gitSyncJob.findMany).toHaveBeenCalledTimes(2);
+      const calls = prismaMock.gitSyncJob.findMany.mock.calls;
+      expect(calls[0][0]?.where).toEqual(
+        expect.objectContaining({ organizationId: "org-a" }),
+      );
+      expect(calls[1][0]?.where).toEqual(
+        expect.objectContaining({ organizationId: "org-b" }),
+      );
+      const orgArgs = prismaMock.organization.findMany.mock.calls[0][0];
+      expect(orgArgs?.where?.suspendedAt).toBe(null);
+      expect(orgArgs?.where?.deletedAt).toBe(null);
+
+      service.stop();
+      vi.useRealTimers();
+    });
+
+    it("survives prisma.organization.findMany failure without invoking gitSyncJob.findMany", async () => {
+      prismaMock.organization.findMany.mockRejectedValueOnce(
+        new Error("DB down"),
+      );
+
+      service.start();
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(prismaMock.gitSyncJob.findMany).not.toHaveBeenCalled();
+
+      service.stop();
+      vi.useRealTimers();
+    });
+  });
 });
 
 describe("createGitSyncJob", () => {

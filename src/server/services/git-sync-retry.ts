@@ -25,6 +25,14 @@ export function getNextRetryAt(attemptNumber: number): Date | null {
 export class GitSyncRetryService {
   private timer: ReturnType<typeof setInterval> | null = null;
 
+  /**
+   * True while a tick is currently executing. The per-org fan-out
+   * can exceed POLL_INTERVAL_MS; setInterval does NOT skip
+   * overlapping callbacks, so without this guard two ticks could
+   * run concurrently and double-claim the same retry job.
+   */
+  private tickInFlight = false;
+
   init(): void {
     infoLog("git-sync-retry", "Initializing git sync retry service");
     this.start();
@@ -32,7 +40,7 @@ export class GitSyncRetryService {
 
   start(): void {
     this.timer = setInterval(
-      this.processRetries.bind(this),
+      () => void this.tick(),
       POLL_INTERVAL_MS,
     );
     this.timer.unref();
@@ -47,13 +55,57 @@ export class GitSyncRetryService {
     }
   }
 
-  async processRetries(): Promise<void> {
+  /**
+   * Single tick: iterate orgs and process retries per org.
+   */
+  private async tick(): Promise<void> {
+    if (this.tickInFlight) {
+      infoLog(
+        "git-sync-retry",
+        "Previous tick still in flight; skipping this interval to avoid overlap",
+      );
+      return;
+    }
+    this.tickInFlight = true;
+    try {
+      let orgs: Array<{ id: string }>;
+      try {
+        orgs = await prisma.organization.findMany({
+          where: { suspendedAt: null, deletedAt: null },
+          select: { id: true },
+        });
+      } catch (err) {
+        errorLog(
+          "git-sync-retry",
+          "Failed to list organizations for tick (skipping this cycle)",
+          err,
+        );
+        return;
+      }
+      for (const org of orgs) {
+        try {
+          await this.processRetries({ organizationId: org.id });
+        } catch (err) {
+          errorLog(
+            "git-sync-retry",
+            `org=${org.id} processRetries error (continuing)`,
+            err,
+          );
+        }
+      }
+    } finally {
+      this.tickInFlight = false;
+    }
+  }
+
+  async processRetries(opts: { organizationId?: string } = {}): Promise<void> {
     let dueJobs;
     try {
       dueJobs = await prisma.gitSyncJob.findMany({
         where: {
           status: "pending",
           nextRetryAt: { lte: new Date() },
+          ...(opts.organizationId ? { organizationId: opts.organizationId } : {}),
         },
         include: {
           environment: {
