@@ -122,4 +122,17 @@ describe("AnomalyDetectionService", () => {
 
     expect(mockEvaluateAll).toHaveBeenCalledTimes(2);
   });
+
+  it("survives prisma.organization.findMany failure without crashing the tick", async () => {
+    prismaMock.organization.findMany.mockRejectedValueOnce(
+      new Error("DB connection lost"),
+    );
+
+    service.init();
+    // Should not throw an unhandled rejection.
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    // evaluateAllPipelines must not have been called \u2014 we exited early.
+    expect(mockEvaluateAll).not.toHaveBeenCalled();
+  });
 });

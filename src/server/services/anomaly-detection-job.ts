@@ -54,10 +54,27 @@ export class AnomalyDetectionService {
   private async tick(): Promise<void> {
     this.tickCount++;
 
-    const orgs = await prisma.organization.findMany({
-      where: { suspendedAt: null, deletedAt: null },
-      select: { id: true },
-    });
+    // The org lookup itself can fail under DB pressure. Catching here
+    // keeps the setInterval-driven loop alive: `start()` invokes
+    // `void this.tick()`, so an unhandled rejection here would surface
+    // as an unhandled promise rejection and (on some runtimes) end the
+    // process \u2014 stopping all future ticks. A logged error and an early
+    // return is the correct failure mode: next tick gets another go.
+    let orgs: Array<{ id: string }>;
+    try {
+      orgs = await prisma.organization.findMany({
+        where: { suspendedAt: null, deletedAt: null },
+        select: { id: true },
+      });
+    } catch (err) {
+      errorLog(
+        "anomaly-detection",
+        "Failed to list organizations for tick (skipping this cycle)",
+        err,
+      );
+      return;
+    }
+
     for (const org of orgs) {
       try {
         await evaluateAllPipelines({ organizationId: org.id });
