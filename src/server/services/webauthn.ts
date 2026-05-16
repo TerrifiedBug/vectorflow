@@ -171,6 +171,13 @@ export async function finishRegistration(opts: {
     });
 
     if (!verification.verified || !verification.registrationInfo) {
+      // Consume the challenge even on a failed verification (single-use
+      // applies to every attestation attempt, not just successful ones).
+      if (consumedChallenge !== null) {
+        await tx.webAuthnChallenge.deleteMany({
+          where: { challenge: consumedChallenge },
+        });
+      }
       throw new Error("WebAuthn registration verification failed");
     }
 
@@ -315,6 +322,16 @@ export async function finishAuthentication(opts: {
     });
 
     if (!verification.verified) {
+      // Consume the challenge even on a failed verification. Codex P1
+      // round-3 finding: leaving the row in place lets the same
+      // challenge be re-submitted multiple times within its TTL (after
+      // a malformed / tampered first attempt). Single-use applies to
+      // every assertion attempt, not just successful ones.
+      if (consumedChallenge !== null) {
+        await tx.webAuthnChallenge.deleteMany({
+          where: { challenge: consumedChallenge },
+        });
+      }
       throw new Error("WebAuthn authentication verification failed");
     }
 
