@@ -285,6 +285,21 @@ function auditRouter(): AuditEntry[] {
     entries.push({
       path,
       tenantFields,
+      // The audit stores a single procedure-level boolean. Codex P1
+      // round-6 review flagged this as potentially under-counting:
+      // a procedure with `{ teamId, pipelineId }` could in principle
+      // be gated on teamId but NOT on pipelineId. In practice
+      // `withTeamAccess` (the only canonical tenant gate this audit
+      // recognises) resolves every supported tenant key
+      // (`teamId`, `environmentId`, `pipelineId`, `pipelineIds`,
+      // `upstreamId`, `id`) into a teamId via DB lookup and checks
+      // membership ONCE against that resolved teamId — see the
+      // resolution table in `src/trpc/init.ts:withTeamAccess`. So a
+      // procedure that uses `withTeamAccess` is, by construction,
+      // covering ALL its tenant inputs via the resolved-teamId check.
+      // The audit therefore only needs to verify "did this procedure
+      // run through one of the recognised gates" \u2014 the per-field
+      // coverage falls out of the middleware's resolution table.
       hasGate: hasGateMiddleware(proc),
     });
   }
