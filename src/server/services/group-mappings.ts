@@ -12,10 +12,19 @@ export interface GroupMapping {
 const ROLE_RANK: Record<string, number> = { VIEWER: 0, EDITOR: 1, ADMIN: 2 };
 
 /**
- * Load all group-to-team mappings from SystemSettings.
+ * Load all group-to-team mappings from `OrganizationSettings`.
+ *
+ * Phase 5w: takes an explicit `organizationId` so the OIDC sign-in
+ * callback reads the mappings for the resolved tenant. Defaulting to
+ * `DEFAULT_ORG_ID` (previous behaviour) caused cross-tenant
+ * contamination: a non-default tenant login would apply the default
+ * tenant's mapping rules and grant/remove TeamMember rows based on
+ * the wrong configuration.
  */
-export async function loadGroupMappings(): Promise<GroupMapping[]> {
-  const settings = await getOrgSettings(DEFAULT_ORG_ID);
+export async function loadGroupMappings(
+  organizationId: string = DEFAULT_ORG_ID,
+): Promise<GroupMapping[]> {
+  const settings = await getOrgSettings(organizationId);
 
   if (!settings?.oidcTeamMappings) return [];
 
@@ -54,8 +63,9 @@ export async function reconcileUserTeamMemberships(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   userId: string,
   userGroupNames: string[],
+  organizationId: string = DEFAULT_ORG_ID,
 ): Promise<void> {
-  const allMappings = await loadGroupMappings();
+  const allMappings = await loadGroupMappings(organizationId);
   debugLog("reconcile", `userId=${userId}, userGroups=${JSON.stringify(userGroupNames)}, mappings=${JSON.stringify(allMappings)}`);
 
   // Compute desired state: for each team, the highest role from any matching group

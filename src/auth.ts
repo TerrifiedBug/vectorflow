@@ -388,7 +388,7 @@ async function getAuthInstance() {
                 debugLog("oidc", `User ${user.email} scimEnabled=${settings.scimEnabled}, final groups:`, userGroupNames);
                 const { reconcileUserTeamMemberships } = await import("@/server/services/group-mappings");
                 await prisma.$transaction(async (tx) => {
-                  await reconcileUserTeamMemberships(tx, dbUser.id, userGroupNames);
+                  await reconcileUserTeamMemberships(tx, dbUser.id, userGroupNames, oidcOrgId);
                 });
 
                 // Default team fallback: assign if reconciliation left the user with no memberships
