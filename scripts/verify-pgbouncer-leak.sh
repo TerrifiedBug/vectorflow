@@ -54,7 +54,11 @@ if [[ -z "${DATABASE_URL:-}" ]]; then
   exit 64
 fi
 
-PSQL=(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA)
+# `-X` (--no-psqlrc) prevents the user's `~/.psqlrc` from running on
+# probe connections. A `SET app.org_id` in the operator's psqlrc
+# would silently contaminate the probe and flip a passing run into
+# spurious leaks or hide real ones. The probe MUST be self-contained.
+PSQL=(psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA)
 
 # Codex review (PR #338): PgBouncer in transaction-pooling mode reassigns
 # transactions across backend connections; a single reconnect can land us
