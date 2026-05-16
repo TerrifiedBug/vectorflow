@@ -82,9 +82,14 @@ const TENANT_INPUT_KEYS = ["teamId", "environmentId", "pipelineId", "pipelineIds
  *     `withTeamAccess` to verify membership. Other middlewares don't
  *     do this lookup.
  *   - `isSuperAdmin` — the legacy super-admin gate in `requireSuperAdmin`.
- *   - `roleLevel[` — the role-rank comparison in `requireRole`.
- *   - `requirePlatformOperator` / `platformOperator.findUnique` —
- *     Phase 5ee's new gate.
+ *   - `platformOperator.findUnique` — Phase 5ee's `requirePlatformOperator`.
+ *
+ * `requireRole` / `roleLevel[` is deliberately excluded: `requireRole`
+ * authorises by the caller's HIGHEST role across any team and does NOT
+ * validate the specific `teamId` / `environmentId` / `pipelineId` being
+ * requested. A procedure that takes a tenant id and only uses
+ * `requireRole(...)` would silently allow cross-team access — Codex P2
+ * round-3 finding flagged this as a false-negative in the audit harness.
  *
  * Each token is specific enough that it doesn't appear in non-auth
  * middlewares (audit, rate-limit, demo-mode), but generic enough to
@@ -93,7 +98,6 @@ const TENANT_INPUT_KEYS = ["teamId", "environmentId", "pipelineId", "pipelineIds
 const GATE_PATTERNS = [
   "userId_teamId",
   "isSuperAdmin",
-  "roleLevel[",
   "platformOperator.findUnique",
 ];
 
