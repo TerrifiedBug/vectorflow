@@ -72,6 +72,15 @@ PSQL=(psql -X "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA)
 # 25\u201350-slot deployments well above 99%, and tunable via
 # `VF_PGBOUNCER_PROBE_SAMPLES` for fleets with larger pools.
 SAMPLES="${VF_PGBOUNCER_PROBE_SAMPLES:-100}"
+# Codex P1 round-7: validate the env-supplied sample count before we use
+# it in `seq` / arithmetic. An empty / non-numeric / negative value would
+# either silently no-op the probe loops (negative \u2192 zero iterations) or
+# error mid-script with a confusing message. Refuse outright and exit 64
+# (EX_USAGE) so CI / wrappers see "setup failure", not "leak detected".
+if ! [[ "$SAMPLES" =~ ^[1-9][0-9]*$ ]]; then
+  echo "verify-pgbouncer-leak: VF_PGBOUNCER_PROBE_SAMPLES must be a positive integer (got: '$SAMPLES')" >&2
+  exit 64
+fi
 
 # Cleanup trap (Codex P1 round-4 review of PR #338): the negative
 # control writes `set_config('app.org_id', 'probe-negative', false)`
