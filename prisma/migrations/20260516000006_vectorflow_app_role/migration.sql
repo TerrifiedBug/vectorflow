@@ -13,6 +13,21 @@
 -- credentialed connection string is what flips the runtime role at deploy
 -- time; this migration only ensures the role and its grants CAN exist.
 --
+-- ─── Managed Postgres compatibility ─────────────────────────────────────
+-- Managed Postgres (AWS RDS, Aurora, Supabase, Neon, etc.) typically does
+-- NOT grant CREATEROLE or SUPERUSER to the app/owner role that runs
+-- migrations. CREATE ROLE / ALTER ROLE need one of those privileges, so
+-- running role DDL there would abort with "permission denied to create
+-- role" before any of the GRANTs could land — breaking the upgrade for
+-- every OSS / self-hosted user on managed Postgres even though they don't
+-- intend to use vectorflow_app at all.
+--
+-- The migration therefore short-circuits with a NOTICE when the current
+-- user lacks CREATEROLE/SUPERUSER. Cloud operators provision the role
+-- out of band (Terraform, manual psql as the cluster admin); when this
+-- migration runs against that pre-provisioned role, the ALTER path
+-- reasserts the expected attributes idempotently.
+--
 -- The migration is idempotent: re-running it neither errors nor changes
 -- effective permissions.
 --
@@ -23,9 +38,23 @@
 -- (DROP OWNED must run for each database; will fail if any active session
 -- still references the role — disconnect the app first.)
 
--- ─── 1. Create the role if it does not already exist ──────────────────────
+-- ─── 1. Create / alter the role (gated on CREATEROLE/SUPERUSER) ──────────
 DO $$
+DECLARE
+    can_manage_roles boolean;
 BEGIN
+    SELECT (rolsuper OR rolcreaterole)
+      INTO can_manage_roles
+      FROM pg_roles
+     WHERE rolname = current_user;
+
+    IF NOT can_manage_roles THEN
+        RAISE NOTICE
+          'phase4c: skipping vectorflow_app role provisioning — current_user (%) lacks CREATEROLE/SUPERUSER. Provision the role out of band if you intend to use it for the runtime connection pool.',
+          current_user;
+        RETURN;
+    END IF;
+
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vectorflow_app') THEN
         CREATE ROLE vectorflow_app
             NOSUPERUSER NOCREATEROLE NOCREATEDB
@@ -45,35 +74,52 @@ BEGIN
 END
 $$;
 
--- ─── 2. Schema-level access ───────────────────────────────────────────────
-GRANT USAGE ON SCHEMA public TO vectorflow_app;
+-- ─── 2. Grants (gated on role existence) ──────────────────────────────────
+-- These only have an effect when vectorflow_app actually exists. Wrap in
+-- a DO so we skip cleanly on managed Postgres where step 1 short-circuited;
+-- GRANT itself only needs ownership of the target objects (not CREATEROLE),
+-- but the role must exist to be a grantee.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vectorflow_app') THEN
+        RAISE NOTICE 'phase4c: vectorflow_app role absent — skipping grants.';
+        RETURN;
+    END IF;
 
--- ─── 3. Existing-object grants ────────────────────────────────────────────
--- All current tables and sequences. Future tables are handled by the
--- ALTER DEFAULT PRIVILEGES block below.
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO vectorflow_app;
-GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO vectorflow_app;
+    -- Schema usage
+    EXECUTE 'GRANT USAGE ON SCHEMA public TO vectorflow_app';
 
--- ─── 4. Default privileges for future migrations ──────────────────────────
--- Anything CREATEd in `public` from here on by the migrating role inherits
--- these grants without an explicit GRANT statement per table.
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO vectorflow_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO vectorflow_app;
+    -- All current tables and sequences. Future tables are handled by the
+    -- ALTER DEFAULT PRIVILEGES block below.
+    EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO vectorflow_app';
+    EXECUTE 'GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO vectorflow_app';
 
--- ─── 5. Sanity assertion ──────────────────────────────────────────────────
--- A separate transaction step that confirms the new role is properly fenced.
--- Surfaces in migration output for the operator to spot-check.
+    -- Anything CREATEd in `public` from here on by the migrating role
+    -- inherits these grants without an explicit GRANT statement per table.
+    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO vectorflow_app';
+    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO vectorflow_app';
+END
+$$;
+
+-- ─── 3. Sanity assertion (gated on role existence) ────────────────────────
+-- Surfaces in migration output so operators can spot-check that the role
+-- hasn't drifted from its intended shape. Skipped cleanly when the role is
+-- absent (managed Postgres + no out-of-band provisioning).
 DO $$
 DECLARE
     has_bypass boolean;
     is_super   boolean;
+    can_login  boolean;
 BEGIN
-    SELECT rolbypassrls, rolsuper
-      INTO has_bypass, is_super
+    SELECT rolbypassrls, rolsuper, rolcanlogin
+      INTO has_bypass, is_super, can_login
       FROM pg_roles
      WHERE rolname = 'vectorflow_app';
+
+    IF NOT FOUND THEN
+        RAISE NOTICE 'phase4c: vectorflow_app absent — invariant check skipped.';
+        RETURN;
+    END IF;
 
     IF has_bypass THEN
         RAISE EXCEPTION 'phase4c invariant violated: vectorflow_app has BYPASSRLS';
@@ -81,6 +127,9 @@ BEGIN
     IF is_super THEN
         RAISE EXCEPTION 'phase4c invariant violated: vectorflow_app is SUPERUSER';
     END IF;
-    RAISE NOTICE 'phase4c: vectorflow_app fenced (NOBYPASSRLS=true, NOSUPERUSER=true)';
+    IF NOT can_login THEN
+        RAISE EXCEPTION 'phase4c invariant violated: vectorflow_app cannot LOGIN (the runtime would fail to authenticate)';
+    END IF;
+    RAISE NOTICE 'phase4c: vectorflow_app fenced (NOBYPASSRLS=true, NOSUPERUSER=true, LOGIN=true)';
 END
 $$;
