@@ -66,7 +66,27 @@ function setupHappyPath() {
     } as never,
   ]);
   prismaMock.auditLog.findMany.mockResolvedValue([]);
-  prismaMock.orgMember.findMany.mockResolvedValue([]);
+  prismaMock.orgMember.findMany.mockResolvedValue([
+    {
+      id: "m-1",
+      organizationId: "org-1",
+      userId: "u-1",
+      role: "OWNER",
+      createdAt: NOW,
+    } as never,
+  ]);
+  prismaMock.user.findMany.mockResolvedValue([
+    {
+      id: "u-1",
+      email: "alice@example.com",
+      name: "Alice",
+      image: "https://gravatar/abc.png",
+      passwordHash: "$argon2id$...",
+      authMethod: "LOCAL",
+      lockedAt: null,
+      createdAt: NOW,
+    } as never,
+  ]);
   prismaMock.orgAccessGrant.findMany.mockResolvedValue([
     {
       id: "g-1",
@@ -233,6 +253,58 @@ describe("buildOrgDataExport", () => {
       expect(arg?.where).toEqual(
         expect.objectContaining({ organizationId: "org-1" }),
       );
+    }
+  });
+
+  it("includes tenantUsers for everyone in orgMembers with passwordHash/image redacted", async () => {
+    const env = await buildOrgDataExport("org-1", { now: NOW });
+    expect(env.data.tenantUsers).toHaveLength(1);
+    const u = env.data.tenantUsers[0]!;
+    expect(u.id).toBe("u-1");
+    expect(u.email).toBe("alice@example.com");
+    expect(u.name).toBe("Alice");
+    expect(u).not.toHaveProperty("passwordHash");
+    expect(u).not.toHaveProperty("image");
+    expect(u.__has_passwordHash).toBe(true);
+    expect(u.__has_image).toBe(true);
+
+    // prisma.user.findMany was queried by the orgMembers userId set, not
+    // by organizationId (User has no organizationId column).
+    expect(prismaMock.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["u-1"] } },
+      }),
+    );
+  });
+
+  it("skips the tenantUsers query when orgMembers is empty", async () => {
+    prismaMock.orgMember.findMany.mockResolvedValue([] as never);
+    prismaMock.user.findMany.mockClear();
+    const env = await buildOrgDataExport("org-1", { now: NOW });
+    expect(env.data.tenantUsers).toEqual([]);
+    expect(prismaMock.user.findMany).not.toHaveBeenCalled();
+  });
+
+  it("emits empty manifest.truncated when no read hit the cap", async () => {
+    const env = await buildOrgDataExport("org-1", { now: NOW });
+    expect(env.manifest.truncated).toEqual([]);
+  });
+
+  it("flags any table that returned >= perTableLimit rows in manifest.truncated", async () => {
+    // perTableLimit = 1; alertChannels mock returns 1 \u2192 hit cap.
+    const env = await buildOrgDataExport("org-1", {
+      now: NOW,
+      perTableLimit: 1,
+    });
+    const scopes = env.manifest.truncated.map((t) => t.scope);
+    expect(scopes).toContain("alertChannels");
+    expect(scopes).toContain("webhookEndpoints");
+    expect(scopes).toContain("orgAccessGrants");
+    expect(scopes).toContain("orgMembers");
+    expect(scopes).toContain("tenantUsers");
+    for (const entry of env.manifest.truncated) {
+      expect(entry.limit).toBe(1);
+      expect(entry.returnedRows).toBeGreaterThanOrEqual(1);
     }
   });
 });

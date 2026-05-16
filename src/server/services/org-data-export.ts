@@ -36,10 +36,17 @@ export interface OrgDataExportEnvelope {
   generatedAt: string;
   organizationId: string;
   manifest: {
-    /** rowCounts.<tableName> → count. */
+    /** rowCounts.<tableName> \u2192 count. */
     rowCounts: Record<string, number>;
     /** Tables/fields deliberately omitted from the export. */
     excluded: Array<{ scope: string; reason: string }>;
+    /**
+     * Tables whose `findMany` returned exactly `perTableLimit` rows \u2014 i.e.
+     * the read was capped and there may be additional rows in the
+     * underlying table. Customers/auditors seeing entries here know the
+     * export is incomplete and must page through a larger window.
+     */
+    truncated: Array<{ scope: string; returnedRows: number; limit: number }>;
     /** SHA-256 hex over canonicalize(data). */
     contentChecksumSha256: string;
   };
@@ -59,6 +66,14 @@ export interface OrgDataExportPayload {
   webhookEndpoints: Array<Record<string, unknown>>;
   auditLog: Array<Record<string, unknown>>;
   orgMembers: Array<Record<string, unknown>>;
+  /**
+   * Tenant user identities for everyone in `orgMembers`. Includes id,
+   * email, name, authMethod, lockedAt, createdAt; excludes passwordHash
+   * and image. Lets the customer reconstruct who-was-who from the
+   * userId references in `orgMembers` (without exposing operator
+   * accounts, which live in `PlatformOperator`, not `User`).
+   */
+  tenantUsers: Array<Record<string, unknown>>;
   orgAccessGrants: Array<Record<string, unknown>>;
 }
 
@@ -203,6 +218,23 @@ export async function buildOrgDataExport(
   });
 
   checkpoint();
+  // Tenant users referenced from orgMembers. Excludes passwordHash and
+  // image; includes the identity fields a customer needs to map a
+  // userId reference to a real person. Operators are in PlatformOperator,
+  // which we deliberately don't read.
+  const memberUserIds = orgMembers.map((m) => m.userId as string);
+  const tenantUsersRaw = memberUserIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: memberUserIds } },
+        take: limit,
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+  const tenantUsers = tenantUsersRaw.map((u) =>
+    redactKeys(u, ["passwordHash", "image"]),
+  );
+
+  checkpoint();
   const orgAccessGrantsRaw = await prisma.orgAccessGrant.findMany({
     where: { organizationId },
     take: limit,
@@ -225,6 +257,7 @@ export async function buildOrgDataExport(
     webhookEndpoints,
     auditLog,
     orgMembers,
+    tenantUsers,
     orgAccessGrants,
   };
 
@@ -241,8 +274,35 @@ export async function buildOrgDataExport(
     webhookEndpoints: webhookEndpoints.length,
     auditLog: auditLog.length,
     orgMembers: orgMembers.length,
+    tenantUsers: tenantUsers.length,
     orgAccessGrants: orgAccessGrants.length,
   };
+
+  // A read that returned exactly `limit` rows is the canonical "may be
+  // truncated" signal. False positives (a table that happens to hold
+  // exactly `limit` rows) are harmless \u2014 the operator can re-run with a
+  // larger cap or verify by re-counting; false negatives would silently
+  // serve a partial export, which is what we MUST NOT do.
+  const truncated: OrgDataExportEnvelope["manifest"]["truncated"] = [];
+  const truncationCandidates: Array<[string, number]> = [
+    ["teams", teams.length],
+    ["environments", environments.length],
+    ["vectorNodes", vectorNodes.length],
+    ["pipelines", pipelines.length],
+    ["pipelineVersions", pipelineVersions.length],
+    ["alertRules", alertRules.length],
+    ["alertChannels", alertChannels.length],
+    ["webhookEndpoints", webhookEndpoints.length],
+    ["auditLog", auditLog.length],
+    ["orgMembers", orgMembers.length],
+    ["tenantUsers", tenantUsers.length],
+    ["orgAccessGrants", orgAccessGrants.length],
+  ];
+  for (const [scope, count] of truncationCandidates) {
+    if (count >= limit) {
+      truncated.push({ scope, returnedRows: count, limit });
+    }
+  }
 
   const excluded = [
     {
@@ -271,9 +331,14 @@ export async function buildOrgDataExport(
         "Secret values are stored as ciphertext-only; exporting opaque bytes is not useful. Secrets must be re-entered against the destination system.",
     },
     {
-      scope: "User (operator accounts)",
+      scope: "User.passwordHash / User.image",
       reason:
-        "Operators are not tenant members; their identities are out of scope for tenant-data portability.",
+        "Tenant user identities ARE included in the `tenantUsers` block (id, email, name, authMethod, lockedAt, createdAt) so customers can reconstruct who-was-who from `orgMembers.userId`. The passwordHash and profile image are excluded.",
+    },
+    {
+      scope: "PlatformOperator (entire model)",
+      reason:
+        "Operators are vectorflow-cloud staff identities, not tenant members. Their data is out of scope for tenant-data portability.",
     },
   ];
 
@@ -287,6 +352,7 @@ export async function buildOrgDataExport(
     manifest: {
       rowCounts,
       excluded,
+      truncated,
       contentChecksumSha256,
     },
     data,
