@@ -385,13 +385,25 @@ export async function finishAuthentication(opts: {
     // To make the consume race-safe we require `deleteMany` to affect
     // exactly one row \u2014 the loser's count is 0 and we throw, rolling
     // back the counter bump.
-    await tx.webAuthnCredential.update({
-      where: { id: stored.id },
+    // Conditional update: bump the counter ONLY if it still matches the
+    // value we read at the top of the verifier. Two concurrent
+    // authentications that both pass the regression check would otherwise
+    // both write the same `newCounter`, masking that one of them is a
+    // stale-reread replay. `updateMany` with the expected counter as a
+    // WHERE clause makes the loser update 0 rows; we then throw and roll
+    // back the credential write inside this transaction.
+    const { count: counterUpdated } = await tx.webAuthnCredential.updateMany({
+      where: { id: stored.id, counter: stored.counter },
       data: {
         counter: newCounter,
         lastUsedAt: now(),
       },
     });
+    if (counterUpdated !== 1) {
+      throw new Error(
+        "WebAuthn authentication verification failed: counter changed mid-flight (concurrent assertion race)",
+      );
+    }
     if (consumedChallenge === null) {
       throw new Error(
         "WebAuthn authentication verification failed: challenge not captured",

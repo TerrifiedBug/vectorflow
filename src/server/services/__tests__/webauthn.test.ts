@@ -342,7 +342,7 @@ describe("finishAuthentication", () => {
       expiresAt: new Date(Date.now() + 60_000),
     } as never);
 
-    prismaMock.webAuthnCredential.update.mockResolvedValue({} as never);
+    prismaMock.webAuthnCredential.updateMany.mockResolvedValue({ count: 1 } as never);
     prismaMock.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 } as never);
 
     const result = await finishAuthentication({
@@ -351,9 +351,9 @@ describe("finishAuthentication", () => {
     });
 
     expect(result.userId).toBe("user-1");
-    expect(prismaMock.webAuthnCredential.update).toHaveBeenCalledWith(
+    expect(prismaMock.webAuthnCredential.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "row-1" },
+        where: { id: "row-1", counter: BigInt(5) },
         data: expect.objectContaining({ counter: BigInt(6) }),
       }),
     );
@@ -387,7 +387,41 @@ describe("finishAuthentication", () => {
     await expect(
       finishAuthentication({ rp: RP, response: makeResponse() }),
     ).rejects.toThrow(/counter regression/i);
-    expect(prismaMock.webAuthnCredential.update).not.toHaveBeenCalled();
+    expect(prismaMock.webAuthnCredential.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the counter changed under us (concurrent authentication race)", async () => {
+    prismaMock.webAuthnCredential.findUnique.mockResolvedValue({
+      id: "row-1",
+      credentialId: "cred-a",
+      userId: "user-1",
+      publicKey: Buffer.from([1, 2, 3]),
+      counter: BigInt(5),
+      transports: [],
+    } as never);
+
+    mockVerifyAuthenticationResponse.mockImplementation(async (opts) => {
+      const ok = await opts.expectedChallenge("issued-auth-challenge");
+      return ok
+        ? { verified: true, authenticationInfo: { newCounter: 6 } }
+        : { verified: false };
+    });
+
+    prismaMock.webAuthnChallenge.findUnique.mockResolvedValue({
+      id: "ch-1",
+      kind: "authenticate",
+      challenge: "issued-auth-challenge",
+      userId: "user-1",
+      expiresAt: new Date(Date.now() + 60_000),
+    } as never);
+
+    // Race: a parallel transaction already bumped the counter, so the
+    // conditional updateMany matches zero rows.
+    prismaMock.webAuthnCredential.updateMany.mockResolvedValue({ count: 0 } as never);
+
+    await expect(
+      finishAuthentication({ rp: RP, response: makeResponse() }),
+    ).rejects.toThrow(/concurrent assertion race/i);
   });
 
   it("accepts an assertion whose counter is 0 (platform authenticators don't increment)", async () => {
@@ -415,7 +449,7 @@ describe("finishAuthentication", () => {
       expiresAt: new Date(Date.now() + 60_000),
     } as never);
 
-    prismaMock.webAuthnCredential.update.mockResolvedValue({} as never);
+    prismaMock.webAuthnCredential.updateMany.mockResolvedValue({ count: 1 } as never);
     prismaMock.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 1 } as never);
 
     const result = await finishAuthentication({
@@ -520,7 +554,7 @@ describe("finishAuthentication", () => {
       expiresAt: new Date(Date.now() + 60_000),
     } as never);
 
-    prismaMock.webAuthnCredential.update.mockResolvedValue({} as never);
+    prismaMock.webAuthnCredential.updateMany.mockResolvedValue({ count: 1 } as never);
     // Race: the parallel transaction won; our deleteMany affects 0 rows.
     prismaMock.webAuthnChallenge.deleteMany.mockResolvedValue({ count: 0 } as never);
 
