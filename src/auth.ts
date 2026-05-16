@@ -36,10 +36,29 @@ async function getClientIp(): Promise<string | null> {
   }
 }
 
+/**
+ * Resolve the request host used for per-org auth routing (plan §8 / Phase 5w).
+ *
+ * `x-forwarded-host` is client-controlled unless an upstream proxy
+ * strips/rewrites it. Reading it unconditionally lets a direct request
+ * (or a mis-configured proxy chain) spoof another tenant\'s slug and
+ * force this request onto a different tenant\'s OIDC / group-mapping
+ * config. The fix:
+ *
+ *   - Cloud stamps run behind a known reverse proxy that ALWAYS sets
+ *     `x-forwarded-host` itself, and the operator opts in via
+ *     `VF_TRUST_FORWARDED_HOST=true`.
+ *   - OSS deployments (no trusted proxy) keep the `host` header and
+ *     ignore `x-forwarded-host`. A bad header from the client cannot
+ *     redirect the request onto a different org.
+ */
 async function getRequestHost(): Promise<string | null> {
   try {
     const hdrs = await headers();
-    return hdrs.get("x-forwarded-host") ?? hdrs.get("host");
+    if (process.env.VF_TRUST_FORWARDED_HOST === "true") {
+      return hdrs.get("x-forwarded-host") ?? hdrs.get("host");
+    }
+    return hdrs.get("host");
   } catch {
     return null;
   }
