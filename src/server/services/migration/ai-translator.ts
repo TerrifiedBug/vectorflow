@@ -528,6 +528,19 @@ async function callAiCompletion(params: {
   const { teamId, systemPrompt, userPrompt } = params;
   const config = await getTeamAiConfig(teamId);
 
+  // Unconditional scheme guard \u2014 `validateOutboundUrl` short-circuits when
+  // `VF_CLOUD_STRICT_OUTBOUND` is unset, so without this check an OSS
+  // caller could silently accept a `file://` or non-http(s) URL.
+  let parsed: URL;
+  try {
+    parsed = new URL(config.baseUrl);
+  } catch {
+    throw new Error("Invalid AI base URL");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("AI base URL must use http or https");
+  }
+
   // SSRF guard: defers to the centralised `validateOutboundUrl` policy so
   // OSS callers running a local Ollama still work and Cloud-strict
   // deployments get unified private-IP / scheme / metadata rejection.
