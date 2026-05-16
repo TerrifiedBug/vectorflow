@@ -154,18 +154,31 @@ export async function buildOrgDataExport(
   ]);
 
   checkpoint();
-  const teams = await prisma.team.findMany({
+  const teamsRaw = await prisma.team.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { createdAt: "asc" },
   });
+  // Team carries an encrypted aiApiKey for the per-team AI-assist
+  // integration; surface presence only, never the ciphertext.
+  const teams = teamsRaw.map((t) => redactKeys(t, ["aiApiKey"]));
 
   checkpoint();
-  const environments = await prisma.environment.findMany({
+  const environmentsRaw = await prisma.environment.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { createdAt: "asc" },
   });
+  // Environment carries GitOps credentials and the enrollment-token
+  // hash. None of these are portability data; presence flags only.
+  const environments = environmentsRaw.map((e) =>
+    redactKeys(e, [
+      "gitToken",
+      "gitWebhookSecret",
+      "enrollmentTokenHash",
+      "secretBackendConfig",
+    ]),
+  );
 
   checkpoint();
   const vectorNodes = await prisma.vectorNode.findMany({
