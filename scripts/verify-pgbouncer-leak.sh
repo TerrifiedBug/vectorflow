@@ -53,6 +53,14 @@ fi
 
 PSQL=(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA)
 
+# Codex review (PR #338): PgBouncer in transaction-pooling mode reassigns
+# transactions across backend connections; a single reconnect can land us
+# on the SAME backend we just released and miss a real leak. Sample N
+# consecutive checkouts so the probability of revisiting the original
+# pool slot drops geometrically. N=10 is plenty for the typical 25-50
+# slot defaults; tune via VF_PGBOUNCER_PROBE_SAMPLES.
+SAMPLES="${VF_PGBOUNCER_PROBE_SAMPLES:-10}"
+
 # ── Positive control: set_config(..., true) MUST be tx-scoped ──────────
 echo "── Positive control: set_config('app.org_id', 'probe-positive', true) ──"
 "${PSQL[@]}" <<'SQL'
@@ -61,22 +69,28 @@ SELECT set_config('app.org_id', 'probe-positive', true);
 COMMIT;
 SQL
 
-# Reconnect — psql exits and a fresh process starts a new TCP connection.
-# Through PgBouncer in transaction-pooling mode this hands us a different
-# backend slot than the one we just released, so the read below proves
-# the GUC didn't persist on the backend.
-positive_leak=$("${PSQL[@]}" <<'SQL'
+# Reconnect N times — each new psql invocation is a fresh client TCP
+# connection that PgBouncer can satisfy from a different backend slot.
+# Any single non-empty read fails the probe; the loop runs the full
+# count even after a success so flaky non-deterministic leaks surface.
+leaks=0
+for i in $(seq 1 "$SAMPLES"); do
+  positive_leak=$("${PSQL[@]}" <<'SQL'
 SELECT coalesce(current_setting('app.org_id', true), '');
 SQL
-)
-
-if [[ -n "$positive_leak" ]]; then
-  echo "  FAIL: app.org_id leaked across connection: '$positive_leak'"
+  )
+  if [[ -n "$positive_leak" ]]; then
+    echo "  LEAK (sample $i/$SAMPLES): app.org_id='$positive_leak'"
+    leaks=$((leaks + 1))
+  fi
+done
+if [[ $leaks -gt 0 ]]; then
+  echo "  FAIL: $leaks/$SAMPLES samples leaked app.org_id"
   echo "  → withOrgTx GUC is NOT tx-scoped on this deployment."
   echo "  → RLS isolation is broken; do NOT ship Cloud-stamp on this DB."
   exit 1
 fi
-echo "  OK: positive control empty after reconnect"
+echo "  OK: positive control empty across $SAMPLES samples"
 
 # ── Negative control: set_config(..., false) MUST persist on this conn ─
 echo "── Negative control: set_config('app.org_id', 'probe-negative', false) ──"
