@@ -25,7 +25,7 @@ import {
   TOTP_RATE_LIMIT,
 } from "@/server/services/login-protection";
 import { getOrgSettings } from "@/lib/org-settings";
-import { DEFAULT_ORG_ID } from "@/lib/org-constants";
+import { resolveOrgIdFromHost } from "@/lib/host-to-org";
 
 async function getClientIp(): Promise<string | null> {
   try {
@@ -54,15 +54,29 @@ class InvalidVerificationCodeError extends CredentialsSignin {
 }
 
 /**
- * Load OIDC settings from the database.
- * Returns null if OIDC is not configured.
+ * Load OIDC settings for the organisation owning the incoming request.
+ *
+ * Per-org OIDC (plan §8 / Phase 5w):
+ *   - Cloud: `<orgSlug>.vectorflow.sh` -> the request host's first DNS
+ *     label is matched against `Organization.slug`. Each tenant sees only
+ *     its own IdP; a session minted for org A cannot login through org B.
+ *   - OSS: hosts without an org-slug subdomain fall back to
+ *     `DEFAULT_ORG_ID` so existing self-hosted deployments behave exactly
+ *     as before.
+ *
+ * Returns null when:
+ *   - we're in the Next.js build phase (no DB), OR
+ *   - the resolved org has no OIDC configured, OR
+ *   - the stored client secret cannot be decrypted (key rotation gap).
  */
-async function getOidcSettings() {
+async function getOidcSettings(orgIdOverride?: string) {
   // Skip DB query during build (no database available)
   if (isBuildPhase) return null;
 
   try {
-    const settings = await getOrgSettings(DEFAULT_ORG_ID);
+    const orgId =
+      orgIdOverride ?? (await resolveOrgIdFromHost(await getRequestHost()));
+    const settings = await getOrgSettings(orgId);
     if (settings?.oidcIssuer && settings?.oidcClientId && settings?.oidcClientSecret) {
       let clientSecret: string;
       try {
@@ -79,6 +93,7 @@ async function getOidcSettings() {
         groupSyncEnabled: settings.oidcGroupSyncEnabled,
         groupsScope: settings.oidcGroupsScope,
         groupsClaim: settings.oidcGroupsClaim ?? "groups",
+        organizationId: orgId,
       };
     }
   } catch {
@@ -286,7 +301,8 @@ async function getAuthInstance() {
           async signIn({ user, account, profile }) {
             // For OIDC sign-ins, auto-create user and team membership with role mapping
             if (account?.provider === "oidc" && user.email) {
-              const settings = await getOrgSettings(DEFAULT_ORG_ID);
+              const oidcOrgId = await resolveOrgIdFromHost(await getRequestHost());
+              const settings = await getOrgSettings(oidcOrgId);
               const profileData = profile as Record<string, unknown> | undefined;
 
               // Ensure user exists in the database
