@@ -135,7 +135,10 @@ export function isPrivateIP(ip: string): boolean {
   if (/^fe80:/i.test(ip)) return true; // link-local (fe80::/10)
   if (/^fc00:/i.test(ip) || /^fd[0-9a-f]{2}:/i.test(ip)) return true; // unique local (fc00::/7) — incl. fd00:ec2::254 (AWS IMDSv2 IPv6), fd00:1::3 (GCP)
   if (ip === "::") return true; // unspecified
-  if (/^fec0:/i.test(ip)) return true; // deprecated site-local
+  // Deprecated site-local fec0::/10 — first 10 bits 1111 1110 11. Hex
+  // second nibble in {c, d, e, f}; covers fec0:..fed0:..feff:.. ranges,
+  // not just fec0::/16.
+  if (/^fe[cdef][0-9a-f]:/i.test(ip)) return true;
 
   // IPv4-mapped IPv6: ::ffff:a.b.c.d. Strip the prefix and recurse with
   // the bare IPv4 so we catch ::ffff:169.254.169.254 tunneled past a
@@ -148,8 +151,10 @@ export function isPrivateIP(ip: string): boolean {
   // legitimate target almost certainly has a native IPv6.
   if (/^2002:/i.test(ip)) return true;
 
-  // Teredo (2001::/32) — same reasoning.
-  if (/^2001:0+:/i.test(ip)) return true;
+  // Teredo (2001::/32) — first 32 bits = 2001:0000. Match the explicit
+  // form (2001:0:, 2001:00:, 2001:0000:) AND the compressed form
+  // (2001:: where the second hextet's zero is collapsed).
+  if (/^2001:(?:0+|):/i.test(ip)) return true;
 
   return false;
 }

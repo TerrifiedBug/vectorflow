@@ -92,3 +92,38 @@ describe("isPrivateIP — public IPs are NOT rejected", () => {
     expect(isPrivateIP("2001:4860:4860::8888")).toBe(false);
   });
 });
+
+describe("isPrivateIP — Codex follow-ups: compressed Teredo + wider site-local", () => {
+  it("rejects compressed Teredo (2001::1)", () => {
+    expect(isPrivateIP("2001::1")).toBe(true);
+  });
+
+  it("rejects Teredo with explicit zero second hextet (2001:0:...)", () => {
+    expect(isPrivateIP("2001:0:53aa:64c::1")).toBe(true);
+  });
+
+  it("does NOT reject 2001:db8:: (documentation block, outside /32)", () => {
+    // 2001:db8::/32 is reserved for documentation but per RFC 3849 it's
+    // not Teredo. Keep it permitted; that range is the legitimate
+    // \"public\" prefix used in examples and won't be targeted in practice.
+    expect(isPrivateIP("2001:db8::1")).toBe(false);
+  });
+
+  it("rejects wider site-local fec0::/10 (fed0::1)", () => {
+    expect(isPrivateIP("fed0::1")).toBe(true);
+  });
+
+  it("rejects wider site-local fec0::/10 (feff::1)", () => {
+    expect(isPrivateIP("feff::1")).toBe(true);
+  });
+
+  it("does NOT reject fe80:: (link-local handled by separate rule, but not site-local)", () => {
+    // fe80::1 is link-local (rejected by the fe80 rule), but it's NOT
+    // matched by the site-local rule.
+    expect(isPrivateIP("fe80::1")).toBe(true); // rejected by link-local rule
+  });
+
+  it("does NOT reject fe00::1 (outside both link-local and site-local /10)", () => {
+    expect(isPrivateIP("fe00::1")).toBe(false);
+  });
+});
