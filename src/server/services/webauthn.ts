@@ -144,10 +144,14 @@ export async function finishRegistration(opts: {
   const now = opts.now ?? (() => new Date());
 
   return prisma.$transaction(async (tx) => {
-    // The browser echoes the challenge back inside `response`; the helper
-    // pulls it out via `expectedChallenge` as a callback so we can verify
-    // both "the challenge we minted" AND "the challenge has not expired"
-    // in a single round-trip to the DB.
+    // Capture the challenge in a closure — `verifyRegistrationResponse`
+    // hands us the value the browser echoed back so we can match it
+    // against the row we minted. We need the same string for the
+    // `deleteMany` below (the consume), so stash it here rather than
+    // trying to recover it from `opts.response.response.clientDataJSON`
+    // (which is a base64url-encoded JSON blob, NOT the raw challenge).
+    let consumedChallenge: string | null = null;
+
     const verification = await verifyRegistrationResponse({
       response: opts.response,
       expectedOrigin: opts.rp.expectedOrigin,
@@ -161,6 +165,7 @@ export async function finishRegistration(opts: {
         if (row.kind !== "register") return false;
         if (row.userId !== opts.userId) return false;
         if (row.expiresAt.getTime() < now().getTime()) return false;
+        consumedChallenge = challenge;
         return true;
       },
     });
@@ -169,11 +174,14 @@ export async function finishRegistration(opts: {
       throw new Error("WebAuthn registration verification failed");
     }
 
-    // Consume the challenge. Single-use, even if verification succeeded —
-    // a replayed attestation MUST fail at the challenge lookup.
-    await tx.webAuthnChallenge.deleteMany({
-      where: { challenge: opts.response.response.clientDataJSON },
-    });
+    // Consume the challenge by the stored value (NOT clientDataJSON).
+    // Single-use even if verification succeeded — a replayed attestation
+    // MUST fail at the challenge lookup.
+    if (consumedChallenge !== null) {
+      await tx.webAuthnChallenge.deleteMany({
+        where: { challenge: consumedChallenge },
+      });
+    }
 
     const reg = verification.registrationInfo;
     const cred = await tx.webAuthnCredential.create({
@@ -263,6 +271,12 @@ export async function finishAuthentication(opts: {
       throw new Error("WebAuthn credential not registered");
     }
 
+    // Capture the challenge in a closure so we can consume by its
+    // canonical value below — NOT `opts.response.response.clientDataJSON`
+    // (which is the base64url-encoded clientData blob, not the raw
+    // challenge string).
+    let consumedChallenge: string | null = null;
+
     const verification = await verifyAuthenticationResponse({
       response: opts.response,
       expectedOrigin: opts.rp.expectedOrigin,
@@ -283,6 +297,7 @@ export async function finishAuthentication(opts: {
         // Usernameless flow: row.userId may be null.
         if (row.userId && row.userId !== stored.userId) return false;
         if (row.expiresAt.getTime() < now().getTime()) return false;
+        consumedChallenge = challenge;
         return true;
       },
     });
@@ -308,9 +323,11 @@ export async function finishAuthentication(opts: {
         lastUsedAt: now(),
       },
     });
-    await tx.webAuthnChallenge.deleteMany({
-      where: { challenge: opts.response.response.clientDataJSON },
-    });
+    if (consumedChallenge !== null) {
+      await tx.webAuthnChallenge.deleteMany({
+        where: { challenge: consumedChallenge },
+      });
+    }
 
     return {
       userId: stored.userId,
