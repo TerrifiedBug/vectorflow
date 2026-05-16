@@ -124,7 +124,7 @@ export class RetryService {
           attemptNumber: { lt: MAX_ATTEMPT_NUMBER + 1 },
         },
         include: {
-          webhookEndpoint: { select: { url: true, encryptedSecret: true, enabled: true } },
+          webhookEndpoint: { select: { url: true, encryptedSecret: true, enabled: true, confirmedAt: true } },
         },
         orderBy: { nextRetryAt: "asc" },
         take: BATCH_SIZE,
@@ -161,6 +161,9 @@ export class RetryService {
             url: delivery.webhookEndpoint.url,
             encryptedSecret: delivery.webhookEndpoint.encryptedSecret,
             id: delivery.webhookEndpointId,
+            // Phase 5aa: thread confirmedAt so a pending-confirmation endpoint
+            // can't be delivered to even from the retry loop.
+            confirmedAt: delivery.webhookEndpoint.confirmedAt,
           },
           delivery.payload as { type: string; timestamp: string; data: Record<string, unknown> },
         );

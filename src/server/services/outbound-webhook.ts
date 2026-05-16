@@ -32,14 +32,15 @@ interface EndpointLike {
   url: string;
   encryptedSecret: string | null;
   /**
-   * Phase 5aa: Date the org owner one-time-confirmed this destination, or
-   * null when the endpoint has been created / had its URL changed but the
-   * confirmation flow has not completed. Null endpoints are non-retryable
-   * failures — the caller MUST mint a confirmation and have the owner
-   * redeem it before delivery resumes.
+   * Phase 5aa: timestamp of the most recent successful one-time
+   * confirmation, or null/undefined when the endpoint has been created /
+   * had its URL changed but the confirmation flow has not completed.
+   * Delivery FAILS CLOSED when this is null OR undefined.
    *
-   * Optional for backward compatibility: callers that don't pass it are
-   * treated as confirmed (the migration backfills existing rows).
+   * Callers that load the endpoint from the DB MUST include `confirmedAt`
+   * in their `select` (the retry-service and `webhookEndpoint.testDelivery`
+   * paths thread it through). The migration backfills existing rows with
+   * `NOW()` so the rollout doesn't break previously-working webhooks.
    */
   confirmedAt?: Date | null;
 }
@@ -48,9 +49,14 @@ interface EndpointLike {
 
 /**
  * Returns true if the result represents a permanent (non-retryable) failure.
- * 4xx non-429 HTTP responses and DNS/connection errors are permanent.
+ * 4xx non-429 HTTP responses and DNS/connection errors are permanent. The
+ * caller-supplied `isPermanent` flag is the OTHER trigger — Phase 5aa
+ * `fetchHardened` errors (redirect cap, protocol downgrade, DNS rebinding)
+ * set `isPermanent: true` directly without a status code, and the retry
+ * loop MUST honour that signal to dead-letter rather than reschedule.
  */
 export function isPermanentFailure(result: OutboundResult): boolean {
+  if (result.isPermanent) return true;
   if (result.statusCode !== undefined) {
     return result.statusCode >= 400 && result.statusCode < 500 && result.statusCode !== 429;
   }
@@ -79,10 +85,12 @@ export async function deliverOutboundWebhook(
     return { success: true, statusCode: 200, isPermanent: false };
   }
 
-  // Phase 5aa: refuse delivery to an unconfirmed destination. Optional
-  // field for backward compat — callers that don't pass `confirmedAt`
-  // (legacy code paths, existing tests) are treated as confirmed.
-  if (endpoint.confirmedAt === null) {
+  // Phase 5aa: refuse delivery to an unconfirmed destination. Loose equality
+  // catches BOTH `null` (explicit) and `undefined` (callers that don't
+  // include `confirmedAt` in their select). All in-tree callers now thread
+  // `confirmedAt` through; this is the fail-closed guarantee for any future
+  // call site that forgets to.
+  if (endpoint.confirmedAt == null) {
     return {
       success: false,
       error: "Webhook destination has not been confirmed",
