@@ -110,14 +110,24 @@ function checkpoint(signal?: AbortSignal): void {
 }
 
 /**
- * Strip fields that MUST be regenerated on the target side (timestamps,
- * id-derived columns, computed counters). Keeps everything else verbatim
- * so the round-trip preserves shape.
+ * Strip fields that MUST be regenerated on the target side AND drop the
+ * `__has_<key>: bool` presence markers that `buildOrgDataExport` writes
+ * in place of redacted sensitive columns. Prisma rejects unknown args
+ * with `Unknown arg`, so any `__has_*` left in the data object would
+ * abort the create.
+ *
+ * Callers can keep specific timestamps via `keepKeys` (e.g. preserve
+ * `createdAt` for audit log roundtrips); the `__has_*` markers are
+ * always dropped because they're not real columns.
  */
 function stripVolatile(row: AnyRow, keepKeys: ReadonlyArray<string> = []): AnyRow {
-  const out: AnyRow = { ...row };
-  for (const k of ["createdAt", "updatedAt"]) {
-    if (!keepKeys.includes(k)) delete out[k];
+  const out: AnyRow = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (k.startsWith("__has_")) continue;
+    if (k === "createdAt" || k === "updatedAt") {
+      if (!keepKeys.includes(k)) continue;
+    }
+    out[k] = v;
   }
   return out;
 }
@@ -230,41 +240,71 @@ export async function importOrgData(
   }
 
   // ── alertRules ───────────────────────────────────────────────────────
+  // AlertRule has THREE foreign keys that need remapping:
+  //   - environmentId (required)
+  //   - teamId        (required)
+  //   - pipelineId    (optional)
+  // The export spreads all three; the import MUST rewrite each to the
+  // target-side id or skip the row to avoid an FK violation.
   checkpoint(signal);
   for (const row of data.alertRules) {
     const srcId = row.id as string;
-    const newRowId = newId("ar");
-    remap.alertRules[srcId] = newRowId;
     const sourceEnvId = row.environmentId as string | null;
     const remappedEnvId = sourceEnvId
       ? (remap.environments[sourceEnvId] ?? null)
       : null;
+    const sourceTeamId = row.teamId as string | null;
+    const remappedTeamId = sourceTeamId
+      ? (remap.teams[sourceTeamId] ?? null)
+      : null;
+    if (!remappedEnvId || !remappedTeamId) continue;
+    const sourcePipelineId = row.pipelineId as string | null;
+    const remappedPipelineId = sourcePipelineId
+      ? (remap.pipelines[sourcePipelineId] ?? null)
+      : null;
+    const newRowId = newId("ar");
+    remap.alertRules[srcId] = newRowId;
     await db.alertRule.create({
       data: {
         ...stripVolatile(row),
         id: newRowId,
         organizationId: targetOrganizationId,
         environmentId: remappedEnvId,
+        teamId: remappedTeamId,
+        pipelineId: remappedPipelineId,
       } as never,
     });
   }
 
   // ── notificationChannels ────────────────────────────────────────────
+  // `NotificationChannel.config` is REDACTED in the export (presence flag
+  // only, no plaintext credentials). Prisma marks `config` as required,
+  // so we MUST supply a value at import time. We default to `{}` and
+  // surface it as a placeholder: the target-side admin re-enters Slack
+  // tokens / PagerDuty integration keys / webhook URLs through the UI.
+  // Without this default the create would fail validation and the entire
+  // round-trip would abort.
   checkpoint(signal);
   for (const row of data.alertChannels) {
     const srcId = row.id as string;
-    const newRowId = newId("nc");
-    remap.notificationChannels[srcId] = newRowId;
     const sourceEnvId = row.environmentId as string | null;
     const remappedEnvId = sourceEnvId
       ? (remap.environments[sourceEnvId] ?? null)
       : null;
+    if (!remappedEnvId) continue;
+    const newRowId = newId("nc");
+    remap.notificationChannels[srcId] = newRowId;
+    // If `config` survived the export (e.g. operator re-injected it after
+    // redaction), use it; otherwise default to `{}` so Prisma accepts.
+    const config =
+      (row.config && typeof row.config === "object") ? row.config : {};
     await db.notificationChannel.create({
       data: {
         ...stripVolatile(row),
         id: newRowId,
         organizationId: targetOrganizationId,
         environmentId: remappedEnvId,
+        config,
       } as never,
     });
   }

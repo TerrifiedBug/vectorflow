@@ -96,6 +96,8 @@ const alertRuleA = {
   id: "ar-A1",
   organizationId: SOURCE_ORG_ID,
   environmentId: "env-A1",
+  teamId: "team-A1",
+  pipelineId: "pipe-A1",
   name: "errors-spike",
   metric: "errorsTotal",
   threshold: 100,
@@ -303,8 +305,31 @@ describe("export → import round-trip (Phase 5cc)", () => {
     expect(sink.inserted.pipelines[0]!.environmentId).toBe(newEnvId);
     expect(sink.inserted.pipelineVersions[0]!.pipelineId).toBe(newPipelineId);
     expect(sink.inserted.alertRules[0]!.environmentId).toBe(newEnvId);
+    expect(sink.inserted.alertRules[0]!.teamId).toBe(newTeamId);
+    expect(sink.inserted.alertRules[0]!.pipelineId).toBe(newPipelineId);
     expect(sink.inserted.notificationChannels[0]!.environmentId).toBe(newEnvId);
     expect(sink.inserted.webhookEndpoints[0]!.teamId).toBe(newTeamId);
+
+    // ── 3b. NO `__has_*` redaction marker leaks into the persisted row.
+    //       The export rewrites sensitive columns to `__has_<key>: bool`;
+    //       Prisma rejects unknown args, so any leak would have failed
+    //       at create time \u2014 we still assert defensively in case the
+    //       export pattern changes. ────────────────────────────────────
+    for (const bucket of Object.values(sink.inserted) as Array<
+      Array<Record<string, unknown>>
+    >) {
+      for (const row of bucket) {
+        for (const k of Object.keys(row)) {
+          expect(k.startsWith("__has_")).toBe(false);
+        }
+      }
+    }
+
+    // ── 3c. NotificationChannel.config is a real object on the persisted
+    //       row even though the export redacted it. (Defaults to `{}` so
+    //       Prisma accepts; the target admin re-enters credentials.) ───
+    expect(typeof sink.inserted.notificationChannels[0]!.config).toBe("object");
+    expect(sink.inserted.notificationChannels[0]!.config).not.toBeNull();
 
     // ── 4. pipeline `globalConfig` / `nodes` / `edges` are byte-
     //       identical between source and re-imported row (these are
