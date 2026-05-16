@@ -146,11 +146,25 @@ done
 if [[ $negative_hits -gt 0 ]]; then
   echo "  OK: $negative_hits/$SAMPLES samples saw the session SET — backend reuse confirmed."
   echo "      The positive control's empty reads above are meaningful."
+elif [[ "${VF_PGBOUNCER_REQUIRE_REUSE:-}" == "true" ]]; then
+  # Codex P2 round-5: under the opt-in `VF_PGBOUNCER_REQUIRE_REUSE=true`
+  # (set on Cloud-stamp CI where we KNOW a transaction-pooled PgBouncer
+  # sits between us and Postgres) treat a zero hit-count as a hard
+  # failure \u2014 the probe couldn't actually validate the reconnect path,
+  # so the positive-control empty reads above are not real evidence of
+  # isolation. Exit 2 matches the documented "meta-check failed" code.
+  echo "  FAIL: 0/$SAMPLES samples saw the session SET."
+  echo "      \`VF_PGBOUNCER_REQUIRE_REUSE=true\` was set, so we expected"
+  echo "      backend reuse to be observable. Either PgBouncer is misconfigured"
+  echo "      or the probe is hitting a different cluster than the rest of the app."
+  exit 2
 else
   echo "  INFO: 0/$SAMPLES samples saw the session SET."
   echo "      Most likely running on plain Postgres or each psql got a"
   echo "      different backend. Positive control still holds, but this"
   echo "      meta-check is informational only on direct Postgres."
+  echo "      Set VF_PGBOUNCER_REQUIRE_REUSE=true to make this a hard failure"
+  echo "      on deployments where PgBouncer is expected to be in the path."
 fi
 
 # Cleanup runs from the EXIT trap registered up top — fires on success,
