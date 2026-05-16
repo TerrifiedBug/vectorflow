@@ -1,5 +1,6 @@
 import { getTeamAiConfig } from "@/server/services/ai";
 import { validateOutboundUrl } from "@/server/services/url-validation";
+import { enforceAiBaseUrlPolicy } from "@/server/services/ai-base-url-allowlist";
 import { checkRateLimit } from "@/lib/ai/rate-limiter";
 import {
   buildBlockTranslationPrompt,
@@ -528,7 +529,13 @@ async function callAiCompletion(params: {
   const { teamId, systemPrompt, userPrompt } = params;
   const config = await getTeamAiConfig(teamId);
 
-  // Unconditional scheme guard \u2014 `validateOutboundUrl` short-circuits when
+  // Phase 5z: gate non-vendor URLs on the per-org opt-in.
+  await enforceAiBaseUrlPolicy({
+    baseUrl: config.baseUrl,
+    organizationId: config.organizationId,
+  });
+
+  // Unconditional scheme guard — `validateOutboundUrl` short-circuits when
   // `VF_CLOUD_STRICT_OUTBOUND` is unset, so without this check an OSS
   // caller could silently accept a `file://` or non-http(s) URL.
   let parsed: URL;

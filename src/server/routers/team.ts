@@ -9,6 +9,7 @@ import { encrypt } from "@/server/services/crypto";
 import { testAiConnection } from "@/server/services/ai";
 import { getOrgSettings } from "@/lib/org-settings";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
+import { isAllowlistedAiHost } from "@/server/services/ai-base-url-allowlist";
 
 /**
  * Block manual team assignment/role changes for OIDC users when their
@@ -524,13 +525,61 @@ export const teamRouter = router({
         aiApiKey: z.string().nullable().optional(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { teamId, aiApiKey, ...rest } = input;
       const data: Record<string, unknown> = { ...rest };
 
       // Encrypt API key if provided
       if (aiApiKey !== undefined) {
         data.aiApiKey = aiApiKey ? `enc:${encrypt(aiApiKey)}` : null;
+      }
+
+      // Phase 5z: setting a non-allowlisted `aiBaseUrl` requires:
+      //   1. an OWNER OrgMember (enforced via `ctx.orgMemberRole`), AND
+      //   2. the org's `OrganizationSettings.aiBaseUrlOptIn` flag.
+      // Allowlisted hosts (api.openai.com, api.anthropic.com) are exempt.
+      // Setting `aiBaseUrl: null` clears the override and falls back to the
+      // provider default, so that path skips both checks.
+      if (input.aiBaseUrl !== undefined && input.aiBaseUrl !== null && input.aiBaseUrl !== "") {
+        const team = await prisma.team.findUnique({
+          where: { id: teamId },
+          select: { organizationId: true },
+        });
+        if (!team) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Team not found" });
+        }
+        let host: string;
+        try {
+          host = new URL(input.aiBaseUrl).hostname;
+        } catch {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "aiBaseUrl must be a valid URL",
+          });
+        }
+        if (!isAllowlistedAiHost(host)) {
+          const orgMemberRole = (ctx as { orgMemberRole?: string }).orgMemberRole;
+          if (orgMemberRole !== "OWNER") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message:
+                "Setting a custom AI base URL requires an org OWNER role. " +
+                "Use api.openai.com or api.anthropic.com, or ask an owner to enable it.",
+            });
+          }
+          const settings = await prisma.organizationSettings.findUnique({
+            where: { organizationId: team.organizationId },
+            select: { aiBaseUrlOptIn: true },
+          });
+          if (settings?.aiBaseUrlOptIn !== true) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message:
+                "Custom AI provider URLs are disabled for this organization. " +
+                "An OWNER must enable `aiBaseUrlOptIn` in Organization Settings first.",
+            });
+          }
+        }
       }
 
       return prisma.team.update({
