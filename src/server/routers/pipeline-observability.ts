@@ -800,13 +800,21 @@ export const pipelineObservabilityRouter = router({
             where: { id: tap.pipelineId },
             select: { environment: { select: { teamId: true } } },
           });
-          const teamId = pipeline?.environment.teamId;
-          if (!teamId) throw new TRPCError({ code: "FORBIDDEN" });
-          const membership = await prisma.teamMember.findUnique({
-            where: { userId_teamId: { userId, teamId } },
-            select: { role: true },
-          });
-          if (!membership) throw new TRPCError({ code: "FORBIDDEN" });
+          // Pipeline may have been deleted between the tap being
+          // created and the user trying to stop it. The tap is now
+          // orphaned \u2014 anyone (the caller included) can safely
+          // dismiss it. Falling through to `stopTapHandler` deletes
+          // the orphan row; throwing FORBIDDEN here would strand the
+          // tap in the DB and confuse the UI ("Stop" button errors
+          // forever).
+          const teamId = pipeline?.environment.teamId ?? null;
+          if (teamId) {
+            const membership = await prisma.teamMember.findUnique({
+              where: { userId_teamId: { userId, teamId } },
+              select: { role: true },
+            });
+            if (!membership) throw new TRPCError({ code: "FORBIDDEN" });
+          }
         }
       }
       await stopTapHandler(input.requestId);
