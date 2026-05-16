@@ -143,18 +143,20 @@ export async function finishRegistration(opts: {
 }): Promise<FinishRegistrationResult> {
   const now = opts.now ?? (() => new Date());
 
-  return prisma.$transaction(async (tx) => {
-    // Capture the challenge in a closure — `verifyRegistrationResponse`
-    // hands us the value the browser echoed back so we can match it
-    // against the row we minted. We need the same string for the
-    // `deleteMany` below (the consume), so stash it here rather than
-    // trying to recover it from `opts.response.response.clientDataJSON`
-    // (which is a base64url-encoded JSON blob, NOT the raw challenge).
-    let consumedChallenge: string | null = null;
+  // Capture the challenge in a closure that survives outside the
+  // transaction. If the transaction throws (verifier failure, unverified
+  // assertion, race-loser delete), the tx is rolled back \u2014 INCLUDING
+  // any `tx.webAuthnChallenge.deleteMany` we did inside the catch \u2014
+  // and the challenge stays alive, breaking single-use on every failure
+  // path. Codex P1 round-7 review of PR #332 flagged this. The fix is
+  // to do the failure-path consume OUTSIDE the transaction using the
+  // global `prisma` client, so the deletion is durable regardless of
+  // tx rollback.
+  let consumedChallenge: string | null = null;
 
-    let verification;
-    try {
-      verification = await verifyRegistrationResponse({
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const verification = await verifyRegistrationResponse({
         response: opts.response,
         expectedOrigin: opts.rp.expectedOrigin,
         expectedRPID: opts.rp.rpID,
@@ -171,69 +173,58 @@ export async function finishRegistration(opts: {
           return true;
         },
       });
-    } catch (err) {
-      // Verifier threw (malformed attestation, unsupported alg, signature
-      // mismatch decoding error). Single-use still applies — consume the
-      // captured challenge before re-throwing so the same row can't be
-      // re-submitted with a different (well-formed) payload.
-      if (consumedChallenge !== null) {
-        await tx.webAuthnChallenge.deleteMany({
-          where: { challenge: consumedChallenge },
-        });
+
+      if (!verification.verified || !verification.registrationInfo) {
+        throw new Error("WebAuthn registration verification failed");
       }
-      throw err;
-    }
 
-    if (!verification.verified || !verification.registrationInfo) {
-      // Consume the challenge even on a failed verification (single-use
-      // applies to every attestation attempt, not just successful ones).
-      if (consumedChallenge !== null) {
-        await tx.webAuthnChallenge.deleteMany({
-          where: { challenge: consumedChallenge },
-        });
+      // Race-safe single-use consume on the happy path. `deleteMany` MUST
+      // affect exactly one row \u2014 a concurrent registration with the same
+      // challenge that beat us to the delete leaves us with count=0 and
+      // we throw + roll back the credential insert.
+      if (consumedChallenge === null) {
+        throw new Error(
+          "WebAuthn registration verification failed: challenge not captured",
+        );
       }
-      throw new Error("WebAuthn registration verification failed");
-    }
+      const { count: consumedRows } = await tx.webAuthnChallenge.deleteMany({
+        where: { challenge: consumedChallenge },
+      });
+      if (consumedRows !== 1) {
+        throw new Error(
+          "WebAuthn registration verification failed: challenge already consumed (replay)",
+        );
+      }
 
-    // Consume the challenge by the stored value (NOT clientDataJSON).
-    //
-    // Race-safe single-use: `deleteMany` MUST affect exactly one row. Under
-    // concurrent registrations using the same challenge, both transactions
-    // could pass the `findUnique` in `expectedChallenge` before either
-    // delete fired \u2014 we make the loser fail explicitly and roll back the
-    // credential insert.
-    if (consumedChallenge === null) {
-      throw new Error(
-        "WebAuthn registration verification failed: challenge not captured",
-      );
-    }
-    const { count: consumedRows } = await tx.webAuthnChallenge.deleteMany({
-      where: { challenge: consumedChallenge },
+      const reg = verification.registrationInfo;
+      const cred = await tx.webAuthnCredential.create({
+        data: {
+          userId: opts.userId,
+          credentialId: reg.credential.id,
+          // Prisma `Bytes` column accepts Buffer / Uint8Array; coerce to
+          // Buffer for the broadest pg driver compatibility.
+          publicKey: Buffer.from(reg.credential.publicKey),
+          counter: BigInt(reg.credential.counter ?? 0),
+          transports: (reg.credential.transports ?? []) as string[],
+          deviceType: reg.credentialDeviceType ?? null,
+          backedUp: reg.credentialBackedUp ?? false,
+          name: opts.name ?? null,
+        },
+      });
+
+      return { credentialId: cred.credentialId };
     });
-    if (consumedRows !== 1) {
-      throw new Error(
-        "WebAuthn registration verification failed: challenge already consumed (replay)",
-      );
+  } catch (err) {
+    // Failure path: the tx rolled back, but we still want the challenge
+    // consumed so it can't be replayed with a different payload. Use the
+    // GLOBAL prisma client \u2014 the tx is gone.
+    if (consumedChallenge !== null) {
+      await prisma.webAuthnChallenge.deleteMany({
+        where: { challenge: consumedChallenge },
+      });
     }
-
-    const reg = verification.registrationInfo;
-    const cred = await tx.webAuthnCredential.create({
-      data: {
-        userId: opts.userId,
-        credentialId: reg.credential.id,
-        // Prisma `Bytes` column accepts Buffer / Uint8Array; coerce to
-        // Buffer for the broadest pg driver compatibility.
-        publicKey: Buffer.from(reg.credential.publicKey),
-        counter: BigInt(reg.credential.counter ?? 0),
-        transports: (reg.credential.transports ?? []) as string[],
-        deviceType: reg.credentialDeviceType ?? null,
-        backedUp: reg.credentialBackedUp ?? false,
-        name: opts.name ?? null,
-      },
-    });
-
-    return { credentialId: cred.credentialId };
-  });
+    throw err;
+  }
 }
 
 /**
@@ -296,23 +287,22 @@ export async function finishAuthentication(opts: {
   const now = opts.now ?? (() => new Date());
   const credentialIdFromResponse = opts.response.id;
 
-  return prisma.$transaction(async (tx) => {
-    const stored = await tx.webAuthnCredential.findUnique({
-      where: { credentialId: credentialIdFromResponse },
-    });
-    if (!stored) {
-      throw new Error("WebAuthn credential not registered");
-    }
+  // Same hoisted-cleanup pattern as `finishRegistration` \u2014 see the
+  // comment there. Codex P1 round-7 on PR #332: the failure-path delete
+  // MUST run outside the transaction or a tx rollback wipes it out and
+  // the challenge stays alive.
+  let consumedChallenge: string | null = null;
 
-    // Capture the challenge in a closure so we can consume by its
-    // canonical value below — NOT `opts.response.response.clientDataJSON`
-    // (which is the base64url-encoded clientData blob, not the raw
-    // challenge string).
-    let consumedChallenge: string | null = null;
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const stored = await tx.webAuthnCredential.findUnique({
+        where: { credentialId: credentialIdFromResponse },
+      });
+      if (!stored) {
+        throw new Error("WebAuthn credential not registered");
+      }
 
-    let verification;
-    try {
-      verification = await verifyAuthenticationResponse({
+      const verification = await verifyAuthenticationResponse({
         response: opts.response,
         expectedOrigin: opts.rp.expectedOrigin,
         expectedRPID: opts.rp.rpID,
@@ -336,93 +326,70 @@ export async function finishAuthentication(opts: {
           return true;
         },
       });
-    } catch (err) {
-      // Verifier threw (malformed assertion, decoding error, etc.).
-      // Single-use still applies — consume the captured challenge before
-      // re-throwing so the same row can't be re-submitted with a
-      // different (well-formed) payload.
-      if (consumedChallenge !== null) {
-        await tx.webAuthnChallenge.deleteMany({
-          where: { challenge: consumedChallenge },
-        });
+
+      if (!verification.verified) {
+        throw new Error("WebAuthn authentication verification failed");
       }
-      throw err;
-    }
 
-    if (!verification.verified) {
-      // Consume the challenge even on a failed verification. Codex P1
-      // round-3 finding: leaving the row in place lets the same
-      // challenge be re-submitted multiple times within its TTL (after
-      // a malformed / tampered first attempt). Single-use applies to
-      // every assertion attempt, not just successful ones.
-      if (consumedChallenge !== null) {
-        await tx.webAuthnChallenge.deleteMany({
-          where: { challenge: consumedChallenge },
-        });
+      // Counter monotonicity. Platform-authenticator carve-out only
+      // applies when BOTH sides are 0 (RFC 8809 \u00a76.1.1); any other path
+      // through `newCounter <= stored.counter` is a cloned-authenticator
+      // signal.
+      const newCounter = BigInt(verification.authenticationInfo.newCounter);
+      const isPlatformZero =
+        newCounter === BigInt(0) && stored.counter === BigInt(0);
+      if (!isPlatformZero && newCounter <= stored.counter) {
+        throw new Error("WebAuthn counter regression — possible cloned authenticator");
       }
-      throw new Error("WebAuthn authentication verification failed");
-    }
 
-    // Counter monotonicity: the authenticator MUST report a new counter
-    // strictly greater than what we have on file. Exception: many
-    // platform-authenticators (Touch ID, Windows Hello, Android biometric)
-    // always report 0 (they don\'t maintain a counter at all). RFC 8809
-    // \u00a76.1.1 explicitly carves this case out, but ONLY when the stored
-    // counter is ALSO 0 \u2014 a credential that previously advanced and now
-    // returns 0 is the cloned-authenticator signal we MUST reject.
-    const newCounter = BigInt(verification.authenticationInfo.newCounter);
-    const isPlatformZero =
-      newCounter === BigInt(0) && stored.counter === BigInt(0);
-    if (!isPlatformZero && newCounter <= stored.counter) {
-      throw new Error("WebAuthn counter regression — possible cloned authenticator");
-    }
+      // Race-safe conditional counter bump: matches only if no concurrent
+      // assertion has already changed the stored counter.
+      const { count: counterUpdated } = await tx.webAuthnCredential.updateMany({
+        where: { id: stored.id, counter: stored.counter },
+        data: {
+          counter: newCounter,
+          lastUsedAt: now(),
+        },
+      });
+      if (counterUpdated !== 1) {
+        throw new Error(
+          "WebAuthn authentication verification failed: counter changed mid-flight (concurrent assertion race)",
+        );
+      }
 
-    // Atomically: bump counter, mark lastUsedAt, consume challenge.
-    //
-    // The consume is the single-use boundary. Under concurrent assertions
-    // using the same challenge, both transactions could pass the
-    // `findUnique` in `expectedChallenge` BEFORE either deleteMany ran.
-    // To make the consume race-safe we require `deleteMany` to affect
-    // exactly one row \u2014 the loser's count is 0 and we throw, rolling
-    // back the counter bump.
-    // Conditional update: bump the counter ONLY if it still matches the
-    // value we read at the top of the verifier. Two concurrent
-    // authentications that both pass the regression check would otherwise
-    // both write the same `newCounter`, masking that one of them is a
-    // stale-reread replay. `updateMany` with the expected counter as a
-    // WHERE clause makes the loser update 0 rows; we then throw and roll
-    // back the credential write inside this transaction.
-    const { count: counterUpdated } = await tx.webAuthnCredential.updateMany({
-      where: { id: stored.id, counter: stored.counter },
-      data: {
-        counter: newCounter,
-        lastUsedAt: now(),
-      },
+      // Race-safe single-use consume on the happy path. The loser of a
+      // concurrent assertion race lands on count=0 here and throws +
+      // rolls back the counter update.
+      if (consumedChallenge === null) {
+        throw new Error(
+          "WebAuthn authentication verification failed: challenge not captured",
+        );
+      }
+      const { count: consumedRows } = await tx.webAuthnChallenge.deleteMany({
+        where: { challenge: consumedChallenge },
+      });
+      if (consumedRows !== 1) {
+        throw new Error(
+          "WebAuthn authentication verification failed: challenge already consumed (replay)",
+        );
+      }
+
+      return {
+        userId: stored.userId,
+        credentialId: stored.credentialId,
+      };
     });
-    if (counterUpdated !== 1) {
-      throw new Error(
-        "WebAuthn authentication verification failed: counter changed mid-flight (concurrent assertion race)",
-      );
+  } catch (err) {
+    // Failure path: tx rolled back, but we still want the challenge
+    // consumed so the same row can't be re-submitted with a different
+    // payload. Global `prisma` client \u2014 outside the rolled-back tx.
+    if (consumedChallenge !== null) {
+      await prisma.webAuthnChallenge.deleteMany({
+        where: { challenge: consumedChallenge },
+      });
     }
-    if (consumedChallenge === null) {
-      throw new Error(
-        "WebAuthn authentication verification failed: challenge not captured",
-      );
-    }
-    const { count: consumedRows } = await tx.webAuthnChallenge.deleteMany({
-      where: { challenge: consumedChallenge },
-    });
-    if (consumedRows !== 1) {
-      throw new Error(
-        "WebAuthn authentication verification failed: challenge already consumed (replay)",
-      );
-    }
-
-    return {
-      userId: stored.userId,
-      credentialId: stored.credentialId,
-    };
-  });
+    throw err;
+  }
 }
 
 /**
