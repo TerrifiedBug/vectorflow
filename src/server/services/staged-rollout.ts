@@ -23,6 +23,14 @@ const POLL_INTERVAL_MS = 30_000;
 export class StagedRolloutService {
   private timer: ReturnType<typeof setInterval> | null = null;
 
+  /**
+   * True while a tick is currently executing. The per-org fan-out
+   * can exceed POLL_INTERVAL_MS; setInterval does NOT skip
+   * overlapping callbacks, so without this guard two ticks could
+   * run concurrently and double-transition the same rollout.
+   */
+  private tickInFlight = false;
+
   init(): void {
     infoLog("staged-rollout", "Initializing staged rollout service");
     this.start();
@@ -30,7 +38,7 @@ export class StagedRolloutService {
 
   start(): void {
     this.timer = setInterval(
-      this.checkHealthWindows.bind(this),
+      () => void this.tick(),
       POLL_INTERVAL_MS,
     );
     this.timer.unref();
@@ -46,16 +54,64 @@ export class StagedRolloutService {
   }
 
   /**
-   * Poll loop: find rollouts whose health-check window has expired
-   * and transition them from CANARY_DEPLOYED to HEALTH_CHECK.
+   * Single tick: iterate orgs and run checkHealthWindows per org.
    */
-  async checkHealthWindows(): Promise<void> {
+  private async tick(): Promise<void> {
+    if (this.tickInFlight) {
+      infoLog(
+        "staged-rollout",
+        "Previous tick still in flight; skipping this interval to avoid overlap",
+      );
+      return;
+    }
+    this.tickInFlight = true;
+    try {
+      let orgs: Array<{ id: string }>;
+      try {
+        orgs = await prisma.organization.findMany({
+          where: { suspendedAt: null, deletedAt: null },
+          select: { id: true },
+        });
+      } catch (err) {
+        errorLog(
+          "staged-rollout",
+          "Failed to list organizations for tick (skipping this cycle)",
+          err,
+        );
+        return;
+      }
+      for (const org of orgs) {
+        try {
+          await this.checkHealthWindows({ organizationId: org.id });
+        } catch (err) {
+          errorLog(
+            "staged-rollout",
+            `org=${org.id} checkHealthWindows error (continuing)`,
+            err,
+          );
+        }
+      }
+    } finally {
+      this.tickInFlight = false;
+    }
+  }
+
+  /**
+   * Poll loop: find rollouts whose health-check window has expired
+   * and transition them from CANARY_DEPLOYED to HEALTH_CHECK. When
+   * `opts.organizationId` is supplied the query is scoped to that
+   * tenant.
+   */
+  async checkHealthWindows(
+    opts: { organizationId?: string } = {},
+  ): Promise<void> {
     try {
       const now = new Date();
       const expiredRollouts = await prisma.stagedRollout.findMany({
         where: {
           status: "CANARY_DEPLOYED",
           healthCheckExpiresAt: { lte: now },
+          ...(opts.organizationId ? { organizationId: opts.organizationId } : {}),
         },
         include: {
           pipeline: { select: { name: true, environmentId: true, deploymentStrategy: true } },
