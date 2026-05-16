@@ -79,13 +79,14 @@ interface TrpcProcedureLike {
  * with `{ upstreamId }` would silently escape the audit. Fixed by
  * adding it here.
  *
- * `id` is NOT included \u2014 the middleware DOES resolve `id` as a
- * fallback for pipeline / environment / vectorNode / template lookups,
- * but `id` is a generic input name (every entity has one) and including
- * it would cause every CRUD procedure that takes `{ id }` to be
- * audited regardless of whether the id refers to a tenant-scoped row.
- * The middleware's resolution table is the actual authority; this
- * audit catches the explicit-name cases.
+ * `id` IS included \u2014 Codex P1 round-9 review pointed out that excluding
+ * it was a large false-negative gap. `withTeamAccess` resolves
+ * `rawInput.id` as a fallback to pipeline / environment / vectorNode /
+ * template / migration / serviceAccount / secret lookups, so most CRUD
+ * procedures (`pipeline.get`, `environment.update`, etc.) rely on this
+ * path. Including `id` floods the audit with hundreds of procedures \u2014
+ * but every one of them must actually run through `withTeamAccess`, and
+ * any that doesn't is a real security gap the audit must surface.
  */
 const TENANT_INPUT_KEYS = [
   "teamId",
@@ -93,16 +94,12 @@ const TENANT_INPUT_KEYS = [
   "pipelineId",
   "pipelineIds",
   "upstreamId",
-  // Round 8 expansion: every other key `withTeamAccess` (see init.ts
-  // around `rawInput?.requestId` / `nodeId` / etc.) explicitly resolves
-  // to a teamId. Procedures that take ONLY one of these keys (e.g.
-  // `deploy.approveDeployRequest` carries `requestId` only) previously
-  // dropped out of the audit.
   "requestId",
   "versionId",
   "alertEventId",
   "nodeId",
   "groupId",
+  "id",
 ] as const;
 
 /**
@@ -197,6 +194,14 @@ const INTENTIONALLY_UNGUARDED = new Set<string>([
   // handler now validates ownership before calling stopTapHandler.
   // Same inline-auth pattern as the other three procedures above.
   "pipeline.stopTap",
+
+  // template.get / template.delete: inline auth in the handler (system
+  // templates with teamId=null are readable by all authenticated users;
+  // team-owned templates require membership or super-admin). Same Codex
+  // P1 round-9 catch as pipeline.stopTap \u2014 the wider audit (post-`id`
+  // inclusion) surfaced these existing gaps and they are fixed inline.
+  "template.get",
+  "template.delete",
 ]);
 
 interface AuditEntry {
