@@ -70,6 +70,14 @@ export async function getRecentMeanLatency(
 export class AutoRollbackService {
   private timer: ReturnType<typeof setInterval> | null = null;
 
+  /**
+   * True while a tick is currently executing. The per-org fan-out can
+   * exceed POLL_INTERVAL_MS in fleets with many tenants; setInterval
+   * does NOT skip overlapping callbacks, so without this guard two
+   * ticks could run concurrently and double-rollback the same pipeline.
+   */
+  private tickInFlight = false;
+
   init(): void {
     infoLog("auto-rollback", "Initializing auto-rollback service");
     this.start();
@@ -77,7 +85,7 @@ export class AutoRollbackService {
 
   start(): void {
     this.timer = setInterval(
-      this.checkPipelines.bind(this),
+      () => void this.tick(),
       POLL_INTERVAL_MS,
     );
     this.timer.unref();
@@ -93,11 +101,62 @@ export class AutoRollbackService {
   }
 
   /**
-   * Core poll loop: finds pipelines with auto-rollback enabled that were
-   * deployed within the monitoring window, checks their aggregate error rate,
-   * and triggers rollback if the threshold is exceeded.
+   * Single tick: iterate orgs and process each one's pipelines. The
+   * `tickInFlight` guard prevents overlapping invocations when fan-out
+   * exceeds POLL_INTERVAL_MS. A failure listing orgs returns early
+   * (logged) so a transient DB error does not become an unhandled
+   * rejection that ends the process.
    */
-  async checkPipelines(): Promise<void> {
+  private async tick(): Promise<void> {
+    if (this.tickInFlight) {
+      infoLog(
+        "auto-rollback",
+        "Previous tick still in flight; skipping this interval to avoid overlap",
+      );
+      return;
+    }
+    this.tickInFlight = true;
+    try {
+      let orgs: Array<{ id: string }>;
+      try {
+        orgs = await prisma.organization.findMany({
+          where: { suspendedAt: null, deletedAt: null },
+          select: { id: true },
+        });
+      } catch (err) {
+        errorLog(
+          "auto-rollback",
+          "Failed to list organizations for tick (skipping this cycle)",
+          err,
+        );
+        return;
+      }
+      for (const org of orgs) {
+        try {
+          await this.checkPipelines({ organizationId: org.id });
+        } catch (err) {
+          errorLog(
+            "auto-rollback",
+            `org=${org.id} checkPipelines error (continuing)`,
+            err,
+          );
+        }
+      }
+    } finally {
+      this.tickInFlight = false;
+    }
+  }
+
+  /**
+   * Core poll loop body: finds pipelines with auto-rollback enabled that
+   * were deployed within the monitoring window, checks their aggregate
+   * error rate, and triggers rollback if the threshold is exceeded.
+   *
+   * When `opts.organizationId` is supplied the query is scoped to that
+   * org — the per-org `tick()` uses this. Exported via the class so
+   * tests can drive the body directly.
+   */
+  async checkPipelines(opts: { organizationId?: string } = {}): Promise<void> {
     let candidates;
     try {
       candidates = await prisma.pipeline.findMany({
@@ -105,6 +164,7 @@ export class AutoRollbackService {
           autoRollbackEnabled: true,
           isDraft: false,
           deployedAt: { not: null },
+          ...(opts.organizationId ? { organizationId: opts.organizationId } : {}),
         },
         select: {
           id: true,
