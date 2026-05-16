@@ -77,13 +77,49 @@ export interface OrgDataExportPayload {
   orgAccessGrants: Array<Record<string, unknown>>;
 }
 
+/**
+ * Prisma surface needed by the export. Accepting a narrowed `Pick`
+ * means callers can pass either the global `prisma` client OR the
+ * `tx` client handed by `withOrgTx(orgId, async (tx) => ...)`. The tx
+ * variant carries the `SET LOCAL app.org_id` GUC so the underlying
+ * reads are fenced by RLS \u2014 the global client is NOT fenced. Cloud
+ * MUST pass the tx client; OSS can use the default.
+ */
+export type OrgDataExportPrisma = Pick<
+  PrismaClient,
+  | "organization"
+  | "organizationSettings"
+  | "team"
+  | "environment"
+  | "vectorNode"
+  | "pipeline"
+  | "pipelineVersion"
+  | "alertRule"
+  | "notificationChannel"
+  | "webhookEndpoint"
+  | "auditLog"
+  | "orgMember"
+  | "user"
+  | "orgAccessGrant"
+>;
+
 export interface BuildOrgDataExportOpts {
+  /**
+   * Optional Prisma client. Defaults to the global `prisma`. Cloud
+   * deployments MUST pass the `tx` client from `withOrgTx(orgId, ...)`
+   * so reads are fenced by RLS via `SET LOCAL app.org_id`. Without the
+   * tx client the global connection has no `app.org_id` set and RLS
+   * policies evaluate to "no rows" \u2014 the function would still work for
+   * the OSS table-owner role (which bypasses RLS by default) but would
+   * return an empty export in Cloud.
+   */
+  client?: OrgDataExportPrisma;
   /** Abort signal honoured between table reads. */
   signal?: AbortSignal;
   /**
    * Cap rows fetched per table. Defaults to 100_000; tables above the cap
-   * are truncated with a note in the manifest. Customers with that much
-   * data fall back to a paged export endpoint (out of scope).
+   * are flagged in `manifest.truncated`. Customers with that much data
+   * fall back to a paged export endpoint (out of scope).
    */
   perTableLimit?: number;
   /** Stable timestamp for deterministic tests; defaults to new Date(). */
@@ -98,10 +134,11 @@ const DEFAULT_PER_TABLE_LIMIT = 100_000;
  * flags, computes a content checksum over a canonical JSON serialisation
  * of the data block, and returns the wrapped envelope.
  *
- * The function reads with the global prisma client by design: Cloud
- * deployments wrap this in `withOrgTx(orgId, …)` at the call site so RLS
- * fences the reads; OSS deployments rely on application-level org
- * filtering, which `where: { organizationId }` provides directly.
+ * `opts.client` is required for Cloud deployments to fence reads behind
+ * RLS: pass the `tx` client from `withOrgTx(orgId, async (tx) => buildOrgDataExport(orgId, { client: tx }))`.
+ * If omitted, the global prisma client is used (OSS path \u2014 application-
+ * level org filtering via `where: { organizationId }` is the boundary;
+ * the table-owner role bypasses RLS by default).
  */
 export async function buildOrgDataExport(
   organizationId: string,
@@ -113,6 +150,7 @@ export async function buildOrgDataExport(
       `buildOrgDataExport: perTableLimit must be a positive finite number (got ${limit}). Non-positive values would make every table look truncated.`,
     );
   }
+  const db: OrgDataExportPrisma = opts.client ?? prisma;
   const signal = opts.signal;
   const now = opts.now ?? new Date();
   const checkpoint = () => {
@@ -122,7 +160,7 @@ export async function buildOrgDataExport(
   };
 
   checkpoint();
-  const organization = await prisma.organization.findUnique({
+  const organization = await db.organization.findUnique({
     where: { id: organizationId },
   });
   if (!organization) {
@@ -139,7 +177,7 @@ export async function buildOrgDataExport(
 
   checkpoint();
   const organizationSettingsRaw =
-    await prisma.organizationSettings.findUnique({
+    await db.organizationSettings.findUnique({
       where: { organizationId },
     });
   // OrganizationSettings holds live operational credentials (OIDC client
@@ -154,7 +192,7 @@ export async function buildOrgDataExport(
   ]);
 
   checkpoint();
-  const teamsRaw = await prisma.team.findMany({
+  const teamsRaw = await db.team.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { createdAt: "asc" },
@@ -164,7 +202,7 @@ export async function buildOrgDataExport(
   const teams = teamsRaw.map((t) => redactKeys(t, ["aiApiKey"]));
 
   checkpoint();
-  const environmentsRaw = await prisma.environment.findMany({
+  const environmentsRaw = await db.environment.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { createdAt: "asc" },
@@ -181,28 +219,28 @@ export async function buildOrgDataExport(
   );
 
   checkpoint();
-  const vectorNodes = await prisma.vectorNode.findMany({
+  const vectorNodes = await db.vectorNode.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { createdAt: "asc" },
   });
 
   checkpoint();
-  const pipelines = await prisma.pipeline.findMany({
+  const pipelines = await db.pipeline.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { createdAt: "asc" },
   });
 
   checkpoint();
-  const pipelineVersions = await prisma.pipelineVersion.findMany({
+  const pipelineVersions = await db.pipelineVersion.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { createdAt: "asc" },
   });
 
   checkpoint();
-  const alertRules = await prisma.alertRule.findMany({
+  const alertRules = await db.alertRule.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { id: "asc" },
@@ -213,7 +251,7 @@ export async function buildOrgDataExport(
   // credentials. We strip the encrypted payload but keep enough to identify
   // the channel (name, type, target URL host) so a customer can recreate
   // the channel against the destination they already know about.
-  const alertChannelsRaw = await prisma.notificationChannel.findMany({
+  const alertChannelsRaw = await db.notificationChannel.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { createdAt: "asc" },
@@ -223,7 +261,7 @@ export async function buildOrgDataExport(
   );
 
   checkpoint();
-  const webhookEndpointsRaw = await prisma.webhookEndpoint.findMany({
+  const webhookEndpointsRaw = await db.webhookEndpoint.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { createdAt: "asc" },
@@ -233,14 +271,14 @@ export async function buildOrgDataExport(
   );
 
   checkpoint();
-  const auditLog = await prisma.auditLog.findMany({
+  const auditLog = await db.auditLog.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { createdAt: "asc" },
   });
 
   checkpoint();
-  const orgMembers = await prisma.orgMember.findMany({
+  const orgMembers = await db.orgMember.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { createdAt: "asc" },
@@ -256,7 +294,7 @@ export async function buildOrgDataExport(
   // to a real person.
   const memberUserIds = orgMembers.map((m) => m.userId as string);
   const tenantUsers = memberUserIds.length
-    ? await prisma.user.findMany({
+    ? await db.user.findMany({
         where: { id: { in: memberUserIds } },
         take: limit,
         orderBy: { createdAt: "asc" },
@@ -272,7 +310,7 @@ export async function buildOrgDataExport(
       })
     : [];
   checkpoint();
-  const orgAccessGrantsRaw = await prisma.orgAccessGrant.findMany({
+  const orgAccessGrantsRaw = await db.orgAccessGrant.findMany({
     where: { organizationId },
     take: limit,
     orderBy: { createdAt: "asc" },
