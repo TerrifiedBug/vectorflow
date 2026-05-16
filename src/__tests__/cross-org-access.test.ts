@@ -66,7 +66,34 @@ interface TrpcProcedureLike {
   };
 }
 
-const TENANT_INPUT_KEYS = ["teamId", "environmentId", "pipelineId", "pipelineIds"] as const;
+/**
+ * Every input field name that `withTeamAccess` recognises as a tenant
+ * input and resolves to a teamId. Keeping this list aligned with the
+ * resolution table in `src/trpc/init.ts:withTeamAccess` is the audit's
+ * load-bearing contract: a tenant input here that the middleware
+ * doesn't resolve is a real gap.
+ *
+ * Codex P1 round-7 review: the prior list was hard-coded to four
+ * fields and missed `upstreamId`, which `withTeamAccess` DOES resolve
+ * (see init.ts lines around the `pipelineId` lookup). A procedure
+ * with `{ upstreamId }` would silently escape the audit. Fixed by
+ * adding it here.
+ *
+ * `id` is NOT included \u2014 the middleware DOES resolve `id` as a
+ * fallback for pipeline / environment / vectorNode / template lookups,
+ * but `id` is a generic input name (every entity has one) and including
+ * it would cause every CRUD procedure that takes `{ id }` to be
+ * audited regardless of whether the id refers to a tenant-scoped row.
+ * The middleware's resolution table is the actual authority; this
+ * audit catches the explicit-name cases.
+ */
+const TENANT_INPUT_KEYS = [
+  "teamId",
+  "environmentId",
+  "pipelineId",
+  "pipelineIds",
+  "upstreamId",
+] as const;
 
 /**
  * Strings whose presence in a middleware function's `.toString()` indicates
