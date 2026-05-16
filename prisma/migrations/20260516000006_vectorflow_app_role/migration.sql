@@ -31,13 +31,16 @@ BEGIN
             NOSUPERUSER NOCREATEROLE NOCREATEDB
             NOBYPASSRLS LOGIN
             INHERIT;
-        RAISE NOTICE 'phase4c: created role vectorflow_app (NOBYPASSRLS, NOSUPERUSER)';
+        RAISE NOTICE 'phase4c: created role vectorflow_app (NOBYPASSRLS, NOSUPERUSER, LOGIN)';
     ELSE
-        -- Defend against a pre-existing role being granted BYPASSRLS
-        -- elsewhere; force it off here so the RLS backstop is never silently
-        -- defeated.
-        ALTER ROLE vectorflow_app NOSUPERUSER NOCREATEROLE NOCREATEDB NOBYPASSRLS;
-        RAISE NOTICE 'phase4c: role vectorflow_app already present, attributes reasserted';
+        -- Defend against a pre-existing role provisioned with NOLOGIN or
+        -- granted BYPASSRLS elsewhere. Reassert every attribute the runtime
+        -- expects so a re-run guarantees the same role shape regardless of
+        -- how it was originally created (manual psql, IaC, prior migration).
+        ALTER ROLE vectorflow_app
+            NOSUPERUSER NOCREATEROLE NOCREATEDB
+            NOBYPASSRLS LOGIN INHERIT;
+        RAISE NOTICE 'phase4c: role vectorflow_app already present, attributes reasserted (incl. LOGIN)';
     END IF;
 END
 $$;
