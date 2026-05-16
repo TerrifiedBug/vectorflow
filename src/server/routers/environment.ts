@@ -217,6 +217,11 @@ export const environmentRouter = router({
           data: {
             name: input.name,
             teamId: input.teamId,
+            // Phase 5v: write the org id on the row so the quota post-check
+            // (which counts by `organizationId`) actually sees it. Without
+            // this the column defaults to "default" and non-default tenants
+            // could bypass the cap indefinitely.
+            organizationId: team.organizationId,
           },
         }),
       );

@@ -218,7 +218,7 @@ describe("environment router", () => {
       expect(result.name).toBe("Staging");
       expect(prismaMock.environment.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { name: "Staging", teamId: "team-1" },
+          data: { name: "Staging", teamId: "team-1", organizationId: "org-1" },
         }),
       );
     });

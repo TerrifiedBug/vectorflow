@@ -149,6 +149,11 @@ export const pipelineCrudRouter = router({
             name: input.name,
             description: input.description,
             environmentId: input.environmentId,
+            // Phase 5v: write the org id on the row so the quota post-check
+            // (which counts by `organizationId`) actually sees it. Without
+            // this the column would default to "default" and non-default
+            // tenants could bypass the cap indefinitely.
+            organizationId: environment.organizationId,
             globalConfig: { log_level: "info" },
             createdById: ctx.session.user?.id ?? null,
             updatedById: ctx.session.user?.id ?? null,
