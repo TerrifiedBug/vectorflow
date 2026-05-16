@@ -138,9 +138,20 @@ export async function buildOrgDataExport(
   ]);
 
   checkpoint();
-  const organizationSettings = await prisma.organizationSettings.findUnique({
-    where: { organizationId },
-  });
+  const organizationSettingsRaw =
+    await prisma.organizationSettings.findUnique({
+      where: { organizationId },
+    });
+  // OrganizationSettings holds live operational credentials (OIDC client
+  // secret, SCIM bearer token, S3 secret access key). Redact them to
+  // presence flags so the export still tells the customer that SSO/SCIM/
+  // S3 backups are configured without leaking the secret material.
+  const organizationSettings = redactKeys(organizationSettingsRaw, [
+    "oidcClientSecret",
+    "scimBearerToken",
+    "s3AccessKeyId",
+    "s3SecretAccessKey",
+  ]);
 
   checkpoint();
   const teams = await prisma.team.findMany({

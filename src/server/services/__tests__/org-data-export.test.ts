@@ -32,7 +32,23 @@ function setupHappyPath() {
     createdAt: NOW,
     updatedAt: NOW,
   } as never);
-  prismaMock.organizationSettings.findUnique.mockResolvedValue(null as never);
+  prismaMock.organizationSettings.findUnique.mockResolvedValue({
+    id: "settings-1",
+    organizationId: "org-1",
+    oidcIssuer: "https://idp.example",
+    oidcClientId: "client-public-id",
+    oidcClientSecret: "client-secret-shhh",
+    scimEnabled: true,
+    scimBearerToken: "Bearer abc123",
+    backupStorageBackend: "s3",
+    s3Bucket: "vf-backups",
+    s3AccessKeyId: "AKIAEXAMPLE",
+    s3SecretAccessKey: "SUPERSECRET",
+    s3Endpoint: null,
+    backupEnabled: true,
+    telemetryEnabled: false,
+    updatedAt: NOW,
+  } as never);
   prismaMock.team.findMany.mockResolvedValue([
     { id: "team-1", organizationId: "org-1", name: "Eng" } as never,
   ]);
