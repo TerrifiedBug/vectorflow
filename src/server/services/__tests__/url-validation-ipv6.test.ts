@@ -127,3 +127,25 @@ describe("isPrivateIP — Codex follow-ups: compressed Teredo + wider site-local
     expect(isPrivateIP("fe00::1")).toBe(false);
   });
 });
+
+describe("isPrivateIP — Codex follow-up: hex-form IPv4-mapped IPv6", () => {
+  it("rejects hex-form mapped IPv4 link-local (::ffff:a9fe:a9fe == 169.254.169.254)", () => {
+    expect(isPrivateIP("::ffff:a9fe:a9fe")).toBe(true);
+  });
+
+  it("rejects hex-form mapped IPv4 loopback (::ffff:7f00:1 == 127.0.0.1)", () => {
+    expect(isPrivateIP("::ffff:7f00:1")).toBe(true);
+  });
+
+  it("rejects hex-form mapped IPv4 RFC 1918 (::ffff:c0a8:101 == 192.168.1.1)", () => {
+    expect(isPrivateIP("::ffff:c0a8:101")).toBe(true);
+  });
+
+  it("rejects hex-form mapped IPv4 RFC 1918 in 172.16/12 (::ffff:ac14:1 == 172.20.0.1)", () => {
+    expect(isPrivateIP("::ffff:ac14:1")).toBe(true);
+  });
+
+  it("does NOT reject hex-form mapped public IPv4 (::ffff:808:808 == 8.8.8.8)", () => {
+    expect(isPrivateIP("::ffff:808:808")).toBe(false);
+  });
+});

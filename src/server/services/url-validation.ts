@@ -140,11 +140,25 @@ export function isPrivateIP(ip: string): boolean {
   // not just fec0::/16.
   if (/^fe[cdef][0-9a-f]:/i.test(ip)) return true;
 
-  // IPv4-mapped IPv6: ::ffff:a.b.c.d. Strip the prefix and recurse with
-  // the bare IPv4 so we catch ::ffff:169.254.169.254 tunneled past a
-  // naive IPv6-only check.
-  const v4Mapped = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i.exec(ip);
-  if (v4Mapped) return isPrivateIP(v4Mapped[1]);
+  // IPv4-mapped IPv6 has TWO wire forms (RFC 4291):
+  //   1. Dotted-quad: ::ffff:169.254.169.254
+  //   2. Hex:         ::ffff:a9fe:a9fe (same address)
+  // Node's URL/IP parsers accept both. Decode either back to its
+  // bare IPv4 and recurse so e.g. ::ffff:a9fe:a9fe (== 169.254.169.254)
+  // is rejected the same as the dotted form.
+  const v4MappedDotted = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i.exec(ip);
+  if (v4MappedDotted) return isPrivateIP(v4MappedDotted[1]);
+  const v4MappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(ip);
+  if (v4MappedHex) {
+    const high = parseInt(v4MappedHex[1], 16);
+    const low = parseInt(v4MappedHex[2], 16);
+    // Reconstruct the IPv4 dotted form from the two 16-bit halves.
+    const a = (high >> 8) & 0xff;
+    const b = high & 0xff;
+    const c = (low >> 8) & 0xff;
+    const d = low & 0xff;
+    return isPrivateIP(`${a}.${b}.${c}.${d}`);
+  }
 
   // 6to4 (2002::/16) encapsulates an IPv4 in the next 32 bits.
   // Refuse 6to4 wholesale — embedded IPv4 may be private, and a
