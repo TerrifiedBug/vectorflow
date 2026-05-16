@@ -1,6 +1,20 @@
+/**
+ * OSS first-run setup. Creates the initial admin user, default Team,
+ * default Environment, and binds the user to the default Organization
+ * (`DEFAULT_ORG_ID`) as `OWNER` so that `orgProcedure` middleware can
+ * resolve their org context.
+ *
+ * Cloud signup follows a different flow in the closed `cloud/`
+ * workspace: it mints a fresh `Organization` with a KMS-wrapped DEK and
+ * the customer's chosen slug, then creates the OWNER and seeds Team /
+ * Environment under THAT org. The Cloud path does NOT call this
+ * function.
+ */
+
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { ulid } from "ulid";
+import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 function buildTelemetryFields(choice: "yes" | "no") {
   if (choice === "yes") {
@@ -44,10 +58,24 @@ export async function completeSetup(input: {
       },
     });
 
+    // Bind the new user to the default organisation as OWNER so that
+    // `orgProcedure` middleware (which requires an OrgMember row) lets
+    // them in. The Organization row itself is seeded by the Phase 1
+    // migration `20260515000001_add_organization_tenancy` — no need to
+    // upsert it here.
+    await tx.orgMember.create({
+      data: {
+        userId: user.id,
+        organizationId: DEFAULT_ORG_ID,
+        role: "OWNER",
+      },
+    });
+
     const team = await tx.team.create({
       data: {
         name: input.teamName,
         requireTwoFactor: input.requireTwoFactor,
+        organizationId: DEFAULT_ORG_ID,
       },
     });
 
@@ -63,6 +91,7 @@ export async function completeSetup(input: {
       data: {
         name: input.environmentName,
         teamId: team.id,
+        organizationId: DEFAULT_ORG_ID,
       },
     });
 
