@@ -20,7 +20,13 @@ const RETENTION_DAYS = 30;
 export class AnomalyDetectionService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private tickCount = 0;
-
+  /**
+   * True while a tick is currently executing. The per-org fan-out can
+   * exceed POLL_INTERVAL_MS in fleets with many tenants; setInterval
+   * does NOT skip overlapping callbacks, so without this guard two
+   * ticks could run concurrently and double-process every org.
+   */
+  private tickInFlight = false;
   init(): void {
     infoLog("anomaly-detection", "Initializing...");
     this.start();
@@ -52,6 +58,22 @@ export class AnomalyDetectionService {
    * tenant's analysis (or failure) does not stall another's.
    */
   private async tick(): Promise<void> {
+    if (this.tickInFlight) {
+      infoLog(
+        "anomaly-detection",
+        "Previous tick still in flight; skipping this interval to avoid overlap",
+      );
+      return;
+    }
+    this.tickInFlight = true;
+    try {
+      await this.runTickBody();
+    } finally {
+      this.tickInFlight = false;
+    }
+  }
+
+  private async runTickBody(): Promise<void> {
     this.tickCount++;
 
     // The org lookup itself can fail under DB pressure. Catching here

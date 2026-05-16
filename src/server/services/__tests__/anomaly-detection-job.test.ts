@@ -135,4 +135,26 @@ describe("AnomalyDetectionService", () => {
     // evaluateAllPipelines must not have been called \u2014 we exited early.
     expect(mockEvaluateAll).not.toHaveBeenCalled();
   });
+
+  it("skips an overlapping tick when the previous tick is still running", async () => {
+    // Long-running evaluate: first call never resolves until we release it.
+    let releaseFirst: (v: unknown) => void = () => {};
+    mockEvaluateAll.mockImplementationOnce(
+      () => new Promise((res) => { releaseFirst = res; }),
+    );
+    mockEvaluateAll.mockResolvedValue([] as never);
+
+    service.init();
+    // Fire interval #1 — tick starts, awaits hung evaluate, tickInFlight stays true
+    await vi.advanceTimersByTimeAsync(60_000);
+    // Fire interval #2 — should observe tickInFlight=true and skip
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    // Only one evaluate call so far (the first, still in flight); the
+    // second interval's tick exited early without entering the loop.
+    expect(mockEvaluateAll).toHaveBeenCalledTimes(1);
+
+    // Release the hung evaluate so the test exits cleanly.
+    releaseFirst([]);
+  });
 });
