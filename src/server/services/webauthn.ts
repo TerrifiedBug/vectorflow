@@ -152,23 +152,37 @@ export async function finishRegistration(opts: {
     // (which is a base64url-encoded JSON blob, NOT the raw challenge).
     let consumedChallenge: string | null = null;
 
-    const verification = await verifyRegistrationResponse({
-      response: opts.response,
-      expectedOrigin: opts.rp.expectedOrigin,
-      expectedRPID: opts.rp.rpID,
-      requireUserVerification: false,
-      expectedChallenge: async (challenge) => {
-        const row = await tx.webAuthnChallenge.findUnique({
-          where: { challenge },
+    let verification;
+    try {
+      verification = await verifyRegistrationResponse({
+        response: opts.response,
+        expectedOrigin: opts.rp.expectedOrigin,
+        expectedRPID: opts.rp.rpID,
+        requireUserVerification: false,
+        expectedChallenge: async (challenge) => {
+          const row = await tx.webAuthnChallenge.findUnique({
+            where: { challenge },
+          });
+          if (!row) return false;
+          if (row.kind !== "register") return false;
+          if (row.userId !== opts.userId) return false;
+          if (row.expiresAt.getTime() < now().getTime()) return false;
+          consumedChallenge = challenge;
+          return true;
+        },
+      });
+    } catch (err) {
+      // Verifier threw (malformed attestation, unsupported alg, signature
+      // mismatch decoding error). Single-use still applies — consume the
+      // captured challenge before re-throwing so the same row can't be
+      // re-submitted with a different (well-formed) payload.
+      if (consumedChallenge !== null) {
+        await tx.webAuthnChallenge.deleteMany({
+          where: { challenge: consumedChallenge },
         });
-        if (!row) return false;
-        if (row.kind !== "register") return false;
-        if (row.userId !== opts.userId) return false;
-        if (row.expiresAt.getTime() < now().getTime()) return false;
-        consumedChallenge = challenge;
-        return true;
-      },
-    });
+      }
+      throw err;
+    }
 
     if (!verification.verified || !verification.registrationInfo) {
       // Consume the challenge even on a failed verification (single-use
@@ -296,30 +310,44 @@ export async function finishAuthentication(opts: {
     // challenge string).
     let consumedChallenge: string | null = null;
 
-    const verification = await verifyAuthenticationResponse({
-      response: opts.response,
-      expectedOrigin: opts.rp.expectedOrigin,
-      expectedRPID: opts.rp.rpID,
-      requireUserVerification: false,
-      credential: {
-        id: stored.credentialId,
-        publicKey: new Uint8Array(stored.publicKey),
-        counter: Number(stored.counter),
-        transports: stored.transports as AuthenticatorTransportFuture[],
-      },
-      expectedChallenge: async (challenge) => {
-        const row = await tx.webAuthnChallenge.findUnique({
-          where: { challenge },
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response: opts.response,
+        expectedOrigin: opts.rp.expectedOrigin,
+        expectedRPID: opts.rp.rpID,
+        requireUserVerification: false,
+        credential: {
+          id: stored.credentialId,
+          publicKey: new Uint8Array(stored.publicKey),
+          counter: Number(stored.counter),
+          transports: stored.transports as AuthenticatorTransportFuture[],
+        },
+        expectedChallenge: async (challenge) => {
+          const row = await tx.webAuthnChallenge.findUnique({
+            where: { challenge },
+          });
+          if (!row) return false;
+          if (row.kind !== "authenticate") return false;
+          // Usernameless flow: row.userId may be null.
+          if (row.userId && row.userId !== stored.userId) return false;
+          if (row.expiresAt.getTime() < now().getTime()) return false;
+          consumedChallenge = challenge;
+          return true;
+        },
+      });
+    } catch (err) {
+      // Verifier threw (malformed assertion, decoding error, etc.).
+      // Single-use still applies — consume the captured challenge before
+      // re-throwing so the same row can't be re-submitted with a
+      // different (well-formed) payload.
+      if (consumedChallenge !== null) {
+        await tx.webAuthnChallenge.deleteMany({
+          where: { challenge: consumedChallenge },
         });
-        if (!row) return false;
-        if (row.kind !== "authenticate") return false;
-        // Usernameless flow: row.userId may be null.
-        if (row.userId && row.userId !== stored.userId) return false;
-        if (row.expiresAt.getTime() < now().getTime()) return false;
-        consumedChallenge = challenge;
-        return true;
-      },
-    });
+      }
+      throw err;
+    }
 
     if (!verification.verified) {
       // Consume the challenge even on a failed verification. Codex P1
