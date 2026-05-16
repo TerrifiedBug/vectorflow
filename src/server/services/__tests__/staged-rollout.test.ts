@@ -141,6 +141,7 @@ describe("StagedRolloutService", () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     vi.clearAllMocks();
+    prismaMock.organization.findMany.mockResolvedValue([{ id: "default" } as never]);
     service = new StagedRolloutService();
   });
 
@@ -587,13 +588,13 @@ describe("StagedRolloutService", () => {
   // ─── start/stop lifecycle ───────────────────────────────────────────
 
   describe("start/stop lifecycle", () => {
-    it("start() creates an interval that calls checkHealthWindows", () => {
+    it("start() creates an interval that calls checkHealthWindows", async () => {
       prismaMock.stagedRollout.findMany.mockResolvedValue([] as never);
 
       service.start();
 
       // Advance by one poll interval (30s)
-      vi.advanceTimersByTime(30_000);
+      await vi.advanceTimersByTimeAsync(30_000);
 
       expect(prismaMock.stagedRollout.findMany).toHaveBeenCalled();
     });
@@ -672,6 +673,42 @@ describe("StagedRolloutService", () => {
       });
 
       arService.stop();
+    });
+  });
+
+  describe("per-org tick fan-out", () => {
+    it("iterates non-suspended, non-deleted orgs and queries per org", async () => {
+      prismaMock.organization.findMany.mockResolvedValue([
+        { id: "org-a" } as never,
+        { id: "org-b" } as never,
+      ]);
+      prismaMock.stagedRollout.findMany.mockResolvedValue([]);
+
+      service.start();
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(prismaMock.stagedRollout.findMany).toHaveBeenCalledTimes(2);
+      const calls = prismaMock.stagedRollout.findMany.mock.calls;
+      expect(calls[0][0]?.where).toEqual(
+        expect.objectContaining({ organizationId: "org-a" }),
+      );
+      expect(calls[1][0]?.where).toEqual(
+        expect.objectContaining({ organizationId: "org-b" }),
+      );
+      const orgArgs = prismaMock.organization.findMany.mock.calls[0][0];
+      expect(orgArgs?.where?.suspendedAt).toBe(null);
+      expect(orgArgs?.where?.deletedAt).toBe(null);
+    });
+
+    it("survives prisma.organization.findMany failure without invoking stagedRollout.findMany", async () => {
+      prismaMock.organization.findMany.mockRejectedValueOnce(
+        new Error("DB down"),
+      );
+
+      service.start();
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(prismaMock.stagedRollout.findMany).not.toHaveBeenCalled();
     });
   });
 });
