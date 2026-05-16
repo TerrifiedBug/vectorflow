@@ -62,6 +62,52 @@ export const createContext = async () => {
   return { session, ipAddress, organizationId, orgMemberRole };
 };
 
+/**
+ * Request-level suspension probe (plan §12.2 / Phase 5t).
+ *
+ * The `responseMeta` HTTP-status override on the fetch adapter only
+ * works for non-streaming clients (httpLink / httpBatchLink). The app's
+ * production client uses `httpBatchStreamLink` which establishes the
+ * response status before procedures run, then encodes per-procedure
+ * errors inside the JSON stream — `responseMeta`'s `errors[]` is empty
+ * at the time it's called for streaming requests so it can't see the
+ * orgProcedure throw.
+ *
+ * To cover both client shapes the tRPC route handler calls this helper
+ * BEFORE handing off to `fetchRequestHandler` and returns a 423 directly
+ * when the caller's org is suspended. The orgProcedure middleware still
+ * throws (defence in depth: a request that somehow bypasses the
+ * route-level check is still rejected at the procedure boundary).
+ */
+export async function isCallerOrgSuspended(): Promise<boolean> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) return false;
+
+  // Resolve the caller's org the same way `createContext` does, but
+  // without touching the rest of the ctx graph.
+  const membership =
+    (await prisma.orgMember.findFirst({
+      where: { userId, NOT: { organizationId: DEFAULT_ORG_ID } },
+      select: { organizationId: true },
+      orderBy: { createdAt: "desc" },
+    })) ??
+    (await prisma.orgMember.findFirst({
+      where: { userId },
+      select: { organizationId: true },
+    }));
+  const organizationId = membership?.organizationId ?? DEFAULT_ORG_ID;
+
+  // OSS default org never suspends — bail out early.
+  if (organizationId === DEFAULT_ORG_ID) return false;
+
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { suspendedAt: true },
+  });
+  return Boolean(org?.suspendedAt);
+}
+
 type Context = Awaited<ReturnType<typeof createContext>>;
 
 const t = initTRPC.context<Context>().create({

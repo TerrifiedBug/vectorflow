@@ -27,6 +27,7 @@ import { prisma } from "@/lib/prisma";
 import {
   OrgSuspendedError,
   createContext,
+  isCallerOrgSuspended,
   orgProcedure,
   router,
 } from "@/trpc/init";
@@ -155,5 +156,50 @@ describe("orgProcedure suspension -> HTTP 423 (Phase 5t)", () => {
     });
     expect(err.cause).toBeInstanceOf(OrgSuspendedError);
     expect((err.cause as OrgSuspendedError)._tag).toBe("OrgSuspendedError");
+  });
+});
+
+describe("isCallerOrgSuspended (Phase 5t streaming-client path)", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    authMock.mockReset();
+  });
+
+  it("returns false for an unauthenticated request", async () => {
+    authMock.mockResolvedValue(null);
+    await expect(isCallerOrgSuspended()).resolves.toBe(false);
+  });
+
+  it("returns false for the OSS default org (suspension is Cloud-only)", async () => {
+    authMock.mockResolvedValue({ user: { id: USER_ID, email: "u@example.com" } });
+    // Both findFirst calls return null → falls through to DEFAULT_ORG_ID.
+    prismaMock.orgMember.findFirst.mockResolvedValue(null);
+    await expect(isCallerOrgSuspended()).resolves.toBe(false);
+    // No organization lookup for the default org.
+    expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("returns true when the caller's resolved org has suspendedAt set", async () => {
+    authMock.mockResolvedValue({ user: { id: USER_ID, email: "u@example.com" } });
+    prismaMock.orgMember.findFirst.mockResolvedValueOnce({
+      organizationId: SUSPENDED_ORG_ID,
+    } as never);
+    prismaMock.organization.findUnique.mockResolvedValueOnce({
+      suspendedAt: new Date("2026-05-01"),
+    } as never);
+
+    await expect(isCallerOrgSuspended()).resolves.toBe(true);
+  });
+
+  it("returns false when the caller's org is active", async () => {
+    authMock.mockResolvedValue({ user: { id: USER_ID, email: "u@example.com" } });
+    prismaMock.orgMember.findFirst.mockResolvedValueOnce({
+      organizationId: ACTIVE_ORG_ID,
+    } as never);
+    prismaMock.organization.findUnique.mockResolvedValueOnce({
+      suspendedAt: null,
+    } as never);
+
+    await expect(isCallerOrgSuspended()).resolves.toBe(false);
   });
 });
