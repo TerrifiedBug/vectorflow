@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { isDemoMode } from "@/lib/is-demo-mode";
-import type { Role, OrgMemberRole } from "@/generated/prisma";
+import type { Role, OrgMemberRole, PlatformOperatorRole } from "@/generated/prisma";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
 export const createContext = async () => {
@@ -174,6 +174,84 @@ export const requireSuperAdmin = () =>
 
     return next({
       ctx: { session: ctx.session, userRole: "ADMIN" as Role },
+    });
+  });
+
+/**
+ * Platform-operator authorization middleware (plan §5 / Phase 5ee).
+ *
+ * The Cloud operator boundary is a hard line: operators are NEVER tenant
+ * Users. `User.isSuperAdmin` (the legacy hatch) blurs that line and is
+ * being phased out — `requirePlatformOperator(role)` is the replacement.
+ *
+ * Resolution:
+ *   1. The caller MUST have a session (UNAUTHORIZED otherwise).
+ *   2. The session user's email MUST match a `PlatformOperator` row.
+ *      In Cloud, operators sign in via a separate auth surface
+ *      (`ops.vectorflow.sh`, WebAuthn) so the User row that lands in the
+ *      session is the operator's identity, not a tenant identity.
+ *   3. The operator's `PlatformOperatorRole` MUST be at or above
+ *      `minRole`. Roles are ranked: SUPPORT (0) < BILLING (1) <
+ *      INFRA (2) < INCIDENT (3). Promote-narrowness rather than
+ *      role-widening: an INCIDENT operator passes a SUPPORT gate, but
+ *      not vice versa.
+ *
+ * Migration strategy (per the plan): introduce this alongside
+ * `requireSuperAdmin`, flip individual routers in follow-up PRs, then
+ * delete `requireSuperAdmin` once the call-site count is zero. Both
+ * compile during the transition.
+ *
+ * Operator threading: the resolved `PlatformOperator` row is placed on
+ * `ctx.operator` so downstream handlers can attribute writes to the
+ * operator without re-querying the table.
+ */
+const PLATFORM_OPERATOR_ROLE_RANK: Record<PlatformOperatorRole, number> = {
+  SUPPORT: 0,
+  BILLING: 1,
+  INFRA: 2,
+  INCIDENT: 3,
+};
+
+export const requirePlatformOperator = (minRole: PlatformOperatorRole = "SUPPORT") =>
+  t.middleware(async ({ ctx, next }) => {
+    if (!ctx.session?.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+    const email = ctx.session.user.email;
+    if (!email) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+
+    const operator = await prisma.platformOperator.findUnique({
+      where: { email },
+      select: { id: true, email: true, name: true, role: true },
+    });
+    if (!operator) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "This action requires a platform operator session",
+      });
+    }
+
+    const minRank = PLATFORM_OPERATOR_ROLE_RANK[minRole];
+    const haveRank = PLATFORM_OPERATOR_ROLE_RANK[operator.role];
+    if (haveRank < minRank) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: `This action requires platform operator role ${minRole} or higher`,
+      });
+    }
+
+    return next({
+      ctx: {
+        ...ctx,
+        session: ctx.session,
+        operator,
+        // Keep userRole=ADMIN for backward compat with downstream handlers
+        // that still read `userRole` (the team RBAC field). Operator
+        // procedures bypass team membership, so the value is nominal.
+        userRole: "ADMIN" as Role,
+      },
     });
   });
 
