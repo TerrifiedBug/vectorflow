@@ -112,21 +112,44 @@ export async function validateSmtpHost(host: string): Promise<void> {
   }
 }
 
-function isPrivateIP(ip: string): boolean {
+/**
+ * Returns true when `ip` is in a private, reserved, link-local, loopback,
+ * unique-local, or embedded-IPv4-private range that should never be the
+ * target of an outbound HTTP request from the control plane.
+ *
+ * Exported so unit tests can probe edge cases (IPv4-mapped IPv6, cloud
+ * metadata IPs, RFC 1918 ranges) without going through a real DNS lookup.
+ */
+export function isPrivateIP(ip: string): boolean {
   // IPv4 private/reserved ranges
   if (/^127\./.test(ip)) return true; // loopback
   if (/^10\./.test(ip)) return true; // RFC 1918
   if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true; // RFC 1918
   if (/^192\.168\./.test(ip)) return true; // RFC 1918
-  if (/^169\.254\./.test(ip)) return true; // link-local
-  if (/^0\./.test(ip)) return true; // "this" network
+  if (/^169\.254\./.test(ip)) return true; // link-local — incl. 169.254.169.254 (cloud metadata)
+  if (/^0\./.test(ip)) return true; // "this" network (0.0.0.0/8)
   if (ip === "255.255.255.255") return true; // broadcast
 
   // IPv6 private/reserved
   if (ip === "::1") return true; // loopback
-  if (/^fe80:/i.test(ip)) return true; // link-local
-  if (/^fc00:/i.test(ip) || /^fd[0-9a-f]{2}:/i.test(ip)) return true; // unique local (fc00::/7)
+  if (/^fe80:/i.test(ip)) return true; // link-local (fe80::/10)
+  if (/^fc00:/i.test(ip) || /^fd[0-9a-f]{2}:/i.test(ip)) return true; // unique local (fc00::/7) — incl. fd00:ec2::254 (AWS IMDSv2 IPv6), fd00:1::3 (GCP)
   if (ip === "::") return true; // unspecified
+  if (/^fec0:/i.test(ip)) return true; // deprecated site-local
+
+  // IPv4-mapped IPv6: ::ffff:a.b.c.d. Strip the prefix and recurse with
+  // the bare IPv4 so we catch ::ffff:169.254.169.254 tunneled past a
+  // naive IPv6-only check.
+  const v4Mapped = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i.exec(ip);
+  if (v4Mapped) return isPrivateIP(v4Mapped[1]);
+
+  // 6to4 (2002::/16) encapsulates an IPv4 in the next 32 bits.
+  // Refuse 6to4 wholesale — embedded IPv4 may be private, and a
+  // legitimate target almost certainly has a native IPv6.
+  if (/^2002:/i.test(ip)) return true;
+
+  // Teredo (2001::/32) — same reasoning.
+  if (/^2001:0+:/i.test(ip)) return true;
 
   return false;
 }
