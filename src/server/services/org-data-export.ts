@@ -27,6 +27,7 @@
 import { createHash } from "node:crypto";
 import { ulid } from "ulid";
 import { prisma } from "@/lib/prisma";
+import type { PrismaClient } from "@/generated/prisma";
 
 export const ORG_DATA_EXPORT_SCHEMA_VERSION = 1 as const;
 
@@ -256,7 +257,7 @@ export async function buildOrgDataExport(
     take: limit,
     orderBy: { createdAt: "asc" },
   });
-  const alertChannels = alertChannelsRaw.map((c) =>
+  const alertChannels = alertChannelsRaw.map((c: Record<string, unknown>) =>
     redactKeys(c, ["config"]),
   );
 
@@ -266,7 +267,7 @@ export async function buildOrgDataExport(
     take: limit,
     orderBy: { createdAt: "asc" },
   });
-  const webhookEndpoints = webhookEndpointsRaw.map((w) =>
+  const webhookEndpoints = webhookEndpointsRaw.map((w: Record<string, unknown>) =>
     redactKeys(w, ["encryptedSecret"]),
   );
 
@@ -292,7 +293,7 @@ export async function buildOrgDataExport(
   // some are credential material that a leak would compromise. Whitelist
   // only the identity fields the customer needs to map orgMembers.userId
   // to a real person.
-  const memberUserIds = orgMembers.map((m) => m.userId as string);
+  const memberUserIds = orgMembers.map((m: { userId: string }) => m.userId);
   const tenantUsers = memberUserIds.length
     ? await db.user.findMany({
         where: { id: { in: memberUserIds } },
@@ -315,8 +316,8 @@ export async function buildOrgDataExport(
     take: limit,
     orderBy: { createdAt: "asc" },
   });
-  const orgAccessGrants = orgAccessGrantsRaw.map((g) =>
-    redactKeys(g, ["kmsGrantToken"]),
+  const orgAccessGrants = orgAccessGrantsRaw.map(
+    (g: Record<string, unknown>) => redactKeys(g, ["kmsGrantToken"]),
   );
 
   const data: OrgDataExportPayload = {
