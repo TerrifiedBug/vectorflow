@@ -16,7 +16,7 @@
  *   - `withTeamAccess` — the canonical tenant gate
  *   - `requireSuperAdmin` — platform-operator only (still tenant-safe
  *     because it implies caller is an operator, not a tenant user)
- *   - `requireRole` — global role gate (used by admin routes)
+ *   - `requirePlatformOperator` — Phase 5ee tenant-aware operator gate
  *
  * Detection is via `mw.toString()` inspection. tRPC wraps middlewares
  * such that the factory body (and its identifiers) ARE preserved in the
@@ -25,8 +25,8 @@
  * into the chain.
  *
  * Adding a new procedure with a tenant-scoped input:
- *   - If you wrap it in `withTeamAccess` / `requireSuperAdmin` / `requireRole`:
- *     test passes automatically.
+ *   - If you wrap it in `withTeamAccess` / `requireSuperAdmin` /
+ *     `requirePlatformOperator`: test passes automatically.
  *   - If you intentionally omit the gate (rare — usually a security bug):
  *     add the path to `INTENTIONALLY_UNGUARDED` below with a comment.
  *   - If you add a NEW tenant-scoping middleware: extend `GATE_PATTERNS`.
@@ -300,7 +300,7 @@ describe("Cross-org access audit (Phase 5bb)", () => {
         `${unguarded.length} procedure(s) accept a tenant-scoped id without an ` +
           `authorisation middleware:\n\n  - ${unguarded.join("\n  - ")}\n\n` +
           "Each procedure that takes teamId/environmentId/pipelineId MUST be " +
-          "wrapped in `withTeamAccess`, `requireSuperAdmin`, or `requireRole`. " +
+          "wrapped in `withTeamAccess`, `requireSuperAdmin`, or `requirePlatformOperator`. " +
           "If a procedure intentionally bypasses these (very rare), add its path " +
           "to `INTENTIONALLY_UNGUARDED` in `cross-org-access.test.ts` with a " +
           "comment explaining how cross-org access is otherwise prevented.",
