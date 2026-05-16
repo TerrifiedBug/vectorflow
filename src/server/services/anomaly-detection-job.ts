@@ -48,43 +48,65 @@ export class AnomalyDetectionService {
   }
 
   /**
-   * Single tick of the detection loop.
-   * Runs anomaly evaluation and periodic cleanup.
+   * Single tick of the detection loop. Fans out across orgs so that one
+   * tenant's analysis (or failure) does not stall another's.
    */
   private async tick(): Promise<void> {
     this.tickCount++;
 
-    try {
-      await evaluateAllPipelines();
-    } catch (err) {
-      errorLog("anomaly-detection", "Evaluation error", err);
+    const orgs = await prisma.organization.findMany({
+      where: { suspendedAt: null, deletedAt: null },
+      select: { id: true },
+    });
+    for (const org of orgs) {
+      try {
+        await evaluateAllPipelines({ organizationId: org.id });
+      } catch (err) {
+        errorLog(
+          "anomaly-detection",
+          `org=${org.id} evaluation error (continuing)`,
+          err,
+        );
+      }
     }
 
-    // Run cleanup once per day
+    // Run cleanup once per day, also per-org for tenant isolation.
     if (this.tickCount % CLEANUP_INTERVAL_TICKS === 0) {
-      try {
-        await this.cleanup();
-      } catch (err) {
-        errorLog("anomaly-detection", "Cleanup error", err);
+      for (const org of orgs) {
+        try {
+          await this.cleanupForOrg(org.id);
+        } catch (err) {
+          errorLog(
+            "anomaly-detection",
+            `org=${org.id} cleanup error (continuing)`,
+            err,
+          );
+        }
       }
     }
   }
 
   /**
-   * Remove old dismissed and resolved anomaly events beyond the retention window.
+   * Remove old dismissed anomaly events for a single org beyond the
+   * retention window. Scoped by `organizationId` so an operator-role
+   * cleanup never sweeps across tenants.
    */
-  private async cleanup(): Promise<void> {
+  private async cleanupForOrg(organizationId: string): Promise<void> {
     const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 3600_000);
 
     const result = await prisma.anomalyEvent.deleteMany({
       where: {
+        organizationId,
         status: { in: ["dismissed"] },
         detectedAt: { lt: cutoff },
       },
     });
 
     if (result.count > 0) {
-      infoLog("anomaly-detection", `Cleaned up ${result.count} old anomaly events`);
+      infoLog(
+        "anomaly-detection",
+        `org=${organizationId} cleaned up ${result.count} old anomaly events`,
+      );
     }
   }
 }
