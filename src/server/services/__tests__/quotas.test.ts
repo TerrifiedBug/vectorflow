@@ -182,4 +182,19 @@ describe("withQuotaCheck (canonical API)", () => {
       }),
     ).rejects.toThrow(/downstream/);
   });
+
+  it("post-check throws when the callback inserts more than headroom (defeats createMany)", async () => {
+    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
+    let counted = 0;
+    mocks.vectorNodeCount.mockImplementation(async () => {
+      counted++;
+      return counted === 1 ? 3 : 8;
+    });
+    const tx = makeTxStub();
+    mocks.$transaction.mockImplementation(async (fn: (t: PrismaTxLike) => Promise<unknown>) => fn(tx));
+    await expect(
+      withQuotaCheck("org-a", "agents", async () => ({ count: 5 })),
+    ).rejects.toBeInstanceOf(QuotaExceededError);
+    expect(counted).toBe(2);
+  });
 });

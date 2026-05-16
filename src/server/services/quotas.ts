@@ -164,17 +164,25 @@ export async function enforceQuotaInTx(
 /**
  * Canonical create-with-quota helper. Opens a transaction, takes the
  * per-(org, quota) advisory lock, verifies the current count is below
- * the limit, then invokes the supplied `create` callback with the SAME
- * tx. Both the quota check and the create happen inside the same lock
- * window — no race possible.
+ * the limit, invokes the supplied `create` callback with the SAME tx,
+ * then **re-verifies** the post-callback count is still within the
+ * limit. The post-check defeats not only races (already serialised by
+ * the lock) but also callbacks that issue multiple inserts or use
+ * `createMany` to slip past a single pre-check.
  *
  *   await withQuotaCheck(orgId, "agents", (tx) =>
  *     tx.vectorNode.create({ data: { ... } }),
  *   );
  *
- * Throws `QuotaExceededError` BEFORE invoking `create` when at limit.
- * Any error from `create` (Prisma constraint violation, your own
- * validation throw, etc.) propagates and rolls back the transaction.
+ * Sequence:
+ *   1. pg_advisory_xact_lock per (orgId, quota)
+ *   2. count before — throw if at limit
+ *   3. invoke create(tx) — may insert 1+ rows
+ *   4. count after — throw if over limit (rolls back the inserts)
+ *
+ * Throws `QuotaExceededError` if the callback produces more inserts
+ * than the remaining headroom; the transaction rolls back so the
+ * customer is never billed for over-quota work.
  */
 export async function withQuotaCheck<T>(
   organizationId: string,
@@ -182,8 +190,30 @@ export async function withQuotaCheck<T>(
   create: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
   return prisma.$transaction(async (tx) => {
-    // `Prisma.TransactionClient` satisfies `PrismaTxLike` structurally.
-    await enforceQuotaInTx(tx as unknown as PrismaTxLike, organizationId, quota);
-    return create(tx);
+    const txLike = tx as unknown as PrismaTxLike;
+    // Pre-check (locks + verifies headroom).
+    await enforceQuotaInTx(txLike, organizationId, quota);
+
+    const result = await create(tx);
+
+    // Post-check — defeats `createMany`/multi-insert callbacks that
+    // a single pre-check cannot stop. Re-read the count INSIDE the
+    // still-locked transaction; if the callback added more rows than
+    // headroom, throw and roll back.
+    const org = await tx.organization.findUnique({
+      where: { id: organizationId },
+      select: { plan: true },
+    });
+    if (!org) {
+      throw new Error(`Organization ${organizationId} not found`);
+    }
+    const plan = org.plan as PlanName;
+    const limit = PLAN_QUOTAS[plan][quota];
+    const after = await countCurrentUsage(txLike, organizationId, quota);
+    if (after > limit) {
+      throw new QuotaExceededError(organizationId, plan, quota, limit, after);
+    }
+
+    return result;
   });
 }
