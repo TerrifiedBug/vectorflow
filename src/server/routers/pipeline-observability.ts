@@ -164,6 +164,7 @@ import {
   setActiveTap,
   deleteActiveTap,
   expireStaleTaps,
+  getActiveTap,
   TAP_TTL_MS,
 } from "@/server/services/active-taps";
 
@@ -779,7 +780,35 @@ export const pipelineObservabilityRouter = router({
   stopTap: protectedProcedure
     .input(z.object({ requestId: z.string() }))
     .use(withAudit("pipeline.tap_stopped", "Pipeline"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // Codex P1 round-8 finding (PR #336 audit harness): this procedure
+      // accepted a tenant-bearing `requestId` but had no tenancy gate.
+      // Anyone with a valid session could stop another team's tap by
+      // sending its requestId. Inline auth: load the active tap, resolve
+      // it to a pipeline → environment.teamId, and enforce TeamMember
+      // (super-admins bypass).
+      const tap = await getActiveTap(input.requestId);
+      if (tap) {
+        const userId = ctx.session.user?.id;
+        if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { isSuperAdmin: true },
+        });
+        if (!user?.isSuperAdmin) {
+          const pipeline = await prisma.pipeline.findUnique({
+            where: { id: tap.pipelineId },
+            select: { environment: { select: { teamId: true } } },
+          });
+          const teamId = pipeline?.environment.teamId;
+          if (!teamId) throw new TRPCError({ code: "FORBIDDEN" });
+          const membership = await prisma.teamMember.findUnique({
+            where: { userId_teamId: { userId, teamId } },
+            select: { role: true },
+          });
+          if (!membership) throw new TRPCError({ code: "FORBIDDEN" });
+        }
+      }
       await stopTapHandler(input.requestId);
       return { ok: true };
     }),

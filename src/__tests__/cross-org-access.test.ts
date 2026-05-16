@@ -93,6 +93,16 @@ const TENANT_INPUT_KEYS = [
   "pipelineId",
   "pipelineIds",
   "upstreamId",
+  // Round 8 expansion: every other key `withTeamAccess` (see init.ts
+  // around `rawInput?.requestId` / `nodeId` / etc.) explicitly resolves
+  // to a teamId. Procedures that take ONLY one of these keys (e.g.
+  // `deploy.approveDeployRequest` carries `requestId` only) previously
+  // dropped out of the audit.
+  "requestId",
+  "versionId",
+  "alertEventId",
+  "nodeId",
+  "groupId",
 ] as const;
 
 /**
@@ -179,6 +189,14 @@ const INTENTIONALLY_UNGUARDED = new Set<string>([
   // delete polling races.
   "dashboard.pipelineCards",
   "metrics.getComponentMetrics",
+  "metrics.getNodePipelineRates",
+
+  // pipeline.stopTap: inline auth in the handler (super-admin OR
+  // TeamMember of the tap's pipeline → environment.teamId). This is the
+  // Codex P1 round-8 fix \u2014 the audit caught the original gap and the
+  // handler now validates ownership before calling stopTapHandler.
+  // Same inline-auth pattern as the other three procedures above.
+  "pipeline.stopTap",
 ]);
 
 interface AuditEntry {
