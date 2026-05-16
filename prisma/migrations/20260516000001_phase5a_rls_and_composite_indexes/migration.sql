@@ -23,14 +23,27 @@
 --    leading-`organizationId` index degrades to Seq Scan; these indexes
 --    keep query plans correct after policies kick in.
 --
--- 3. TimescaleDB hypertables (PipelineLog, NodeMetric, PipelineMetric,
---    NodeStatusEvent) support RLS the same way as regular tables; the
---    policy propagates to chunks transparently.
+-- 3. TimescaleDB hypertables with columnstore (compression) enabled CANNOT
+--    have RLS enabled at the parent level — `ALTER TABLE … ENABLE ROW LEVEL
+--    SECURITY` raises SQLSTATE 0A000 ("operation not supported on
+--    hypertables that have columnstore enabled"; see TimescaleDB issue
+--    #6827). Independently, TimescaleDB does NOT propagate policies from
+--    parent hypertables to their chunks (issue #7830), so even when
+--    compression is off, the parent policy would not fence chunk-direct
+--    reads. We therefore skip RLS on every hypertable in the list and rely
+--    on application-level isolation via `withOrgTx` (the `SET LOCAL
+--    app.org_id` GUC is honored by handwritten `WHERE "organizationId" = …`
+--    clauses, and the composite indexes below keep those plans cheap).
+--    Affected tables today: PipelineLog, NodeMetric, PipelineMetric.
+--    NodeStatusEvent is also compressed but has no organizationId column,
+--    so it never enters the RLS list to begin with.
 
 -- ─── 1. Strict policies on tenant tables ────────────────────────────────────
 DO $$
 DECLARE
     tbl text;
+    has_timescaledb boolean;
+    compressed_hypertables text[] := ARRAY[]::text[];
     tenant_tables text[] := ARRAY[
         'Pipeline', 'PipelineVersion', 'PipelineLog',
         'NodeMetric', 'PipelineMetric', 'EventSample', 'EventSampleRequest',
@@ -45,7 +58,26 @@ DECLARE
         'PipelineGroup', 'NodeGroup'
     ];
 BEGIN
+    -- Feature-detect TimescaleDB and gather any hypertables with
+    -- columnstore enabled. RLS is incompatible with columnstore at the
+    -- TimescaleDB layer (see header comment §3), so these tables are
+    -- excluded from the policy loop below.
+    SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb')
+      INTO has_timescaledb;
+
+    IF has_timescaledb THEN
+        SELECT COALESCE(array_agg(hypertable_name), ARRAY[]::text[])
+          INTO compressed_hypertables
+          FROM timescaledb_information.hypertables
+         WHERE compression_enabled = true;
+    END IF;
+
     FOREACH tbl IN ARRAY tenant_tables LOOP
+        IF tbl = ANY(compressed_hypertables) THEN
+            RAISE NOTICE 'phase5a-rls: skipping % (TimescaleDB compressed hypertable; isolation enforced by withOrgTx + composite index)', tbl;
+            CONTINUE;
+        END IF;
+
         IF EXISTS (
             SELECT 1
               FROM information_schema.columns

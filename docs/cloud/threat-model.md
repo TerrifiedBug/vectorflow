@@ -52,7 +52,7 @@ A paying customer actively tries to read another tenant's data via API enumerati
 **Controls:**
 - `organizationId` on every tenant row (denormalised, indexed)
 - `withTeamAccess` middleware validates org membership on every tRPC call
-- Postgres Row-Level Security (RLS) as a hard backstop: even a buggy query returns 0 rows from the wrong org
+- Postgres Row-Level Security (RLS) as a hard backstop on every tenant table except the 3 TimescaleDB compressed hypertables (`PipelineLog`, `NodeMetric`, `PipelineMetric`): even a buggy query returns 0 rows from the wrong org. The 3 hypertables rely on `withOrgTx` + composite indexes instead — see the Phase 5a plan's "TimescaleDB hypertable carve-out" for why DB-level RLS can't fence these and why missing `withOrgTx` on a hypertable read path is a P0.
 - No sequential numeric IDs exposed in API — UUIDs throughout
 - Token format encodes org slug; hostname also encodes org slug; both must agree
 

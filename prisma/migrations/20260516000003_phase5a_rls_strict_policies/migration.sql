@@ -25,6 +25,18 @@
 -- OSS continues to bypass RLS because the table-owner role bypasses by
 -- default; Cloud's non-owner role is properly fenced.
 --
+-- ─── TimescaleDB columnstore ───────────────────────────────────────────────
+-- Hypertables with columnstore enabled (PipelineLog, NodeMetric,
+-- PipelineMetric) never had RLS enabled in 20260516000001 — `ALTER TABLE …
+-- ENABLE ROW LEVEL SECURITY` is blocked when columnstore is on, and
+-- TimescaleDB does not propagate parent policies to chunks anyway
+-- (timescale/timescaledb#7830). The same feature-detect skip lives here so
+-- this migration is symmetric with 000001: we do NOT install a strict
+-- policy on a table where RLS is still disabled (it would be a dormant
+-- policy with no effect). Isolation for these tables is the `withOrgTx`
+-- GUC plus the composite `(organizationId, …)` indexes installed in
+-- 20260516000001.
+--
 -- ─── Rollback ──────────────────────────────────────────────────────────────
 -- If we ever need to revert: re-create the previous CREATE POLICY shape on
 -- each table after DROP POLICY. The full text lived in the body of
@@ -33,6 +45,8 @@
 DO $$
 DECLARE
     tbl text;
+    has_timescaledb boolean;
+    compressed_hypertables text[] := ARRAY[]::text[];
     tenant_tables text[] := ARRAY[
         'Pipeline', 'PipelineVersion', 'PipelineLog',
         'NodeMetric', 'PipelineMetric', 'EventSample', 'EventSampleRequest',
@@ -47,7 +61,24 @@ DECLARE
         'PipelineGroup', 'NodeGroup'
     ];
 BEGIN
+    -- Feature-detect TimescaleDB compressed hypertables; same skip rule
+    -- as 20260516000001. See header comment for rationale.
+    SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb')
+      INTO has_timescaledb;
+
+    IF has_timescaledb THEN
+        SELECT COALESCE(array_agg(hypertable_name), ARRAY[]::text[])
+          INTO compressed_hypertables
+          FROM timescaledb_information.hypertables
+         WHERE compression_enabled = true;
+    END IF;
+
     FOREACH tbl IN ARRAY tenant_tables LOOP
+        IF tbl = ANY(compressed_hypertables) THEN
+            RAISE NOTICE 'phase5a-rls-strict: skipping % (TimescaleDB compressed hypertable; isolation enforced by withOrgTx)', tbl;
+            CONTINUE;
+        END IF;
+
         IF EXISTS (
             SELECT 1
               FROM information_schema.columns
