@@ -240,7 +240,6 @@ model WebAuthnCredential {
   lastUsedAt    DateTime?
 
   @@index([userId])
-  @@index([credentialId])
 }
 
 /// Short-lived WebAuthn challenge issued during register / authenticate

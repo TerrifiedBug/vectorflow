@@ -37,8 +37,6 @@ CREATE UNIQUE INDEX "WebAuthnCredential_credentialId_key"
   ON "WebAuthnCredential"("credentialId");
 CREATE INDEX "WebAuthnCredential_userId_idx"
   ON "WebAuthnCredential"("userId");
-CREATE INDEX "WebAuthnCredential_credentialId_idx"
-  ON "WebAuthnCredential"("credentialId");
 
 ALTER TABLE "WebAuthnCredential"
   ADD CONSTRAINT "WebAuthnCredential_userId_fkey"
