@@ -39,19 +39,30 @@ GRANT SELECT ON public.vw_operator_org_access_grant_log  TO vectorflow_operator;
 -- table grants. If it does, that's a config drift / leak; fail loud.
 DO $$
 DECLARE
-    direct_grants integer;
+    leak record;
+    leak_count integer := 0;
 BEGIN
-    SELECT count(*)
-      INTO direct_grants
-      FROM information_schema.role_table_grants
-     WHERE grantee = 'vectorflow_operator'
-       AND table_schema = 'public'
-       AND table_name NOT LIKE 'vw_operator_%';
+    -- Use has_table_privilege() so we catch privileges INHERITed from
+    -- parent roles, not just direct GRANTs to vectorflow_operator
+    -- specifically. has_table_privilege() resolves the effective
+    -- privilege the runtime would see, which is the boundary that
+    -- actually matters.
+    FOR leak IN
+        SELECT c.relname AS tbl
+          FROM pg_catalog.pg_class c
+          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public'
+           AND c.relkind = 'r'  -- ordinary tables; views are relkind = 'v'
+           AND has_table_privilege('vectorflow_operator', c.oid, 'SELECT')
+    LOOP
+        RAISE WARNING 'phase4d boundary leak: vectorflow_operator has effective SELECT on base table %', leak.tbl;
+        leak_count := leak_count + 1;
+    END LOOP;
 
-    IF direct_grants > 0 THEN
-        RAISE EXCEPTION 'phase4d: vectorflow_operator has % direct table grant(s) outside the operator views. Revoke them to preserve the masking boundary.', direct_grants;
+    IF leak_count > 0 THEN
+        RAISE EXCEPTION 'phase4d: vectorflow_operator has effective SELECT on % base table(s) (incl. via INHERIT). Revoke or REVOKE INHERIT to preserve the masking boundary.', leak_count;
     END IF;
 
-    RAISE NOTICE 'phase4d-post-provision: vectorflow_operator confirmed view-only';
+    RAISE NOTICE 'phase4d-post-provision: vectorflow_operator confirmed view-only (effective-privilege check, covers INHERIT)';
 END
 $$;
