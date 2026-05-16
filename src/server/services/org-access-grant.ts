@@ -111,9 +111,16 @@ export async function requestOrgAccessGrant(
 
 /**
  * Customer admin approves an existing pending grant. Idempotent: if the
- * grant is already approved (same admin), returns the row unchanged. If
- * already approved by a DIFFERENT admin, throws to prevent silent
+ * grant is already approved by the SAME admin, returns the row unchanged.
+ * If already approved by a DIFFERENT admin, throws to prevent silent
  * reassignment of accountability.
+ *
+ * The update is atomic via `updateMany` with a `where` clause that
+ * requires `approvedByCustomerAdminId: null`. Two concurrent admins
+ * cannot both succeed: the first commits and the second's `updateMany`
+ * returns `count: 0`, after which we re-read the row to distinguish
+ * "expired/revoked between read and write" from "the other admin won the
+ * race". Last-write-wins is NEVER possible here.
  */
 export async function approveOrgAccessGrant(
   input: ApproveGrantInput,
@@ -122,6 +129,10 @@ export async function approveOrgAccessGrant(
   const c = client(opts);
   const now = opts.now ?? new Date();
 
+  // Pre-validate so callers get specific error messages for the common
+  // failure modes (missing, expired, revoked, already-approved-by-self).
+  // The actual write is conditional so a race that flips state between
+  // pre-validation and update cannot bypass the policy.
   const existing = await c.orgAccessGrant.findUnique({
     where: { id: input.grantId },
   });
@@ -130,12 +141,12 @@ export async function approveOrgAccessGrant(
   }
   if (existing.revokedAt != null) {
     throw new Error(
-      "org-access-grant: cannot approve a revoked grant — operator must submit a new request",
+      "org-access-grant: cannot approve a revoked grant \u2014 operator must submit a new request",
     );
   }
   if (existing.expiresAt.getTime() <= now.getTime()) {
     throw new Error(
-      "org-access-grant: cannot approve an expired grant — operator must submit a new request",
+      "org-access-grant: cannot approve an expired grant \u2014 operator must submit a new request",
     );
   }
   if (existing.approvedByCustomerAdminId != null) {
@@ -147,9 +158,55 @@ export async function approveOrgAccessGrant(
     );
   }
 
-  return c.orgAccessGrant.update({
-    where: { id: input.grantId },
+  // Atomic transition PENDING \u2192 APPROVED. The `approvedByCustomerAdminId: null`
+  // predicate fences any concurrent approval; only one writer can succeed.
+  const result = await c.orgAccessGrant.updateMany({
+    where: {
+      id: input.grantId,
+      approvedByCustomerAdminId: null,
+      revokedAt: null,
+      expiresAt: { gt: now },
+    },
     data: { approvedByCustomerAdminId: input.approvedByCustomerAdminId },
+  });
+
+  if (result.count === 0) {
+    // Conditional update didn't match. Re-fetch to produce the right error.
+    const current = await c.orgAccessGrant.findUnique({
+      where: { id: input.grantId },
+    });
+    if (!current) {
+      throw new Error(
+        `org-access-grant: grant ${input.grantId} disappeared during approval`,
+      );
+    }
+    if (current.revokedAt != null) {
+      throw new Error(
+        "org-access-grant: grant was revoked between request and approval",
+      );
+    }
+    if (current.expiresAt.getTime() <= now.getTime()) {
+      throw new Error(
+        "org-access-grant: grant expired between request and approval",
+      );
+    }
+    if (current.approvedByCustomerAdminId != null) {
+      if (
+        current.approvedByCustomerAdminId === input.approvedByCustomerAdminId
+      ) {
+        return current; // raced with ourselves; treat as idempotent
+      }
+      throw new Error(
+        "org-access-grant: grant approved by a different customer admin in a concurrent request",
+      );
+    }
+    throw new Error(
+      "org-access-grant: conditional approval update matched no rows for an unknown reason",
+    );
+  }
+
+  return c.orgAccessGrant.findUniqueOrThrow({
+    where: { id: input.grantId },
   });
 }
 

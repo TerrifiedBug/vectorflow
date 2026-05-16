@@ -192,9 +192,14 @@ describe("approveOrgAccessGrant", () => {
     mockReset(prismaMock);
   });
 
-  it("approves a pending grant", async () => {
-    prismaMock.orgAccessGrant.findUnique.mockResolvedValue(makeGrant() as never);
-    prismaMock.orgAccessGrant.update.mockResolvedValue(
+  it("approves a pending grant via atomic conditional updateMany", async () => {
+    prismaMock.orgAccessGrant.findUnique.mockResolvedValueOnce(
+      makeGrant() as never,
+    );
+    prismaMock.orgAccessGrant.updateMany.mockResolvedValue({
+      count: 1,
+    } as never);
+    prismaMock.orgAccessGrant.findUniqueOrThrow.mockResolvedValue(
       makeGrant({ approvedByCustomerAdminId: "admin-1" }) as never,
     );
 
@@ -203,8 +208,13 @@ describe("approveOrgAccessGrant", () => {
       { now: NOW },
     );
 
-    expect(prismaMock.orgAccessGrant.update).toHaveBeenCalledWith({
-      where: { id: "grant-1" },
+    expect(prismaMock.orgAccessGrant.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "grant-1",
+        approvedByCustomerAdminId: null,
+        revokedAt: null,
+        expiresAt: { gt: NOW },
+      },
       data: { approvedByCustomerAdminId: "admin-1" },
     });
     expect(out.approvedByCustomerAdminId).toBe("admin-1");
@@ -220,7 +230,7 @@ describe("approveOrgAccessGrant", () => {
     );
 
     expect(out).toEqual(existing);
-    expect(prismaMock.orgAccessGrant.update).not.toHaveBeenCalled();
+    expect(prismaMock.orgAccessGrant.updateMany).not.toHaveBeenCalled();
   });
 
   it("rejects approval by a different admin (accountability)", async () => {
@@ -267,6 +277,60 @@ describe("approveOrgAccessGrant", () => {
         { now: NOW },
       ),
     ).rejects.toThrow("no grant with id missing");
+  });
+
+  it("losing race surfaces as 'different admin' error when concurrent admin won", async () => {
+    prismaMock.orgAccessGrant.findUnique
+      .mockResolvedValueOnce(makeGrant() as never)
+      .mockResolvedValueOnce(
+        makeGrant({ approvedByCustomerAdminId: "admin-2" }) as never,
+      );
+    prismaMock.orgAccessGrant.updateMany.mockResolvedValue({
+      count: 0,
+    } as never);
+
+    await expect(
+      approveOrgAccessGrant(
+        { grantId: "grant-1", approvedByCustomerAdminId: "admin-1" },
+        { now: NOW },
+      ),
+    ).rejects.toThrow(
+      "approved by a different customer admin in a concurrent request",
+    );
+  });
+
+  it("losing race to expiry surfaces as 'expired between request and approval'", async () => {
+    prismaMock.orgAccessGrant.findUnique
+      .mockResolvedValueOnce(makeGrant() as never)
+      .mockResolvedValueOnce(
+        makeGrant({ expiresAt: new Date(NOW.getTime() - 1) }) as never,
+      );
+    prismaMock.orgAccessGrant.updateMany.mockResolvedValue({
+      count: 0,
+    } as never);
+
+    await expect(
+      approveOrgAccessGrant(
+        { grantId: "grant-1", approvedByCustomerAdminId: "admin-1" },
+        { now: NOW },
+      ),
+    ).rejects.toThrow("expired between request and approval");
+  });
+
+  it("losing race to revocation surfaces as 'revoked between request and approval'", async () => {
+    prismaMock.orgAccessGrant.findUnique
+      .mockResolvedValueOnce(makeGrant() as never)
+      .mockResolvedValueOnce(makeGrant({ revokedAt: NOW }) as never);
+    prismaMock.orgAccessGrant.updateMany.mockResolvedValue({
+      count: 0,
+    } as never);
+
+    await expect(
+      approveOrgAccessGrant(
+        { grantId: "grant-1", approvedByCustomerAdminId: "admin-1" },
+        { now: NOW },
+      ),
+    ).rejects.toThrow("revoked between request and approval");
   });
 });
 
