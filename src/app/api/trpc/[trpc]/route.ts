@@ -10,23 +10,34 @@ import {
 
 /**
  * Build a tRPC-superjson-shaped error envelope for the route-level
- * short-circuit. The streaming client (`httpBatchStreamLink`) parses
- * `{ error: { json: { message, code, data: { code, ... } } } }` — anything
- * else looks like a transport-layer parse error. We mirror the shape tRPC
- * itself produces for the equivalent in-band throw so `err.data.code`
- * works the same way on the client whether the 423 came from this
- * short-circuit or from a `responseMeta` override.
+ * short-circuit. The shape must match what the client expects from
+ * `fetchRequestHandler` for both link kinds:
+ *
+ *   - `httpLink` (single call):
+ *       `{ error: { json: { message, code, data: { code, httpStatus, ... } } } }`
+ *   - `httpBatchLink` (URL has `?batch=1`):
+ *       `[ { error: { json: { ... } } }, { error: { json: { ... } } }, ... ]`
+ *       — one entry per procedure path in the comma-separated URL.
+ *
+ * Streaming (`httpBatchStreamLink`, `trpc-accept: application/jsonl`) is
+ * NOT handled here \u2014 see the comment in `handler` below.
  */
 function trpcErrorEnvelope(opts: {
+  url: URL;
   code: "FORBIDDEN" | "NOT_FOUND";
   message: string;
   httpStatus: number;
 }): string {
-  return JSON.stringify({
+  // JSON-RPC numeric code maps `FORBIDDEN` \u2192 -32001 and `NOT_FOUND` \u2192
+  // -32004 in tRPC\'s error formatter. Hard-coding `-32603` (internal
+  // error) would let tooling that keys on the numeric code mis-classify
+  // these as 5xx faults; mirror tRPC\'s mapping instead.
+  const jsonRpcCode = opts.code === "NOT_FOUND" ? -32004 : -32001;
+  const oneEntry = {
     error: {
       json: {
         message: opts.message,
-        code: -32603, // tRPC's generic internal error code (overridden by data.code)
+        code: jsonRpcCode,
         data: {
           code: opts.code,
           httpStatus: opts.httpStatus,
@@ -35,7 +46,16 @@ function trpcErrorEnvelope(opts: {
         },
       },
     },
-  });
+  };
+  // Detect batch mode and emit an array entry per procedure path. The
+  // path lives in the last segment of the URL: `/api/trpc/proc1,proc2`.
+  const batch = opts.url.searchParams.get("batch") === "1";
+  if (!batch) {
+    return JSON.stringify(oneEntry);
+  }
+  const procPath = opts.url.pathname.split("/").pop() ?? "";
+  const count = Math.max(1, procPath.split(",").length);
+  return JSON.stringify(Array.from({ length: count }, () => oneEntry));
 }
 
 const handler = async (req: Request) => {
@@ -48,10 +68,10 @@ const handler = async (req: Request) => {
   }
 
   // §12.2: a suspended-org request returns HTTP 423 Locked. A deleted-org
-  // request returns 404. The route-level short-circuit is the simplest way
-  // to produce the right HTTP status on non-streaming clients
-  // (httpLink / httpBatchLink), where the response body is a single
-  // tRPC error envelope.
+  // request returns 404. The route-level short-circuit produces the right
+  // HTTP status on non-streaming clients (httpLink / httpBatchLink). The
+  // response body is batch-aware: a single envelope for `httpLink`, an
+  // array of one envelope per procedure for `?batch=1` requests.
   //
   // Streaming clients (httpBatchStreamLink, `trpc-accept: application/jsonl`)
   // send a JSON-Lines stream with per-procedure entries keyed by batch
@@ -67,9 +87,11 @@ const handler = async (req: Request) => {
   const isStreaming = req.headers.get("trpc-accept") === "application/jsonl";
   if (!isStreaming) {
     const lifecycle = await isCallerOrgSuspended();
+    const reqUrl = new URL(req.url);
     if (lifecycle.deleted) {
       return new Response(
         trpcErrorEnvelope({
+          url: reqUrl,
           code: "NOT_FOUND",
           message: "Organization not found",
           httpStatus: 404,
@@ -80,6 +102,7 @@ const handler = async (req: Request) => {
     if (lifecycle.suspended) {
       return new Response(
         trpcErrorEnvelope({
+          url: reqUrl,
           code: "FORBIDDEN",
           message: "Organization is suspended",
           httpStatus: 423,
