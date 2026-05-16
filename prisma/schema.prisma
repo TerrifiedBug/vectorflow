@@ -201,7 +201,68 @@ model User {
   filterPresets          FilterPreset[]
   migrationProjectsCreated MigrationProject[] @relation("MigrationProjectCreatedBy")
   dismissedRecommendations CostRecommendation[] @relation("CostRecommendationDismissedBy")
+  webauthnCredentials    WebAuthnCredential[]
   createdAt              DateTime         @default(now())
+}
+
+/// WebAuthn / passkey credential registered for a User (plan §8 Phase 5x).
+///
+/// Cross-org users carry one credential set per `User` — passkeys are
+/// account-wide, not per-tenant. The relying-party identity is the platform
+/// apex (`vectorflow.sh`) so a single passkey works across every
+/// `<orgSlug>.vectorflow.sh` the user is a member of. Per-org JWT
+/// signing keys (plan §8) still scope the resulting session to one org.
+model WebAuthnCredential {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Base64url-encoded credential id returned by the authenticator. Unique
+  /// across the whole platform so we can resolve a user from a bare
+  /// `getAssertion()` response without first looking up the email.
+  credentialId  String   @unique
+  /// Raw COSE-encoded public key bytes (Bytes, not bytea-encoded base64).
+  publicKey     Bytes
+  /// Authenticator signature counter. MUST be persisted and re-checked on
+  /// every assertion to defeat token cloning / replay.
+  counter       BigInt   @default(0)
+  /// Transport hints (`usb`, `ble`, `nfc`, `internal`, `hybrid`). Stored so
+  /// `allowCredentials` on subsequent authentications can include them
+  /// without re-prompting the user.
+  transports    String[] @default([])
+  /// `"singleDevice"` (hardware token tied to one device) or
+  /// `"multiDevice"` (passkey synced via the platform — iCloud Keychain etc.).
+  deviceType    String?
+  /// True when the credential is backed up by the platform (synced).
+  backedUp      Boolean  @default(false)
+  /// User-supplied label, e.g. "YubiKey 5C" or "MacBook TouchID".
+  name          String?
+  createdAt     DateTime  @default(now())
+  lastUsedAt    DateTime?
+
+  @@index([userId])
+  @@index([credentialId])
+}
+
+/// Short-lived WebAuthn challenge issued during register / authenticate
+/// option-generation. Stored in the DB (not a cookie) so the verifying
+/// request can prove the challenge it received was the one we minted.
+/// Rows MUST be expired aggressively — default 5 minutes is more than
+/// enough for the platform/authenticator round trip.
+model WebAuthnChallenge {
+  id        String   @id @default(cuid())
+  /// One of "register" or "authenticate".
+  kind      String
+  /// The challenge bytes, base64url-encoded.
+  challenge String   @unique
+  /// Userid the challenge was minted for. Nullable because the
+  /// authentication flow may begin without a known user (usernameless
+  /// passkey UX).
+  userId    String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@index([userId])
 }
 
 model UserPreference {
