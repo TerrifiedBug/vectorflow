@@ -65,6 +65,13 @@ Thumbs.db
 *.code-workspace
 .env.*
 !.env.example
+
+# docs/cloud/ is gitignored globally (operator-private notes), but the
+# threat model is the public security design contract per the SaaS
+# conversion plan \u00a716 Phase 6.
+!docs/cloud/
+docs/cloud/*
+!docs/cloud/threat-model.md
 node_modules/
 .next/
 dist/
