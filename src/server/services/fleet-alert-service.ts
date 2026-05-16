@@ -45,6 +45,14 @@ export class FleetAlertService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private conditionFirstSeen = new Map<string, Date>();
 
+  /**
+   * True while a tick is currently executing. The per-org fan-out can
+   * exceed POLL_INTERVAL_MS in fleets with many tenants; setInterval
+   * does NOT skip overlapping callbacks, so without this guard two
+   * ticks could run concurrently and double-evaluate every rule.
+   */
+  private tickInFlight = false;
+
   init(): void {
     infoLog("fleet-alert", "Initializing...");
     this.start();
@@ -52,7 +60,7 @@ export class FleetAlertService {
 
   start(): void {
     this.timer = setInterval(
-      () => void this.evaluateFleetAlerts(),
+      () => void this.tick(),
       POLL_INTERVAL_MS,
     );
     this.timer.unref();
@@ -68,14 +76,80 @@ export class FleetAlertService {
   }
 
   /**
-   * Core poll loop: queries all enabled fleet-metric alert rules, evaluates
-   * each against current metric values, and fires or resolves alert events.
+   * Single tick: iterate orgs and evaluate each one's fleet alerts.
+   * Fleet-wide checks (certificate expiry, cost alerts) run once per
+   * tick regardless of org count — they're already per-tenant via
+   * their own queries.
    */
-  async evaluateFleetAlerts(): Promise<FiredFleetAlertEvent[]> {
+  private async tick(): Promise<void> {
+    if (this.tickInFlight) {
+      infoLog(
+        "fleet-alert",
+        "Previous tick still in flight; skipping this interval to avoid overlap",
+      );
+      return;
+    }
+    this.tickInFlight = true;
+    try {
+      let orgs: Array<{ id: string }>;
+      try {
+        orgs = await prisma.organization.findMany({
+          where: { suspendedAt: null, deletedAt: null },
+          select: { id: true },
+        });
+      } catch (err) {
+        errorLog(
+          "fleet-alert",
+          "Failed to list organizations for tick (skipping this cycle)",
+          err,
+        );
+        return;
+      }
+      for (const org of orgs) {
+        try {
+          await this.evaluateFleetAlerts({ organizationId: org.id });
+        } catch (err) {
+          errorLog(
+            "fleet-alert",
+            `org=${org.id} evaluation error (continuing)`,
+            err,
+          );
+        }
+      }
+
+      // Fleet-wide checks (not currently per-org). Tracked as a
+      // follow-up: checkCertificateExpiry + evaluateCostAlerts could
+      // iterate orgs too; current shape continues working because
+      // they query their own per-tenant tables internally.
+      try {
+        await checkCertificateExpiry();
+      } catch (certErr) {
+        errorLog("fleet-alert", "Certificate expiry check failed", certErr);
+      }
+      try {
+        await evaluateCostAlerts();
+      } catch (err) {
+        errorLog("fleet-alert", "Cost alert evaluation failed", err);
+      }
+    } finally {
+      this.tickInFlight = false;
+    }
+  }
+
+  /**
+   * Evaluate fleet-metric alert rules and fire/resolve their alert
+   * events. When `opts.organizationId` is supplied the query is scoped
+   * to that org.
+   *
+   * Note: certificate-expiry and cost-budget checks moved out to the
+   * tick() level so they're not duplicated per org.
+   */
+  async evaluateFleetAlerts(
+    opts: { organizationId?: string } = {},
+  ): Promise<FiredFleetAlertEvent[]> {
     const results: FiredFleetAlertEvent[] = [];
 
     try {
-      // Query all enabled, non-snoozed fleet-metric alert rules
       const rules = await prisma.alertRule.findMany({
         where: {
           enabled: true,
@@ -88,6 +162,7 @@ export class FleetAlertService {
               ],
             },
           ],
+          ...(opts.organizationId ? { organizationId: opts.organizationId } : {}),
         },
         include: {
           environment: {
@@ -104,27 +179,11 @@ export class FleetAlertService {
           const result = await this.evaluateRule(rule);
           if (result) results.push(result);
         } catch (err) {
-          // Per-rule isolation: one rule's failure must not stop others
           errorLog("fleet-alert", `Error evaluating rule ${rule.id} (${rule.metric})`, err);
         }
       }
 
-      // Deliver notifications for all fired/resolved events
       await this.deliverAlerts(results);
-
-      // ── Certificate expiry checks ──
-      try {
-        await checkCertificateExpiry();
-      } catch (certErr) {
-        errorLog("fleet-alert", "Certificate expiry check failed", certErr);
-      }
-
-      // ── Cost budget alerts ──
-      try {
-        await evaluateCostAlerts();
-      } catch (err) {
-        errorLog("fleet-alert", "Cost alert evaluation failed", err);
-      }
     } catch (err) {
       errorLog("fleet-alert", "Poll loop error", err);
     }
