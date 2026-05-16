@@ -1,4 +1,5 @@
 import { getTeamAiConfig } from "@/server/services/ai";
+import { validateOutboundUrl } from "@/server/services/url-validation";
 import { checkRateLimit } from "@/lib/ai/rate-limiter";
 import {
   buildBlockTranslationPrompt,
@@ -527,13 +528,10 @@ async function callAiCompletion(params: {
   const { teamId, systemPrompt, userPrompt } = params;
   const config = await getTeamAiConfig(teamId);
 
-  // Validate base URL to prevent SSRF
-  const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
-  const parsed = new URL(config.baseUrl);
-  if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
-    throw new Error("AI base URL must use http or https");
-  }
-
+  // SSRF guard: defers to the centralised `validateOutboundUrl` policy so
+  // OSS callers running a local Ollama still work and Cloud-strict
+  // deployments get unified private-IP / scheme / metadata rejection.
+  await validateOutboundUrl(config.baseUrl);
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {

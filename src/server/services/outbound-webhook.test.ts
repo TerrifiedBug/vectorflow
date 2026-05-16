@@ -17,7 +17,7 @@ vi.mock("@/server/services/crypto", () => ({
 }));
 
 vi.mock("@/server/services/url-validation", () => ({
-  validatePublicUrl: vi.fn().mockResolvedValue(undefined),
+  validateOutboundUrl: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ─── Import after mocks ────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ const samplePayload = {
 describe("deliverOutboundWebhook", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(urlValidation.validatePublicUrl).mockResolvedValue(undefined);
+    vi.mocked(urlValidation.validateOutboundUrl).mockResolvedValue(undefined);
     vi.mocked(cryptoMod.decrypt).mockReturnValue("test-secret");
   });
 
@@ -215,9 +215,8 @@ describe("deliverOutboundWebhook", () => {
   });
 
   it("returns isPermanent true for SSRF violation", async () => {
-    const { TRPCError } = await import("@trpc/server");
-    vi.mocked(urlValidation.validatePublicUrl).mockRejectedValue(
-      new TRPCError({ code: "BAD_REQUEST", message: "URL resolves to a private or reserved IP address" }),
+    vi.mocked(urlValidation.validateOutboundUrl).mockRejectedValue(
+      new Error("URL resolves to a private or reserved IP address"),
     );
 
     const result = await deliverOutboundWebhook(makeEndpoint(), samplePayload);
@@ -234,7 +233,7 @@ describe("deliverOutboundWebhook", () => {
     const result = await deliverOutboundWebhook(makeEndpoint(), samplePayload);
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(vi.mocked(urlValidation.validatePublicUrl)).not.toHaveBeenCalled();
+    expect(vi.mocked(urlValidation.validateOutboundUrl)).not.toHaveBeenCalled();
     expect(result.success).toBe(true);
 
     vi.unstubAllEnvs();
@@ -270,7 +269,7 @@ describe("isPermanentFailure", () => {
 describe("dispatchWithTracking (via fireOutboundWebhooks behavior)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(urlValidation.validatePublicUrl).mockResolvedValue(undefined);
+    vi.mocked(urlValidation.validateOutboundUrl).mockResolvedValue(undefined);
     vi.mocked(cryptoMod.decrypt).mockReturnValue("test-secret");
   });
 

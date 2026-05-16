@@ -1,3 +1,4 @@
+import { validateOutboundUrl } from "@/server/services/url-validation";
 import type { ChannelDriver, ChannelPayload, ChannelDeliveryResult } from "./types";
 
 const PAGERDUTY_EVENTS_URL = "https://events.pagerduty.com/v2/enqueue";
@@ -66,6 +67,20 @@ export const pagerdutyDriver: ChannelDriver = {
           text: "View in VectorFlow Dashboard",
         },
       ];
+    }
+
+    // SSRF guard. The PagerDuty endpoint is hardcoded today, but the request
+    // still goes outbound from the control plane — validating defensively
+    // means any future config-driven override (e.g. EU-region PagerDuty)
+    // automatically inherits the unified policy and Cloud-strict rejection.
+    try {
+      await validateOutboundUrl(PAGERDUTY_EVENTS_URL, { force: true });
+    } catch (err) {
+      return {
+        channelId: "",
+        success: false,
+        error: `Outbound URL rejected: ${err instanceof Error ? err.message : "unknown"}`,
+      };
     }
 
     try {

@@ -2,53 +2,28 @@ import { prisma } from "@/lib/prisma";
 import { decrypt } from "./crypto";
 import { checkRateLimit } from "@/lib/ai/rate-limiter";
 import { isDemoMode } from "@/lib/is-demo-mode";
+import { validateOutboundUrl } from "@/server/services/url-validation";
 
 const ENCRYPTED_PREFIX = "enc:";
 
-const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
-
-function validateBaseUrl(baseUrl: string): void {
-  let parsed: URL;
-  try {
-    parsed = new URL(baseUrl);
-  } catch {
-    throw new Error("Invalid AI base URL");
-  }
-
-  if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
-    throw new Error("AI base URL must use http or https");
-  }
-
-  // URL.hostname strips brackets from IPv6 and normalises numeric encodings
-  const hostname = parsed.hostname.toLowerCase();
-
-  const isBlocked =
-    // Loopback
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "::1" ||
-    hostname === "0.0.0.0" ||
-    hostname === "::" ||
-    // mDNS / internal TLDs
-    hostname.endsWith(".local") ||
-    hostname.endsWith(".internal") ||
-    // IPv4 private ranges
-    hostname.startsWith("10.") ||
-    hostname.startsWith("192.168.") ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
-    // Link-local (full range)
-    hostname.startsWith("169.254.") ||
-    // Cloud metadata endpoints
-    hostname === "metadata.google.internal" ||
-    // IPv6 link-local, unique-local, and IPv4-mapped
-    hostname.startsWith("fe80:") ||
-    hostname.startsWith("fc00:") ||
-    hostname.startsWith("fd00:") ||
-    hostname.startsWith("::ffff:");
-
-  if (isBlocked) {
-    throw new Error("AI base URL must not point to internal or private addresses");
-  }
+/**
+ * SSRF guard for AI provider base URLs.
+ *
+ * Single source of policy: defers to `validateOutboundUrl`. In OSS (the
+ * default) outbound validation is gated by `VF_CLOUD_STRICT_OUTBOUND` so a
+ * self-hosted Ollama at `http://localhost:11434/v1` keeps working. In Cloud
+ * (`VF_CLOUD_STRICT_OUTBOUND=true`) AI providers MUST be public hosts; private
+ * IPs, loopback, mDNS/.internal TLDs, and cloud metadata endpoints are all
+ * rejected before the request goes out.
+ *
+ * The function also enforces the `http(s)` scheme requirement; the previous
+ * in-file `validateBaseUrl` did the same with a bespoke list of CIDRs and a
+ * narrower IPv6 coverage. Centralising the policy means every outbound
+ * callsite (AI, cost-optimizer-ai, migration translator, webhooks, vault,
+ * context7) shares the same rule set.
+ */
+async function validateBaseUrl(baseUrl: string): Promise<void> {
+  await validateOutboundUrl(baseUrl);
 }
 
 interface StreamCompletionParams {
@@ -120,7 +95,7 @@ export async function streamCompletion({
   }
 
   const config = await getTeamAiConfig(teamId);
-  validateBaseUrl(config.baseUrl);
+  await validateBaseUrl(config.baseUrl);
 
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
@@ -190,7 +165,7 @@ export async function testAiConnection(teamId: string): Promise<{ ok: boolean; e
 
   try {
     const config = await getTeamAiConfig(teamId, { requireEnabled: false });
-    validateBaseUrl(config.baseUrl);
+    await validateBaseUrl(config.baseUrl);
 
     const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",

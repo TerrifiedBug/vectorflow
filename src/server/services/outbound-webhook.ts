@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/server/services/crypto";
-import { validatePublicUrl } from "@/server/services/url-validation";
+import { validateOutboundUrl } from "@/server/services/url-validation";
 import { getNextRetryAt } from "@/server/services/delivery-tracking";
 import type { AlertMetric } from "@/generated/prisma";
 import { debugLog } from "@/lib/logger";
@@ -64,9 +64,12 @@ export async function deliverOutboundWebhook(
     return { success: true, statusCode: 200, isPermanent: false };
   }
 
-  // SSRF protection
+  // SSRF protection. Customer-controlled destination — force the policy even
+  // in OSS so a malicious / mistyped webhook URL can't be used to hit private
+  // IPs, cloud metadata, or .internal TLDs. `validateOutboundUrl` is the
+  // unified policy site shared with AI providers, vault, context7, etc.
   try {
-    await validatePublicUrl(endpoint.url);
+    await validateOutboundUrl(endpoint.url, { force: true });
   } catch {
     return { success: false, error: "SSRF: private IP", isPermanent: true };
   }
