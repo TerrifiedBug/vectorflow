@@ -18,6 +18,7 @@ import { gitSyncDeletePipeline } from "@/server/services/git-sync";
 import { pipelineNameSchema } from "./pipeline-schemas";
 import { errorLog } from "@/lib/logger";
 import { generateId } from "@/lib/utils";
+import { enforceQuota } from "@/server/services/quotas-trpc";
 
 export const pipelineCrudRouter = router({
   getSystemPipeline: protectedProcedure
@@ -128,6 +129,7 @@ export const pipelineCrudRouter = router({
     .mutation(async ({ input, ctx }) => {
       const environment = await prisma.environment.findUnique({
         where: { id: input.environmentId },
+        select: { id: true, organizationId: true },
       });
       if (!environment) {
         throw new TRPCError({
@@ -136,16 +138,23 @@ export const pipelineCrudRouter = router({
         });
       }
 
-      return prisma.pipeline.create({
-        data: {
-          name: input.name,
-          description: input.description,
-          environmentId: input.environmentId,
-          globalConfig: { log_level: "info" },
-          createdById: ctx.session.user?.id ?? null,
-          updatedById: ctx.session.user?.id ?? null,
-        },
-      });
+      // Per-org plan-tier quota gate (§10). Throws PAYMENT_REQUIRED with the
+      // QuotaExceededError as `cause` when the FREE/PRO `pipelines` limit is
+      // reached. The pipeline insert runs inside the still-locked transaction
+      // and the post-create count gate rolls back if any concurrent inserts
+      // would push us over.
+      return enforceQuota(environment.organizationId, "pipelines", (tx) =>
+        tx.pipeline.create({
+          data: {
+            name: input.name,
+            description: input.description,
+            environmentId: input.environmentId,
+            globalConfig: { log_level: "info" },
+            createdById: ctx.session.user?.id ?? null,
+            updatedById: ctx.session.user?.id ?? null,
+          },
+        }),
+      );
     }),
 
   createSystemPipeline: protectedProcedure

@@ -181,8 +181,34 @@ describe("environment router", () => {
   // ─── create ────────────────────────────────────────────────────────────────
 
   describe("create", () => {
+    // Helper: wire the quota path so $transaction calls fn(prismaMock), the
+    // org lookup returns the FREE plan, and the env count stays below the
+    // limit before AND after the create. Returns the env that .create
+    // resolved with so tests can keep asserting against the row shape.
+    function arrangeQuotaPasses(opts: {
+      organizationId: string;
+      currentEnvCount: number;
+    }) {
+      prismaMock.$transaction.mockImplementation(
+        async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
+      );
+      prismaMock.$executeRaw.mockResolvedValue(0 as never);
+      prismaMock.organization.findUnique.mockResolvedValue({
+        plan: "FREE",
+      } as never);
+      // Pre-check, then post-check — both must be below PLAN_QUOTAS.FREE.environments=1
+      prismaMock.environment.count
+        .mockResolvedValueOnce(opts.currentEnvCount)
+        .mockResolvedValueOnce(opts.currentEnvCount + 1);
+    }
+
     it("creates a new environment for an existing team", async () => {
-      prismaMock.team.findUnique.mockResolvedValue({ id: "team-1" } as never);
+      prismaMock.team.findUnique.mockResolvedValue({
+        id: "team-1",
+        organizationId: "org-1",
+      } as never);
+      // FREE plan allows 1 environment; we're at 0 -> create succeeds.
+      arrangeQuotaPasses({ organizationId: "org-1", currentEnvCount: 0 });
       prismaMock.environment.create.mockResolvedValue(
         makeEnvironment({ name: "Staging" }) as never,
       );
@@ -203,6 +229,23 @@ describe("environment router", () => {
       await expect(
         editorCaller.create({ name: "Staging", teamId: "nonexistent" }),
       ).rejects.toThrow("Team not found");
+    });
+
+    it("rejects with PAYMENT_REQUIRED when the per-org environments quota is exhausted (Phase 5v)", async () => {
+      prismaMock.team.findUnique.mockResolvedValue({
+        id: "team-1",
+        organizationId: "org-1",
+      } as never);
+      // FREE plan limit is 1 environment; we're already at 1 -> reject.
+      arrangeQuotaPasses({ organizationId: "org-1", currentEnvCount: 1 });
+
+      await expect(
+        editorCaller.create({ name: "Staging", teamId: "team-1" }),
+      ).rejects.toMatchObject({
+        code: "PAYMENT_REQUIRED",
+        message: expect.stringMatching(/Plan limit reached.*environments.*Upgrade/i),
+      });
+      expect(prismaMock.environment.create).not.toHaveBeenCalled();
     });
   });
 
