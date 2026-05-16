@@ -7,7 +7,6 @@ datasource db {
   provider = "postgresql"
 }
 
-
 // ─── Multi-tenancy ──────────────────────────────────────────────────────────
 
 // Well-known ID for the single default organization (OSS / self-hosted).
@@ -49,9 +48,10 @@ model Organization {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  members      OrgMember[]
-  settings     OrganizationSettings?
-  accessGrants OrgAccessGrant[]
+  members         OrgMember[]
+  settings        OrganizationSettings?
+  accessGrants    OrgAccessGrant[]
+  magicLinkTokens MagicLinkToken[]
 }
 
 model OrgMember {
@@ -102,9 +102,9 @@ model OrganizationSettings {
   anomalyEnabledMetrics        String @default("eventsIn,errorsTotal,latencyMeanMs")
 
   // Backup configuration (moved from SystemSettings)
-  backupEnabled        Boolean  @default(false)
-  backupCron           String   @default("0 2 * * *")
-  backupRetentionCount Int      @default(7)
+  backupEnabled        Boolean   @default(false)
+  backupCron           String    @default("0 2 * * *")
+  backupRetentionCount Int       @default(7)
   lastBackupAt         DateTime?
   lastBackupStatus     String?
   lastBackupError      String?
@@ -123,7 +123,7 @@ model OrganizationSettings {
   scimBearerToken String?
 
   // Telemetry (moved from SystemSettings)
-  telemetryEnabled    Boolean  @default(false)
+  telemetryEnabled    Boolean   @default(false)
   telemetryInstanceId String?
   telemetryEnabledAt  DateTime?
 
@@ -133,17 +133,17 @@ model OrganizationSettings {
 /// Break-glass access grant. Operator can read encrypted fields only while
 /// this record is active and the customer OWNER has approved it.
 model OrgAccessGrant {
-  id                        String            @id @default(cuid())
+  id                        String           @id @default(cuid())
   organizationId            String
-  organization              Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization              Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   operatorId                String
-  operator                  PlatformOperator  @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  operator                  PlatformOperator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
   reason                    String
   approvedByCustomerAdminId String?
   kmsGrantToken             String?
   expiresAt                 DateTime
   revokedAt                 DateTime?
-  createdAt                 DateTime          @default(now())
+  createdAt                 DateTime         @default(now())
 
   @@index([organizationId])
   @@index([operatorId])
@@ -152,57 +152,57 @@ model OrgAccessGrant {
 
 /// Platform operator — never a tenant User. Authenticates via separate surface.
 model PlatformOperator {
-  id           String               @id @default(cuid())
-  email        String               @unique
-  name         String
-  role         PlatformOperatorRole @default(SUPPORT)
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  id        String               @id @default(cuid())
+  email     String               @unique
+  name      String
+  role      PlatformOperatorRole @default(SUPPORT)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
 
   accessGrants OrgAccessGrant[]
 }
 
 // ─── End multi-tenancy models ───────────────────────────────────────────────
 model User {
-  id                 String       @id @default(cuid())
-  email              String       @unique
-  name               String?
-  image              String?
-  passwordHash       String?
-  authMethod         AuthMethod   @default(LOCAL)
-  memberships            TeamMember[]
-  orgMemberships         OrgMember[]
-  scimGroupMemberships   ScimGroupMember[]
-  accounts               Account[]
-  lockedAt           DateTime?
-  lockedBy           String?
-  isSuperAdmin       Boolean      @default(false)
-  mustChangePassword Boolean      @default(false)
-  totpSecret         String?
-  totpEnabled        Boolean      @default(false)
-  totpBackupCodes    String?
-  scimExternalId         String?      @unique
-  auditLogs              AuditLog[]
-  pipelinesUpdated       Pipeline[]       @relation("PipelineUpdatedBy")
-  pipelinesCreated       Pipeline[]       @relation("PipelineCreatedBy")
-  vrlSnippets            VrlSnippet[]
-  dashboardViews         DashboardView[]
-  serviceAccounts        ServiceAccount[]
-  deployRequestsMade     DeployRequest[]  @relation("deployRequester")
-  deployRequestsReviewed DeployRequest[]  @relation("deployReviewer")
-  deployRequestsExecuted DeployRequest[]  @relation("deployExecutor")
-  promotionRequests      PromotionRequest[] @relation("PromotionRequester")
-  promotionApprovals     PromotionRequest[] @relation("PromotionApprover")
-  preferences            UserPreference[]
-  aiConversationsCreated AiConversation[] @relation("AiConversationCreatedBy")
-  aiMessagesCreated      AiMessage[]      @relation("AiMessageCreatedBy")
-  pipelineVersionsCreated PipelineVersion[] @relation("PipelineVersionCreatedBy")
-  stagedRolloutsCreated  StagedRollout[]  @relation("StagedRolloutCreatedBy")
-  filterPresets          FilterPreset[]
-  migrationProjectsCreated MigrationProject[] @relation("MigrationProjectCreatedBy")
+  id                       String               @id @default(cuid())
+  email                    String               @unique
+  name                     String?
+  image                    String?
+  passwordHash             String?
+  authMethod               AuthMethod           @default(LOCAL)
+  memberships              TeamMember[]
+  orgMemberships           OrgMember[]
+  scimGroupMemberships     ScimGroupMember[]
+  accounts                 Account[]
+  lockedAt                 DateTime?
+  lockedBy                 String?
+  isSuperAdmin             Boolean              @default(false)
+  mustChangePassword       Boolean              @default(false)
+  totpSecret               String?
+  totpEnabled              Boolean              @default(false)
+  totpBackupCodes          String?
+  scimExternalId           String?              @unique
+  auditLogs                AuditLog[]
+  pipelinesUpdated         Pipeline[]           @relation("PipelineUpdatedBy")
+  pipelinesCreated         Pipeline[]           @relation("PipelineCreatedBy")
+  vrlSnippets              VrlSnippet[]
+  dashboardViews           DashboardView[]
+  serviceAccounts          ServiceAccount[]
+  deployRequestsMade       DeployRequest[]      @relation("deployRequester")
+  deployRequestsReviewed   DeployRequest[]      @relation("deployReviewer")
+  deployRequestsExecuted   DeployRequest[]      @relation("deployExecutor")
+  promotionRequests        PromotionRequest[]   @relation("PromotionRequester")
+  promotionApprovals       PromotionRequest[]   @relation("PromotionApprover")
+  preferences              UserPreference[]
+  aiConversationsCreated   AiConversation[]     @relation("AiConversationCreatedBy")
+  aiMessagesCreated        AiMessage[]          @relation("AiMessageCreatedBy")
+  pipelineVersionsCreated  PipelineVersion[]    @relation("PipelineVersionCreatedBy")
+  stagedRolloutsCreated    StagedRollout[]      @relation("StagedRolloutCreatedBy")
+  filterPresets            FilterPreset[]
+  migrationProjectsCreated MigrationProject[]   @relation("MigrationProjectCreatedBy")
   dismissedRecommendations CostRecommendation[] @relation("CostRecommendationDismissedBy")
-  webauthnCredentials    WebAuthnCredential[]
-  createdAt              DateTime         @default(now())
+  webauthnCredentials      WebAuthnCredential[]
+  createdAt                DateTime             @default(now())
 }
 
 /// WebAuthn / passkey credential registered for a User (plan §8 Phase 5x).
@@ -213,31 +213,31 @@ model User {
 /// `<orgSlug>.vectorflow.sh` the user is a member of. Per-org JWT
 /// signing keys (plan §8) still scope the resulting session to one org.
 model WebAuthnCredential {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Base64url-encoded credential id returned by the authenticator. Unique
   /// across the whole platform so we can resolve a user from a bare
   /// `getAssertion()` response without first looking up the email.
-  credentialId  String   @unique
+  credentialId String    @unique
   /// Raw COSE-encoded public key bytes (Bytes, not bytea-encoded base64).
-  publicKey     Bytes
+  publicKey    Bytes
   /// Authenticator signature counter. MUST be persisted and re-checked on
   /// every assertion to defeat token cloning / replay.
-  counter       BigInt   @default(0)
+  counter      BigInt    @default(0)
   /// Transport hints (`usb`, `ble`, `nfc`, `internal`, `hybrid`). Stored so
   /// `allowCredentials` on subsequent authentications can include them
   /// without re-prompting the user.
-  transports    String[] @default([])
+  transports   String[]  @default([])
   /// `"singleDevice"` (hardware token tied to one device) or
   /// `"multiDevice"` (passkey synced via the platform — iCloud Keychain etc.).
-  deviceType    String?
+  deviceType   String?
   /// True when the credential is backed up by the platform (synced).
-  backedUp      Boolean  @default(false)
+  backedUp     Boolean   @default(false)
   /// User-supplied label, e.g. "YubiKey 5C" or "MacBook TouchID".
-  name          String?
-  createdAt     DateTime  @default(now())
-  lastUsedAt    DateTime?
+  name         String?
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
 
   @@index([userId])
 }
@@ -264,13 +264,44 @@ model WebAuthnChallenge {
   @@index([userId])
 }
 
+/// Magic-link sign-in token (plan §8 Phase 5y).
+///
+/// Cloud-default authentication for new orgs is "SSO or magic link". This
+/// table is the persistent state for the magic-link flow: a hash of the
+/// random token is stored, the email it was minted for, the org it
+/// belongs to (so per-org rate limiting can decide what to allow), and a
+/// short TTL. Single-use: `consumedAt` is set inside the verifying
+/// transaction so a captured link cannot be redeemed twice.
+///
+/// The plaintext token is NEVER stored — only `tokenHash` (SHA-256 hex).
+/// The plaintext is mailed to the user once; the verify endpoint hashes
+/// the incoming token and compares against `tokenHash`.
+model MagicLinkToken {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Email address the link was minted for. Used to resolve the User on
+  /// redeem (or to bootstrap a new User on first sign-in).
+  email          String
+  /// SHA-256 hex digest of the plaintext token. Plaintext is NEVER stored.
+  tokenHash      String       @unique
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  /// IP that requested the link, for audit.
+  requestIp      String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, email])
+  @@index([expiresAt])
+}
+
 model UserPreference {
-  id     String @id @default(cuid())
+  id             String @id @default(cuid())
   organizationId String @default("default")
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  key    String
-  value  String
+  userId         String
+  user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key            String
+  value          String
 
   @@unique([userId, key])
   @@index([userId])
@@ -283,31 +314,32 @@ enum AuthMethod {
 }
 
 model Team {
-  id                   String        @id @default(cuid())
-  organizationId String @default("default")
+  id                   String             @id @default(cuid())
+  organizationId       String             @default("default")
   name                 String
-  requireTwoFactor     Boolean       @default(false)
+  requireTwoFactor     Boolean            @default(false)
   defaultEnvironmentId String?
-  defaultEnvironment   Environment?  @relation("teamDefault", fields: [defaultEnvironmentId], references: [id], onDelete: SetNull)
+  defaultEnvironment   Environment?       @relation("teamDefault", fields: [defaultEnvironmentId], references: [id], onDelete: SetNull)
   members              TeamMember[]
   environments         Environment[]
   templates            Template[]
   vrlSnippets          VrlSnippet[]
   alertRules           AlertRule[]
-  availableTags        Json?         @default("[]")   // string[] of admin-defined compliance tags
+  availableTags        Json?              @default("[]") // string[] of admin-defined compliance tags
   webhookEndpoints     WebhookEndpoint[]
   migrationProjects    MigrationProject[]
 
   // AI-powered suggestions configuration
-  aiProvider           String?       // "openai" | "anthropic" | "custom"
-  aiBaseUrl            String?       // OpenAI-compatible API endpoint
-  aiApiKey             String?       // Encrypted via crypto.ts
-  aiModel              String?       // e.g. "gpt-4o", "claude-sonnet-4-20250514"
-  aiEnabled            Boolean       @default(false)
+  aiProvider String? // "openai" | "anthropic" | "custom"
+  aiBaseUrl  String? // OpenAI-compatible API endpoint
+  aiApiKey   String? // Encrypted via crypto.ts
+  aiModel    String? // e.g. "gpt-4o", "claude-sonnet-4-20250514"
+  aiEnabled  Boolean @default(false)
 
-  costRecommendations  CostRecommendation[]
-  anomalyEvents     AnomalyEvent[]
-  createdAt            DateTime      @default(now())
+  costRecommendations CostRecommendation[]
+  anomalyEvents       AnomalyEvent[]
+  createdAt           DateTime             @default(now())
+
   @@index([organizationId])
 }
 
@@ -349,49 +381,50 @@ enum Role {
 }
 
 model Environment {
-  id                  String        @id @default(cuid())
-  organizationId String @default("default")
-  name                String
-  isSystem            Boolean       @default(false)
-  teamId              String?
-  team                Team?         @relation(fields: [teamId], references: [id])
-  nodes               VectorNode[]
-  pipelines           Pipeline[]
-  secrets             Secret[]
-  certificates        Certificate[]
+  id                    String                  @id @default(cuid())
+  organizationId        String                  @default("default")
+  name                  String
+  isSystem              Boolean                 @default(false)
+  teamId                String?
+  team                  Team?                   @relation(fields: [teamId], references: [id])
+  nodes                 VectorNode[]
+  pipelines             Pipeline[]
+  secrets               Secret[]
+  certificates          Certificate[]
   certificateBundles    CertificateBundle[]
-  auditLogs           AuditLog[]
-  enrollmentTokenHash String?
-  enrollmentTokenHint String?
-  secretBackend       SecretBackend @default(BUILTIN)
-  secretBackendConfig Json?
-  gitRepoUrl          String?
-  gitBranch           String?       @default("main")
-  gitToken            String?       // Stored encrypted via crypto.ts
-  gitOpsMode          String        @default("off")   // "off" | "push" | "bidirectional" | "promotion"
-  gitProvider         String?       // "github" | "gitlab" | "bitbucket" — auto-detected from gitRepoUrl if null
-  gitWebhookSecret    String?       // HMAC secret for validating incoming git webhooks
-  requireDeployApproval   Boolean       @default(false)
-  alertRules              AlertRule[]
-  notificationChannels    NotificationChannel[]
-  serviceAccounts         ServiceAccount[]
-  deployRequests          DeployRequest[]
-  teamDefaults            Team[]            @relation("teamDefault")
-  sharedComponents        SharedComponent[]
-  pipelineGroups          PipelineGroup[]
-  nodeGroups              NodeGroup[]
-  stagedRollouts          StagedRollout[]
-  promotionSources        PromotionRequest[] @relation("PromotionSourceEnv")
-  promotionTargets        PromotionRequest[] @relation("PromotionTargetEnv")
-  filterPresets           FilterPreset[]
-  gitSyncJobs             GitSyncJob[]
-  costPerGbCents          Int           @default(0)       // cents per GB processed (0 = volume-only)
-  costBudgetCents         Int?                            // monthly budget in cents (null = no budget)
-  costRecommendations     CostRecommendation[]
-  anomalyEvents       AnomalyEvent[]
-  correlationGroups       AlertCorrelationGroup[]
-  variables               Variable[]
-  createdAt               DateTime      @default(now())
+  auditLogs             AuditLog[]
+  enrollmentTokenHash   String?
+  enrollmentTokenHint   String?
+  secretBackend         SecretBackend           @default(BUILTIN)
+  secretBackendConfig   Json?
+  gitRepoUrl            String?
+  gitBranch             String?                 @default("main")
+  gitToken              String? // Stored encrypted via crypto.ts
+  gitOpsMode            String                  @default("off") // "off" | "push" | "bidirectional" | "promotion"
+  gitProvider           String? // "github" | "gitlab" | "bitbucket" — auto-detected from gitRepoUrl if null
+  gitWebhookSecret      String? // HMAC secret for validating incoming git webhooks
+  requireDeployApproval Boolean                 @default(false)
+  alertRules            AlertRule[]
+  notificationChannels  NotificationChannel[]
+  serviceAccounts       ServiceAccount[]
+  deployRequests        DeployRequest[]
+  teamDefaults          Team[]                  @relation("teamDefault")
+  sharedComponents      SharedComponent[]
+  pipelineGroups        PipelineGroup[]
+  nodeGroups            NodeGroup[]
+  stagedRollouts        StagedRollout[]
+  promotionSources      PromotionRequest[]      @relation("PromotionSourceEnv")
+  promotionTargets      PromotionRequest[]      @relation("PromotionTargetEnv")
+  filterPresets         FilterPreset[]
+  gitSyncJobs           GitSyncJob[]
+  costPerGbCents        Int                     @default(0) // cents per GB processed (0 = volume-only)
+  costBudgetCents       Int? // monthly budget in cents (null = no budget)
+  costRecommendations   CostRecommendation[]
+  anomalyEvents         AnomalyEvent[]
+  correlationGroups     AlertCorrelationGroup[]
+  variables             Variable[]
+  createdAt             DateTime                @default(now())
+
   @@index([organizationId])
 }
 
@@ -410,42 +443,43 @@ model Variable {
 }
 
 model VectorNode {
-  id               String               @id @default(cuid())
-  organizationId String @default("default")
-  name             String
-  host             String
-  apiPort          Int                  @default(8686)
-  environmentId    String
-  environment      Environment          @relation(fields: [environmentId], references: [id])
-  status           NodeStatus           @default(UNKNOWN)
-  lastSeen         DateTime?
-  metadata         Json?
-  nodeTokenHash    String?
-  nodeTokenId      String?              @unique
-  enrolledAt       DateTime?
-  lastHeartbeat    DateTime?
-  agentVersion     String?
-  vectorVersion    String?
-  os               String?
-  runningUser      String?
-  deploymentMode   DeploymentMode       @default(UNKNOWN)
-  pendingAction    Json?
-  lastUpdateError  String?
-  maintenanceMode  Boolean              @default(false)
+  id                String               @id @default(cuid())
+  organizationId    String               @default("default")
+  name              String
+  host              String
+  apiPort           Int                  @default(8686)
+  environmentId     String
+  environment       Environment          @relation(fields: [environmentId], references: [id])
+  status            NodeStatus           @default(UNKNOWN)
+  lastSeen          DateTime?
+  metadata          Json?
+  nodeTokenHash     String?
+  nodeTokenId       String?              @unique
+  enrolledAt        DateTime?
+  lastHeartbeat     DateTime?
+  agentVersion      String?
+  vectorVersion     String?
+  os                String?
+  runningUser       String?
+  deploymentMode    DeploymentMode       @default(UNKNOWN)
+  pendingAction     Json?
+  lastUpdateError   String?
+  maintenanceMode   Boolean              @default(false)
   maintenanceModeAt DateTime?
-  labels           Json?                @default("{}")
-  pipelineStatuses NodePipelineStatus[]
-  nodeMetrics      NodeMetric[]
-  pipelineLogs     PipelineLog[]
-  alertEvents      AlertEvent[]
-  statusEvents     NodeStatusEvent[]
-  createdAt        DateTime             @default(now())
+  labels            Json?                @default("{}")
+  pipelineStatuses  NodePipelineStatus[]
+  nodeMetrics       NodeMetric[]
+  pipelineLogs      PipelineLog[]
+  alertEvents       AlertEvent[]
+  statusEvents      NodeStatusEvent[]
+  createdAt         DateTime             @default(now())
+
   @@index([organizationId])
 }
 
 model NodeMetric {
   id               String     @id @default(cuid())
-  organizationId String @default("default")
+  organizationId   String     @default("default")
   nodeId           String
   node             VectorNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
   timestamp        DateTime
@@ -474,9 +508,9 @@ model NodeStatusEvent {
   id         String     @id @default(cuid())
   nodeId     String
   node       VectorNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
-  fromStatus String?    // null on first event (node enrolled)
-  toStatus   String     // HEALTHY, DEGRADED, UNREACHABLE
-  reason     String?    // e.g. "heartbeat timeout", "heartbeat received", "enrolled"
+  fromStatus String? // null on first event (node enrolled)
+  toStatus   String // HEALTHY, DEGRADED, UNREACHABLE
+  reason     String? // e.g. "heartbeat timeout", "heartbeat received", "enrolled"
   timestamp  DateTime   @default(now())
 
   @@index([nodeId, timestamp])
@@ -505,15 +539,15 @@ enum LogLevel {
 }
 
 model PipelineLog {
-  id         String     @id @default(cuid())
-  organizationId String @default("default")
-  pipelineId String
-  pipeline   Pipeline   @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  nodeId     String
-  node       VectorNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
-  timestamp  DateTime   @default(now())
-  level      LogLevel   @default(INFO)
-  message    String
+  id             String     @id @default(cuid())
+  organizationId String     @default("default")
+  pipelineId     String
+  pipeline       Pipeline   @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  nodeId         String
+  node           VectorNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  timestamp      DateTime   @default(now())
+  level          LogLevel   @default(INFO)
+  message        String
 
   @@index([pipelineId, timestamp])
   @@index([nodeId, timestamp])
@@ -554,69 +588,70 @@ model PipelineGroup {
 }
 
 model NodeGroup {
-  id            String      @id @default(cuid())
-  name          String
-  environmentId String
-  environment   Environment @relation(fields: [environmentId], references: [id])
-  criteria      Json        @default("{}")
-  labelTemplate Json        @default("{}")
-  requiredLabels Json       @default("[]")
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id             String      @id @default(cuid())
+  name           String
+  environmentId  String
+  environment    Environment @relation(fields: [environmentId], references: [id])
+  criteria       Json        @default("{}")
+  labelTemplate  Json        @default("{}")
+  requiredLabels Json        @default("[]")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@unique([environmentId, name])
   @@index([environmentId])
 }
 
 model Pipeline {
-  id            String               @id @default(cuid())
-  organizationId String @default("default")
-  name          String
-  description   String?
-  environmentId String
-  environment   Environment          @relation(fields: [environmentId], references: [id])
-  groupId       String?
-  group         PipelineGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  nodes         PipelineNode[]
-  edges         PipelineEdge[]
-  versions      PipelineVersion[]
-  globalConfig  Json?
-  nodeSelector  Json?
-  gitPath       String?              // Stable git file path, e.g. "production/my-pipeline.yaml"
-  isDraft       Boolean              @default(true)
-  isSystem      Boolean              @default(false)
-  deployedAt    DateTime?
-  createdById   String?
-  createdBy     User?                @relation("PipelineCreatedBy", fields: [createdById], references: [id])
-  updatedById   String?
-  updatedBy     User?                @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
-  nodeStatuses  NodePipelineStatus[]
-  metrics       PipelineMetric[]
-  pipelineLogs    PipelineLog[]
-  alertRules      AlertRule[]
-  sampleRequests  EventSampleRequest[]
-  eventSamples    EventSample[]
-  slis            PipelineSli[]
-  enrichMetadata    Boolean              @default(false)
-  tags              Json?                @default("[]")   // string[] of compliance tags like ["PII", "PCI-DSS"]
-  autoRollbackEnabled        Boolean  @default(false)
-  autoRollbackThreshold      Float    @default(5.0)
-  autoRollbackWindowMinutes  Int      @default(5)
-  deploymentStrategy    Json?                // DeploymentStrategy | null (null = direct deploy)
-  variables             Json?                // Record<string, string> — pipeline-scoped variable key-value pairs
-  aiConversations AiConversation[]
-  deployRequests  DeployRequest[]
-  stagedRollouts  StagedRollout[]
-  upstreamDeps    PipelineDependency[] @relation("PipelineDownstream")
-  downstreamDeps  PipelineDependency[] @relation("PipelineUpstream")
-  promotionSources    PromotionRequest[] @relation("PromotionSource")
-  promotionTargets    PromotionRequest[] @relation("PromotionTarget")
-  gitSyncJobs     GitSyncJob[]
-  migrationProject MigrationProject?
-  costRecommendations  CostRecommendation[]
-  anomalyEvents     AnomalyEvent[]
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  id                        String               @id @default(cuid())
+  organizationId            String               @default("default")
+  name                      String
+  description               String?
+  environmentId             String
+  environment               Environment          @relation(fields: [environmentId], references: [id])
+  groupId                   String?
+  group                     PipelineGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  nodes                     PipelineNode[]
+  edges                     PipelineEdge[]
+  versions                  PipelineVersion[]
+  globalConfig              Json?
+  nodeSelector              Json?
+  gitPath                   String? // Stable git file path, e.g. "production/my-pipeline.yaml"
+  isDraft                   Boolean              @default(true)
+  isSystem                  Boolean              @default(false)
+  deployedAt                DateTime?
+  createdById               String?
+  createdBy                 User?                @relation("PipelineCreatedBy", fields: [createdById], references: [id])
+  updatedById               String?
+  updatedBy                 User?                @relation("PipelineUpdatedBy", fields: [updatedById], references: [id])
+  nodeStatuses              NodePipelineStatus[]
+  metrics                   PipelineMetric[]
+  pipelineLogs              PipelineLog[]
+  alertRules                AlertRule[]
+  sampleRequests            EventSampleRequest[]
+  eventSamples              EventSample[]
+  slis                      PipelineSli[]
+  enrichMetadata            Boolean              @default(false)
+  tags                      Json?                @default("[]") // string[] of compliance tags like ["PII", "PCI-DSS"]
+  autoRollbackEnabled       Boolean              @default(false)
+  autoRollbackThreshold     Float                @default(5.0)
+  autoRollbackWindowMinutes Int                  @default(5)
+  deploymentStrategy        Json? // DeploymentStrategy | null (null = direct deploy)
+  variables                 Json? // Record<string, string> — pipeline-scoped variable key-value pairs
+  aiConversations           AiConversation[]
+  deployRequests            DeployRequest[]
+  stagedRollouts            StagedRollout[]
+  upstreamDeps              PipelineDependency[] @relation("PipelineDownstream")
+  downstreamDeps            PipelineDependency[] @relation("PipelineUpstream")
+  promotionSources          PromotionRequest[]   @relation("PromotionSource")
+  promotionTargets          PromotionRequest[]   @relation("PromotionTarget")
+  gitSyncJobs               GitSyncJob[]
+  migrationProject          MigrationProject?
+  costRecommendations       CostRecommendation[]
+  anomalyEvents             AnomalyEvent[]
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+
   @@index([organizationId])
 }
 
@@ -635,15 +670,15 @@ model PipelineDependency {
 }
 
 model NodePipelineStatus {
-  id            String        @id @default(cuid())
-  nodeId        String
-  node          VectorNode    @relation(fields: [nodeId], references: [id], onDelete: Cascade)
-  pipelineId    String
-  pipeline      Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  version       Int
-  status        ProcessStatus @default(PENDING)
-  pid           Int?
-  uptimeSeconds Int?
+  id              String        @id @default(cuid())
+  nodeId          String
+  node            VectorNode    @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  pipelineId      String
+  pipeline        Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  version         Int
+  status          ProcessStatus @default(PENDING)
+  pid             Int?
+  uptimeSeconds   Int?
   eventsIn        BigInt        @default(0)
   eventsOut       BigInt        @default(0)
   errorsTotal     BigInt        @default(0)
@@ -652,19 +687,19 @@ model NodePipelineStatus {
   bytesOut        BigInt        @default(0)
   utilization     Float         @default(0)
   configChecksum  String?
-  recentLogs    Json?
-  lastUpdated   DateTime      @default(now())
+  recentLogs      Json?
+  lastUpdated     DateTime      @default(now())
 
   @@unique([nodeId, pipelineId])
 }
 
 model PipelineMetric {
   id              String   @id @default(cuid())
-  organizationId String @default("default")
+  organizationId  String   @default("default")
   pipelineId      String
   pipeline        Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   nodeId          String?
-  componentId     String?                     // null = aggregate row, non-null = per-component
+  componentId     String? // null = aggregate row, non-null = per-component
   timestamp       DateTime
   eventsIn        BigInt   @default(0)
   eventsOut       BigInt   @default(0)
@@ -673,7 +708,7 @@ model PipelineMetric {
   bytesIn         BigInt   @default(0)
   bytesOut        BigInt   @default(0)
   utilization     Float    @default(0)
-  latencyMeanMs   Float?                      // pipeline-level weighted mean latency (ms)
+  latencyMeanMs   Float? // pipeline-level weighted mean latency (ms)
 
   @@index([pipelineId, timestamp])
   @@index([pipelineId, componentId, timestamp])
@@ -685,8 +720,8 @@ model PipelineSli {
   id            String   @id @default(cuid())
   pipelineId    String
   pipeline      Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  metric        String   // "error_rate" | "throughput_floor" | "discard_rate" | "latency_mean"
-  condition     String   // "lt" | "gt"
+  metric        String // "error_rate" | "throughput_floor" | "discard_rate" | "latency_mean"
+  condition     String // "lt" | "gt"
   threshold     Float
   windowMinutes Int      @default(5)
   enabled       Boolean  @default(true)
@@ -709,30 +744,30 @@ enum RecommendationStatus {
 }
 
 model CostRecommendation {
-  id              String               @id @default(cuid())
-  organizationId String @default("default")
-  teamId          String
-  team            Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  environmentId   String
-  environment     Environment          @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  pipelineId      String
-  pipeline        Pipeline             @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  type            RecommendationType
-  status          RecommendationStatus @default(PENDING)
-  title           String
-  description     String               @db.Text
-  aiSummary       String?              @db.Text
-  aiSuggestions   Json?                // structured AI suggestions (AiSuggestion[] format from src/lib/ai/types.ts)
-  suggestedAction Json?                // { type: "add_filter" | "add_sampling" | "remove_sink" | ..., config: {...} }
-  analysisData    Json                 // raw metrics that triggered the recommendation
-  estimatedSavingsBytes BigInt?        // estimated bytes/day reduction
-  dismissedById   String?
-  dismissedBy     User?                @relation("CostRecommendationDismissedBy", fields: [dismissedById], references: [id], onDelete: SetNull)
-  dismissedAt     DateTime?
-  appliedAt       DateTime?
-  expiresAt       DateTime             // recommendations expire after 7 days; re-generated if still relevant
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  id                    String               @id @default(cuid())
+  organizationId        String               @default("default")
+  teamId                String
+  team                  Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  environmentId         String
+  environment           Environment          @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  pipelineId            String
+  pipeline              Pipeline             @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  type                  RecommendationType
+  status                RecommendationStatus @default(PENDING)
+  title                 String
+  description           String               @db.Text
+  aiSummary             String?              @db.Text
+  aiSuggestions         Json? // structured AI suggestions (AiSuggestion[] format from src/lib/ai/types.ts)
+  suggestedAction       Json? // { type: "add_filter" | "add_sampling" | "remove_sink" | ..., config: {...} }
+  analysisData          Json // raw metrics that triggered the recommendation
+  estimatedSavingsBytes BigInt? // estimated bytes/day reduction
+  dismissedById         String?
+  dismissedBy           User?                @relation("CostRecommendationDismissedBy", fields: [dismissedById], references: [id], onDelete: SetNull)
+  dismissedAt           DateTime?
+  appliedAt             DateTime?
+  expiresAt             DateTime // recommendations expire after 7 days; re-generated if still relevant
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 
   @@index([teamId, status])
   @@index([pipelineId])
@@ -742,18 +777,19 @@ model CostRecommendation {
 }
 
 model EventSampleRequest {
-  id            String        @id @default(cuid())
-  organizationId String @default("default")
-  pipelineId    String
-  pipeline      Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  componentKeys Json
-  limit         Int           @default(5)
-  status        String        @default("PENDING")
-  nodeId        String?
-  requestedAt   DateTime      @default(now())
-  expiresAt     DateTime
-  completedAt   DateTime?
-  samples       EventSample[]
+  id             String        @id @default(cuid())
+  organizationId String        @default("default")
+  pipelineId     String
+  pipeline       Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  componentKeys  Json
+  limit          Int           @default(5)
+  status         String        @default("PENDING")
+  nodeId         String?
+  requestedAt    DateTime      @default(now())
+  expiresAt      DateTime
+  completedAt    DateTime?
+  samples        EventSample[]
+
   @@index([organizationId])
 }
 
@@ -772,17 +808,17 @@ model ActiveTap {
 }
 
 model EventSample {
-  id            String              @id @default(cuid())
-  organizationId String @default("default")
-  requestId     String
-  request       EventSampleRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  pipelineId    String
-  pipeline      Pipeline            @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  componentKey  String
-  events        Json
-  schema        Json
-  error         String?
-  sampledAt     DateTime            @default(now())
+  id             String             @id @default(cuid())
+  organizationId String             @default("default")
+  requestId      String
+  request        EventSampleRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  pipelineId     String
+  pipeline       Pipeline           @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  componentKey   String
+  events         Json
+  schema         Json
+  error          String?
+  sampledAt      DateTime           @default(now())
 
   @@unique([requestId, componentKey])
   @@index([pipelineId, componentKey])
@@ -790,20 +826,20 @@ model EventSample {
 }
 
 model PipelineNode {
-  id            String        @id @default(cuid())
-  pipelineId    String
-  pipeline      Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  componentKey  String
-  displayName   String?
-  componentType String
-  kind          ComponentKind
-  config        Json
-  positionX     Float
-  positionY     Float
-  disabled      Boolean       @default(false)
-  sharedComponentId       String?
-  sharedComponent         SharedComponent? @relation(fields: [sharedComponentId], references: [id], onDelete: SetNull)
-  sharedComponentVersion  Int?
+  id                     String           @id @default(cuid())
+  pipelineId             String
+  pipeline               Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  componentKey           String
+  displayName            String?
+  componentType          String
+  kind                   ComponentKind
+  config                 Json
+  positionX              Float
+  positionY              Float
+  disabled               Boolean          @default(false)
+  sharedComponentId      String?
+  sharedComponent        SharedComponent? @relation(fields: [sharedComponentId], references: [id], onDelete: SetNull)
+  sharedComponentVersion Int?
 
   @@index([pipelineId])
   @@index([sharedComponentId])
@@ -834,7 +870,7 @@ enum MigrationStatus {
 
 model MigrationProject {
   id                  String            @id @default(cuid())
-  organizationId String @default("default")
+  organizationId      String            @default("default")
   teamId              String
   team                Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
   name                String
@@ -842,10 +878,10 @@ model MigrationProject {
   originalConfig      String            @db.Text
   parsedTopology      Json?
   pluginInventory     Json?
-  readinessScore      Int?              // 0-100
+  readinessScore      Int? // 0-100
   readinessReport     Json?
-  translatedBlocks    Json?             // per-block AI translation results with confidence scores
-  validationResult    Json?             // vector validate output
+  translatedBlocks    Json? // per-block AI translation results with confidence scores
+  validationResult    Json? // vector validate output
   generatedPipelineId String?           @unique
   generatedPipeline   Pipeline?         @relation(fields: [generatedPipelineId], references: [id], onDelete: SetNull)
   status              MigrationStatus   @default(DRAFT)
@@ -872,20 +908,20 @@ model PipelineEdge {
 }
 
 model SharedComponent {
-  id              String        @id @default(cuid())
-  organizationId String @default("default")
-  name            String
-  description     String?
-  componentType   String
-  kind            ComponentKind
-  config          Json
-  version         Int           @default(1)
-  environmentId   String
-  environment     Environment   @relation(fields: [environmentId], references: [id])
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id             String        @id @default(cuid())
+  organizationId String        @default("default")
+  name           String
+  description    String?
+  componentType  String
+  kind           ComponentKind
+  config         Json
+  version        Int           @default(1)
+  environmentId  String
+  environment    Environment   @relation(fields: [environmentId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  linkedNodes     PipelineNode[]
+  linkedNodes PipelineNode[]
 
   @@unique([environmentId, name])
   @@index([environmentId])
@@ -893,22 +929,22 @@ model SharedComponent {
 }
 
 model PipelineVersion {
-  id          String   @id @default(cuid())
-  organizationId String @default("default")
-  pipelineId  String
-  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  version     Int
-  configYaml  String
-  configToml  String?
-  logLevel    String?
-  globalConfig Json?
-  nodesSnapshot Json?
-  edgesSnapshot Json?
-  variablesSnapshot Json?  // Snapshot of pipeline variables at deploy time
-  createdById String?
-  createdBy   User?    @relation("PipelineVersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  changelog   String?
-  createdAt   DateTime @default(now())
+  id                String   @id @default(cuid())
+  organizationId    String   @default("default")
+  pipelineId        String
+  pipeline          Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  version           Int
+  configYaml        String
+  configToml        String?
+  logLevel          String?
+  globalConfig      Json?
+  nodesSnapshot     Json?
+  edgesSnapshot     Json?
+  variablesSnapshot Json? // Snapshot of pipeline variables at deploy time
+  createdById       String?
+  createdBy         User?    @relation("PipelineVersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  changelog         String?
+  createdAt         DateTime @default(now())
 
   stagedRolloutsAsCanary   StagedRollout[] @relation("StagedRolloutCanaryVersion")
   stagedRolloutsAsPrevious StagedRollout[] @relation("StagedRolloutPreviousVersion")
@@ -918,29 +954,29 @@ model PipelineVersion {
 }
 
 model StagedRollout {
-  id                      String           @id @default(cuid())
-  organizationId String @default("default")
-  pipelineId              String
-  pipeline                Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  environmentId           String
-  environment             Environment      @relation(fields: [environmentId], references: [id])
-  canaryVersionId         String
-  canaryVersion           PipelineVersion  @relation("StagedRolloutCanaryVersion", fields: [canaryVersionId], references: [id])
-  previousVersionId       String?
-  previousVersion         PipelineVersion? @relation("StagedRolloutPreviousVersion", fields: [previousVersionId], references: [id])
-  canarySelector          Json
-  originalSelector        Json?
-  canaryNodeIds           Json
-  remainingNodeIds        Json?
-  status                  String           @default("CANARY_DEPLOYED")
-  healthCheckWindowMinutes Int             @default(5)
-  healthCheckExpiresAt    DateTime?
-  broadenedAt             DateTime?
-  rolledBackAt            DateTime?
-  createdById             String
-  createdBy               User             @relation("StagedRolloutCreatedBy", fields: [createdById], references: [id])
-  createdAt               DateTime         @default(now())
-  updatedAt               DateTime         @updatedAt
+  id                       String           @id @default(cuid())
+  organizationId           String           @default("default")
+  pipelineId               String
+  pipeline                 Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  environmentId            String
+  environment              Environment      @relation(fields: [environmentId], references: [id])
+  canaryVersionId          String
+  canaryVersion            PipelineVersion  @relation("StagedRolloutCanaryVersion", fields: [canaryVersionId], references: [id])
+  previousVersionId        String?
+  previousVersion          PipelineVersion? @relation("StagedRolloutPreviousVersion", fields: [previousVersionId], references: [id])
+  canarySelector           Json
+  originalSelector         Json?
+  canaryNodeIds            Json
+  remainingNodeIds         Json?
+  status                   String           @default("CANARY_DEPLOYED")
+  healthCheckWindowMinutes Int              @default(5)
+  healthCheckExpiresAt     DateTime?
+  broadenedAt              DateTime?
+  rolledBackAt             DateTime?
+  createdById              String
+  createdBy                User             @relation("StagedRolloutCreatedBy", fields: [createdById], references: [id])
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
 
   @@index([pipelineId, status])
   @@index([status, healthCheckExpiresAt])
@@ -993,36 +1029,37 @@ model CertificateBundle {
 }
 
 model Template {
-  id          String   @id @default(cuid())
-  organizationId String @default("default")
-  name        String
-  description String
-  category    String
-  teamId      String?
-  team        Team?    @relation(fields: [teamId], references: [id])
-  nodes       Json
-  edges       Json
-  createdAt   DateTime @default(now())
+  id             String   @id @default(cuid())
+  organizationId String   @default("default")
+  name           String
+  description    String
+  category       String
+  teamId         String?
+  team           Team?    @relation(fields: [teamId], references: [id])
+  nodes          Json
+  edges          Json
+  createdAt      DateTime @default(now())
+
   @@index([organizationId])
 }
 
 model AuditLog {
-  id            String       @id @default(cuid())
-  organizationId String @default("default")
-  userId        String?
-  user          User?        @relation(fields: [userId], references: [id])
-  action        String
-  entityType    String
-  entityId      String
-  diff          Json?
-  metadata      Json?
-  ipAddress     String?
-  userEmail     String?
-  userName      String?
-  teamId        String?
-  environmentId String?
-  environment   Environment? @relation(fields: [environmentId], references: [id])
-  createdAt     DateTime     @default(now())
+  id             String       @id @default(cuid())
+  organizationId String       @default("default")
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+  action         String
+  entityType     String
+  entityId       String
+  diff           Json?
+  metadata       Json?
+  ipAddress      String?
+  userEmail      String?
+  userName       String?
+  teamId         String?
+  environmentId  String?
+  environment    Environment? @relation(fields: [environmentId], references: [id])
+  createdAt      DateTime     @default(now())
   /**
    * Phase 4 tamper-evidence chain.
    * `prevHash` is the previous row's `hash` (or `sha256("vf:audit-genesis:" || orgId)` for the first row).
@@ -1032,8 +1069,8 @@ model AuditLog {
    * as "no tail" by `writeAuditLog`, so new inserts chain off the most
    * recent already-chained row (or genesis if none exists yet).
    */
-  prevHash      String?
-  hash          String?
+  prevHash       String?
+  hash           String?
 
   @@index([entityType, entityId])
   @@index([userId])
@@ -1046,23 +1083,27 @@ model AuditLog {
 
 /**
  * Stripe webhook idempotency ledger (plan addendum §6).
- *
  * Stripe redelivers webhook events on 5xx responses. To guarantee
  * once-only processing, the webhook handler in the closed `cloud/`
  * package records every event's `id` (the Stripe `evt_…` identifier)
  * here on receipt. Duplicate deliveries observe an existing row and
  * return 200 without processing.
- *
  * The handler lives in cloud/; this model is in OSS schema so the
  * shared migration sequence stays linear. OSS deployments simply
  * never insert into this table.
  */
 model StripeWebhookEvent {
-  /** Stripe event id (e.g. `evt_1Op4...`). PK enforces idempotency. */
+  /**
+   * Stripe event id (e.g. `evt_1Op4...`). PK enforces idempotency.
+   */
   id          String   @id
-  /** Stripe event type, e.g. `customer.subscription.updated`. */
+  /**
+   * Stripe event type, e.g. `customer.subscription.updated`.
+   */
   type        String
-  /** When the handler first observed and committed this event. */
+  /**
+   * When the handler first observed and committed this event.
+   */
   processedAt DateTime @default(now())
 
   @@index([processedAt])
@@ -1071,7 +1112,6 @@ model StripeWebhookEvent {
 
 /**
  * Per-organization audit-chain tail pointer.
- *
  * Single source of truth for "what is the most recently-chained AuditLog
  * row's hash for this org" — used by writeAuditLog to compute prevHash on
  * the next insert. Maintained inside the same advisory-locked transaction
@@ -1081,9 +1121,13 @@ model StripeWebhookEvent {
  */
 model AuditChainTail {
   organizationId String   @id
-  /** Hash of the most recently chained AuditLog row for this org. */
+  /**
+   * Hash of the most recently chained AuditLog row for this org.
+   */
   lastHash       String
-  /** When that row was written. Informational; not used for ordering. */
+  /**
+   * When that row was written. Informational; not used for ordering.
+   */
   lastWriteAt    DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
@@ -1118,22 +1162,22 @@ model SystemSettings {
   anomalyEnabledMetrics        String @default("eventsIn,errorsTotal,latencyMeanMs")
 
   // Backup configuration
-  backupEnabled        Boolean  @default(false)
-  backupCron           String   @default("0 2 * * *")
-  backupRetentionCount Int      @default(7)
+  backupEnabled        Boolean   @default(false)
+  backupCron           String    @default("0 2 * * *")
+  backupRetentionCount Int       @default(7)
   lastBackupAt         DateTime?
   lastBackupStatus     String?
   lastBackupError      String?
-  encryptionCanary    String?
+  encryptionCanary     String?
 
   // S3 remote storage configuration
-  backupStorageBackend  String   @default("local")   // "local" | "s3"
-  s3Bucket              String?
-  s3Region              String?  @default("us-east-1")
-  s3Prefix              String?
-  s3AccessKeyId         String?
-  s3SecretAccessKey     String?  // Encrypted via crypto.ts
-  s3Endpoint            String?  // Optional custom endpoint (MinIO, DigitalOcean Spaces)
+  backupStorageBackend String  @default("local") // "local" | "s3"
+  s3Bucket             String?
+  s3Region             String? @default("us-east-1")
+  s3Prefix             String?
+  s3AccessKeyId        String?
+  s3SecretAccessKey    String? // Encrypted via crypto.ts
+  s3Endpoint           String? // Optional custom endpoint (MinIO, DigitalOcean Spaces)
 
   latestServerRelease            String?
   latestServerReleaseCheckedAt   DateTime?
@@ -1141,14 +1185,14 @@ model SystemSettings {
   latestAgentRelease             String?
   latestAgentReleaseCheckedAt    DateTime?
   latestAgentReleaseEtag         String?
-  latestAgentChecksums           String?    // JSON: {"vf-agent-linux-amd64":"sha256..."}
+  latestAgentChecksums           String? // JSON: {"vf-agent-linux-amd64":"sha256..."}
   latestDevAgentRelease          String?
   latestDevAgentReleaseCheckedAt DateTime?
   latestDevAgentReleaseEtag      String?
-  latestDevAgentChecksums        String?    // JSON: {"vf-agent-linux-amd64":"sha256..."}
+  latestDevAgentChecksums        String? // JSON: {"vf-agent-linux-amd64":"sha256..."}
 
-  scimEnabled      Boolean  @default(false)
-  scimBearerToken  String?  // Encrypted token for SCIM auth
+  scimEnabled     Boolean @default(false)
+  scimBearerToken String? // Encrypted token for SCIM auth
 
   // Telemetry — see docs/superpowers/specs/2026-04-25-vf-telemetry-client-design.md
   telemetryEnabled    Boolean   @default(false)
@@ -1160,10 +1204,10 @@ model SystemSettings {
 
 model BackupRecord {
   id              String    @id @default(cuid())
-  organizationId String @default("default")
+  organizationId  String    @default("default")
   filename        String
-  status          String    // "success" | "failed" | "in_progress" | "orphaned"
-  type            String    // "scheduled" | "manual" | "pre_restore"
+  status          String // "success" | "failed" | "in_progress" | "orphaned"
+  type            String // "scheduled" | "manual" | "pre_restore"
   sizeBytes       BigInt?
   durationMs      Int?
   storageLocation String
@@ -1200,18 +1244,18 @@ model Account {
 }
 
 model VrlSnippet {
-  id          String   @id @default(cuid())
-  organizationId String @default("default")
-  teamId      String
-  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  name        String
-  description String?
-  category    String
-  code        String
-  createdBy   String?
-  creator     User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String   @default("default")
+  teamId         String
+  team           Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  category       String
+  code           String
+  createdBy      String?
+  creator        User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([teamId, name])
   @@index([teamId])
@@ -1219,26 +1263,26 @@ model VrlSnippet {
 }
 
 model DeployRequest {
-  id              String      @id @default(cuid())
-  organizationId String @default("default")
-  pipelineId      String
-  pipeline        Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  environmentId   String
-  environment     Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  requestedById   String?
-  requestedBy     User?       @relation("deployRequester", fields: [requestedById], references: [id], onDelete: SetNull)
-  configYaml      String
-  changelog       String
-  nodeSelector    Json?
-  status          String      @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED | DEPLOYED
-  reviewedById    String?
-  reviewedBy      User?       @relation("deployReviewer", fields: [reviewedById], references: [id])
-  reviewNote      String?
-  createdAt       DateTime    @default(now())
-  reviewedAt      DateTime?
-  deployedById    String?
-  deployedBy      User?       @relation("deployExecutor", fields: [deployedById], references: [id], onDelete: SetNull)
-  deployedAt      DateTime?
+  id             String      @id @default(cuid())
+  organizationId String      @default("default")
+  pipelineId     String
+  pipeline       Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  environmentId  String
+  environment    Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  requestedById  String?
+  requestedBy    User?       @relation("deployRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  configYaml     String
+  changelog      String
+  nodeSelector   Json?
+  status         String      @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED | DEPLOYED
+  reviewedById   String?
+  reviewedBy     User?       @relation("deployReviewer", fields: [reviewedById], references: [id])
+  reviewNote     String?
+  createdAt      DateTime    @default(now())
+  reviewedAt     DateTime?
+  deployedById   String?
+  deployedBy     User?       @relation("deployExecutor", fields: [deployedById], references: [id], onDelete: SetNull)
+  deployedAt     DateTime?
 
   @@index([pipelineId, status])
   @@index([environmentId, status])
@@ -1246,31 +1290,31 @@ model DeployRequest {
 }
 
 model PromotionRequest {
-  id                    String      @id @default(cuid())
-  organizationId String @default("default")
-  sourcePipelineId      String
-  sourcePipeline        Pipeline    @relation("PromotionSource", fields: [sourcePipelineId], references: [id], onDelete: Cascade)
-  targetPipelineId      String?
-  targetPipeline        Pipeline?   @relation("PromotionTarget", fields: [targetPipelineId], references: [id], onDelete: SetNull)
-  sourceEnvironmentId   String
-  sourceEnvironment     Environment @relation("PromotionSourceEnv", fields: [sourceEnvironmentId], references: [id], onDelete: Cascade)
-  targetEnvironmentId   String
-  targetEnvironment     Environment @relation("PromotionTargetEnv", fields: [targetEnvironmentId], references: [id], onDelete: Cascade)
-  status                String      @default("PENDING") // PENDING | APPROVED | DEPLOYED | REJECTED | CANCELLED | AWAITING_PR_MERGE | DEPLOYING
-  promotedById          String?
-  promotedBy            User?       @relation("PromotionRequester", fields: [promotedById], references: [id], onDelete: SetNull)
-  approvedById          String?
-  approvedBy            User?       @relation("PromotionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  nodesSnapshot         Json?
-  edgesSnapshot         Json?
-  globalConfigSnapshot  Json?
-  targetPipelineName    String?
-  reviewNote            String?
-  prUrl                 String?     // GitHub PR HTML URL (GitOps promotion only)
-  prNumber              Int?        // GitHub PR number (GitOps promotion only)
-  createdAt             DateTime    @default(now())
-  reviewedAt            DateTime?
-  deployedAt            DateTime?
+  id                   String      @id @default(cuid())
+  organizationId       String      @default("default")
+  sourcePipelineId     String
+  sourcePipeline       Pipeline    @relation("PromotionSource", fields: [sourcePipelineId], references: [id], onDelete: Cascade)
+  targetPipelineId     String?
+  targetPipeline       Pipeline?   @relation("PromotionTarget", fields: [targetPipelineId], references: [id], onDelete: SetNull)
+  sourceEnvironmentId  String
+  sourceEnvironment    Environment @relation("PromotionSourceEnv", fields: [sourceEnvironmentId], references: [id], onDelete: Cascade)
+  targetEnvironmentId  String
+  targetEnvironment    Environment @relation("PromotionTargetEnv", fields: [targetEnvironmentId], references: [id], onDelete: Cascade)
+  status               String      @default("PENDING") // PENDING | APPROVED | DEPLOYED | REJECTED | CANCELLED | AWAITING_PR_MERGE | DEPLOYING
+  promotedById         String?
+  promotedBy           User?       @relation("PromotionRequester", fields: [promotedById], references: [id], onDelete: SetNull)
+  approvedById         String?
+  approvedBy           User?       @relation("PromotionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  nodesSnapshot        Json?
+  edgesSnapshot        Json?
+  globalConfigSnapshot Json?
+  targetPipelineName   String?
+  reviewNote           String?
+  prUrl                String? // GitHub PR HTML URL (GitOps promotion only)
+  prNumber             Int? // GitHub PR number (GitOps promotion only)
+  createdAt            DateTime    @default(now())
+  reviewedAt           DateTime?
+  deployedAt           DateTime?
 
   @@index([sourcePipelineId, status])
   @@index([sourceEnvironmentId])
@@ -1279,24 +1323,24 @@ model PromotionRequest {
 }
 
 model GitSyncJob {
-  id              String    @id @default(cuid())
-  organizationId String @default("default")
-  environmentId   String
-  environment     Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  pipelineId      String
-  pipeline        Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  action          String      // "commit" | "delete"
-  configYaml      String?     // The YAML content for commit actions
-  commitMessage   String?
-  authorName      String?
-  authorEmail     String?
-  attempts        Int         @default(0)
-  maxAttempts     Int         @default(3)
-  lastError       String?
-  status          String      @default("pending") // "pending" | "completed" | "failed"
-  nextRetryAt     DateTime?
-  createdAt       DateTime    @default(now())
-  completedAt     DateTime?
+  id             String      @id @default(cuid())
+  organizationId String      @default("default")
+  environmentId  String
+  environment    Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  pipelineId     String
+  pipeline       Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  action         String // "commit" | "delete"
+  configYaml     String? // The YAML content for commit actions
+  commitMessage  String?
+  authorName     String?
+  authorEmail    String?
+  attempts       Int         @default(0)
+  maxAttempts    Int         @default(3)
+  lastError      String?
+  status         String      @default("pending") // "pending" | "completed" | "failed"
+  nextRetryAt    DateTime?
+  createdAt      DateTime    @default(now())
+  completedAt    DateTime?
 
   @@index([status, nextRetryAt])
   @@index([environmentId])
@@ -1343,7 +1387,7 @@ enum AlertMetric {
   // Phase 5 event — enum value added early so subscriptions can be created
   promotion_completed
   git_sync_failed
-  cost_threshold_exceeded   // fires when monthly cost exceeds costBudgetCents
+  cost_threshold_exceeded // fires when monthly cost exceeds costBudgetCents
   log_keyword
 }
 
@@ -1361,33 +1405,33 @@ enum AlertStatus {
 }
 
 model AlertRule {
-  id              String         @id @default(cuid())
-  organizationId String @default("default")
-  name            String
-  description     String?
-  enabled         Boolean        @default(true)
-  environmentId   String
-  environment     Environment    @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  pipelineId      String?
-  pipeline        Pipeline?      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  teamId          String
-  team            Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  metric          AlertMetric
-  condition       AlertCondition?
-  threshold       Float?
-  durationSeconds Int?
-  severity        String         @default("warning")
-  ownerHint       String         @default("platform-ops")
-  suggestedAction String         @default("Review the alert context, then inspect the affected pipeline, node, and recent deployment changes.")
-  snoozedUntil    DateTime?
+  id                    String             @id @default(cuid())
+  organizationId        String             @default("default")
+  name                  String
+  description           String?
+  enabled               Boolean            @default(true)
+  environmentId         String
+  environment           Environment        @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  pipelineId            String?
+  pipeline              Pipeline?          @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  teamId                String
+  team                  Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  metric                AlertMetric
+  condition             AlertCondition?
+  threshold             Float?
+  durationSeconds       Int?
+  severity              String             @default("warning")
+  ownerHint             String             @default("platform-ops")
+  suggestedAction       String             @default("Review the alert context, then inspect the affected pipeline, node, and recent deployment changes.")
+  snoozedUntil          DateTime?
   cooldownMinutes       Int?
   keyword               String?
   keywordSeverityFilter LogLevel?
   keywordWindowMinutes  Int?
-  events          AlertEvent[]
-  channels        AlertRuleChannel[]
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  events                AlertEvent[]
+  channels              AlertRuleChannel[]
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
   @@index([environmentId])
   @@index([teamId])
@@ -1396,7 +1440,7 @@ model AlertRule {
 
 model WebhookEndpoint {
   id              String            @id @default(cuid())
-  organizationId String @default("default")
+  organizationId  String            @default("default")
   teamId          String
   team            Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
   name            String
@@ -1419,7 +1463,7 @@ model WebhookDelivery {
   eventType         AlertMetric
   msgId             String
   payload           Json
-  status            String          // 'pending' | 'success' | 'failed' | 'dead_letter'
+  status            String // 'pending' | 'success' | 'failed' | 'dead_letter'
   statusCode        Int?
   errorMessage      String?
   attemptNumber     Int             @default(1)
@@ -1432,23 +1476,23 @@ model WebhookDelivery {
 }
 
 model AlertEvent {
-  id              String      @id @default(cuid())
-  alertRuleId     String
-  alertRule       AlertRule   @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
-  nodeId          String?
-  node            VectorNode? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
-  status          AlertStatus
-  value           Float
-  message         String?
-  firedAt         DateTime    @default(now())
-  resolvedAt      DateTime?
-  notifiedAt      DateTime?
-  acknowledgedAt  DateTime?
-  acknowledgedBy  String?
-  errorContext    Json?     // { lines: Array<{timestamp, message}>, truncated }
-  correlationGroupId  String?
-  correlationGroup    AlertCorrelationGroup? @relation(fields: [correlationGroupId], references: [id], onDelete: SetNull)
-  deliveries      DeliveryAttempt[]
+  id                 String                 @id @default(cuid())
+  alertRuleId        String
+  alertRule          AlertRule              @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+  nodeId             String?
+  node               VectorNode?            @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+  status             AlertStatus
+  value              Float
+  message            String?
+  firedAt            DateTime               @default(now())
+  resolvedAt         DateTime?
+  notifiedAt         DateTime?
+  acknowledgedAt     DateTime?
+  acknowledgedBy     String?
+  errorContext       Json? // { lines: Array<{timestamp, message}>, truncated }
+  correlationGroupId String?
+  correlationGroup   AlertCorrelationGroup? @relation(fields: [correlationGroupId], references: [id], onDelete: SetNull)
+  deliveries         DeliveryAttempt[]
 
   @@index([alertRuleId])
   @@index([nodeId])
@@ -1457,14 +1501,14 @@ model AlertEvent {
 }
 
 model AlertCorrelationGroup {
-  id                  String       @id @default(cuid())
+  id                  String         @id @default(cuid())
   environmentId       String
-  environment         Environment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  status              AlertStatus  @default(firing)
+  environment         Environment    @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  status              AlertStatus    @default(firing)
   rootCauseEventId    String?
   rootCauseSuggestion String?
-  eventCount          Int          @default(1)
-  openedAt            DateTime     @default(now())
+  eventCount          Int            @default(1)
+  openedAt            DateTime       @default(now())
   closedAt            DateTime?
   events              AlertEvent[]
   anomalyEvents       AnomalyEvent[]
@@ -1474,18 +1518,18 @@ model AlertCorrelationGroup {
 }
 
 model DeliveryAttempt {
-  id            String      @id @default(cuid())
+  id            String     @id @default(cuid())
   alertEventId  String
-  alertEvent    AlertEvent  @relation(fields: [alertEventId], references: [id], onDelete: Cascade)
-  channelType   String      // 'webhook' | 'slack' | 'email' | 'pagerduty'
+  alertEvent    AlertEvent @relation(fields: [alertEventId], references: [id], onDelete: Cascade)
+  channelType   String // 'webhook' | 'slack' | 'email' | 'pagerduty'
   channelName   String
-  status        String      // 'pending' | 'success' | 'failed'
+  status        String // 'pending' | 'success' | 'failed'
   statusCode    Int?
   errorMessage  String?
-  attemptNumber Int         @default(1)
+  attemptNumber Int        @default(1)
   nextRetryAt   DateTime?
   channelId     String?
-  requestedAt   DateTime    @default(now())
+  requestedAt   DateTime   @default(now())
   completedAt   DateTime?
 
   @@index([alertEventId])
@@ -1493,43 +1537,43 @@ model DeliveryAttempt {
 }
 
 model DashboardView {
-  id        String   @id @default(cuid())
-  organizationId String @default("default")
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name      String
-  panels    Json     // string[] of panel names
-  filters   Json?    // { pipelineIds?: string[], nodeIds?: string[] }
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String   @default("default")
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  panels         Json // string[] of panel names
+  filters        Json? // { pipelineIds?: string[], nodeIds?: string[] }
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([userId])
   @@index([organizationId])
 }
 
 model NotificationChannel {
-  id              String   @id @default(cuid())
-  organizationId String @default("default")
-  environmentId   String
-  environment     Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  name            String
-  type            String   // "slack" | "email" | "pagerduty" | "webhook"
-  config          Json     // Type-specific config
-  enabled         Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String      @id @default(cuid())
+  organizationId String      @default("default")
+  environmentId  String
+  environment    Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  name           String
+  type           String // "slack" | "email" | "pagerduty" | "webhook"
+  config         Json // Type-specific config
+  enabled        Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
-  alertRules      AlertRuleChannel[]
+  alertRules AlertRuleChannel[]
 
   @@index([environmentId])
   @@index([organizationId])
 }
 
 model AlertRuleChannel {
-  id          String   @id @default(cuid())
+  id          String              @id @default(cuid())
   alertRuleId String
-  alertRule   AlertRule @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+  alertRule   AlertRule           @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
   channelId   String
   channel     NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
@@ -1537,22 +1581,22 @@ model AlertRuleChannel {
 }
 
 model ServiceAccount {
-  id              String   @id @default(cuid())
-  organizationId String @default("default")
-  name            String
-  description     String?
-  hashedKey       String   @unique
-  keyPrefix       String
-  environmentId   String
-  environment     Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  permissions     Json     // string[] of permission names
-  createdById     String?
-  createdBy       User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  lastUsedAt      DateTime?
-  expiresAt       DateTime?
-  enabled         Boolean  @default(true)
-  rateLimit       Int?     // Custom requests/minute override (null = use defaults)
-  createdAt       DateTime @default(now())
+  id             String      @id @default(cuid())
+  organizationId String      @default("default")
+  name           String
+  description    String?
+  hashedKey      String      @unique
+  keyPrefix      String
+  environmentId  String
+  environment    Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  permissions    Json // string[] of permission names
+  createdById    String?
+  createdBy      User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  lastUsedAt     DateTime?
+  expiresAt      DateTime?
+  enabled        Boolean     @default(true)
+  rateLimit      Int? // Custom requests/minute override (null = use defaults)
+  createdAt      DateTime    @default(now())
 
   @@index([hashedKey])
   @@index([environmentId])
@@ -1560,49 +1604,49 @@ model ServiceAccount {
 }
 
 model AiConversation {
-  id            String      @id @default(cuid())
-  pipelineId    String
-  pipeline      Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  componentKey  String?
-  createdById   String?
-  createdBy     User?       @relation("AiConversationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  messages      AiMessage[]
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id           String      @id @default(cuid())
+  pipelineId   String
+  pipeline     Pipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  componentKey String?
+  createdById  String?
+  createdBy    User?       @relation("AiConversationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  messages     AiMessage[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   @@index([pipelineId, createdAt])
   @@index([pipelineId, componentKey])
 }
 
 model AiMessage {
-  id              String          @id @default(cuid())
-  conversationId  String
-  conversation    AiConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  role            String          // "user" | "assistant"
-  content         String
-  suggestions     Json?
-  pipelineYaml    String?
-  vrlCode         String?
-  createdById     String?
-  createdBy       User?           @relation("AiMessageCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt       DateTime        @default(now())
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String // "user" | "assistant"
+  content        String
+  suggestions    Json?
+  pipelineYaml   String?
+  vrlCode        String?
+  createdById    String?
+  createdBy      User?          @relation("AiMessageCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime       @default(now())
 
   @@index([conversationId, createdAt])
 }
 
 model FilterPreset {
-  id            String      @id @default(cuid())
-  organizationId String @default("default")
-  name          String
-  environmentId String
-  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  scope         String      // "pipeline_list" | "fleet_matrix"
-  filters       Json        // serialized filter state
-  isDefault     Boolean     @default(false)
-  createdById   String
-  createdBy     User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id             String      @id @default(cuid())
+  organizationId String      @default("default")
+  name           String
+  environmentId  String
+  environment    Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  scope          String // "pipeline_list" | "fleet_matrix"
+  filters        Json // serialized filter state
+  isDefault      Boolean     @default(false)
+  createdById    String
+  createdBy      User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@index([environmentId, scope])
   @@index([createdById])
@@ -1619,38 +1663,38 @@ enum AnomalyType {
 }
 
 enum AnomalySeverity {
-  info       // > 2 sigma
-  warning    // > 3 sigma
-  critical   // > 4 sigma
+  info // > 2 sigma
+  warning // > 3 sigma
+  critical // > 4 sigma
 }
 
 model AnomalyEvent {
-  id              String           @id @default(cuid())
-  organizationId String @default("default")
-  pipelineId      String
-  pipeline        Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  environmentId   String
-  environment     Environment      @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  teamId          String
-  team            Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  anomalyType     AnomalyType
-  severity        AnomalySeverity
-  metricName      String           // "eventsIn" | "errorsTotal" | "latencyMeanMs"
-  currentValue    Float
-  baselineMean    Float
-  baselineStddev  Float
-  deviationFactor Float            // how many stddevs from baseline
-  message         String
-  status          String           @default("open")  // "open" | "acknowledged" | "dismissed"
-  detectedAt      DateTime         @default(now())
-  acknowledgedAt  DateTime?
-  acknowledgedBy  String?
-  dismissedAt     DateTime?
-  dismissedBy     String?
-  errorContext    Json?            // { lines: Array<{timestamp, message}>, truncated }
+  id                 String                 @id @default(cuid())
+  organizationId     String                 @default("default")
+  pipelineId         String
+  pipeline           Pipeline               @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  environmentId      String
+  environment        Environment            @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  teamId             String
+  team               Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  anomalyType        AnomalyType
+  severity           AnomalySeverity
+  metricName         String // "eventsIn" | "errorsTotal" | "latencyMeanMs"
+  currentValue       Float
+  baselineMean       Float
+  baselineStddev     Float
+  deviationFactor    Float // how many stddevs from baseline
+  message            String
+  status             String                 @default("open") // "open" | "acknowledged" | "dismissed"
+  detectedAt         DateTime               @default(now())
+  acknowledgedAt     DateTime?
+  acknowledgedBy     String?
+  dismissedAt        DateTime?
+  dismissedBy        String?
+  errorContext       Json? // { lines: Array<{timestamp, message}>, truncated }
   correlationGroupId String?
   correlationGroup   AlertCorrelationGroup? @relation(fields: [correlationGroupId], references: [id], onDelete: SetNull)
-  createdAt       DateTime         @default(now())
+  createdAt          DateTime               @default(now())
 
   @@index([pipelineId])
   @@index([environmentId])
