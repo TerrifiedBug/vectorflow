@@ -60,9 +60,14 @@ PSQL=(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA)
 # transactions across backend connections; a single reconnect can land us
 # on the SAME backend we just released and miss a real leak. Sample N
 # consecutive checkouts so the probability of revisiting the original
-# pool slot drops geometrically. N=10 is plenty for the typical 25-50
-# slot defaults; tune via VF_PGBOUNCER_PROBE_SAMPLES.
-SAMPLES="${VF_PGBOUNCER_PROBE_SAMPLES:-10}"
+# pool slot drops geometrically.
+#
+# With pool size N and one contaminated slot, the chance of hitting it
+# in S reconnects is `1 - (1 - 1/N)^S`. For N=25 we need S>=70 to reach
+# 95% confidence; for N=50, S>=140. Default to 100 \u2014 covers the typical
+# 25\u201350-slot deployments well above 99%, and tunable via
+# `VF_PGBOUNCER_PROBE_SAMPLES` for fleets with larger pools.
+SAMPLES="${VF_PGBOUNCER_PROBE_SAMPLES:-100}"
 
 # ── Positive control: set_config(..., true) MUST be tx-scoped ──────────
 echo "── Positive control: set_config('app.org_id', 'probe-positive', true) ──"
@@ -131,6 +136,18 @@ else
   echo "      different backend. Positive control still holds, but this"
   echo "      meta-check is informational only on direct Postgres."
 fi
+
+# Cleanup: clear the session-scoped GUC we wrote in the negative control.
+# On PgBouncer the backend that handled `set_config(_, _, false)` keeps
+# `app.org_id='probe-negative'` set after that statement returns; the
+# pool will then hand that backend to later clients (or the next run
+# of this probe) until it idle-disconnects. RESET drops the setting on
+# whichever backend serves the current psql; we run it $SAMPLES times
+# so the cleanup hits every pool slot it can reach.
+echo "── Cleanup: RESET app.org_id across $SAMPLES connections ──"
+for _ in $(seq 1 "$SAMPLES"); do
+  "${PSQL[@]}" -c "RESET app.org_id" >/dev/null 2>&1 || true
+done
 
 echo
 echo "verify-pgbouncer-leak: passed."
