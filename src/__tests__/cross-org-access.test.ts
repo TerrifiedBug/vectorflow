@@ -68,12 +68,33 @@ interface TrpcProcedureLike {
 
 const TENANT_INPUT_KEYS = ["teamId", "environmentId", "pipelineId", "pipelineIds"] as const;
 
+/**
+ * Strings whose presence in a middleware function's `.toString()` indicates
+ * the procedure runs through a known tenancy gate. tRPC stores the
+ * middleware as the raw closure body, so the FACTORY name (`withTeamAccess`)
+ * isn't visible — we have to match on tokens that appear inside the body.
+ *
+ * Codex P1 on the initial PR: matching on bare `teamId` was too broad
+ * (any middleware that referenced the identifier for logging or audit
+ * would have passed). The tightened set requires:
+ *
+ *   - `userId_teamId` — the Prisma composite-key lookup used by
+ *     `withTeamAccess` to verify membership. Other middlewares don't
+ *     do this lookup.
+ *   - `isSuperAdmin` — the legacy super-admin gate in `requireSuperAdmin`.
+ *   - `roleLevel[` — the role-rank comparison in `requireRole`.
+ *   - `requirePlatformOperator` / `platformOperator.findUnique` —
+ *     Phase 5ee's new gate.
+ *
+ * Each token is specific enough that it doesn't appear in non-auth
+ * middlewares (audit, rate-limit, demo-mode), but generic enough to
+ * survive a refactor that wraps `withTeamAccess` differently.
+ */
 const GATE_PATTERNS = [
-  "withTeamAccess",
-  "teamId", // appears in withTeamAccess body, on every tenant-resolution branch
-  "requireSuperAdmin",
-  "requireRole",
-  "orgMemberRole",
+  "userId_teamId",
+  "isSuperAdmin",
+  "roleLevel[",
+  "platformOperator.findUnique",
 ];
 
 /**
