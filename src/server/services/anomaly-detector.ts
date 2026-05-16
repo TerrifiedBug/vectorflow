@@ -598,14 +598,34 @@ export async function evaluatePipeline(
  *   2. One AVG/STDDEV_POP query per pipeline (cached for 15 minutes)
  * Called by the background job on the leader instance.
  */
-export async function evaluateAllPipelines(): Promise<AnomalyDetectionResult[]> {
+/**
+ * Evaluate every deployed pipeline for anomalies.
+ *
+ * When `opts.organizationId` is supplied the query is filtered to that
+ * org — used by the per-org tick in `anomaly-detection-job.ts` to keep
+ * one tenant's analysis from blocking another's under RLS-strict Cloud
+ * deployments.
+ *
+ * Note: `getAnomalyConfig` still reads the DEFAULT_ORG_ID settings as
+ * the source of truth. Per-org config caching is a follow-up — see
+ * "config-per-org" tracking issue. For now Cloud orgs share the
+ * tunable knobs of whatever org owns the default OrganizationSettings.
+ */
+export async function evaluateAllPipelines(
+  opts: { organizationId?: string } = {},
+): Promise<AnomalyDetectionResult[]> {
   const config = await getAnomalyConfig();
 
+  const where: Record<string, unknown> = {
+    isDraft: false,
+    deployedAt: { not: null },
+  };
+  if (opts.organizationId) {
+    where.organizationId = opts.organizationId;
+  }
+
   const pipelines = await prisma.pipeline.findMany({
-    where: {
-      isDraft: false,
-      deployedAt: { not: null },
-    },
+    where,
     select: {
       id: true,
       environmentId: true,
