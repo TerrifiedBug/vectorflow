@@ -7,13 +7,21 @@
 # than a hardcoded list, so a newly-added tenant table without policies
 # fails the check on the first CI run instead of silently passing.
 #
+# TimescaleDB carve-out: hypertables with columnstore (compression) enabled
+# cannot have RLS enabled at the parent level (timescale/timescaledb#6827),
+# and parent-table policies do not propagate to chunks anyway
+# (timescale/timescaledb#7830). Phase 5a (migration 20260516000001) skips
+# those tables and relies on application-layer isolation via `withOrgTx` +
+# the composite `(organizationId, …)` indexes. This script applies the same
+# skip so it doesn't fail spuriously on TimescaleDB hosts.
+#
 # Usage:
 #   DATABASE_URL=postgres://vectorflow_app:...@host/db \
 #     ./scripts/verify-rls.sh
 #
 # Exit status:
-#   0 — all checks pass
-#   1 — at least one tenant table is missing RLS or a policy
+#   0 — all checks pass (compressed hypertables reported as SKIP, not FAIL)
+#   1 — at least one non-exempt tenant table is missing RLS or a policy
 
 set -euo pipefail
 
@@ -24,27 +32,63 @@ fi
 
 PSQL=(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA)
 
-# Discover every public table that has an `organizationId` column. These
-# are the tenant tables that MUST be RLS-protected.
+# Discover every public BASE TABLE that has an `organizationId` column.
+# Views (e.g. the operator PII views from migration 20260516000007) are
+# excluded — RLS lives on the underlying tables, not the views.
 mapfile -t TABLES < <(
   "${PSQL[@]}" -c "
     SELECT c.table_name
       FROM information_schema.columns c
+      JOIN information_schema.tables t
+        ON t.table_schema = c.table_schema
+       AND t.table_name   = c.table_name
      WHERE c.table_schema = 'public'
        AND c.column_name  = 'organizationId'
+       AND t.table_type   = 'BASE TABLE'
      ORDER BY c.table_name;
   "
 )
+
+# Feature-detect TimescaleDB and enumerate hypertables with columnstore
+# enabled. Those are excluded from the RLS check below; see header comment
+# for rationale.
+has_timescaledb=$("${PSQL[@]}" -c "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb');")
+if [[ "$has_timescaledb" == "t" ]]; then
+  mapfile -t COMPRESSED_HYPERTABLES < <(
+    "${PSQL[@]}" -c "
+      SELECT hypertable_name
+        FROM timescaledb_information.hypertables
+       WHERE compression_enabled = true
+       ORDER BY hypertable_name;
+    "
+  )
+else
+  COMPRESSED_HYPERTABLES=()
+fi
+
+is_compressed_hypertable() {
+  local target="$1"
+  local h
+  for h in "${COMPRESSED_HYPERTABLES[@]}"; do
+    [[ "$h" == "$target" ]] && return 0
+  done
+  return 1
+}
 
 if [[ ${#TABLES[@]} -eq 0 ]]; then
   echo "verify-rls: no tenant tables found — schema not migrated?"
   exit 1
 fi
 
-echo "verify-rls: checking ${#TABLES[@]} tenant tables"
+echo "verify-rls: checking ${#TABLES[@]} tenant tables (${#COMPRESSED_HYPERTABLES[@]} compressed hypertable(s) exempt)"
 
 fail=0
 for tbl in "${TABLES[@]}"; do
+  if is_compressed_hypertable "$tbl"; then
+    echo "SKIP: $tbl — TimescaleDB compressed hypertable (isolation via withOrgTx; see migration 20260516000001 §3)"
+    continue
+  fi
+
   rls=$("${PSQL[@]}" -c "SELECT relrowsecurity FROM pg_class WHERE relname = '$tbl' AND relkind = 'r';")
   if [[ "$rls" != "t" ]]; then
     echo "FAIL: $tbl does not have ROW LEVEL SECURITY enabled"
@@ -66,7 +110,15 @@ done
 # here — that's expected and not a failure).
 echo
 echo "── Strict-mode probe (only meaningful for a non-owner role) ──"
-sample_tables=("${TABLES[@]:0:3}")
+# Sample up to 3 RLS-protected tables, skipping the compressed-hypertable
+# carve-outs (their `count(*)` says nothing about RLS state).
+sample_tables=()
+for tbl in "${TABLES[@]}"; do
+  if ! is_compressed_hypertable "$tbl"; then
+    sample_tables+=("$tbl")
+    [[ "${#sample_tables[@]}" -ge 3 ]] && break
+  fi
+done
 for tbl in "${sample_tables[@]}"; do
   cnt=$("${PSQL[@]}" -c "SELECT count(*) FROM \"$tbl\";")
   if [[ "$cnt" -ne 0 ]]; then
