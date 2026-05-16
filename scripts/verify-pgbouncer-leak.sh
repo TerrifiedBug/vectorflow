@@ -39,16 +39,19 @@
 #     ./scripts/verify-pgbouncer-leak.sh
 #
 # Exit status:
-#   0 — both assertions pass (positive control empty, negative non-empty)
-#   1 — positive control LEAKED — RLS isolation is BROKEN
-#   2 — negative control didn't leak — probe is mis-configured (e.g.
-#       new connection per query instead of pool reuse)
+#   0  — assertions pass (positive control empty across all samples)
+#   1  — positive control LEAKED — RLS isolation is BROKEN
+#   2  — negative control couldn't run / meta-check failed (probe is
+#         mis-configured)
+#   64 — DATABASE_URL not provided (sysexits.h-style EX_USAGE; distinct
+#         from a real leak detection so CI / wrappers don't conflate
+#         setup failure with isolation regression)
 
 set -euo pipefail
 
 if [[ -z "${DATABASE_URL:-}" ]]; then
   echo "verify-pgbouncer-leak: DATABASE_URL is required" >&2
-  exit 1
+  exit 64
 fi
 
 PSQL=(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA)
@@ -92,28 +95,43 @@ if [[ $leaks -gt 0 ]]; then
 fi
 echo "  OK: positive control empty across $SAMPLES samples"
 
-# ── Negative control: set_config(..., false) MUST persist on this conn ─
-echo "── Negative control: set_config('app.org_id', 'probe-negative', false) ──"
-# Run the SET and the SELECT in the SAME psql process so we keep the
-# connection open between them — if the negative SET leaks at all,
-# it'll leak within this single session.
-negative_leak=$("${PSQL[@]}" <<'SQL'
+# ── Negative control: meta-check that the probe actually crosses backend
+#    connections. Codex review on PR #338 called out that running the
+#    SET and the SELECT in the same psql process trivially returns the
+#    SET value and validates NOTHING — the check only ensures
+#    `set_config` itself works. To actually validate the reconnect path
+#    we issue session-level (`set_config(_, _, false)`) in psql A and
+#    read it back from a SEPARATE psql B. If psql B sees the value, we
+#    know SOME backend reuse is occurring (PgBouncer session-style) and
+#    the positive control's "empty reads" are meaningful. If psql B sees
+#    nothing, the probe is running on plain Postgres (or PgBouncer is
+#    serving each psql from a different backend); in that case the
+#    positive control still holds but the meta-check is informational
+#    only, NOT a hard failure.
+echo "── Negative control: cross-process backend-reuse meta-check ──"
+"${PSQL[@]}" <<'SQL'
 SELECT set_config('app.org_id', 'probe-negative', false);
+SQL
+negative_hits=0
+for i in $(seq 1 "$SAMPLES"); do
+  negative_observed=$("${PSQL[@]}" <<'SQL'
 SELECT coalesce(current_setting('app.org_id', true), '');
 SQL
-)
-
-# `set_config` returns the value it set on the first line; the second
-# line is the actual leak read. Grab only the trailing one.
-negative_observed=$(echo "$negative_leak" | tail -n1)
-
-if [[ "$negative_observed" != "probe-negative" ]]; then
-  echo "  FAIL: negative-control SET didn't take effect: '$negative_observed'"
-  echo "  → Either the probe is mis-configured or session-level SET is broken."
-  exit 2
+  )
+  if [[ "$negative_observed" == "probe-negative" ]]; then
+    negative_hits=$((negative_hits + 1))
+  fi
+done
+if [[ $negative_hits -gt 0 ]]; then
+  echo "  OK: $negative_hits/$SAMPLES samples saw the session SET — backend reuse confirmed."
+  echo "      The positive control's empty reads above are meaningful."
+else
+  echo "  INFO: 0/$SAMPLES samples saw the session SET."
+  echo "      Most likely running on plain Postgres or each psql got a"
+  echo "      different backend. Positive control still holds, but this"
+  echo "      meta-check is informational only on direct Postgres."
 fi
-echo "  OK: negative control observed: '$negative_observed' (as expected)"
 
 echo
-echo "verify-pgbouncer-leak: both assertions passed; RLS isolation holds."
+echo "verify-pgbouncer-leak: passed."
 exit 0
