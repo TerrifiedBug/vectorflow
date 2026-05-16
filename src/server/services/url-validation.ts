@@ -172,3 +172,83 @@ export function isPrivateIP(ip: string): boolean {
 
   return false;
 }
+
+/**
+ * True when the deployment is running in Cloud-strict outbound mode.
+ *
+ * In Cloud-strict mode every outbound HTTP request that points at a
+ * user-supplied URL (Vector node fetch, AI baseUrl, …) MUST be funnelled
+ * through `validateOutboundUrl` first. Self-hosted (OSS) deployments leave
+ * this off so they can reach legitimate localhost / private-network
+ * services like a locally-running Ollama or an in-cluster Vector agent
+ * exposed on an RFC 1918 address.
+ *
+ * Toggle via env: `VF_CLOUD_STRICT_OUTBOUND=true`.
+ */
+export function isCloudStrictOutbound(): boolean {
+  return process.env.VF_CLOUD_STRICT_OUTBOUND === "true";
+}
+
+/**
+ * Same private-IP / public-resolution policy as `validatePublicUrl` but
+ * throws a plain `Error` instead of a `TRPCError`. Use this from service
+ * layers and route handlers that aren't tRPC procedures (Vector node
+ * fetch, AI provider calls, channel deliveries, etc.).
+ *
+ * When `VF_CLOUD_STRICT_OUTBOUND` is unset (OSS default) and `opts.force`
+ * is not set, validation is skipped \u2014 self-hosted users routinely target
+ * localhost / private IPs and we don't want a hard SSRF policy to break
+ * their config.
+ *
+ * Pass `{ force: true }` from callsites where the URL is *always*
+ * customer-controlled (channel webhooks, OIDC discovery, BYOK KMS).
+ * Those keep the existing strict behaviour regardless of the env flag.
+ */
+export async function validateOutboundUrl(
+  url: string,
+  opts: { force?: boolean } = {},
+): Promise<void> {
+  if (!opts.force && !isCloudStrictOutbound()) return;
+
+  let hostname: string;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("URL scheme must be http or https");
+    }
+    hostname = parsed.hostname;
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("URL scheme")) throw err;
+    throw new Error("Invalid URL");
+  }
+
+  const bare = hostname.replace(/^\[/, "").replace(/\]$/, "");
+  const lowered = bare.toLowerCase();
+  // Reject by hostname before DNS \u2014 catches names that always point
+  // somewhere private regardless of resolver answer (loopback, mDNS,
+  // internal TLDs, GCP metadata).
+  if (
+    lowered === "localhost" ||
+    lowered.endsWith(".localhost") ||
+    lowered.endsWith(".local") ||
+    lowered.endsWith(".internal") ||
+    lowered === "metadata.google.internal"
+  ) {
+    throw new Error("URL resolves to a private or reserved IP address");
+  }
+  if (isPrivateIP(bare)) {
+    throw new Error("URL resolves to a private or reserved IP address");
+  }
+
+  const addresses = await dns.resolve4(hostname).catch(() => [] as string[]);
+  const addresses6 = await dns.resolve6(hostname).catch(() => [] as string[]);
+  const all = [...addresses, ...addresses6];
+  if (all.length === 0) {
+    throw new Error("Could not resolve hostname");
+  }
+  for (const ip of all) {
+    if (isPrivateIP(ip)) {
+      throw new Error("URL resolves to a private or reserved IP address");
+    }
+  }
+}

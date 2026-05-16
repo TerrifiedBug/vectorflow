@@ -1,3 +1,5 @@
+import { validateOutboundUrl } from "@/server/services/url-validation";
+
 export interface VectorComponentMetrics {
   componentId: string;
   componentType: string;
@@ -20,6 +22,7 @@ export async function queryHealth(
 ): Promise<VectorHealthResult> {
   const url = `http://${host}:${port}/graphql`;
   try {
+    await validateOutboundUrl(url);
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -65,6 +68,7 @@ export async function queryComponents(
   }`;
 
   try {
+    await validateOutboundUrl(url);
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
