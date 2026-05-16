@@ -100,6 +100,12 @@ describe("AutoRollbackService", () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     vi.clearAllMocks();
+    // The tick now iterates orgs from prisma.organization.findMany.
+    // Default to a single default org so legacy tests still observe
+    // one fan-out per tick.
+    prismaMock.organization.findMany.mockResolvedValue([
+      { id: "default" } as never,
+    ]);
     service = new AutoRollbackService();
   });
 
@@ -339,11 +345,11 @@ describe("AutoRollbackService", () => {
 
   // ─── Lifecycle tests ──────────────────────────────────────────────
 
-  it("start() creates an interval that calls checkPipelines", () => {
+  it("start() creates an interval that calls checkPipelines", async () => {
     prismaMock.pipeline.findMany.mockResolvedValue([]);
 
     service.start();
-    vi.advanceTimersByTime(30_000);
+    await vi.advanceTimersByTimeAsync(30_000);
 
     expect(prismaMock.pipeline.findMany).toHaveBeenCalled();
   });
@@ -356,6 +362,38 @@ describe("AutoRollbackService", () => {
 
     vi.advanceTimersByTime(60_000);
 
+    expect(prismaMock.pipeline.findMany).not.toHaveBeenCalled();
+  });
+
+  it("tick iterates non-suspended, non-deleted orgs and queries pipelines per org", async () => {
+    prismaMock.organization.findMany.mockResolvedValue([
+      { id: "org-a" } as never,
+      { id: "org-b" } as never,
+    ]);
+    prismaMock.pipeline.findMany.mockResolvedValue([]);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(prismaMock.pipeline.findMany).toHaveBeenCalledTimes(2);
+    const calls = prismaMock.pipeline.findMany.mock.calls;
+    expect(calls[0][0]?.where).toEqual(expect.objectContaining({ organizationId: "org-a" }));
+    expect(calls[1][0]?.where).toEqual(expect.objectContaining({ organizationId: "org-b" }));
+    const orgFindManyArgs = prismaMock.organization.findMany.mock.calls[0][0];
+    expect(orgFindManyArgs?.where?.suspendedAt).toBe(null);
+    expect(orgFindManyArgs?.where?.deletedAt).toBe(null);
+  });
+
+  it("survives prisma.organization.findMany failure without crashing the tick", async () => {
+    prismaMock.organization.findMany.mockRejectedValueOnce(
+      new Error("DB connection lost"),
+    );
+    prismaMock.pipeline.findMany.mockResolvedValue([]);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    // pipeline.findMany must not have been called \u2014 we exited early.
     expect(prismaMock.pipeline.findMany).not.toHaveBeenCalled();
   });
 });
