@@ -461,6 +461,40 @@ describe("finishAuthentication", () => {
     ).rejects.toThrow(/authentication verification failed/i);
   });
 
+  it("rejects a 0 counter when the stored counter has already advanced (cloned authenticator)", async () => {
+    // Previously the code exempted ANY `newCounter === 0`. A credential
+    // that was at counter=5 returning a fresh assertion with counter=0
+    // is the cloned-authenticator signal we MUST reject; the platform-
+    // authenticator 0/0 carve-out only applies when BOTH sides are 0.
+    prismaMock.webAuthnCredential.findUnique.mockResolvedValue({
+      id: "row-1",
+      credentialId: "cred-a",
+      userId: "user-1",
+      publicKey: Buffer.from([1, 2, 3]),
+      counter: BigInt(5),
+      transports: [],
+    } as never);
+
+    mockVerifyAuthenticationResponse.mockImplementation(async (opts) => {
+      const ok = await opts.expectedChallenge("issued-auth-challenge");
+      return ok
+        ? { verified: true, authenticationInfo: { newCounter: 0 } }
+        : { verified: false };
+    });
+
+    prismaMock.webAuthnChallenge.findUnique.mockResolvedValue({
+      id: "ch-1",
+      kind: "authenticate",
+      challenge: "issued-auth-challenge",
+      userId: "user-1",
+      expiresAt: new Date(Date.now() + 60_000),
+    } as never);
+
+    await expect(
+      finishAuthentication({ rp: RP, response: makeResponse() }),
+    ).rejects.toThrow(/counter regression/i);
+  });
+
   it("rejects authentication race-loser: deleteMany returns 0 (challenge already consumed)", async () => {
     prismaMock.webAuthnCredential.findUnique.mockResolvedValue({
       id: "row-1",

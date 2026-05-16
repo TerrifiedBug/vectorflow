@@ -320,10 +320,15 @@ export async function finishAuthentication(opts: {
 
     // Counter monotonicity: the authenticator MUST report a new counter
     // strictly greater than what we have on file. Exception: many
-    // platform-authenticators always report 0 (they don't maintain a
-    // counter at all); in that case we accept it as-is. RFC 8809 §6.1.1.
+    // platform-authenticators (Touch ID, Windows Hello, Android biometric)
+    // always report 0 (they don\'t maintain a counter at all). RFC 8809
+    // \u00a76.1.1 explicitly carves this case out, but ONLY when the stored
+    // counter is ALSO 0 \u2014 a credential that previously advanced and now
+    // returns 0 is the cloned-authenticator signal we MUST reject.
     const newCounter = BigInt(verification.authenticationInfo.newCounter);
-    if (newCounter !== BigInt(0) && newCounter <= stored.counter) {
+    const isPlatformZero =
+      newCounter === BigInt(0) && stored.counter === BigInt(0);
+    if (!isPlatformZero && newCounter <= stored.counter) {
       throw new Error("WebAuthn counter regression — possible cloned authenticator");
     }
 
