@@ -175,12 +175,24 @@ export async function finishRegistration(opts: {
     }
 
     // Consume the challenge by the stored value (NOT clientDataJSON).
-    // Single-use even if verification succeeded — a replayed attestation
-    // MUST fail at the challenge lookup.
-    if (consumedChallenge !== null) {
-      await tx.webAuthnChallenge.deleteMany({
-        where: { challenge: consumedChallenge },
-      });
+    //
+    // Race-safe single-use: `deleteMany` MUST affect exactly one row. Under
+    // concurrent registrations using the same challenge, both transactions
+    // could pass the `findUnique` in `expectedChallenge` before either
+    // delete fired \u2014 we make the loser fail explicitly and roll back the
+    // credential insert.
+    if (consumedChallenge === null) {
+      throw new Error(
+        "WebAuthn registration verification failed: challenge not captured",
+      );
+    }
+    const { count: consumedRows } = await tx.webAuthnChallenge.deleteMany({
+      where: { challenge: consumedChallenge },
+    });
+    if (consumedRows !== 1) {
+      throw new Error(
+        "WebAuthn registration verification failed: challenge already consumed (replay)",
+      );
     }
 
     const reg = verification.registrationInfo;
@@ -316,6 +328,13 @@ export async function finishAuthentication(opts: {
     }
 
     // Atomically: bump counter, mark lastUsedAt, consume challenge.
+    //
+    // The consume is the single-use boundary. Under concurrent assertions
+    // using the same challenge, both transactions could pass the
+    // `findUnique` in `expectedChallenge` BEFORE either deleteMany ran.
+    // To make the consume race-safe we require `deleteMany` to affect
+    // exactly one row \u2014 the loser's count is 0 and we throw, rolling
+    // back the counter bump.
     await tx.webAuthnCredential.update({
       where: { id: stored.id },
       data: {
@@ -323,10 +342,18 @@ export async function finishAuthentication(opts: {
         lastUsedAt: now(),
       },
     });
-    if (consumedChallenge !== null) {
-      await tx.webAuthnChallenge.deleteMany({
-        where: { challenge: consumedChallenge },
-      });
+    if (consumedChallenge === null) {
+      throw new Error(
+        "WebAuthn authentication verification failed: challenge not captured",
+      );
+    }
+    const { count: consumedRows } = await tx.webAuthnChallenge.deleteMany({
+      where: { challenge: consumedChallenge },
+    });
+    if (consumedRows !== 1) {
+      throw new Error(
+        "WebAuthn authentication verification failed: challenge already consumed (replay)",
+      );
     }
 
     return {
