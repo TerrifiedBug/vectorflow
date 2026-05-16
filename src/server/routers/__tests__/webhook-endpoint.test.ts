@@ -76,6 +76,7 @@ function makeEndpoint(overrides: Partial<{
   createdAt: Date;
   updatedAt: Date;
   organizationId: string;
+  confirmedAt: Date | null;
 }> = {}) {
   return {
     id: "ep-1",
@@ -88,6 +89,7 @@ function makeEndpoint(overrides: Partial<{
     enabled: true,
     createdAt: new Date(),
     updatedAt: new Date(),
+    confirmedAt: new Date("2026-01-01"),
     ...overrides,
   };
 }

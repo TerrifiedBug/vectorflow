@@ -5,6 +5,10 @@ import { validateOutboundUrl } from "@/server/services/url-validation";
 import { getNextRetryAt } from "@/server/services/delivery-tracking";
 import type { AlertMetric } from "@/generated/prisma";
 import { debugLog } from "@/lib/logger";
+import {
+  WebhookRedirectError,
+  fetchHardened,
+} from "@/server/services/webhook-hardened-delivery";
 import { isDemoMode } from "@/lib/is-demo-mode";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -27,6 +31,17 @@ interface EndpointLike {
   id: string;
   url: string;
   encryptedSecret: string | null;
+  /**
+   * Phase 5aa: Date the org owner one-time-confirmed this destination, or
+   * null when the endpoint has been created / had its URL changed but the
+   * confirmation flow has not completed. Null endpoints are non-retryable
+   * failures — the caller MUST mint a confirmation and have the owner
+   * redeem it before delivery resumes.
+   *
+   * Optional for backward compatibility: callers that don't pass it are
+   * treated as confirmed (the migration backfills existing rows).
+   */
+  confirmedAt?: Date | null;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -64,6 +79,17 @@ export async function deliverOutboundWebhook(
     return { success: true, statusCode: 200, isPermanent: false };
   }
 
+  // Phase 5aa: refuse delivery to an unconfirmed destination. Optional
+  // field for backward compat — callers that don't pass `confirmedAt`
+  // (legacy code paths, existing tests) are treated as confirmed.
+  if (endpoint.confirmedAt === null) {
+    return {
+      success: false,
+      error: "Webhook destination has not been confirmed",
+      isPermanent: true,
+    };
+  }
+
   // SSRF protection. Customer-controlled destination — force the policy even
   // in OSS so a malicious / mistyped webhook URL can't be used to hit private
   // IPs, cloud metadata, or .internal TLDs. `validateOutboundUrl` is the
@@ -97,11 +123,15 @@ export async function deliverOutboundWebhook(
   }
 
   try {
-    const res = await fetch(endpoint.url, {
+    // Phase 5aa: `fetchHardened` adds (a) max 3 redirect hops with per-hop
+    // SSRF + scheme re-validation, (b) DNS rebinding mitigation via a
+    // 30s cache of public IPs, (c) protocol-downgrade rejection. The
+    // signing already-happened above against the original URL; redirects
+    // re-issue the same body + signature.
+    const res = await fetchHardened(endpoint.url, {
       method: "POST",
       headers,
       body,
-      redirect: "manual",
       signal: AbortSignal.timeout(15_000),
     });
 
@@ -117,6 +147,11 @@ export async function deliverOutboundWebhook(
       isPermanent: permanent,
     };
   } catch (err) {
+    if (err instanceof WebhookRedirectError) {
+      // Redirect cap exceeded, protocol downgrade, or DNS rebinding
+      // detection — all non-retryable; the destination is misbehaving.
+      return { success: false, error: err.message, isPermanent: true };
+    }
     const message = err instanceof Error ? err.message : "Unknown delivery error";
     const permanent = message.includes("ENOTFOUND") || message.includes("ECONNREFUSED");
     return { success: false, error: message, isPermanent: permanent };

@@ -48,10 +48,11 @@ model Organization {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  members         OrgMember[]
-  settings        OrganizationSettings?
-  accessGrants    OrgAccessGrant[]
-  magicLinkTokens MagicLinkToken[]
+  members              OrgMember[]
+  settings             OrganizationSettings?
+  accessGrants         OrgAccessGrant[]
+  magicLinkTokens      MagicLinkToken[]
+  webhookConfirmations WebhookConfirmation[]
 }
 
 model OrgMember {
@@ -131,7 +132,7 @@ model OrganizationSettings {
   // When false (default) AI calls MUST target a host in `AI_PROVIDER_ALLOWLIST`
   // (api.openai.com, api.anthropic.com). When true, an org OWNER can set a
   // custom `Team.aiBaseUrl` after passing `validateOutboundUrl` strict mode.
-  aiBaseUrlOptIn      Boolean   @default(false)
+  aiBaseUrlOptIn Boolean @default(false)
 
   updatedAt DateTime @updatedAt
 }
@@ -1445,21 +1446,50 @@ model AlertRule {
 }
 
 model WebhookEndpoint {
-  id              String            @id @default(cuid())
-  organizationId  String            @default("default")
+  id              String                @id @default(cuid())
+  organizationId  String                @default("default")
   teamId          String
-  team            Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team            Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
   name            String
   url             String
   eventTypes      AlertMetric[]
   encryptedSecret String?
-  enabled         Boolean           @default(true)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  enabled         Boolean               @default(true)
+  /// Phase 5aa: timestamp of the most recent successful one-time
+  /// confirmation. Until set, `deliverOutboundWebhook` short-circuits to
+  /// a non-retryable failure. URL changes clear it; the owner re-confirms.
+  confirmedAt     DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
   deliveries      WebhookDelivery[]
+  confirmations   WebhookConfirmation[]
 
   @@index([teamId])
   @@index([organizationId])
+}
+
+/// Phase 5aa: one-time confirmation token for a `WebhookEndpoint`. Created
+/// when an endpoint is added or its URL changes, mailed to the org's
+/// OWNER role. Consuming the token sets `WebhookEndpoint.confirmedAt`;
+/// until then the endpoint cannot deliver.
+///
+/// Single-use is enforced via `consumedAt: null` predicate on the
+/// updateMany at consume time — same race-safe pattern as MagicLinkToken.
+/// Plaintext is never persisted; only the SHA-256 hex digest hits the DB.
+model WebhookConfirmation {
+  id                String          @id @default(cuid())
+  organizationId    String
+  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  webhookEndpointId String
+  webhookEndpoint   WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
+  tokenHash         String          @unique
+  expiresAt         DateTime
+  consumedAt        DateTime?
+  requestedById     String?
+  createdAt         DateTime        @default(now())
+
+  @@index([webhookEndpointId])
+  @@index([organizationId, expiresAt])
 }
 
 model WebhookDelivery {
