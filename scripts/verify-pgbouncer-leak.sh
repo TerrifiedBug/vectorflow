@@ -69,6 +69,22 @@ PSQL=(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA)
 # `VF_PGBOUNCER_PROBE_SAMPLES` for fleets with larger pools.
 SAMPLES="${VF_PGBOUNCER_PROBE_SAMPLES:-100}"
 
+# Cleanup trap (Codex P1 round-4 review of PR #338): the negative
+# control writes `set_config('app.org_id', 'probe-negative', false)`
+# AND the positive control writes a tx-scoped `'probe-positive'`. On
+# PgBouncer the backend that handled the negative SET stays tagged
+# after the probe exits and contaminates later clients; the positive
+# SET should be tx-local but if the probe found a leak that\'s exactly
+# the contamination we have to clean up too. Register an EXIT trap so
+# RESET runs on EVERY exit path (success, positive leak, negative
+# meta-check failure) \u2014 not just the happy-path tail.
+cleanup() {
+  for _ in $(seq 1 "${SAMPLES:-100}"); do
+    "${PSQL[@]}" -c "RESET app.org_id" >/dev/null 2>&1 || true
+  done
+}
+trap cleanup EXIT
+
 # ── Positive control: set_config(..., true) MUST be tx-scoped ──────────
 echo "── Positive control: set_config('app.org_id', 'probe-positive', true) ──"
 "${PSQL[@]}" <<'SQL'
@@ -137,17 +153,8 @@ else
   echo "      meta-check is informational only on direct Postgres."
 fi
 
-# Cleanup: clear the session-scoped GUC we wrote in the negative control.
-# On PgBouncer the backend that handled `set_config(_, _, false)` keeps
-# `app.org_id='probe-negative'` set after that statement returns; the
-# pool will then hand that backend to later clients (or the next run
-# of this probe) until it idle-disconnects. RESET drops the setting on
-# whichever backend serves the current psql; we run it $SAMPLES times
-# so the cleanup hits every pool slot it can reach.
-echo "── Cleanup: RESET app.org_id across $SAMPLES connections ──"
-for _ in $(seq 1 "$SAMPLES"); do
-  "${PSQL[@]}" -c "RESET app.org_id" >/dev/null 2>&1 || true
-done
+# Cleanup runs from the EXIT trap registered up top — fires on success,
+# positive-leak failure (exit 1), and negative meta-check failure (exit 2).
 
 echo
 echo "verify-pgbouncer-leak: passed."
