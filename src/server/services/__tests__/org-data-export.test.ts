@@ -256,7 +256,21 @@ describe("buildOrgDataExport", () => {
     }
   });
 
-  it("includes tenantUsers for everyone in orgMembers with passwordHash/image redacted", async () => {
+  it("includes tenantUsers for everyone in orgMembers (whitelist select)", async () => {
+    // The select clause means prisma never returns sensitive fields, so
+    // the mock should mirror what the production query asks for.
+    prismaMock.user.findMany.mockResolvedValue([
+      {
+        id: "u-1",
+        email: "alice@example.com",
+        name: "Alice",
+        authMethod: "LOCAL",
+        lockedAt: null,
+        totpEnabled: false,
+        createdAt: NOW,
+      } as never,
+    ]);
+
     const env = await buildOrgDataExport("org-1", { now: NOW });
     expect(env.data.tenantUsers).toHaveLength(1);
     const u = env.data.tenantUsers[0]!;
@@ -265,14 +279,24 @@ describe("buildOrgDataExport", () => {
     expect(u.name).toBe("Alice");
     expect(u).not.toHaveProperty("passwordHash");
     expect(u).not.toHaveProperty("image");
-    expect(u.__has_passwordHash).toBe(true);
-    expect(u.__has_image).toBe(true);
+    expect(u).not.toHaveProperty("totpSecret");
+    expect(u).not.toHaveProperty("totpBackupCodes");
+    expect(u).not.toHaveProperty("isSuperAdmin");
+    expect(u).not.toHaveProperty("mustChangePassword");
+    expect(u).not.toHaveProperty("scimExternalId");
 
-    // prisma.user.findMany was queried by the orgMembers userId set, not
-    // by organizationId (User has no organizationId column).
     expect(prismaMock.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: { in: ["u-1"] } },
+        select: expect.objectContaining({
+          id: true,
+          email: true,
+          name: true,
+          authMethod: true,
+          lockedAt: true,
+          totpEnabled: true,
+          createdAt: true,
+        }),
       }),
     );
   });
@@ -306,5 +330,23 @@ describe("buildOrgDataExport", () => {
       expect(entry.limit).toBe(1);
       expect(entry.returnedRows).toBeGreaterThanOrEqual(1);
     }
+  });
+
+  it("rejects perTableLimit <= 0", async () => {
+    await expect(
+      buildOrgDataExport("org-1", { now: NOW, perTableLimit: 0 }),
+    ).rejects.toThrow("must be a positive finite number");
+    await expect(
+      buildOrgDataExport("org-1", { now: NOW, perTableLimit: -1 }),
+    ).rejects.toThrow("must be a positive finite number");
+  });
+
+  it("rejects non-finite perTableLimit (Infinity / NaN)", async () => {
+    await expect(
+      buildOrgDataExport("org-1", { now: NOW, perTableLimit: Infinity }),
+    ).rejects.toThrow("must be a positive finite number");
+    await expect(
+      buildOrgDataExport("org-1", { now: NOW, perTableLimit: Number.NaN }),
+    ).rejects.toThrow("must be a positive finite number");
   });
 });

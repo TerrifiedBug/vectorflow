@@ -108,6 +108,11 @@ export async function buildOrgDataExport(
   opts: BuildOrgDataExportOpts = {},
 ): Promise<OrgDataExportEnvelope> {
   const limit = opts.perTableLimit ?? DEFAULT_PER_TABLE_LIMIT;
+  if (!Number.isFinite(limit) || limit <= 0) {
+    throw new Error(
+      `buildOrgDataExport: perTableLimit must be a positive finite number (got ${limit}). Non-positive values would make every table look truncated.`,
+    );
+  }
   const signal = opts.signal;
   const now = opts.now ?? new Date();
   const checkpoint = () => {
@@ -218,22 +223,30 @@ export async function buildOrgDataExport(
   });
 
   checkpoint();
-  // Tenant users referenced from orgMembers. Excludes passwordHash and
-  // image; includes the identity fields a customer needs to map a
-  // userId reference to a real person. Operators are in PlatformOperator,
-  // which we deliberately don't read.
+  // Tenant users referenced from orgMembers. Use an explicit `select` so
+  // sensitive User columns (totpSecret, totpBackupCodes, isSuperAdmin,
+  // mustChangePassword, lockedBy, scimExternalId, passwordHash, image)
+  // never leave the database row \u2014 they're not portability data, and
+  // some are credential material that a leak would compromise. Whitelist
+  // only the identity fields the customer needs to map orgMembers.userId
+  // to a real person.
   const memberUserIds = orgMembers.map((m) => m.userId as string);
-  const tenantUsersRaw = memberUserIds.length
+  const tenantUsers = memberUserIds.length
     ? await prisma.user.findMany({
         where: { id: { in: memberUserIds } },
         take: limit,
         orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          authMethod: true,
+          lockedAt: true,
+          totpEnabled: true,
+          createdAt: true,
+        },
       })
     : [];
-  const tenantUsers = tenantUsersRaw.map((u) =>
-    redactKeys(u, ["passwordHash", "image"]),
-  );
-
   checkpoint();
   const orgAccessGrantsRaw = await prisma.orgAccessGrant.findMany({
     where: { organizationId },
