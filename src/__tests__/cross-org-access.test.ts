@@ -1,0 +1,223 @@
+/**
+ * Phase 5bb: cross-org access auto-generated test harness.
+ *
+ * Walks every procedure in `appRouter`, finds the ones whose input schema
+ * accepts a tenant-scoped identifier (`teamId` / `environmentId` /
+ * `pipelineId` / `pipelineIds`), and asserts that EACH one's middleware
+ * chain contains a recognisable tenancy gate.
+ *
+ * This is a "linter" test, not a runtime test: actually invoking 223
+ * procedures with mocked Prisma per call would multiply the test suite
+ * by 100x. Instead we encode the invariant: a procedure that takes a
+ * tenant-id in its input MUST run through a middleware that resolves
+ * that id back to the caller's org and rejects cross-org access.
+ *
+ * Recognised gates (any one is sufficient):
+ *   - `withTeamAccess` — the canonical tenant gate
+ *   - `requireSuperAdmin` — platform-operator only (still tenant-safe
+ *     because it implies caller is an operator, not a tenant user)
+ *   - `requireRole` — global role gate (used by admin routes)
+ *
+ * Detection is via `mw.toString()` inspection. tRPC wraps middlewares
+ * such that the factory body (and its identifiers) ARE preserved in the
+ * function source — adding a `withTeamAccess` middleware introduces
+ * recognisable tokens (`teamId`, `orgMemberRole`, `withTeamAccess`)
+ * into the chain.
+ *
+ * Adding a new procedure with a tenant-scoped input:
+ *   - If you wrap it in `withTeamAccess` / `requireSuperAdmin` / `requireRole`:
+ *     test passes automatically.
+ *   - If you intentionally omit the gate (rare — usually a security bug):
+ *     add the path to `INTENTIONALLY_UNGUARDED` below with a comment.
+ *   - If you add a NEW tenant-scoping middleware: extend `GATE_PATTERNS`.
+ */
+import { describe, it, expect, vi } from "vitest";
+import { mockDeep } from "vitest-mock-extended";
+import type { PrismaClient } from "@/generated/prisma";
+
+// next-auth has known module-resolution issues under Vitest; the static
+// introspection here doesn't actually authenticate anything, so we mock
+// the surface out and load the real `appRouter` for procedure walking.
+vi.mock("next-auth", () => ({
+  default: () => ({ handlers: {}, auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }),
+  CredentialsSignin: class CredentialsSignin extends Error {},
+}));
+vi.mock("next-auth/providers/credentials", () => ({
+  default: () => ({ id: "credentials", name: "Credentials" }),
+}));
+vi.mock("@auth/prisma-adapter", () => ({ PrismaAdapter: () => ({}) }));
+vi.mock("@/lib/prisma", () => ({ prisma: mockDeep<PrismaClient>() }));
+vi.mock("@/lib/logger", () => ({
+  debugLog: vi.fn(),
+  infoLog: vi.fn(),
+  warnLog: vi.fn(),
+  errorLog: vi.fn(),
+}));
+
+import { appRouter } from "@/trpc/router";
+
+interface TrpcProcedureLike {
+  _def?: {
+    middlewares?: Array<unknown>;
+    inputs?: Array<{
+      _def?: { typeName?: string; shape?: () => unknown };
+      shape?: unknown;
+    }>;
+  };
+}
+
+const TENANT_INPUT_KEYS = ["teamId", "environmentId", "pipelineId", "pipelineIds"] as const;
+
+const GATE_PATTERNS = [
+  "withTeamAccess",
+  "teamId", // appears in withTeamAccess body, on every tenant-resolution branch
+  "requireSuperAdmin",
+  "requireRole",
+  "orgMemberRole",
+];
+
+/**
+ * Procedures that intentionally accept a tenant-id but use a custom
+ * authorisation check that doesn't go through one of the recognised
+ * middleware names. Each entry MUST come with a comment explaining why
+ * the procedure is safe — e.g. it does explicit `ctx.organizationId`
+ * checks inside the handler, or it's a system-only endpoint.
+ *
+ * Adding to this list MUST be accompanied by a Codex / security review.
+ */
+const INTENTIONALLY_UNGUARDED = new Set<string>([
+  // team.teamRole returns the caller's own membership role on the
+  // requested team (or VIEWER if not a member). Cross-org probing is
+  // safe by construction: the response shape is identical regardless
+  // of team existence, so no team-existence side channel.
+  "team.teamRole",
+
+  // audit.list / audit.deployments / audit.exportDeployments enforce
+  // tenancy via `getAuditScope(userId)` + `pushAuditScope(conditions)`
+  // — a custom scoping helper that injects the caller's accessible
+  // (teamId, environmentId) pairs into the Prisma WHERE clause. The
+  // cross-org teamId/environmentId/pipelineId values in the input
+  // add an extra AND constraint; they cannot widen the result set
+  // beyond the user's audit scope.
+  "audit.list",
+  "audit.deployments",
+  "audit.exportDeployments",
+
+  // dashboard.pipelineCards / metrics.getComponentMetrics do inline
+  // authorisation in the handler: load the entity, then assert the
+  // caller is a super-admin OR a TeamMember of the resolved team.
+  // Equivalent to `withTeamAccess("VIEWER")` but inlined so the
+  // procedure can soft-fail (return []/empty payload) on stale-after-
+  // delete polling races.
+  "dashboard.pipelineCards",
+  "metrics.getComponentMetrics",
+]);
+
+interface AuditEntry {
+  path: string;
+  tenantFields: string[];
+  hasGate: boolean;
+}
+
+function shapeOf(
+  schema: TrpcProcedureLike["_def"] extends infer D
+    ? D extends { inputs?: Array<infer S> }
+      ? S
+      : never
+    : never,
+): Record<string, unknown> | null {
+  if (!schema || typeof schema !== "object") return null;
+  const s = schema as {
+    shape?: unknown;
+    _def?: { shape?: () => unknown; typeName?: string };
+  };
+  // Zod v3 stores .shape on ZodObject (sometimes as a getter that returns
+  // _def.shape()). Try both forms.
+  if (s.shape && typeof s.shape === "object") {
+    return s.shape as Record<string, unknown>;
+  }
+  const fnShape = s._def?.shape?.();
+  if (fnShape && typeof fnShape === "object") {
+    return fnShape as Record<string, unknown>;
+  }
+  return null;
+}
+
+function tenantFieldsIn(
+  proc: TrpcProcedureLike,
+): string[] {
+  const inputs = proc._def?.inputs ?? [];
+  const found = new Set<string>();
+  for (const schema of inputs) {
+    const shape = shapeOf(schema as never);
+    if (!shape) continue;
+    for (const key of TENANT_INPUT_KEYS) {
+      if (key in shape) found.add(key);
+    }
+  }
+  return [...found];
+}
+
+function hasGateMiddleware(proc: TrpcProcedureLike): boolean {
+  const mws = proc._def?.middlewares ?? [];
+  return mws.some((mw) => {
+    const s = String(mw);
+    return GATE_PATTERNS.some((p) => s.includes(p));
+  });
+}
+
+function auditRouter(): AuditEntry[] {
+  const procs = appRouter._def.procedures as Record<string, TrpcProcedureLike>;
+  const entries: AuditEntry[] = [];
+  for (const path of Object.keys(procs)) {
+    const proc = procs[path]!;
+    const tenantFields = tenantFieldsIn(proc);
+    if (tenantFields.length === 0) continue;
+    entries.push({
+      path,
+      tenantFields,
+      hasGate: hasGateMiddleware(proc),
+    });
+  }
+  return entries;
+}
+
+describe("Cross-org access audit (Phase 5bb)", () => {
+  const audit = auditRouter();
+
+  it("audits a non-trivial number of procedures", () => {
+    // Spot check: at the time this test landed there are 200+ procedures
+    // with tenant inputs across the appRouter. If this drops to <100, the
+    // router was probably shrunk or the test is mis-reading the input
+    // shape — both warrant investigation.
+    expect(audit.length).toBeGreaterThan(100);
+  });
+
+  it("every procedure with a tenant input has a recognised authorisation gate", () => {
+    const unguarded = audit
+      .filter((e) => !e.hasGate && !INTENTIONALLY_UNGUARDED.has(e.path))
+      .map((e) => `${e.path} (inputs: ${e.tenantFields.join(", ")})`);
+
+    if (unguarded.length > 0) {
+      // Detailed error message: each violating procedure listed individually
+      // so the failing CI run points the developer at the exact procedures
+      // that need either `withTeamAccess` or an `INTENTIONALLY_UNGUARDED`
+      // entry with rationale.
+      throw new Error(
+        `${unguarded.length} procedure(s) accept a tenant-scoped id without an ` +
+          `authorisation middleware:\n\n  - ${unguarded.join("\n  - ")}\n\n` +
+          "Each procedure that takes teamId/environmentId/pipelineId MUST be " +
+          "wrapped in `withTeamAccess`, `requireSuperAdmin`, or `requireRole`. " +
+          "If a procedure intentionally bypasses these (very rare), add its path " +
+          "to `INTENTIONALLY_UNGUARDED` in `cross-org-access.test.ts` with a " +
+          "comment explaining how cross-org access is otherwise prevented.",
+      );
+    }
+  });
+
+  it("no procedure in INTENTIONALLY_UNGUARDED has been removed from the router", () => {
+    const auditPaths = new Set(audit.map((e) => e.path));
+    const stale = [...INTENTIONALLY_UNGUARDED].filter((p) => !auditPaths.has(p));
+    expect(stale).toEqual([]);
+  });
+});
