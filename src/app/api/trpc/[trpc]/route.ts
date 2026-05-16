@@ -48,34 +48,45 @@ const handler = async (req: Request) => {
   }
 
   // §12.2: a suspended-org request returns HTTP 423 Locked. A deleted-org
-  // request returns 404 (per `orgProcedure`'s precedence in `init.ts`).
-  // The `responseMeta` callback below catches the non-streaming case
-  // (httpLink / httpBatchLink) by inspecting `errors[]` after the
-  // procedure has thrown. Streaming clients (httpBatchStreamLink, which
-  // is what `src/trpc/client.tsx` uses) keep HTTP status 200 and put the
-  // error inside the JSON stream — `responseMeta` runs eagerly with no
-  // errors present and can't override the status. To cover both client
-  // shapes we short-circuit at the request boundary.
-  const lifecycle = await isCallerOrgSuspended();
-  if (lifecycle.deleted) {
-    return new Response(
-      trpcErrorEnvelope({
-        code: "NOT_FOUND",
-        message: "Organization not found",
-        httpStatus: 404,
-      }),
-      { status: 404, headers: { "Content-Type": "application/json" } },
-    );
-  }
-  if (lifecycle.suspended) {
-    return new Response(
-      trpcErrorEnvelope({
-        code: "FORBIDDEN",
-        message: "Organization is suspended",
-        httpStatus: 423,
-      }),
-      { status: 423, headers: { "Content-Type": "application/json" } },
-    );
+  // request returns 404. The route-level short-circuit is the simplest way
+  // to produce the right HTTP status on non-streaming clients
+  // (httpLink / httpBatchLink), where the response body is a single
+  // tRPC error envelope.
+  //
+  // Streaming clients (httpBatchStreamLink, `trpc-accept: application/jsonl`)
+  // send a JSON-Lines stream with per-procedure entries keyed by batch
+  // index. Synthesising a JSONL body that the streaming consumer accepts
+  // is brittle (the format is internal to `jsonlStreamProducer`) and a
+  // 423 outer status would mis-match the per-procedure errors inside the
+  // stream anyway. For streaming requests we therefore let
+  // `fetchRequestHandler` run normally; `orgProcedure` throws the
+  // FORBIDDEN/NOT_FOUND TRPCError for each procedure and the stream
+  // delivers it in-band at HTTP 200. The client reads
+  // `error.data.code === "FORBIDDEN"` either way \u2014 only the outer HTTP
+  // status differs between the two link kinds.
+  const isStreaming = req.headers.get("trpc-accept") === "application/jsonl";
+  if (!isStreaming) {
+    const lifecycle = await isCallerOrgSuspended();
+    if (lifecycle.deleted) {
+      return new Response(
+        trpcErrorEnvelope({
+          code: "NOT_FOUND",
+          message: "Organization not found",
+          httpStatus: 404,
+        }),
+        { status: 404, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (lifecycle.suspended) {
+      return new Response(
+        trpcErrorEnvelope({
+          code: "FORBIDDEN",
+          message: "Organization is suspended",
+          httpStatus: 423,
+        }),
+        { status: 423, headers: { "Content-Type": "application/json" } },
+      );
+    }
   }
 
   return fetchRequestHandler({
