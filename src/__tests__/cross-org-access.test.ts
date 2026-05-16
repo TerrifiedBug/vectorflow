@@ -140,6 +140,34 @@ interface AuditEntry {
   hasGate: boolean;
 }
 
+/**
+ * Unwrap Zod effect / optional / default / nullable wrappers down to the
+ * inner schema. `z.object({...}).refine(...)` produces a `ZodEffects`
+ * whose `.shape` is undefined; the real object is at `_def.schema`.
+ * Same for `.optional()` / `.nullable()` / `.default()` (innerType) and
+ * `.transform()` (schema). We chase those wrappers a few levels and
+ * give up cleanly if we can't find a shape \u2014 the caller treats that
+ * procedure as "no tenant inputs" and skips it.
+ */
+function unwrapZod(schema: unknown, depth = 0): unknown {
+  if (!schema || typeof schema !== "object" || depth > 6) return schema;
+  const s = schema as {
+    _def?: {
+      typeName?: string;
+      schema?: unknown;
+      innerType?: unknown;
+      type?: unknown;
+    };
+    shape?: unknown;
+  };
+  // Already a ZodObject — done.
+  if (s.shape && typeof s.shape === "object") return schema;
+
+  const inner = s._def?.schema ?? s._def?.innerType ?? s._def?.type;
+  if (inner) return unwrapZod(inner, depth + 1);
+  return schema;
+}
+
 function shapeOf(
   schema: TrpcProcedureLike["_def"] extends infer D
     ? D extends { inputs?: Array<infer S> }
@@ -148,20 +176,64 @@ function shapeOf(
     : never,
 ): Record<string, unknown> | null {
   if (!schema || typeof schema !== "object") return null;
-  const s = schema as {
+  const unwrapped = unwrapZod(schema) as {
     shape?: unknown;
     _def?: { shape?: () => unknown; typeName?: string };
-  };
+  } | null;
+  if (!unwrapped || typeof unwrapped !== "object") return null;
   // Zod v3 stores .shape on ZodObject (sometimes as a getter that returns
   // _def.shape()). Try both forms.
-  if (s.shape && typeof s.shape === "object") {
-    return s.shape as Record<string, unknown>;
+  if (unwrapped.shape && typeof unwrapped.shape === "object") {
+    return unwrapped.shape as Record<string, unknown>;
   }
-  const fnShape = s._def?.shape?.();
+  const fnShape = unwrapped._def?.shape?.();
   if (fnShape && typeof fnShape === "object") {
     return fnShape as Record<string, unknown>;
   }
   return null;
+}
+
+/**
+ * Recursively walk a Zod shape to find tenant-key references, even when
+ * they live in nested objects or arrays. `settings.updateOidcTeamMappings`
+ * carries `mappings[].teamId` for example, and the previous detector only
+ * checked the top level so the procedure was silently excluded from the
+ * audit.
+ */
+function findTenantKeysDeep(
+  schema: unknown,
+  found: Set<string>,
+  depth = 0,
+): void {
+  if (!schema || typeof schema !== "object" || depth > 8) return;
+  const shape = shapeOf(schema as never);
+  if (shape) {
+    for (const [key, child] of Object.entries(shape)) {
+      if ((TENANT_INPUT_KEYS as readonly string[]).includes(key)) {
+        found.add(key);
+      }
+      findTenantKeysDeep(child, found, depth + 1);
+    }
+    return;
+  }
+  // Array / record / union wrappers expose inner schemas at known keys.
+  const def = (schema as { _def?: Record<string, unknown> })._def;
+  if (def) {
+    for (const key of [
+      "schema",
+      "innerType",
+      "type",
+      "valueType",
+      "element",
+    ]) {
+      const inner = (def as Record<string, unknown>)[key];
+      if (inner) findTenantKeysDeep(inner, found, depth + 1);
+    }
+    const options = (def as { options?: unknown[] }).options;
+    if (Array.isArray(options)) {
+      for (const opt of options) findTenantKeysDeep(opt, found, depth + 1);
+    }
+  }
 }
 
 function tenantFieldsIn(
@@ -170,11 +242,7 @@ function tenantFieldsIn(
   const inputs = proc._def?.inputs ?? [];
   const found = new Set<string>();
   for (const schema of inputs) {
-    const shape = shapeOf(schema as never);
-    if (!shape) continue;
-    for (const key of TENANT_INPUT_KEYS) {
-      if (key in shape) found.add(key);
-    }
+    findTenantKeysDeep(schema, found);
   }
   return [...found];
 }
