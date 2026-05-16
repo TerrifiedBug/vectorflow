@@ -263,7 +263,9 @@ describe("vault-client", () => {
 
     expect(validateOutboundUrlSpy).toHaveBeenCalled();
     const calls = validateOutboundUrlSpy.mock.calls;
-    expect(calls.some((c) => String(c[0]).startsWith("https://vault.example.com"))).toBe(true);
+    // CodeQL: pin the prefix with a trailing path separator so a look-alike
+    // host (`vault.example.com.attacker.example/...`) can't pass.
+    expect(calls.some((c) => String(c[0]).startsWith("https://vault.example.com/"))).toBe(true);
     // Gated form: no `{ force: true }` — Cloud-strict flag decides.
     expect(calls.every((c) => c[1] === undefined)).toBe(true);
   });

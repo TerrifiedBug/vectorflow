@@ -23,6 +23,18 @@ const ENCRYPTED_PREFIX = "enc:";
  * context7) shares the same rule set.
  */
 async function validateBaseUrl(baseUrl: string): Promise<void> {
+  // Always enforce scheme — `validateOutboundUrl` short-circuits when
+  // VF_CLOUD_STRICT_OUTBOUND is unset, so without this check OSS users
+  // would silently accept `file://` or other unsupported schemes.
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new Error("Invalid AI base URL");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("AI base URL must use http or https");
+  }
   await validateOutboundUrl(baseUrl);
 }
 
