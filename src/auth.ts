@@ -258,23 +258,42 @@ const credentialsProvider = Credentials({
 });
 
 /**
- * Build and cache the NextAuth instance.
- * Re-initializes automatically when invalidateAuthCache() is called
- * (e.g., after OIDC settings change in the admin panel).
+ * Per-organisation NextAuth instance cache (plan §8 / Phase 5w).
+ *
+ * The NextAuth `providers` array bakes in the OIDC issuer at construction
+ * time \u2014 we can't swap providers per-request inside one instance. So we
+ * keep one instance per organisation id and pick the right one on every
+ * call. First-time init for an org goes through the de-dupe promise map
+ * so concurrent requests don't double-initialise.
+ *
+ * Codex P1 on the initial PR called this out: caching a single global
+ * `_cached` instance meant the first request's host\u2014and therefore the
+ * first request's tenant\u2014decided the OIDC provider for ALL subsequent
+ * requests until cache invalidation. Tenant B could be forced onto
+ * tenant A's IdP depending on request order.
+ *
+ * `invalidateAuthCache(orgId?)` clears one org's cache when its OIDC
+ * settings change, or all caches when called with no argument.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AuthInstance = { handlers: any; auth: any; signIn: any; signOut: any };
-let _cached: AuthInstance | null = null;
-let _initPromise: Promise<AuthInstance> | null = null;
+const _instanceByOrg = new Map<string, AuthInstance>();
+const _initPromiseByOrg = new Map<string, Promise<AuthInstance>>();
 
 async function getAuthInstance() {
-  if (_cached) return _cached;
-  // Deduplicate concurrent init calls
-  if (!_initPromise) {
-    _initPromise = (async () => {
+  // Resolve the org from the request host BEFORE consulting the cache so
+  // Tenant B never reuses Tenant A's NextAuth instance.
+  const orgId = await resolveOrgIdFromHost(await getRequestHost());
+  const cached = _instanceByOrg.get(orgId);
+  if (cached) return cached;
+
+  // Deduplicate concurrent inits for the same org.
+  const inFlight = _initPromiseByOrg.get(orgId);
+  if (!inFlight) {
+    const promise = (async () => {
       const providers: Provider[] = [credentialsProvider];
 
-      const oidc = await getOidcSettings();
+      const oidc = await getOidcSettings(orgId);
       if (oidc) {
         providers.push({
           id: "oidc",
@@ -438,21 +457,30 @@ async function getAuthInstance() {
         },
       });
 
-      _cached = instance;
-      _initPromise = null;
+      _instanceByOrg.set(orgId, instance);
+      _initPromiseByOrg.delete(orgId);
       return instance;
     })();
+    _initPromiseByOrg.set(orgId, promise);
+    return promise;
   }
-  return _initPromise!;
+  return inFlight;
 }
 
 /**
- * Clear the cached NextAuth instance so the next request re-initializes
- * with fresh OIDC settings from the database.
+ * Clear the cached NextAuth instance(s) so the next request re-initializes
+ * with fresh OIDC settings. Pass an `orgId` to clear just one tenant's
+ * cache (called from `settings.updateOidc*` mutations); call with no
+ * argument from tests / dev tools to wipe everything.
  */
-export function invalidateAuthCache() {
-  _cached = null;
-  _initPromise = null;
+export function invalidateAuthCache(orgId?: string) {
+  if (orgId) {
+    _instanceByOrg.delete(orgId);
+    _initPromiseByOrg.delete(orgId);
+    return;
+  }
+  _instanceByOrg.clear();
+  _initPromiseByOrg.clear();
 }
 
 // Proxy exports — delegate to the lazily-cached NextAuth instance
