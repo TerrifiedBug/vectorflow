@@ -21,9 +21,14 @@ const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
 beforeEach(() => {
   mockReset(prismaMock);
+  // Phase 5z: `enforceAiBaseUrlPolicy` short-circuits when
+  // `VF_CLOUD_STRICT_OUTBOUND` is unset (OSS default). The policy tests
+  // below describe Cloud-strict behaviour, so flip the flag on for them.
+  vi.stubEnv("VF_CLOUD_STRICT_OUTBOUND", "true");
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -66,6 +71,17 @@ describe("isAllowlistedAiHost", () => {
 });
 
 describe("enforceAiBaseUrlPolicy", () => {
+  it("short-circuits when VF_CLOUD_STRICT_OUTBOUND is unset (OSS default)", async () => {
+    vi.unstubAllEnvs();
+    await expect(
+      enforceAiBaseUrlPolicy({
+        baseUrl: "http://localhost:11434/v1",
+        organizationId: "org-1",
+      }),
+    ).resolves.toBeUndefined();
+    expect(prismaMock.organizationSettings.findUnique).not.toHaveBeenCalled();
+  });
+
   it("accepts an allowlisted host without consulting the DB", async () => {
     await expect(
       enforceAiBaseUrlPolicy({

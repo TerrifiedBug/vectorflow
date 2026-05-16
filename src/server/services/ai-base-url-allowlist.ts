@@ -26,6 +26,7 @@
  * once; per-team baseUrl overrides still must satisfy the policy.
  */
 import { prisma } from "@/lib/prisma";
+import { isCloudStrictOutbound } from "@/server/services/url-validation";
 
 /**
  * Hostnames we accept by default. A URL whose hostname equals one of
@@ -84,6 +85,10 @@ function hostnameOf(baseUrl: string): string {
 /**
  * Enforce the AI-base-URL policy at call-time. Order of checks:
  *
+ *   0. If `VF_CLOUD_STRICT_OUTBOUND` is unset (OSS default) → skip.
+ *      Parity with `validateOutboundUrl` — self-hosted users routinely
+ *      target localhost / Ollama / vLLM and we do not want a hard
+ *      allowlist policy to break their config out of the box.
  *   1. Parse the URL — reject non-http(s).
  *   2. If host is allowlisted → accept (fast path, no DB hit).
  *   3. Otherwise → consult `OrganizationSettings.aiBaseUrlOptIn`:
@@ -99,6 +104,8 @@ export async function enforceAiBaseUrlPolicy(opts: {
   baseUrl: string;
   organizationId: string;
 }): Promise<void> {
+  if (!isCloudStrictOutbound()) return;
+
   const host = hostnameOf(opts.baseUrl);
   if (isAllowlistedAiHost(host)) return;
 

@@ -615,4 +615,42 @@ describe("settingsRouter", () => {
       expect(result.overallStatus).not.toBe("ok");
     });
   });
+
+  // ── updateAiBaseUrlOptIn (Phase 5z) ──────────────────────────────────
+
+  describe("updateAiBaseUrlOptIn", () => {
+    it("rejects when caller is not an org OWNER (ADMIN userRole alone is insufficient)", async () => {
+      // adminCaller has userRole=ADMIN but NO orgMemberRole — that path
+      // must NOT be allowed to flip a tenant-level toggle.
+      await expect(
+        caller.updateAiBaseUrlOptIn({ enabled: true }),
+      ).rejects.toMatchObject({
+        code: "FORBIDDEN",
+        message: expect.stringMatching(/OWNER/),
+      });
+      expect(prismaMock.organizationSettings.upsert).not.toHaveBeenCalled();
+    });
+
+    it("writes the flag via updateOrgSettings when caller is an OWNER", async () => {
+      const ownerCaller = t.createCallerFactory(settingsRouter)({
+        session: { user: { id: "user-1", email: "owner@test.com" } },
+        userRole: "ADMIN",
+        organizationId: "default",
+        teamId: "team-1",
+        orgMemberRole: "OWNER",
+      });
+      prismaMock.organizationSettings.upsert.mockResolvedValue(
+        mockOrgSettings({ aiBaseUrlOptIn: true }) as never,
+      );
+
+      await ownerCaller.updateAiBaseUrlOptIn({ enabled: true });
+
+      expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { organizationId: "default" },
+          update: expect.objectContaining({ aiBaseUrlOptIn: true }),
+        }),
+      );
+    });
+  });
 });
