@@ -27,6 +27,14 @@ vi.mock("@/server/services/drift-metrics", () => ({
   getVersionDrift: vi.fn(),
 }));
 
+vi.mock("@/server/services/cert-expiry-checker", () => ({
+  checkCertificateExpiry: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/server/services/cost-alert", () => ({
+  evaluateCostAlerts: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { prisma } from "@/lib/prisma";
 import { FleetAlertService } from "@/server/services/fleet-alert-service";
 import {
@@ -626,6 +634,44 @@ describe("FleetAlertService", () => {
 
       expect(results).toHaveLength(1);
       expect(results[0].event.status).toBe("resolved");
+    });
+  });
+
+  // ── Per-org tick fan-out ─────────────────────────────────────────────────
+
+  describe("per-org tick fan-out", () => {
+    it("evaluates each non-suspended, non-deleted org once per tick", async () => {
+      prismaMock.organization.findMany.mockResolvedValue([
+        { id: "org-a" } as never,
+        { id: "org-b" } as never,
+      ]);
+      prismaMock.alertRule.findMany.mockResolvedValue([]);
+
+      service.start();
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(prismaMock.alertRule.findMany).toHaveBeenCalledTimes(2);
+      const calls = prismaMock.alertRule.findMany.mock.calls;
+      expect(calls[0][0]?.where).toEqual(
+        expect.objectContaining({ organizationId: "org-a" }),
+      );
+      expect(calls[1][0]?.where).toEqual(
+        expect.objectContaining({ organizationId: "org-b" }),
+      );
+      const orgArgs = prismaMock.organization.findMany.mock.calls[0][0];
+      expect(orgArgs?.where?.suspendedAt).toBe(null);
+      expect(orgArgs?.where?.deletedAt).toBe(null);
+    });
+
+    it("survives prisma.organization.findMany failure without invoking alertRule.findMany", async () => {
+      prismaMock.organization.findMany.mockRejectedValueOnce(
+        new Error("DB down"),
+      );
+
+      service.start();
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(prismaMock.alertRule.findMany).not.toHaveBeenCalled();
     });
   });
 });
