@@ -240,6 +240,15 @@ export async function validateOutboundUrl(
     throw new Error("URL resolves to a private or reserved IP address");
   }
 
+  // Public IP literals don't have a DNS record. After the isPrivateIP guard
+  // accepts them they must short-circuit before dns.resolve4/resolve6,
+  // otherwise ENOTFOUND trips the "Could not resolve hostname" branch and
+  // a perfectly valid `http://8.8.8.8/` config gets rejected in strict mode.
+  const isLiteralIPv4 = /^\d+\.\d+\.\d+\.\d+$/.test(bare);
+  const isLiteralIPv6 = bare.includes(":");
+  if (isLiteralIPv4 || isLiteralIPv6) {
+    return;
+  }
   const addresses = await dns.resolve4(hostname).catch(() => [] as string[]);
   const addresses6 = await dns.resolve6(hostname).catch(() => [] as string[]);
   const all = [...addresses, ...addresses6];
