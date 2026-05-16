@@ -105,8 +105,24 @@ const GATE_PATTERNS = [
  * Procedures that intentionally accept a tenant-id but use a custom
  * authorisation check that doesn't go through one of the recognised
  * middleware names. Each entry MUST come with a comment explaining why
- * the procedure is safe — e.g. it does explicit `ctx.organizationId`
+ * the procedure is safe \u2014 e.g. it does explicit `ctx.organizationId`
  * checks inside the handler, or it's a system-only endpoint.
+ *
+ * **Permanence risk** (Codex P2 round-5 review): an entry here
+ * unconditionally suppresses the main gate check for that procedure
+ * for the rest of time. A future refactor that removes the inline
+ * authorisation check inside the handler would NOT be caught by this
+ * audit. The mitigations:
+ *
+ *   1. Review removals via the security-review CODEOWNERS file (the
+ *      `cross-org-access.test.ts` path is owned by the security team).
+ *   2. Each entry below carries a comment naming the exact in-handler
+ *      check that justifies the exception. If the named lines change,
+ *      the reviewer of the offending diff must re-justify or remove
+ *      the entry.
+ *   3. The companion `cross-org-access-allowlist-justification.test.ts`
+ *      (follow-up) will assert each entry's named check is still in
+ *      the file at the documented line range.
  *
  * Adding to this list MUST be accompanied by a Codex / security review.
  */
