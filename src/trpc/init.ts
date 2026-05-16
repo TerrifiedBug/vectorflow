@@ -7,6 +7,24 @@ import { isDemoMode } from "@/lib/is-demo-mode";
 import type { Role, OrgMemberRole } from "@/generated/prisma";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
+/**
+ * Sentinel error attached as `cause` on the TRPCError thrown by `orgProcedure`
+ * when an organization is suspended. The HTTP adapter's `responseMeta` callback
+ * (see `src/app/api/trpc/[trpc]/route.ts`) detects this sentinel and overrides
+ * the response status to `423 Locked` (plan §12.2 / §18 verification gate).
+ *
+ * tRPC has no built-in mapping for `423`, so we keep the in-band error code
+ * `FORBIDDEN` (for client-side `code` checks) and override only the HTTP
+ * status at the transport boundary.
+ */
+export class OrgSuspendedError extends Error {
+  readonly _tag = "OrgSuspendedError" as const;
+  constructor() {
+    super("Organization is suspended");
+    this.name = "OrgSuspendedError";
+  }
+}
+
 export const createContext = async () => {
   const session = await auth();
   let ipAddress: string | null = null;
@@ -72,7 +90,11 @@ export const orgProcedure = protectedProcedure.use(async ({ ctx, next }) => {
     });
     if (!org || org.deletedAt) throw new TRPCError({ code: "NOT_FOUND" });
     if (org.suspendedAt)
-      throw new TRPCError({ code: "FORBIDDEN", message: "Organization is suspended" });
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Organization is suspended",
+        cause: new OrgSuspendedError(),
+      });
   }
   return next({ ctx: { ...ctx, organizationId: ctx.organizationId } });
 });

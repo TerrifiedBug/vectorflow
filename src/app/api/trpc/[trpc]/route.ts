@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "@/trpc/router";
-import { createContext } from "@/trpc/init";
+import { createContext, OrgSuspendedError } from "@/trpc/init";
 
 const handler = (req: Request) => {
   // CSRF protection: POST (mutation) requests must include x-trpc-source header
@@ -18,6 +18,15 @@ const handler = (req: Request) => {
     req,
     router: appRouter,
     createContext,
+    responseMeta({ errors }) {
+      // §12.2: a suspended-org tRPC call returns HTTP 423 Locked, not 403.
+      // tRPC has no built-in 423 mapping, so we tag the throw with an
+      // `OrgSuspendedError` cause in `orgProcedure` and override the status here.
+      if (errors.some((e) => e.cause instanceof OrgSuspendedError)) {
+        return { status: 423 };
+      }
+      return {};
+    },
   });
 };
 
