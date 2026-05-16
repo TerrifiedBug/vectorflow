@@ -84,7 +84,6 @@ export const AUDIT_SAFE_KEYS = new Set<string>([
   "nodeId",
   "alertRuleId",
   "channelId",
-  "secretId",
   "certificateId",
   // Names and labels
   "name",
@@ -92,7 +91,6 @@ export const AUDIT_SAFE_KEYS = new Set<string>([
   "displayName",
   "description",
   "label",
-  "key", // alert-rule keys etc.
   // Lifecycle timestamps
   "createdAt",
   "updatedAt",

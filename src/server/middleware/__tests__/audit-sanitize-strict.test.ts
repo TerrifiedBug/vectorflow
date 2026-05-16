@@ -1,8 +1,23 @@
 import { describe, it, expect } from "vitest";
 import {
   AUDIT_SAFE_KEYS,
+  SENSITIVE_KEYS,
   sanitizeInputStrict,
 } from "../audit-sanitize";
+
+describe("invariant: SENSITIVE_KEYS \u2229 AUDIT_SAFE_KEYS == \u2205", () => {
+  it("the denylist and the allowlist never share a key", () => {
+    // Sharing a key would create a contradiction: legacy `sanitizeInput`
+    // redacts it, but `sanitizeInputStrict` would emit it raw. Catch
+    // future regressions where someone adds a denylisted key to the
+    // allowlist (or vice-versa).
+    const overlap: string[] = [];
+    for (const k of AUDIT_SAFE_KEYS) {
+      if (SENSITIVE_KEYS.has(k)) overlap.push(k);
+    }
+    expect(overlap).toEqual([]);
+  });
+});
 
 describe("AUDIT_SAFE_KEYS allowlist", () => {
   it("covers the common identifier and lifecycle fields", () => {
