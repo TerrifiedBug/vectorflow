@@ -158,11 +158,22 @@ model OrgAccessGrant {
 }
 
 /// Platform operator — never a tenant User. Authenticates via separate surface.
+///
+/// Operators are **soft-deleted** via `deletedAt`. Hard-delete is blocked
+/// by the `ON DELETE RESTRICT` FK from `PlatformAuditLog.operatorId` —
+/// removing an operator who has audit-log entries would erase the
+/// "who acted" pointer on those rows and defeat the table's purpose.
+/// To decommission an operator: set `deletedAt = now()` and revoke
+/// their `vectorflow_operator` Postgres role grants out of band.
 model PlatformOperator {
   id        String               @id @default(cuid())
   email     String               @unique
   name      String
   role      PlatformOperatorRole @default(SUPPORT)
+  /// Soft-delete timestamp. Once set, the operator's session is
+  /// rejected at `requirePlatformOperator` and they are filtered out
+  /// of the operator console's roster view. Audit-log entries remain.
+  deletedAt DateTime?
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
 

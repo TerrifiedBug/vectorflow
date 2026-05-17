@@ -42,7 +42,17 @@ CREATE TABLE IF NOT EXISTS "PlatformAuditLog" (
     CONSTRAINT "PlatformAuditLog_operator_fkey"
         FOREIGN KEY ("operatorId")
         REFERENCES "PlatformOperator"("id")
-        ON DELETE SET NULL
+        -- RESTRICT (not SET NULL): the audit row carries the operator
+        -- identifier as historical fact. Setting it to NULL on operator
+        -- hard-delete would erase the audit-trail's "who acted" pointer,
+        -- defeating the table's purpose. The append-only INSTEAD OF
+        -- UPDATE rule below would also block the SET NULL update path,
+        -- so this would have failed at runtime anyway. Operators are
+        -- expected to be soft-deleted via PlatformOperator.deletedAt
+        -- (see operator-lifecycle docs); hard-delete is reserved for
+        -- ToS-violation cases where the audit trail of the offending
+        -- operator's actions is intentionally preserved.
+        ON DELETE RESTRICT
         ON UPDATE CASCADE
 );
 

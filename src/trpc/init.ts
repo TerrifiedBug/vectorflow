@@ -303,12 +303,21 @@ export const requirePlatformOperator = (minRole: PlatformOperatorRole = "SUPPORT
 
     const operator = await prisma.platformOperator.findUnique({
       where: { email },
-      select: { id: true, email: true, name: true, role: true },
+      select: { id: true, email: true, name: true, role: true, deletedAt: true },
     });
     if (!operator) {
       throw new TRPCError({
         code: "FORBIDDEN",
         message: "This action requires a platform operator session",
+      });
+    }
+    if (operator.deletedAt) {
+      // Soft-deleted operator (PlatformOperator.deletedAt set out of
+      // band when decommissioning the operator). Audit-log entries
+      // remain; the session no longer authorises operator actions.
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Operator account is decommissioned",
       });
     }
 

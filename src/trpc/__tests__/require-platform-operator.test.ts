@@ -136,7 +136,23 @@ describe("requirePlatformOperator", () => {
 
     expect(prismaMock.platformOperator.findUnique).toHaveBeenCalledWith({
       where: { email: "alice@vectorflow.ops" },
-      select: { id: true, email: true, name: true, role: true },
+      select: { id: true, email: true, name: true, role: true, deletedAt: true },
+    });
+  });
+
+  it("rejects a soft-deleted (deletedAt != null) operator with FORBIDDEN", async () => {
+    prismaMock.platformOperator.findUnique.mockResolvedValue({
+      id: "op_decommissioned",
+      email: "ex-alice@vectorflow.ops",
+      name: "Ex-Alice",
+      role: "SUPPORT",
+      deletedAt: new Date("2026-05-17T00:00:00.000Z"),
+    } as never);
+
+    const caller = mountProcedure()(ADMIN_SESSION);
+    await expect(caller.probe()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      message: expect.stringMatching(/decommissioned/i),
     });
   });
 
