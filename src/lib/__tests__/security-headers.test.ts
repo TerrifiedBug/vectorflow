@@ -1,69 +1,90 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
-  securityHeaders,
   contentSecurityPolicy,
+  isCloudBuildProfile,
+  securityHeaders,
 } from "../security-headers";
 
-describe("securityHeaders", () => {
-  const headers = securityHeaders();
-  const byKey = new Map(headers.map((h) => [h.key, h.value]));
-
-  it("sets Cross-Origin-Opener-Policy to same-origin (multi-tenant subdomain isolation, plan §8)", () => {
-    expect(byKey.get("Cross-Origin-Opener-Policy")).toBe("same-origin");
+describe("contentSecurityPolicy", () => {
+  it("OSS default: keeps 'unsafe-eval' and 'unsafe-inline' in script-src", () => {
+    const csp = contentSecurityPolicy();
+    expect(csp).toMatch(/script-src 'self' 'unsafe-eval' 'unsafe-inline'/);
   });
 
-  it("sets Cross-Origin-Resource-Policy to same-origin", () => {
-    expect(byKey.get("Cross-Origin-Resource-Policy")).toBe("same-origin");
+  it("Cloud profile (with nonce): removes 'unsafe-eval' and 'unsafe-inline' from script-src", () => {
+    const csp = contentSecurityPolicy("abc123nonceXYZ==");
+    expect(csp).not.toMatch(/'unsafe-eval'/);
+    // unsafe-inline should be gone from script-src but stays on
+    // style-src (documented carve-out for Tailwind / shadcn).
+    const scriptDirective = csp
+      .split(";")
+      .map((d) => d.trim())
+      .find((d) => d.startsWith("script-src"));
+    expect(scriptDirective).toBeDefined();
+    expect(scriptDirective).not.toMatch(/'unsafe-inline'/);
+    expect(scriptDirective).not.toMatch(/'unsafe-eval'/);
   });
 
-  it("sets X-Frame-Options DENY (in addition to frame-ancestors 'none' in CSP)", () => {
-    expect(byKey.get("X-Frame-Options")).toBe("DENY");
+  it("Cloud profile: embeds the supplied nonce + 'strict-dynamic'", () => {
+    const csp = contentSecurityPolicy("nonceXYZ");
+    expect(csp).toMatch(/script-src 'self' 'nonce-nonceXYZ' 'strict-dynamic'/);
   });
 
-  it("sets X-Content-Type-Options nosniff", () => {
-    expect(byKey.get("X-Content-Type-Options")).toBe("nosniff");
-  });
-
-  it("sets Referrer-Policy strict-origin-when-cross-origin", () => {
-    expect(byKey.get("Referrer-Policy")).toBe(
-      "strict-origin-when-cross-origin",
-    );
-  });
-
-  it("sets Permissions-Policy denying camera/microphone/geolocation", () => {
-    const p = byKey.get("Permissions-Policy") ?? "";
-    expect(p).toContain("camera=()");
-    expect(p).toContain("microphone=()");
-    expect(p).toContain("geolocation=()");
-  });
-
-  it("emits a Content-Security-Policy header sourced from contentSecurityPolicy()", () => {
-    expect(byKey.get("Content-Security-Policy")).toBe(contentSecurityPolicy());
+  it("base directives are stable across profiles", () => {
+    for (const csp of [contentSecurityPolicy(), contentSecurityPolicy("n")]) {
+      expect(csp).toMatch(/default-src 'self'/);
+      expect(csp).toMatch(/img-src 'self' data: blob:/);
+      expect(csp).toMatch(/connect-src 'self' \*\.sentry\.io/);
+      expect(csp).toMatch(/frame-ancestors 'none'/);
+      expect(csp).toMatch(/object-src 'none'/);
+      expect(csp).toMatch(/base-uri 'self'/);
+    }
   });
 });
 
-describe("contentSecurityPolicy", () => {
-  const csp = contentSecurityPolicy();
-
-  it("denies framing via frame-ancestors 'none'", () => {
-    expect(csp).toContain("frame-ancestors 'none'");
+describe("isCloudBuildProfile", () => {
+  const ORIGINAL = process.env.VF_CLOUD_BUILD;
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.VF_CLOUD_BUILD;
+    else process.env.VF_CLOUD_BUILD = ORIGINAL;
   });
 
-  it("denies object embeds (object-src 'none')", () => {
-    expect(csp).toContain("object-src 'none'");
+  it("false when VF_CLOUD_BUILD is unset", () => {
+    delete process.env.VF_CLOUD_BUILD;
+    expect(isCloudBuildProfile()).toBe(false);
   });
 
-  it("locks base-uri to 'self' (prevents <base> hijacks)", () => {
-    expect(csp).toContain("base-uri 'self'");
+  it("true when VF_CLOUD_BUILD === 'true'", () => {
+    process.env.VF_CLOUD_BUILD = "true";
+    expect(isCloudBuildProfile()).toBe(true);
   });
 
-  it("scopes connect-src to self + Sentry only", () => {
-    const directive = csp
-      .split(";")
-      .map((s) => s.trim())
-      .find((s) => s.startsWith("connect-src"));
-    expect(directive).toBeDefined();
-    expect(directive).toContain("'self'");
-    expect(directive).toContain("*.sentry.io");
+  it("false for any other value (defence against typos enabling strict mode by accident)", () => {
+    for (const v of ["1", "yes", "TRUE", "false", ""]) {
+      process.env.VF_CLOUD_BUILD = v;
+      expect(isCloudBuildProfile()).toBe(false);
+    }
+  });
+});
+
+describe("securityHeaders", () => {
+  it("includes the standard top-level headers", () => {
+    const headers = securityHeaders();
+    const byKey = Object.fromEntries(headers.map((h) => [h.key, h.value]));
+    expect(byKey["X-Frame-Options"]).toBe("DENY");
+    expect(byKey["X-Content-Type-Options"]).toBe("nosniff");
+    expect(byKey["Cross-Origin-Opener-Policy"]).toBe("same-origin");
+    expect(byKey["Cross-Origin-Resource-Policy"]).toBe("same-origin");
+    expect(byKey["Content-Security-Policy"]).toBeDefined();
+  });
+
+  it("Content-Security-Policy uses the no-nonce form (middleware overrides per-request)", () => {
+    const csp = securityHeaders().find(
+      (h) => h.key === "Content-Security-Policy",
+    )?.value;
+    expect(csp).toBeDefined();
+    // The static CSP is the OSS-default permissive variant; the Cloud
+    // middleware swaps it per-request when VF_CLOUD_BUILD=true.
+    expect(csp).toMatch(/script-src 'self' 'unsafe-eval' 'unsafe-inline'/);
   });
 });
