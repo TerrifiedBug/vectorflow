@@ -40,7 +40,7 @@
 
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@/generated/prisma";
+import { Prisma } from "@/generated/prisma";
 
 /**
  * Stamp identifier — the logical name of this VectorFlow Cloud
