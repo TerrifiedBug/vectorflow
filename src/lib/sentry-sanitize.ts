@@ -221,9 +221,15 @@ function redactQueryString(qs: string): string {
     const eq = kv.indexOf("=");
     if (eq === -1) return kv;
     const key = kv.slice(0, eq);
-    // Normalize to lowercase before denylist lookup so case variants
-    // like `Token`, `APIKEY`, or `csrfTOKEN` are redacted.
-    if (DENY_QUERY_KEYS.has(key.toLowerCase())) {
+    // Decode percent-encoding then normalize to lowercase before denylist lookup
+    // so variants like `%74oken`, `Token`, or `APIKEY` are all redacted.
+    let decodedKey: string;
+    try {
+      decodedKey = decodeURIComponent(key).toLowerCase();
+    } catch {
+      decodedKey = key.toLowerCase();
+    }
+    if (DENY_QUERY_KEYS.has(decodedKey)) {
       return `${key}=${REDACTED}`;
     }
     return kv;
