@@ -58,7 +58,8 @@ if [[ "$has_timescaledb" == "t" ]]; then
     "${PSQL[@]}" -c "
       SELECT hypertable_name
         FROM timescaledb_information.hypertables
-       WHERE compression_enabled = true
+       WHERE hypertable_schema = 'public'
+         AND compression_enabled = true
        ORDER BY hypertable_name;
     "
   )
