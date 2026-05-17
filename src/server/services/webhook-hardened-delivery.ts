@@ -66,9 +66,16 @@ export async function resolveHostnamePublic(
   hostname: string,
   now: () => number = Date.now,
 ): Promise<string[]> {
-  // IPv4/IPv6 literal — no DNS to resolve.
-  if (net.isIP(hostname) !== 0) {
-    return [hostname];
+  // IPv4/IPv6 literal — no DNS to resolve. `URL.hostname` for IPv6
+  // URLs is bracketed (`[2001:db8::1]`) but `net.isIP` only accepts
+  // the bare form, so strip a leading `[` / trailing `]` first. Cf.
+  // Codex P1 follow-up on PR #342.
+  const unbracketed =
+    hostname.startsWith("[") && hostname.endsWith("]")
+      ? hostname.slice(1, -1)
+      : hostname;
+  if (net.isIP(unbracketed) !== 0) {
+    return [unbracketed];
   }
 
   const cached = dnsCache.get(hostname);

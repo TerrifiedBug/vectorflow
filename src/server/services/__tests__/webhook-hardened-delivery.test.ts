@@ -112,8 +112,26 @@ describe("resolveHostnamePublic", () => {
     expect(mockResolve6).not.toHaveBeenCalled();
   });
 
-  it("short-circuits IPv6 literal hostnames", async () => {
+  it("short-circuits IPv6 literal hostnames (bracketed, as URL.hostname emits)", async () => {
+    // `new URL("https://[2001:db8::1]/x").hostname === "[2001:db8::1]"`.
+    // The short-circuit must accept both bracketed and bare forms — and
+    // canonicalise to bare. Cf. Codex P1 follow-up on PR #342.
+    await expect(resolveHostnamePublic("[2001:db8::1]")).resolves.toEqual([
+      "2001:db8::1",
+    ]);
     await expect(resolveHostnamePublic("2001:db8::1")).resolves.toEqual([
+      "2001:db8::1",
+    ]);
+    expect(mockResolve4).not.toHaveBeenCalled();
+    expect(mockResolve6).not.toHaveBeenCalled();
+  });
+
+  it("matches the hostname URL would actually hand us for IPv6 webhooks", async () => {
+    // End-to-end shape check: `fetchHardened` always passes
+    // `parsed.hostname` from `new URL(...)`, so verify that exact
+    // string round-trips through the short-circuit.
+    const hostname = new URL("https://[2001:db8::1]/hook").hostname;
+    await expect(resolveHostnamePublic(hostname)).resolves.toEqual([
       "2001:db8::1",
     ]);
     expect(mockResolve4).not.toHaveBeenCalled();
