@@ -92,8 +92,12 @@ export async function authorizeMagicLink(
   }
 
   // Find-or-create the User by verified email.
-  let user = await prisma.user.findUnique({
-    where: { email: result.email },
+  // Use case-insensitive lookup first: `User.email` is a TEXT UNIQUE key
+  // (case-sensitive in Postgres) but some sign-up flows may store addresses
+  // with different casing. A case-insensitive scan prevents duplicate-account
+  // creation for the same mailbox.
+  let user = await prisma.user.findFirst({
+    where: { email: { equals: result.email, mode: "insensitive" } },
     select: { id: true, email: true, name: true, image: true, lockedAt: true },
   });
   if (!user) {
