@@ -47,4 +47,20 @@ describe("HA Docker Compose readiness", () => {
       expect(line).not.toContain("localhost:3000");
     }
   });
+
+  it("passes POSTGRES_PASSWORD to each replica so the entrypoint can build DATABASE_URL", () => {
+    // The compose used to interpolate ${POSTGRES_PASSWORD} directly into
+    // DATABASE_URL, which corrupts the URL when the password contains
+    // URL-reserved characters (Prisma P1013). The contract is now:
+    //   - compose passes raw POSTGRES_PASSWORD to the container
+    //   - entrypoint.sh constructs DATABASE_URL with proper URL-encoding
+    //   - users overriding DATABASE_URL (external DB) still win
+    expect(compose).not.toMatch(
+      /DATABASE_URL:\s*postgresql:\/\/vectorflow:\$\{POSTGRES_PASSWORD\}@/,
+    );
+    const vf1Env = compose.match(/vf1:[\s\S]*?volumes:/)?.[0] ?? "";
+    const vf2Env = compose.match(/vf2:[\s\S]*?volumes:/)?.[0] ?? "";
+    expect(vf1Env).toMatch(/POSTGRES_PASSWORD:\s*\$\{POSTGRES_PASSWORD\}/);
+    expect(vf2Env).toMatch(/POSTGRES_PASSWORD:\s*\$\{POSTGRES_PASSWORD\}/);
+  });
 });

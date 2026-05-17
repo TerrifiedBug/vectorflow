@@ -29,7 +29,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://vectorflow:${POSTGRES_PASSWORD:-vectorflow}@postgres:5432/vectorflow
+      DATABASE_URL:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vectorflow}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       AUTH_TRUST_HOST: "true"
     volumes:
