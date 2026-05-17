@@ -43,9 +43,12 @@ export const proxy = auth(function middleware(req: NextRequest) {
 
   const nonce = generateNonce();
 
-  // Forward the nonce on the request so Server Components can read it.
+  // Forward the nonce on the request so Server Components can read it, and
+  // set the nonce-bearing CSP on the request so Next.js applies the nonce
+  // attribute to its own rendered scripts during SSR.
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set(NONCE_HEADER, nonce);
+  requestHeaders.set("Content-Security-Policy", contentSecurityPolicy(nonce));
 
   const response = NextResponse.next({
     request: { headers: requestHeaders },
