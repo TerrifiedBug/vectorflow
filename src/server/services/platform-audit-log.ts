@@ -40,7 +40,6 @@
 
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@/generated/prisma";
 
 /**
  * Stamp identifier — the logical name of this VectorFlow Cloud
@@ -219,9 +218,12 @@ export async function writePlatformAuditLog(
     await tx.platformAuditLog.create({
       data: {
         ...row,
-        // Prisma's Json column rejects raw JS null; use Prisma.DbNull
-        // for nullable JSON fields, omit when undefined.
-        metadata: row.metadata === null ? Prisma.DbNull : row.metadata,
+        // Omit null metadata so Prisma stores SQL NULL in the JSONB column.
+        // Prisma.DbNull / Prisma.JsonNull are only needed when storing the
+        // JSON value `null`; here null means "no metadata", which maps to
+        // SQL NULL via omission. Passing `row.metadata` directly (which is
+        // `null`) can cause runtime validation errors on some Prisma versions.
+        ...(row.metadata !== null ? { metadata: row.metadata } : {}),
         prevHash,
         hash,
       },
