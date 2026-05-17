@@ -343,11 +343,21 @@ async function getAuthInstance() {
       const jwtKeyResult = await getJwtSecretForOrg(orgId);
       // Env-fallback: use the raw NEXTAUTH_SECRET string so Auth.js
       // uses the same key it would have used before per-org derivation.
-      // DEK-derived: base64url-encode the Buffer so Auth.js receives a
-      // string it can digest via its JOSE key derivation path.
+      // DEK-derived: base64url-encode the Buffer; also include the legacy
+      // NEXTAUTH_SECRET as a second entry so pre-existing JWTs that were
+      // signed with the env secret before DEK rollout remain verifiable.
+      // Auth.js verifies against all entries in the array; signing always
+      // uses the first entry (the DEK-derived key).
       const secretArg = jwtKeyResult.fromEnv
         ? [process.env.NEXTAUTH_SECRET!]
-        : [jwtKeyResult.value.toString("base64url")];
+        : [
+            jwtKeyResult.value.toString("base64url"),
+            // Legacy grace secret: verifies tokens issued before this
+            // org was enrolled in per-org DEK rotation. Remove once the
+            // org's session rotation counter has been bumped (which
+            // invalidates all pre-DEK tokens explicitly).
+            ...(process.env.NEXTAUTH_SECRET ? [process.env.NEXTAUTH_SECRET] : []),
+          ];
 
       const instance = NextAuth({
         ...authConfig,
