@@ -57,7 +57,9 @@ export async function POST(req: NextRequest) {
       requestIp: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
     });
 
-    const baseUrl = req.headers.get("origin") ?? "";
+    // Use server-derived origin (req.nextUrl) rather than the client-controlled
+    // `Origin` header, which could be spoofed to embed an attacker's URL.
+    const baseUrl = req.nextUrl.origin;
     const redeemUrl = `${baseUrl}/api/auth/magic-link/redeem?token=${encodeURIComponent(token)}`;
 
     await sendMagicLinkEmail({

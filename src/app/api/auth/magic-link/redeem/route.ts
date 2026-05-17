@@ -59,11 +59,14 @@ function renderBouncer(args: {
   // emitted into the inline script so HTML / script injection in
   // organizationId or callbackUrl cannot break out of the string
   // literal. The token is opaque base64url and is also stringified.
+  // Escaping note: every field is JSON-stringified before being emitted into
+  // the inline script. JSON.stringify does NOT escape </script>, so we apply
+  // a manual substitution to prevent script-block breakout (reflected XSS).
   const payload = JSON.stringify({
     token: args.token,
     organizationId: args.organizationId,
     callbackUrl: args.callbackUrl,
-  });
+  }).replace(/<\/script>/gi, "<\\/script>");
 
   return `<!doctype html>
 <html lang="en">
