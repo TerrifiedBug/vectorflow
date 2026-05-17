@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import type { Role, OrgMemberRole, PlatformOperatorRole } from "@/generated/prisma";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
+import { runWithLogContext } from "@/lib/log-context";
 
 /**
  * Sentinel error attached as `cause` on the TRPCError thrown by `orgProcedure`
@@ -153,7 +154,14 @@ export const orgProcedure = protectedProcedure.use(async ({ ctx, next }) => {
         cause: new OrgSuspendedError(),
       });
   }
-  return next({ ctx: { ...ctx, organizationId: ctx.organizationId } });
+  // Run the rest of the procedure inside the per-org log context so
+  // every infoLog/warnLog/errorLog inside picks up `{org=<id>}` via
+  // AsyncLocalStorage (plan §11). The wrapper is keyed on
+  // `ctx.organizationId` so a procedure for the OSS default org still
+  // emits the segment for trace continuity.
+  return runWithLogContext({ orgId: ctx.organizationId }, () =>
+    next({ ctx: { ...ctx, organizationId: ctx.organizationId } }),
+  );
 });
 
 const roleLevel: Record<Role, number> = {
