@@ -215,16 +215,18 @@ export async function writePlatformAuditLog(
     };
     const hash = computeRowHash(prevHash, row);
 
-    // Destructure metadata out of row before spreading so the Prisma
-    // Json column type is satisfied. `null` metadata means "absent" (SQL
-    // NULL), which Prisma handles via field omission. Including it as
-    // `metadata: null` in the spread triggers a TS2322 error because
-    // the generated type does not accept null for Json? columns directly.
-    const { metadata: _meta, ...rowWithoutMeta } = row;
+    // Include metadata explicitly (even when null) so the stored data matches
+    // what computeRowHash canonicalized: a missing property (undefined) is
+    // skipped by canonicalize, but null is emitted as "null". Passing null
+    // directly works in Prisma 5+ for nullable Json? columns; the @ts-expect-error
+    // suppresses the generated type's rejection of null (the generated types
+    // are overly strict on this point).
     await tx.platformAuditLog.create({
       data: {
-        ...rowWithoutMeta,
-        ...(row.metadata !== null ? { metadata: row.metadata } : {}),
+        ...row,
+        // @ts-expect-error Prisma types for nullable Json? columns reject null
+        // but the runtime and DB handle it correctly (stores SQL NULL).
+        metadata: row.metadata,
         prevHash,
         hash,
       },
