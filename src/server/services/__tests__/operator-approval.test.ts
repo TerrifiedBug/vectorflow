@@ -266,6 +266,15 @@ describe("markExecuting", () => {
 
     expect(result.status).toBe("EXECUTING");
     expect(result.executedByOperatorId).toBe("op_carol");
+    // Must include expiresAt guard to prevent executing stale approvals.
+    expect(tx.operatorApprovalRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "APPROVED",
+          expiresAt: { gt: NOW },
+        }),
+      }),
+    );
   });
 
   it("throws when the request is not APPROVED", async () => {

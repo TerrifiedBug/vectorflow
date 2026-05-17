@@ -179,6 +179,11 @@ export async function approveApprovalRequest(
       id: input.requestId,
       status: "PENDING_APPROVAL",
       approvedByOperatorId: null,
+      // Race-safe expiry guard: if the request expired between the
+      // pre-read and this write, the updateMany misses and we surface
+      // the correct "not pending" error rather than persisting a
+      // post-deadline APPROVED state.
+      expiresAt: { gt: now },
     },
     data: {
       status: "APPROVED",
@@ -216,6 +221,13 @@ export interface MarkExecutingInput {
  * StartRestoreJob). If the handler crashes between mark-executing and
  * complete, the request is stuck at EXECUTING — the operator console
  * surfaces these for manual reconciliation.
+ *
+ * Enforces the approval TTL: an APPROVED request that has passed
+ * `expiresAt` cannot be executed. `expireStaleApprovalRequests` only
+ * sweeps PENDING_APPROVAL rows; an APPROVED row that isn't periodically
+ * swept remains at APPROVED status until execution is attempted. Adding
+ * `expiresAt: { gt: now }` here closes that window so stale approvals
+ * cannot trigger side-effects after the dual-control window elapses.
  */
 export async function markExecuting(
   input: MarkExecutingInput,
@@ -224,7 +236,13 @@ export async function markExecuting(
   const now = opts.now ?? new Date();
   const c = client(opts);
   const updated = await c.operatorApprovalRequest.updateMany({
-    where: { id: input.requestId, status: "APPROVED" },
+    where: {
+      id: input.requestId,
+      status: "APPROVED",
+      // Enforce expiry: do not allow execution of an approval that has
+      // passed its TTL even if the periodic sweeper hasn't caught up.
+      expiresAt: { gt: now },
+    },
     data: {
       status: "EXECUTING",
       executedByOperatorId: input.executorOperatorId,
