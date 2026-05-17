@@ -3,6 +3,7 @@ import { decrypt } from "./crypto";
 import { checkRateLimit } from "@/lib/ai/rate-limiter";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import { validateOutboundUrl } from "@/server/services/url-validation";
+import { enforceAiBaseUrlPolicy } from "@/server/services/ai-base-url-allowlist";
 
 const ENCRYPTED_PREFIX = "enc:";
 
@@ -67,6 +68,7 @@ export async function getTeamAiConfig(teamId: string, { requireEnabled = true } 
   const team = await prisma.team.findUnique({
     where: { id: teamId },
     select: {
+      organizationId: true,
       aiEnabled: true,
       aiProvider: true,
       aiBaseUrl: true,
@@ -80,6 +82,7 @@ export async function getTeamAiConfig(teamId: string, { requireEnabled = true } 
   if (!team.aiApiKey) throw new Error("AI API key is not configured");
 
   return {
+    organizationId: team.organizationId,
     provider: team.aiProvider ?? "openai",
     baseUrl: team.aiBaseUrl || getDefaultBaseUrl(team.aiProvider),
     apiKey: decryptApiKey(team.aiApiKey),
@@ -108,6 +111,11 @@ export async function streamCompletion({
 
   const config = await getTeamAiConfig(teamId);
   await validateBaseUrl(config.baseUrl);
+  // Phase 5z: gate non-vendor URLs on the per-org opt-in.
+  await enforceAiBaseUrlPolicy({
+    baseUrl: config.baseUrl,
+    organizationId: config.organizationId,
+  });
 
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
@@ -178,6 +186,11 @@ export async function testAiConnection(teamId: string): Promise<{ ok: boolean; e
   try {
     const config = await getTeamAiConfig(teamId, { requireEnabled: false });
     await validateBaseUrl(config.baseUrl);
+    // Phase 5z: gate non-vendor URLs on the per-org opt-in.
+    await enforceAiBaseUrlPolicy({
+      baseUrl: config.baseUrl,
+      organizationId: config.organizationId,
+    });
 
     const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",

@@ -6,6 +6,7 @@ import { debugLog, errorLog } from "@/lib/logger";
 import { Prisma } from "@/generated/prisma";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import { validateOutboundUrl } from "@/server/services/url-validation";
+import { enforceAiBaseUrlPolicy } from "@/server/services/ai-base-url-allowlist";
 
 const TAG = "cost-optimizer-ai";
 
@@ -66,6 +67,11 @@ export async function generateAiRecommendations(): Promise<number> {
       // SSRF guard: matches `streamCompletion` so cost-optimizer doesn't
       // become a second AI-baseUrl escape hatch when Cloud-strict is on.
       await validateOutboundUrl(config.baseUrl);
+      // Phase 5z: gate non-vendor URLs on the per-org opt-in.
+      await enforceAiBaseUrlPolicy({
+        baseUrl: config.baseUrl,
+        organizationId: config.organizationId,
+      });
     } catch {
       debugLog(TAG, `AI not configured for team ${teamId}, skipping ${recs.length} recommendations`);
       continue;

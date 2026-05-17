@@ -127,6 +127,12 @@ model OrganizationSettings {
   telemetryInstanceId String?
   telemetryEnabledAt  DateTime?
 
+  // Phase 5z: explicit opt-in for non-allowlisted AI provider baseUrls.
+  // When false (default) AI calls MUST target a host in `AI_PROVIDER_ALLOWLIST`
+  // (api.openai.com, api.anthropic.com). When true, an org OWNER can set a
+  // custom `Team.aiBaseUrl` after passing `validateOutboundUrl` strict mode.
+  aiBaseUrlOptIn      Boolean   @default(false)
+
   updatedAt DateTime @updatedAt
 }
 

@@ -794,4 +794,39 @@ export const settingsRouter = router({
 
       return { checkedAt, overallStatus, signals };
     }),
+
+  /**
+   * Phase 5z: toggle the per-organisation opt-in for non-allowlisted AI
+   * provider URLs. Plan §9 requires that custom (non `api.openai.com` /
+   * `api.anthropic.com`) base URLs require BOTH an org OWNER acting AND
+   * an explicit org-wide opt-in flag flipped on. This is the writable
+   * path for that flag.
+   *
+   * Authorisation: caller MUST be `OrgMember.role === "OWNER"` for the
+   * resolved org. Sitting under `requireSuperAdmin` would force every
+   * tenant to ping operators to enable a custom provider \u2014 the plan
+   * scopes this decision to the org owner, not the platform operator.
+   */
+  updateAiBaseUrlOptIn: protectedProcedure
+    .use(denyInDemo())
+    .input(z.object({ enabled: z.boolean() }))
+    .use(withAudit("settings.ai_base_url_opt_in_updated", "OrganizationSettings"))
+    .mutation(async ({ input, ctx }) => {
+      // Tighten authorisation: OrgMember.role === "OWNER" (NOT SuperAdmin)
+      // is the right gate \u2014 this is a tenant-side decision, not a
+      // platform-operator one.
+      const orgMemberRole = (ctx as { orgMemberRole?: string }).orgMemberRole;
+      if (orgMemberRole !== "OWNER") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Toggling the custom AI provider opt-in requires an org OWNER. " +
+            "Ask an OWNER of this organisation to enable it for you.",
+        });
+      }
+
+      return updateOrgSettings(ctx.organizationId, {
+        aiBaseUrlOptIn: input.enabled,
+      });
+    }),
 });

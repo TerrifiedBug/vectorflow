@@ -681,5 +681,128 @@ describe("team router", () => {
         }),
       );
     });
+
+    // ── Phase 5z: AI base URL allowlist + per-org opt-in ────────────────────
+
+    it("allows aiBaseUrl when it resolves to an allowlisted vendor (api.openai.com)", async () => {
+      prismaMock.team.update.mockResolvedValue({
+        id: "team-1",
+        aiEnabled: true,
+        aiProvider: "openai",
+        aiBaseUrl: "https://api.openai.com/v1",
+        aiModel: "gpt-4o",
+      } as never);
+      // Allowlisted host short-circuits the OWNER + opt-in checks, but we
+      // still resolve the team's organizationId first so a non-existent team
+      // fails fast with NOT_FOUND. Mock the lookup.
+      prismaMock.team.findUnique.mockResolvedValue({
+        organizationId: "default",
+      } as never);
+      await adminCaller.updateAiConfig({
+        teamId: "team-1",
+        aiBaseUrl: "https://api.openai.com/v1",
+      });
+
+      expect(prismaMock.team.update).toHaveBeenCalled();
+    });
+
+    it("rejects a non-allowlisted aiBaseUrl for non-OWNER (FORBIDDEN)", async () => {
+      prismaMock.team.findUnique.mockResolvedValue({
+        organizationId: "default",
+      } as never);
+      // adminCaller has userRole: "ADMIN" but no orgMemberRole — so the
+      // OWNER check fails first, before we even look at aiBaseUrlOptIn.
+      await expect(
+        adminCaller.updateAiConfig({
+          teamId: "team-1",
+          aiBaseUrl: "https://custom-ai.example.com/v1",
+        }),
+      ).rejects.toMatchObject({
+        code: "FORBIDDEN",
+        message: expect.stringMatching(/OWNER/i),
+      });
+      expect(prismaMock.team.update).not.toHaveBeenCalled();
+    });
+
+    it("rejects a non-allowlisted aiBaseUrl for OWNER when aiBaseUrlOptIn is false (FORBIDDEN)", async () => {
+      const ownerCaller = t.createCallerFactory(teamRouter)({
+        session: { user: { id: "user-1", email: "owner@test.com", name: "Owner" } },
+        userRole: "ADMIN",
+        teamId: "team-1",
+        organizationId: "default",
+        orgMemberRole: "OWNER",
+      });
+      prismaMock.team.findUnique.mockResolvedValue({
+        organizationId: "default",
+      } as never);
+      prismaMock.organizationSettings.findUnique.mockResolvedValue({
+        ...mockOrgSettings(),
+        aiBaseUrlOptIn: false,
+      } as never);
+
+      await expect(
+        ownerCaller.updateAiConfig({
+          teamId: "team-1",
+          aiBaseUrl: "https://custom-ai.example.com/v1",
+        }),
+      ).rejects.toMatchObject({
+        code: "FORBIDDEN",
+        message: expect.stringMatching(/aiBaseUrlOptIn/i),
+      });
+      expect(prismaMock.team.update).not.toHaveBeenCalled();
+    });
+
+    it("allows a non-allowlisted aiBaseUrl for OWNER when aiBaseUrlOptIn is true", async () => {
+      const ownerCaller = t.createCallerFactory(teamRouter)({
+        session: { user: { id: "user-1", email: "owner@test.com", name: "Owner" } },
+        userRole: "ADMIN",
+        teamId: "team-1",
+        organizationId: "default",
+        orgMemberRole: "OWNER",
+      });
+      prismaMock.team.findUnique.mockResolvedValue({
+        organizationId: "default",
+      } as never);
+      prismaMock.organizationSettings.findUnique.mockResolvedValue({
+        ...mockOrgSettings(),
+        aiBaseUrlOptIn: true,
+      } as never);
+      prismaMock.team.update.mockResolvedValue({
+        id: "team-1",
+        aiEnabled: true,
+        aiProvider: "custom",
+        aiBaseUrl: "https://custom-ai.example.com/v1",
+        aiModel: "claude-3-5-sonnet",
+      } as never);
+
+      await ownerCaller.updateAiConfig({
+        teamId: "team-1",
+        aiBaseUrl: "https://custom-ai.example.com/v1",
+      });
+
+      expect(prismaMock.team.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            aiBaseUrl: "https://custom-ai.example.com/v1",
+          }),
+        }),
+      );
+    });
+
+    it("rejects a malformed aiBaseUrl with BAD_REQUEST", async () => {
+      prismaMock.team.findUnique.mockResolvedValue({
+        organizationId: "default",
+      } as never);
+
+      await expect(
+        adminCaller.updateAiConfig({
+          teamId: "team-1",
+          aiBaseUrl: "not-a-url",
+        }),
+      ).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: expect.stringMatching(/valid URL/i),
+      });
+    });
   });
 });
