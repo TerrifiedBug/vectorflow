@@ -124,7 +124,16 @@ export async function authorizeWebauthn(
         );
         return null;
       }
-      // Lock expired — fall through and allow login.
+      // Lock expired — clear the stale lock fields so the account
+      // is no longer represented as locked in SCIM, admin UI, and
+      // other flows that key off `lockedAt`.
+      prisma.user
+        .update({
+          where: { id: user.id },
+          data: { lockedAt: null, lockedBy: null },
+        })
+        .catch(() => undefined);
+      // Fall through and allow login.
     }
 
     writeAuditLog({

@@ -17,11 +17,12 @@
  *
  * No auth required; this is the pre-auth step.
  *
- * Rate limit: per-IP, courtesy of `org-rate-limit.ts`'s default for
- * unauthenticated endpoints.
+ * Rate limit: explicit per-IP check — each call persists a WebAuthn
+ * challenge to the DB, so unbounded calls force unbounded DB writes.
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
 
 import { prisma } from "@/lib/prisma";
 import { startAuthentication } from "@/server/services/webauthn";
@@ -35,6 +36,9 @@ interface RequestBody {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = await checkIpRateLimit(req, "auth:webauthn-options", 30);
+  if (limited) return limited;
+
   let body: RequestBody = {};
   try {
     body = await req.json();
