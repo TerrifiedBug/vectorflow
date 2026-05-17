@@ -143,9 +143,39 @@ describe("authorizeMagicLink", () => {
     });
     const result = await authorizeMagicLink({
       token: "fake-base64url-token",
+      organizationId: "org-a",
     });
     expect(result).toBeNull();
     expect(mocks.writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("returns null when the user has TOTP enabled (codex P1: magic-link cannot bypass 2FA)", async () => {
+    mocks.consumeMagicLink.mockResolvedValue({
+      ok: true,
+      email: "alice@example.test",
+      organizationId: "org-a",
+    });
+    mocks.userFindFirst.mockResolvedValue({
+      id: "user-1",
+      email: "alice@example.test",
+      name: "Alice",
+      image: null,
+      lockedAt: null,
+      totpEnabled: true,
+    });
+    const result = await authorizeMagicLink({
+      token: "fake-base64url-token",
+      organizationId: "org-a",
+    });
+    expect(result).toBeNull();
+    expect(mocks.writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "auth.login_denied",
+        metadata: expect.objectContaining({
+          reason: "totp_enabled_magic_link_disallowed",
+        }),
+      }),
+    );
   });
 
   it("returns null for a too-short token (rejects empty payloads early)", async () => {

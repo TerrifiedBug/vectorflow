@@ -98,7 +98,7 @@ export async function authorizeMagicLink(
   // creation for the same mailbox.
   let user = await prisma.user.findFirst({
     where: { email: { equals: result.email, mode: "insensitive" } },
-    select: { id: true, email: true, name: true, image: true, lockedAt: true },
+    select: { id: true, email: true, name: true, image: true, lockedAt: true, totpEnabled: true },
   });
   if (!user) {
     user = await prisma.user.create({
@@ -107,7 +107,7 @@ export async function authorizeMagicLink(
         name: result.email.split("@")[0],
         authMethod: "MAGIC_LINK",
       },
-      select: { id: true, email: true, name: true, image: true, lockedAt: true },
+      select: { id: true, email: true, name: true, image: true, lockedAt: true, totpEnabled: true },
     });
     infoLog(
       "magic-link-provider",
@@ -129,6 +129,29 @@ export async function authorizeMagicLink(
       "magic-link-provider",
       `magic link verified but user ${user.id} is locked; denying`,
     );
+    return null;
+  }
+
+  // Codex P1 (PR #352): refuse magic-link sign-in for users with TOTP
+  // enabled. The link is a single factor (proof of email control);
+  // allowing it to bypass an explicitly-enabled second factor would
+  // defeat the user's own security choice. Users who set up TOTP MUST
+  // sign in via password + TOTP.
+  if (user.totpEnabled) {
+    warnLog(
+      "magic-link-provider",
+      `magic-link verified for user ${user.id} but TOTP is enabled; denying. Users with 2FA MUST sign in via password + TOTP.`,
+    );
+    writeAuditLog({
+      organizationId: result.organizationId,
+      userId: user.id,
+      action: "auth.login_denied",
+      entityType: "Auth",
+      entityId: "magic-link",
+      userEmail: user.email,
+      userName: user.name,
+      metadata: { reason: "totp_enabled_magic_link_disallowed" },
+    }).catch(() => undefined);
     return null;
   }
 
