@@ -31,14 +31,38 @@ import { getDekCache } from "@/server/services/kms";
 import { writeAuditLog } from "@/server/services/audit";
 import { infoLog, warnLog } from "@/lib/logger";
 
+export interface JwtKeyResult {
+  /**
+   * The resolved signing key as a Buffer. For env-fallback orgs the
+   * raw bytes of NEXTAUTH_SECRET are returned; callers in auth.ts must
+   * pass the raw env string (not base64url-encode this Buffer) so
+   * existing sessions signed with the raw secret remain valid.
+   */
+  value: Buffer;
+  /**
+   * True when the key came from NEXTAUTH_SECRET rather than a per-org
+   * DEK. auth.ts uses the raw env string instead of base64url-encoding
+   * the Buffer to preserve backward compatibility with sessions signed
+   * before per-org key derivation was added.
+   */
+  fromEnv: boolean;
+  /**
+   * True when the org HAS a DEK ciphertext but KMS unwrap failed. The
+   * fallback to NEXTAUTH_SECRET is correct for availability, but the
+   * auth instance MUST NOT be cached so the next request retries KMS
+   * and re-derives the correct per-org key once KMS recovers.
+   */
+  kmsFailure: boolean;
+}
+
 /**
- * Resolve the JWT signing secret(s) for an org. Returns a Buffer that
- * NextAuth can use as the `secret`. Falls back to `NEXTAUTH_SECRET`
- * (Buffer-wrapped) when the org has no DEK — OSS self-hosted path.
+ * Resolve the JWT signing secret(s) for an org. Returns a typed result
+ * indicating the source so auth.ts can decide how to pass the value to
+ * NextAuth and whether to cache the resulting auth instance.
  *
  * Throws if neither a per-org DEK nor `NEXTAUTH_SECRET` is configured.
  */
-export async function getJwtSecretForOrg(orgId: string): Promise<Buffer> {
+export async function getJwtSecretForOrg(orgId: string): Promise<JwtKeyResult> {
   const org = await prisma.organization.findUnique({
     where: { id: orgId },
     select: {
@@ -52,15 +76,32 @@ export async function getJwtSecretForOrg(orgId: string): Promise<Buffer> {
     try {
       const cache = getDekCache();
       const dek = await cache.get(org.id, org.dataKeyCiphertext);
-      return deriveJwtSigningKey(dek, org.jwtKeyRotationCounter);
+      return {
+        value: deriveJwtSigningKey(dek, org.jwtKeyRotationCounter),
+        fromEnv: false,
+        kmsFailure: false,
+      };
     } catch (err) {
       // KMS hiccup; fall through to the env-secret path so sign-in
       // doesn't break. Log loudly — operators need to see this.
+      // Mark kmsFailure=true so auth.ts does NOT cache this instance:
+      // the next request should retry KMS once it recovers.
       warnLog(
         "jwt-key",
         `DEK unwrap failed for org ${orgId}; falling back to NEXTAUTH_SECRET`,
         err,
       );
+      const envSecret = process.env.NEXTAUTH_SECRET;
+      if (!envSecret) {
+        throw new Error(
+          "getJwtSecretForOrg: neither per-org DEK nor NEXTAUTH_SECRET is configured",
+        );
+      }
+      return {
+        value: Buffer.from(envSecret, "utf8"),
+        fromEnv: true,
+        kmsFailure: true,
+      };
     }
   }
 
@@ -70,7 +111,7 @@ export async function getJwtSecretForOrg(orgId: string): Promise<Buffer> {
       "getJwtSecretForOrg: neither per-org DEK nor NEXTAUTH_SECRET is configured",
     );
   }
-  return Buffer.from(envSecret, "utf8");
+  return { value: Buffer.from(envSecret, "utf8"), fromEnv: true, kmsFailure: false };
 }
 
 export interface RevokeOrgSessionsRequestor {
@@ -89,10 +130,15 @@ export interface RevokeOrgSessionsResult {
 
 /**
  * Owner-triggered "revoke all sessions" — bumps the rotation counter
- * by 1 and writes an audit row. Callers are responsible for clearing
- * the per-org NextAuth instance cache (`invalidateAuthCache(orgId)`)
+ * atomically and writes an audit row. Callers are responsible for
+ * clearing the per-org NextAuth instance cache (`invalidateAuthCache`)
  * after this returns; we don't import that helper here to avoid an
  * `auth.ts` ← `jwt-key.ts` cycle.
+ *
+ * The counter is incremented with a Prisma `{ increment: 1 }` operation
+ * so concurrent revoke calls each produce a distinct new key — a
+ * read-modify-write pattern would let two concurrent callers race to
+ * the same value and only one effective rotation would occur.
  */
 export async function revokeOrgSessions(
   organizationId: string,
@@ -101,17 +147,21 @@ export async function revokeOrgSessions(
   return prisma.$transaction(async (tx) => {
     const org = await tx.organization.findUnique({
       where: { id: organizationId },
-      select: { id: true, jwtKeyRotationCounter: true },
+      select: { id: true },
     });
     if (!org) {
       throw new Error(`Organization ${organizationId} not found`);
     }
 
-    const newCounter = org.jwtKeyRotationCounter + 1;
-    await tx.organization.update({
+    // Atomic increment: avoids the read-then-write race under concurrent
+    // revoke calls. Prisma returns the updated row so we can embed the
+    // new counter value in the audit log.
+    const updated = await tx.organization.update({
       where: { id: organizationId },
-      data: { jwtKeyRotationCounter: newCounter },
+      data: { jwtKeyRotationCounter: { increment: 1 } },
+      select: { jwtKeyRotationCounter: true },
     });
+    const newCounter = updated.jwtKeyRotationCounter;
 
     await tx.auditLog.create({
       data: {

@@ -335,15 +335,25 @@ async function getAuthInstance() {
 
       // Per-org JWT signing secret derived from the org's DEK via
       // `deriveJwtSigningKey` — see plan §8 / §16b OSS-3 + jwt-key.ts.
-      // Falls back to NEXTAUTH_SECRET (Buffer-wrapped) when the org
-      // has no DEK (OSS / self-hosted path).
-      const jwtSecret = await getJwtSecretForOrg(orgId);
+      // Falls back to NEXTAUTH_SECRET when the org has no DEK (OSS /
+      // self-hosted path). When fromEnv=true we pass the raw env string
+      // directly so existing sessions signed with the raw secret remain
+      // valid; base64url-encoding would produce a different key and
+      // immediately invalidate all existing tokens on upgrade.
+      const jwtKeyResult = await getJwtSecretForOrg(orgId);
+      // Env-fallback: use the raw NEXTAUTH_SECRET string so Auth.js
+      // uses the same key it would have used before per-org derivation.
+      // DEK-derived: base64url-encode the Buffer so Auth.js receives a
+      // string it can digest via its JOSE key derivation path.
+      const secretArg = jwtKeyResult.fromEnv
+        ? [process.env.NEXTAUTH_SECRET!]
+        : [jwtKeyResult.value.toString("base64url")];
 
       const instance = NextAuth({
         ...authConfig,
         adapter: PrismaAdapter(prisma),
         providers,
-        secret: [jwtSecret.toString("base64url")],
+        secret: secretArg,
         callbacks: {
           ...authConfig.callbacks,
           async signIn({ user, account, profile }) {
@@ -486,7 +496,13 @@ async function getAuthInstance() {
         },
       });
 
-      _instanceByOrg.set(orgId, instance);
+      // Do NOT cache when KMS failed: the next request must retry KMS
+      // so the instance is rebuilt with the correct per-org key once
+      // the KMS recovers. Caching the env-fallback instance would pin
+      // this org to the shared env secret until manual restart.
+      if (!jwtKeyResult.kmsFailure) {
+        _instanceByOrg.set(orgId, instance);
+      }
       _initPromiseByOrg.delete(orgId);
       return instance;
     })();

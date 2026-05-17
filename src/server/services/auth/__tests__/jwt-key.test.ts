@@ -69,8 +69,10 @@ describe("getJwtSecretForOrg", () => {
     });
     mocks.dekCacheGet.mockResolvedValue(dek);
 
-    const secret = await getJwtSecretForOrg("org-a");
-    expect(secret).toEqual(deriveJwtSigningKey(dek, 3));
+    const result = await getJwtSecretForOrg("org-a");
+    expect(result.fromEnv).toBe(false);
+    expect(result.kmsFailure).toBe(false);
+    expect(result.value).toEqual(deriveJwtSigningKey(dek, 3));
   });
 
   it("counter change yields a different derived secret (rotation works)", async () => {
@@ -90,7 +92,7 @@ describe("getJwtSecretForOrg", () => {
     });
     const after = await getJwtSecretForOrg("org-a");
 
-    expect(Buffer.compare(before, after)).not.toBe(0);
+    expect(Buffer.compare(before.value, after.value)).not.toBe(0);
   });
 
   it("falls back to NEXTAUTH_SECRET when the org has no DEK", async () => {
@@ -100,11 +102,13 @@ describe("getJwtSecretForOrg", () => {
       dataKeyCiphertext: null,
       jwtKeyRotationCounter: 0,
     });
-    const secret = await getJwtSecretForOrg("org-a");
-    expect(secret.toString("utf8")).toBe("fallback-secret");
+    const result = await getJwtSecretForOrg("org-a");
+    expect(result.fromEnv).toBe(true);
+    expect(result.kmsFailure).toBe(false);
+    expect(result.value.toString("utf8")).toBe("fallback-secret");
   });
 
-  it("falls back to NEXTAUTH_SECRET when KMS unwrap throws", async () => {
+  it("falls back to NEXTAUTH_SECRET when KMS unwrap throws, marks kmsFailure", async () => {
     process.env.NEXTAUTH_SECRET = "fallback-secret";
     mocks.organizationFindUnique.mockResolvedValue({
       id: "org-a",
@@ -112,8 +116,10 @@ describe("getJwtSecretForOrg", () => {
       jwtKeyRotationCounter: 0,
     });
     mocks.dekCacheGet.mockRejectedValue(new Error("KMS unreachable"));
-    const secret = await getJwtSecretForOrg("org-a");
-    expect(secret.toString("utf8")).toBe("fallback-secret");
+    const result = await getJwtSecretForOrg("org-a");
+    expect(result.fromEnv).toBe(true);
+    expect(result.kmsFailure).toBe(true);
+    expect(result.value.toString("utf8")).toBe("fallback-secret");
   });
 
   it("throws when neither DEK nor NEXTAUTH_SECRET is configured", async () => {
@@ -138,12 +144,10 @@ describe("revokeOrgSessions", () => {
     mocks.$transaction.mockImplementation(async (fn) => fn(makeTxStub()));
   });
 
-  it("increments the counter by 1 and writes an audit row", async () => {
-    mocks.organizationFindUnique.mockResolvedValue({
-      id: "org-a",
-      jwtKeyRotationCounter: 7,
-    });
-    mocks.organizationUpdate.mockResolvedValue({});
+  it("atomically increments the counter and writes an audit row", async () => {
+    mocks.organizationFindUnique.mockResolvedValue({ id: "org-a" });
+    // update returns the new counter after atomic increment
+    mocks.organizationUpdate.mockResolvedValue({ jwtKeyRotationCounter: 8 });
     mocks.auditLogCreate.mockResolvedValue({});
 
     const r = await revokeOrgSessions("org-a", {
@@ -153,10 +157,13 @@ describe("revokeOrgSessions", () => {
       reason: "lost laptop",
     });
     expect(r).toEqual({ organizationId: "org-a", newRotationCounter: 8 });
+
+    // Must use atomic { increment: 1 }, not a raw integer write.
     expect(mocks.organizationUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "org-a" },
-        data: { jwtKeyRotationCounter: 8 },
+        data: { jwtKeyRotationCounter: { increment: 1 } },
+        select: { jwtKeyRotationCounter: true },
       }),
     );
     expect(mocks.auditLogCreate).toHaveBeenCalledWith(
@@ -167,17 +174,15 @@ describe("revokeOrgSessions", () => {
           action: "auth.sessions_revoked",
           entityType: "Organization",
           ipAddress: "1.2.3.4",
+          metadata: expect.objectContaining({ newRotationCounter: 8 }),
         }),
       }),
     );
   });
 
   it("operator-driven revocation does not stamp userId on AuditLog", async () => {
-    mocks.organizationFindUnique.mockResolvedValue({
-      id: "org-a",
-      jwtKeyRotationCounter: 0,
-    });
-    mocks.organizationUpdate.mockResolvedValue({});
+    mocks.organizationFindUnique.mockResolvedValue({ id: "org-a" });
+    mocks.organizationUpdate.mockResolvedValue({ jwtKeyRotationCounter: 1 });
     mocks.auditLogCreate.mockResolvedValue({});
 
     await revokeOrgSessions("org-a", { kind: "operator", id: "op-1" });
