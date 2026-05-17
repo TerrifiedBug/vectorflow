@@ -47,7 +47,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true }); // anti-enumeration; same response shape
   }
 
-  const host = req.headers.get("host") ?? "";
+  // Codex P1 (PR #352): use `req.nextUrl.host` (Next.js's trusted
+  // request URL) rather than the raw `Host:` header. Raw Host is
+  // attacker-controlled; a spoofed value could mint a token bound to
+  // the attacker's org with a victim's email.
+  const host = req.nextUrl.host;
   const organizationId = await resolveOrgIdFromHost(host);
 
   try {

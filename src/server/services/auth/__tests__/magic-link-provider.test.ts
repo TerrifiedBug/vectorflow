@@ -161,7 +161,7 @@ describe("authorizeMagicLink", () => {
     expect(result).toBeNull();
   });
 
-  it("passes expectedOrganizationId only when supplied", async () => {
+  it("requires organizationId; refuses redeem when missing (codex P1)", async () => {
     mocks.consumeMagicLink.mockResolvedValue({
       ok: true,
       email: "a@example.test",
@@ -175,10 +175,24 @@ describe("authorizeMagicLink", () => {
       lockedAt: null,
     });
 
-    await authorizeMagicLink({ token: "tok-no-org" });
-    expect(mocks.consumeMagicLink).toHaveBeenLastCalledWith({
-      token: "tok-no-org",
-      expectedOrganizationId: undefined,
+    // Missing organizationId → reject without ever calling consumeMagicLink.
+    const result = await authorizeMagicLink({ token: "tok-no-org" });
+    expect(result).toBeNull();
+    expect(mocks.consumeMagicLink).not.toHaveBeenCalled();
+  });
+
+  it("passes expectedOrganizationId verbatim when supplied", async () => {
+    mocks.consumeMagicLink.mockResolvedValue({
+      ok: true,
+      email: "a@example.test",
+      organizationId: "org-b",
+    });
+    mocks.userFindUnique.mockResolvedValue({
+      id: "u",
+      email: "a@example.test",
+      name: null,
+      image: null,
+      lockedAt: null,
     });
 
     await authorizeMagicLink({ token: "tok-with-org", organizationId: "org-b" });
@@ -186,5 +200,14 @@ describe("authorizeMagicLink", () => {
       token: "tok-with-org",
       expectedOrganizationId: "org-b",
     });
+  });
+
+  it("refuses redeem when organizationId is an empty string", async () => {
+    const result = await authorizeMagicLink({
+      token: "tok-empty-org",
+      organizationId: "",
+    });
+    expect(result).toBeNull();
+    expect(mocks.consumeMagicLink).not.toHaveBeenCalled();
   });
 });

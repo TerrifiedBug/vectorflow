@@ -4,8 +4,8 @@
  * GET /api/auth/magic-link/redeem?token=...
  *
  * The user clicks this URL from their email. The handler resolves the
- * org from the request host, then renders a tiny self-submitting HTML
- * page that POSTs to NextAuth's `signIn("magic-link", { token, organizationId })`
+ * org from the request host, then renders a form-based bouncer page
+ * that POSTs to NextAuth's `signIn("magic-link", { token, organizationId })`
  * flow. This indirection is needed because NextAuth Credentials
  * authorization runs on POST, and the email client can only navigate
  * the user via GET.
@@ -18,6 +18,25 @@
  * its standard credentials-error page. We do not echo the token in
  * any error path; the bouncer page contains only the token to hand
  * off and the CSRF token NextAuth needs.
+ *
+ * Security boundaries (codex P1 findings on PR #352, all addressed):
+ *
+ *   1. Org resolution uses `req.nextUrl.host` rather than the raw
+ *      `Host:` header. Next.js builds `nextUrl` from a trusted source
+ *      (the request's bound URL), so it cannot be spoofed by header
+ *      injection.
+ *
+ *   2. The bouncer template emits the token / organizationId /
+ *      callbackUrl as HTML-escaped attribute values inside a `<form>`,
+ *      NOT as JSON inside an inline `<script>`. Attribute context is
+ *      escape-correct under HTML rules; the previous inline-JSON
+ *      approach required JS-string escaping (`</script>` + every Unicode
+ *      line separator variant) which is brittle.
+ *
+ *   3. The bouncer's only inline script reads from form attributes
+ *      via DOM lookups and submits the form. The script contains NO
+ *      user-controllable strings, so it cannot be made to execute
+ *      attacker JS.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -29,7 +48,11 @@ export async function GET(req: NextRequest) {
     return new NextResponse("missing token", { status: 400 });
   }
 
-  const host = req.headers.get("host") ?? "";
+  // Codex P1: derive the host from `req.nextUrl` (Next.js's trusted
+  // request URL), NOT the raw `Host:` header. The latter is
+  // attacker-controlled and a spoofed Host could route a captured
+  // token's redeem onto the attacker's org context.
+  const host = req.nextUrl.host;
   const organizationId = await resolveOrgIdFromHost(host);
   const callbackUrl = req.nextUrl.searchParams.get("callbackUrl") ?? "/";
 
@@ -46,27 +69,63 @@ export async function GET(req: NextRequest) {
       "X-Frame-Options": "DENY",
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "no-store",
+      // Belt-and-braces CSP: disallow inline-script other than the
+      // form-submitter we emit. The hash matches the exact static
+      // script body below. If you edit `BOUNCER_SCRIPT`, recompute
+      // the hash and update both constants together.
+      "Content-Security-Policy":
+        `default-src 'none'; ` +
+        `style-src 'unsafe-inline'; ` +
+        `script-src '${BOUNCER_SCRIPT_HASH}'; ` +
+        `form-action 'self'; ` +
+        `base-uri 'none'`,
     },
   });
 }
+
+/**
+ * Escape a string for safe interpolation into an HTML attribute
+ * value. Encodes the five characters that have syntactic meaning in
+ * attribute context.
+ */
+function escapeAttr(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Static bouncer script. Reads token / organizationId / callbackUrl
+ * from the form's `data-*` attributes (already HTML-escape-encoded by
+ * `escapeAttr` during render), fetches the NextAuth CSRF token, and
+ * submits the form. NO user-controllable string is interpolated into
+ * this script.
+ */
+const BOUNCER_SCRIPT = `(async function(){var f=document.getElementById("magic-link-form");var t=f.dataset.token;var o=f.dataset.org;var c=f.dataset.callback;try{var r=await fetch("/api/auth/csrf",{credentials:"same-origin"});var d=await r.json();function add(n,v){var i=document.createElement("input");i.type="hidden";i.name=n;i.value=v;f.appendChild(i);}add("csrfToken",d.csrfToken);add("token",t);add("organizationId",o);add("callbackUrl",c);f.submit();}catch(e){document.body.innerText="Sign-in failed. Please request a new magic link.";}})();`;
+
+// CSP `script-src` hash for the script body above. Computed via
+// `printf '%s' "$BOUNCER_SCRIPT" | openssl dgst -sha256 -binary | openssl base64`.
+// The hash is committed alongside the script body. If the script body
+// changes, recompute + update this constant in the same commit.
+const BOUNCER_SCRIPT_HASH = "sha256-1+NtuPvyMNg/QtmfOb2radYiBdiS4Jbfh0vupbQ0k1A=";
 
 function renderBouncer(args: {
   token: string;
   organizationId: string;
   callbackUrl: string;
 }): string {
-  // Escaping note: every field is JSON-stringified before being
-  // emitted into the inline script so HTML / script injection in
-  // organizationId or callbackUrl cannot break out of the string
-  // literal. The token is opaque base64url and is also stringified.
-  // Escaping note: every field is JSON-stringified before being emitted into
-  // the inline script. JSON.stringify does NOT escape </script>, so we apply
-  // a manual substitution to prevent script-block breakout (reflected XSS).
-  const payload = JSON.stringify({
-    token: args.token,
-    organizationId: args.organizationId,
-    callbackUrl: args.callbackUrl,
-  }).replace(/<\/script>/gi, "<\\/script>");
+  // All three values flow into HTML attribute context. `escapeAttr`
+  // encodes the syntactic characters; the attribute parser then
+  // un-encodes them when the browser reads `data-token` via
+  // `dataset.token` in the bouncer script. NO script-string escaping
+  // is required — the values are never emitted into a JavaScript
+  // string literal.
+  const token = escapeAttr(args.token);
+  const organizationId = escapeAttr(args.organizationId);
+  const callbackUrl = escapeAttr(args.callbackUrl);
 
   return `<!doctype html>
 <html lang="en">
@@ -80,35 +139,8 @@ function renderBouncer(args: {
   <p>JavaScript is required to complete sign-in.</p>
 </noscript>
 <p>Signing you in…</p>
-<script>
-(async function () {
-  const payload = ${payload};
-  try {
-    const csrfRes = await fetch("/api/auth/csrf", { credentials: "same-origin" });
-    const { csrfToken } = await csrfRes.json();
-    const body = new URLSearchParams({
-      csrfToken,
-      token: payload.token,
-      organizationId: payload.organizationId,
-      callbackUrl: payload.callbackUrl,
-    });
-    const r = await fetch("/api/auth/callback/magic-link", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
-      credentials: "same-origin",
-      redirect: "follow",
-    });
-    if (r.redirected) {
-      window.location.href = r.url;
-    } else {
-      window.location.href = payload.callbackUrl;
-    }
-  } catch (err) {
-    document.body.innerText = "Sign-in failed. Please request a new magic link.";
-  }
-})();
-</script>
+<form id="magic-link-form" method="POST" action="/api/auth/callback/magic-link" data-token="${token}" data-org="${organizationId}" data-callback="${callbackUrl}"></form>
+<script>${BOUNCER_SCRIPT}</script>
 </body>
 </html>`;
 }

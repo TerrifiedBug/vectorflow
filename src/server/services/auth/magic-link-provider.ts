@@ -57,11 +57,21 @@ export async function authorizeMagicLink(
     return null;
   }
 
-  const expectedOrganizationId =
-    typeof credentials.organizationId === "string" &&
-    credentials.organizationId.length > 0
-      ? credentials.organizationId
-      : undefined;
+  // Codex P1 (PR #352): `expectedOrganizationId` is REQUIRED here. If
+  // credentials don't carry organizationId, `consumeMagicLink` would
+  // skip the tenant check, letting a token captured from org A be
+  // redeemed on org B. Refuse the redeem outright when missing.
+  if (
+    typeof credentials.organizationId !== "string" ||
+    credentials.organizationId.length === 0
+  ) {
+    warnLog(
+      "magic-link-provider",
+      "magic-link credentials missing organizationId; refusing redeem",
+    );
+    return null;
+  }
+  const expectedOrganizationId = credentials.organizationId;
 
   let result: Awaited<ReturnType<typeof consumeMagicLink>>;
   try {
