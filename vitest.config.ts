@@ -13,6 +13,7 @@ export default defineConfig({
     include: [
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
+      "cloud/**/*.test.ts",
       "docker/**/*.test.ts",
       "contracts/**/*.test.ts",
       "scripts/**/*.test.mjs",
