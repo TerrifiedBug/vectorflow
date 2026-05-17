@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   consumeMagicLink: vi.fn(),
-  userFindUnique: vi.fn(),
+  userFindFirst: vi.fn(),
   userCreate: vi.fn(),
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
@@ -13,7 +13,8 @@ vi.mock("@/server/services/auth/magic-link", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: {
-      findUnique: mocks.userFindUnique,
+      findUnique: vi.fn(), // kept for type compat; not used after case-insensitive migration
+      findFirst: mocks.userFindFirst,
       create: mocks.userCreate,
     },
   },
@@ -32,7 +33,7 @@ import { authorizeMagicLink } from "../magic-link-provider";
 describe("authorizeMagicLink", () => {
   beforeEach(() => {
     mocks.consumeMagicLink.mockReset();
-    mocks.userFindUnique.mockReset();
+    mocks.userFindFirst.mockReset();
     mocks.userCreate.mockReset();
     mocks.writeAuditLog.mockClear();
   });
@@ -43,7 +44,7 @@ describe("authorizeMagicLink", () => {
       email: "alice@example.test",
       organizationId: "org-a",
     });
-    mocks.userFindUnique.mockResolvedValue({
+    mocks.userFindFirst.mockResolvedValue({
       id: "user-1",
       email: "alice@example.test",
       name: "Alice",
@@ -78,7 +79,7 @@ describe("authorizeMagicLink", () => {
       email: "newcomer@example.test",
       organizationId: "org-a",
     });
-    mocks.userFindUnique.mockResolvedValue(null);
+    mocks.userFindFirst.mockResolvedValue(null);
     mocks.userCreate.mockResolvedValue({
       id: "user-new",
       email: "newcomer@example.test",
@@ -114,7 +115,7 @@ describe("authorizeMagicLink", () => {
       token: "fake-base64url-token",
     });
     expect(result).toBeNull();
-    expect(mocks.userFindUnique).not.toHaveBeenCalled();
+    expect(mocks.userFindFirst).not.toHaveBeenCalled();
   });
 
   it("returns null on already_used / expired / wrong_organization", async () => {
@@ -133,7 +134,7 @@ describe("authorizeMagicLink", () => {
       email: "alice@example.test",
       organizationId: "org-a",
     });
-    mocks.userFindUnique.mockResolvedValue({
+    mocks.userFindFirst.mockResolvedValue({
       id: "user-1",
       email: "alice@example.test",
       name: "Alice",
@@ -167,7 +168,7 @@ describe("authorizeMagicLink", () => {
       email: "a@example.test",
       organizationId: "org-a",
     });
-    mocks.userFindUnique.mockResolvedValue({
+    mocks.userFindFirst.mockResolvedValue({
       id: "u",
       email: "a@example.test",
       name: null,
@@ -187,7 +188,7 @@ describe("authorizeMagicLink", () => {
       email: "a@example.test",
       organizationId: "org-b",
     });
-    mocks.userFindUnique.mockResolvedValue({
+    mocks.userFindFirst.mockResolvedValue({
       id: "u",
       email: "a@example.test",
       name: null,
