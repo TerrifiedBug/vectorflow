@@ -1349,7 +1349,7 @@ model PlatformAuditLog {
   @@index([createdAt])
   // Archiver poll query (`WHERE archivedAt IS NULL ORDER BY createdAt`).
   // The migration creates this as a PARTIAL index on `createdAt WHERE archivedAt IS NULL`
-  // (see 20260517000002_platform_audit_archived). Prisma cannot express partial
+  // (see 20260517000006_platform_audit_archived). Prisma cannot express partial
   // index predicates in schema.prisma; we declare only the index column(s) with the
   // matching `map` name so Prisma recognises the index by name and does not generate
   // a follow-up migration that would replace the partial index with an unbounded one.
