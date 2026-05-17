@@ -255,6 +255,7 @@ model OperatorApprovalRequest {
 
   @@index([status, expiresAt])
   @@index([organizationId])
+  @@index([organizationId, status])
   @@index([operation])
   @@index([requestedByOperatorId])
 }
@@ -434,6 +435,7 @@ model BillingProviderRef {
   /// Reverse lookup by external customer id is the inbound-webhook path.
   @@unique([provider, providerCustomerId])
   @@index([organizationId])
+  @@index([organizationId, provider])
 }
 
 model UserPreference {
@@ -1423,6 +1425,7 @@ model PlatformAuditLog {
   @@index([operatorId])
   @@index([action])
   @@index([organizationId])
+  @@index([organizationId, createdAt])
   @@index([createdAt])
   // Archiver poll query (`WHERE archivedAt IS NULL ORDER BY createdAt`).
   // The migration creates this as a PARTIAL index on `createdAt WHERE archivedAt IS NULL`
