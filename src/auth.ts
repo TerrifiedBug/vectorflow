@@ -27,6 +27,7 @@ import {
 import { getOrgSettings } from "@/lib/org-settings";
 import { resolveOrgIdFromHost } from "@/lib/host-to-org";
 import { webauthnProvider } from "@/server/services/auth/webauthn-provider";
+import { magicLinkProvider } from "@/server/services/auth/magic-link-provider";
 
 async function getClientIp(): Promise<string | null> {
   try {
@@ -311,7 +312,7 @@ async function getAuthInstance() {
   const inFlight = _initPromiseByOrg.get(orgId);
   if (!inFlight) {
     const promise = (async () => {
-      const providers: Provider[] = [credentialsProvider, webauthnProvider];
+      const providers: Provider[] = [credentialsProvider, webauthnProvider, magicLinkProvider];
 
       const oidc = await getOidcSettings(orgId);
       if (oidc) {
