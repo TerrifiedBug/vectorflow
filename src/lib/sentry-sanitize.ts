@@ -55,20 +55,24 @@ export const DENY_HEADERS: ReadonlySet<string> = new Set(
  * Sentry receives the full URL; we walk the query string and replace
  * matching values with `[REDACTED]`.
  */
-export const DENY_QUERY_KEYS: ReadonlySet<string> = new Set([
-  "token",
-  "code",
-  "secret",
-  "key",
-  "apiKey",
-  "api_key",
-  "access_token",
-  "refresh_token",
-  "id_token",
-  "client_secret",
-  "session",
-  "csrfToken",
-]);
+// All entries are lowercase so `DENY_QUERY_KEYS.has(key.toLowerCase())` matches
+// case variants without per-lookup normalization of the set itself.
+export const DENY_QUERY_KEYS: ReadonlySet<string> = new Set(
+  [
+    "token",
+    "code",
+    "secret",
+    "key",
+    "apikey",
+    "api_key",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "client_secret",
+    "session",
+    "csrftoken",
+  ].map((k) => k.toLowerCase()),
+);
 
 /**
  * Object keys whose value is `[REDACTED]` wherever they appear in
