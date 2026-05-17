@@ -1,42 +1,21 @@
 /**
- * Stripe webhook idempotency ledger helper.
+ * @deprecated Compatibility shim — import from
+ *   `@/server/services/inbound-webhook-event` instead.
  *
- * Stripe redelivers webhook events on any 5xx response. The Cloud
- * handler (in the closed `cloud/` workspace) calls
- * `recordStripeEventOrSkip(event.id, event.type)` at the top of each
- * delivery. If `processed === false` the event has been seen before;
- * the handler returns HTTP 200 immediately with no side effects.
+ * This file existed as `stripe-webhook-event.ts` before the 2026-05-17
+ * rename (plan §15a R1). It is kept here for one deprecation cycle so
+ * downstream handlers (vectorflow-cloud Stripe webhook) can migrate at
+ * their own pace without a flag-day rename.
  *
- * Implementation: rely on the PK uniqueness of `StripeWebhookEvent.id`
- * to surface duplicates as Prisma's P2002 error, which we translate
- * into `processed: false`. Any other error propagates so the caller
- * returns 5xx and Stripe retries.
+ * Scheduled for removal once §16b cloud-7 Stripe handler lands.
  */
-
-import { prisma } from "@/lib/prisma";
-
-const P2002_UNIQUE_CONSTRAINT = "P2002";
-
-export interface RecordStripeEventResult {
-  /** True when this delivery is the first time the event was committed. */
-  processed: boolean;
-}
-
-export async function recordStripeEventOrSkip(
-  eventId: string,
-  type: string,
-): Promise<RecordStripeEventResult> {
-  try {
-    await prisma.stripeWebhookEvent.create({
-      data: { id: eventId, type },
-    });
-    return { processed: true };
-  } catch (err) {
-    const code = (err as { code?: unknown }).code;
-    if (code === P2002_UNIQUE_CONSTRAINT) {
-      // Duplicate delivery — Stripe retried; ack with no-op.
-      return { processed: false };
-    }
-    throw err;
-  }
-}
+export {
+  recordInboundWebhookOrSkip,
+  recordStripeEventOrSkip,
+} from "./inbound-webhook-event";
+export type {
+  RecordInboundWebhookArgs,
+  RecordInboundWebhookResult,
+} from "./inbound-webhook-event";
+/** @deprecated Use `RecordInboundWebhookResult`. */
+export type { RecordInboundWebhookResult as RecordStripeEventResult } from "./inbound-webhook-event";
