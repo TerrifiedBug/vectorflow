@@ -376,6 +376,7 @@ model UserPreference {
 enum AuthMethod {
   LOCAL
   OIDC
+  MAGIC_LINK
 }
 
 model Team {
