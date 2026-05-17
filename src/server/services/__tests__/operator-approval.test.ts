@@ -190,6 +190,8 @@ describe("approveApprovalRequest — two-person rule", () => {
         id: "req_a",
         status: "PENDING_APPROVAL",
         approvedByOperatorId: null,
+        // Race-safe expiry guard: prevents approving after TTL elapses.
+        expiresAt: { gt: NOW },
       },
       data: {
         status: "APPROVED",
