@@ -53,6 +53,7 @@ model Organization {
   accessGrants         OrgAccessGrant[]
   magicLinkTokens      MagicLinkToken[]
   webhookConfirmations WebhookConfirmation[]
+  billingProviderRefs  BillingProviderRef[]
 }
 
 model OrgMember {
@@ -300,6 +301,50 @@ model MagicLinkToken {
 
   @@index([organizationId, email])
   @@index([expiresAt])
+}
+
+/// `BillingProviderRef` is the OSS-side mapping between an `Organization`
+/// and an external billing provider's customer / subscription IDs. Generic
+/// on purpose (per §15a R1 / R3 rationale: keep generic patterns in OSS,
+/// keep provider-specific code in the closed surface).
+///
+/// The Cloud build's Stripe webhook handler upserts a row on
+/// `customer.subscription.created` / `.updated` with `provider="stripe"`.
+/// The nightly metering aggregator reads `providerSubscriptionItemId` to
+/// post usage records back. Self-hosted OSS installs leave this table
+/// empty; the engine is dormant when no rows exist.
+///
+/// The pattern is reusable for any provider that emits a stable
+/// `(customerId, subscriptionItemId)` pair — Paddle, LemonSqueezy,
+/// Chargebee, etc. None of those provider names appear in OSS code; the
+/// `provider` field is a free-form string and the Cloud overlay decides
+/// what providers are recognized.
+model BillingProviderRef {
+  id                         String       @id @default(cuid())
+  organizationId             String
+  organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Free-form provider identifier. Cloud convention: lowercase, e.g.
+  /// "stripe", "paddle". OSS imposes no constraint.
+  provider                   String
+  /// External provider's stable customer id (e.g. Stripe `cus_…`).
+  providerCustomerId         String
+  /// External provider's subscription-item id used as the metering target
+  /// (e.g. Stripe `si_…`). Optional because per-seat-only plans don't
+  /// have a metered subscription item.
+  providerSubscriptionItemId String?
+  /// Free-form status string set by the provider's webhook (e.g.
+  /// "active", "past_due", "canceled"). Engine treats only "active" as
+  /// billable; everything else is a skip for metering.
+  status                     String       @default("active")
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
+
+  /// One row per (org, provider). Re-subscribing replaces the row via
+  /// upsert; we don't keep history here (the provider has audit logs).
+  @@unique([provider, organizationId])
+  /// Reverse lookup by external customer id is the inbound-webhook path.
+  @@unique([provider, providerCustomerId])
+  @@index([organizationId])
 }
 
 model UserPreference {
