@@ -5,6 +5,10 @@ import { validateOutboundUrl } from "@/server/services/url-validation";
 import { getNextRetryAt } from "@/server/services/delivery-tracking";
 import type { AlertMetric } from "@/generated/prisma";
 import { debugLog } from "@/lib/logger";
+import {
+  WebhookRedirectError,
+  fetchHardened,
+} from "@/server/services/webhook-hardened-delivery";
 import { isDemoMode } from "@/lib/is-demo-mode";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -27,15 +31,32 @@ interface EndpointLike {
   id: string;
   url: string;
   encryptedSecret: string | null;
+  /**
+   * Phase 5aa: timestamp of the most recent successful one-time
+   * confirmation, or null/undefined when the endpoint has been created /
+   * had its URL changed but the confirmation flow has not completed.
+   * Delivery FAILS CLOSED when this is null OR undefined.
+   *
+   * Callers that load the endpoint from the DB MUST include `confirmedAt`
+   * in their `select` (the retry-service and `webhookEndpoint.testDelivery`
+   * paths thread it through). The migration backfills existing rows with
+   * `NOW()` so the rollout doesn't break previously-working webhooks.
+   */
+  confirmedAt?: Date | null;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /**
  * Returns true if the result represents a permanent (non-retryable) failure.
- * 4xx non-429 HTTP responses and DNS/connection errors are permanent.
+ * 4xx non-429 HTTP responses and DNS/connection errors are permanent. The
+ * caller-supplied `isPermanent` flag is the OTHER trigger — Phase 5aa
+ * `fetchHardened` errors (redirect cap, protocol downgrade, DNS rebinding)
+ * set `isPermanent: true` directly without a status code, and the retry
+ * loop MUST honour that signal to dead-letter rather than reschedule.
  */
 export function isPermanentFailure(result: OutboundResult): boolean {
+  if (result.isPermanent) return true;
   if (result.statusCode !== undefined) {
     return result.statusCode >= 400 && result.statusCode < 500 && result.statusCode !== 429;
   }
@@ -62,6 +83,19 @@ export async function deliverOutboundWebhook(
   if (isDemoMode()) {
     debugLog("outbound-webhook", `Demo mode: skipping delivery to ${endpoint.url}`);
     return { success: true, statusCode: 200, isPermanent: false };
+  }
+
+  // Phase 5aa: refuse delivery to an unconfirmed destination. Loose equality
+  // catches BOTH `null` (explicit) and `undefined` (callers that don't
+  // include `confirmedAt` in their select). All in-tree callers now thread
+  // `confirmedAt` through; this is the fail-closed guarantee for any future
+  // call site that forgets to.
+  if (endpoint.confirmedAt == null) {
+    return {
+      success: false,
+      error: "Webhook destination has not been confirmed",
+      isPermanent: true,
+    };
   }
 
   // SSRF protection. Customer-controlled destination — force the policy even
@@ -97,11 +131,15 @@ export async function deliverOutboundWebhook(
   }
 
   try {
-    const res = await fetch(endpoint.url, {
+    // Phase 5aa: `fetchHardened` adds (a) max 3 redirect hops with per-hop
+    // SSRF + scheme re-validation, (b) DNS rebinding mitigation via a
+    // 30s cache of public IPs, (c) protocol-downgrade rejection. The
+    // signing already-happened above against the original URL; redirects
+    // re-issue the same body + signature.
+    const res = await fetchHardened(endpoint.url, {
       method: "POST",
       headers,
       body,
-      redirect: "manual",
       signal: AbortSignal.timeout(15_000),
     });
 
@@ -117,6 +155,11 @@ export async function deliverOutboundWebhook(
       isPermanent: permanent,
     };
   } catch (err) {
+    if (err instanceof WebhookRedirectError) {
+      // Redirect cap exceeded, protocol downgrade, or DNS rebinding
+      // detection — all non-retryable; the destination is misbehaving.
+      return { success: false, error: err.message, isPermanent: true };
+    }
     const message = err instanceof Error ? err.message : "Unknown delivery error";
     const permanent = message.includes("ENOTFOUND") || message.includes("ECONNREFUSED");
     return { success: false, error: message, isPermanent: permanent };

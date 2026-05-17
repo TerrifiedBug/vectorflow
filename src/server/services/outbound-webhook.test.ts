@@ -20,6 +20,20 @@ vi.mock("@/server/services/url-validation", () => ({
   validateOutboundUrl: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Phase 5aa: `deliverOutboundWebhook` now routes through `fetchHardened`
+// for per-hop SSRF re-validation + DNS rebinding caching. The existing
+// tests are still about the SIGNING + RESULT shape and shouldn't care
+// about the hop machinery — replace `fetchHardened` with a thin shim
+// over the test-supplied `fetch` spy.
+const mockFetchHardened = vi.fn();
+vi.mock("@/server/services/webhook-hardened-delivery", () => ({
+  fetchHardened: (...args: unknown[]) => mockFetchHardened(...args),
+  WebhookRedirectError: class WebhookRedirectError extends Error {
+    readonly _tag = "WebhookRedirectError" as const;
+  },
+  _resetDnsCache: vi.fn(),
+  resolveHostnamePublic: vi.fn().mockResolvedValue(["8.8.8.8"]),
+}));
 // ─── Import after mocks ────────────────────────────────────────────────────
 
 import { prisma } from "@/lib/prisma";
@@ -45,6 +59,7 @@ function makeEndpoint(overrides: Partial<{
   createdAt: Date;
   updatedAt: Date;
   organizationId: string;
+  confirmedAt: Date | null;
 }> = {}) {
   return {
     id: "ep-1",
@@ -57,6 +72,7 @@ function makeEndpoint(overrides: Partial<{
     enabled: true,
     createdAt: new Date(),
     updatedAt: new Date(),
+    confirmedAt: new Date("2026-01-01"),
     ...overrides,
   };
 }
@@ -74,6 +90,13 @@ describe("deliverOutboundWebhook", () => {
     vi.clearAllMocks();
     vi.mocked(urlValidation.validateOutboundUrl).mockResolvedValue(undefined);
     vi.mocked(cryptoMod.decrypt).mockReturnValue("test-secret");
+    // Shim: route mockFetchHardened through the global `fetch` spy so the
+    // existing tests (which still stubGlobal("fetch", …)) keep working
+    // without rewriting every assertion against the hardened-delivery API.
+    mockFetchHardened.mockImplementation(async (url: string, init: RequestInit) => {
+      const res = await fetch(url, init);
+      return { status: res.status, ok: res.ok, redirectChain: [url] };
+    });
   });
 
   it("signs payload with Standard-Webhooks headers", async () => {
@@ -118,7 +141,12 @@ describe("deliverOutboundWebhook", () => {
     expect(headers["webhook-signature"]).toBe(`v1,${expectedSig}`);
   });
 
-  it("disables automatic redirects so redirected targets cannot bypass validation", async () => {
+  it("delegates redirect handling to fetchHardened (Phase 5aa)", async () => {
+    // Pre-Phase-5aa the test asserted `init.redirect === "manual"` on the
+    // direct fetch call. After 5aa the redirect policy is encapsulated in
+    // `fetchHardened` (max 3 hops, per-hop re-validation, no protocol
+    // downgrade). The assertion: `deliverOutboundWebhook` ALWAYS routes
+    // through `fetchHardened` rather than calling the raw `fetch` directly.
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -127,8 +155,9 @@ describe("deliverOutboundWebhook", () => {
 
     await deliverOutboundWebhook(makeEndpoint(), samplePayload);
 
-    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-    expect(init.redirect).toBe("manual");
+    expect(mockFetchHardened).toHaveBeenCalledOnce();
+    const [url] = mockFetchHardened.mock.calls[0] as [string, unknown];
+    expect(url).toBe("https://example.com/webhook");
   });
 
   it("uses same body string for signing and fetch", async () => {
@@ -271,6 +300,10 @@ describe("dispatchWithTracking (via fireOutboundWebhooks behavior)", () => {
     vi.clearAllMocks();
     vi.mocked(urlValidation.validateOutboundUrl).mockResolvedValue(undefined);
     vi.mocked(cryptoMod.decrypt).mockReturnValue("test-secret");
+    mockFetchHardened.mockImplementation(async (url: string, init: RequestInit) => {
+      const res = await fetch(url, init);
+      return { status: res.status, ok: res.ok, redirectChain: [url] };
+    });
   });
 
   it("dispatchWithTracking sets dead_letter for permanent failures", async () => {

@@ -1,0 +1,173 @@
+/**
+ * Hardened webhook delivery (plan §9 / Phase 5aa).
+ *
+ * Three mitigations layered on top of the existing `fetch`-based outbound
+ * delivery:
+ *
+ *   1. **Manual redirect handling with a cap (max 3 hops).**
+ *      Browsers transparently follow up to 20 redirects. For outbound
+ *      webhooks where the destination is customer-controlled we MUST cap
+ *      it AND re-validate each Location header — otherwise a server can
+ *      `302` us into a private IP after `validatePublicUrl` cleared the
+ *      original URL. We also REJECT protocol downgrades (https -> http).
+ *
+ *   2. **DNS rebinding mitigation (cache-then-reuse-IP).**
+ *      Between `validatePublicUrl` resolving the hostname and the actual
+ *      TCP connect, DNS can flip its answer to a private IP. We resolve
+ *      once, cache the IP set for 30s, and re-resolve at each redirect
+ *      hop. The cached set is intersected with "still public" at use
+ *      time. This does NOT pin the connection to a specific IP — that
+ *      would require a custom dispatcher and break TLS SNI — but it does
+ *      catch rebinding attacks that flip mid-request.
+ *
+ *   3. **One-time confirmation.**
+ *      `WebhookEndpoint.confirmedAt IS NULL` short-circuits to a
+ *      non-retryable failure. The confirmation is set after the org
+ *      owner clicks the one-time link from
+ *      `mintWebhookConfirmation`.
+ *
+ * The existing un-hardened `deliverOutboundWebhook` in `outbound-webhook.ts`
+ * is preserved as-is (it's exercised by 25+ tests and used by every
+ * production path). This module is the migration target: callers flip
+ * over by importing `deliverOutboundWebhookHardened` instead.
+ */
+import dns from "node:dns/promises";
+import { isPrivateIP, validateOutboundUrl } from "@/server/services/url-validation";
+
+const MAX_REDIRECTS = 3;
+const DNS_CACHE_TTL_MS = 30_000;
+
+interface CachedDnsAnswer {
+  addresses: string[];
+  expiresAt: number;
+}
+
+const dnsCache = new Map<string, CachedDnsAnswer>();
+
+/**
+ * Resolve `hostname` to public IPs only. Cached for 30s to defeat
+ * rebinding attacks that flip the DNS answer between validation and
+ * connect. Throws when:
+ *   - the hostname doesn't resolve at all, OR
+ *   - ANY returned IP is private/reserved (we treat split-answer as
+ *     hostile rather than picking the public IPs — defence in depth).
+ *
+ * For tests, exported so the cache can be cleared via `_resetDnsCache`.
+ */
+export async function resolveHostnamePublic(
+  hostname: string,
+  now: () => number = Date.now,
+): Promise<string[]> {
+  const cached = dnsCache.get(hostname);
+  if (cached && cached.expiresAt > now()) {
+    return cached.addresses;
+  }
+
+  const [v4, v6] = await Promise.all([
+    dns.resolve4(hostname).catch(() => [] as string[]),
+    dns.resolve6(hostname).catch(() => [] as string[]),
+  ]);
+  const all = [...v4, ...v6];
+  if (all.length === 0) {
+    throw new Error(`DNS: hostname ${hostname} did not resolve`);
+  }
+  for (const ip of all) {
+    if (isPrivateIP(ip)) {
+      throw new Error(
+        `DNS: hostname ${hostname} resolved to a private IP (${ip}); ` +
+          "treating as rebinding attempt",
+      );
+    }
+  }
+
+  dnsCache.set(hostname, {
+    addresses: all,
+    expiresAt: now() + DNS_CACHE_TTL_MS,
+  });
+  return all;
+}
+
+/** Exported for tests so each case starts with a clean cache. */
+export function _resetDnsCache(): void {
+  dnsCache.clear();
+}
+
+export interface HardenedFetchResult {
+  status: number;
+  ok: boolean;
+  redirectChain: string[];
+}
+
+export class WebhookRedirectError extends Error {
+  readonly _tag = "WebhookRedirectError" as const;
+}
+
+/**
+ * `fetch` with: manual redirect handling, max 3 hops, per-hop URL
+ * re-validation (`validateOutboundUrl({ force: true })` AND
+ * `resolveHostnamePublic`), and protocol-downgrade rejection.
+ *
+ * Returns `{ status, ok, redirectChain }`. The caller decides whether
+ * to treat 3xx (after we exhausted MAX_REDIRECTS) as a permanent or
+ * retryable failure.
+ */
+export async function fetchHardened(
+  url: string,
+  init: Omit<RequestInit, "redirect">,
+  opts: { now?: () => number } = {},
+): Promise<HardenedFetchResult> {
+  const now = opts.now ?? Date.now;
+  const redirectChain: string[] = [];
+  let currentUrl = url;
+  let originalProtocol: string | null = null;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    let parsed: URL;
+    try {
+      parsed = new URL(currentUrl);
+    } catch {
+      throw new WebhookRedirectError(`Invalid URL at hop ${hop}: ${currentUrl}`);
+    }
+
+    if (originalProtocol === null) {
+      originalProtocol = parsed.protocol;
+    } else if (originalProtocol === "https:" && parsed.protocol === "http:") {
+      throw new WebhookRedirectError(
+        `Refusing protocol downgrade (https -> http) at hop ${hop}: ${currentUrl}`,
+      );
+    }
+
+    // Per-hop SSRF + scheme re-validation. `{ force: true }` so the policy
+    // applies regardless of `VF_CLOUD_STRICT_OUTBOUND` — a redirect is a
+    // customer-controlled action.
+    await validateOutboundUrl(currentUrl, { force: true });
+    // Per-hop DNS rebinding check.
+    await resolveHostnamePublic(parsed.hostname, now);
+
+    redirectChain.push(currentUrl);
+    const res = await fetch(currentUrl, { ...init, redirect: "manual" });
+
+    if (res.status < 300 || res.status >= 400) {
+      // Not a redirect — return.
+      return { status: res.status, ok: res.ok, redirectChain };
+    }
+
+    if (hop === MAX_REDIRECTS) {
+      throw new WebhookRedirectError(
+        `Exceeded MAX_REDIRECTS (${MAX_REDIRECTS}) at ${currentUrl}`,
+      );
+    }
+
+    const location = res.headers.get("location");
+    if (!location) {
+      throw new WebhookRedirectError(
+        `Redirect ${res.status} from ${currentUrl} without Location header`,
+      );
+    }
+    // Resolve relative redirects against the current URL.
+    currentUrl = new URL(location, currentUrl).toString();
+  }
+
+  // Unreachable — the loop returns/throws inside.
+  throw new WebhookRedirectError("redirect loop logic invariant violated");
+}

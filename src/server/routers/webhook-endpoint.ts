@@ -188,6 +188,10 @@ export const webhookEndpointRouter = router({
           id: true,
           url: true,
           encryptedSecret: true,
+          // Phase 5aa: include confirmedAt so the delivery call below sees
+          // an explicit confirmation status. Test delivery against an
+          // unconfirmed endpoint must still fail closed.
+          confirmedAt: true,
         },
       });
       if (!endpoint) {
@@ -204,7 +208,12 @@ export const webhookEndpointRouter = router({
       };
 
       return deliverOutboundWebhook(
-        { url: endpoint.url, encryptedSecret: endpoint.encryptedSecret, id: endpoint.id },
+        {
+          url: endpoint.url,
+          encryptedSecret: endpoint.encryptedSecret,
+          id: endpoint.id,
+          confirmedAt: endpoint.confirmedAt,
+        },
         testPayload,
       );
     }),
