@@ -72,6 +72,15 @@ mapfile -t TABLES < <(
   "
 )
 
+# Guard: if no tables were discovered, the DATABASE_URL likely points at the
+# wrong database or migrations haven't run yet. Fail loudly rather than
+# exiting 0 with an empty summary that looks like a clean run.
+if [[ ${#TABLES[@]} -eq 0 ]]; then
+  echo "verify-indexes: ERROR — no tenant tables with organizationId found."
+  echo "Check DATABASE_URL and that all migrations have been applied."
+  exit 1
+fi
+
 # TimescaleDB hypertable carve-out: the parent table's indexes are
 # replicated to chunks automatically, so the check on the parent table
 # is sufficient. The script does NOT skip hypertables — they MUST have
