@@ -43,21 +43,32 @@ const RP_NAME = process.env.VF_WEBAUTHN_RP_NAME ?? "VectorFlow";
  * Resolve the set of acceptable origins. Cloud builds set
  * `VF_WEBAUTHN_ORIGINS=https://app.vectorflow.sh,https://*.vectorflow.sh`
  * (comma-separated) so subdomain redirects are honoured.
+ *
+ * When `VF_WEBAUTHN_ORIGINS` is not set, the function falls back to the
+ * origin derived from `VF_WEBAUTHN_RP_ID`. Self-hosted OSS deployments
+ * that set `VF_WEBAUTHN_RP_ID=example.com` get `https://example.com`
+ * automatically, without needing a separate `VF_WEBAUTHN_ORIGINS` variable.
  */
 function expectedOrigins(): string | string[] {
   const env = process.env.VF_WEBAUTHN_ORIGINS;
-  if (!env) {
-    // OSS / dev fallback: accept localhost on common dev ports.
-    return [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://localhost:3001",
-    ];
+  if (env) {
+    return env
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
-  return env
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  // Derive origin from VF_WEBAUTHN_RP_ID when it is set to a non-localhost
+  // domain. Covers self-hosted OSS without requiring a separate env var.
+  const rpId = process.env.VF_WEBAUTHN_RP_ID;
+  if (rpId && rpId !== "localhost") {
+    return [`https://${rpId}`, `http://${rpId}`];
+  }
+  // OSS / dev fallback: accept localhost on common dev ports.
+  return [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+  ];
 }
 
 /**
