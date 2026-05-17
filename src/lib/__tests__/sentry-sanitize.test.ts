@@ -212,7 +212,7 @@ describe("sanitizeSentryEvent — recursive value-key scrub", () => {
       "id_token",
       "csrfToken",
     ]) {
-      expect(DENY_QUERY_KEYS.has(k)).toBe(true);
+      expect(DENY_QUERY_KEYS.has(k.toLowerCase())).toBe(true);
     }
   });
 });
