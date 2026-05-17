@@ -24,6 +24,7 @@ vi.mock("node:dns/promises", () => ({
 }));
 
 import {
+  DnsRebindingError,
   WebhookRedirectError,
   _resetDnsCache,
   fetchHardened,
@@ -96,6 +97,48 @@ describe("resolveHostnamePublic", () => {
     now.mockReturnValueOnce(1_000_000 + 31_000);
     await resolveHostnamePublic("ttl.example", now);
     expect(mockResolve4).toHaveBeenCalledTimes(2);
+  });
+
+  // Codex P1 / PR #335 follow-up: IP literals must NOT be re-resolved.
+  // `dns.resolve4/resolve6` on a literal returns no records, which used
+  // to throw "did not resolve" and break delivery to existing IP-only
+  // endpoints. `validateOutboundUrl({ force: true })` upstream already
+  // verified the literal is public.
+  it("short-circuits IPv4 literal hostnames (no DNS query, no cache)", async () => {
+    await expect(resolveHostnamePublic("203.0.113.10")).resolves.toEqual([
+      "203.0.113.10",
+    ]);
+    expect(mockResolve4).not.toHaveBeenCalled();
+    expect(mockResolve6).not.toHaveBeenCalled();
+  });
+
+  it("short-circuits IPv6 literal hostnames", async () => {
+    await expect(resolveHostnamePublic("2001:db8::1")).resolves.toEqual([
+      "2001:db8::1",
+    ]);
+    expect(mockResolve4).not.toHaveBeenCalled();
+    expect(mockResolve6).not.toHaveBeenCalled();
+  });
+
+  // Codex P2 / PR #335 follow-up: rebinding/no-answer errors must be
+  // a typed `DnsRebindingError`, not a plain `Error`. The webhook retry
+  // classifier matches on `instanceof DnsRebindingError` to dead-letter
+  // these instead of rescheduling them forever.
+  it("throws DnsRebindingError (typed) on no answer", async () => {
+    mockResolve4.mockResolvedValueOnce([]);
+    mockResolve6.mockResolvedValueOnce([]);
+    await expect(resolveHostnamePublic("nx2.example")).rejects.toBeInstanceOf(
+      DnsRebindingError,
+    );
+  });
+
+  it("throws DnsRebindingError (typed) on split-answer", async () => {
+    mockResolve4.mockResolvedValueOnce(["8.8.8.8", "10.0.0.1"]);
+    mockResolve6.mockResolvedValueOnce([]);
+    mockIsPrivateIP.mockImplementation((ip: string) => ip.startsWith("10."));
+    await expect(
+      resolveHostnamePublic("rebind2.example"),
+    ).rejects.toBeInstanceOf(DnsRebindingError);
   });
 });
 

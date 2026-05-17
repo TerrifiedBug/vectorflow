@@ -32,6 +32,7 @@
  * over by importing `deliverOutboundWebhookHardened` instead.
  */
 import dns from "node:dns/promises";
+import net from "node:net";
 import { isPrivateIP, validateOutboundUrl } from "@/server/services/url-validation";
 
 const MAX_REDIRECTS = 3;
@@ -52,12 +53,24 @@ const dnsCache = new Map<string, CachedDnsAnswer>();
  *   - ANY returned IP is private/reserved (we treat split-answer as
  *     hostile rather than picking the public IPs — defence in depth).
  *
+ * IP-literal hostnames (e.g. `203.0.113.10`, `[2001:db8::1]`) are
+ * short-circuited: `validateOutboundUrl({ force: true })` upstream has
+ * already verified the literal is public, and `dns.resolve4/resolve6`
+ * on an IP literal returns no records on most platforms — re-resolving
+ * would falsely reject the request as "did not resolve". Cf. Codex P1
+ * on PR #335.
+ *
  * For tests, exported so the cache can be cleared via `_resetDnsCache`.
  */
 export async function resolveHostnamePublic(
   hostname: string,
   now: () => number = Date.now,
 ): Promise<string[]> {
+  // IPv4/IPv6 literal — no DNS to resolve.
+  if (net.isIP(hostname) !== 0) {
+    return [hostname];
+  }
+
   const cached = dnsCache.get(hostname);
   if (cached && cached.expiresAt > now()) {
     return cached.addresses;
@@ -69,11 +82,13 @@ export async function resolveHostnamePublic(
   ]);
   const all = [...v4, ...v6];
   if (all.length === 0) {
-    throw new Error(`DNS: hostname ${hostname} did not resolve`);
+    throw new DnsRebindingError(
+      `DNS: hostname ${hostname} did not resolve`,
+    );
   }
   for (const ip of all) {
     if (isPrivateIP(ip)) {
-      throw new Error(
+      throw new DnsRebindingError(
         `DNS: hostname ${hostname} resolved to a private IP (${ip}); ` +
           "treating as rebinding attempt",
       );
@@ -100,6 +115,17 @@ export interface HardenedFetchResult {
 
 export class WebhookRedirectError extends Error {
   readonly _tag = "WebhookRedirectError" as const;
+}
+
+/**
+ * DNS-rebinding-policy violation thrown by `resolveHostnamePublic`:
+ * either no answer at all, or an answer containing a private IP. These
+ * are non-retryable — the destination's DNS is hostile or broken; no
+ * amount of retrying will change that. Callers MUST classify this as
+ * permanent. Cf. Codex P2 on PR #335.
+ */
+export class DnsRebindingError extends Error {
+  readonly _tag = "DnsRebindingError" as const;
 }
 
 /**
