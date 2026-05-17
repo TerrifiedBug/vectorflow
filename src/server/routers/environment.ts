@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, withTeamAccess, requireSuperAdmin, denyInDemo } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, requirePlatformOperator, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { generateEnrollmentToken } from "@/server/services/agent-token";
@@ -146,7 +146,7 @@ export const environmentRouter = router({
 
   /** Returns the system environment for super admins */
   getSystem: protectedProcedure
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .query(async () => {
       const env = await prisma.environment.findFirst({
         where: { isSystem: true },

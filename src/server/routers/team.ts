@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, withTeamAccess, requireSuperAdmin, denyInDemo } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, requirePlatformOperator, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
@@ -117,7 +117,7 @@ export const teamRouter = router({
 
   create: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .use(withAudit("team.created", "Team"))
     .input(z.object({ name: z.string().min(1).max(100) }))
     .mutation(async ({ ctx, input }) => {
@@ -135,7 +135,7 @@ export const teamRouter = router({
 
   delete: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .use(withAudit("team.deleted", "Team"))
     .input(z.object({ teamId: z.string() }))
     .mutation(async ({ input }) => {

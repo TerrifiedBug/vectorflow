@@ -2,7 +2,7 @@ import { z } from "zod";
 import crypto from "crypto";
 import { TRPCError } from "@trpc/server";
 import bcrypt from "bcryptjs";
-import { router, protectedProcedure, requireSuperAdmin, denyInDemo } from "@/trpc/init";
+import { router, protectedProcedure, requirePlatformOperator, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
@@ -11,7 +11,7 @@ import { assertManualAssignmentAllowed } from "@/server/routers/team";
 export const adminRouter = router({
   /** List all platform users with their team memberships */
   listUsers: protectedProcedure
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .query(async () => {
       return prisma.user.findMany({
         select: {
@@ -38,7 +38,7 @@ export const adminRouter = router({
   /** Assign a user to a team with a specific role */
   assignToTeam: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .use(withAudit("admin.user_assigned_to_team", "User"))
     .input(z.object({
       userId: z.string(),
@@ -62,7 +62,7 @@ export const adminRouter = router({
   /** Delete a user and all their data */
   deleteUser: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(z.object({ userId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       if (input.userId === ctx.session.user!.id!) {
@@ -110,7 +110,7 @@ export const adminRouter = router({
   /** Toggle super admin status */
   toggleSuperAdmin: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .use(withAudit("admin.super_admin_toggled", "User"))
     .input(z.object({ userId: z.string(), isSuperAdmin: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
@@ -126,7 +126,7 @@ export const adminRouter = router({
 
   /** List all teams (for assignment dialog) */
   listTeams: protectedProcedure
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .query(async () => {
       return prisma.team.findMany({
         where: { name: { not: "__system__" } },
@@ -138,7 +138,7 @@ export const adminRouter = router({
   /** Create a local user account */
   createUser: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .use(withAudit("admin.user_created", "User"))
     .input(z.object({
       email: z.string().email(),
@@ -177,7 +177,7 @@ export const adminRouter = router({
   /** Remove a user from a specific team */
   removeFromTeam: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .use(withAudit("admin.user_removed_from_team", "User"))
     .input(z.object({ userId: z.string(), teamId: z.string() }))
     .mutation(async ({ input }) => {
@@ -194,7 +194,7 @@ export const adminRouter = router({
   /** Lock a user account */
   lockUser: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .use(withAudit("admin.user_locked", "User"))
     .input(z.object({ userId: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -211,7 +211,7 @@ export const adminRouter = router({
   /** Unlock a user account */
   unlockUser: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .use(withAudit("admin.user_unlocked", "User"))
     .input(z.object({ userId: z.string() }))
     .mutation(async ({ input }) => {
@@ -225,7 +225,7 @@ export const adminRouter = router({
   /** Reset a user's password (generates temporary password) */
   resetPassword: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .use(withAudit("admin.password_reset", "User"))
     .input(z.object({ userId: z.string() }))
     .mutation(async ({ input }) => {

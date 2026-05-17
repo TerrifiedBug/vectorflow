@@ -1,7 +1,7 @@
 import { join } from "path";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, withTeamAccess, requireSuperAdmin } from "@/trpc/init";
+import { router, protectedProcedure, withTeamAccess, requirePlatformOperator } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
 
@@ -22,7 +22,7 @@ import { enforceQuota } from "@/server/services/quotas-trpc";
 
 export const pipelineCrudRouter = router({
   getSystemPipeline: protectedProcedure
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .query(async () => {
       const pipeline = await prisma.pipeline.findFirst({
         where: { isSystem: true },
@@ -163,7 +163,7 @@ export const pipelineCrudRouter = router({
     }),
 
   createSystemPipeline: protectedProcedure
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .use(withAudit("pipeline.system_created", "Pipeline"))
     .mutation(async ({ ctx }) => {
       const systemEnv = await getOrCreateSystemEnvironment();
