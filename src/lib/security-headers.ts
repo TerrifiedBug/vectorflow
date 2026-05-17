@@ -1,9 +1,26 @@
 /**
  * Top-level HTTP security headers applied via Next's `headers()` config.
  *
- * Extracted from `next.config.ts` so the value list is unit-testable and
- * Cloud builds can tighten it (nonce-based CSP, stricter COOP/COEP) via
- * dedicated overrides without diverging the OSS default.
+ * Two CSP profiles:
+ *
+ *   - **OSS / self-hosted (default).** `'unsafe-eval'` + `'unsafe-inline'`
+ *     are tolerated in `script-src` because the OSS bundle still relies
+ *     on inline boot scripts injected by Next's pages router and
+ *     dev-time tooling. Self-hosted deployments are single-tenant; the
+ *     blast radius of an XSS bug is contained to one tenant.
+ *
+ *   - **Cloud (`VF_CLOUD_BUILD=true`).** Strict CSP with per-request
+ *     nonces. `'unsafe-eval'` and `'unsafe-inline'` are removed; every
+ *     inline `<script>` MUST carry a `nonce="<value>"` attribute that
+ *     matches the nonce in the CSP. The middleware in
+ *     `src/middleware.ts` issues a fresh 16-byte nonce per request,
+ *     propagates it through the `x-vf-csp-nonce` request header (so
+ *     Server Components can read it via `headers()`), and rewrites the
+ *     `Content-Security-Policy` response header.
+ *
+ *     This is the plan §16b OSS item 7 deliverable; the Cloud build
+ *     enables it when shipping a multi-tenant stamp where one tenant's
+ *     XSS could read another tenant's session token.
  */
 
 export interface SecurityHeader {
@@ -12,16 +29,42 @@ export interface SecurityHeader {
 }
 
 /**
- * Content-Security-Policy. Returns the directives joined into the wire
- * format. Pre-Cloud the OSS default still allows `'unsafe-eval'` and
- * `'unsafe-inline'` in `script-src`; the Cloud build will need to swap
- * these for nonces once we have a Server Components rollout (separate PR).
+ * Whether the current build is the Cloud profile. Read at module
+ * load — set the env var in the Cloud Docker image / CI matrix.
  */
-export function contentSecurityPolicy(): string {
+export function isCloudBuildProfile(): boolean {
+  return process.env.VF_CLOUD_BUILD === "true";
+}
+
+/**
+ * Content-Security-Policy. Profile-aware:
+ *
+ *   - No nonce supplied -> OSS-default (permissive) CSP.
+ *   - Nonce supplied   -> Cloud-strict CSP (drops `unsafe-eval` /
+ *     `unsafe-inline` from `script-src`; allows the supplied nonce).
+ *
+ * The caller is responsible for picking the right call — the
+ * middleware uses the nonce form; `next.config.ts`'s static `headers()`
+ * uses the no-nonce form as a fallback that the middleware then
+ * overrides per-request when the Cloud profile is active.
+ */
+export function contentSecurityPolicy(nonce?: string): string {
+  const scriptSrc = nonce
+    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`
+    : "script-src 'self' 'unsafe-eval' 'unsafe-inline'";
+
+  // style-src: inline styles are widely used (Tailwind JIT classes,
+  // shadcn component props). The Cloud profile keeps 'unsafe-inline'
+  // on style-src for now — style-based XSS is materially harder to
+  // weaponise than script-based XSS, and removing it would require a
+  // full Tailwind v4 cutover with hashed style chunks. Tracked as a
+  // follow-up; do NOT widen script-src to compensate.
+  const styleSrc = "style-src 'self' 'unsafe-inline'";
+
   return [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
-    "style-src 'self' 'unsafe-inline'",
+    scriptSrc,
+    styleSrc,
     "img-src 'self' data: blob:",
     "font-src 'self'",
     "connect-src 'self' *.sentry.io",
@@ -44,6 +87,11 @@ export function contentSecurityPolicy(): string {
  * `Cross-Origin-Resource-Policy: same-origin` blocks no-cors fetches of
  * this response from other origins — protects against speculative
  * cross-tenant resource reads.
+ *
+ * The `Content-Security-Policy` header value comes from
+ * `contentSecurityPolicy()` without a nonce — under the Cloud profile,
+ * `src/middleware.ts` overwrites this per-request with a nonce-bearing
+ * value.
  */
 export function securityHeaders(): SecurityHeader[] {
   return [
