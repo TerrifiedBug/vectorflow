@@ -37,7 +37,10 @@
 
 import { prisma } from "@/lib/prisma";
 
-const GRACE_DAYS = Number(process.env.VF_DELETE_GRACE_DAYS ?? "30");
+// Validate at module load: non-numeric / negative values fall back to 30.
+const GRACE_DAYS_RAW = Number(process.env.VF_DELETE_GRACE_DAYS ?? "30");
+const GRACE_DAYS =
+  Number.isFinite(GRACE_DAYS_RAW) && GRACE_DAYS_RAW > 0 ? GRACE_DAYS_RAW : 30;
 
 export interface DeletionRequestor {
   /** "customer" = owner/admin in the org self-serve UI; "operator" = platform staff. */
@@ -71,6 +74,7 @@ export async function requestOrgDeletion(
   by: DeletionRequestor,
 ): Promise<RequestOrgDeletionResult> {
   return prisma.$transaction(async (tx) => {
+    // Verify the org exists before attempting the atomic update.
     const org = await tx.organization.findUnique({
       where: { id: organizationId },
       select: { id: true, deletedAt: true },
@@ -89,10 +93,28 @@ export async function requestOrgDeletion(
     }
 
     const now = new Date();
-    await tx.organization.update({
-      where: { id: organizationId },
+    // Atomic compare-and-set: only transition if deletedAt is still null.
+    // Prevents a race where two concurrent calls both observe deletedAt=null
+    // and both execute the update + audit path.
+    const { count } = await tx.organization.updateMany({
+      where: { id: organizationId, deletedAt: null },
       data: { deletedAt: now },
     });
+
+    if (count === 0) {
+      // Lost the race — re-read to surface the actual deletedAt.
+      const reread = await tx.organization.findUnique({
+        where: { id: organizationId },
+        select: { deletedAt: true },
+      });
+      const deletedAt = reread?.deletedAt ?? now;
+      return {
+        organizationId,
+        deletedAt,
+        scheduledHardDeleteAt: addDays(deletedAt, GRACE_DAYS),
+        alreadyPending: true,
+      };
+    }
 
     // Customer-side audit row — visible in the org's audit export.
     await tx.auditLog.create({
