@@ -34,6 +34,7 @@ import { prisma } from "@/lib/prisma";
 import { finishAuthentication } from "@/server/services/webauthn";
 import { writeAuditLog } from "@/server/services/audit";
 import { warnLog, infoLog } from "@/lib/logger";
+import { getRemainingLockSeconds } from "@/server/services/login-protection";
 
 const RP_ID = process.env.VF_WEBAUTHN_RP_ID ?? "localhost";
 const RP_NAME = process.env.VF_WEBAUTHN_RP_NAME ?? "VectorFlow";
@@ -76,6 +77,11 @@ export async function authorizeWebauthn(
   if (!credentials || typeof credentials.assertionJSON !== "string") {
     return null;
   }
+  // Honour operator SSO-only policy — disable all local auth paths including WebAuthn.
+  if (process.env.VF_DISABLE_LOCAL_AUTH === "true") {
+    warnLog("webauthn-provider", "VF_DISABLE_LOCAL_AUTH is set; denying WebAuthn login");
+    return null;
+  }
 
   let assertion: AuthenticationResponseJSON;
   try {
@@ -97,7 +103,7 @@ export async function authorizeWebauthn(
 
     const user = await prisma.user.findUnique({
       where: { id: result.userId },
-      select: { id: true, email: true, name: true, image: true, lockedAt: true },
+      select: { id: true, email: true, name: true, image: true, lockedAt: true, lockedBy: true },
     });
     if (!user) {
       warnLog(
@@ -107,11 +113,18 @@ export async function authorizeWebauthn(
       return null;
     }
     if (user.lockedAt) {
-      warnLog(
-        "webauthn-provider",
-        `assertion verified but user ${user.id} is locked; denying`,
-      );
-      return null;
+      // Brute-force locks are temporary; check whether they have expired before
+      // denying permanently. Admin-imposed locks (lockedBy !== "brute_force")
+      // never auto-expire and getRemainingLockSeconds returns Infinity.
+      const remaining = getRemainingLockSeconds(user.lockedAt, user.lockedBy ?? null);
+      if (remaining > 0) {
+        warnLog(
+          "webauthn-provider",
+          `assertion verified but user ${user.id} is locked (${remaining}s remaining); denying`,
+        );
+        return null;
+      }
+      // Lock expired — fall through and allow login.
     }
 
     writeAuditLog({
