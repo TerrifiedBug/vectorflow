@@ -78,7 +78,7 @@ async function requireOrgRole(
     throw new TRPCError({ code: "FORBIDDEN", message: "OWNER or ADMIN role required" });
   }
   return role;
-
+}
 export const orgAccessGrantRouter = router({
   /**
    * List grants visible to the caller's org. Customer admins see
