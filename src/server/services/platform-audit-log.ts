@@ -278,6 +278,16 @@ export function verifyPlatformAuditChain(
   // Build a map from prevHash → row so we can walk the chain in O(n).
   const byPrevHash = new Map<string, typeof rows[0]>();
   for (const r of rows) {
+    if (byPrevHash.has(r.prevHash)) {
+      // Two rows with the same prevHash means a chain fork — the input
+      // contains a duplicate or corrupted entry. Report at index 0 since
+      // we cannot tell which copy is the "real" one without external context.
+      return {
+        ok: false,
+        brokenAt: 0,
+        reason: `duplicate prevHash ${r.prevHash} in input — chain fork detected`,
+      };
+    }
     byPrevHash.set(r.prevHash, r);
   }
 
