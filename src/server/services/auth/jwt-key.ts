@@ -154,7 +154,7 @@ export async function revokeOrgSessions(
   organizationId: string,
   by: RevokeOrgSessionsRequestor,
 ): Promise<RevokeOrgSessionsResult> {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const org = await tx.organization.findUnique({
       where: { id: organizationId },
       select: { id: true },
