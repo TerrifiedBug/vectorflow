@@ -1,5 +1,6 @@
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
+import { enterLogContext } from "@/lib/log-context";
 import { pushRegistry } from "@/server/services/push-registry";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!agent) {
     return new Response("Unauthorized", { status: 401 });
   }
+
+  enterLogContext({ orgId: orgResult.orgId });
 
   const { nodeId, environmentId } = agent;
   let controllerRef: ReadableStreamDefaultController | null = null;

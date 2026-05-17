@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyEnrollmentToken, generateNodeToken } from "@/server/services/agent-token";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
+import { enterLogContext } from "@/lib/log-context";
 import { fireEventAlert } from "@/server/services/event-alerts";
 import { debugLog, errorLog, warnLog } from "@/lib/logger";
 import { nodeMatchesGroup } from "@/lib/node-group-utils";
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
 
   const orgResult = await resolveAgentOrg(request, { explicitToken: parsed.data.token });
   if (orgResult instanceof Response) return orgResult;
+  enterLogContext({ orgId: orgResult.orgId });
 
   if (orgResult.isLegacyToken) {
     warnLog("enroll", "enrollment via legacy (pre-slug) token — consider regenerating");

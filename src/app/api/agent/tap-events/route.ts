@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
+import { enterLogContext } from "@/lib/log-context";
 import { getActiveTap } from "@/server/services/active-taps";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { errorLog } from "@/lib/logger";
@@ -19,6 +20,8 @@ export async function POST(request: Request) {
   if (!agent) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  enterLogContext({ orgId: orgResult.orgId });
 
   try {
     const body = await request.json();

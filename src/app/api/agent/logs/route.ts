@@ -3,6 +3,7 @@ import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
+import { enterLogContext } from "@/lib/log-context";
 import { ingestLogs } from "@/server/services/log-ingest";
 import { broadcastSSE } from "@/server/services/sse-broadcast";
 import { errorLog } from "@/lib/logger";
@@ -20,6 +21,8 @@ export async function POST(request: Request) {
   if (!agent) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  enterLogContext({ orgId: orgResult.orgId });
 
   try {
     const body = await request.json();

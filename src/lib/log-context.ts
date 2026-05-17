@@ -101,6 +101,33 @@ export function formatLogContext(ctx: LogContext | undefined): string {
  * this — ALS stores are scoped to the `run` call, so they self-clear
  * when the wrapped function returns.
  */
+/**
+ * Set the log context for the rest of the current async chain WITHOUT
+ * the explicit `runWithLogContext(state, fn)` callback wrap.
+ *
+ * Use this from Next.js route handlers where the auth boundary is the
+ * natural point to set the org context, but wrapping the rest of the
+ * handler body in a callback would be syntactically invasive (handler
+ * returns a Response, has many early returns, etc.).
+ *
+ *   const orgResult = await resolveAgentOrg(req);
+ *   if (orgResult instanceof Response) return orgResult;
+ *   enterLogContext({ orgId: orgResult.orgId });
+ *   // ... rest of handler body emits logs tagged with {org=<id>}
+ *
+ * The Node `AsyncLocalStorage.enterWith()` API installs the store on
+ * the current async resource; it persists until the async chain
+ * resolves. Stable since Node 19.
+ *
+ * Idempotent: calling `enterLogContext` twice in the same chain merges
+ * over the existing store (later call wins per-key).
+ */
+export function enterLogContext(ctx: LogContext): void {
+  const outer = storage.getStore();
+  const merged: LogContext = outer ? { ...outer, ...ctx } : { ...ctx };
+  storage.enterWith(merged);
+}
+
 export const _logContextInternals = {
   storage,
 };

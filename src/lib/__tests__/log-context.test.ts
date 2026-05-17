@@ -4,6 +4,7 @@ import {
   runWithLogContext,
   getLogContext,
   formatLogContext,
+  enterLogContext,
 } from "../log-context";
 
 describe("runWithLogContext + getLogContext", () => {
@@ -132,5 +133,41 @@ describe("logger picks up context", () => {
       errorLog("tag", "boom");
     });
     expect(spy.mock.calls[0][3]).toBe("{org=org-z} boom");
+  });
+});
+
+describe("enterLogContext (no-callback variant)", () => {
+  it("sets the store inside an existing run() scope", async () => {
+    await runWithLogContext({}, async () => {
+      enterLogContext({ orgId: "agent-a" });
+      expect(getLogContext()?.orgId).toBe("agent-a");
+      // Survives awaits in the same chain.
+      await Promise.resolve();
+      expect(getLogContext()?.orgId).toBe("agent-a");
+    });
+  });
+
+  it("inside an existing run, merges over the outer ctx", async () => {
+    await runWithLogContext(
+      { orgId: "outer", requestId: "r-1" },
+      async () => {
+        enterLogContext({ orgId: "inner" });
+        const ctx = getLogContext();
+        expect(ctx?.orgId).toBe("inner");
+        // requestId from the outer run() is preserved.
+        expect(ctx?.requestId).toBe("r-1");
+      },
+    );
+  });
+
+  it("a later enterLogContext call overrides an earlier one (per-key merge)", async () => {
+    await runWithLogContext({}, async () => {
+      enterLogContext({ orgId: "first", requestId: "r-1" });
+      enterLogContext({ orgId: "second" });
+      const ctx = getLogContext();
+      expect(ctx?.orgId).toBe("second");
+      // requestId from the first enter is preserved.
+      expect(ctx?.requestId).toBe("r-1");
+    });
   });
 });

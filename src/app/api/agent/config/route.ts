@@ -3,6 +3,7 @@ import yaml from "js-yaml";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
+import { enterLogContext } from "@/lib/log-context";
 import { collectSecretRefs, convertSecretRefsToEnvVars, resolveCertRefs, secretNameToEnvVar } from "@/server/services/secret-resolver";
 import { collectVarRefs, resolveVarRefs } from "@/server/services/variable-resolver";
 import { decrypt } from "@/server/services/crypto";
@@ -62,6 +63,8 @@ export async function GET(request: Request) {
   if (!agent) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  enterLogContext({ orgId: orgResult.orgId });
 
   try {
     // Fetch the node to check for pending actions (e.g., self-update)

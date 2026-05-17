@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { authenticateAgentInOrg } from "@/server/services/agent-auth";
 import { resolveAgentOrg } from "@/server/services/agent-org-binding";
+import { enterLogContext } from "@/lib/log-context";
 import { checkTokenRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { errorLog } from "@/lib/logger";
 import { sampleResultsRequestSchema } from "../../../../../contracts/agent/v1/payloads";
@@ -23,6 +24,8 @@ export async function POST(request: Request) {
   if (!agent) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  enterLogContext({ orgId: orgResult.orgId });
 
   try {
     const body = await request.json();
