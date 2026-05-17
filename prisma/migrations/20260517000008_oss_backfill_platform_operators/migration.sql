@@ -38,11 +38,21 @@
 -- ─── Rollback ─────────────────────────────────────────────────────────────
 -- DELETE FROM "PlatformOperator" WHERE id LIKE 'op_backfill_%';
 
+-- ─── Nullable `User.name` ─────────────────────────────────────────────────
+-- `User.name` is nullable (legacy + SSO records can land without a display
+-- name) but `PlatformOperator.name` is `NOT NULL`. A raw `SELECT u."name"`
+-- would abort the migration with `23502 not_null_violation` the moment any
+-- super-admin user is missing a name, blocking every upgrade behind it.
+-- Fall back to the email so the row inserts cleanly; operators can rename
+-- themselves later via the upcoming operator-management surface. This
+-- mirrors the runtime defence in `admin.toggleSuperAdmin`
+-- (`updated.name ?? updated.email`) — keep the two in sync.
+
 INSERT INTO "PlatformOperator" (id, email, name, role, "createdAt", "updatedAt")
 SELECT
     'op_backfill_' || substr(md5(random()::text || u."id"), 1, 12),
     u."email",
-    u."name",
+    COALESCE(u."name", u."email"),
     'INCIDENT',
     NOW(),
     NOW()
