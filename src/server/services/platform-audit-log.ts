@@ -257,16 +257,36 @@ export function verifyPlatformAuditChain(
   }>,
   expectedGenesis: string,
 ): { ok: true } | { ok: false; brokenAt: number; reason: string } {
-  // Sort rows into a deterministic order before walking the chain.
-  // `createdAt` alone is not a stable sort key because two writes in the
-  // same millisecond on the same stamp can be returned in either order by a
-  // simple `ORDER BY createdAt` query. Tie-break on `id` (lexicographic)
-  // which is a monotonic CUID that tracks insertion order within a ms.
-  const sorted = [...rows].sort(
-    (a, b) =>
-      a.createdAt.getTime() - b.createdAt.getTime() ||
-      a.id.localeCompare(b.id),
-  );
+  // Reconstruct canonical chain order by following prevHash links rather than
+  // trusting the input slice's sort order. This is safe against:
+  //   - Callers that ORDER BY createdAt without a stable tie-breaker (two
+  //     writes in the same millisecond can come back in either order).
+  //   - Exporters that concatenate partial slices in arbitrary order.
+  //
+  // Build a map from prevHash → row so we can walk the chain in O(n).
+  const byPrevHash = new Map<string, typeof rows[0]>();
+  for (const r of rows) {
+    byPrevHash.set(r.prevHash, r);
+  }
+
+  const sorted: typeof rows = [];
+  let currentPrev = expectedGenesis;
+  while (sorted.length < rows.length) {
+    const next = byPrevHash.get(currentPrev);
+    if (!next) break; // gap in the chain — will surface as a prevHash mismatch below
+    sorted.push(next);
+    currentPrev = next.hash;
+  }
+
+  // Append any orphan rows that couldn't be threaded (gap means they'll all
+  // fail validation; we include them so `brokenAt` points to the right index).
+  if (sorted.length < rows.length) {
+    const seen = new Set(sorted.map((r) => r.id));
+    for (const r of rows) {
+      if (!seen.has(r.id)) sorted.push(r);
+    }
+  }
+
   let expectedPrev = expectedGenesis;
   for (let i = 0; i < sorted.length; i++) {
     const r = sorted[i];
