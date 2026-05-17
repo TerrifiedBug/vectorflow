@@ -64,6 +64,31 @@ export async function registerNodeInstrumentation() {
     errorLog("instrumentation", "Failed to start system Vector on boot", error);
   }
 
+  // Warm the in-process DEK cache so the first wave of agent reconnects
+  // after a stamp restart doesn't stampede outbound KMS. Plan §12.5
+  // calls this out as the SLO-critical hot path; the warm-up keeps
+  // p95/p99 agent-enrollment latency stable across rolling deploys.
+  // Per-instance (each Node process has its own cache) and best-effort
+  // (KMS hiccups warn but don't block boot).
+  try {
+    const { warmDekCacheForActiveOrgs } = await import(
+      "@/server/services/dek-warmup"
+    );
+    // Time-bound the warm-up so a hung KMS or slow network during a rolling
+    // deploy does not block process readiness indefinitely. The warm-up is
+    // best-effort: a timeout here means the first wave of requests warm
+    // on-demand at modest latency, which is acceptable.
+    const WARMUP_TIMEOUT_MS = 30_000;
+    await Promise.race([
+      warmDekCacheForActiveOrgs(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("DEK warm-up timed out")), WARMUP_TIMEOUT_MS),
+      ),
+    ]);
+  } catch (error) {
+    errorLog("instrumentation", "DEK cache warm-up failed (non-fatal)", error);
+  }
+
   async function startSingletonServices(): Promise<void> {
     // Demo-mode only: synthesise missing PipelineVersion rows for seeded
     // pipelines so the editor shows them as properly deployed instead of
