@@ -286,6 +286,7 @@ describe("markExecuting", () => {
 describe("markCompleted + markFailed", () => {
   it("markCompleted transitions EXECUTING → COMPLETED with completedAt", async () => {
     const tx = makeMockPrisma();
+    tx.operatorApprovalRequest.updateMany.mockResolvedValue({ count: 1 });
     tx.operatorApprovalRequest.findUnique.mockResolvedValue(
       row({ status: "COMPLETED", completedAt: NOW }),
     );
@@ -299,6 +300,7 @@ describe("markCompleted + markFailed", () => {
 
   it("markFailed records failureReason + transitions EXECUTING → FAILED", async () => {
     const tx = makeMockPrisma();
+    tx.operatorApprovalRequest.updateMany.mockResolvedValue({ count: 1 });
     tx.operatorApprovalRequest.findUnique.mockResolvedValue(
       row({
         status: "FAILED",
