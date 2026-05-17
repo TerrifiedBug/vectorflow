@@ -106,6 +106,15 @@ export async function registerNodeInstrumentation() {
     }
 
     try {
+      const { initAuthChallengeGc } = await import(
+        "@/server/services/auth/auth-challenge-gc"
+      );
+      initAuthChallengeGc();
+    } catch (error) {
+      errorLog("instrumentation", "Failed to initialize auth-challenge GC", error);
+    }
+
+    try {
       const { initRetryService } = await import(
         "@/server/services/retry-service"
       );
