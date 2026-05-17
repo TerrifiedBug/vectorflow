@@ -815,10 +815,17 @@ export const auditRouter = router({
           : null,
       }));
       const envelopeJson = formatAuditJsonChain(chainItems, ctx.organizationId);
+      // partial is true when:
+      // 1. The caller is not a super-admin (scope-restricted export).
+      // 2. We hit the 50k row cap — the export may be missing rows even
+      //    for super-admin callers with very large orgs.
+      const scopePartial = !scope.isSuperAdmin;
+      const truncated = items.length >= 50_000;
       return {
         envelope: envelopeJson,
         rowCount: items.length,
-        partial: !scope.isSuperAdmin && scope.teamIds.length > 0,
+        partial: scopePartial || truncated,
+        truncated,
       };
     }),
 });

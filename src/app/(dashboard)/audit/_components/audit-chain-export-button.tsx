@@ -39,11 +39,27 @@ export function AuditChainExportButton() {
     try {
       // Imperative fetch via queryClient — avoids registering a long-lived
       // react-query subscription just for a one-shot export download.
-      const { envelope, rowCount, partial } = await queryClient.fetchQuery(
-        trpc.audit.exportChain.queryOptions(),
+      const { envelope, rowCount, partial, truncated } = await queryClient.fetchQuery(
+        trpc.audit.exportChain.queryOptions({
+          // Bypass React Query's cache: audit chain data changes on every
+          // new write, so a stale cache hit can produce an outdated export
+          // that a verifier flags as broken or missing recent rows.
+          staleTime: 0,
+        }),
       );
 
-      const blob = new Blob([envelope], { type: "application/json" });
+      // Embed the partial / truncated flag in the downloaded file so the
+      // bundled verifier (`scripts/verify-audit-chain.ts`) can distinguish
+      // a scoped export from a full chain without relying on filename hints.
+      // Parsing: the verifier reads { partial, truncated, ...chain }.
+      const envelopeParsed = JSON.parse(envelope) as Record<string, unknown>;
+      const downloadPayload = JSON.stringify({
+        partial: partial ?? false,
+        truncated: truncated ?? false,
+        ...envelopeParsed,
+      }, null, 2);
+
+      const blob = new Blob([downloadPayload], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -55,9 +71,12 @@ export function AuditChainExportButton() {
       URL.revokeObjectURL(url);
 
       // Surface a one-line summary so the operator knows what they got.
-      const summary = `Exported ${rowCount} chained audit rows${
-        partial ? " (partial — team-scoped view)" : ""
-      }.`;
+      const partialNote = truncated
+        ? " (truncated at 50k rows)"
+        : partial
+          ? " (partial — scope-restricted view)"
+          : "";
+      const summary = `Exported ${rowCount} chained audit rows${partialNote}.`;
       // We don't use a toast lib here to avoid taking a hard dep; if
       // the page wraps a Toaster elsewhere, swap this for toast.success.
       // eslint-disable-next-line no-console
