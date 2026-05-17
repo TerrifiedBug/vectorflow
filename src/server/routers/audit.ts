@@ -804,7 +804,17 @@ export const auditRouter = router({
         orderBy: { createdAt: "asc" },
         take: 50_000,
       });
-      const envelopeJson = formatAuditJsonChain(items, ctx.organizationId);
+      // ChainAuditLogItem extends AuditLogItem which requires a `user` field.
+      // The query selects userId/userEmail/userName separately; synthesise the
+      // nested object from those columns to satisfy the type contract without
+      // adding a JOIN.
+      const chainItems = items.map((item) => ({
+        ...item,
+        user: item.userId
+          ? { id: item.userId, name: item.userName, email: item.userEmail }
+          : null,
+      }));
+      const envelopeJson = formatAuditJsonChain(chainItems, ctx.organizationId);
       return {
         envelope: envelopeJson,
         rowCount: items.length,

@@ -15,6 +15,7 @@
  */
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Download, ShieldCheck } from "lucide-react";
 
 import { useTRPC } from "@/trpc/client";
@@ -28,6 +29,7 @@ import {
 
 export function AuditChainExportButton() {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const [isExporting, setIsExporting] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
 
@@ -35,10 +37,11 @@ export function AuditChainExportButton() {
     setIsExporting(true);
     setLastError(null);
     try {
-      // Use the tRPC vanilla client so we can run this once on click
-      // without registering a long-lived react-query.
-      const { envelope, rowCount, partial } =
-        await trpc.audit.exportChain.query();
+      // Imperative fetch via queryClient — avoids registering a long-lived
+      // react-query subscription just for a one-shot export download.
+      const { envelope, rowCount, partial } = await queryClient.fetchQuery(
+        trpc.audit.exportChain.queryOptions(),
+      );
 
       const blob = new Blob([envelope], { type: "application/json" });
       const url = URL.createObjectURL(blob);
