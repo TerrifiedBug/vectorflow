@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { getLogContext, formatLogContext } from "@/lib/log-context";
 
 const level = env.VF_LOG_LEVEL.toLowerCase();
 const isDebug = level === "debug" || level === "trace";
@@ -12,7 +13,8 @@ export function debugLog(tag: string, message: string, data?: unknown): void {
   if (!isDebug) return;
   const ts = new Date().toISOString();
   const safeTag = sanitizeLogString(tag);
-  const safeMessage = sanitizeLogString(message);
+  const ctx = formatLogContext(getLogContext());
+  const safeMessage = ctx + sanitizeLogString(message);
   if (data !== undefined) {
     console.log("%s [%s] %s", ts, safeTag, safeMessage, data);
   } else {
@@ -23,7 +25,8 @@ export function debugLog(tag: string, message: string, data?: unknown): void {
 export function infoLog(tag: string, message: string, data?: unknown): void {
   const ts = new Date().toISOString();
   const safeTag = sanitizeLogString(tag);
-  const safeMessage = sanitizeLogString(message);
+  const ctx = formatLogContext(getLogContext());
+  const safeMessage = ctx + sanitizeLogString(message);
   if (data !== undefined) {
     console.log("%s [%s] %s", ts, safeTag, safeMessage, data);
   } else {
@@ -34,7 +37,8 @@ export function infoLog(tag: string, message: string, data?: unknown): void {
 export function warnLog(tag: string, message: string, data?: unknown): void {
   const ts = new Date().toISOString();
   const safeTag = sanitizeLogString(tag);
-  const safeMessage = sanitizeLogString(message);
+  const ctx = formatLogContext(getLogContext());
+  const safeMessage = ctx + sanitizeLogString(message);
   if (data !== undefined) {
     console.warn("%s [%s] %s", ts, safeTag, safeMessage, data);
   } else {
@@ -45,7 +49,8 @@ export function warnLog(tag: string, message: string, data?: unknown): void {
 export function errorLog(tag: string, message: string, data?: unknown): void {
   const ts = new Date().toISOString();
   const safeTag = sanitizeLogString(tag);
-  const safeMessage = sanitizeLogString(message);
+  const ctx = formatLogContext(getLogContext());
+  const safeMessage = ctx + sanitizeLogString(message);
   if (data !== undefined) {
     console.error("%s [%s] %s", ts, safeTag, safeMessage, data);
   } else {
