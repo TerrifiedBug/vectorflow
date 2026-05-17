@@ -49,6 +49,16 @@ model Organization {
   deletedAt         DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+
+  /// Click-through terms acceptance. When non-null, the org's signup
+  /// flow captured an explicit acceptance of the operator-published
+  /// terms / privacy / acceptable-use policy. `acceptedTermsVersion`
+  /// records WHICH version was accepted (so a forced re-acceptance
+  /// on terms revision can be implemented by comparing this against
+  /// the operator's current published version). Both are NULL for
+  /// single-tenant deployments that bypass click-through.
+  acceptedTermsAt      DateTime?
+  acceptedTermsVersion String?
   /// Incremented to revoke every active session for this org. Mixed
   /// into the HKDF `info` of `deriveJwtSigningKey` so the resulting
   /// signing key changes when the counter changes. Owner-triggered
