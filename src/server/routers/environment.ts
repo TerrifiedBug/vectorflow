@@ -8,6 +8,7 @@ import { generateEnrollmentToken } from "@/server/services/agent-token";
 import { DEFAULT_ORG_ID, DEFAULT_ORG_SLUG } from "@/lib/org-constants";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { testVaultConnection as testVaultClientConnection, listVaultFields, type VaultBackendConfig } from "@/server/services/vault-client";
+import { enforceQuota } from "@/server/services/quotas-trpc";
 
 
 const VAULT_AUTH_METHODS = ["token", "approle", "kubernetes"] as const;
@@ -194,9 +195,12 @@ export const environmentRouter = router({
     .use(withTeamAccess("EDITOR"))
     .use(withAudit("environment.created", "Environment"))
     .mutation(async ({ input }) => {
-      // Verify team exists
+      // Verify team exists and capture its organization so the quota gate
+      // counts against the right tenant (one Org owns N Teams; quotas are
+      // per-Org).
       const team = await prisma.team.findUnique({
         where: { id: input.teamId },
+        select: { id: true, organizationId: true },
       });
       if (!team) {
         throw new TRPCError({
@@ -205,12 +209,22 @@ export const environmentRouter = router({
         });
       }
 
-      return prisma.environment.create({
-        data: {
-          name: input.name,
-          teamId: input.teamId,
-        },
-      });
+      // Per-org plan-tier quota gate (§10). Throws PAYMENT_REQUIRED with the
+      // QuotaExceededError as `cause` when the FREE/PRO `environments` limit
+      // is reached.
+      return enforceQuota(team.organizationId, "environments", (tx) =>
+        tx.environment.create({
+          data: {
+            name: input.name,
+            teamId: input.teamId,
+            // Phase 5v: write the org id on the row so the quota post-check
+            // (which counts by `organizationId`) actually sees it. Without
+            // this the column defaults to "default" and non-default tenants
+            // could bypass the cap indefinitely.
+            organizationId: team.organizationId,
+          },
+        }),
+      );
     }),
 
   update: protectedProcedure

@@ -180,6 +180,22 @@ describe("pipelineCrudRouter", () => {
   // ── create ────────────────────────────────────────────────────────────────
 
   describe("create", () => {
+    // Helper: wire the quota path so $transaction calls fn(prismaMock), the
+    // org lookup returns the FREE plan, and the pipeline count stays below
+    // the limit before AND after the create.
+    function arrangeQuotaPasses(opts: { currentPipelineCount: number }) {
+      prismaMock.$transaction.mockImplementation(
+        async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
+      );
+      prismaMock.$executeRaw.mockResolvedValue(0 as never);
+      prismaMock.organization.findUnique.mockResolvedValue({
+        plan: "FREE",
+      } as never);
+      prismaMock.pipeline.count
+        .mockResolvedValueOnce(opts.currentPipelineCount)
+        .mockResolvedValueOnce(opts.currentPipelineCount + 1);
+    }
+
     it("throws NOT_FOUND when environment does not exist", async () => {
       prismaMock.environment.findUnique.mockResolvedValue(null as never);
 
@@ -189,9 +205,11 @@ describe("pipelineCrudRouter", () => {
     });
 
     it("creates a pipeline when environment exists", async () => {
-      const environment = { id: "env-1", name: "Production", teamId: "team-1" };
+      const environment = { id: "env-1", organizationId: "org-1" };
       const created = { id: "p-new", name: "My Pipeline", environmentId: "env-1" };
       prismaMock.environment.findUnique.mockResolvedValue(environment as never);
+      // FREE plan allows 10 pipelines; we're at 0 -> create succeeds.
+      arrangeQuotaPasses({ currentPipelineCount: 0 });
       prismaMock.pipeline.create.mockResolvedValue(created as never);
 
       const result = await caller.create({ name: "My Pipeline", environmentId: "env-1" });
@@ -206,6 +224,21 @@ describe("pipelineCrudRouter", () => {
           }),
         }),
       );
+    });
+
+    it("rejects with PAYMENT_REQUIRED when the per-org pipelines quota is exhausted (Phase 5v)", async () => {
+      const environment = { id: "env-1", organizationId: "org-1" };
+      prismaMock.environment.findUnique.mockResolvedValue(environment as never);
+      // FREE plan limit is 10 pipelines; we're already at 10 -> reject.
+      arrangeQuotaPasses({ currentPipelineCount: 10 });
+
+      await expect(
+        caller.create({ name: "My Pipeline", environmentId: "env-1" }),
+      ).rejects.toMatchObject({
+        code: "PAYMENT_REQUIRED",
+        message: expect.stringMatching(/Plan limit reached.*pipelines.*Upgrade/i),
+      });
+      expect(prismaMock.pipeline.create).not.toHaveBeenCalled();
     });
   });
 

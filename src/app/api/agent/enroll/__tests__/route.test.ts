@@ -24,6 +24,7 @@ vi.mock("@/server/services/event-alerts", () => ({
 vi.mock("@/lib/logger", () => ({
   debugLog: vi.fn(),
   errorLog: vi.fn(),
+  warnLog: vi.fn(),
 }));
 
 // ─── Import SUT + mocks after vi.mock ───────────────────────────────────────
@@ -80,6 +81,18 @@ describe("POST /api/agent/enroll -- NODE-03 label template auto-assignment", () 
       identifier: "0123456789abcdef",
     });
     prismaMock.environment.findMany.mockResolvedValue([mockEnv] as never);
+    // §10 quota gate: $transaction wraps the vectorNode insert. Stub it so
+    // the callback runs against the same prismaMock, and arrange the org +
+    // count mocks so the FREE plan (5 agents) is below the limit before and
+    // after the create. Individual tests can override these.
+    prismaMock.$transaction.mockImplementation(
+      async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
+    );
+    prismaMock.$executeRaw.mockResolvedValue(0 as never);
+    prismaMock.organization.findUnique.mockResolvedValue({ plan: "FREE" } as never);
+    prismaMock.vectorNode.count
+      .mockResolvedValueOnce(0) // pre-check
+      .mockResolvedValueOnce(1); // post-check
     prismaMock.vectorNode.create.mockResolvedValue(mockNode as never);
     prismaMock.nodeStatusEvent.create.mockResolvedValue({} as never);
   });
@@ -195,6 +208,48 @@ describe("POST /api/agent/enroll -- demo mode", () => {
     const body = await res.json();
     expect(body.error).toMatch(/demo/i);
     expect(prismaMock.environment.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.vectorNode.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/agent/enroll -- per-org agents quota (Phase 5v)", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    vi.mocked(verifyEnrollmentToken).mockResolvedValue(true);
+    vi.mocked(generateNodeToken).mockResolvedValue({
+      token: "vf_node_0123456789abcdef_bb",
+      hash: "h-xyz",
+      identifier: "0123456789abcdef",
+    });
+    prismaMock.environment.findMany.mockResolvedValue([mockEnv] as never);
+    prismaMock.$transaction.mockImplementation(
+      async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
+    );
+    prismaMock.$executeRaw.mockResolvedValue(0 as never);
+  });
+
+  it("returns 402 Payment Required with the upgrade envelope when the plan limit is reached", async () => {
+    // FREE plan limit is 5 agents; we're already at 5 -> reject.
+    prismaMock.organization.findUnique.mockResolvedValue({ plan: "FREE" } as never);
+    prismaMock.vectorNode.count.mockResolvedValueOnce(5);
+
+    const req = makeRequest({
+      token: "vf_enroll_test",
+      hostname: "over-limit-server",
+    });
+    const res = await POST(req);
+
+    expect(res.status).toBe(402);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      error: "Plan limit reached",
+      quota: "agents",
+      plan: "FREE",
+      limit: 5,
+      current: 5,
+      upgradeUrl: expect.stringContaining("vectorflow.sh"),
+    });
+    // Quota gate fires before the row is written.
     expect(prismaMock.vectorNode.create).not.toHaveBeenCalled();
   });
 });

@@ -10,6 +10,7 @@ import { debugLog, errorLog, warnLog } from "@/lib/logger";
 import { nodeMatchesGroup } from "@/lib/node-group-utils";
 import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
 import { isDemoMode } from "@/lib/is-demo-mode";
+import { withQuotaCheck } from "@/server/services/quotas";
 
 const enrollSchema = z.object({
   token: z.string().min(1),
@@ -102,26 +103,76 @@ export async function POST(request: Request) {
     // Create the fleet node entry with agent-provided labels so group matching
     // can use them immediately (fixes the chicken-and-egg problem where nodes
     // enrolled with no labels could never match groups with specific criteria).
-    const node = await prisma.vectorNode.create({
-      data: {
-        name: hostname,
-        host: hostname,
-        environmentId: matchedEnv.id,
-        status: "HEALTHY",
-        nodeTokenHash: nodeToken.hash,
-        nodeTokenId: nodeToken.identifier,
-        enrolledAt: new Date(),
-        lastHeartbeat: new Date(),
-        agentVersion: agentVersion ?? null,
-        vectorVersion: vectorVersion ?? null,
-        os: os ?? null,
-        metadata: { enrolledVia: "agent" },
-        organizationId: orgResult.orgId,
-        ...(agentLabels && Object.keys(agentLabels).length > 0
-          ? { labels: agentLabels }
-          : {}),
-      },
-    });
+    // Per-org plan-tier quota gate (§10). Wrap the node insert in the
+    // (advisory-lock + pre-count + post-count) helper so the FREE/PRO
+    // `agents` limit is honoured even under concurrent enrollment requests.
+    // On exceed we surface 402 + the structured envelope; the agent retry
+    // loop must treat this as terminal (no retry).
+    let node;
+    try {
+      node = await withQuotaCheck(orgResult.orgId, "agents", (tx) =>
+        tx.vectorNode.create({
+          data: {
+            name: hostname,
+            host: hostname,
+            environmentId: matchedEnv.id,
+            status: "HEALTHY",
+            nodeTokenHash: nodeToken.hash,
+            nodeTokenId: nodeToken.identifier,
+            enrolledAt: new Date(),
+            lastHeartbeat: new Date(),
+            agentVersion: agentVersion ?? null,
+            vectorVersion: vectorVersion ?? null,
+            os: os ?? null,
+            metadata: { enrolledVia: "agent" },
+            organizationId: orgResult.orgId,
+            ...(agentLabels && Object.keys(agentLabels).length > 0
+              ? { labels: agentLabels }
+              : {}),
+          },
+        }),
+      );
+    } catch (err) {
+      // Duck-type the QuotaExceededError so cross-module class identity
+      // (Vitest module isolation, dual-bundling) cannot defeat the gate.
+      // `name === "QuotaExceededError"` plus the typed payload fields is
+      // part of the contract in `quotas.ts`.
+      const e = err as
+        | {
+            name?: unknown;
+            quota?: unknown;
+            plan?: unknown;
+            limit?: unknown;
+            current?: unknown;
+            organizationId?: unknown;
+          }
+        | null
+        | undefined;
+
+      if (
+        e &&
+        typeof e === "object" &&
+        e.name === "QuotaExceededError" &&
+        typeof e.quota === "string"
+      ) {
+        warnLog(
+          "enroll",
+          `REJECTED -- org ${String(e.organizationId)} (${String(e.plan)}) at ${String(e.current)}/${String(e.limit)} ${String(e.quota)}`,
+        );
+        return NextResponse.json(
+          {
+            error: "Plan limit reached",
+            quota: e.quota,
+            plan: e.plan,
+            limit: e.limit,
+            current: e.current,
+            upgradeUrl: "https://vectorflow.sh/pricing",
+          },
+          { status: 402 },
+        );
+      }
+      throw err;
+    }
     // NODE-03: Auto-apply matching NodeGroup label templates
     try {
       const nodeGroups = await prisma.nodeGroup.findMany({
