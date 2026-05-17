@@ -36,6 +36,7 @@ import { costRecommendationRouter } from "@/server/routers/cost-recommendation";
 import { anomalyRouter } from "@/server/routers/anomaly";
 import { telemetryRouter } from "@/server/routers/telemetry";
 import { governanceRouter } from "@/server/routers/governance";
+import { orgAccessGrantRouter } from "@/server/routers/org-access-grant";
 
 export const appRouter = router({
   team: teamRouter,
@@ -75,6 +76,7 @@ export const appRouter = router({
   anomaly: anomalyRouter,
   telemetry: telemetryRouter,
   governance: governanceRouter,
+  orgAccessGrant: orgAccessGrantRouter,
 });
 
 export type AppRouter = typeof appRouter;
