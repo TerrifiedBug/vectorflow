@@ -24,10 +24,13 @@
  * Notes:
  *
  *   - Soft-delete writes an `AuditLog` row with `action: "org.softdelete"`
- *     and a mirror entry to `PlatformAuditLog` (when called by an
- *     operator — service-account caller path detected by `by.kind`).
- *     Mirroring happens via the same outer transaction so the two logs
- *     cannot diverge.
+ *     via the chained `writeAuditLog` path so `prevHash`/`hash` are
+ *     populated and the rows appear in chain exports.
+ *   - The `writeAuditLog` call runs OUTSIDE the org-update transaction
+ *     (because `writeAuditLog` opens its own advisory-locked transaction
+ *     internally). A write failure is logged but does not roll back the
+ *     soft-delete — the org state is authoritative; the audit row is
+ *     best-effort append.
  *   - Calling `requestOrgDeletion` twice is idempotent; the second call
  *     observes `deletedAt` already set and returns the original
  *     scheduled-deletion date.
@@ -36,6 +39,8 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { writeAuditLog } from "@/server/services/audit";
+import { errorLog } from "@/lib/logger";
 
 // Validate at module load: non-numeric / negative values fall back to 30.
 const GRACE_DAYS_RAW = Number(process.env.VF_DELETE_GRACE_DAYS ?? "30");
@@ -73,7 +78,8 @@ export async function requestOrgDeletion(
   organizationId: string,
   by: DeletionRequestor,
 ): Promise<RequestOrgDeletionResult> {
-  return prisma.$transaction(async (tx) => {
+  // Phase 1: atomic org update (advisory lock not needed; updateMany CAS is sufficient).
+  const result = await prisma.$transaction(async (tx) => {
     // Verify the org exists before attempting the atomic update.
     const org = await tx.organization.findUnique({
       where: { id: organizationId },
@@ -85,10 +91,9 @@ export async function requestOrgDeletion(
 
     if (org.deletedAt) {
       return {
-        organizationId,
         deletedAt: org.deletedAt,
-        scheduledHardDeleteAt: addDays(org.deletedAt, GRACE_DAYS),
-        alreadyPending: true,
+        alreadyPending: true as const,
+        wrote: false,
       };
     }
 
@@ -107,39 +112,54 @@ export async function requestOrgDeletion(
         where: { id: organizationId },
         select: { deletedAt: true },
       });
-      const deletedAt = reread?.deletedAt ?? now;
+      if (!reread) {
+        // Org was hard-deleted between our read and the CAS write.
+        throw new Error(`Organization ${organizationId} not found`);
+      }
+      const deletedAt = reread.deletedAt ?? now;
       return {
-        organizationId,
         deletedAt,
-        scheduledHardDeleteAt: addDays(deletedAt, GRACE_DAYS),
-        alreadyPending: true,
+        alreadyPending: true as const,
+        wrote: false,
       };
     }
 
-    // Customer-side audit row — visible in the org's audit export.
-    await tx.auditLog.create({
-      data: {
-        organizationId,
-        userId: by.kind === "customer" ? by.id : null,
-        action: "org.softdelete",
-        entityType: "Organization",
-        entityId: organizationId,
-        ipAddress: by.ipAddress ?? null,
-        metadata: {
-          requestedBy: by.kind,
-          reason: by.reason ?? null,
-          graceDays: GRACE_DAYS,
-        },
-      },
-    });
-
-    return {
-      organizationId,
-      deletedAt: now,
-      scheduledHardDeleteAt: addDays(now, GRACE_DAYS),
-      alreadyPending: false,
-    };
+    return { deletedAt: now, alreadyPending: false as const, wrote: true };
   });
+
+  // Phase 2: write the chained audit row OUTSIDE the transaction so
+  // writeAuditLog's advisory lock does not nest inside the org update tx.
+  if (result.wrote) {
+    writeAuditLog({
+      organizationId,
+      userId: by.kind === "customer" ? by.id : null,
+      action: "org.softdelete",
+      entityType: "Organization",
+      entityId: organizationId,
+      ipAddress: by.ipAddress ?? null,
+      metadata: {
+        requestedBy: by.kind,
+        // Preserve operator attribution: store the operator's ID in
+        // metadata so the audit row is traceable even though userId is null.
+        ...(by.kind === "operator" && { operatorId: by.id }),
+        reason: by.reason ?? null,
+        graceDays: GRACE_DAYS,
+      },
+    }).catch((err) => {
+      errorLog(
+        "tenant-lifecycle",
+        `writeAuditLog failed for org.softdelete on ${organizationId}`,
+        err,
+      );
+    });
+  }
+
+  return {
+    organizationId,
+    deletedAt: result.deletedAt,
+    scheduledHardDeleteAt: addDays(result.deletedAt, GRACE_DAYS),
+    alreadyPending: result.alreadyPending,
+  };
 }
 
 export interface CancelOrgDeletionResult {
@@ -163,7 +183,8 @@ export async function cancelOrgDeletion(
   organizationId: string,
   by: DeletionRequestor,
 ): Promise<CancelOrgDeletionResult> {
-  return prisma.$transaction(async (tx) => {
+  // Phase 1: atomic org update.
+  const result = await prisma.$transaction(async (tx) => {
     const org = await tx.organization.findUnique({
       where: { id: organizationId },
       select: { id: true, deletedAt: true },
@@ -172,7 +193,7 @@ export async function cancelOrgDeletion(
       throw new Error(`Organization ${organizationId} not found`);
     }
     if (!org.deletedAt) {
-      return { organizationId, cancelled: false, wasScheduledFor: null };
+      return { cancelled: false, wasScheduledFor: null, wrote: false };
     }
 
     const scheduledHardDelete = addDays(org.deletedAt, GRACE_DAYS);
@@ -182,32 +203,51 @@ export async function cancelOrgDeletion(
       );
     }
 
-    await tx.organization.update({
-      where: { id: organizationId },
+    // Atomic compare-and-set: only cancel if deletedAt is still set.
+    // Guards against concurrent cancel requests both succeeding.
+    const { count } = await tx.organization.updateMany({
+      where: { id: organizationId, deletedAt: { not: null } },
       data: { deletedAt: null },
     });
 
-    await tx.auditLog.create({
-      data: {
-        organizationId,
-        userId: by.kind === "customer" ? by.id : null,
-        action: "org.softdelete.cancel",
-        entityType: "Organization",
-        entityId: organizationId,
-        ipAddress: by.ipAddress ?? null,
-        metadata: {
-          requestedBy: by.kind,
-          wasScheduledFor: scheduledHardDelete.toISOString(),
-        },
-      },
-    });
+    if (count === 0) {
+      // Another concurrent request already cancelled; treat as success.
+      return { cancelled: true, wasScheduledFor: scheduledHardDelete, wrote: false };
+    }
 
-    return {
-      organizationId,
-      cancelled: true,
-      wasScheduledFor: scheduledHardDelete,
-    };
+    return { cancelled: true, wasScheduledFor: scheduledHardDelete, wrote: true };
   });
+
+  // Phase 2: write the chained audit row OUTSIDE the transaction.
+  if (result.wrote && result.wasScheduledFor) {
+    const scheduledFor = result.wasScheduledFor;
+    writeAuditLog({
+      organizationId,
+      userId: by.kind === "customer" ? by.id : null,
+      action: "org.softdelete.cancel",
+      entityType: "Organization",
+      entityId: organizationId,
+      ipAddress: by.ipAddress ?? null,
+      metadata: {
+        requestedBy: by.kind,
+        // Preserve operator attribution.
+        ...(by.kind === "operator" && { operatorId: by.id }),
+        wasScheduledFor: scheduledFor.toISOString(),
+      },
+    }).catch((err) => {
+      errorLog(
+        "tenant-lifecycle",
+        `writeAuditLog failed for org.softdelete.cancel on ${organizationId}`,
+        err,
+      );
+    });
+  }
+
+  return {
+    organizationId,
+    cancelled: result.cancelled,
+    wasScheduledFor: result.wasScheduledFor,
+  };
 }
 
 export interface PendingHardDelete {
