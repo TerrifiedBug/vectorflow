@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
-import { sanitizeSentryEvent } from "@/lib/sentry-sanitize";
-
+import { getLogContext } from "@/lib/log-context";
+import { applyLogContextTags, sanitizeSentryEvent } from "@/lib/sentry-sanitize";
 const dsn = process.env.SENTRY_DSN;
 
 /** TRPCError codes that represent expected client errors — not worth reporting. */
@@ -32,13 +32,16 @@ if (dsn) {
           }
         }
       }
+      // Tag the event with per-request context (org_id, request_id)
+      // from the AsyncLocalStorage carrier so events can be sliced
+      // per tenant. Without this every event lands in a shared feed.
+      applyLogContextTags(event, getLogContext());
 
-      // Plan §11 denylist sanitization — strip request bodies,
-      // sensitive query params, and denylisted headers BEFORE the
-      // event leaves the process. Multi-tenant SaaS request bodies
-      // routinely contain customer secrets we don't want in Sentry's
-      // indexes (pipeline YAML, agent enrollment tokens, magic-link
-      // redeem tokens).
+      // Denylist sanitization — strip request bodies, sensitive query
+      // params, and denylisted headers BEFORE the event leaves the
+      // process. Multi-tenant request bodies routinely contain
+      // customer secrets we don't want in Sentry's indexes (pipeline
+      // YAML, agent enrollment tokens, magic-link redeem tokens).
       return sanitizeSentryEvent(event);
     },
   });
