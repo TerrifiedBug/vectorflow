@@ -102,7 +102,7 @@ export async function createApprovalRequest(
       reason: input.reason.trim(),
       expiresAt,
     },
-  });
+  }) as unknown as Promise<OperatorApprovalRow>;
 }
 
 export interface ApproveInput {
@@ -202,7 +202,7 @@ export async function approveApprovalRequest(
     where: { id: input.requestId },
   });
   if (!after) throw new ApprovalRequestNotFound(input.requestId);
-  return after;
+  return after as unknown as OperatorApprovalRow;
 }
 
 export interface MarkExecutingInput {
@@ -245,7 +245,7 @@ export async function markExecuting(
     where: { id: input.requestId },
   });
   if (!after) throw new ApprovalRequestNotFound(input.requestId);
-  return after;
+  return after as unknown as OperatorApprovalRow;
 }
 
 export interface MarkCompleteInput {
@@ -258,15 +258,25 @@ export async function markCompleted(
 ): Promise<OperatorApprovalRow> {
   const now = opts.now ?? new Date();
   const c = client(opts);
-  await c.operatorApprovalRequest.updateMany({
+  const updated = await c.operatorApprovalRequest.updateMany({
     where: { id: input.requestId, status: "EXECUTING" },
     data: { status: "COMPLETED", completedAt: now },
   });
+  if (updated.count === 0) {
+    const reread = await c.operatorApprovalRequest.findUnique({
+      where: { id: input.requestId },
+    });
+    if (!reread) throw new ApprovalRequestNotFound(input.requestId);
+    throw new ApprovalRequestNotPending(
+      input.requestId,
+      reread.status as ApprovalStatus,
+    );
+  }
   const after = await c.operatorApprovalRequest.findUnique({
     where: { id: input.requestId },
   });
   if (!after) throw new ApprovalRequestNotFound(input.requestId);
-  return after;
+  return after as unknown as OperatorApprovalRow;
 }
 
 export interface MarkFailedInput {
@@ -280,7 +290,7 @@ export async function markFailed(
 ): Promise<OperatorApprovalRow> {
   const now = opts.now ?? new Date();
   const c = client(opts);
-  await c.operatorApprovalRequest.updateMany({
+  const updated = await c.operatorApprovalRequest.updateMany({
     where: { id: input.requestId, status: "EXECUTING" },
     data: {
       status: "FAILED",
@@ -288,11 +298,21 @@ export async function markFailed(
       completedAt: now,
     },
   });
+  if (updated.count === 0) {
+    const reread = await c.operatorApprovalRequest.findUnique({
+      where: { id: input.requestId },
+    });
+    if (!reread) throw new ApprovalRequestNotFound(input.requestId);
+    throw new ApprovalRequestNotPending(
+      input.requestId,
+      reread.status as ApprovalStatus,
+    );
+  }
   const after = await c.operatorApprovalRequest.findUnique({
     where: { id: input.requestId },
   });
   if (!after) throw new ApprovalRequestNotFound(input.requestId);
-  return after;
+  return after as unknown as OperatorApprovalRow;
 }
 
 export interface CancelInput {
@@ -331,7 +351,7 @@ export async function cancelApprovalRequest(
     where: { id: input.requestId },
   });
   if (!after) throw new ApprovalRequestNotFound(input.requestId);
-  return after;
+  return after as unknown as OperatorApprovalRow;
 }
 
 /**
