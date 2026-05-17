@@ -25,7 +25,7 @@ import {
   TOTP_RATE_LIMIT,
 } from "@/server/services/login-protection";
 import { getOrgSettings } from "@/lib/org-settings";
-import { DEFAULT_ORG_ID } from "@/lib/org-constants";
+import { resolveOrgIdFromHost } from "@/lib/host-to-org";
 
 async function getClientIp(): Promise<string | null> {
   try {
@@ -36,10 +36,29 @@ async function getClientIp(): Promise<string | null> {
   }
 }
 
+/**
+ * Resolve the request host used for per-org auth routing (plan §8 / Phase 5w).
+ *
+ * `x-forwarded-host` is client-controlled unless an upstream proxy
+ * strips/rewrites it. Reading it unconditionally lets a direct request
+ * (or a mis-configured proxy chain) spoof another tenant\'s slug and
+ * force this request onto a different tenant\'s OIDC / group-mapping
+ * config. The fix:
+ *
+ *   - Cloud stamps run behind a known reverse proxy that ALWAYS sets
+ *     `x-forwarded-host` itself, and the operator opts in via
+ *     `VF_TRUST_FORWARDED_HOST=true`.
+ *   - OSS deployments (no trusted proxy) keep the `host` header and
+ *     ignore `x-forwarded-host`. A bad header from the client cannot
+ *     redirect the request onto a different org.
+ */
 async function getRequestHost(): Promise<string | null> {
   try {
     const hdrs = await headers();
-    return hdrs.get("x-forwarded-host") ?? hdrs.get("host");
+    if (process.env.VF_TRUST_FORWARDED_HOST === "true") {
+      return hdrs.get("x-forwarded-host") ?? hdrs.get("host");
+    }
+    return hdrs.get("host");
   } catch {
     return null;
   }
@@ -54,15 +73,29 @@ class InvalidVerificationCodeError extends CredentialsSignin {
 }
 
 /**
- * Load OIDC settings from the database.
- * Returns null if OIDC is not configured.
+ * Load OIDC settings for the organisation owning the incoming request.
+ *
+ * Per-org OIDC (plan §8 / Phase 5w):
+ *   - Cloud: `<orgSlug>.vectorflow.sh` -> the request host's first DNS
+ *     label is matched against `Organization.slug`. Each tenant sees only
+ *     its own IdP; a session minted for org A cannot login through org B.
+ *   - OSS: hosts without an org-slug subdomain fall back to
+ *     `DEFAULT_ORG_ID` so existing self-hosted deployments behave exactly
+ *     as before.
+ *
+ * Returns null when:
+ *   - we're in the Next.js build phase (no DB), OR
+ *   - the resolved org has no OIDC configured, OR
+ *   - the stored client secret cannot be decrypted (key rotation gap).
  */
-async function getOidcSettings() {
+async function getOidcSettings(orgIdOverride?: string) {
   // Skip DB query during build (no database available)
   if (isBuildPhase) return null;
 
   try {
-    const settings = await getOrgSettings(DEFAULT_ORG_ID);
+    const orgId =
+      orgIdOverride ?? (await resolveOrgIdFromHost(await getRequestHost()));
+    const settings = await getOrgSettings(orgId);
     if (settings?.oidcIssuer && settings?.oidcClientId && settings?.oidcClientSecret) {
       let clientSecret: string;
       try {
@@ -79,6 +112,7 @@ async function getOidcSettings() {
         groupSyncEnabled: settings.oidcGroupSyncEnabled,
         groupsScope: settings.oidcGroupsScope,
         groupsClaim: settings.oidcGroupsClaim ?? "groups",
+        organizationId: orgId,
       };
     }
   } catch {
@@ -243,23 +277,42 @@ const credentialsProvider = Credentials({
 });
 
 /**
- * Build and cache the NextAuth instance.
- * Re-initializes automatically when invalidateAuthCache() is called
- * (e.g., after OIDC settings change in the admin panel).
+ * Per-organisation NextAuth instance cache (plan §8 / Phase 5w).
+ *
+ * The NextAuth `providers` array bakes in the OIDC issuer at construction
+ * time \u2014 we can't swap providers per-request inside one instance. So we
+ * keep one instance per organisation id and pick the right one on every
+ * call. First-time init for an org goes through the de-dupe promise map
+ * so concurrent requests don't double-initialise.
+ *
+ * Codex P1 on the initial PR called this out: caching a single global
+ * `_cached` instance meant the first request's host\u2014and therefore the
+ * first request's tenant\u2014decided the OIDC provider for ALL subsequent
+ * requests until cache invalidation. Tenant B could be forced onto
+ * tenant A's IdP depending on request order.
+ *
+ * `invalidateAuthCache(orgId?)` clears one org's cache when its OIDC
+ * settings change, or all caches when called with no argument.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AuthInstance = { handlers: any; auth: any; signIn: any; signOut: any };
-let _cached: AuthInstance | null = null;
-let _initPromise: Promise<AuthInstance> | null = null;
+const _instanceByOrg = new Map<string, AuthInstance>();
+const _initPromiseByOrg = new Map<string, Promise<AuthInstance>>();
 
 async function getAuthInstance() {
-  if (_cached) return _cached;
-  // Deduplicate concurrent init calls
-  if (!_initPromise) {
-    _initPromise = (async () => {
+  // Resolve the org from the request host BEFORE consulting the cache so
+  // Tenant B never reuses Tenant A's NextAuth instance.
+  const orgId = await resolveOrgIdFromHost(await getRequestHost());
+  const cached = _instanceByOrg.get(orgId);
+  if (cached) return cached;
+
+  // Deduplicate concurrent inits for the same org.
+  const inFlight = _initPromiseByOrg.get(orgId);
+  if (!inFlight) {
+    const promise = (async () => {
       const providers: Provider[] = [credentialsProvider];
 
-      const oidc = await getOidcSettings();
+      const oidc = await getOidcSettings(orgId);
       if (oidc) {
         providers.push({
           id: "oidc",
@@ -286,7 +339,8 @@ async function getAuthInstance() {
           async signIn({ user, account, profile }) {
             // For OIDC sign-ins, auto-create user and team membership with role mapping
             if (account?.provider === "oidc" && user.email) {
-              const settings = await getOrgSettings(DEFAULT_ORG_ID);
+              const oidcOrgId = await resolveOrgIdFromHost(await getRequestHost());
+              const settings = await getOrgSettings(oidcOrgId);
               const profileData = profile as Record<string, unknown> | undefined;
 
               // Ensure user exists in the database
@@ -353,7 +407,7 @@ async function getAuthInstance() {
                 debugLog("oidc", `User ${user.email} scimEnabled=${settings.scimEnabled}, final groups:`, userGroupNames);
                 const { reconcileUserTeamMemberships } = await import("@/server/services/group-mappings");
                 await prisma.$transaction(async (tx) => {
-                  await reconcileUserTeamMemberships(tx, dbUser.id, userGroupNames);
+                  await reconcileUserTeamMemberships(tx, dbUser.id, userGroupNames, oidcOrgId);
                 });
 
                 // Default team fallback: assign if reconciliation left the user with no memberships
@@ -422,21 +476,30 @@ async function getAuthInstance() {
         },
       });
 
-      _cached = instance;
-      _initPromise = null;
+      _instanceByOrg.set(orgId, instance);
+      _initPromiseByOrg.delete(orgId);
       return instance;
     })();
+    _initPromiseByOrg.set(orgId, promise);
+    return promise;
   }
-  return _initPromise!;
+  return inFlight;
 }
 
 /**
- * Clear the cached NextAuth instance so the next request re-initializes
- * with fresh OIDC settings from the database.
+ * Clear the cached NextAuth instance(s) so the next request re-initializes
+ * with fresh OIDC settings. Pass an `orgId` to clear just one tenant's
+ * cache (called from `settings.updateOidc*` mutations); call with no
+ * argument from tests / dev tools to wipe everything.
  */
-export function invalidateAuthCache() {
-  _cached = null;
-  _initPromise = null;
+export function invalidateAuthCache(orgId?: string) {
+  if (orgId) {
+    _instanceByOrg.delete(orgId);
+    _initPromiseByOrg.delete(orgId);
+    return;
+  }
+  _instanceByOrg.clear();
+  _initPromiseByOrg.clear();
 }
 
 // Proxy exports — delegate to the lazily-cached NextAuth instance
