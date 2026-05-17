@@ -181,16 +181,20 @@ describe("pipelineCrudRouter", () => {
 
   describe("create", () => {
     // Helper: wire the quota path so $transaction calls fn(prismaMock), the
-    // org lookup returns the FREE plan, and the pipeline count stays below
-    // the limit before AND after the create.
-    function arrangeQuotaPasses(opts: { currentPipelineCount: number }) {
+    // org lookup returns the DEFAULT plan, a Cloud-like finite policy caps
+    // pipelines at 10, and the count stays below the limit before AND after.
+    async function arrangeQuotaPasses(opts: { currentPipelineCount: number }) {
       prismaMock.$transaction.mockImplementation(
         async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
       );
       prismaMock.$executeRaw.mockResolvedValue(0 as never);
       prismaMock.organization.findUnique.mockResolvedValue({
-        plan: "FREE",
+        plan: "DEFAULT",
       } as never);
+      const { setQuotaPolicy } = await import("@/server/services/quotas");
+      setQuotaPolicy({
+        getPlanQuotas: () => ({ agents: 5, pipelines: 10, environments: 1 }),
+      });
       prismaMock.pipeline.count
         .mockResolvedValueOnce(opts.currentPipelineCount)
         .mockResolvedValueOnce(opts.currentPipelineCount + 1);
@@ -209,7 +213,7 @@ describe("pipelineCrudRouter", () => {
       const created = { id: "p-new", name: "My Pipeline", environmentId: "env-1" };
       prismaMock.environment.findUnique.mockResolvedValue(environment as never);
       // FREE plan allows 10 pipelines; we're at 0 -> create succeeds.
-      arrangeQuotaPasses({ currentPipelineCount: 0 });
+      await arrangeQuotaPasses({ currentPipelineCount: 0 });
       prismaMock.pipeline.create.mockResolvedValue(created as never);
 
       const result = await caller.create({ name: "My Pipeline", environmentId: "env-1" });
@@ -230,7 +234,7 @@ describe("pipelineCrudRouter", () => {
       const environment = { id: "env-1", organizationId: "org-1" };
       prismaMock.environment.findUnique.mockResolvedValue(environment as never);
       // FREE plan limit is 10 pipelines; we're already at 10 -> reject.
-      arrangeQuotaPasses({ currentPipelineCount: 10 });
+      await arrangeQuotaPasses({ currentPipelineCount: 10 });
 
       await expect(
         caller.create({ name: "My Pipeline", environmentId: "env-1" }),

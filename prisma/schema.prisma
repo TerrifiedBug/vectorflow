@@ -14,6 +14,7 @@ datasource db {
 // Keep this string in sync with DEFAULT_ORG_ID in src/lib/constants.ts.
 
 enum OrgPlan {
+  DEFAULT
   FREE
   PRO
   ENTERPRISE
@@ -36,7 +37,7 @@ model Organization {
   id                String    @id @default(cuid())
   slug              String    @unique
   name              String
-  plan              OrgPlan   @default(FREE)
+  plan              OrgPlan   @default(DEFAULT)
   region            String    @default("default")
   // Envelope-encryption fields — null for OSS / self-hosted
   dataKeyCiphertext String?

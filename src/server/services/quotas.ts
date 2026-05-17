@@ -1,34 +1,64 @@
 /**
- * Per-organization plan-tier quotas (plan §10).
+ * Per-organization resource quotas (plan §10, §15a R3 generalisation).
  *
- * Quotas are derived from the org's `plan` enum (FREE/PRO/ENTERPRISE).
- * `checkQuota` reads the current usage from the DB (read-only — UI
- * badges, dashboards). `withQuotaCheck` is the canonical creation path:
- * it opens a transaction, acquires a per-(org, quota) advisory lock,
- * counts current usage, throws `QuotaExceededError` if at/over the
- * limit, otherwise runs the supplied creation function with the SAME
- * tx so the INSERT lands while the lock is still held.
+ * # Engine
+ *
+ * Quotas are gated at the creation path. `withQuotaCheck` is the
+ * canonical helper:
  *
  *   await withQuotaCheck(orgId, "agents", async (tx) => {
  *     return tx.vectorNode.create({ data: { ... } });
  *   });
  *
- * The wrapper owns the transaction boundary, so the create cannot
- * accidentally run outside the lock window — a class of misuse that
- * an in-tx-only "enforceQuotaInTx(tx, …)" function with a structural
- * `tx` param could not prevent (a caller could pass the root prisma).
+ * It opens a transaction, acquires a per-(org, quota) `pg_advisory_xact_lock`,
+ * verifies the current count is below the active plan's limit, runs the
+ * supplied creation callback on the SAME tx, then re-verifies post-callback
+ * to defeat `createMany`/multi-insert callbacks. `QuotaExceededError` rolls
+ * back the inserts so the customer is never billed for over-quota work.
  *
- * `enforceQuotaInTx` is exported for advanced callers who are already
- * inside a `prisma.$transaction` for unrelated reasons and want to
- * add a quota check without nesting transactions. Use the wrapper
- * unless you specifically need this.
+ * `enforceQuotaInTx` is exported for advanced callers already inside a
+ * `prisma.$transaction` for unrelated reasons; `checkQuota` is read-only
+ * (UI badges / dashboards).
+ *
+ * # Plan name decoupling (§15a R3)
+ *
+ * The numeric quota schedule used to live in OSS as a literal
+ * `PLAN_QUOTAS: Record<"FREE"|"PRO"|"ENTERPRISE", PlanQuotas>`. That is
+ * the SaaS commercial pricing structure and does not belong in the
+ * AGPL public repo. It has been replaced with a `QuotaPolicyProvider`
+ * interface that the Cloud build registers at startup:
+ *
+ *   import { setQuotaPolicy } from "@/server/services/quotas";
+ *   setQuotaPolicy(new StripeBackedQuotaPolicy());
+ *
+ * OSS ships a default provider (`DefaultUnboundedQuotaPolicy`) that
+ * returns `{ agents: ∞, pipelines: ∞, environments: ∞ }` for every
+ * plan name. Self-hosted deployments are therefore unmetered by
+ * default — the engine, advisory locks, and error shapes are all
+ * preserved so a self-hosted operator who wants quotas can register a
+ * provider of their own.
+ *
+ * `PLAN_QUOTAS` is kept exported as a back-compat alias that reflects
+ * whatever the active provider returns for the `DEFAULT` plan only.
+ * Cloud-specific tiers (FREE/PRO/ENTERPRISE) are NOT enumerable from
+ * OSS code.
  */
 
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma";
 
 export type QuotaName = "agents" | "pipelines" | "environments";
-export type PlanName = "FREE" | "PRO" | "ENTERPRISE";
+
+/**
+ * Plan identifier. OSS only knows `"DEFAULT"`; Cloud overlays additional
+ * commercial tiers ("FREE", "PRO", "ENTERPRISE") via its own provider.
+ * Anything the Cloud overlay does not recognise falls through to the
+ * provider's DEFAULT entry.
+ *
+ * Kept as `string` (not a closed union) so the OSS type system does
+ * not encode the commercial tier names.
+ */
+export type PlanName = string;
 
 export interface PlanQuotas {
   agents: number;
@@ -36,15 +66,95 @@ export interface PlanQuotas {
   environments: number;
 }
 
-export const PLAN_QUOTAS: Record<PlanName, PlanQuotas> = {
-  FREE: { agents: 5, pipelines: 10, environments: 1 },
-  PRO: { agents: 100, pipelines: 100, environments: 10 },
-  ENTERPRISE: {
-    agents: Number.POSITIVE_INFINITY,
-    pipelines: Number.POSITIVE_INFINITY,
-    environments: Number.POSITIVE_INFINITY,
-  },
+/**
+ * Provider interface — Cloud registers a commercial overlay; OSS uses
+ * the default unbounded provider.
+ *
+ * Implementations MUST be pure (no I/O, no global state) so the quota
+ * engine can call them from inside a held transaction without leaking
+ * the connection.
+ */
+export interface QuotaPolicyProvider {
+  /**
+   * Return the numeric limits for the given plan name. Implementations
+   * MUST return a value for every input — if the plan is unrecognised,
+   * fall through to the provider's default (typically the same as
+   * `DEFAULT_PLAN`).
+   */
+  getPlanQuotas(plan: PlanName): PlanQuotas;
+}
+
+const UNBOUNDED: PlanQuotas = {
+  agents: Number.POSITIVE_INFINITY,
+  pipelines: Number.POSITIVE_INFINITY,
+  environments: Number.POSITIVE_INFINITY,
 };
+
+/**
+ * Default OSS provider: every plan is unbounded. Self-hosted deployments
+ * are unmetered by default. To enforce limits, register a custom
+ * provider at startup via `setQuotaPolicy(...)`.
+ */
+export class DefaultUnboundedQuotaPolicy implements QuotaPolicyProvider {
+  getPlanQuotas(_plan: PlanName): PlanQuotas {
+    return UNBOUNDED;
+  }
+}
+
+let activePolicy: QuotaPolicyProvider = new DefaultUnboundedQuotaPolicy();
+
+/**
+ * Replace the active quota policy provider. Intended to be called once
+ * at startup by the Cloud build's bootstrap (`cloud/src/bootstrap.ts`)
+ * before any HTTP handler or scheduler runs. Tests can also override
+ * this to install a finite-limit provider that exercises the engine's
+ * QuotaExceededError branch.
+ *
+ * Returns the previous provider so a test can restore it in afterEach.
+ */
+export function setQuotaPolicy(
+  provider: QuotaPolicyProvider,
+): QuotaPolicyProvider {
+  const prev = activePolicy;
+  activePolicy = provider;
+  return prev;
+}
+
+/** Inspect the currently-registered provider. Mostly for tests. */
+export function getQuotaPolicy(): QuotaPolicyProvider {
+  return activePolicy;
+}
+
+/**
+ * Reset to the OSS default. Provided for `afterEach` test cleanup;
+ * production code should never call this.
+ */
+export function resetQuotaPolicy(): void {
+  activePolicy = new DefaultUnboundedQuotaPolicy();
+}
+
+/**
+ * Back-compat: `PLAN_QUOTAS.DEFAULT` reflects whatever the active provider
+ * returns for the `DEFAULT` plan. Cloud-specific commercial tiers are
+ * NOT enumerable here — Cloud code queries its own provider directly.
+ *
+ * @deprecated New callers should use `getActivePlanQuotas(plan)`.
+ *   Kept exported for the migration window so existing imports keep
+ *   working while §16b cloud-7 wires the Cloud overlay.
+ */
+export const PLAN_QUOTAS: Readonly<Record<"DEFAULT", PlanQuotas>> = Object.freeze({
+  get DEFAULT(): PlanQuotas {
+    return activePolicy.getPlanQuotas("DEFAULT");
+  },
+}) as Readonly<Record<"DEFAULT", PlanQuotas>>;
+
+/**
+ * Resolve the quotas for `plan` against the active provider.
+ * Preferred over the deprecated `PLAN_QUOTAS` accessor.
+ */
+export function getActivePlanQuotas(plan: PlanName): PlanQuotas {
+  return activePolicy.getPlanQuotas(plan);
+}
 
 export interface QuotaResult {
   allowed: boolean;
@@ -119,7 +229,7 @@ export async function checkQuota(
     throw new Error(`Organization ${organizationId} not found`);
   }
   const plan = org.plan as PlanName;
-  const limit = PLAN_QUOTAS[plan][quota];
+  const limit = activePolicy.getPlanQuotas(plan)[quota];
   const current = await countCurrentUsage(prisma, organizationId, quota);
   return {
     allowed: current < limit,
@@ -154,7 +264,7 @@ export async function enforceQuotaInTx(
     throw new Error(`Organization ${organizationId} not found`);
   }
   const plan = org.plan as PlanName;
-  const limit = PLAN_QUOTAS[plan][quota];
+  const limit = activePolicy.getPlanQuotas(plan)[quota];
   const current = await countCurrentUsage(tx, organizationId, quota);
   if (current >= limit) {
     throw new QuotaExceededError(organizationId, plan, quota, limit, current);
@@ -208,7 +318,7 @@ export async function withQuotaCheck<T>(
       throw new Error(`Organization ${organizationId} not found`);
     }
     const plan = org.plan as PlanName;
-    const limit = PLAN_QUOTAS[plan][quota];
+    const limit = activePolicy.getPlanQuotas(plan)[quota];
     const after = await countCurrentUsage(txLike, organizationId, quota);
     if (after > limit) {
       throw new QuotaExceededError(organizationId, plan, quota, limit, after);

@@ -213,7 +213,7 @@ describe("POST /api/agent/enroll -- demo mode", () => {
 });
 
 describe("POST /api/agent/enroll -- per-org agents quota (Phase 5v)", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockReset(prismaMock);
     vi.mocked(verifyEnrollmentToken).mockResolvedValue(true);
     vi.mocked(generateNodeToken).mockResolvedValue({
@@ -226,11 +226,23 @@ describe("POST /api/agent/enroll -- per-org agents quota (Phase 5v)", () => {
       async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
     );
     prismaMock.$executeRaw.mockResolvedValue(0 as never);
+
+    // Install a Cloud-like finite-limit quota provider for this suite so
+    // the OSS default (unbounded) doesn't trivially pass the gate.
+    const { setQuotaPolicy } = await import("@/server/services/quotas");
+    setQuotaPolicy({
+      getPlanQuotas: () => ({ agents: 5, pipelines: 10, environments: 1 }),
+    });
+  });
+
+  afterEach(async () => {
+    const { resetQuotaPolicy } = await import("@/server/services/quotas");
+    resetQuotaPolicy();
   });
 
   it("returns 402 Payment Required with the upgrade envelope when the plan limit is reached", async () => {
-    // FREE plan limit is 5 agents; we're already at 5 -> reject.
-    prismaMock.organization.findUnique.mockResolvedValue({ plan: "FREE" } as never);
+    // Finite test provider caps agents at 5; the org is already at 5 -> reject.
+    prismaMock.organization.findUnique.mockResolvedValue({ plan: "DEFAULT" } as never);
     prismaMock.vectorNode.count.mockResolvedValueOnce(5);
 
     const req = makeRequest({
@@ -244,7 +256,7 @@ describe("POST /api/agent/enroll -- per-org agents quota (Phase 5v)", () => {
     expect(body).toMatchObject({
       error: "Plan limit reached",
       quota: "agents",
-      plan: "FREE",
+      plan: "DEFAULT",
       limit: 5,
       current: 5,
       upgradeUrl: expect.stringContaining("vectorflow.sh"),

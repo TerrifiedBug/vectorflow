@@ -182,10 +182,10 @@ describe("environment router", () => {
 
   describe("create", () => {
     // Helper: wire the quota path so $transaction calls fn(prismaMock), the
-    // org lookup returns the FREE plan, and the env count stays below the
-    // limit before AND after the create. Returns the env that .create
-    // resolved with so tests can keep asserting against the row shape.
-    function arrangeQuotaPasses(opts: {
+    // org lookup returns the DEFAULT plan, a Cloud-like finite policy caps
+    // environments at 1, and the env count stays below the limit before AND
+    // after the create.
+    async function arrangeQuotaPasses(opts: {
       organizationId: string;
       currentEnvCount: number;
     }) {
@@ -194,9 +194,15 @@ describe("environment router", () => {
       );
       prismaMock.$executeRaw.mockResolvedValue(0 as never);
       prismaMock.organization.findUnique.mockResolvedValue({
-        plan: "FREE",
+        plan: "DEFAULT",
       } as never);
-      // Pre-check, then post-check — both must be below PLAN_QUOTAS.FREE.environments=1
+      // Install a finite policy for this test scope — Cloud-equivalent
+      // overlay mimicking the environments=1 limit.
+      const { setQuotaPolicy } = await import("@/server/services/quotas");
+      setQuotaPolicy({
+        getPlanQuotas: () => ({ agents: 5, pipelines: 10, environments: 1 }),
+      });
+      // Pre-check, then post-check — both must be below environments=1.
       prismaMock.environment.count
         .mockResolvedValueOnce(opts.currentEnvCount)
         .mockResolvedValueOnce(opts.currentEnvCount + 1);
@@ -208,7 +214,7 @@ describe("environment router", () => {
         organizationId: "org-1",
       } as never);
       // FREE plan allows 1 environment; we're at 0 -> create succeeds.
-      arrangeQuotaPasses({ organizationId: "org-1", currentEnvCount: 0 });
+      await arrangeQuotaPasses({ organizationId: "org-1", currentEnvCount: 0 });
       prismaMock.environment.create.mockResolvedValue(
         makeEnvironment({ name: "Staging" }) as never,
       );
@@ -237,7 +243,7 @@ describe("environment router", () => {
         organizationId: "org-1",
       } as never);
       // FREE plan limit is 1 environment; we're already at 1 -> reject.
-      arrangeQuotaPasses({ organizationId: "org-1", currentEnvCount: 1 });
+      await arrangeQuotaPasses({ organizationId: "org-1", currentEnvCount: 1 });
 
       await expect(
         editorCaller.create({ name: "Staging", teamId: "team-1" }),
