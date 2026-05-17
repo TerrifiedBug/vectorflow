@@ -55,10 +55,20 @@ async function requireOrgRole(
     where: {
       userId_organizationId: { userId, organizationId },
     },
-    select: { role: true },
+    select: {
+      role: true,
+      organization: { select: { suspendedAt: true, deletedAt: true } },
+    },
   });
   if (!member) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Not a member of this organization" });
+  }
+  // Lifecycle check: grants cannot be managed for suspended or deleted orgs.
+  if (member.organization.suspendedAt) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Organization is suspended" });
+  }
+  if (member.organization.deletedAt) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Organization not found" });
   }
   const role = member.role as OrgMemberRoleLiteral;
   if (minRole === "OWNER" && role !== "OWNER") {
@@ -68,7 +78,6 @@ async function requireOrgRole(
     throw new TRPCError({ code: "FORBIDDEN", message: "OWNER or ADMIN role required" });
   }
   return role;
-}
 
 export const orgAccessGrantRouter = router({
   /**
