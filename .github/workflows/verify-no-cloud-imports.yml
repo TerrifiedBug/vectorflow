@@ -1,0 +1,35 @@
+name: Verify No Cloud Imports
+
+# Plan §15a / §16c enforcement — fail any PR that introduces an import
+# from the closed `cloud/` workspace into OSS source (`src/...`). Without
+# this guard a stray import would contaminate the AGPL build with code
+# the cloud workspace licenses under non-AGPL terms.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "cloud/**"
+      - "scripts/verify-no-cloud-imports.sh"
+      - ".github/workflows/verify-no-cloud-imports.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "cloud/**"
+      - "scripts/verify-no-cloud-imports.sh"
+      - ".github/workflows/verify-no-cloud-imports.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-no-cloud-imports:
+    name: License-boundary guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run guard
+        run: ./scripts/verify-no-cloud-imports.sh

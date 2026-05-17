@@ -1,0 +1,20 @@
+{
+  "name": "@vectorflow/cloud",
+  "version": "0.0.0",
+  "description": "VectorFlow Cloud — SaaS-only surface (signup, billing, operator console, AWS KMS provider). Licensed under LICENSE-CLOUD.md.",
+  "private": true,
+  "license": "SEE LICENSE-CLOUD.md",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "files": [
+    "src",
+    "LICENSE-CLOUD.md",
+    "README.md"
+  ]
+}

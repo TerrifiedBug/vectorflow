@@ -7,3 +7,6 @@ docs
 .env*
 .claude
 agent
+
+# Cloud workspace lives in this repo per plan §16c but ships separately.
+cloud

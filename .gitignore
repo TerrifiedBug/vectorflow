@@ -93,4 +93,7 @@ tmp/
 /blob-report/
 /playwright/.cache/
 e2e/.auth/
-/cloud/
+# Cloud workspace lives at /cloud/ inside this repo per plan §16c
+# option (a). Tracked but excluded from OSS distribution via the
+# package.json `files` field; the actual contents carry their own
+# LICENSE-CLOUD.md (non-AGPL).
