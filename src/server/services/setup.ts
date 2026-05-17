@@ -15,6 +15,7 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { ulid } from "ulid";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
+import { isCloudBuildProfile } from "@/lib/security-headers";
 
 function buildTelemetryFields(choice: "yes" | "no") {
   if (choice === "yes") {
@@ -70,6 +71,22 @@ export async function completeSetup(input: {
         role: "OWNER",
       },
     });
+
+    // OSS only: mirror super-admin into the PlatformOperator table so the
+    // post-PR-#354 admin/settings gate (`requirePlatformOperator`) actually
+    // resolves a row. Cloud bootstrap doesn't call completeSetup, but gate
+    // defensively in case that ever changes. Role INCIDENT is highest rank;
+    // OSS is single-operator so granularity is moot — INCIDENT just future-
+    // proofs against gates being raised later (backup restore → INFRA+, etc.).
+    if (!isCloudBuildProfile()) {
+      await tx.platformOperator.create({
+        data: {
+          email: input.email,
+          name: input.name,
+          role: "INCIDENT",
+        },
+      });
+    }
 
     const team = await tx.team.create({
       data: {

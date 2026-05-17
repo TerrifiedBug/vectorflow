@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
 import { assertManualAssignmentAllowed } from "@/server/routers/team";
+import { isCloudBuildProfile } from "@/lib/security-headers";
 
 export const adminRouter = router({
   /** List all platform users with their team memberships */
@@ -117,10 +118,44 @@ export const adminRouter = router({
       if (input.userId === ctx.session.user!.id! && !input.isSuperAdmin) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot remove your own super admin status" });
       }
-      return prisma.user.update({
-        where: { id: input.userId },
-        data: { isSuperAdmin: input.isSuperAdmin },
-        select: { id: true, isSuperAdmin: true },
+
+      // OSS only: mirror the super-admin flip into PlatformOperator so the
+      // admin/settings gate (`requirePlatformOperator`, post PR #354) stays
+      // consistent with `User.isSuperAdmin` without manual SQL. Cloud uses a
+      // separate operator-provisioning surface (`User.isSuperAdmin` is not
+      // toggled there), so this branch is a no-op in Cloud.
+      //
+      // Atomic: both writes inside one transaction so the two rows can never
+      // diverge on transient failure. On re-grant after a prior revoke, the
+      // existing PlatformOperator row is reused with `deletedAt` cleared so we
+      // don't trip the email-unique constraint.
+      return prisma.$transaction(async (tx) => {
+        const updated = await tx.user.update({
+          where: { id: input.userId },
+          data: { isSuperAdmin: input.isSuperAdmin },
+          select: { id: true, email: true, name: true, isSuperAdmin: true },
+        });
+
+        if (!isCloudBuildProfile()) {
+          if (input.isSuperAdmin) {
+            await tx.platformOperator.upsert({
+              where: { email: updated.email },
+              create: {
+                email: updated.email,
+                name: updated.name ?? updated.email,
+                role: "INCIDENT",
+              },
+              update: { deletedAt: null },
+            });
+          } else {
+            await tx.platformOperator.updateMany({
+              where: { email: updated.email, deletedAt: null },
+              data: { deletedAt: new Date() },
+            });
+          }
+        }
+
+        return { id: updated.id, isSuperAdmin: updated.isSuperAdmin };
       });
     }),
 
