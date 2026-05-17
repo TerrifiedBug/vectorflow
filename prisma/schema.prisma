@@ -1322,12 +1322,38 @@ model PlatformAuditLog {
    */
   prevHash        String
   hash            String
+  /**
+   * Audit object-store archive timestamp. NULL until the Cloud-side
+   * archiver sidecar (§16b cloud-11) successfully PUTs the row to its
+   * configured object store (S3 with Object Lock governance mode +
+   * 7y retention in production). The archiver polls
+   * `WHERE archivedAt IS NULL ORDER BY createdAt ASC` and stamps this
+   * column on success.
+   *
+   * OSS / self-hosted installs leave the archiver disabled; this
+   * column stays NULL everywhere and costs nothing.
+   */
+  archivedAt      DateTime?
+  /**
+   * Object key (or equivalent identifier) returned by the archiver
+   * sidecar on successful upload. Free-form text so the same column
+   * works for S3 keys, GCS object paths, Azure blob names, etc.
+   * NULL when `archivedAt` is NULL.
+   */
+  archivedObjectKey String?
 
   @@index([stampId, createdAt])
   @@index([operatorId])
   @@index([action])
   @@index([organizationId])
   @@index([createdAt])
+  // Archiver poll query (`WHERE archivedAt IS NULL ORDER BY createdAt`).
+  // The migration creates this as a PARTIAL index on `createdAt WHERE archivedAt IS NULL`
+  // (see 20260517000006_platform_audit_archived). Prisma cannot express partial
+  // index predicates in schema.prisma; we declare only the index column(s) with the
+  // matching `map` name so Prisma recognises the index by name and does not generate
+  // a follow-up migration that would replace the partial index with an unbounded one.
+  @@index([createdAt], map: "PlatformAuditLog_archivedAt_createdAt_idx")
 }
 
 /**
