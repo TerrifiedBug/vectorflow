@@ -7,6 +7,24 @@ import { isDemoMode } from "@/lib/is-demo-mode";
 import type { Role, OrgMemberRole } from "@/generated/prisma";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
 
+/**
+ * Sentinel error attached as `cause` on the TRPCError thrown by `orgProcedure`
+ * when an organization is suspended. The HTTP adapter's `responseMeta` callback
+ * (see `src/app/api/trpc/[trpc]/route.ts`) detects this sentinel and overrides
+ * the response status to `423 Locked` (plan §12.2 / §18 verification gate).
+ *
+ * tRPC has no built-in mapping for `423`, so we keep the in-band error code
+ * `FORBIDDEN` (for client-side `code` checks) and override only the HTTP
+ * status at the transport boundary.
+ */
+export class OrgSuspendedError extends Error {
+  readonly _tag = "OrgSuspendedError" as const;
+  constructor() {
+    super("Organization is suspended");
+    this.name = "OrgSuspendedError";
+  }
+}
+
 export const createContext = async () => {
   const session = await auth();
   let ipAddress: string | null = null;
@@ -44,6 +62,63 @@ export const createContext = async () => {
   return { session, ipAddress, organizationId, orgMemberRole };
 };
 
+/**
+ * Request-level suspension probe (plan §12.2 / Phase 5t).
+ *
+ * The `responseMeta` HTTP-status override on the fetch adapter only
+ * works for non-streaming clients (httpLink / httpBatchLink). The app's
+ * production client uses `httpBatchStreamLink` which establishes the
+ * response status before procedures run, then encodes per-procedure
+ * errors inside the JSON stream — `responseMeta`'s `errors[]` is empty
+ * at the time it's called for streaming requests so it can't see the
+ * orgProcedure throw.
+ *
+ * To cover both client shapes the tRPC route handler calls this helper
+ * BEFORE handing off to `fetchRequestHandler` and returns a 423 directly
+ * when the caller's org is suspended. The orgProcedure middleware still
+ * throws (defence in depth: a request that somehow bypasses the
+ * route-level check is still rejected at the procedure boundary).
+ */
+export async function isCallerOrgSuspended(): Promise<{
+  suspended: boolean;
+  deleted: boolean;
+}> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) return { suspended: false, deleted: false };
+
+  // Resolve the caller's org the same way `createContext` does, but
+  // without touching the rest of the ctx graph.
+  const membership =
+    (await prisma.orgMember.findFirst({
+      where: { userId, NOT: { organizationId: DEFAULT_ORG_ID } },
+      select: { organizationId: true },
+      orderBy: { createdAt: "desc" },
+    })) ??
+    (await prisma.orgMember.findFirst({
+      where: { userId },
+      select: { organizationId: true },
+    }));
+  const organizationId = membership?.organizationId ?? DEFAULT_ORG_ID;
+
+  // OSS default org never suspends or deletes — bail out early.
+  if (organizationId === DEFAULT_ORG_ID) {
+    return { suspended: false, deleted: false };
+  }
+
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { suspendedAt: true, deletedAt: true },
+  });
+  // Preserve `orgProcedure`'s precedence: deleted org wins over suspended
+  // so the request returns NOT_FOUND (404), not Locked (423). Same rule
+  // is documented in `src/lib/org-constraints.ts`.
+  if (!org || org.deletedAt) {
+    return { suspended: false, deleted: true };
+  }
+  return { suspended: Boolean(org.suspendedAt), deleted: false };
+}
+
 type Context = Awaited<ReturnType<typeof createContext>>;
 
 const t = initTRPC.context<Context>().create({
@@ -72,7 +147,11 @@ export const orgProcedure = protectedProcedure.use(async ({ ctx, next }) => {
     });
     if (!org || org.deletedAt) throw new TRPCError({ code: "NOT_FOUND" });
     if (org.suspendedAt)
-      throw new TRPCError({ code: "FORBIDDEN", message: "Organization is suspended" });
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Organization is suspended",
+        cause: new OrgSuspendedError(),
+      });
   }
   return next({ ctx: { ...ctx, organizationId: ctx.organizationId } });
 });
