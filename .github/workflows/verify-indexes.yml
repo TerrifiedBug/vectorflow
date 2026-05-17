@@ -1,0 +1,80 @@
+name: Verify Indexes
+
+# Plan §16b OSS item 6 — block PRs that add tenant tables without a
+# `(organizationId, ...)` composite btree index. Without one the
+# post-RLS hot path becomes a Seq Scan over the whole tenant population
+# the moment a few thousand orgs land on a stamp, and the §12.5 p95 SLO
+# cannot be held.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - "scripts/verify-indexes.sh"
+      - ".github/workflows/verify-indexes.yml"
+  pull_request:
+    paths:
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - "scripts/verify-indexes.sh"
+      - ".github/workflows/verify-indexes.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-indexes:
+    name: Composite-index coverage
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Use the TimescaleDB image to catch hypertable + chunk-index
+        # propagation issues. The verify-indexes script only checks
+        # parent-table indexes; TimescaleDB replicates them to chunks
+        # automatically.
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: vectorflow
+          POSTGRES_USER: vectorflow
+          POSTGRES_PASSWORD: verify-indexes-test
+        options: >-
+          --health-cmd "pg_isready -U vectorflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://vectorflow:verify-indexes-test@localhost:5432/vectorflow
+
+      - name: Verify composite indexes
+        run: ./scripts/verify-indexes.sh
+        env:
+          DATABASE_URL: postgresql://vectorflow:verify-indexes-test@localhost:5432/vectorflow
