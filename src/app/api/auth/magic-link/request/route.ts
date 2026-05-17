@@ -28,6 +28,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { mintMagicLink, MagicLinkSsoOnlyError } from "@/server/services/auth/magic-link";
 import { resolveOrgIdFromHost } from "@/lib/host-to-org";
 import { warnLog, infoLog } from "@/lib/logger";
+import { checkIpRateLimit } from "@/app/api/_lib/ip-rate-limit";
 
 interface RequestBody {
   email?: string;
@@ -36,13 +37,18 @@ interface RequestBody {
 const IS_DEV = process.env.NODE_ENV !== "production";
 
 export async function POST(req: NextRequest) {
+  // Rate-limit before touching the DB: each request can mint a token
+  // and trigger an outbound email, so unbounded calls are a practical
+  // DoS / mail-spam vector.
+  const limited = await checkIpRateLimit(req, "auth:magic-link-request", 5);
+  if (limited) return limited;
+
   let body: RequestBody = {};
   try {
     body = await req.json();
   } catch {
     body = {};
   }
-
   if (typeof body.email !== "string" || !isPlausibleEmail(body.email)) {
     return NextResponse.json({ ok: true }); // anti-enumeration; same response shape
   }
