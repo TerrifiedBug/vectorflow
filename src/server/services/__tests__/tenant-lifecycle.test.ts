@@ -157,6 +157,17 @@ describe("requestOrgDeletion", () => {
       requestOrgDeletion("org-a", { kind: "customer", id: "u1" }),
     ).rejects.toThrow(/not found/);
   });
+
+  it("throws when concurrent cancel cleared deletedAt before CAS reread", async () => {
+    mocks.organizationFindUnique
+      .mockResolvedValueOnce({ id: "org-a", deletedAt: null }) // initial read (no deletion)
+      .mockResolvedValueOnce({ id: "org-a", deletedAt: null }); // reread after CAS miss: cancel cleared it
+    mocks.organizationUpdateMany.mockResolvedValue({ count: 0 }); // CAS missed
+
+    await expect(
+      requestOrgDeletion("org-a", { kind: "customer", id: "u1" }),
+    ).rejects.toThrow(/concurrent cancel/i);
+  });
 });
 
 describe("cancelOrgDeletion", () => {

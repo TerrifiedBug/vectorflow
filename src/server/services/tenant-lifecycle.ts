@@ -107,7 +107,7 @@ export async function requestOrgDeletion(
     });
 
     if (count === 0) {
-      // Lost the race — re-read to surface the actual deletedAt.
+      // Lost the CAS race — re-read to surface the actual deletedAt.
       const reread = await tx.organization.findUnique({
         where: { id: organizationId },
         select: { deletedAt: true },
@@ -116,9 +116,17 @@ export async function requestOrgDeletion(
         // Org was hard-deleted between our read and the CAS write.
         throw new Error(`Organization ${organizationId} not found`);
       }
-      const deletedAt = reread.deletedAt ?? now;
+      if (reread.deletedAt === null) {
+        // A concurrent cancelOrgDeletion cleared deletedAt BETWEEN our initial
+        // read (which saw null) and the CAS write. The org is currently active.
+        // Throw so the caller can retry; surfacing a fabricated pending-date here
+        // would incorrectly report a deletion that was never committed.
+        throw new Error(
+          `Organization ${organizationId} had no pending deletion (concurrent cancel detected); retry the request`,
+        );
+      }
       return {
-        deletedAt,
+        deletedAt: reread.deletedAt,
         alreadyPending: true as const,
         wrote: false,
       };
