@@ -55,6 +55,7 @@ model Organization {
   magicLinkTokens      MagicLinkToken[]
   webhookConfirmations WebhookConfirmation[]
   billingProviderRefs  BillingProviderRef[]
+  operatorApprovals    OperatorApprovalRequest[]
 }
 
 model OrgMember {
@@ -179,8 +180,76 @@ model PlatformOperator {
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
 
-  accessGrants        OrgAccessGrant[]
+  accessGrants OrgAccessGrant[]
   platformAuditEntries PlatformAuditLog[]
+  approvalsRequested OperatorApprovalRequest[] @relation("OperatorApprovalRequester")
+  approvalsApproved  OperatorApprovalRequest[] @relation("OperatorApprovalApprover")
+  approvalsExecuted  OperatorApprovalRequest[] @relation("OperatorApprovalExecutor")
+}
+
+/// `OperatorApprovalRequest` — generic 2-person approval primitive for
+/// operator-side actions that require dual control (per plan §16b
+/// cloud-9). Examples: backup restore, force hard-delete before grace
+/// expires, KMS key rotation that keeps prior versions.
+///
+/// The model is generic on purpose (matches the §15a R1 / R3
+/// rationale: keep generic primitives in OSS, keep action-specific
+/// code in the closed surface). Each operation type is identified by
+/// a free-form `operation` string; the Cloud-side consumer interprets
+/// `payload` JSON to drive the actual side-effect.
+///
+/// State machine:
+///   PENDING_APPROVAL → APPROVED → EXECUTING → COMPLETED | FAILED
+///                ↘ CANCELLED   ↘ CANCELLED
+///                ↘ EXPIRED
+///
+/// Two-person rule enforced at the service layer:
+/// `approvedByOperatorId !== requestedByOperatorId`. Same-person
+/// approval is a database-level violation (UNIQUE index on the pair
+/// would not catch it; the check is in the service code).
+///
+/// `expiresAt` exists so a stale request can't be approved years
+/// later. Default TTL is 24 hours; configurable per operation.
+model OperatorApprovalRequest {
+  id                     String           @id @default(cuid())
+  /// Operation identifier. Free-form; Cloud conventions:
+  /// "backup.restore", "tenant.hard_delete_force", "kms.rotate_keep".
+  operation              String
+  /// Free-form JSON payload interpreted by the operation handler.
+  /// For "backup.restore", carries `{ recoveryPointArn: string }`.
+  payload                Json
+  /// Organization this action affects, when applicable. NULL for
+  /// stamp-wide actions (KMS rotation, infra changes).
+  organizationId         String?
+  organization           Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  /// Operator who requested the action.
+  requestedByOperatorId  String
+  requestedByOperator    PlatformOperator @relation("OperatorApprovalRequester", fields: [requestedByOperatorId], references: [id], onDelete: Cascade)
+  /// Second operator who approved. NULL until approved. Service-layer
+  /// invariant: MUST be different from requestedByOperatorId.
+  approvedByOperatorId   String?
+  approvedByOperator     PlatformOperator? @relation("OperatorApprovalApprover", fields: [approvedByOperatorId], references: [id], onDelete: SetNull)
+  /// Free-text justification from the requester.
+  reason                 String
+  /// Operator who executed the approved action. NULL until executed.
+  executedByOperatorId   String?
+  executedByOperator     PlatformOperator? @relation("OperatorApprovalExecutor", fields: [executedByOperatorId], references: [id], onDelete: SetNull)
+  /// State machine status. See model docstring for transitions.
+  status                 String           @default("PENDING_APPROVAL")
+  /// Failure reason if status=FAILED.
+  failureReason          String?
+  requestedAt            DateTime         @default(now())
+  approvedAt             DateTime?
+  executedAt             DateTime?
+  completedAt            DateTime?
+  /// Approval window. Past this, status is auto-flipped to EXPIRED
+  /// by a cron sweep (or rejected at approve-time).
+  expiresAt              DateTime
+
+  @@index([status, expiresAt])
+  @@index([organizationId])
+  @@index([operation])
+  @@index([requestedByOperatorId])
 }
 
 // ─── End multi-tenancy models ───────────────────────────────────────────────
