@@ -46,6 +46,41 @@ interface CachedDnsAnswer {
 const dnsCache = new Map<string, CachedDnsAnswer>();
 
 /**
+ * Permanent (host-genuinely-does-not-exist) DNS error codes. Anything
+ * NOT in this set is treated as transient and the caller falls back to
+ * the retry loop instead of dead-lettering. Cf. Codex P1 follow-up on
+ * PR #342 — `catch(() => [])` was conflating SERVFAIL with NXDOMAIN.
+ */
+const PERMANENT_DNS_CODES = new Set<string>([
+  "ENOTFOUND",
+  "ENODATA",
+  "ENONAME",
+]);
+
+interface ResolveOutcome {
+  addresses: string[];
+  /** Set iff the underlying `dns.resolveN` threw a transient error. */
+  transientError: NodeJS.ErrnoException | null;
+}
+
+async function safeResolve(
+  fn: () => Promise<string[]>,
+): Promise<ResolveOutcome> {
+  try {
+    return { addresses: await fn(), transientError: null };
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code && PERMANENT_DNS_CODES.has(e.code)) {
+      // Permanent — no such record for this family. Empty answer is the
+      // signal; the caller intersects across both families before
+      // deciding it really is a dead-letter.
+      return { addresses: [], transientError: null };
+    }
+    return { addresses: [], transientError: e };
+  }
+}
+
+/**
  * Resolve `hostname` to public IPs only. Cached for 30s to defeat
  * rebinding attacks that flip the DNS answer between validation and
  * connect. Throws when:
@@ -83,12 +118,33 @@ export async function resolveHostnamePublic(
     return cached.addresses;
   }
 
+  // Resolve both families. We have to distinguish:
+  //
+  //   * a definitive "host does not exist" answer (ENOTFOUND / ENODATA /
+  //     ENONAME, or an empty array on success) — permanent failure,
+  //     dead-letter the delivery, AND
+  //   * a transient resolver problem (SERVFAIL, TIMEOUT, EAI_AGAIN,
+  //     REFUSED, …) — retryable, the destination might be perfectly
+  //     fine and the resolver itself is having a bad day.
+  //
+  // The previous shape (`catch(() => [])`) collapsed both buckets into
+  // "no answer → DnsRebindingError → dead-letter", which dropped real
+  // webhooks during brief DNS incidents. Cf. Codex P1 follow-up on PR #342.
   const [v4, v6] = await Promise.all([
-    dns.resolve4(hostname).catch(() => [] as string[]),
-    dns.resolve6(hostname).catch(() => [] as string[]),
+    safeResolve(() => dns.resolve4(hostname)),
+    safeResolve(() => dns.resolve6(hostname)),
   ]);
-  const all = [...v4, ...v6];
+  const all = [...v4.addresses, ...v6.addresses];
   if (all.length === 0) {
+    // If EITHER family threw a transient error, surface as a plain
+    // Error so the retry loop treats it as retryable. Only when both
+    // families returned a definitive no-answer do we dead-letter.
+    const transient = v4.transientError ?? v6.transientError;
+    if (transient) {
+      throw new Error(
+        `DNS resolver problem for ${hostname}: ${transient.message}`,
+      );
+    }
     throw new DnsRebindingError(
       `DNS: hostname ${hostname} did not resolve`,
     );
