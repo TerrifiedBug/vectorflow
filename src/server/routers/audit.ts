@@ -821,11 +821,23 @@ export const auditRouter = router({
       //    for super-admin callers with very large orgs.
       const scopePartial = !scope.isSuperAdmin;
       const truncated = items.length >= 50_000;
+      const partial = scopePartial || truncated;
+      // Chain verification of a partial/truncated export will report
+      // failures even when the data is not tampered (the verifier
+      // expects a genesis-to-tail contiguous chain). Surface this in
+      // the response so clients / the bundled verifier can distinguish
+      // expected scope failures from real tampering.
+      const verificationWarning = partial
+        ? (truncated
+            ? "Export is truncated at 50 000 rows; chain verification will report a broken chain. Export again once you have a full-chain view or use pagination."
+            : "Export is scope-restricted; chain verification will report prevHash mismatches for rows outside your view. Only super-admin full-chain exports are suitable for tamper detection.")
+        : null;
       return {
         envelope: envelopeJson,
         rowCount: items.length,
-        partial: scopePartial || truncated,
+        partial,
         truncated,
+        verificationWarning,
       };
     }),
 });

@@ -39,7 +39,7 @@ export function AuditChainExportButton() {
     try {
       // Imperative fetch via queryClient — avoids registering a long-lived
       // react-query subscription just for a one-shot export download.
-      const { envelope, rowCount, partial, truncated } = await queryClient.fetchQuery({
+      const { envelope, rowCount, partial, truncated, verificationWarning } = await queryClient.fetchQuery({
         ...trpc.audit.exportChain.queryOptions(),
         // Bypass React Query's cache: audit chain data changes on every
         // new write, so a stale cache hit can produce an outdated export
@@ -47,14 +47,14 @@ export function AuditChainExportButton() {
         staleTime: 0,
       });
 
-      // Embed the partial / truncated flag in the downloaded file so the
-      // bundled verifier (`scripts/verify-audit-chain.ts`) can distinguish
-      // a scoped export from a full chain without relying on filename hints.
-      // Parsing: the verifier reads { partial, truncated, ...chain }.
+      // Embed the partial / truncated flag and any verification warning in
+      // the downloaded file so the bundled verifier can distinguish expected
+      // scope failures from real tampering.
       const envelopeParsed = JSON.parse(envelope) as Record<string, unknown>;
       const downloadPayload = JSON.stringify({
         partial: partial ?? false,
         truncated: truncated ?? false,
+        ...(verificationWarning ? { verificationWarning } : {}),
         ...envelopeParsed,
       }, null, 2);
 
@@ -76,8 +76,10 @@ export function AuditChainExportButton() {
           ? " (partial — scope-restricted view)"
           : "";
       const summary = `Exported ${rowCount} chained audit rows${partialNote}.`;
-      // We don't use a toast lib here to avoid taking a hard dep; if
-      // the page wraps a Toaster elsewhere, swap this for toast.success.
+      if (verificationWarning) {
+        // eslint-disable-next-line no-console
+        console.warn("[audit-chain-export] verification warning:", verificationWarning);
+      }
       // eslint-disable-next-line no-console
       console.info("[audit-chain-export]", summary);
     } catch (err) {
