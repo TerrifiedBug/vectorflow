@@ -17,3 +17,5 @@ export type {
   RecordInboundWebhookArgs,
   RecordInboundWebhookResult,
 } from "./inbound-webhook-event";
+/** @deprecated Use `RecordInboundWebhookResult`. */
+export type { RecordInboundWebhookResult as RecordStripeEventResult } from "./inbound-webhook-event";
