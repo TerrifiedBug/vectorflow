@@ -28,6 +28,7 @@ import { getOrgSettings } from "@/lib/org-settings";
 import { resolveOrgIdFromHost } from "@/lib/host-to-org";
 import { webauthnProvider } from "@/server/services/auth/webauthn-provider";
 import { magicLinkProvider } from "@/server/services/auth/magic-link-provider";
+import { getJwtSecretForOrg } from "@/server/services/auth/jwt-key";
 
 async function getClientIp(): Promise<string | null> {
   try {
@@ -332,10 +333,43 @@ async function getAuthInstance() {
         infoLog("auth", `OIDC provider registered: ${oidc.displayName} (${oidc.issuer})`);
       }
 
+      // Per-org JWT signing secret derived from the org's DEK via
+      // `deriveJwtSigningKey` — see plan §8 / §16b OSS-3 + jwt-key.ts.
+      // Falls back to NEXTAUTH_SECRET when the org has no DEK (OSS /
+      // self-hosted path). When fromEnv=true we pass the raw env string
+      // directly so existing sessions signed with the raw secret remain
+      // valid; base64url-encoding would produce a different key and
+      // immediately invalidate all existing tokens on upgrade.
+      const jwtKeyResult = await getJwtSecretForOrg(orgId);
+      // Env-fallback: use the raw NEXTAUTH_SECRET string so Auth.js
+      // uses the same key it would have used before per-org derivation.
+      // DEK-derived: base64url-encode the Buffer; also include the legacy
+      // NEXTAUTH_SECRET as a second entry so pre-existing JWTs that were
+      // signed with the env secret before DEK rollout remain verifiable.
+      // Auth.js verifies against all entries in the array; signing always
+      // uses the first entry (the DEK-derived key).
+      //
+      // The legacy secret is ONLY included when rotationCounter === 0
+      // (the org has never explicitly revoked sessions). Once the operator
+      // calls revokeOrgSessions (counter > 0), all pre-DEK tokens have
+      // been explicitly invalidated; including the legacy secret after that
+      // would allow those old tokens to bypass the revocation.
+      const includesLegacySecret =
+        !jwtKeyResult.fromEnv &&
+        jwtKeyResult.rotationCounter === 0 &&
+        !!process.env.NEXTAUTH_SECRET;
+      const secretArg = jwtKeyResult.fromEnv
+        ? [process.env.NEXTAUTH_SECRET!]
+        : [
+            jwtKeyResult.value.toString("base64url"),
+            ...(includesLegacySecret ? [process.env.NEXTAUTH_SECRET!] : []),
+          ];
+
       const instance = NextAuth({
         ...authConfig,
         adapter: PrismaAdapter(prisma),
         providers,
+        secret: secretArg,
         callbacks: {
           ...authConfig.callbacks,
           async signIn({ user, account, profile }) {
@@ -478,10 +512,23 @@ async function getAuthInstance() {
         },
       });
 
-      _instanceByOrg.set(orgId, instance);
+      // Do NOT cache when KMS failed: the next request must retry KMS
+      // so the instance is rebuilt with the correct per-org key once
+      // the KMS recovers. Caching the env-fallback instance would pin
+      // this org to the shared env secret until manual restart.
+      if (!jwtKeyResult.kmsFailure) {
+        _instanceByOrg.set(orgId, instance);
+      }
       _initPromiseByOrg.delete(orgId);
       return instance;
     })();
+    // Clear the in-flight promise entry whether init succeeds or fails so
+    // a transient DB/KMS failure on bootstrap does not pin a rejected promise
+    // in the map and cause every subsequent request for the org to keep failing
+    // until manual cache invalidation or process restart.
+    promise.catch(() => {
+      _initPromiseByOrg.delete(orgId);
+    });
     _initPromiseByOrg.set(orgId, promise);
     return promise;
   }
