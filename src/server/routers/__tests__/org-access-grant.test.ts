@@ -56,6 +56,7 @@ const callerFactory = t.createCallerFactory(orgAccessGrantRouter);
 function caller(role: "OWNER" | "ADMIN" | "MEMBER" = "OWNER") {
   prismaMock.orgMember.findUnique.mockResolvedValue({
     role,
+    organization: { suspendedAt: null, deletedAt: null },
   } as never);
   return callerFactory({
     session: { user: { id: "u-1", email: "owner@example.test" } },
