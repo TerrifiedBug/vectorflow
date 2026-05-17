@@ -257,9 +257,19 @@ export function verifyPlatformAuditChain(
   }>,
   expectedGenesis: string,
 ): { ok: true } | { ok: false; brokenAt: number; reason: string } {
+  // Sort rows into a deterministic order before walking the chain.
+  // `createdAt` alone is not a stable sort key because two writes in the
+  // same millisecond on the same stamp can be returned in either order by a
+  // simple `ORDER BY createdAt` query. Tie-break on `id` (lexicographic)
+  // which is a monotonic CUID that tracks insertion order within a ms.
+  const sorted = [...rows].sort(
+    (a, b) =>
+      a.createdAt.getTime() - b.createdAt.getTime() ||
+      a.id.localeCompare(b.id),
+  );
   let expectedPrev = expectedGenesis;
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
+  for (let i = 0; i < sorted.length; i++) {
+    const r = sorted[i];
     if (r.prevHash !== expectedPrev) {
       return {
         ok: false,
