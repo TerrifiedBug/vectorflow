@@ -39,14 +39,13 @@ export function AuditChainExportButton() {
     try {
       // Imperative fetch via queryClient — avoids registering a long-lived
       // react-query subscription just for a one-shot export download.
-      const { envelope, rowCount, partial, truncated } = await queryClient.fetchQuery(
-        trpc.audit.exportChain.queryOptions({
-          // Bypass React Query's cache: audit chain data changes on every
-          // new write, so a stale cache hit can produce an outdated export
-          // that a verifier flags as broken or missing recent rows.
-          staleTime: 0,
-        }),
-      );
+      const { envelope, rowCount, partial, truncated } = await queryClient.fetchQuery({
+        ...trpc.audit.exportChain.queryOptions(),
+        // Bypass React Query's cache: audit chain data changes on every
+        // new write, so a stale cache hit can produce an outdated export
+        // that a verifier flags as broken or missing recent rows.
+        staleTime: 0,
+      });
 
       // Embed the partial / truncated flag in the downloaded file so the
       // bundled verifier (`scripts/verify-audit-chain.ts`) can distinguish
