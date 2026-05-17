@@ -304,9 +304,13 @@ export function deriveJwtSigningKey(
     );
   }
   // Encode the counter into the HKDF info so the derived key changes
-  // when the counter changes. `r0` is the default state; the counter
-  // is a stable suffix so old callers passing no counter and new
-  // callers passing `0` derive byte-identical keys.
-  const info = Buffer.from(`vf:v3:jwt:r${rotationCounter}`, "utf8");
+  // when the counter changes. When rotationCounter is 0, use the legacy
+  // `vf:v3:jwt` info (no suffix) to remain byte-identical with deployments
+  // that minted JWTs before this field was introduced. Non-zero counters
+  // use `vf:v3:jwt:r${rotationCounter}` to derive distinct keys.
+  const info =
+    rotationCounter === 0
+      ? Buffer.from("vf:v3:jwt", "utf8")
+      : Buffer.from(`vf:v3:jwt:r${rotationCounter}`, "utf8");
   return Buffer.from(hkdfSync("sha256", dek, Buffer.alloc(0), info, 32));
 }
