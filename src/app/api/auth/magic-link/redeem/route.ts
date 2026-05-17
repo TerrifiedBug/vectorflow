@@ -77,6 +77,10 @@ export async function GET(req: NextRequest) {
         `default-src 'none'; ` +
         `style-src 'unsafe-inline'; ` +
         `script-src '${BOUNCER_SCRIPT_HASH}'; ` +
+        // connect-src 'self' is required so the bouncer script can call
+        // fetch('/api/auth/csrf'). Without it, `default-src 'none'`
+        // blocks the CSRF fetch and the form is never submitted.
+        `connect-src 'self'; ` +
         `form-action 'self'; ` +
         `base-uri 'none'`,
     },
