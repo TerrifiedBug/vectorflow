@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { sanitizeSentryEvent } from "@/lib/sentry-sanitize";
 
 const dsn = process.env.SENTRY_DSN;
 
@@ -32,7 +33,13 @@ if (dsn) {
         }
       }
 
-      return event;
+      // Plan §11 denylist sanitization — strip request bodies,
+      // sensitive query params, and denylisted headers BEFORE the
+      // event leaves the process. Multi-tenant SaaS request bodies
+      // routinely contain customer secrets we don't want in Sentry's
+      // indexes (pipeline YAML, agent enrollment tokens, magic-link
+      // redeem tokens).
+      return sanitizeSentryEvent(event);
     },
   });
 }
