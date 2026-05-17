@@ -20,19 +20,13 @@
  *   });
  *   if (!processed) return new Response(null, { status: 200 });
  *
- * Implementation: rely on the PK uniqueness of
- * `IdempotentInboundWebhookEvent.id` to surface duplicates as Prisma's
- * P2002 error, which we translate into `processed: false`. Any other
- * error propagates so the caller returns 5xx and the upstream retries.
- *
- * NOTE on cross-source collisions: `id` is the PK across all sources, so
- * an unfortunate id collision between providers (e.g. a custom webhook
- * id that happens to match a Stripe `evt_…`) would cause the second
- * delivery to be skipped. In practice every provider uses a unique
- * id-space (Stripe `evt_*`, GitHub UUID, PagerDuty incident-key) so this
- * is vanishingly rare. The `(source, processedAt)` index lets diagnostics
- * scope to a single source if a collision is ever suspected.
- */
+ * Implementation: rely on the composite PK uniqueness of
+ * `IdempotentInboundWebhookEvent(source, id)` to surface duplicate
+ * deliveries as Prisma's P2002 error, which we translate into
+ * `processed: false`. Any other error propagates so the caller returns
+ * 5xx and the upstream retries. The composite key ensures that the same
+ * event id arriving from two different sources is treated as two distinct
+ * events (correct behaviour) rather than a duplicate (silent data loss).
 
 import { prisma } from "@/lib/prisma";
 

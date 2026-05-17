@@ -1105,15 +1105,13 @@ model AuditLog {
  */
 model IdempotentInboundWebhookEvent {
   /**
-   * Provider-issued event id (e.g. Stripe `evt_1Op4...`, GitHub
-   * delivery UUID). PK enforces idempotency across deliveries.
-   *
-   * NOTE: collisions across different sources are theoretically
-   * possible but vanishingly rare given each source uses its own
-   * id-space (ULID, UUID, evt_*); we also index `(source, id)` so
-   * callers can scope reads to a single source for diagnostics.
+   * Provider-issued event id. Combined with `source` as the composite
+   * primary key to enforce per-source idempotency without cross-source
+   * id-space collisions (e.g. a Stripe `evt_…` that coincidentally
+   * matches a GitHub delivery UUID must be treated as two distinct
+   * events). Callers read via `source_id: { source, id }` in Prisma.
    */
-  id          String   @id
+  id          String
   /**
    * Provider name. Lowercase, stable identifier of the webhook
    * source ("stripe", "github", "gitlab", "pagerduty", ...).
@@ -1132,6 +1130,8 @@ model IdempotentInboundWebhookEvent {
    */
   processedAt DateTime @default(now())
 
+
+  @@id([source, id])
   @@index([processedAt])
   @@index([type])
   @@index([source])
