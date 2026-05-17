@@ -134,12 +134,13 @@ for table in "${TABLES[@]}"; do
          AND t.relname  = '$table'
          AND am.amname  = 'btree'
          AND i.indpred IS NULL
-         AND a.attname  = 'organizationId';
+         AND a.attname  = 'organizationId'
+         AND i.indnkeyatts > 1;
     "
   )
 
   if [[ "${hit:-0}" -lt 1 ]]; then
-    echo "FAIL  $table  — no btree index whose first column is organizationId"
+    echo "FAIL  $table  — no composite btree index whose first column is organizationId (single-column indexes do not count)"
     failures=$((failures + 1))
   else
     echo "OK    $table  ($hit composite index(es) leading on organizationId)"
