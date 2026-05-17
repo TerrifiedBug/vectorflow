@@ -33,12 +33,21 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "@/trpc/init";
 import { withOrgTx } from "@/lib/with-org-tx";
 import { writeAuditLog } from "@/server/services/audit";
+import type { PrismaClient } from "@/generated/prisma";
 import {
   approveOrgAccessGrant,
   revokeOrgAccessGrant,
   listOrgAccessGrantsForOrg,
 } from "@/server/services/org-access-grant";
-import type { PrismaClient } from "@/generated/prisma";
+
+/**
+ * Narrow view of the Prisma client used inside `requireOrgRole`.
+ * Accepts both the global `prisma` instance and the `tx` client
+ * returned by `withOrgTx` (cast to `PrismaClient` — at runtime Prisma's
+ * transaction callback IS a full client, but `withOrgTx.ts` types it
+ * narrowly to `{ $executeRaw }` for simplicity).
+ */
+type MemberQueryClient = Pick<PrismaClient, "orgMember">;
 
 type OrgMemberRoleLiteral = "OWNER" | "ADMIN" | "MEMBER";
 
@@ -50,7 +59,7 @@ type OrgMemberRoleLiteral = "OWNER" | "ADMIN" | "MEMBER";
  * and the OrgMember row is visible under RLS.
  */
 async function requireOrgRole(
-  tx: Pick<PrismaClient, "orgMember">,
+  client: MemberQueryClient,
   userId: string | undefined,
   organizationId: string,
   minRole: "OWNER" | "ADMIN",
@@ -58,7 +67,7 @@ async function requireOrgRole(
   if (!userId) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
-  const member = await tx.orgMember.findUnique({
+  const member = await client.orgMember.findUnique({
     where: {
       userId_organizationId: { userId, organizationId },
     },
@@ -102,7 +111,10 @@ export const orgAccessGrantRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      return withOrgTx(input.organizationId, async (tx) => {
+      // Wrap in withOrgTx so app.org_id is set for RLS before we read OrgMember.
+      return withOrgTx(input.organizationId, async (_tx) => {
+        // Cast: Prisma's tx callback IS a full PrismaClient at runtime.
+        const tx = _tx as unknown as PrismaClient;
         await requireOrgRole(tx, ctx.session.user?.id, input.organizationId, "ADMIN");
         return listOrgAccessGrantsForOrg(input.organizationId, {
           limit: input.limit,
@@ -128,7 +140,8 @@ export const orgAccessGrantRouter = router({
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
-      const approved = await withOrgTx(input.organizationId, async (tx) => {
+      const approved = await withOrgTx(input.organizationId, async (_tx) => {
+        const tx = _tx as unknown as PrismaClient;
         await requireOrgRole(tx, userId, input.organizationId, "ADMIN");
 
         // Pre-check: the grant must exist, belong to this org, be un-approved,
@@ -203,7 +216,8 @@ export const orgAccessGrantRouter = router({
 
       // Run inside withOrgTx so app.org_id is set for RLS and so the
       // grant read + revoke service call are in the same transaction.
-      const { revoked, didRevoke } = await withOrgTx(input.organizationId, async (tx) => {
+      const { revoked, didRevoke } = await withOrgTx(input.organizationId, async (_tx) => {
+        const tx = _tx as unknown as PrismaClient;
         await requireOrgRole(tx, userId, input.organizationId, "OWNER");
 
         const grant = await tx.orgAccessGrant.findUnique({
