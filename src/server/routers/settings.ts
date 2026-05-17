@@ -796,16 +796,15 @@ export const settingsRouter = router({
     }),
 
   /**
-   * Phase 5z: toggle the per-organisation opt-in for non-allowlisted AI
-   * provider URLs. Plan §9 requires that custom (non `api.openai.com` /
-   * `api.anthropic.com`) base URLs require BOTH an org OWNER acting AND
-   * an explicit org-wide opt-in flag flipped on. This is the writable
-   * path for that flag.
+   * Toggle the per-organisation opt-in for non-allowlisted AI provider
+   * URLs. Custom (non `api.openai.com` / `api.anthropic.com`) base URLs
+   * require BOTH an org OWNER acting AND an explicit org-wide opt-in
+   * flag flipped on. This is the writable path for that flag.
    *
    * Authorisation: caller MUST be `OrgMember.role === "OWNER"` for the
-   * resolved org. Sitting under `requirePlatformOperator` would force every
-   * tenant to ping operators to enable a custom provider \u2014 the plan
-   * scopes this decision to the org owner, not the platform operator.
+   * resolved org. Sitting under `requirePlatformOperator` would force
+   * every tenant to ping operators to enable a custom provider — this
+   * decision belongs to the org owner, not the platform operator.
    */
   updateAiBaseUrlOptIn: protectedProcedure
     .use(denyInDemo())

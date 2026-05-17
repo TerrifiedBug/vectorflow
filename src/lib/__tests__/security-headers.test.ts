@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import {
   contentSecurityPolicy,
-  isCloudBuildProfile,
+  isStrictMultiTenantMode,
   securityHeaders,
 } from "../security-headers";
 
@@ -11,7 +11,7 @@ describe("contentSecurityPolicy", () => {
     expect(csp).toMatch(/script-src 'self' 'unsafe-eval' 'unsafe-inline'/);
   });
 
-  it("Cloud profile (with nonce): removes 'unsafe-eval' and 'unsafe-inline' from script-src", () => {
+  it("Strict multi-tenant mode (with nonce): removes 'unsafe-eval' and 'unsafe-inline' from script-src", () => {
     const csp = contentSecurityPolicy("abc123nonceXYZ==");
     expect(csp).not.toMatch(/'unsafe-eval'/);
     // unsafe-inline should be gone from script-src but stays on
@@ -25,7 +25,7 @@ describe("contentSecurityPolicy", () => {
     expect(scriptDirective).not.toMatch(/'unsafe-eval'/);
   });
 
-  it("Cloud profile: embeds the supplied nonce + 'strict-dynamic'", () => {
+  it("Strict multi-tenant mode: embeds the supplied nonce + 'strict-dynamic'", () => {
     const csp = contentSecurityPolicy("nonceXYZ");
     expect(csp).toMatch(/script-src 'self' 'nonce-nonceXYZ' 'strict-dynamic'/);
   });
@@ -42,27 +42,27 @@ describe("contentSecurityPolicy", () => {
   });
 });
 
-describe("isCloudBuildProfile", () => {
-  const ORIGINAL = process.env.VF_CLOUD_BUILD;
+describe("isStrictMultiTenantMode", () => {
+  const ORIGINAL = process.env.VF_STRICT_MULTI_TENANT;
   afterEach(() => {
-    if (ORIGINAL === undefined) delete process.env.VF_CLOUD_BUILD;
-    else process.env.VF_CLOUD_BUILD = ORIGINAL;
+    if (ORIGINAL === undefined) delete process.env.VF_STRICT_MULTI_TENANT;
+    else process.env.VF_STRICT_MULTI_TENANT = ORIGINAL;
   });
 
-  it("false when VF_CLOUD_BUILD is unset", () => {
-    delete process.env.VF_CLOUD_BUILD;
-    expect(isCloudBuildProfile()).toBe(false);
+  it("false when VF_STRICT_MULTI_TENANT is unset", () => {
+    delete process.env.VF_STRICT_MULTI_TENANT;
+    expect(isStrictMultiTenantMode()).toBe(false);
   });
 
-  it("true when VF_CLOUD_BUILD === 'true'", () => {
-    process.env.VF_CLOUD_BUILD = "true";
-    expect(isCloudBuildProfile()).toBe(true);
+  it("true when VF_STRICT_MULTI_TENANT === 'true'", () => {
+    process.env.VF_STRICT_MULTI_TENANT = "true";
+    expect(isStrictMultiTenantMode()).toBe(true);
   });
 
   it("false for any other value (defence against typos enabling strict mode by accident)", () => {
     for (const v of ["1", "yes", "TRUE", "false", ""]) {
-      process.env.VF_CLOUD_BUILD = v;
-      expect(isCloudBuildProfile()).toBe(false);
+      process.env.VF_STRICT_MULTI_TENANT = v;
+      expect(isStrictMultiTenantMode()).toBe(false);
     }
   });
 });
@@ -83,8 +83,8 @@ describe("securityHeaders", () => {
       (h) => h.key === "Content-Security-Policy",
     )?.value;
     expect(csp).toBeDefined();
-    // The static CSP is the OSS-default permissive variant; the Cloud
-    // middleware swaps it per-request when VF_CLOUD_BUILD=true.
+    // The static CSP is the default permissive variant; strict multi-tenant
+    // middleware swaps it per-request when VF_STRICT_MULTI_TENANT=true.
     expect(csp).toMatch(/script-src 'self' 'unsafe-eval' 'unsafe-inline'/);
   });
 });

@@ -1,8 +1,8 @@
 /**
  * Resolve the organization an incoming HTTP request belongs to from its
- * `Host:` header (plan §8 / Phase 5w).
+ * `Host:` header.
  *
- * Cloud uses a wildcard subdomain layout: `<orgSlug>.vectorflow.sh` (and
+ * Wildcard subdomain layout: `<orgSlug>.vectorflow.sh` (and
  * `<orgSlug>.agents.vectorflow.sh` for the agent ingress). The first DNS
  * label of the request host is therefore the tenant slug, and routes that
  * load per-org configuration (OIDC settings, brand colours, etc.) MUST

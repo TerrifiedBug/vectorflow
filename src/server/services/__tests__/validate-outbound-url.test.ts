@@ -9,46 +9,46 @@ vi.mock("dns/promises", () => ({
 
 import dns from "dns/promises";
 import {
-  isCloudStrictOutbound,
+  isStrictOutboundMode,
   validateOutboundUrl,
 } from "@/server/services/url-validation";
 
 const resolve4Mock = vi.mocked(dns.resolve4);
 const resolve6Mock = vi.mocked(dns.resolve6);
 
-describe("isCloudStrictOutbound", () => {
-  const original = process.env.VF_CLOUD_STRICT_OUTBOUND;
+describe("isStrictOutboundMode", () => {
+  const original = process.env.VF_STRICT_OUTBOUND;
 
   afterEach(() => {
     if (original === undefined) {
-      delete process.env.VF_CLOUD_STRICT_OUTBOUND;
+      delete process.env.VF_STRICT_OUTBOUND;
     } else {
-      process.env.VF_CLOUD_STRICT_OUTBOUND = original;
+      process.env.VF_STRICT_OUTBOUND = original;
     }
   });
 
   it("returns false when env var is unset", () => {
-    delete process.env.VF_CLOUD_STRICT_OUTBOUND;
-    expect(isCloudStrictOutbound()).toBe(false);
+    delete process.env.VF_STRICT_OUTBOUND;
+    expect(isStrictOutboundMode()).toBe(false);
   });
 
   it("returns false when env var is anything other than the string 'true'", () => {
-    process.env.VF_CLOUD_STRICT_OUTBOUND = "1";
-    expect(isCloudStrictOutbound()).toBe(false);
-    process.env.VF_CLOUD_STRICT_OUTBOUND = "yes";
-    expect(isCloudStrictOutbound()).toBe(false);
-    process.env.VF_CLOUD_STRICT_OUTBOUND = "TRUE";
-    expect(isCloudStrictOutbound()).toBe(false);
+    process.env.VF_STRICT_OUTBOUND = "1";
+    expect(isStrictOutboundMode()).toBe(false);
+    process.env.VF_STRICT_OUTBOUND = "yes";
+    expect(isStrictOutboundMode()).toBe(false);
+    process.env.VF_STRICT_OUTBOUND = "TRUE";
+    expect(isStrictOutboundMode()).toBe(false);
   });
 
   it("returns true when env var is the literal 'true'", () => {
-    process.env.VF_CLOUD_STRICT_OUTBOUND = "true";
-    expect(isCloudStrictOutbound()).toBe(true);
+    process.env.VF_STRICT_OUTBOUND = "true";
+    expect(isStrictOutboundMode()).toBe(true);
   });
 });
 
 describe("validateOutboundUrl", () => {
-  const original = process.env.VF_CLOUD_STRICT_OUTBOUND;
+  const original = process.env.VF_STRICT_OUTBOUND;
 
   beforeEach(() => {
     resolve4Mock.mockReset();
@@ -57,15 +57,15 @@ describe("validateOutboundUrl", () => {
 
   afterEach(() => {
     if (original === undefined) {
-      delete process.env.VF_CLOUD_STRICT_OUTBOUND;
+      delete process.env.VF_STRICT_OUTBOUND;
     } else {
-      process.env.VF_CLOUD_STRICT_OUTBOUND = original;
+      process.env.VF_STRICT_OUTBOUND = original;
     }
   });
 
-  describe("with VF_CLOUD_STRICT_OUTBOUND unset (OSS default)", () => {
+  describe("with VF_STRICT_OUTBOUND unset (OSS default)", () => {
     beforeEach(() => {
-      delete process.env.VF_CLOUD_STRICT_OUTBOUND;
+      delete process.env.VF_STRICT_OUTBOUND;
     });
 
     it("is a no-op for localhost URLs (OSS users can target local services)", async () => {
@@ -90,9 +90,9 @@ describe("validateOutboundUrl", () => {
     });
   });
 
-  describe("with VF_CLOUD_STRICT_OUTBOUND=true", () => {
+  describe("with VF_STRICT_OUTBOUND=true", () => {
     beforeEach(() => {
-      process.env.VF_CLOUD_STRICT_OUTBOUND = "true";
+      process.env.VF_STRICT_OUTBOUND = "true";
     });
 
     it("rejects http://localhost", async () => {

@@ -1,5 +1,5 @@
 /**
- * Per-organization resource quotas (plan §10, §15a R3 generalisation).
+ * Per-organization resource quotas.
  *
  * # Engine
  *
@@ -20,16 +20,16 @@
  * `prisma.$transaction` for unrelated reasons; `checkQuota` is read-only
  * (UI badges / dashboards).
  *
- * # Plan name decoupling (§15a R3)
+ * # Plan name decoupling
  *
- * The numeric quota schedule used to live in OSS as a literal
- * `PLAN_QUOTAS: Record<"FREE"|"PRO"|"ENTERPRISE", PlanQuotas>`. That is
- * the SaaS commercial pricing structure and does not belong in the
- * AGPL public repo. It has been replaced with a `QuotaPolicyProvider`
- * interface that the Cloud build registers at startup:
+ * The numeric quota schedule is supplied by an injectable
+ * `QuotaPolicyProvider`. The default provider returns `UNBOUNDED` limits
+ * (i.e. no quota enforcement) so a baseline deployment is functional
+ * without registering anything. Deployments that need finite tiers
+ * register their own provider at startup:
  *
  *   import { setQuotaPolicy } from "@/server/services/quotas";
- *   setQuotaPolicy(new StripeBackedQuotaPolicy());
+ *   setQuotaPolicy(new MyQuotaPolicy());
  *
  * OSS ships a default provider (`DefaultUnboundedQuotaPolicy`) that
  * returns `{ agents: ∞, pipelines: ∞, environments: ∞ }` for every
@@ -50,9 +50,9 @@ import type { Prisma } from "@/generated/prisma";
 export type QuotaName = "agents" | "pipelines" | "environments";
 
 /**
- * Plan identifier. OSS only knows `"DEFAULT"`; Cloud overlays additional
+ * Plan identifier. OSS only knows `"DEFAULT"`;s additional
  * commercial tiers ("FREE", "PRO", "ENTERPRISE") via its own provider.
- * Anything the Cloud overlay does not recognise falls through to the
+ * Anything the does not recognise falls through to the
  * provider's DEFAULT entry.
  *
  * Kept as `string` (not a closed union) so the OSS type system does
@@ -105,10 +105,9 @@ let activePolicy: QuotaPolicyProvider = new DefaultUnboundedQuotaPolicy();
 
 /**
  * Replace the active quota policy provider. Intended to be called once
- * at startup by the Cloud build's bootstrap (`cloud/src/bootstrap.ts`)
- * before any HTTP handler or scheduler runs. Tests can also override
- * this to install a finite-limit provider that exercises the engine's
- * QuotaExceededError branch.
+ * at startup by the deployment bootstrap before any HTTP handler or
+ * scheduler runs. Tests can also override this to install a finite-limit
+ * provider that exercises the engine's QuotaExceededError branch.
  *
  * Returns the previous provider so a test can restore it in afterEach.
  */
@@ -134,13 +133,12 @@ export function resetQuotaPolicy(): void {
 }
 
 /**
- * Back-compat: `PLAN_QUOTAS.DEFAULT` reflects whatever the active provider
- * returns for the `DEFAULT` plan. Cloud-specific commercial tiers are
- * NOT enumerable here — Cloud code queries its own provider directly.
+ * Back-compat: `PLAN_QUOTAS.DEFAULT` reflects whatever the active
+ * provider returns for the `DEFAULT` plan. Custom plan names are not
+ * enumerable here — a deployment that overrides the provider queries
+ * that provider directly.
  *
  * @deprecated New callers should use `getActivePlanQuotas(plan)`.
- *   Kept exported for the migration window so existing imports keep
- *   working while §16b cloud-7 wires the Cloud overlay.
  */
 export const PLAN_QUOTAS: Readonly<Record<"DEFAULT", PlanQuotas>> = Object.freeze({
   get DEFAULT(): PlanQuotas {

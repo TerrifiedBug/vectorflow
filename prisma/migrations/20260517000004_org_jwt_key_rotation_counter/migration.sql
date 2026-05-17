@@ -1,4 +1,4 @@
--- Plan §8 (auth hardening), §16b OSS item 3.
+-- Per-org JWT signing key rotation counter.
 --
 -- Per-org JWT signing keys derive from the org's DEK via HKDF; the
 -- rotation counter is mixed into the HKDF `info` parameter so an
@@ -19,4 +19,4 @@ ALTER TABLE "Organization"
   ADD COLUMN "jwtKeyRotationCounter" INTEGER NOT NULL DEFAULT 0;
 
 COMMENT ON COLUMN "Organization"."jwtKeyRotationCounter" IS
-  'Plan §8 — incremented to revoke all org sessions. Mixed into HKDF info of deriveJwtSigningKey.';
+  'Incremented to revoke every active session for this org. Mixed into HKDF info of deriveJwtSigningKey so the resulting signing key changes when the counter changes.';

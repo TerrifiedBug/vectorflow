@@ -182,7 +182,7 @@ describe("environment router", () => {
 
   describe("create", () => {
     // Helper: wire the quota path so $transaction calls fn(prismaMock), the
-    // org lookup returns the DEFAULT plan, a Cloud-like finite policy caps
+    // org lookup returns the DEFAULT plan, a finite policy caps
     // environments at 1, and the env count stays below the limit before AND
     // after the create.
     async function arrangeQuotaPasses(opts: {
@@ -196,8 +196,8 @@ describe("environment router", () => {
       prismaMock.organization.findUnique.mockResolvedValue({
         plan: "DEFAULT",
       } as never);
-      // Install a finite policy for this test scope — Cloud-equivalent
-      // overlay mimicking the environments=1 limit.
+      // Install a finite policy for this test scope — finite-tier
+      // policy mimicking the environments=1 limit.
       const { setQuotaPolicy } = await import("@/server/services/quotas");
       setQuotaPolicy({
         getPlanQuotas: () => ({ agents: 5, pipelines: 10, environments: 1 }),
@@ -378,7 +378,7 @@ describe("environment router", () => {
       ).rejects.toThrow("Environment not found");
     });
 
-    it("looks up org slug for Cloud org and mints scoped token", async () => {
+    it("looks up org slug for multi-tenant org and mints scoped token", async () => {
       prismaMock.environment.findUnique.mockResolvedValue(
         makeEnvironment({ organizationId: "org-acme" }) as never,
       );
@@ -399,7 +399,7 @@ describe("environment router", () => {
       expect(result.hint).toBe("vfe_acme_abc...");
     });
 
-    it("throws INTERNAL_SERVER_ERROR when Cloud org row is missing", async () => {
+    it("throws INTERNAL_SERVER_ERROR when multi-tenant org row is missing", async () => {
       prismaMock.environment.findUnique.mockResolvedValue(
         makeEnvironment({ organizationId: "org-gone" }) as never,
       );
@@ -410,7 +410,7 @@ describe("environment router", () => {
       ).rejects.toThrow("Environment's organization not found");
     });
 
-    it("throws INTERNAL_SERVER_ERROR when Cloud org is soft-deleted", async () => {
+    it("throws INTERNAL_SERVER_ERROR when multi-tenant org is soft-deleted", async () => {
       prismaMock.environment.findUnique.mockResolvedValue(
         makeEnvironment({ organizationId: "org-deleted" }) as never,
       );

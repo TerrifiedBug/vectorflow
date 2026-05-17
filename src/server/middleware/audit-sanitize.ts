@@ -55,20 +55,20 @@ export function computeDiff(
   return Object.keys(diff).length > 0 ? diff : null;
 }
 
-// ─── Cloud-strict allowlist (plan §11) ─────────────────────────────────────
+// ─── Strict allowlist for audit sanitization ──────────────────────────────────
 //
 // The legacy `SENSITIVE_KEYS` denylist + `sanitizeInput` is the OSS default:
 // known-sensitive keys are redacted; everything else flows through. That
-// model is fine for self-hosted where the operator IS the customer, but
-// for SaaS the plan calls for the opposite default — "anything not
-// explicitly allowed is [REDACTED]" — so a forgotten new column doesn't
-// silently leak into audit exports.
+// model is fine for self-hosted where the operator IS the customer. The
+// strict mode takes the opposite approach — "anything not explicitly
+// allowed is [REDACTED]" — so a forgotten new column doesn't silently leak
+// into audit exports.
 //
 // `AUDIT_SAFE_KEYS` is the curated allowlist. `sanitizeInputStrict`
 // emits the source value only when the key is in the allowlist; any
-// other key surfaces as `[REDACTED]`. Cloud will switch the
-// `audit.diff`/`audit.metadata` write paths to this function via a
-// future PR; OSS keeps the existing `sanitizeInput` behaviour.
+// other key surfaces as `[REDACTED]`. The overlay can switch the
+// `audit.diff`/`audit.metadata` write paths to use this function; OSS
+// keeps the existing `sanitizeInput` behaviour.
 //
 // The allowlist is intentionally conservative — additions are reviewed
 // per-PR since each one expands the audit-export surface.

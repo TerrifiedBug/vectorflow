@@ -1,5 +1,5 @@
 /**
- * Per-org JWT signing key resolution + revocation (plan §8 / §16b OSS-3).
+ * Per-org JWT signing key resolution + revocation..
  *
  * NextAuth's `secret` option accepts a string OR an array of strings.
  * For Cloud orgs we derive the secret from the org's DEK via

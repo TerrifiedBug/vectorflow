@@ -1,9 +1,9 @@
 /**
- * Customer-admin OrgAccessGrant router (plan §5 break-glass workflow).
+ * Customer-admin OrgAccessGrant router.
  *
  * This is the customer half of the break-glass flow. The operator
  * side opens / revokes grants via the operator console
- * (`vectorflow-cloud:cloud/src/server/routers/operator-console.ts`);
+ * (`operator-console` in the closed-surface workspace);
  * this router lets the customer's OWNER / ADMIN approve them.
  *
  * Procedures:
@@ -13,8 +13,8 @@
  *   - `approve({ grantId })` — customer-admin approves a pending
  *     grant. Sets `approvedByCustomerAdminId` + writes an `AuditLog`
  *     row. OWNER + ADMIN role on the OrgMember. The KMS grant token
- *     issuance is a Cloud-only follow-up (the OSS approval path
- *     records intent; the Cloud bootstrap mints the GrantToken on
+ *     issuance is a follow-up (the OSS approval path
+ *     records intent; the calling overlay mints the GrantToken on
  *     approval transition).
  *   - `revoke({ grantId })` — customer-admin revokes a grant before
  *     it expires (e.g. operator opened it for the wrong reason).

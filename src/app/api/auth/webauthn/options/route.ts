@@ -1,5 +1,5 @@
 /**
- * WebAuthn challenge issuance endpoint (plan §8 / §16b OSS-8).
+ * WebAuthn challenge issuance endpoint.
  *
  * Browser calls this BEFORE `navigator.credentials.get()` to obtain the
  * `PublicKeyCredentialRequestOptionsJSON` it needs to invoke the

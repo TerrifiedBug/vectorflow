@@ -1,9 +1,9 @@
 /**
- * `OperatorApprovalRequest` lifecycle service (plan §16b cloud-9).
+ * `OperatorApprovalRequest` lifecycle service (plan).
  *
  * Generic 2-person approval primitive for operator-side actions
  * (backup restore, force hard-delete, KMS rotation). The service owns
- * the state machine; Cloud-side handlers own the side-effect (the
+ * the state machine; handlers own the side-effect (the
  * actual restore, the actual KMS call).
  *
  * State machine:
@@ -216,7 +216,7 @@ export interface MarkExecutingInput {
 }
 
 /**
- * Mark an APPROVED request as EXECUTING. The Cloud-side handler calls
+ * Mark an APPROVED request as EXECUTING. The handler calls
  * this immediately before invoking the side-effect (e.g. AWS Backup
  * StartRestoreJob). If the handler crashes between mark-executing and
  * complete, the request is stuck at EXECUTING — the operator console

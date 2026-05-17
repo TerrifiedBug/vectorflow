@@ -1,7 +1,7 @@
--- PlatformAuditLog: add archive columns for the Cloud-side audit
--- archiver sidecar (§16b cloud-11). OSS / self-hosted installs leave
--- both columns NULL and the archiver disabled; the cost is two NULL
--- columns per row.
+-- PlatformAuditLog: add optional archive columns so an external archiver
+-- sidecar can stamp rows it has copied to long-term storage. Default
+-- deployments leave both columns NULL and run no archiver; the cost is
+-- two NULL columns per row.
 
 ALTER TABLE "PlatformAuditLog"
   ADD COLUMN "archivedAt"        TIMESTAMP(3),

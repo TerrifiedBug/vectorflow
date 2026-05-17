@@ -10,9 +10,8 @@ import { cloudCookieConfig } from "@/lib/cloud-cookies";
  */
 export const authConfig: NextAuthConfig = {
   session: { strategy: "jwt" },
-  // Cloud build (`VF_CLOUD_BUILD=true`) flips to `__Host-` prefixed
-  // cookies — per-subdomain isolation per plan §8. OSS / dev profile
-  // leaves NextAuth defaults so `http://localhost` still works.
+  // Use `cloudCookieConfig()` to enable per-subdomain cookie isolation
+  // when configured; otherwise use NextAuth defaults for development.
   ...(cloudCookieConfig() ? { cookies: cloudCookieConfig() } : {}),
   pages: {
     signIn: "/login",

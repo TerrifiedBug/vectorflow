@@ -60,7 +60,7 @@ ALTER TABLE "OrgMember"
         FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- Backfill: put every existing user into the default org as OWNER so self-hosted
--- admins retain full access. In Cloud the signup flow will set the correct role.
+-- admins retain full access. A multi-tenant signup flow will set the correct role.
 INSERT INTO "OrgMember" ("id", "userId", "organizationId", "role", "createdAt")
 SELECT
     'om_' || "id",

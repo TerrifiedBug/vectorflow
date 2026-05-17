@@ -5,13 +5,7 @@
  * PagerDuty, custom integrations) where the upstream retries on a 5xx
  * response uses this to guarantee once-only processing.
  *
- * Renamed from the Stripe-branded `recordStripeEventOrSkip` in 2026-05-17
- * (plan §15a R1) so the AGPL OSS repo does not ship a Stripe-named
- * primitive. The shim `recordStripeEventOrSkip` is kept exported for a
- * deprecation window so closed-surface handlers can migrate at their own
- * pace; new callers MUST use `recordInboundWebhookOrSkip(...)` directly.
- *
- * Usage from a closed-surface handler:
+ * Usage from a webhook handler:
  *
  *   const { processed } = await recordInboundWebhookOrSkip({
  *     source: "stripe",
@@ -67,15 +61,3 @@ export async function recordInboundWebhookOrSkip(
   }
 }
 
-/**
- * @deprecated Use `recordInboundWebhookOrSkip({ source: "stripe", id, type })`.
- * Kept exported for one deprecation cycle so closed-surface handlers can
- * migrate without an atomic flag-day rename. Scheduled for removal once
- * §16b cloud-7 Stripe handler lands in the `cloud/` workspace.
- */
-export async function recordStripeEventOrSkip(
-  eventId: string,
-  type: string,
-): Promise<RecordInboundWebhookResult> {
-  return recordInboundWebhookOrSkip({ source: "stripe", id: eventId, type });
-}

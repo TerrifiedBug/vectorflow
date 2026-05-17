@@ -251,9 +251,9 @@ describe("adminRouter", () => {
       expect(operatorUpsert).not.toHaveBeenCalled();
     });
 
-    it("skips PlatformOperator mirror under the Cloud build profile", async () => {
-      const ORIG = process.env.VF_CLOUD_BUILD;
-      process.env.VF_CLOUD_BUILD = "true";
+    it("skips PlatformOperator mirror under the strict multi-tenant mode", async () => {
+      const ORIG = process.env.VF_STRICT_MULTI_TENANT;
+      process.env.VF_STRICT_MULTI_TENANT = "true";
       try {
         const { operatorUpsert, operatorUpdateMany } = mockTx({
           userRow: { id: "u2", email: "u2@test.com", name: "User Two", isSuperAdmin: true },
@@ -264,8 +264,8 @@ describe("adminRouter", () => {
         expect(operatorUpsert).not.toHaveBeenCalled();
         expect(operatorUpdateMany).not.toHaveBeenCalled();
       } finally {
-        if (ORIG === undefined) delete process.env.VF_CLOUD_BUILD;
-        else process.env.VF_CLOUD_BUILD = ORIG;
+        if (ORIG === undefined) delete process.env.VF_STRICT_MULTI_TENANT;
+        else process.env.VF_STRICT_MULTI_TENANT = ORIG;
       }
     });
   });

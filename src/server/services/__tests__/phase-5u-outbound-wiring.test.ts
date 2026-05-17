@@ -168,7 +168,7 @@ describe("ai.ts streamCompletion", () => {
       onToken: () => {},
     });
 
-    // Gated form: no `{ force: true }` — Cloud-strict flag decides.
+    // Gated form: no `{ force: true }` — strict-outbound flag decides.
     expect(validateOutboundUrlSpy).toHaveBeenCalledWith(
       "http://localhost:11434/v1",
     );
@@ -271,7 +271,7 @@ describe("vault-client", () => {
     // CodeQL: pin the prefix with a trailing path separator so a look-alike
     // host (`vault.example.com.attacker.example/...`) can't pass.
     expect(calls.some((c) => String(c[0]).startsWith("https://vault.example.com/"))).toBe(true);
-    // Gated form: no `{ force: true }` — Cloud-strict flag decides.
+    // Gated form: no `{ force: true }` — strict-outbound flag decides.
     expect(calls.every((c) => c[1] === undefined)).toBe(true);
   });
 });

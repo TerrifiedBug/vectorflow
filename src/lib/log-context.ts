@@ -1,5 +1,5 @@
 /**
- * Per-request log context (plan §11).
+ * Per-request log context.
  *
  * Async-local-storage carrier for `orgId` (and a request-scoped
  * `requestId` for trace correlation) so every log line emitted from

@@ -1,13 +1,11 @@
--- Phase 4 follow-up — separate operator-action audit log.
--- See plan §11 ("Audit & observability") and §16b OSS item 5.
+-- Platform operator audit log — separate from `AuditLog` (which is the
+-- per-org customer-visible log) so the two streams can have different
+-- retention / export policies and an external archiver can ship the
+-- operator-action stream to long-term WORM storage independently.
 --
 -- This table records every platform-operator action that touches a
 -- customer org: break-glass grant lifecycle, suspend/unsuspend, backup
--- restore, KMS unwrap during a grant window. It lives in a separate
--- table from `AuditLog` (which is the per-org customer-visible log)
--- so the two streams can have different retention / export policies
--- and the Cloud build can ship this table's rows to an S3 bucket with
--- Object Lock for WORM retention.
+-- restore, key-unwrap during a grant window.
 --
 -- Append-only semantics enforced by Postgres rules: the operator
 -- Postgres role MUST NOT be able to UPDATE or DELETE rows. Only the
@@ -85,7 +83,7 @@ CREATE OR REPLACE RULE "PlatformAuditLog_no_delete" AS
     DO INSTEAD NOTHING;
 
 COMMENT ON TABLE "PlatformAuditLog" IS
-  'Plan §11 platform-operator audit log. Append-only via Postgres rules; Cloud ships to S3 Object Lock (governance, 7y).';
+  'Platform-operator audit log. Append-only via Postgres rules; an external archiver sidecar can ship rows to WORM object storage.';
 
 -- Per-stamp chain-tail pointer for tamper-evidence. Mirrors the per-org
 -- AuditChainTail pattern; key here is the stamp identifier so a single
@@ -101,10 +99,11 @@ COMMENT ON TABLE "PlatformAuditChainTail" IS
   'Per-stamp tail pointer for PlatformAuditLog hash chain.';
 
 -- Writer-role privileges: grant INSERT/SELECT to the dedicated writer role if
--- it exists. The REVOKE from vectorflow_app is a Cloud-side step that belongs
--- in the Cloud workspace migration (after switching writePlatformAuditLog to
--- use a writer-role connection). In OSS the app role retains INSERT so the
--- function works without a separate writer connection.
+-- it exists. A deployment that wants strict separation between the app role
+-- and the platform-audit writer revokes INSERT from `vectorflow_app` in a
+-- follow-up migration after switching writePlatformAuditLog to a writer-role
+-- connection. Single-tenant deployments leave the app role with INSERT so
+-- the function works without a separate writer connection.
 -- Idempotent: safe to re-run; skipped cleanly when the writer role is absent.
 DO $$
 BEGIN
@@ -115,7 +114,7 @@ BEGIN
         EXECUTE 'GRANT SELECT ON "PlatformAuditChainTail" TO vectorflow_platform_audit';
         RAISE NOTICE 'platform-audit: granted INSERT/SELECT on audit tables to vectorflow_platform_audit';
     ELSE
-        RAISE NOTICE 'platform-audit: vectorflow_platform_audit role not yet present — Cloud writer-role migration will complete this step';
+        RAISE NOTICE 'platform-audit: vectorflow_platform_audit role not yet present — granted only when a writer-role migration is applied';
     END IF;
 END
 $$;

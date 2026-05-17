@@ -4,10 +4,10 @@
  * (`DEFAULT_ORG_ID`) as `OWNER` so that `orgProcedure` middleware can
  * resolve their org context.
  *
- * Cloud signup follows a different flow in the closed `cloud/`
+ * a multi-tenant signup follows a different flow in the closed `cloud/`
  * workspace: it mints a fresh `Organization` with a KMS-wrapped DEK and
  * the customer's chosen slug, then creates the OWNER and seeds Team /
- * Environment under THAT org. The Cloud path does NOT call this
+ * Environment under THAT org. A multi-tenant deployment does NOT call this
  * function.
  */
 
@@ -15,7 +15,7 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { ulid } from "ulid";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
-import { isCloudBuildProfile } from "@/lib/security-headers";
+import { isStrictMultiTenantMode } from "@/lib/security-headers";
 
 function buildTelemetryFields(choice: "yes" | "no") {
   if (choice === "yes") {
@@ -72,13 +72,14 @@ export async function completeSetup(input: {
       },
     });
 
-    // OSS only: mirror super-admin into the PlatformOperator table so the
-    // post-PR-#354 admin/settings gate (`requirePlatformOperator`) actually
-    // resolves a row. Cloud bootstrap doesn't call completeSetup, but gate
-    // defensively in case that ever changes. Role INCIDENT is highest rank;
-    // OSS is single-operator so granularity is moot — INCIDENT just future-
-    // proofs against gates being raised later (backup restore → INFRA+, etc.).
-    if (!isCloudBuildProfile()) {
+    // Single-tenant bootstrap: mirror super-admin into the
+    // `PlatformOperator` table so the admin / settings gate
+    // (`requirePlatformOperator`) resolves a row. Multi-tenant deployments
+    // do not call `completeSetup`; the conditional gates defensively in
+    // case that ever changes. Role INCIDENT is highest rank; single-tenant
+    // deployments typically have one operator so granularity is moot —
+    // INCIDENT just future-proofs against gates being raised later.
+    if (!isStrictMultiTenantMode()) {
       await tx.platformOperator.create({
         data: {
           email: input.email,

@@ -1,5 +1,5 @@
 /**
- * Magic-link redeem endpoint (plan §8 / §16b OSS-9).
+ * Magic-link redeem endpoint.
  *
  * GET /api/auth/magic-link/redeem?token=...
  *

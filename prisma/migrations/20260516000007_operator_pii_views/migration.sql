@@ -1,18 +1,18 @@
--- Phase 4d — PII-masking views for the operator role.
+-- PII-masking views for the operator role.
 --
--- Cloud operators need a view of the fleet to do their job (suspend abusive
--- orgs, audit break-glass usage, see who's on which plan tier) WITHOUT being
--- able to read customer pipelines, configs, secrets, or email addresses.
--- These views project the metadata an operator legitimately needs and mask
--- everything else — including masking email addresses so an operator can
--- still match a support request to an account without seeing the full
--- personal email.
+-- Operators need a view of the fleet to do their job (suspend abusive
+-- orgs, audit break-glass usage, see plan tier) WITHOUT being able to
+-- read customer pipelines, configs, secrets, or email addresses. These
+-- views project the metadata an operator legitimately needs and mask
+-- everything else — including masking email addresses so an operator
+-- can still match a support request to an account without seeing the
+-- full personal email.
 --
--- The views ship in OSS because they are pure SQL with zero runtime cost
--- when unused. The `vectorflow_operator` role itself is Cloud-private
--- (provisioned out of band, same pattern as `vectorflow_app` in Phase 4c).
--- When that role exists, this migration grants it SELECT on each view —
--- and ONLY on the views, never on the underlying tables.
+-- The views are pure SQL with zero runtime cost when unused. The
+-- `vectorflow_operator` Postgres role is provisioned out of band (same
+-- pattern as `vectorflow_app`); when that role exists, this migration
+-- grants it SELECT on each view — and ONLY on the views, never on the
+-- underlying tables.
 --
 -- ─── Identifier quoting ───────────────────────────────────────────────────
 -- Prisma generates tables and columns with double-quoted, case-preserved
@@ -48,7 +48,7 @@ SELECT
 FROM "Organization" o;
 
 COMMENT ON VIEW public.vw_operator_organization_summary IS
-  'Phase 4d: operator-safe projection of Organization. Excludes dataKeyCiphertext, kmsKeyArn, byokKeyArn. See plan §5 (operator boundary).';
+  'Operator-safe projection of Organization. Excludes dataKeyCiphertext, kmsKeyArn, byokKeyArn — operators see presence flags only.';
 
 -- ─── 2. User summary with masked email ────────────────────────────────────
 -- Mask local part: keep first character + "***". e.g. "alice@example.com"
@@ -128,7 +128,7 @@ COMMENT ON VIEW public.vw_operator_org_access_grant_log IS
   'Phase 4d: full break-glass grant audit for the operator console. kmsGrantToken masked to a boolean presence flag.';
 
 -- ─── 5. Grant SELECT on views to vectorflow_operator (when role exists) ──
--- Same idempotent-skip pattern as Phase 4c. The role is Cloud-private; on
+-- Same idempotent-skip pattern as Phase 4c. The role is provisioned out of band; on
 -- OSS this short-circuits and the views simply exist as unused projections.
 DO $$
 DECLARE

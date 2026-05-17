@@ -58,7 +58,7 @@ describe("checkOrgRateLimit", () => {
     expect(mocks.checkKey.mock.calls[0][1]).toBe(99);
   });
 
-  it("default limits match the plan §10 figures", () => {
+  it("default limits matchthe default rate limit figures", () => {
     expect(ORG_RATE_LIMITS.trpc).toBe(1000);
     expect(ORG_RATE_LIMITS.agent).toBe(6000);
     expect(ORG_RATE_LIMITS.ai).toBe(60);

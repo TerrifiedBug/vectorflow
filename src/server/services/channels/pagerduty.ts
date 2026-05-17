@@ -72,7 +72,7 @@ export const pagerdutyDriver: ChannelDriver = {
     // SSRF guard. The PagerDuty endpoint is hardcoded today, but the request
     // still goes outbound from the control plane — validating defensively
     // means any future config-driven override (e.g. EU-region PagerDuty)
-    // automatically inherits the unified policy and Cloud-strict rejection.
+    // automatically inherits the unified policy and strict-outbound rejection.
     try {
       await validateOutboundUrl(PAGERDUTY_EVENTS_URL, { force: true });
     } catch (err) {

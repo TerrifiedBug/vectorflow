@@ -1,6 +1,6 @@
 /**
  * Scheduled garbage-collection for one-shot auth challenges
- * (plan §16b OSS items 8 + 9).
+ *..
  *
  * Two sources of orphan rows:
  *

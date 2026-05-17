@@ -65,11 +65,10 @@ export async function registerNodeInstrumentation() {
   }
 
   // Warm the in-process DEK cache so the first wave of agent reconnects
-  // after a stamp restart doesn't stampede outbound KMS. Plan §12.5
-  // calls this out as the SLO-critical hot path; the warm-up keeps
-  // p95/p99 agent-enrollment latency stable across rolling deploys.
-  // Per-instance (each Node process has its own cache) and best-effort
-  // (KMS hiccups warn but don't block boot).
+  // after a deployment restart doesn't stampede the wrapping-key
+  // service. Keeps p95/p99 agent-enrollment latency stable across
+  // rolling deploys. Per-instance (each Node process has its own cache)
+  // and best-effort (KMS hiccups warn but don't block boot).
   try {
     const { warmDekCacheForActiveOrgs } = await import(
       "@/server/services/dek-warmup"

@@ -1,5 +1,5 @@
 /**
- * Magic-link sign-in service (plan §8 / Phase 5y).
+ * Magic-link sign-in service.
  *
  * Cloud-default authentication for new orgs is "SSO or magic link". This
  * module mints a one-time random token, persists only its SHA-256 hash,
@@ -128,7 +128,7 @@ export type ConsumeMagicLinkResult =
  *
  * When `expectedOrganizationId` is supplied, the redeem must occur from
  * the same org context the link was minted in — the host derives the
- * expected org (plan §8) and we compare here so a link captured from
+ * expected org and we compare here so a link captured from
  * org A and redeemed on org B's subdomain fails.
  */
 export async function consumeMagicLink(opts: {

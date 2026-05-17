@@ -9,8 +9,9 @@ datasource db {
 
 // ─── Multi-tenancy ──────────────────────────────────────────────────────────
 
-// Well-known ID for the single default organization (OSS / self-hosted).
-// Every tenant row backfills to this ID; Cloud creates real orgs on signup.
+// Well-known ID for the single default organization on a single-tenant
+// deployment. Every tenant row backfills to this ID; multi-tenant
+// deployments create real orgs on signup.
 // Keep this string in sync with DEFAULT_ORG_ID in src/lib/constants.ts.
 
 enum OrgPlan {
@@ -38,22 +39,22 @@ model Organization {
   slug              String    @unique
   name              String
   plan              OrgPlan   @default(DEFAULT)
-  region            String    @default("default")
+  deploymentLabel            String    @default("default")
   // Envelope-encryption fields — null for OSS / self-hosted
   dataKeyCiphertext String?
-  kmsKeyArn         String?
-  byokKeyArn        String?
+  dekWrapKeyId         String?
+  byokWrapKeyId        String?
   // Lifecycle
   suspendedAt       DateTime?
   deletedAt         DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
-  /// Plan §8 — incremented to revoke every active session for this
-  /// org. Mixed into the HKDF `info` of `deriveJwtSigningKey` so the
-  /// resulting signing key changes when the counter changes. Owner-
-  /// triggered "revoke all sessions" bumps this; the per-org NextAuth
-  /// instance cache is invalidated so subsequent requests build a
-  /// fresh instance with the new derived secret.
+  /// Incremented to revoke every active session for this org. Mixed
+  /// into the HKDF `info` of `deriveJwtSigningKey` so the resulting
+  /// signing key changes when the counter changes. Owner-triggered
+  /// "revoke all sessions" bumps this; the per-org NextAuth instance
+  /// cache is invalidated so subsequent requests build a fresh
+  /// instance with the new derived secret.
   jwtKeyRotationCounter Int     @default(0)
 
   members              OrgMember[]
@@ -157,7 +158,7 @@ model OrgAccessGrant {
   operator                  PlatformOperator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
   reason                    String
   approvedByCustomerAdminId String?
-  kmsGrantToken             String?
+  externalGrantRef             String?
   expiresAt                 DateTime
   revokedAt                 DateTime?
   createdAt                 DateTime         @default(now())
@@ -195,14 +196,12 @@ model PlatformOperator {
 }
 
 /// `OperatorApprovalRequest` — generic 2-person approval primitive for
-/// operator-side actions that require dual control (per plan §16b
-/// cloud-9). Examples: backup restore, force hard-delete before grace
-/// expires, KMS key rotation that keeps prior versions.
+/// operator-side actions that require dual control. Examples: backup
+/// restore, force hard-delete before grace expires, key rotation that
+/// keeps prior versions.
 ///
-/// The model is generic on purpose (matches the §15a R1 / R3
-/// rationale: keep generic primitives in OSS, keep action-specific
-/// code in the closed surface). Each operation type is identified by
-/// a free-form `operation` string; the Cloud-side consumer interprets
+/// The model is intentionally generic: each operation type is identified
+/// by a free-form `operation` string and the consumer interprets
 /// `payload` JSON to drive the actual side-effect.
 ///
 /// State machine:
@@ -219,7 +218,7 @@ model PlatformOperator {
 /// later. Default TTL is 24 hours; configurable per operation.
 model OperatorApprovalRequest {
   id                     String           @id @default(cuid())
-  /// Operation identifier. Free-form; Cloud conventions:
+  /// Operation identifier. Free-form. Conventional values include
   /// "backup.restore", "tenant.hard_delete_force", "kms.rotate_keep".
   operation              String
   /// Free-form JSON payload interpreted by the operation handler.
@@ -303,13 +302,12 @@ model User {
   createdAt                DateTime             @default(now())
 }
 
-/// WebAuthn / passkey credential registered for a User (plan §8 Phase 5x).
+/// WebAuthn / passkey credential registered for a User.
 ///
 /// Cross-org users carry one credential set per `User` — passkeys are
 /// account-wide, not per-tenant. The relying-party identity is the platform
-/// apex (`vectorflow.sh`) so a single passkey works across every
-/// `<orgSlug>.vectorflow.sh` the user is a member of. Per-org JWT
-/// signing keys (plan §8) still scope the resulting session to one org.
+/// apex so a single passkey works across every org the user is a member
+/// of. Per-org JWT signing keys still scope the resulting session to one org.
 model WebAuthnCredential {
   id           String    @id @default(cuid())
   userId       String
@@ -362,10 +360,9 @@ model WebAuthnChallenge {
   @@index([userId])
 }
 
-/// Magic-link sign-in token (plan §8 Phase 5y).
+/// Magic-link sign-in token.
 ///
-/// Cloud-default authentication for new orgs is "SSO or magic link". This
-/// table is the persistent state for the magic-link flow: a hash of the
+/// Persistent state for the magic-link sign-in flow: a hash of the
 /// random token is stored, the email it was minted for, the org it
 /// belongs to (so per-org rate limiting can decide what to allow), and a
 /// short TTL. Single-use: `consumedAt` is set inside the verifying
@@ -393,28 +390,24 @@ model MagicLinkToken {
   @@index([expiresAt])
 }
 
-/// `BillingProviderRef` is the OSS-side mapping between an `Organization`
-/// and an external billing provider's customer / subscription IDs. Generic
-/// on purpose (per §15a R1 / R3 rationale: keep generic patterns in OSS,
-/// keep provider-specific code in the closed surface).
+/// `BillingProviderRef` is a generic mapping between an `Organization`
+/// and an external billing provider's customer / subscription IDs. The
+/// table is generic; any provider-specific webhook/metering handler is
+/// the caller's responsibility.
 ///
-/// The Cloud build's Stripe webhook handler upserts a row on
-/// `customer.subscription.created` / `.updated` with `provider="stripe"`.
-/// The nightly metering aggregator reads `providerSubscriptionItemId` to
-/// post usage records back. Self-hosted OSS installs leave this table
-/// empty; the engine is dormant when no rows exist.
+/// The shape supports any provider that emits a stable
+/// `(customerId, subscriptionItemId)` pair. The `provider` field is a
+/// free-form lowercase string (e.g. "stripe", "paddle", "chargebee");
+/// the consuming overlay decides which values are recognized.
 ///
-/// The pattern is reusable for any provider that emits a stable
-/// `(customerId, subscriptionItemId)` pair — Paddle, LemonSqueezy,
-/// Chargebee, etc. None of those provider names appear in OSS code; the
-/// `provider` field is a free-form string and the Cloud overlay decides
-/// what providers are recognized.
+/// Self-hosted deployments that do not wire a billing provider leave
+/// this table empty; the engine is dormant when no rows exist.
 model BillingProviderRef {
   id                         String       @id @default(cuid())
   organizationId             String
   organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  /// Free-form provider identifier. Cloud convention: lowercase, e.g.
-  /// "stripe", "paddle". OSS imposes no constraint.
+  /// Free-form provider identifier. Lowercase by convention (e.g.
+  /// "stripe", "paddle"). No constraint enforced here.
   provider                   String
   /// External provider's stable customer id (e.g. Stripe `cus_…`).
   providerCustomerId         String
@@ -1227,18 +1220,15 @@ model AuditLog {
 
 /**
  * Idempotency ledger for inbound webhooks that redeliver on 5xx
- * (Stripe Billing, git providers, PagerDuty, custom integrations).
+ * (billing providers, git providers, PagerDuty, custom integrations).
  *
- * Renamed from `StripeWebhookEvent` in 2026-05-17 (§15a R1) so the
- * AGPL OSS repo does not ship a Stripe-named primitive. The pattern
- * is generic: any handler that needs once-only processing under
- * 5xx-retry semantics inserts `(source, id)` here and skips if the
- * row already exists.
+ * The table is provider-agnostic: any handler that needs once-only
+ * processing under 5xx-retry semantics inserts `(source, id)` here and
+ * skips if the row already exists. `source` is a free-form lowercase
+ * provider identifier; `id` is the provider-issued event id.
  *
- * The Cloud Stripe handler maps `event.id` -> `id`,
- * `event.type` -> `type`, `source = "stripe"`. OSS deployments
- * generally never insert into this table; if a self-hosted operator
- * wires up a webhook source they're welcome to use the same helper.
+ * Self-hosted deployments that do not wire any webhook source leave
+ * this table empty.
  */
 model IdempotentInboundWebhookEvent {
   /**
@@ -1251,15 +1241,14 @@ model IdempotentInboundWebhookEvent {
   id          String
   /**
    * Provider name. Lowercase, stable identifier of the webhook
-   * source ("stripe", "github", "gitlab", "pagerduty", ...).
-   * Defaulted to "stripe" by the 2026-05-17 rename migration so
-   * pre-existing rows (if any in Cloud preview deployments) keep
-   * their attribution; new callers MUST pass `source` explicitly.
+   * source (e.g. "stripe", "github", "gitlab", "pagerduty"). Defaulted
+   * for backwards compatibility with the previous single-source schema;
+   * new callers MUST pass `source` explicitly.
    */
   source      String   @default("stripe")
   /**
-   * Provider-issued event type, e.g. Stripe
-   * `customer.subscription.updated` or GitHub `push`.
+   * Provider-issued event type (e.g. `customer.subscription.updated`,
+   * `push`).
    */
   type        String
   /**
@@ -1298,38 +1287,37 @@ model AuditChainTail {
 }
 
 /**
- * Platform operator audit log (plan §11, §16b OSS item 5).
+ * Platform operator audit log.
  *
  * Records every operator action that touches a customer org: break-glass
- * grant request/approval/use, suspend/unsuspend, backup restore, stamp
- * restart, KMS unwrap during a grant window, etc. Lives in a separate
+ * grant request/approval/use, suspend/unsuspend, backup restore, deploy
+ * restart, key-unwrap during a grant window, etc. Lives in a separate
  * table from `AuditLog` so:
  *
  *   1. The two streams have different retention / export policies.
- *      `AuditLog` is customer-visible (export endpoint per Phase 5c);
+ *      `AuditLog` is customer-visible (per-org export endpoint);
  *      `PlatformAuditLog` is operator-internal but mirrored into the
- *      customer's `AuditLog` with `userName = "VectorFlow Support"`
- *      whenever an action affects an org the customer can see.
- *   2. The Cloud build ships rows to an S3 bucket with Object Lock
- *      (governance mode, 7y retention) via a sidecar — that sidecar
- *      reads from this table; customer-side `AuditLog` does not need
- *      WORM storage.
+ *      customer's `AuditLog` with a "support actor" label whenever an
+ *      action affects an org the customer can see.
+ *   2. An external archiver sidecar can ship rows to a WORM-storage
+ *      bucket (e.g. S3 Object Lock) without involving the customer-
+ *      side `AuditLog` stream.
  *   3. RLS does not apply: this table is read only by the operator
- *      Postgres role (separate from `vectorflow_app`).
+ *      Postgres role (separate from the app role).
  *
  * Append-only enforced at three layers:
  *   - No `updatedAt` field (rows are immutable by schema shape).
  *   - Postgres rules in the migration prevent `UPDATE` and `DELETE`
  *     against this table for the operator role; only the platform-audit
  *     writer role can INSERT.
- *   - The bundled verifier script (Phase 5c equivalent for platform
- *     audit) walks the per-stamp hash chain and refuses an export where
- *     any link is broken.
+ *   - The bundled verifier script walks the per-deployment hash chain
+ *     and refuses an export where any link is broken.
  *
  * Hash chain (`prevHash`, `hash`) uses the same scheme as `AuditLog`
- * (sha256(prevHash || canonical(row))) but chains per-stamp rather than
- * per-org — the "key" passed to `AuditChainTailLookup.getTailHash` is
- * `platform-audit:<stampId>`. Genesis is `sha256("vf:platform-audit-genesis:" || stampId)`.
+ * (sha256(prevHash || canonical(row))) but chains per-deployment rather
+ * than per-org — the "key" passed to `AuditChainTailLookup.getTailHash`
+ * is `platform-audit:<deploymentId>`. Genesis is
+ * `sha256("vf:platform-audit-genesis:" || deploymentId)`.
  */
 model PlatformAuditLog {
   id              String   @id @default(cuid())
@@ -1339,7 +1327,7 @@ model PlatformAuditLog {
    * each stamp has its own DB). Defaults to "default" for single-stamp
    * deployments.
    */
-  stampId         String   @default("default")
+  deploymentId         String   @default("default")
   /**
    * The PlatformOperator who performed the action. NULL only for
    * system-initiated events (e.g. automated stamp restart from a
@@ -1402,15 +1390,14 @@ model PlatformAuditLog {
   prevHash        String
   hash            String
   /**
-   * Audit object-store archive timestamp. NULL until the Cloud-side
-   * archiver sidecar (§16b cloud-11) successfully PUTs the row to its
-   * configured object store (S3 with Object Lock governance mode +
-   * 7y retention in production). The archiver polls
+   * Audit object-store archive timestamp. NULL until an external
+   * archiver sidecar successfully PUTs the row to its configured
+   * object store. The archiver polls
    * `WHERE archivedAt IS NULL ORDER BY createdAt ASC` and stamps this
    * column on success.
    *
-   * OSS / self-hosted installs leave the archiver disabled; this
-   * column stays NULL everywhere and costs nothing.
+   * Self-hosted installs that leave the archiver disabled keep this
+   * column NULL everywhere; it costs nothing.
    */
   archivedAt      DateTime?
   /**
@@ -1421,7 +1408,7 @@ model PlatformAuditLog {
    */
   archivedObjectKey String?
 
-  @@index([stampId, createdAt])
+  @@index([deploymentId, createdAt])
   @@index([operatorId])
   @@index([action])
   @@index([organizationId])
@@ -1441,7 +1428,7 @@ model PlatformAuditLog {
  * `AuditChainTail` for the customer-facing `AuditLog`.
  */
 model PlatformAuditChainTail {
-  stampId     String   @id
+  deploymentId     String   @id
   lastHash    String
   lastWriteAt DateTime @default(now())
   updatedAt   DateTime @updatedAt

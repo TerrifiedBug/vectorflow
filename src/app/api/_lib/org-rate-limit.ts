@@ -1,5 +1,5 @@
 /**
- * Per-organization sliding-window rate limit (plan §10).
+ * Per-organization sliding-window rate limit.
  *
  * Wraps the existing `rateLimiter.checkKey` primitive (Redis-backed,
  * falls back to in-process memory) with a key scheme that scopes each
@@ -8,7 +8,7 @@
  * — those stay as DoS pre-filters; this prevents one noisy tenant from
  * burning all of another tenant's quota.
  *
- * Default limits per plan §10:
+ * Default limits:
  *   trpc:     1000 / min
  *   agent:    6000 / min (heartbeat-heavy)
  *   ai:         60 / min

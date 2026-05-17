@@ -1,5 +1,5 @@
 /**
- * WebAuthn / passkey NextAuth provider (plan §8 / §16b OSS-8).
+ * WebAuthn / passkey NextAuth provider..
  *
  * Wraps `@/server/services/webauthn`'s `finishAuthentication` in a
  * Credentials-style provider so `signIn("webauthn", { ... })` works on
@@ -40,12 +40,12 @@ const RP_ID = process.env.VF_WEBAUTHN_RP_ID ?? "localhost";
 const RP_NAME = process.env.VF_WEBAUTHN_RP_NAME ?? "VectorFlow";
 
 /**
- * Resolve the set of acceptable origins. Cloud builds set
- * `VF_WEBAUTHN_ORIGINS=https://app.vectorflow.sh,https://*.vectorflow.sh`
+ * Resolve the set of acceptable origins. Multi-subdomain deployments
+ * set `VF_WEBAUTHN_ORIGINS=https://app.example.com,https://*.example.com`
  * (comma-separated) so subdomain redirects are honoured.
  *
  * When `VF_WEBAUTHN_ORIGINS` is not set, the function falls back to the
- * origin derived from `VF_WEBAUTHN_RP_ID`. Self-hosted OSS deployments
+ * origin derived from `VF_WEBAUTHN_RP_ID`. Single-tenant deployments
  * that set `VF_WEBAUTHN_RP_ID=example.com` get `https://example.com`
  * automatically, without needing a separate `VF_WEBAUTHN_ORIGINS` variable.
  */

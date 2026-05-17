@@ -11,9 +11,9 @@ const ENCRYPTED_PREFIX = "enc:";
  * SSRF guard for AI provider base URLs.
  *
  * Single source of policy: defers to `validateOutboundUrl`. In OSS (the
- * default) outbound validation is gated by `VF_CLOUD_STRICT_OUTBOUND` so a
+ * default) outbound validation is gated by `VF_STRICT_OUTBOUND` so a
  * self-hosted Ollama at `http://localhost:11434/v1` keeps working. In Cloud
- * (`VF_CLOUD_STRICT_OUTBOUND=true`) AI providers MUST be public hosts; private
+ * (`VF_STRICT_OUTBOUND=true`) AI providers MUST be public hosts; private
  * IPs, loopback, mDNS/.internal TLDs, and cloud metadata endpoints are all
  * rejected before the request goes out.
  *
@@ -25,7 +25,7 @@ const ENCRYPTED_PREFIX = "enc:";
  */
 async function validateBaseUrl(baseUrl: string): Promise<void> {
   // Always enforce scheme — `validateOutboundUrl` short-circuits when
-  // VF_CLOUD_STRICT_OUTBOUND is unset, so without this check OSS users
+  // VF_STRICT_OUTBOUND is unset, so without this check OSS users
   // would silently accept `file://` or other unsupported schemes.
   let parsed: URL;
   try {

@@ -328,10 +328,10 @@ describe("setup service", () => {
       });
     });
 
-    it("skips PlatformOperator creation under the Cloud build profile", async () => {
+    it("skips PlatformOperator creation under the strict multi-tenant mode", async () => {
       const platformOperatorCreate = vi.fn().mockResolvedValue({});
-      const ORIG = process.env.VF_CLOUD_BUILD;
-      process.env.VF_CLOUD_BUILD = "true";
+      const ORIG = process.env.VF_STRICT_MULTI_TENANT;
+      process.env.VF_STRICT_MULTI_TENANT = "true";
       try {
         prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
           if (typeof fn !== "function") return;
@@ -359,8 +359,8 @@ describe("setup service", () => {
 
         expect(platformOperatorCreate).not.toHaveBeenCalled();
       } finally {
-        if (ORIG === undefined) delete process.env.VF_CLOUD_BUILD;
-        else process.env.VF_CLOUD_BUILD = ORIG;
+        if (ORIG === undefined) delete process.env.VF_STRICT_MULTI_TENANT;
+        else process.env.VF_STRICT_MULTI_TENANT = ORIG;
       }
     });
   });

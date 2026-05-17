@@ -1,10 +1,9 @@
 name: Verify Indexes
 
-# Plan §16b OSS item 6 — block PRs that add tenant tables without a
-# `(organizationId, ...)` composite btree index. Without one the
-# post-RLS hot path becomes a Seq Scan over the whole tenant population
-# the moment a few thousand orgs land on a stamp, and the §12.5 p95 SLO
-# cannot be held.
+# Block PRs that add tenant tables without a `(organizationId, ...)`
+# composite btree index. Without one the post-RLS hot path becomes a
+# Seq Scan over the whole tenant population the moment a few thousand
+# orgs land on a deployment, and the p95 latency SLO cannot be held.
 
 on:
   push:

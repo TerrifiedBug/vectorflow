@@ -12,7 +12,7 @@ import { runWithLogContext } from "@/lib/log-context";
  * Sentinel error attached as `cause` on the TRPCError thrown by `orgProcedure`
  * when an organization is suspended. The HTTP adapter's `responseMeta` callback
  * (see `src/app/api/trpc/[trpc]/route.ts`) detects this sentinel and overrides
- * the response status to `423 Locked` (plan §12.2 / §18 verification gate).
+ * the response status to `423 Locked`.
  *
  * tRPC has no built-in mapping for `423`, so we keep the in-band error code
  * `FORBIDDEN` (for client-side `code` checks) and override only the HTTP
@@ -64,7 +64,7 @@ export const createContext = async () => {
 };
 
 /**
- * Request-level suspension probe (plan §12.2 / Phase 5t).
+ * Request-level suspension probe.
  *
  * The `responseMeta` HTTP-status override on the fetch adapter only
  * works for non-streaming clients (httpLink / httpBatchLink). The app's
@@ -156,7 +156,7 @@ export const orgProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   }
   // Run the rest of the procedure inside the per-org log context so
   // every infoLog/warnLog/errorLog inside picks up `{org=<id>}` via
-  // AsyncLocalStorage (plan §11). The wrapper is keyed on
+  // AsyncLocalStorage. The wrapper is keyed on
   // `ctx.organizationId` so a procedure for the OSS default org still
   // emits the segment for trace continuity.
   return runWithLogContext({ orgId: ctx.organizationId }, () =>
@@ -237,9 +237,9 @@ export const requireRole = (minRole: Role) =>
   });
 
 /**
- * @deprecated Use `requirePlatformOperator(role)` — plan §5 explicitly
+ * @deprecated Use `requirePlatformOperator(role)` explicitly
  * drops `User.isSuperAdmin` ("operators are not users"). Every router-
- * level callsite was migrated in §16b OSS item 1 (2026-05-17); this
+ * level callsite was migrated (2026-05-17); this
  * middleware remains exported only as a deprecation cushion for
  * external consumers (community forks, custom routers in self-hosted
  * deployments). Slated for removal in the next major OSS release after
@@ -274,7 +274,7 @@ export const requireSuperAdmin = () =>
   });
 
 /**
- * Platform-operator authorization middleware (plan §5 / Phase 5ee).
+ * Platform-operator authorization middleware.
  *
  * The Cloud operator boundary is a hard line: operators are NEVER tenant
  * Users. `User.isSuperAdmin` (the legacy hatch) blurs that line and is
@@ -283,9 +283,10 @@ export const requireSuperAdmin = () =>
  * Resolution:
  *   1. The caller MUST have a session (UNAUTHORIZED otherwise).
  *   2. The session user's email MUST match a `PlatformOperator` row.
- *      In Cloud, operators sign in via a separate auth surface
- *      (`ops.vectorflow.sh`, WebAuthn) so the User row that lands in the
- *      session is the operator's identity, not a tenant identity.
+ *      In multi-tenant deployments, operators sign in via a separate
+ *      auth surface (operator subdomain, WebAuthn-only) so the User row
+ *      that lands in the session is the operator's identity, not a
+ *      tenant identity.
  *   3. The operator's `PlatformOperatorRole` MUST be at or above
  *      `minRole`. Roles are ranked: SUPPORT (0) < BILLING (1) <
  *      INFRA (2) < INCIDENT (3). Promote-narrowness rather than

@@ -1,6 +1,7 @@
 /**
- * Unit tests for the OperatorApprovalRequest lifecycle service (plan
- * §16b cloud-9). Mocks Prisma at the model level.
+/**
+ * Unit tests for the OperatorApprovalRequest lifecycle service.
+ * Mocks Prisma at the model level.
  *
  * Asserts:
  *   - createApprovalRequest persists PENDING_APPROVAL + expiresAt

@@ -181,7 +181,7 @@ describe("pipelineCrudRouter", () => {
 
   describe("create", () => {
     // Helper: wire the quota path so $transaction calls fn(prismaMock), the
-    // org lookup returns the DEFAULT plan, a Cloud-like finite policy caps
+    // org lookup returns the DEFAULT plan, a finite policy caps
     // pipelines at 10, and the count stays below the limit before AND after.
     async function arrangeQuotaPasses(opts: { currentPipelineCount: number }) {
       prismaMock.$transaction.mockImplementation(

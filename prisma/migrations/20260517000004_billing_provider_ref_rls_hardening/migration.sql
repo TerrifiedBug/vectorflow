@@ -4,14 +4,13 @@
 -- Rationale: the original policy permitted bypass when
 -- `current_setting('app.bypass_rls', true) = 'on'`. Any session with
 -- DML grants on this table could call `SET LOCAL app.bypass_rls='on'`
--- to cross-read tenants — RLS effectively opt-in. Codex P1 finding
--- against PR #364.
+-- to cross-read tenants — RLS effectively opt-in.
 --
 -- Correct boundary: admin reads happen at the role level. The
--- `vectorflow_app` runtime role is explicitly NOBYPASSRLS (Phase 4c
--- migration). The Cloud-side admin connection (DATABASE_ADMIN_URL)
--- uses the owner role with BYPASSRLS, so Postgres skips RLS at the
--- engine level for that connection without needing a GUC.
+-- `vectorflow_app` runtime role is explicitly NOBYPASSRLS. The admin
+-- connection (DATABASE_ADMIN_URL) uses the owner role with BYPASSRLS,
+-- so Postgres skips RLS at the engine level for that connection without
+-- needing a GUC.
 --
 -- This migration is idempotent. It replaces the original policy with
 -- the strict shape from `20260516000003_phase5a_rls_strict_policies`.

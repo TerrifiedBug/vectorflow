@@ -27,7 +27,7 @@ function makeGrant(overrides: Record<string, unknown> = {}) {
     operatorId: "op-1",
     reason: "Customer reported decryption error in pipeline-42",
     approvedByCustomerAdminId: null as string | null,
-    kmsGrantToken: null as string | null,
+    externalGrantRef: null as string | null,
     expiresAt: new Date(NOW.getTime() + 60 * 60 * 1000),
     revokedAt: null as Date | null,
     createdAt: NOW,
@@ -133,7 +133,7 @@ describe("requestOrgAccessGrant", () => {
       NOW.getTime() + 30 * 60 * 1000,
     );
     expect(callArg).not.toHaveProperty("approvedByCustomerAdminId");
-    expect(callArg).not.toHaveProperty("kmsGrantToken");
+    expect(callArg).not.toHaveProperty("externalGrantRef");
   });
 
   it("rejects an empty / too-short reason", async () => {
@@ -394,17 +394,17 @@ describe("listOrgAccessGrantsForOrg", () => {
     mockReset(prismaMock);
   });
 
-  it("returns grants with kmsGrantToken masked to a presence boolean", async () => {
+  it("returns grants with externalGrantRef masked to a presence boolean", async () => {
     prismaMock.orgAccessGrant.findMany.mockResolvedValue([
-      makeGrant({ id: "g1", kmsGrantToken: "real-token-bytes" }),
-      makeGrant({ id: "g2", kmsGrantToken: null }),
+      makeGrant({ id: "g1", externalGrantRef: "real-token-bytes" }),
+      makeGrant({ id: "g2", externalGrantRef: null }),
     ] as never);
 
     const out = await listOrgAccessGrantsForOrg("org-1");
 
     expect(out).toHaveLength(2);
-    expect(out[0]).not.toHaveProperty("kmsGrantToken");
-    expect(out[0]?.hasKmsGrantToken).toBe(true);
-    expect(out[1]?.hasKmsGrantToken).toBe(false);
+    expect(out[0]).not.toHaveProperty("externalGrantRef");
+    expect(out[0]?.hasExternalGrantRef).toBe(true);
+    expect(out[1]?.hasExternalGrantRef).toBe(false);
   });
 });

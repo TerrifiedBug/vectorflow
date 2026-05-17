@@ -1,5 +1,5 @@
 /**
- * Hardened webhook delivery (plan §9 / Phase 5aa).
+ * Hardened webhook delivery.
  *
  * Three mitigations layered on top of the existing `fetch`-based outbound
  * delivery:
@@ -227,7 +227,7 @@ export async function fetchHardened(
     }
 
     // Per-hop SSRF + scheme re-validation. `{ force: true }` so the policy
-    // applies regardless of `VF_CLOUD_STRICT_OUTBOUND` — a redirect is a
+    // applies regardless of `VF_STRICT_OUTBOUND` — a redirect is a
     // customer-controlled action.
     await validateOutboundUrl(currentUrl, { force: true });
     // Per-hop DNS rebinding check.

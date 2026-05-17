@@ -1,14 +1,14 @@
--- Phase 5f — Stripe webhook idempotency ledger.
+-- Webhook idempotency ledger: original single-source table for inbound
+-- webhooks that redeliver on 5xx responses. The handler attempts
+-- INSERT INTO "StripeWebhookEvent" (id, type) VALUES ($1, $2)
+-- ON CONFLICT (id) DO NOTHING; if 0 rows are affected, the delivery is
+-- a duplicate and is acknowledged with HTTP 200 without side effects.
 --
--- See plan addendum §6: Stripe redelivers webhooks on 5xx responses,
--- so the Cloud handler must guarantee once-only processing. The
--- handler attempts INSERT INTO "StripeWebhookEvent" (id, type) VALUES
--- ($1, $2) ON CONFLICT (id) DO NOTHING; if 0 rows are affected, the
--- delivery is a duplicate and is acknowledged with HTTP 200 without
--- side effects.
---
--- OSS deployments never insert into this table (no Stripe integration
--- in OSS), so the migration is a pure additive no-op for self-hosted.
+-- This table was renamed to `IdempotentInboundWebhookEvent` in a
+-- subsequent migration (`20260517000001_rename_..._to_idempotent_inbound`)
+-- so the schema is provider-agnostic. The original name is preserved
+-- here for migration history only — single-tenant deployments that do
+-- not wire a webhook source insert nothing into the table.
 --
 -- Rollback: DROP TABLE "StripeWebhookEvent";
 

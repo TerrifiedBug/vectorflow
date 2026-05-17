@@ -40,7 +40,8 @@ async function getClientIp(): Promise<string | null> {
 }
 
 /**
- * Resolve the request host used for per-org auth routing (plan §8 / Phase 5w).
+/**
+ * Resolve the request host used for per-org auth routing.
  *
  * `x-forwarded-host` is client-controlled unless an upstream proxy
  * strips/rewrites it. Reading it unconditionally lets a direct request
@@ -48,7 +49,7 @@ async function getClientIp(): Promise<string | null> {
  * force this request onto a different tenant\'s OIDC / group-mapping
  * config. The fix:
  *
- *   - Cloud stamps run behind a known reverse proxy that ALWAYS sets
+ *   - Multi-tenant deployments run behind a known reverse proxy that ALWAYS sets
  *     `x-forwarded-host` itself, and the operator opts in via
  *     `VF_TRUST_FORWARDED_HOST=true`.
  *   - OSS deployments (no trusted proxy) keep the `host` header and
@@ -78,14 +79,13 @@ class InvalidVerificationCodeError extends CredentialsSignin {
 /**
  * Load OIDC settings for the organisation owning the incoming request.
  *
- * Per-org OIDC (plan §8 / Phase 5w):
- *   - Cloud: `<orgSlug>.vectorflow.sh` -> the request host's first DNS
- *     label is matched against `Organization.slug`. Each tenant sees only
- *     its own IdP; a session minted for org A cannot login through org B.
- *   - OSS: hosts without an org-slug subdomain fall back to
+ * Per-org OIDC:
+ *   - The request host's first DNS label is matched against
+ *     `Organization.slug`. Each tenant sees only its own IdP; a session
+ *     minted for org A cannot login through org B.
+ *   - Hosts without an org-slug subdomain fall back to
  *     `DEFAULT_ORG_ID` so existing self-hosted deployments behave exactly
  *     as before.
- *
  * Returns null when:
  *   - we're in the Next.js build phase (no DB), OR
  *   - the resolved org has no OIDC configured, OR
@@ -280,7 +280,8 @@ const credentialsProvider = Credentials({
 });
 
 /**
- * Per-organisation NextAuth instance cache (plan §8 / Phase 5w).
+/**
+ * Per-organisation NextAuth instance cache.
  *
  * The NextAuth `providers` array bakes in the OIDC issuer at construction
  * time \u2014 we can't swap providers per-request inside one instance. So we
@@ -334,7 +335,8 @@ async function getAuthInstance() {
       }
 
       // Per-org JWT signing secret derived from the org's DEK via
-      // `deriveJwtSigningKey` — see plan §8 / §16b OSS-3 + jwt-key.ts.
+      // Per-org JWT signing secret derived from the org's DEK via
+      // `deriveJwtSigningKey` — see jwt-key.ts.
       // Falls back to NEXTAUTH_SECRET when the org has no DEK (OSS /
       // self-hosted path). When fromEnv=true we pass the raw env string
       // directly so existing sessions signed with the raw secret remain

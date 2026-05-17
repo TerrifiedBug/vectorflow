@@ -25,8 +25,8 @@ function setupHappyPath() {
     plan: "FREE",
     region: "eu-west-2",
     dataKeyCiphertext: "secret-ciphertext-bytes",
-    kmsKeyArn: "arn:aws:kms:eu-west-2:123:key/abc",
-    byokKeyArn: null,
+    dekWrapKeyId: "arn:aws:kms:eu-west-2:123:key/abc",
+    byokWrapKeyId: null,
     suspendedAt: null,
     deletedAt: null,
     createdAt: NOW,
@@ -110,7 +110,7 @@ function setupHappyPath() {
       operatorId: "op-1",
       approvedByCustomerAdminId: null,
       reason: "support",
-      kmsGrantToken: "live-grant-token",
+      externalGrantRef: "live-grant-token",
       expiresAt: NOW,
       revokedAt: null,
       createdAt: NOW,
@@ -194,11 +194,11 @@ describe("buildOrgDataExport", () => {
     const env = await buildOrgDataExport("org-1", { now: NOW });
     const org = env.data.organization!;
     expect(org).not.toHaveProperty("dataKeyCiphertext");
-    expect(org).not.toHaveProperty("kmsKeyArn");
-    expect(org).not.toHaveProperty("byokKeyArn");
+    expect(org).not.toHaveProperty("dekWrapKeyId");
+    expect(org).not.toHaveProperty("byokWrapKeyId");
     expect(org.__has_dataKeyCiphertext).toBe(true);
-    expect(org.__has_kmsKeyArn).toBe(true);
-    expect(org.__has_byokKeyArn).toBe(false);
+    expect(org.__has_dekWrapKeyId).toBe(true);
+    expect(org.__has_byokWrapKeyId).toBe(false);
   });
 
   it("redacts NotificationChannel.config (channel destination secrets)", async () => {
@@ -218,11 +218,11 @@ describe("buildOrgDataExport", () => {
     expect(w.url).toBe("https://customer.example/hooks");
   });
 
-  it("redacts OrgAccessGrant.kmsGrantToken", async () => {
+  it("redacts OrgAccessGrant.externalGrantRef", async () => {
     const env = await buildOrgDataExport("org-1", { now: NOW });
     const g = env.data.orgAccessGrants[0]!;
-    expect(g).not.toHaveProperty("kmsGrantToken");
-    expect(g.__has_kmsGrantToken).toBe(true);
+    expect(g).not.toHaveProperty("externalGrantRef");
+    expect(g.__has_externalGrantRef).toBe(true);
     expect(g.reason).toBe("support");
   });
 

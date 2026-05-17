@@ -1,11 +1,11 @@
 /**
- * AI provider base-URL allowlist (plan §9 / Phase 5z).
+ * AI provider base-URL allowlist.
  *
  * Two layers of policy compose:
  *
- *   1. **`validateOutboundUrl`** (plan §9 / Phase 5u) — the unified
+ *   1. **`validateOutboundUrl`** — the unified
  *      SSRF gate. Rejects private IPs, mDNS, .internal TLDs, cloud
- *      metadata endpoints, etc. Gated by `VF_CLOUD_STRICT_OUTBOUND`.
+ *      metadata endpoints, etc. Gated by `VF_STRICT_OUTBOUND`.
  *
  *   2. **This module** — even AFTER `validateOutboundUrl` accepts a URL
  *      as "not pointing at a private network", we still want to
@@ -26,7 +26,7 @@
  * once; per-team baseUrl overrides still must satisfy the policy.
  */
 import { prisma } from "@/lib/prisma";
-import { isCloudStrictOutbound } from "@/server/services/url-validation";
+import { isStrictOutboundMode } from "@/server/services/url-validation";
 
 /**
  * Hostnames we accept by default. A URL whose hostname equals one of
@@ -85,7 +85,7 @@ function hostnameOf(baseUrl: string): string {
 /**
  * Enforce the AI-base-URL policy at call-time. Order of checks:
  *
- *   0. If `VF_CLOUD_STRICT_OUTBOUND` is unset (OSS default) → skip.
+ *   0. If `VF_STRICT_OUTBOUND` is unset (OSS default) → skip.
  *      Parity with `validateOutboundUrl` — self-hosted users routinely
  *      target localhost / Ollama / vLLM and we do not want a hard
  *      allowlist policy to break their config out of the box.
@@ -104,7 +104,7 @@ export async function enforceAiBaseUrlPolicy(opts: {
   baseUrl: string;
   organizationId: string;
 }): Promise<void> {
-  if (!isCloudStrictOutbound()) return;
+  if (!isStrictOutboundMode()) return;
 
   const host = hostnameOf(opts.baseUrl);
   if (isAllowlistedAiHost(host)) return;
