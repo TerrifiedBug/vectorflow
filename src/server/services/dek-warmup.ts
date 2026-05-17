@@ -97,26 +97,27 @@ export async function warmDekCacheForActiveOrgs(
   let succeeded = 0;
   let failed = 0;
 
-  // Chunked concurrency: process WARM_PARALLELISM orgs at a time.
+  // Chunked concurrency: warm WARM_PARALLELISM orgs concurrently.
+  // Each org is warmed individually (via a single-entry warm call) so
+  // we get per-entry outcome tracking: `cache.warm` called with a batch
+  // resolves even when some entries fail internally. Calling one-at-a-time
+  // means a rejection surfaces for that entry, giving accurate succeeded/
+  // failed counts.
   for (let i = 0; i < candidates.length; i += parallelism) {
     const chunk = candidates.slice(i, i + parallelism);
-    await cache
-      .warm(
-        chunk.map((o) => ({
-          orgId: o.id,
-          dataKeyCiphertext: o.dataKeyCiphertext,
-        })),
-      )
-      .then(() => {
-        succeeded += chunk.length;
-      })
-      .catch((err) => {
-        // `cache.warm` swallows per-entry errors internally, so a thrown
-        // error here means the underlying KMS provider is in a state
-        // that warrants escalation rather than continuing.
-        failed += chunk.length;
-        warnLog("dek-warmup", "chunk failed", err);
-      });
+    await Promise.all(
+      chunk.map((o) =>
+        cache
+          .warm([{ orgId: o.id, dataKeyCiphertext: o.dataKeyCiphertext }])
+          .then(() => {
+            succeeded++;
+          })
+          .catch((err) => {
+            failed++;
+            warnLog("dek-warmup", `warm failed for org ${o.id}`, err);
+          }),
+      ),
+    );
   }
 
   const durationMs = Date.now() - t0;
