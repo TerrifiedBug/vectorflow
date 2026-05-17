@@ -53,6 +53,14 @@ export interface JwtKeyResult {
    * and re-derives the correct per-org key once KMS recovers.
    */
   kmsFailure: boolean;
+  /**
+   * The org's current `jwtKeyRotationCounter`. When > 0 the org has had at
+   * least one explicit session revocation, meaning all pre-DEK tokens have
+   * been explicitly invalidated. auth.ts uses this to decide whether to
+   * include the legacy NEXTAUTH_SECRET as a secondary verification key:
+   * it should NOT be included once the org has rotated (counter > 0).
+   */
+  rotationCounter: number;
 }
 
 /**
@@ -80,6 +88,7 @@ export async function getJwtSecretForOrg(orgId: string): Promise<JwtKeyResult> {
         value: deriveJwtSigningKey(dek, org.jwtKeyRotationCounter),
         fromEnv: false,
         kmsFailure: false,
+        rotationCounter: org.jwtKeyRotationCounter,
       };
     } catch (err) {
       // KMS hiccup; fall through to the env-secret path so sign-in
@@ -101,6 +110,7 @@ export async function getJwtSecretForOrg(orgId: string): Promise<JwtKeyResult> {
         value: Buffer.from(envSecret, "utf8"),
         fromEnv: true,
         kmsFailure: true,
+        rotationCounter: org.jwtKeyRotationCounter,
       };
     }
   }
@@ -111,7 +121,7 @@ export async function getJwtSecretForOrg(orgId: string): Promise<JwtKeyResult> {
       "getJwtSecretForOrg: neither per-org DEK nor NEXTAUTH_SECRET is configured",
     );
   }
-  return { value: Buffer.from(envSecret, "utf8"), fromEnv: true, kmsFailure: false };
+  return { value: Buffer.from(envSecret, "utf8"), fromEnv: true, kmsFailure: false, rotationCounter: 0 };
 }
 
 export interface RevokeOrgSessionsRequestor {
@@ -163,22 +173,6 @@ export async function revokeOrgSessions(
     });
     const newCounter = updated.jwtKeyRotationCounter;
 
-    await tx.auditLog.create({
-      data: {
-        organizationId,
-        userId: by.kind === "customer" ? by.id : null,
-        action: "auth.sessions_revoked",
-        entityType: "Organization",
-        entityId: organizationId,
-        ipAddress: by.ipAddress ?? null,
-        metadata: {
-          requestedBy: by.kind,
-          reason: by.reason ?? null,
-          newRotationCounter: newCounter,
-        },
-      },
-    });
-
     infoLog(
       "jwt-key",
       `revoked all sessions for org ${organizationId} (counter -> ${newCounter})`,
@@ -186,4 +180,24 @@ export async function revokeOrgSessions(
 
     return { organizationId, newRotationCounter: newCounter };
   });
+
+  // Write chained audit row OUTSIDE the transaction so writeAuditLog's
+  // advisory lock does not nest inside the org-update transaction.
+  writeAuditLog({
+    organizationId,
+    userId: by.kind === "customer" ? by.id : null,
+    action: "auth.sessions_revoked",
+    entityType: "Organization",
+    entityId: organizationId,
+    ipAddress: by.ipAddress ?? null,
+    metadata: {
+      requestedBy: by.kind,
+      reason: by.reason ?? null,
+      newRotationCounter: result.newRotationCounter,
+    },
+  }).catch((err) => {
+    warnLog("jwt-key", `writeAuditLog failed for auth.sessions_revoked on ${organizationId}`, err);
+  });
+
+  return result;
 }

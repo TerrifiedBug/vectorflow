@@ -348,15 +348,21 @@ async function getAuthInstance() {
       // signed with the env secret before DEK rollout remain verifiable.
       // Auth.js verifies against all entries in the array; signing always
       // uses the first entry (the DEK-derived key).
+      //
+      // The legacy secret is ONLY included when rotationCounter === 0
+      // (the org has never explicitly revoked sessions). Once the operator
+      // calls revokeOrgSessions (counter > 0), all pre-DEK tokens have
+      // been explicitly invalidated; including the legacy secret after that
+      // would allow those old tokens to bypass the revocation.
+      const includesLegacySecret =
+        !jwtKeyResult.fromEnv &&
+        jwtKeyResult.rotationCounter === 0 &&
+        !!process.env.NEXTAUTH_SECRET;
       const secretArg = jwtKeyResult.fromEnv
         ? [process.env.NEXTAUTH_SECRET!]
         : [
             jwtKeyResult.value.toString("base64url"),
-            // Legacy grace secret: verifies tokens issued before this
-            // org was enrolled in per-org DEK rotation. Remove once the
-            // org's session rotation counter has been bumped (which
-            // invalidates all pre-DEK tokens explicitly).
-            ...(process.env.NEXTAUTH_SECRET ? [process.env.NEXTAUTH_SECRET] : []),
+            ...(includesLegacySecret ? [process.env.NEXTAUTH_SECRET!] : []),
           ];
 
       const instance = NextAuth({

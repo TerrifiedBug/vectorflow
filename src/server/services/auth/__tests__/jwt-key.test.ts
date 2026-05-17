@@ -144,11 +144,11 @@ describe("revokeOrgSessions", () => {
     mocks.$transaction.mockImplementation(async (fn) => fn(makeTxStub()));
   });
 
-  it("atomically increments the counter and writes an audit row", async () => {
+  it("atomically increments the counter and fires writeAuditLog", async () => {
     mocks.organizationFindUnique.mockResolvedValue({ id: "org-a" });
     // update returns the new counter after atomic increment
     mocks.organizationUpdate.mockResolvedValue({ jwtKeyRotationCounter: 8 });
-    mocks.auditLogCreate.mockResolvedValue({});
+    mocks.writeAuditLog.mockResolvedValue(undefined);
 
     const r = await revokeOrgSessions("org-a", {
       kind: "customer",
@@ -166,30 +166,34 @@ describe("revokeOrgSessions", () => {
         select: { jwtKeyRotationCounter: true },
       }),
     );
-    expect(mocks.auditLogCreate).toHaveBeenCalledWith(
+    // writeAuditLog (chained) instead of tx.auditLog.create.
+    expect(mocks.writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          organizationId: "org-a",
-          userId: "user-1",
-          action: "auth.sessions_revoked",
-          entityType: "Organization",
-          ipAddress: "1.2.3.4",
-          metadata: expect.objectContaining({ newRotationCounter: 8 }),
-        }),
+        organizationId: "org-a",
+        userId: "user-1",
+        action: "auth.sessions_revoked",
+        entityType: "Organization",
+        ipAddress: "1.2.3.4",
+        metadata: expect.objectContaining({ newRotationCounter: 8 }),
       }),
     );
+    expect(mocks.auditLogCreate).not.toHaveBeenCalled();
   });
 
   it("operator-driven revocation does not stamp userId on AuditLog", async () => {
     mocks.organizationFindUnique.mockResolvedValue({ id: "org-a" });
     mocks.organizationUpdate.mockResolvedValue({ jwtKeyRotationCounter: 1 });
-    mocks.auditLogCreate.mockResolvedValue({});
+    mocks.writeAuditLog.mockResolvedValue(undefined);
 
     await revokeOrgSessions("org-a", { kind: "operator", id: "op-1" });
-    const auditCall = mocks.auditLogCreate.mock.calls[0]?.[0]?.data;
-    expect(auditCall?.userId).toBeNull();
-    expect(auditCall?.metadata?.requestedBy).toBe("operator");
+    expect(mocks.writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: null,
+        metadata: expect.objectContaining({ requestedBy: "operator" }),
+      }),
+    );
   });
+
 
   it("throws when the org does not exist", async () => {
     mocks.organizationFindUnique.mockResolvedValue(null);
