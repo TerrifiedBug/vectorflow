@@ -82,7 +82,7 @@ export async function warmDekCacheForActiveOrgs(
   const listOrgs = deps.listOrgs ?? (await defaultListOrgs());
   const cache = deps.cache ?? (await defaultDekCache());
   const parallelism = deps.parallelism ?? WARM_PARALLELISM;
-  if (!Number.isFinite(parallelism) || parallelism <= 0) {
+  if (!Number.isFinite(parallelism) || !Number.isInteger(parallelism) || parallelism <= 0) {
     throw new Error(
       `dek-warmup: parallelism must be a positive integer, got ${parallelism}`,
     );
