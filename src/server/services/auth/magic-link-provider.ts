@@ -114,13 +114,13 @@ export async function authorizeMagicLink(
       `provisioned new user via magic link: ${user.email}`,
     );
     writeAuditLog({
+      organizationId: result.organizationId,
       userId: user.id,
       action: "auth.user_provisioned",
       entityType: "Auth",
       entityId: "magic-link",
       userEmail: user.email,
       userName: user.name,
-      metadata: { organizationId: result.organizationId },
     }).catch(() => undefined);
   }
 
@@ -133,13 +133,13 @@ export async function authorizeMagicLink(
   }
 
   writeAuditLog({
+    organizationId: result.organizationId,
     userId: user.id,
     action: "auth.login_succeeded",
     entityType: "Auth",
     entityId: "magic-link",
     userEmail: user.email,
     userName: user.name,
-    metadata: { organizationId: result.organizationId },
   }).catch(() => undefined);
 
   return {
