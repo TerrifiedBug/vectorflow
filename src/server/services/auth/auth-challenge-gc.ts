@@ -68,11 +68,15 @@ export function _stopAuthChallengeGcForTests(): void {
 async function gcExpiredMagicLinkTokens(): Promise<number> {
   try {
     const { prisma } = await import("@/lib/prisma");
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const result = await prisma.magicLinkToken.deleteMany({
       where: {
         OR: [
-          { expiresAt: { lt: new Date() } },
-          { consumedAt: { not: null } },
+          // Tokens that expired and were never consumed: delete immediately.
+          { expiresAt: { lt: new Date() }, consumedAt: null },
+          // Tokens that were consumed: retain for 7 days for audit / forensic
+          // context (repeated-token analysis, incident investigation).
+          { consumedAt: { not: null, lt: sevenDaysAgo } },
         ],
       },
     });
