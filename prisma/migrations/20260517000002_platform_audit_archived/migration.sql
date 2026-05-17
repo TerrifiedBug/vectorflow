@@ -12,5 +12,7 @@ ALTER TABLE "PlatformAuditLog"
 -- composite index for the order-by + treats `archivedAt IS NULL` as a
 -- selective predicate. In steady state the unarchived backlog is
 -- small, so the index footprint stays bounded.
+-- Partial index: only indexes unarchived rows, keeping footprint bounded.
 CREATE INDEX "PlatformAuditLog_archivedAt_createdAt_idx"
-  ON "PlatformAuditLog"("archivedAt", "createdAt");
+  ON "PlatformAuditLog"("createdAt")
+  WHERE "archivedAt" IS NULL;
