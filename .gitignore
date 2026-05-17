@@ -66,12 +66,13 @@ Thumbs.db
 .env.*
 !.env.example
 
-# docs/cloud/ is gitignored globally (operator-private notes), but the
-# threat model is the public security design contract per the SaaS
-# conversion plan \u00a716 Phase 6.
+# docs/cloud/ is gitignored: the directory holds Cloud-only documentation
+# (threat model, runbooks, operator notes) that lives in the closed
+# `cloud/` workspace and is published to vectorflow.sh/trust as a
+# customer-facing summary. The full documents are not part of the AGPL OSS
+# repo (see plan §15a R5 — 2026-05-17 removal).
 !docs/cloud/
 docs/cloud/*
-!docs/cloud/threat-model.md
 node_modules/
 .next/
 dist/
