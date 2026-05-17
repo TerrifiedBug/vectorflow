@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { validateOutboundUrl } from "@/server/services/url-validation";
 
 export type VaultAuthMethod = "token" | "approle" | "kubernetes";
 
@@ -180,6 +181,13 @@ async function vaultFetch(
   if (options.token) headers["X-Vault-Token"] = options.token;
   if (config.namespace?.trim()) headers["X-Vault-Namespace"] = config.namespace.trim();
   if (options.body) headers["Content-Type"] = "application/json";
+
+  // SSRF guard. Vault address is operator-controlled; in OSS it usually
+  // points at a private network so we use the gated `validateOutboundUrl`
+  // (no `force`). Cloud deployments that set `VF_CLOUD_STRICT_OUTBOUND=true`
+  // will reject a Vault URL accidentally pointing at a private IP / cloud
+  // metadata endpoint before any token is leaked.
+  await validateOutboundUrl(url);
 
   return fetch(url, {
     method: options.method,

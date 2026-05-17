@@ -5,6 +5,7 @@ import { parseAiReviewResponse } from "@/lib/ai/suggestion-validator";
 import { debugLog, errorLog } from "@/lib/logger";
 import { Prisma } from "@/generated/prisma";
 import { isDemoMode } from "@/lib/is-demo-mode";
+import { validateOutboundUrl } from "@/server/services/url-validation";
 
 const TAG = "cost-optimizer-ai";
 
@@ -62,6 +63,9 @@ export async function generateAiRecommendations(): Promise<number> {
     let config;
     try {
       config = await getTeamAiConfig(teamId);
+      // SSRF guard: matches `streamCompletion` so cost-optimizer doesn't
+      // become a second AI-baseUrl escape hatch when Cloud-strict is on.
+      await validateOutboundUrl(config.baseUrl);
     } catch {
       debugLog(TAG, `AI not configured for team ${teamId}, skipping ${recs.length} recommendations`);
       continue;

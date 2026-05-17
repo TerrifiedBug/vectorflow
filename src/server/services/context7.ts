@@ -8,6 +8,7 @@
 // env var for higher limits. On failure, callers fall back to static docs.
 
 import { debugLog, warnLog } from "@/lib/logger";
+import { validateOutboundUrl } from "@/server/services/url-validation";
 
 const TAG = "context7";
 const BASE_URL = "https://context7.com/api/v2";
@@ -69,6 +70,12 @@ async function queryDocs(libraryId: string, query: string): Promise<string> {
     if (apiKey) {
       headers.Authorization = `Bearer ${apiKey}`;
     }
+
+    // SSRF guard. BASE_URL is a hardcoded vendor URL today, but the request
+    // still goes outbound from the control plane. Forcing validation means a
+    // future env-driven override (test / EU mirror / proxy) inherits the
+    // unified policy and Cloud-strict rejection.
+    await validateOutboundUrl(url.toString(), { force: true });
 
     const response = await fetch(url.toString(), {
       method: "GET",
