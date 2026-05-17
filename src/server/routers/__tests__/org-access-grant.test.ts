@@ -47,11 +47,28 @@ vi.mock("@/server/services/org-access-grant", () => ({
   listOrgAccessGrantsForOrg: grantMocks.listOrgAccessGrantsForOrg,
 }));
 
+// Mock writeAuditLog — it's fire-and-forget in the router so we only
+// need to verify it was called with the right args, not its side effects.
+const auditMocks = vi.hoisted(() => ({ writeAuditLog: vi.fn() }));
+vi.mock("@/server/services/audit", () => ({
+  writeAuditLog: auditMocks.writeAuditLog,
+}));
+
 import { prisma } from "@/lib/prisma";
 import { orgAccessGrantRouter } from "../org-access-grant";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const callerFactory = t.createCallerFactory(orgAccessGrantRouter);
+
+// Make $executeRaw and $transaction cooperative so withOrgTx works in tests.
+// withOrgTx wraps DB work in prisma.$transaction — we call the callback with
+// the same mock client so all model mocks remain accessible inside the tx.
+function setupTransactionMock() {
+  prismaMock.$executeRaw.mockResolvedValue(1 as never);
+  prismaMock.$transaction.mockImplementation(
+    async (fn: (tx: PrismaClient) => Promise<unknown>) => fn(prismaMock),
+  );
+}
 
 function caller(role: "OWNER" | "ADMIN" | "MEMBER" = "OWNER") {
   prismaMock.orgMember.findUnique.mockResolvedValue({
@@ -65,6 +82,9 @@ function caller(role: "OWNER" | "ADMIN" | "MEMBER" = "OWNER") {
 
 beforeEach(() => {
   mockReset(prismaMock);
+  setupTransactionMock();
+  auditMocks.writeAuditLog.mockReset();
+  auditMocks.writeAuditLog.mockResolvedValue(undefined);
   Object.values(grantMocks).forEach((m) =>
     "mockReset" in m ? m.mockReset() : null,
   );
@@ -97,19 +117,19 @@ describe("orgAccessGrant.list", () => {
 });
 
 describe("orgAccessGrant.approve", () => {
-  it("approves a pending grant + writes audit row", async () => {
+  it("approves a pending grant + fires writeAuditLog", async () => {
     prismaMock.orgAccessGrant.findUnique.mockResolvedValue({
       id: "grant-1",
       organizationId: "org-a",
       approvedByCustomerAdminId: null,
       revokedAt: null,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1h from now
     } as never);
     grantMocks.approveOrgAccessGrant.mockResolvedValue({
       id: "grant-1",
       operatorId: "op-2",
       expiresAt: new Date("2026-05-17T13:00:00Z"),
     });
-    prismaMock.auditLog.create.mockResolvedValue({} as never);
 
     const r = await caller("ADMIN").approve({
       grantId: "grant-1",
@@ -120,15 +140,14 @@ describe("orgAccessGrant.approve", () => {
       grantId: "grant-1",
       approvedByCustomerAdminId: "u-1",
     });
-    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+    // writeAuditLog is used (not prisma.auditLog.create) for chain inclusion.
+    expect(auditMocks.writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          action: "auth.grant_approved",
-          organizationId: "org-a",
-          userId: "u-1",
-          entityType: "OrgAccessGrant",
-          entityId: "grant-1",
-        }),
+        action: "auth.grant_approved",
+        organizationId: "org-a",
+        userId: "u-1",
+        entityType: "OrgAccessGrant",
+        entityId: "grant-1",
       }),
     );
   });
@@ -139,6 +158,7 @@ describe("orgAccessGrant.approve", () => {
       organizationId: "org-OTHER",
       approvedByCustomerAdminId: null,
       revokedAt: null,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
     } as never);
     await expect(
       caller("ADMIN").approve({ grantId: "grant-1", organizationId: "org-a" }),
@@ -152,6 +172,7 @@ describe("orgAccessGrant.approve", () => {
       organizationId: "org-a",
       approvedByCustomerAdminId: "u-prev",
       revokedAt: null,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
     } as never);
     await expect(
       caller("ADMIN").approve({ grantId: "grant-1", organizationId: "org-a" }),
@@ -164,6 +185,20 @@ describe("orgAccessGrant.approve", () => {
       organizationId: "org-a",
       approvedByCustomerAdminId: null,
       revokedAt: new Date(),
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    } as never);
+    await expect(
+      caller("ADMIN").approve({ grantId: "grant-1", organizationId: "org-a" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("rejects approving an expired grant with CONFLICT", async () => {
+    prismaMock.orgAccessGrant.findUnique.mockResolvedValue({
+      id: "grant-1",
+      organizationId: "org-a",
+      approvedByCustomerAdminId: null,
+      revokedAt: null,
+      expiresAt: new Date(Date.now() - 1000), // expired
     } as never);
     await expect(
       caller("ADMIN").approve({ grantId: "grant-1", organizationId: "org-a" }),
@@ -179,7 +214,7 @@ describe("orgAccessGrant.approve", () => {
 });
 
 describe("orgAccessGrant.revoke", () => {
-  it("revokes an active grant when caller is OWNER + audits", async () => {
+  it("revokes an active grant when caller is OWNER + fires writeAuditLog", async () => {
     prismaMock.orgAccessGrant.findUnique.mockResolvedValue({
       id: "grant-1",
       organizationId: "org-a",
@@ -190,18 +225,15 @@ describe("orgAccessGrant.revoke", () => {
       operatorId: "op-2",
       revokedAt: new Date(),
     });
-    prismaMock.auditLog.create.mockResolvedValue({} as never);
     await caller("OWNER").revoke({
       grantId: "grant-1",
       organizationId: "org-a",
     });
     expect(grantMocks.revokeOrgAccessGrant).toHaveBeenCalledWith("grant-1");
-    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+    expect(auditMocks.writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          action: "auth.grant_revoked",
-          organizationId: "org-a",
-        }),
+        action: "auth.grant_revoked",
+        organizationId: "org-a",
       }),
     );
   });
