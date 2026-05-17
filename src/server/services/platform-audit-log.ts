@@ -215,14 +215,15 @@ export async function writePlatformAuditLog(
     };
     const hash = computeRowHash(prevHash, row);
 
+    // Destructure metadata out of row before spreading so the Prisma
+    // Json column type is satisfied. `null` metadata means "absent" (SQL
+    // NULL), which Prisma handles via field omission. Including it as
+    // `metadata: null` in the spread triggers a TS2322 error because
+    // the generated type does not accept null for Json? columns directly.
+    const { metadata: _meta, ...rowWithoutMeta } = row;
     await tx.platformAuditLog.create({
       data: {
-        ...row,
-        // Omit null metadata so Prisma stores SQL NULL in the JSONB column.
-        // Prisma.DbNull / Prisma.JsonNull are only needed when storing the
-        // JSON value `null`; here null means "no metadata", which maps to
-        // SQL NULL via omission. Passing `row.metadata` directly (which is
-        // `null`) can cause runtime validation errors on some Prisma versions.
+        ...rowWithoutMeta,
         ...(row.metadata !== null ? { metadata: row.metadata } : {}),
         prevHash,
         hash,
