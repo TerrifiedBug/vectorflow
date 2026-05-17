@@ -92,6 +92,7 @@ describe("setup service", () => {
               role: "OWNER",
             }),
           },
+          platformOperator: { create: vi.fn().mockResolvedValue({}) },
         };
         return fn(tx);
       });
@@ -135,6 +136,7 @@ describe("setup service", () => {
           environment: { create: vi.fn().mockResolvedValue({ id: "env-1", name: "Prod" }) },
           systemSettings: { upsert: vi.fn().mockResolvedValue({}) },
           orgMember: { create: vi.fn().mockResolvedValue({}) },
+          platformOperator: { create: vi.fn().mockResolvedValue({}) },
         };
         return fn(tx);
       });
@@ -173,6 +175,7 @@ describe("setup service", () => {
         environment: { create: vi.fn().mockResolvedValue({ id: "e1", name: "Production" }) },
         systemSettings: { upsert: upsertMock },
         orgMember: { create: vi.fn().mockResolvedValue({}) },
+        platformOperator: { create: vi.fn().mockResolvedValue({}) },
       };
     }
 
@@ -224,6 +227,7 @@ describe("setup service", () => {
           environment: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
           systemSettings: { upsert: vi.fn().mockResolvedValue({}) },
           orgMember: { create: orgMemberCreate },
+          platformOperator: { create: vi.fn().mockResolvedValue({}) },
         };
         return fn(tx);
       });
@@ -270,6 +274,7 @@ describe("setup service", () => {
           },
           systemSettings: { upsert: vi.fn().mockResolvedValue({}) },
           orgMember: { create: vi.fn().mockResolvedValue({}) },
+          platformOperator: { create: vi.fn().mockResolvedValue({}) },
         };
         return fn(tx);
       });
@@ -286,6 +291,77 @@ describe("setup service", () => {
 
       expect(teamData?.organizationId).toBe("default");
       expect(envData?.organizationId).toBe("default");
+    });
+
+    it("creates a PlatformOperator with INCIDENT role for the initial admin (OSS gate)", async () => {
+      const platformOperatorCreate = vi.fn().mockResolvedValue({});
+      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+        if (typeof fn !== "function") return;
+        const tx = {
+          user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "owner@example.com", name: "Owner" }) },
+          team: { create: vi.fn().mockResolvedValue({ id: "t1" }), update: vi.fn().mockResolvedValue({}) },
+          teamMember: { create: vi.fn().mockResolvedValue({}) },
+          environment: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
+          systemSettings: { upsert: vi.fn().mockResolvedValue({}) },
+          orgMember: { create: vi.fn().mockResolvedValue({}) },
+          platformOperator: { create: platformOperatorCreate },
+        };
+        return fn(tx);
+      });
+
+      await completeSetup({
+        email: "owner@example.com",
+        name: "Owner",
+        password: "pw1234",
+        teamName: "T",
+        telemetryChoice: "no",
+        requireTwoFactor: false,
+        environmentName: "P",
+      });
+
+      expect(platformOperatorCreate).toHaveBeenCalledWith({
+        data: {
+          email: "owner@example.com",
+          name: "Owner",
+          role: "INCIDENT",
+        },
+      });
+    });
+
+    it("skips PlatformOperator creation under the Cloud build profile", async () => {
+      const platformOperatorCreate = vi.fn().mockResolvedValue({});
+      const ORIG = process.env.VF_CLOUD_BUILD;
+      process.env.VF_CLOUD_BUILD = "true";
+      try {
+        prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+          if (typeof fn !== "function") return;
+          const tx = {
+            user: { create: vi.fn().mockResolvedValue({ id: "u1", email: "a@b.c", name: "A" }) },
+            team: { create: vi.fn().mockResolvedValue({ id: "t1" }), update: vi.fn().mockResolvedValue({}) },
+            teamMember: { create: vi.fn().mockResolvedValue({}) },
+            environment: { create: vi.fn().mockResolvedValue({ id: "e1" }) },
+            systemSettings: { upsert: vi.fn().mockResolvedValue({}) },
+            orgMember: { create: vi.fn().mockResolvedValue({}) },
+            platformOperator: { create: platformOperatorCreate },
+          };
+          return fn(tx);
+        });
+
+        await completeSetup({
+          email: "a@b.c",
+          name: "A",
+          password: "pw1234",
+          teamName: "T",
+          telemetryChoice: "no",
+          requireTwoFactor: false,
+          environmentName: "P",
+        });
+
+        expect(platformOperatorCreate).not.toHaveBeenCalled();
+      } finally {
+        if (ORIG === undefined) delete process.env.VF_CLOUD_BUILD;
+        else process.env.VF_CLOUD_BUILD = ORIG;
+      }
     });
   });
 });

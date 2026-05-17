@@ -168,13 +168,32 @@ describe("adminRouter", () => {
   // ─── toggleSuperAdmin ─────────────────────────────────────────────────────
 
   describe("toggleSuperAdmin", () => {
+    function mockTx(opts?: {
+      userRow?: { id: string; email: string; name: string | null; isSuperAdmin: boolean };
+      operatorUpsert?: ReturnType<typeof vi.fn>;
+      operatorUpdateMany?: ReturnType<typeof vi.fn>;
+      userUpdate?: ReturnType<typeof vi.fn>;
+    }) {
+      const userUpdate = opts?.userUpdate
+        ?? vi.fn().mockResolvedValue(opts?.userRow ?? { id: "u2", email: "u2@test.com", name: "User Two", isSuperAdmin: true });
+      const operatorUpsert = opts?.operatorUpsert ?? vi.fn().mockResolvedValue({});
+      const operatorUpdateMany = opts?.operatorUpdateMany ?? vi.fn().mockResolvedValue({ count: 1 });
+      prismaMock.$transaction.mockImplementation(async (fn: unknown) => {
+        if (typeof fn !== "function") return;
+        return fn({
+          user: { update: userUpdate },
+          platformOperator: { upsert: operatorUpsert, updateMany: operatorUpdateMany },
+        });
+      });
+      return { userUpdate, operatorUpsert, operatorUpdateMany };
+    }
+
     it("updates super admin status", async () => {
-      const updated = { id: "u2", isSuperAdmin: true };
-      prismaMock.user.update.mockResolvedValue(updated as never);
+      mockTx({ userRow: { id: "u2", email: "u2@test.com", name: "User Two", isSuperAdmin: true } });
 
       const result = await caller.toggleSuperAdmin({ userId: "u2", isSuperAdmin: true });
 
-      expect(result).toEqual(updated);
+      expect(result).toEqual({ id: "u2", isSuperAdmin: true });
     });
 
     it("throws BAD_REQUEST when removing own super admin", async () => {
@@ -184,11 +203,70 @@ describe("adminRouter", () => {
     });
 
     it("allows granting super admin to self (no-op but allowed)", async () => {
-      prismaMock.user.update.mockResolvedValue({ id: "user-1", isSuperAdmin: true } as never);
+      mockTx({ userRow: { id: "user-1", email: "admin@test.com", name: "Admin", isSuperAdmin: true } });
 
       const result = await caller.toggleSuperAdmin({ userId: "user-1", isSuperAdmin: true });
 
       expect(result).toEqual({ id: "user-1", isSuperAdmin: true });
+    });
+
+    it("granting mirrors to PlatformOperator via upsert with INCIDENT + clears deletedAt (OSS)", async () => {
+      const { operatorUpsert, operatorUpdateMany } = mockTx({
+        userRow: { id: "u2", email: "u2@test.com", name: "User Two", isSuperAdmin: true },
+      });
+
+      await caller.toggleSuperAdmin({ userId: "u2", isSuperAdmin: true });
+
+      expect(operatorUpsert).toHaveBeenCalledWith({
+        where: { email: "u2@test.com" },
+        create: { email: "u2@test.com", name: "User Two", role: "INCIDENT" },
+        update: { deletedAt: null },
+      });
+      expect(operatorUpdateMany).not.toHaveBeenCalled();
+    });
+
+    it("granting uses email as the operator name when User.name is null", async () => {
+      const { operatorUpsert } = mockTx({
+        userRow: { id: "u3", email: "nameless@test.com", name: null, isSuperAdmin: true },
+      });
+
+      await caller.toggleSuperAdmin({ userId: "u3", isSuperAdmin: true });
+
+      expect(operatorUpsert).toHaveBeenCalledWith(expect.objectContaining({
+        create: expect.objectContaining({ name: "nameless@test.com" }),
+      }));
+    });
+
+    it("revoking soft-deletes the PlatformOperator row instead of hard-deleting (OSS)", async () => {
+      const { operatorUpsert, operatorUpdateMany } = mockTx({
+        userRow: { id: "u2", email: "u2@test.com", name: "User Two", isSuperAdmin: false },
+      });
+
+      await caller.toggleSuperAdmin({ userId: "u2", isSuperAdmin: false });
+
+      expect(operatorUpdateMany).toHaveBeenCalledWith({
+        where: { email: "u2@test.com", deletedAt: null },
+        data: { deletedAt: expect.any(Date) },
+      });
+      expect(operatorUpsert).not.toHaveBeenCalled();
+    });
+
+    it("skips PlatformOperator mirror under the Cloud build profile", async () => {
+      const ORIG = process.env.VF_CLOUD_BUILD;
+      process.env.VF_CLOUD_BUILD = "true";
+      try {
+        const { operatorUpsert, operatorUpdateMany } = mockTx({
+          userRow: { id: "u2", email: "u2@test.com", name: "User Two", isSuperAdmin: true },
+        });
+
+        await caller.toggleSuperAdmin({ userId: "u2", isSuperAdmin: true });
+
+        expect(operatorUpsert).not.toHaveBeenCalled();
+        expect(operatorUpdateMany).not.toHaveBeenCalled();
+      } finally {
+        if (ORIG === undefined) delete process.env.VF_CLOUD_BUILD;
+        else process.env.VF_CLOUD_BUILD = ORIG;
+      }
     });
   });
 
