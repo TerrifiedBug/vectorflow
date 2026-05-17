@@ -1,6 +1,7 @@
 import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { isDevAuthBypassRequestAllowed } from "@/lib/dev-auth-bypass";
+import { cloudCookieConfig } from "@/lib/cloud-cookies";
 
 /**
  * Shared auth configuration used by both the full auth setup (auth.ts)
@@ -9,6 +10,10 @@ import { isDevAuthBypassRequestAllowed } from "@/lib/dev-auth-bypass";
  */
 export const authConfig: NextAuthConfig = {
   session: { strategy: "jwt" },
+  // Cloud build (`VF_CLOUD_BUILD=true`) flips to `__Host-` prefixed
+  // cookies — per-subdomain isolation per plan §8. OSS / dev profile
+  // leaves NextAuth defaults so `http://localhost` still works.
+  ...(cloudCookieConfig() ? { cookies: cloudCookieConfig() } : {}),
   pages: {
     signIn: "/login",
   },
