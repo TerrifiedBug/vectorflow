@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { ErrorEvent } from "@sentry/core";
+import type { ErrorEvent } from "@sentry/nextjs";
 
 import {
   sanitizeSentryEvent,

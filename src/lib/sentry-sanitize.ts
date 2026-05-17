@@ -27,7 +27,7 @@
  * suite can prove every category is enforced.
  */
 
-import type { ErrorEvent } from "@sentry/core";
+import type { ErrorEvent } from "@sentry/nextjs";
 
 const REDACTED = "[REDACTED]";
 
@@ -123,6 +123,13 @@ export const DENY_VALUE_KEYS: ReadonlySet<string> = new Set(
  */
 export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
   if (event.request) {
+    // 0. Redact query keys from request.url (full URL includes query string).
+    if (typeof event.request.url === "string" && event.request.url.includes("?")) {
+      const qIdx = event.request.url.indexOf("?");
+      const urlBase = event.request.url.slice(0, qIdx);
+      const urlQs = event.request.url.slice(qIdx + 1);
+      event.request.url = `${urlBase}?${redactQueryString(urlQs)}`;
+    }
     // 1. Drop request body unconditionally.
     if (event.request.data !== undefined) {
       event.request.data = REDACTED;
@@ -136,11 +143,14 @@ export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
       event.request.query_string &&
       typeof event.request.query_string === "object"
     ) {
-      // Some Sentry serialisations emit query_string as an object;
-      // walk it the same way as the structured-data scrubber.
-      event.request.query_string = scrubObject(
-        event.request.query_string as Record<string, unknown>,
-      ) as typeof event.request.query_string;
+      // Object-shaped query_string: use DENY_QUERY_KEYS (not DENY_VALUE_KEYS)
+      // so query-only keys like `code`, `client_secret`, `csrfToken` are redacted.
+      const qs = event.request.query_string as Record<string, unknown>;
+      const redactedQs: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(qs)) {
+        redactedQs[k] = DENY_QUERY_KEYS.has(k) ? REDACTED : v;
+      }
+      event.request.query_string = redactedQs as typeof event.request.query_string;
     }
     // 3. Redact denylisted headers.
     if (event.request.headers && typeof event.request.headers === "object") {
