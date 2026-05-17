@@ -145,7 +145,7 @@ describe("revokeOrgSessions", () => {
   });
 
   it("atomically increments the counter and fires writeAuditLog", async () => {
-    mocks.organizationFindUnique.mockResolvedValue({ id: "org-a" });
+    mocks.organizationFindUnique.mockResolvedValue({ id: "org-a", dataKeyCiphertext: "ct-a" });
     // update returns the new counter after atomic increment
     mocks.organizationUpdate.mockResolvedValue({ jwtKeyRotationCounter: 8 });
     mocks.writeAuditLog.mockResolvedValue(undefined);
@@ -181,7 +181,7 @@ describe("revokeOrgSessions", () => {
   });
 
   it("operator-driven revocation does not stamp userId on AuditLog", async () => {
-    mocks.organizationFindUnique.mockResolvedValue({ id: "org-a" });
+    mocks.organizationFindUnique.mockResolvedValue({ id: "org-a", dataKeyCiphertext: "ct-a" });
     mocks.organizationUpdate.mockResolvedValue({ jwtKeyRotationCounter: 1 });
     mocks.writeAuditLog.mockResolvedValue(undefined);
 
@@ -200,6 +200,13 @@ describe("revokeOrgSessions", () => {
     await expect(
       revokeOrgSessions("org-x", { kind: "customer", id: "u" }),
     ).rejects.toThrow(/not found/);
+  });
+
+  it("throws for orgs without a per-org DEK (env-secret orgs, revoke is a no-op)", async () => {
+    mocks.organizationFindUnique.mockResolvedValue({ id: "org-a", dataKeyCiphertext: null });
+    await expect(
+      revokeOrgSessions("org-a", { kind: "customer", id: "u" }),
+    ).rejects.toThrow(/no per-org DEK/);
   });
 });
 

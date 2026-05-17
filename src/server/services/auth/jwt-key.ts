@@ -157,10 +157,21 @@ export async function revokeOrgSessions(
   const result = await prisma.$transaction(async (tx) => {
     const org = await tx.organization.findUnique({
       where: { id: organizationId },
-      select: { id: true },
+      select: { id: true, dataKeyCiphertext: true },
     });
     if (!org) {
       throw new Error(`Organization ${organizationId} not found`);
+    }
+    // For orgs without a DEK (OSS / self-hosted using NEXTAUTH_SECRET), the
+    // rotation counter has no effect — the signing key is the global env secret
+    // and cannot be rotated per-org. Reject the call so callers get a clear
+    // error rather than a silent no-op that misleads them into thinking sessions
+    // were revoked.
+    if (!org.dataKeyCiphertext) {
+      throw new Error(
+        `revokeOrgSessions: org ${organizationId} has no per-org DEK — ` +
+        "revoke all sessions by rotating NEXTAUTH_SECRET in the environment",
+      );
     }
 
     // Atomic increment: avoids the read-then-write race under concurrent

@@ -522,6 +522,13 @@ async function getAuthInstance() {
       _initPromiseByOrg.delete(orgId);
       return instance;
     })();
+    // Clear the in-flight promise entry whether init succeeds or fails so
+    // a transient DB/KMS failure on bootstrap does not pin a rejected promise
+    // in the map and cause every subsequent request for the org to keep failing
+    // until manual cache invalidation or process restart.
+    promise.catch(() => {
+      _initPromiseByOrg.delete(orgId);
+    });
     _initPromiseByOrg.set(orgId, promise);
     return promise;
   }
