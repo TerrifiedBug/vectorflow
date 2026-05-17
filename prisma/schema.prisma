@@ -160,15 +160,27 @@ model OrgAccessGrant {
 }
 
 /// Platform operator — never a tenant User. Authenticates via separate surface.
+///
+/// Operators are **soft-deleted** via `deletedAt`. Hard-delete is blocked
+/// by the `ON DELETE RESTRICT` FK from `PlatformAuditLog.operatorId` —
+/// removing an operator who has audit-log entries would erase the
+/// "who acted" pointer on those rows and defeat the table's purpose.
+/// To decommission an operator: set `deletedAt = now()` and revoke
+/// their `vectorflow_operator` Postgres role grants out of band.
 model PlatformOperator {
   id        String               @id @default(cuid())
   email     String               @unique
   name      String
   role      PlatformOperatorRole @default(SUPPORT)
+  /// Soft-delete timestamp. Once set, the operator's session is
+  /// rejected at `requirePlatformOperator` and they are filtered out
+  /// of the operator console's roster view. Audit-log entries remain.
+  deletedAt DateTime?
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
 
-  accessGrants OrgAccessGrant[]
+  accessGrants        OrgAccessGrant[]
+  platformAuditEntries PlatformAuditLog[]
 }
 
 // ─── End multi-tenancy models ───────────────────────────────────────────────
@@ -1204,6 +1216,129 @@ model AuditChainTail {
    */
   lastWriteAt    DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+/**
+ * Platform operator audit log (plan §11, §16b OSS item 5).
+ *
+ * Records every operator action that touches a customer org: break-glass
+ * grant request/approval/use, suspend/unsuspend, backup restore, stamp
+ * restart, KMS unwrap during a grant window, etc. Lives in a separate
+ * table from `AuditLog` so:
+ *
+ *   1. The two streams have different retention / export policies.
+ *      `AuditLog` is customer-visible (export endpoint per Phase 5c);
+ *      `PlatformAuditLog` is operator-internal but mirrored into the
+ *      customer's `AuditLog` with `userName = "VectorFlow Support"`
+ *      whenever an action affects an org the customer can see.
+ *   2. The Cloud build ships rows to an S3 bucket with Object Lock
+ *      (governance mode, 7y retention) via a sidecar — that sidecar
+ *      reads from this table; customer-side `AuditLog` does not need
+ *      WORM storage.
+ *   3. RLS does not apply: this table is read only by the operator
+ *      Postgres role (separate from `vectorflow_app`).
+ *
+ * Append-only enforced at three layers:
+ *   - No `updatedAt` field (rows are immutable by schema shape).
+ *   - Postgres rules in the migration prevent `UPDATE` and `DELETE`
+ *     against this table for the operator role; only the platform-audit
+ *     writer role can INSERT.
+ *   - The bundled verifier script (Phase 5c equivalent for platform
+ *     audit) walks the per-stamp hash chain and refuses an export where
+ *     any link is broken.
+ *
+ * Hash chain (`prevHash`, `hash`) uses the same scheme as `AuditLog`
+ * (sha256(prevHash || canonical(row))) but chains per-stamp rather than
+ * per-org — the "key" passed to `AuditChainTailLookup.getTailHash` is
+ * `platform-audit:<stampId>`. Genesis is `sha256("vf:platform-audit-genesis:" || stampId)`.
+ */
+model PlatformAuditLog {
+  id              String   @id @default(cuid())
+  /**
+   * Stamp identifier — distinguishes between multiple regional stamps
+   * that share a global PlatformAuditLog warehouse (rare; typically
+   * each stamp has its own DB). Defaults to "default" for single-stamp
+   * deployments.
+   */
+  stampId         String   @default("default")
+  /**
+   * The PlatformOperator who performed the action. NULL only for
+   * system-initiated events (e.g. automated stamp restart from a
+   * health check); always set for human-initiated actions.
+   */
+  operatorId      String?
+  operator        PlatformOperator? @relation(fields: [operatorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  /**
+   * Operator role at time of action ("SUPPORT", "INFRA", "BILLING",
+   * "INCIDENT"). Cached on the row so a later role change doesn't
+   * obscure the historical record.
+   */
+  operatorRole    PlatformOperatorRole?
+  /**
+   * Verb identifying the action. Stable identifier ("grant.request",
+   * "grant.approve", "grant.use", "org.suspend", "backup.restore",
+   * "stamp.restart", "kms.unwrap"). Kept as a free-text TEXT to avoid
+   * coupling the audit log to an enum migration cadence.
+   */
+  action          String
+  /**
+   * Organization affected by the action, when applicable. NULL for
+   * stamp-wide actions (stamp restart, KMS rotation, etc.). When set,
+   * a mirror row is inserted into the customer's `AuditLog` with
+   * `userName = "VectorFlow Support"`.
+   */
+  organizationId  String?
+  /**
+   * Free-text justification supplied by the operator (required for
+   * break-glass actions; optional for routine ops). Stored verbatim
+   * for post-incident review.
+   */
+  reason          String?
+  /**
+   * Entity acted on (table + id) for actions that have a definite
+   * subject ("BackupRecord", "rec_abc123"). NULL for actions where
+   * the subject is the org itself or the stamp.
+   */
+  entityType      String?
+  entityId        String?
+  /**
+   * Structured action-specific context. e.g. `{ grantId: "...",
+   * expiresAt: "..." }` for grant requests; `{ backupId: "...",
+   * approvers: ["op_a", "op_b"] }` for backup restores. Subject to
+   * the same canonicalization rules as `AuditLog.diff` so the hash
+   * chain is reproducible.
+   */
+  metadata        Json?
+  /**
+   * Source IP of the operator session that performed the action.
+   * Captured from the operator-console request handler.
+   */
+  ipAddress       String?
+  createdAt       DateTime @default(now())
+  /**
+   * Tamper-evidence chain — same primitive as `AuditLog.prevHash` /
+   * `AuditLog.hash` (sha256(prevHash || canonical(row))), keyed per
+   * stamp instead of per org.
+   */
+  prevHash        String
+  hash            String
+
+  @@index([stampId, createdAt])
+  @@index([operatorId])
+  @@index([action])
+  @@index([organizationId])
+  @@index([createdAt])
+}
+
+/**
+ * Per-stamp PlatformAuditLog chain tail pointer. Mirrors the per-org
+ * `AuditChainTail` for the customer-facing `AuditLog`.
+ */
+model PlatformAuditChainTail {
+  stampId     String   @id
+  lastHash    String
+  lastWriteAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model SystemSettings {
