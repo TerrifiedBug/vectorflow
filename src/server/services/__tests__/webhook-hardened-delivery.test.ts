@@ -24,6 +24,7 @@ vi.mock("node:dns/promises", () => ({
 }));
 
 import {
+  DnsRebindingError,
   WebhookRedirectError,
   _resetDnsCache,
   fetchHardened,
@@ -96,6 +97,128 @@ describe("resolveHostnamePublic", () => {
     now.mockReturnValueOnce(1_000_000 + 31_000);
     await resolveHostnamePublic("ttl.example", now);
     expect(mockResolve4).toHaveBeenCalledTimes(2);
+  });
+
+  // Codex P1 / PR #335 follow-up: IP literals must NOT be re-resolved.
+  // `dns.resolve4/resolve6` on a literal returns no records, which used
+  // to throw "did not resolve" and break delivery to existing IP-only
+  // endpoints. `validateOutboundUrl({ force: true })` upstream already
+  // verified the literal is public.
+  it("short-circuits IPv4 literal hostnames (no DNS query, no cache)", async () => {
+    await expect(resolveHostnamePublic("203.0.113.10")).resolves.toEqual([
+      "203.0.113.10",
+    ]);
+    expect(mockResolve4).not.toHaveBeenCalled();
+    expect(mockResolve6).not.toHaveBeenCalled();
+  });
+
+  it("short-circuits IPv6 literal hostnames (bracketed, as URL.hostname emits)", async () => {
+    // `new URL("https://[2001:db8::1]/x").hostname === "[2001:db8::1]"`.
+    // The short-circuit must accept both bracketed and bare forms — and
+    // canonicalise to bare. Cf. Codex P1 follow-up on PR #342.
+    await expect(resolveHostnamePublic("[2001:db8::1]")).resolves.toEqual([
+      "2001:db8::1",
+    ]);
+    await expect(resolveHostnamePublic("2001:db8::1")).resolves.toEqual([
+      "2001:db8::1",
+    ]);
+    expect(mockResolve4).not.toHaveBeenCalled();
+    expect(mockResolve6).not.toHaveBeenCalled();
+  });
+
+  it("matches the hostname URL would actually hand us for IPv6 webhooks", async () => {
+    // End-to-end shape check: `fetchHardened` always passes
+    // `parsed.hostname` from `new URL(...)`, so verify that exact
+    // string round-trips through the short-circuit.
+    const hostname = new URL("https://[2001:db8::1]/hook").hostname;
+    await expect(resolveHostnamePublic(hostname)).resolves.toEqual([
+      "2001:db8::1",
+    ]);
+    expect(mockResolve4).not.toHaveBeenCalled();
+    expect(mockResolve6).not.toHaveBeenCalled();
+  });
+
+  // Codex P2 / PR #335 follow-up: rebinding/no-answer errors must be
+  // a typed `DnsRebindingError`, not a plain `Error`. The webhook retry
+  // classifier matches on `instanceof DnsRebindingError` to dead-letter
+  // these instead of rescheduling them forever.
+  it("throws DnsRebindingError (typed) on no answer", async () => {
+    mockResolve4.mockResolvedValueOnce([]);
+    mockResolve6.mockResolvedValueOnce([]);
+    await expect(resolveHostnamePublic("nx2.example")).rejects.toBeInstanceOf(
+      DnsRebindingError,
+    );
+  });
+
+  it("throws DnsRebindingError (typed) on split-answer", async () => {
+    mockResolve4.mockResolvedValueOnce(["8.8.8.8", "10.0.0.1"]);
+    mockResolve6.mockResolvedValueOnce([]);
+    mockIsPrivateIP.mockImplementation((ip: string) => ip.startsWith("10."));
+    await expect(
+      resolveHostnamePublic("rebind2.example"),
+    ).rejects.toBeInstanceOf(DnsRebindingError);
+  });
+
+  // Codex P1 follow-up on PR #342: distinguish transient resolver
+  // problems (SERVFAIL, TIMEOUT, EAI_AGAIN) from "host does not exist"
+  // (ENOTFOUND/ENODATA/ENONAME). Transient → plain Error → retryable.
+  // Permanent → DnsRebindingError → dead-letter.
+  function dnsErr(code: string, msg: string): NodeJS.ErrnoException {
+    const e = new Error(msg) as NodeJS.ErrnoException;
+    e.code = code;
+    return e;
+  }
+
+  it("throws a plain Error (retryable) when resolve4 fails with SERVFAIL", async () => {
+    mockResolve4.mockRejectedValueOnce(dnsErr("ESERVFAIL", "queryA ESERVFAIL"));
+    mockResolve6.mockResolvedValueOnce([]);
+    const err = await resolveHostnamePublic("blip.example").catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(DnsRebindingError);
+    expect(err.message).toMatch(/resolver problem/);
+  });
+
+  it("throws a plain Error (retryable) when resolve6 fails with EAI_AGAIN", async () => {
+    mockResolve4.mockResolvedValueOnce([]);
+    mockResolve6.mockRejectedValueOnce(
+      dnsErr("EAI_AGAIN", "queryAaaa EAI_AGAIN"),
+    );
+    const err = await resolveHostnamePublic("blip2.example").catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(DnsRebindingError);
+  });
+
+  it("throws a plain Error (retryable) when BOTH families fail transiently", async () => {
+    mockResolve4.mockRejectedValueOnce(dnsErr("ETIMEOUT", "timeout v4"));
+    mockResolve6.mockRejectedValueOnce(dnsErr("ESERVFAIL", "servfail v6"));
+    const err = await resolveHostnamePublic("blip3.example").catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(DnsRebindingError);
+  });
+
+  it("throws DnsRebindingError only when both families return ENOTFOUND", async () => {
+    mockResolve4.mockRejectedValueOnce(dnsErr("ENOTFOUND", "nx v4"));
+    mockResolve6.mockRejectedValueOnce(dnsErr("ENOTFOUND", "nx v6"));
+    const err = await resolveHostnamePublic("nx-real.example").catch((e) => e);
+    expect(err).toBeInstanceOf(DnsRebindingError);
+  });
+
+  it("throws DnsRebindingError when one family is ENODATA and the other returns no records", async () => {
+    mockResolve4.mockRejectedValueOnce(dnsErr("ENODATA", "nodata v4"));
+    mockResolve6.mockResolvedValueOnce([]);
+    const err = await resolveHostnamePublic("nodata.example").catch((e) => e);
+    expect(err).toBeInstanceOf(DnsRebindingError);
+  });
+
+  it("transient v4 + permanent v6 still throws plain Error (transient wins)", async () => {
+    // The retry loop must err on the side of retrying. If ANY family
+    // hit a transient resolver issue we don't yet know whether the
+    // destination genuinely doesn't exist.
+    mockResolve4.mockRejectedValueOnce(dnsErr("ESERVFAIL", "v4 servfail"));
+    mockResolve6.mockRejectedValueOnce(dnsErr("ENOTFOUND", "v6 nx"));
+    const err = await resolveHostnamePublic("mixed.example").catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(DnsRebindingError);
   });
 });
 

@@ -32,6 +32,7 @@
  * over by importing `deliverOutboundWebhookHardened` instead.
  */
 import dns from "node:dns/promises";
+import net from "node:net";
 import { isPrivateIP, validateOutboundUrl } from "@/server/services/url-validation";
 
 const MAX_REDIRECTS = 3;
@@ -45,6 +46,41 @@ interface CachedDnsAnswer {
 const dnsCache = new Map<string, CachedDnsAnswer>();
 
 /**
+ * Permanent (host-genuinely-does-not-exist) DNS error codes. Anything
+ * NOT in this set is treated as transient and the caller falls back to
+ * the retry loop instead of dead-lettering. Cf. Codex P1 follow-up on
+ * PR #342 — `catch(() => [])` was conflating SERVFAIL with NXDOMAIN.
+ */
+const PERMANENT_DNS_CODES = new Set<string>([
+  "ENOTFOUND",
+  "ENODATA",
+  "ENONAME",
+]);
+
+interface ResolveOutcome {
+  addresses: string[];
+  /** Set iff the underlying `dns.resolveN` threw a transient error. */
+  transientError: NodeJS.ErrnoException | null;
+}
+
+async function safeResolve(
+  fn: () => Promise<string[]>,
+): Promise<ResolveOutcome> {
+  try {
+    return { addresses: await fn(), transientError: null };
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code && PERMANENT_DNS_CODES.has(e.code)) {
+      // Permanent — no such record for this family. Empty answer is the
+      // signal; the caller intersects across both families before
+      // deciding it really is a dead-letter.
+      return { addresses: [], transientError: null };
+    }
+    return { addresses: [], transientError: e };
+  }
+}
+
+/**
  * Resolve `hostname` to public IPs only. Cached for 30s to defeat
  * rebinding attacks that flip the DNS answer between validation and
  * connect. Throws when:
@@ -52,28 +88,70 @@ const dnsCache = new Map<string, CachedDnsAnswer>();
  *   - ANY returned IP is private/reserved (we treat split-answer as
  *     hostile rather than picking the public IPs — defence in depth).
  *
+ * IP-literal hostnames (e.g. `203.0.113.10`, `[2001:db8::1]`) are
+ * short-circuited: `validateOutboundUrl({ force: true })` upstream has
+ * already verified the literal is public, and `dns.resolve4/resolve6`
+ * on an IP literal returns no records on most platforms — re-resolving
+ * would falsely reject the request as "did not resolve". Cf. Codex P1
+ * on PR #335.
+ *
  * For tests, exported so the cache can be cleared via `_resetDnsCache`.
  */
 export async function resolveHostnamePublic(
   hostname: string,
   now: () => number = Date.now,
 ): Promise<string[]> {
+  // IPv4/IPv6 literal — no DNS to resolve. `URL.hostname` for IPv6
+  // URLs is bracketed (`[2001:db8::1]`) but `net.isIP` only accepts
+  // the bare form, so strip a leading `[` / trailing `]` first. Cf.
+  // Codex P1 follow-up on PR #342.
+  const unbracketed =
+    hostname.startsWith("[") && hostname.endsWith("]")
+      ? hostname.slice(1, -1)
+      : hostname;
+  if (net.isIP(unbracketed) !== 0) {
+    return [unbracketed];
+  }
+
   const cached = dnsCache.get(hostname);
   if (cached && cached.expiresAt > now()) {
     return cached.addresses;
   }
 
+  // Resolve both families. We have to distinguish:
+  //
+  //   * a definitive "host does not exist" answer (ENOTFOUND / ENODATA /
+  //     ENONAME, or an empty array on success) — permanent failure,
+  //     dead-letter the delivery, AND
+  //   * a transient resolver problem (SERVFAIL, TIMEOUT, EAI_AGAIN,
+  //     REFUSED, …) — retryable, the destination might be perfectly
+  //     fine and the resolver itself is having a bad day.
+  //
+  // The previous shape (`catch(() => [])`) collapsed both buckets into
+  // "no answer → DnsRebindingError → dead-letter", which dropped real
+  // webhooks during brief DNS incidents. Cf. Codex P1 follow-up on PR #342.
   const [v4, v6] = await Promise.all([
-    dns.resolve4(hostname).catch(() => [] as string[]),
-    dns.resolve6(hostname).catch(() => [] as string[]),
+    safeResolve(() => dns.resolve4(hostname)),
+    safeResolve(() => dns.resolve6(hostname)),
   ]);
-  const all = [...v4, ...v6];
+  const all = [...v4.addresses, ...v6.addresses];
   if (all.length === 0) {
-    throw new Error(`DNS: hostname ${hostname} did not resolve`);
+    // If EITHER family threw a transient error, surface as a plain
+    // Error so the retry loop treats it as retryable. Only when both
+    // families returned a definitive no-answer do we dead-letter.
+    const transient = v4.transientError ?? v6.transientError;
+    if (transient) {
+      throw new Error(
+        `DNS resolver problem for ${hostname}: ${transient.message}`,
+      );
+    }
+    throw new DnsRebindingError(
+      `DNS: hostname ${hostname} did not resolve`,
+    );
   }
   for (const ip of all) {
     if (isPrivateIP(ip)) {
-      throw new Error(
+      throw new DnsRebindingError(
         `DNS: hostname ${hostname} resolved to a private IP (${ip}); ` +
           "treating as rebinding attempt",
       );
@@ -100,6 +178,17 @@ export interface HardenedFetchResult {
 
 export class WebhookRedirectError extends Error {
   readonly _tag = "WebhookRedirectError" as const;
+}
+
+/**
+ * DNS-rebinding-policy violation thrown by `resolveHostnamePublic`:
+ * either no answer at all, or an answer containing a private IP. These
+ * are non-retryable — the destination's DNS is hostile or broken; no
+ * amount of retrying will change that. Callers MUST classify this as
+ * permanent. Cf. Codex P2 on PR #335.
+ */
+export class DnsRebindingError extends Error {
+  readonly _tag = "DnsRebindingError" as const;
 }
 
 /**

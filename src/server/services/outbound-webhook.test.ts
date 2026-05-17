@@ -31,6 +31,9 @@ vi.mock("@/server/services/webhook-hardened-delivery", () => ({
   WebhookRedirectError: class WebhookRedirectError extends Error {
     readonly _tag = "WebhookRedirectError" as const;
   },
+  DnsRebindingError: class DnsRebindingError extends Error {
+    readonly _tag = "DnsRebindingError" as const;
+  },
   _resetDnsCache: vi.fn(),
   resolveHostnamePublic: vi.fn().mockResolvedValue(["8.8.8.8"]),
 }));
@@ -252,6 +255,39 @@ describe("deliverOutboundWebhook", () => {
     expect(result.success).toBe(false);
     expect(result.isPermanent).toBe(true);
     expect(result.error).toContain("SSRF");
+  });
+
+  // Codex P2 / PR #335 follow-up: DNS-rebinding-policy violations must
+  // be classified as permanent so the retry loop dead-letters them. Before
+  // the typed `DnsRebindingError`, these slipped through as retryable.
+  it("returns isPermanent true when fetchHardened throws DnsRebindingError (no answer)", async () => {
+    const { DnsRebindingError } = await import(
+      "@/server/services/webhook-hardened-delivery"
+    );
+    mockFetchHardened.mockRejectedValueOnce(
+      new DnsRebindingError("DNS: hostname nx.example did not resolve"),
+    );
+
+    const result = await deliverOutboundWebhook(makeEndpoint(), samplePayload);
+    expect(result.success).toBe(false);
+    expect(result.isPermanent).toBe(true);
+    expect(result.error).toMatch(/DNS/);
+  });
+
+  it("returns isPermanent true when fetchHardened throws DnsRebindingError (split-answer rebinding)", async () => {
+    const { DnsRebindingError } = await import(
+      "@/server/services/webhook-hardened-delivery"
+    );
+    mockFetchHardened.mockRejectedValueOnce(
+      new DnsRebindingError(
+        "DNS: hostname rebind.example resolved to a private IP (10.0.0.1); treating as rebinding attempt",
+      ),
+    );
+
+    const result = await deliverOutboundWebhook(makeEndpoint(), samplePayload);
+    expect(result.success).toBe(false);
+    expect(result.isPermanent).toBe(true);
+    expect(result.error).toMatch(/rebinding/);
   });
 
   it("never calls fetch when NEXT_PUBLIC_VF_DEMO_MODE=true", async () => {

@@ -6,6 +6,7 @@ import { getNextRetryAt } from "@/server/services/delivery-tracking";
 import type { AlertMetric } from "@/generated/prisma";
 import { debugLog } from "@/lib/logger";
 import {
+  DnsRebindingError,
   WebhookRedirectError,
   fetchHardened,
 } from "@/server/services/webhook-hardened-delivery";
@@ -155,9 +156,13 @@ export async function deliverOutboundWebhook(
       isPermanent: permanent,
     };
   } catch (err) {
-    if (err instanceof WebhookRedirectError) {
-      // Redirect cap exceeded, protocol downgrade, or DNS rebinding
-      // detection — all non-retryable; the destination is misbehaving.
+    if (
+      err instanceof WebhookRedirectError ||
+      err instanceof DnsRebindingError
+    ) {
+      // Redirect cap exceeded, protocol downgrade, DNS-no-answer, or
+      // split-answer rebinding — all non-retryable; the destination is
+      // misbehaving and no amount of retrying will change that.
       return { success: false, error: err.message, isPermanent: true };
     }
     const message = err instanceof Error ? err.message : "Unknown delivery error";
