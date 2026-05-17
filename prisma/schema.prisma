@@ -1089,23 +1089,42 @@ model AuditLog {
 }
 
 /**
- * Stripe webhook idempotency ledger (plan addendum §6).
- * Stripe redelivers webhook events on 5xx responses. To guarantee
- * once-only processing, the webhook handler in the closed `cloud/`
- * package records every event's `id` (the Stripe `evt_…` identifier)
- * here on receipt. Duplicate deliveries observe an existing row and
- * return 200 without processing.
- * The handler lives in cloud/; this model is in OSS schema so the
- * shared migration sequence stays linear. OSS deployments simply
- * never insert into this table.
+ * Idempotency ledger for inbound webhooks that redeliver on 5xx
+ * (Stripe Billing, git providers, PagerDuty, custom integrations).
+ *
+ * Renamed from `StripeWebhookEvent` in 2026-05-17 (§15a R1) so the
+ * AGPL OSS repo does not ship a Stripe-named primitive. The pattern
+ * is generic: any handler that needs once-only processing under
+ * 5xx-retry semantics inserts `(source, id)` here and skips if the
+ * row already exists.
+ *
+ * The Cloud Stripe handler maps `event.id` -> `id`,
+ * `event.type` -> `type`, `source = "stripe"`. OSS deployments
+ * generally never insert into this table; if a self-hosted operator
+ * wires up a webhook source they're welcome to use the same helper.
  */
-model StripeWebhookEvent {
+model IdempotentInboundWebhookEvent {
   /**
-   * Stripe event id (e.g. `evt_1Op4...`). PK enforces idempotency.
+   * Provider-issued event id (e.g. Stripe `evt_1Op4...`, GitHub
+   * delivery UUID). PK enforces idempotency across deliveries.
+   *
+   * NOTE: collisions across different sources are theoretically
+   * possible but vanishingly rare given each source uses its own
+   * id-space (ULID, UUID, evt_*); we also index `(source, id)` so
+   * callers can scope reads to a single source for diagnostics.
    */
   id          String   @id
   /**
-   * Stripe event type, e.g. `customer.subscription.updated`.
+   * Provider name. Lowercase, stable identifier of the webhook
+   * source ("stripe", "github", "gitlab", "pagerduty", ...).
+   * Defaulted to "stripe" by the 2026-05-17 rename migration so
+   * pre-existing rows (if any in Cloud preview deployments) keep
+   * their attribution; new callers MUST pass `source` explicitly.
+   */
+  source      String   @default("stripe")
+  /**
+   * Provider-issued event type, e.g. Stripe
+   * `customer.subscription.updated` or GitHub `push`.
    */
   type        String
   /**
@@ -1115,6 +1134,8 @@ model StripeWebhookEvent {
 
   @@index([processedAt])
   @@index([type])
+  @@index([source])
+  @@index([source, processedAt])
 }
 
 /**
