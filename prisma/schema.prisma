@@ -48,6 +48,13 @@ model Organization {
   deletedAt         DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+  /// Plan §8 — incremented to revoke every active session for this
+  /// org. Mixed into the HKDF `info` of `deriveJwtSigningKey` so the
+  /// resulting signing key changes when the counter changes. Owner-
+  /// triggered "revoke all sessions" bumps this; the per-org NextAuth
+  /// instance cache is invalidated so subsequent requests build a
+  /// fresh instance with the new derived secret.
+  jwtKeyRotationCounter Int     @default(0)
 
   members              OrgMember[]
   settings             OrganizationSettings?

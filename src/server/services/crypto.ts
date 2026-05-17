@@ -282,14 +282,31 @@ export async function decryptForOrg(
 /**
  * Derive a 32-byte per-org JWT signing key from the org's DEK using HKDF.
  *
- * Rotates automatically with the DEK: when the DEK changes (re-wrap or
- * customer-initiated rotation), all previously issued tokens are invalidated
- * — which is exactly the property we want for org-wide session revocation.
+ * The rotation counter is mixed into the HKDF `info` so the same DEK
+ * yields a different key after `revokeOrgSessions` increments the
+ * counter. This is the "owner-click invalidates all sessions" knob
+ * from plan §8 — see `jwt-key.ts`.
+ *
+ * Rotates automatically with the DEK too: when the DEK changes (re-wrap
+ * or customer-initiated rotation), all previously issued tokens are
+ * invalidated.
  */
-export function deriveJwtSigningKey(dek: Buffer): Buffer {
+export function deriveJwtSigningKey(
+  dek: Buffer,
+  rotationCounter: number = 0,
+): Buffer {
   if (dek.length !== 32) {
     throw new Error("deriveJwtSigningKey: DEK must be 32 bytes");
   }
-  const info = Buffer.from("vf:v3:jwt", "utf8");
+  if (!Number.isInteger(rotationCounter) || rotationCounter < 0) {
+    throw new Error(
+      "deriveJwtSigningKey: rotationCounter must be a non-negative integer",
+    );
+  }
+  // Encode the counter into the HKDF info so the derived key changes
+  // when the counter changes. `r0` is the default state; the counter
+  // is a stable suffix so old callers passing no counter and new
+  // callers passing `0` derive byte-identical keys.
+  const info = Buffer.from(`vf:v3:jwt:r${rotationCounter}`, "utf8");
   return Buffer.from(hkdfSync("sha256", dek, Buffer.alloc(0), info, 32));
 }

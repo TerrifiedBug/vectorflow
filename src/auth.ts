@@ -28,6 +28,7 @@ import { getOrgSettings } from "@/lib/org-settings";
 import { resolveOrgIdFromHost } from "@/lib/host-to-org";
 import { webauthnProvider } from "@/server/services/auth/webauthn-provider";
 import { magicLinkProvider } from "@/server/services/auth/magic-link-provider";
+import { getJwtSecretForOrg } from "@/server/services/auth/jwt-key";
 
 async function getClientIp(): Promise<string | null> {
   try {
@@ -332,10 +333,17 @@ async function getAuthInstance() {
         infoLog("auth", `OIDC provider registered: ${oidc.displayName} (${oidc.issuer})`);
       }
 
+      // Per-org JWT signing secret derived from the org's DEK via
+      // `deriveJwtSigningKey` — see plan §8 / §16b OSS-3 + jwt-key.ts.
+      // Falls back to NEXTAUTH_SECRET (Buffer-wrapped) when the org
+      // has no DEK (OSS / self-hosted path).
+      const jwtSecret = await getJwtSecretForOrg(orgId);
+
       const instance = NextAuth({
         ...authConfig,
         adapter: PrismaAdapter(prisma),
         providers,
+        secret: [jwtSecret.toString("base64url")],
         callbacks: {
           ...authConfig.callbacks,
           async signIn({ user, account, profile }) {
