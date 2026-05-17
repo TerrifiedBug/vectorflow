@@ -145,12 +145,25 @@ export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
     ) {
       // Object-shaped query_string: use DENY_QUERY_KEYS (not DENY_VALUE_KEYS)
       // so query-only keys like `code`, `client_secret`, `csrfToken` are redacted.
-      const qs = event.request.query_string as Record<string, unknown>;
-      const redactedQs: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(qs)) {
-        redactedQs[k] = DENY_QUERY_KEYS.has(k) ? REDACTED : v;
+      // Sentry can also serialize query_string as an array of [key, value] tuples
+      // (e.g. [["token","secret"],...]); handle both shapes.
+      const rawQs = event.request.query_string;
+      if (Array.isArray(rawQs)) {
+        // Tuple form: [[key, value], ...]
+        event.request.query_string = (rawQs as [string, string][]).map(([k, v]) =>
+          DENY_QUERY_KEYS.has(k.toLowerCase()) ? [k, REDACTED] : [k, v],
+        ) as typeof event.request.query_string;
+      } else {
+        // Object form: { key: value, ... }
+        const qs = rawQs as Record<string, unknown>;
+        const redactedQs: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(qs)) {
+          // Normalize key to lowercase before denylist lookup so case
+          // variants like `Token`, `APIKEY`, or `csrfTOKEN` are redacted.
+          redactedQs[k] = DENY_QUERY_KEYS.has(k.toLowerCase()) ? REDACTED : v;
+        }
+        event.request.query_string = redactedQs as typeof event.request.query_string;
       }
-      event.request.query_string = redactedQs as typeof event.request.query_string;
     }
     // 3. Redact denylisted headers.
     if (event.request.headers && typeof event.request.headers === "object") {
@@ -204,7 +217,9 @@ function redactQueryString(qs: string): string {
     const eq = kv.indexOf("=");
     if (eq === -1) return kv;
     const key = kv.slice(0, eq);
-    if (DENY_QUERY_KEYS.has(key)) {
+    // Normalize to lowercase before denylist lookup so case variants
+    // like `Token`, `APIKEY`, or `csrfTOKEN` are redacted.
+    if (DENY_QUERY_KEYS.has(key.toLowerCase())) {
       return `${key}=${REDACTED}`;
     }
     return kv;
