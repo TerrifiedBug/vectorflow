@@ -122,6 +122,10 @@ describe("templateRouter", () => {
     it("returns a single template by ID", async () => {
       const tmpl = makeTemplate();
       prismaMock.template.findUnique.mockResolvedValueOnce(tmpl as never);
+      // Phase 5bb round-9: get now does an inline membership check for
+      // team-owned templates. Mock the user + membership lookups.
+      prismaMock.user.findUnique.mockResolvedValueOnce({ isSuperAdmin: false } as never);
+      prismaMock.teamMember.findUnique.mockResolvedValueOnce({ role: "VIEWER" } as never);
 
       const result = await caller.get({ id: "tmpl-1" });
 
@@ -187,6 +191,9 @@ describe("templateRouter", () => {
     it("deletes a team-owned template", async () => {
       const tmpl = makeTemplate();
       prismaMock.template.findUnique.mockResolvedValueOnce(tmpl as never);
+      // Phase 5bb round-9: delete now does an inline membership check.
+      prismaMock.user.findUnique.mockResolvedValueOnce({ isSuperAdmin: false } as never);
+      prismaMock.teamMember.findUnique.mockResolvedValueOnce({ role: "ADMIN" } as never);
       prismaMock.template.delete.mockResolvedValueOnce(tmpl as never);
 
       const result = await caller.delete({ id: "tmpl-1" });

@@ -54,7 +54,7 @@ export const templateRouter = router({
   /** Get a single template by ID */
   get: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const template = await prisma.template.findUnique({
         where: { id: input.id },
       });
@@ -63,6 +63,28 @@ export const templateRouter = router({
           code: "NOT_FOUND",
           message: "Template not found",
         });
+      }
+
+      // Codex P1 round-9 finding (PR #336 audit harness): templates with
+      // a non-null teamId belong to a specific team. Any authenticated
+      // user could previously read another team\'s template body. Inline
+      // auth: system templates (teamId === null) are readable by all
+      // signed-in users; team-owned templates require membership or
+      // super-admin.
+      if (template.teamId !== null) {
+        const userId = ctx.session.user?.id;
+        if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { isSuperAdmin: true },
+        });
+        if (!user?.isSuperAdmin) {
+          const membership = await prisma.teamMember.findUnique({
+            where: { userId_teamId: { userId, teamId: template.teamId } },
+            select: { role: true },
+          });
+          if (!membership) throw new TRPCError({ code: "NOT_FOUND" });
+        }
       }
 
       return {
@@ -117,7 +139,7 @@ export const templateRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .use(withAudit("template.deleted", "Template"))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const existing = await prisma.template.findUnique({
         where: { id: input.id },
       });
@@ -133,6 +155,24 @@ export const templateRouter = router({
           code: "FORBIDDEN",
           message: "System templates cannot be deleted",
         });
+      }
+
+      // Codex P1 round-9 finding (PR #336 audit harness): deletion was
+      // unauthenticated beyond \`protectedProcedure\`. Inline membership
+      // check (super-admin bypasses) so a team\'s template can only be
+      // deleted by a member of that team.
+      const userId = ctx.session.user?.id;
+      if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { isSuperAdmin: true },
+      });
+      if (!user?.isSuperAdmin) {
+        const membership = await prisma.teamMember.findUnique({
+          where: { userId_teamId: { userId, teamId: existing.teamId } },
+          select: { role: true },
+        });
+        if (!membership) throw new TRPCError({ code: "FORBIDDEN" });
       }
 
       return prisma.template.delete({
