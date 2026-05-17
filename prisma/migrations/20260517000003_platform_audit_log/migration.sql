@@ -99,3 +99,30 @@ CREATE TABLE IF NOT EXISTS "PlatformAuditChainTail" (
 
 COMMENT ON TABLE "PlatformAuditChainTail" IS
   'Per-stamp tail pointer for PlatformAuditLog hash chain.';
+
+-- Writer-only privileges: revoke INSERT from the general app role and grant
+-- to the dedicated writer so forging audit entries requires that role's
+-- credentials. Only enforced in Cloud deployments where both roles exist.
+-- Idempotent: safe to re-run; skipped cleanly when roles don't exist.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vectorflow_platform_audit')
+    AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vectorflow_app') THEN
+        -- Grant INSERT/SELECT to the dedicated writer role.
+        EXECUTE 'GRANT INSERT ON "PlatformAuditLog" TO vectorflow_platform_audit';
+        EXECUTE 'GRANT INSERT, UPDATE ON "PlatformAuditChainTail" TO vectorflow_platform_audit';
+        EXECUTE 'GRANT SELECT ON "PlatformAuditLog" TO vectorflow_platform_audit';
+        EXECUTE 'GRANT SELECT ON "PlatformAuditChainTail" TO vectorflow_platform_audit';
+        -- Revoke INSERT/UPDATE/DELETE from the runtime app role.
+        -- UPDATE and DELETE are blocked by rules above; revoking at the grant
+        -- level adds defence-in-depth so the rules are not the sole barrier.
+        -- Note: Cloud callers of writePlatformAuditLog MUST switch to a
+        -- vectorflow_platform_audit-credentialed connection before calling.
+        EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON "PlatformAuditLog" FROM vectorflow_app';
+        EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON "PlatformAuditChainTail" FROM vectorflow_app';
+        RAISE NOTICE 'platform-audit: writer-only grants applied';
+    ELSE
+        RAISE NOTICE 'platform-audit: writer-only lockdown skipped — vectorflow_platform_audit not provisioned';
+    END IF;
+END
+$$;

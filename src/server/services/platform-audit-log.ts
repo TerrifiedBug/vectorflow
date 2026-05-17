@@ -177,13 +177,20 @@ export async function writePlatformAuditLog(
   input: WritePlatformAuditLogInput,
 ): Promise<WritePlatformAuditLogResult> {
   const stampId = input.stampId ?? STAMP_ID;
-  const createdAt = new Date();
+  // Note: createdAt is captured INSIDE the transaction, after the advisory
+  // lock is acquired (see lock acquisition below). Do not hoist it here.
 
   return prisma.$transaction(async (tx) => {
     // Per-stamp advisory lock — keeps concurrent writers in line so
     // the chain tail is never read stale.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`platform-audit:${stampId}`}))`;
 
+    // Capture createdAt after the lock so row timestamps are monotonic
+    // with respect to lock-grant order. Hoisting before $transaction lets
+    // a writer that waits a long time on the lock produce an earlier
+    // timestamp than a writer that committed first — which breaks
+    // chain-link reconstruction that relies on insertion order.
+    const createdAt = new Date();
     const tail = await tx.platformAuditChainTail.findUnique({
       where: { stampId },
       select: { lastHash: true },
@@ -212,9 +219,9 @@ export async function writePlatformAuditLog(
     await tx.platformAuditLog.create({
       data: {
         ...row,
-        // Prisma JSON columns accept anything serialisable, so cast to
-        // the Prisma JSON input type for type-safety.
-        metadata: row.metadata as Prisma.InputJsonValue | undefined,
+        // Prisma's Json column rejects raw JS null; use Prisma.DbNull
+        // for nullable JSON fields, omit when undefined.
+        metadata: row.metadata === null ? Prisma.DbNull : row.metadata,
         prevHash,
         hash,
       },

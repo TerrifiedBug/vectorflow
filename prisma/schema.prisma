@@ -1200,7 +1200,7 @@ model PlatformAuditLog {
    * health check); always set for human-initiated actions.
    */
   operatorId      String?
-  operator        PlatformOperator? @relation(fields: [operatorId], references: [id])
+  operator        PlatformOperator? @relation(fields: [operatorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   /**
    * Operator role at time of action ("SUPPORT", "INFRA", "BILLING",
    * "INCIDENT"). Cached on the row so a later role change doesn't
