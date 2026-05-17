@@ -2,7 +2,7 @@ import { z } from "zod";
 import crypto from "crypto";
 import { TRPCError } from "@trpc/server";
 import { S3Client, HeadBucketCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { router, protectedProcedure, requireSuperAdmin, denyInDemo } from "@/trpc/init";
+import { router, protectedProcedure, requirePlatformOperator, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/server/services/crypto";
 import { withAudit } from "@/server/middleware/audit";
@@ -48,7 +48,7 @@ async function getOrCreateSettings() {
 
 export const settingsRouter = router({
   get: protectedProcedure
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .query(async ({ ctx }) => {
       const settings = await getOrgSettings(ctx.organizationId);
 
@@ -122,7 +122,7 @@ export const settingsRouter = router({
 
   updateOidc: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(
       z.object({
         issuer: z.string().url().min(1),
@@ -152,7 +152,7 @@ export const settingsRouter = router({
 
   updateOidcRoleMapping: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(
       z.object({
         defaultRole: z.enum(["VIEWER", "EDITOR", "ADMIN"]),
@@ -173,7 +173,7 @@ export const settingsRouter = router({
 
   updateOidcTeamMappings: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(z.object({
       mappings: z.array(z.object({
         group: z.string().min(1),
@@ -248,7 +248,7 @@ export const settingsRouter = router({
 
   updateFleet: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(
       z.object({
         pollIntervalMs: z.number().int().min(1000).max(300000),
@@ -269,7 +269,7 @@ export const settingsRouter = router({
 
   updateAnomalyConfig: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(
       z.object({
         baselineWindowDays: z.number().int().min(1).max(30),
@@ -317,7 +317,7 @@ export const settingsRouter = router({
 
   testOidc: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(
       z.object({
         issuer: z.string().url().min(1),
@@ -387,7 +387,7 @@ export const settingsRouter = router({
 
   createBackup: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .use(withAudit("settings.backup_created", "SystemSettings"))
     .mutation(async () => {
       const metadata = await createBackup();
@@ -396,14 +396,14 @@ export const settingsRouter = router({
     }),
 
   listBackups: protectedProcedure
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .query(async () => {
       return listBackups();
     }),
 
   previewBackup: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(z.object({ filename: z.string().min(1) }))
     .query(async ({ input }) => {
       return previewBackup(input.filename);
@@ -411,7 +411,7 @@ export const settingsRouter = router({
 
   deleteBackup: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(z.object({ filename: z.string().min(1) }))
     .use(withAudit("settings.backup_deleted", "SystemSettings"))
     .mutation(async ({ input }) => {
@@ -421,7 +421,7 @@ export const settingsRouter = router({
 
   restoreBackup: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(z.object({ filename: z.string().min(1) }))
     .use(withAudit("settings.backup_restored", "SystemSettings"))
     .mutation(async ({ input }) => {
@@ -430,7 +430,7 @@ export const settingsRouter = router({
 
   updateBackupSchedule: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(
       z.object({
         enabled: z.boolean(),
@@ -459,7 +459,7 @@ export const settingsRouter = router({
 
   testS3Connection: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(z.object({
       bucket: z.string().min(1),
       region: z.string().min(1),
@@ -503,7 +503,7 @@ export const settingsRouter = router({
 
   updateStorageBackend: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(z.object({
       backend: z.enum(["local", "s3"]),
       bucket: z.string().optional(),
@@ -539,7 +539,7 @@ export const settingsRouter = router({
 
   updateScim: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .input(z.object({ enabled: z.boolean() }))
     .use(withAudit("settings.scim_updated", "SystemSettings"))
     .mutation(async ({ input, ctx }) => {
@@ -556,7 +556,7 @@ export const settingsRouter = router({
 
   generateScimToken: protectedProcedure
     .use(denyInDemo())
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .use(withAudit("settings.scim_token_generated", "SystemSettings"))
     .mutation(async ({ ctx }) => {
       // Generate a secure random token
@@ -574,7 +574,7 @@ export const settingsRouter = router({
   // ─── Production Readiness ────────────────────────────────────────────────
 
   productionReadiness: protectedProcedure
-    .use(requireSuperAdmin())
+    .use(requirePlatformOperator())
     .query(async ({ ctx }) => {
       const checkedAt = new Date().toISOString();
 
@@ -803,7 +803,7 @@ export const settingsRouter = router({
    * path for that flag.
    *
    * Authorisation: caller MUST be `OrgMember.role === "OWNER"` for the
-   * resolved org. Sitting under `requireSuperAdmin` would force every
+   * resolved org. Sitting under `requirePlatformOperator` would force every
    * tenant to ping operators to enable a custom provider \u2014 the plan
    * scopes this decision to the org owner, not the platform operator.
    */

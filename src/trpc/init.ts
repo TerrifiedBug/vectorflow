@@ -228,6 +228,15 @@ export const requireRole = (minRole: Role) =>
     });
   });
 
+/**
+ * @deprecated Use `requirePlatformOperator(role)` — plan §5 explicitly
+ * drops `User.isSuperAdmin` ("operators are not users"). Every router-
+ * level callsite was migrated in §16b OSS item 1 (2026-05-17); this
+ * middleware remains exported only as a deprecation cushion for
+ * external consumers (community forks, custom routers in self-hosted
+ * deployments). Slated for removal in the next major OSS release after
+ * all known callsites have migrated.
+ */
 export const requireSuperAdmin = () =>
   t.middleware(async ({ ctx, next }) => {
     if (!ctx.session?.user) {
