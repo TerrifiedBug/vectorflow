@@ -36,9 +36,16 @@ import { writeAuditLog } from "@/server/services/audit";
 import type { PrismaClient } from "@/generated/prisma";
 import {
   approveOrgAccessGrant,
-  revokeOrgAccessGrant,
   listOrgAccessGrantsForOrg,
 } from "@/server/services/org-access-grant";
+
+/**
+ * Zod schema for organizationId. Mirrors `withOrgTx`'s validation so
+ * malformed input is rejected with BAD_REQUEST before it reaches the DB.
+ */
+const organizationIdSchema = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/, {
+  message: "organizationId must contain only alphanumeric characters, underscores, and hyphens",
+});
 
 /**
  * Narrow view of the Prisma client used inside `requireOrgRole`.
@@ -106,7 +113,7 @@ export const orgAccessGrantRouter = router({
   list: protectedProcedure
     .input(
       z.object({
-        organizationId: z.string(),
+        organizationId: organizationIdSchema,
         limit: z.number().int().min(1).max(100).default(50),
       }),
     )
@@ -116,7 +123,9 @@ export const orgAccessGrantRouter = router({
         // Cast: Prisma's tx callback IS a full PrismaClient at runtime.
         const tx = _tx as unknown as PrismaClient;
         await requireOrgRole(tx, ctx.session.user?.id, input.organizationId, "ADMIN");
+        // Pass the tx so the service query runs inside the RLS-fenced transaction.
         return listOrgAccessGrantsForOrg(input.organizationId, {
+          tx: tx as never,
           limit: input.limit,
         });
       });
@@ -131,7 +140,7 @@ export const orgAccessGrantRouter = router({
     .input(
       z.object({
         grantId: z.string(),
-        organizationId: z.string(),
+        organizationId: organizationIdSchema,
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -145,9 +154,7 @@ export const orgAccessGrantRouter = router({
         await requireOrgRole(tx, userId, input.organizationId, "ADMIN");
 
         // Pre-check: the grant must exist, belong to this org, be un-approved,
-        // un-revoked, and not yet expired. Without the `expiresAt` check, an
-        // expired-but-not-yet-revoked grant would pass and then the service
-        // throws an opaque error rather than a domain CONFLICT.
+        // un-revoked, and not yet expired.
         const grant = await tx.orgAccessGrant.findUnique({
           where: { id: input.grantId },
           select: {
@@ -174,10 +181,11 @@ export const orgAccessGrantRouter = router({
           throw new TRPCError({ code: "CONFLICT", message: "Grant has expired" });
         }
 
-        return approveOrgAccessGrant({
-          grantId: input.grantId,
-          approvedByCustomerAdminId: userId,
-        });
+        // Pass tx so the service query runs inside the RLS-fenced transaction.
+        return approveOrgAccessGrant(
+          { grantId: input.grantId, approvedByCustomerAdminId: userId },
+          { tx: tx as never },
+        );
       });
 
       // Write the chained audit row OUTSIDE withOrgTx so writeAuditLog's
@@ -205,7 +213,7 @@ export const orgAccessGrantRouter = router({
     .input(
       z.object({
         grantId: z.string(),
-        organizationId: z.string(),
+        organizationId: organizationIdSchema,
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -214,15 +222,13 @@ export const orgAccessGrantRouter = router({
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
-      // Run inside withOrgTx so app.org_id is set for RLS and so the
-      // grant read + revoke service call are in the same transaction.
       const { revoked, didRevoke } = await withOrgTx(input.organizationId, async (_tx) => {
         const tx = _tx as unknown as PrismaClient;
         await requireOrgRole(tx, userId, input.organizationId, "OWNER");
 
         const grant = await tx.orgAccessGrant.findUnique({
           where: { id: input.grantId },
-          select: { id: true, organizationId: true, revokedAt: true },
+          select: { id: true, organizationId: true, revokedAt: true, operatorId: true },
         });
         if (!grant) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Grant not found" });
@@ -234,18 +240,29 @@ export const orgAccessGrantRouter = router({
           throw new TRPCError({ code: "CONFLICT", message: "Grant already revoked" });
         }
 
-        const revoked = await revokeOrgAccessGrant(input.grantId);
-        // Detect whether THIS call performed the revocation. revokeOrgAccessGrant
-        // may be idempotent; if another concurrent request raced us, the service
-        // might return the pre-existing revoked row. Check by comparing revokedAt
-        // values: if revokedAt was null before and is now non-null, we did it.
-        const didRevoke = revoked.revokedAt !== null && grant.revokedAt === null;
-        return { revoked, didRevoke };
+        // Atomic revoke: use updateMany so `count > 0` definitively means
+        // THIS call performed the revocation. The `revokedAt: null` guard
+        // ensures a concurrent request that already revoked wins the race;
+        // the loser sees count=0 and the subsequent CONFLICT check fires.
+        const now = new Date();
+        const { count } = await tx.orgAccessGrant.updateMany({
+          where: { id: input.grantId, revokedAt: null },
+          data: { revokedAt: now },
+        });
+
+        if (count === 0) {
+          // Lost the race — another request already revoked this grant.
+          throw new TRPCError({ code: "CONFLICT", message: "Grant already revoked by a concurrent request" });
+        }
+
+        const revoked = await tx.orgAccessGrant.findUniqueOrThrow({
+          where: { id: input.grantId },
+        });
+
+        return { revoked: revoked as import("@/server/services/org-access-grant").OrgAccessGrantRow, didRevoke: true };
       });
 
-      // Only emit the revoke audit if this call actually performed the revocation.
-      // A concurrent race that already revoked the grant should not produce a
-      // duplicate audit entry.
+      // Emit the revoke audit only when this call actually performed the revocation.
       if (didRevoke) {
         writeAuditLog({
           organizationId: input.organizationId,

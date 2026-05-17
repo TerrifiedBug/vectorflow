@@ -37,18 +37,16 @@ vi.mock("@/lib/prisma", () => ({
 
 const grantMocks = vi.hoisted(() => ({
   approveOrgAccessGrant: vi.fn(),
-  revokeOrgAccessGrant: vi.fn(),
   listOrgAccessGrantsForOrg: vi.fn(),
 }));
 
 vi.mock("@/server/services/org-access-grant", () => ({
   approveOrgAccessGrant: grantMocks.approveOrgAccessGrant,
-  revokeOrgAccessGrant: grantMocks.revokeOrgAccessGrant,
+  revokeOrgAccessGrant: vi.fn(), // not used by the router directly anymore
   listOrgAccessGrantsForOrg: grantMocks.listOrgAccessGrantsForOrg,
 }));
 
-// Mock writeAuditLog — it's fire-and-forget in the router so we only
-// need to verify it was called with the right args, not its side effects.
+// Mock writeAuditLog — fire-and-forget in the router.
 const auditMocks = vi.hoisted(() => ({ writeAuditLog: vi.fn() }));
 vi.mock("@/server/services/audit", () => ({
   writeAuditLog: auditMocks.writeAuditLog,
@@ -61,8 +59,6 @@ const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const callerFactory = t.createCallerFactory(orgAccessGrantRouter);
 
 // Make $executeRaw and $transaction cooperative so withOrgTx works in tests.
-// withOrgTx wraps DB work in prisma.$transaction — we call the callback with
-// the same mock client so all model mocks remain accessible inside the tx.
 function setupTransactionMock() {
   prismaMock.$executeRaw.mockResolvedValue(1 as never);
   prismaMock.$transaction.mockImplementation(
@@ -96,7 +92,7 @@ describe("orgAccessGrant.list", () => {
     await caller("ADMIN").list({ organizationId: "org-a", limit: 25 });
     expect(grantMocks.listOrgAccessGrantsForOrg).toHaveBeenCalledWith(
       "org-a",
-      { limit: 25 },
+      expect.objectContaining({ limit: 25 }),
     );
   });
 
@@ -114,6 +110,12 @@ describe("orgAccessGrant.list", () => {
       }).list({ organizationId: "org-a", limit: 25 }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  it("rejects invalid organizationId (empty) with BAD_REQUEST", async () => {
+    await expect(
+      caller("ADMIN").list({ organizationId: "", limit: 25 }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });
 
 describe("orgAccessGrant.approve", () => {
@@ -123,7 +125,7 @@ describe("orgAccessGrant.approve", () => {
       organizationId: "org-a",
       approvedByCustomerAdminId: null,
       revokedAt: null,
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1h from now
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
     } as never);
     grantMocks.approveOrgAccessGrant.mockResolvedValue({
       id: "grant-1",
@@ -136,18 +138,15 @@ describe("orgAccessGrant.approve", () => {
       organizationId: "org-a",
     });
     expect(r.id).toBe("grant-1");
-    expect(grantMocks.approveOrgAccessGrant).toHaveBeenCalledWith({
-      grantId: "grant-1",
-      approvedByCustomerAdminId: "u-1",
-    });
-    // writeAuditLog is used (not prisma.auditLog.create) for chain inclusion.
+    expect(grantMocks.approveOrgAccessGrant).toHaveBeenCalledWith(
+      { grantId: "grant-1", approvedByCustomerAdminId: "u-1" },
+      expect.objectContaining({ tx: expect.anything() }),
+    );
     expect(auditMocks.writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "auth.grant_approved",
         organizationId: "org-a",
         userId: "u-1",
-        entityType: "OrgAccessGrant",
-        entityId: "grant-1",
       }),
     );
   });
@@ -198,7 +197,7 @@ describe("orgAccessGrant.approve", () => {
       organizationId: "org-a",
       approvedByCustomerAdminId: null,
       revokedAt: null,
-      expiresAt: new Date(Date.now() - 1000), // expired
+      expiresAt: new Date(Date.now() - 1000),
     } as never);
     await expect(
       caller("ADMIN").approve({ grantId: "grant-1", organizationId: "org-a" }),
@@ -219,17 +218,25 @@ describe("orgAccessGrant.revoke", () => {
       id: "grant-1",
       organizationId: "org-a",
       revokedAt: null,
+      operatorId: "op-2",
     } as never);
-    grantMocks.revokeOrgAccessGrant.mockResolvedValue({
+    prismaMock.orgAccessGrant.updateMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.orgAccessGrant.findUniqueOrThrow.mockResolvedValue({
       id: "grant-1",
       operatorId: "op-2",
       revokedAt: new Date(),
-    });
+    } as never);
+
     await caller("OWNER").revoke({
       grantId: "grant-1",
       organizationId: "org-a",
     });
-    expect(grantMocks.revokeOrgAccessGrant).toHaveBeenCalledWith("grant-1");
+    // Must use atomic updateMany with revokedAt: null guard.
+    expect(prismaMock.orgAccessGrant.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: "grant-1", revokedAt: null }),
+      }),
+    );
     expect(auditMocks.writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "auth.grant_revoked",
@@ -244,7 +251,7 @@ describe("orgAccessGrant.revoke", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("rejects revoking an already-revoked grant with CONFLICT", async () => {
+  it("rejects revoking an already-revoked grant with CONFLICT (pre-check)", async () => {
     prismaMock.orgAccessGrant.findUnique.mockResolvedValue({
       id: "grant-1",
       organizationId: "org-a",
@@ -253,5 +260,22 @@ describe("orgAccessGrant.revoke", () => {
     await expect(
       caller("OWNER").revoke({ grantId: "grant-1", organizationId: "org-a" }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("rejects concurrent race revoke with CONFLICT (atomic updateMany)", async () => {
+    prismaMock.orgAccessGrant.findUnique.mockResolvedValue({
+      id: "grant-1",
+      organizationId: "org-a",
+      revokedAt: null,
+      operatorId: "op-2",
+    } as never);
+    // Simulate losing the race: count=0
+    prismaMock.orgAccessGrant.updateMany.mockResolvedValue({ count: 0 } as never);
+
+    await expect(
+      caller("OWNER").revoke({ grantId: "grant-1", organizationId: "org-a" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    // No audit log emitted for lost race
+    expect(auditMocks.writeAuditLog).not.toHaveBeenCalled();
   });
 });
