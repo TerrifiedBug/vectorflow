@@ -64,6 +64,14 @@ export interface OrgDataExportPayload {
   pipelineVersions: Array<Record<string, unknown>>;
   alertRules: Array<Record<string, unknown>>;
   alertChannels: Array<Record<string, unknown>>;
+  /**
+   * Join rows linking AlertRule → NotificationChannel. Carried as-is
+   * (no sensitive columns); the import recreates them so per-rule
+   * channel routing survives the round-trip. Without these, runtime
+   * delivery falls back to broadcasting to every enabled channel in
+   * the environment (plan §11 \u2014 audit fidelity).
+   */
+  alertRuleChannels: Array<Record<string, unknown>>;
   webhookEndpoints: Array<Record<string, unknown>>;
   auditLog: Array<Record<string, unknown>>;
   orgMembers: Array<Record<string, unknown>>;
@@ -97,6 +105,7 @@ export type OrgDataExportPrisma = Pick<
   | "pipelineVersion"
   | "alertRule"
   | "notificationChannel"
+  | "alertRuleChannel"
   | "webhookEndpoint"
   | "auditLog"
   | "orgMember"
@@ -262,6 +271,17 @@ export async function buildOrgDataExport(
   );
 
   checkpoint();
+  // AlertRuleChannel join rows. The model has no `organizationId` column;
+  // scope via the connected AlertRule's org so we don't drag in another
+  // tenant's links. Pull the join rows in a single query that follows
+  // the AlertRule \u2192 NotificationChannel relation back to `organizationId`.
+  const alertRuleChannels = await db.alertRuleChannel.findMany({
+    where: { alertRule: { organizationId } },
+    take: limit,
+    orderBy: { id: "asc" },
+  });
+
+  checkpoint();
   const webhookEndpointsRaw = await db.webhookEndpoint.findMany({
     where: { organizationId },
     take: limit,
@@ -330,6 +350,7 @@ export async function buildOrgDataExport(
     pipelineVersions,
     alertRules,
     alertChannels,
+    alertRuleChannels,
     webhookEndpoints,
     auditLog,
     orgMembers,
