@@ -743,4 +743,101 @@ export const auditRouter = router({
 
       return { items, totalCount };
     }),
+
+  /**
+   * Customer-admin chain-verifiable audit export (plan §11 / §16b OSS-10).
+   *
+   * Returns the full per-org `AuditExportEnvelope` — every row with a
+   * non-null hash, walked in chain order. The output is what the
+   * bundled `scripts/verify-audit-chain.ts` reads to detect tampering.
+   *
+   * The /api/v1/audit/export REST endpoint is service-account-scoped and
+   * deliberately does NOT serve this format (its auth context is one
+   * environment, which would break chain contiguity). The customer-admin
+   * tRPC procedure here uses the session's organization context, so it
+   * is safe to emit the full per-org chain.
+   *
+   * The export is filtered down to rows visible to the calling user
+   * via auditScopeCondition — super-admin sees everything in the org;
+   * regular members see only their team's rows. A "broken chain"
+   * report on a partial export is expected (a member who can only see
+   * Team A's rows will see prevHash mismatches against Team B's hashes
+   * the verifier can't see). Super-admin-only is the canonical export
+   * audience; we surface it for everyone for transparency but document
+   * the partial-view caveat in the response shape.
+   */
+  exportChain: protectedProcedure
+    .query(async ({ ctx }) => {
+      const { formatAuditJsonChain } = await import(
+        "@/server/services/audit-export"
+      );
+      const scope = await getAuditScope(ctx.session.user?.id);
+      const conditions: Record<string, unknown>[] = [
+        { organizationId: ctx.organizationId },
+        { hash: { not: null } },
+      ];
+      pushAuditScope(conditions, scope);
+
+      // Cap at 50k rows per export. The chain verifier walks linearly;
+      // a customer with >50k chained rows asks for paginated chunks
+      // through the same endpoint with `cursor` — a follow-up.
+      const items = await prisma.auditLog.findMany({
+        where: { AND: conditions },
+        select: {
+          id: true,
+          organizationId: true,
+          userId: true,
+          action: true,
+          entityType: true,
+          entityId: true,
+          diff: true,
+          metadata: true,
+          ipAddress: true,
+          userEmail: true,
+          userName: true,
+          teamId: true,
+          environmentId: true,
+          createdAt: true,
+          prevHash: true,
+          hash: true,
+        },
+        orderBy: { createdAt: "asc" },
+        take: 50_000,
+      });
+      // ChainAuditLogItem extends AuditLogItem which requires a `user` field.
+      // The query selects userId/userEmail/userName separately; synthesise the
+      // nested object from those columns to satisfy the type contract without
+      // adding a JOIN.
+      const chainItems = items.map((item) => ({
+        ...item,
+        user: item.userId
+          ? { id: item.userId, name: item.userName, email: item.userEmail }
+          : null,
+      }));
+      const envelopeJson = formatAuditJsonChain(chainItems, ctx.organizationId);
+      // partial is true when:
+      // 1. The caller is not a super-admin (scope-restricted export).
+      // 2. We hit the 50k row cap — the export may be missing rows even
+      //    for super-admin callers with very large orgs.
+      const scopePartial = !scope.isSuperAdmin;
+      const truncated = items.length >= 50_000;
+      const partial = scopePartial || truncated;
+      // Chain verification of a partial/truncated export will report
+      // failures even when the data is not tampered (the verifier
+      // expects a genesis-to-tail contiguous chain). Surface this in
+      // the response so clients / the bundled verifier can distinguish
+      // expected scope failures from real tampering.
+      const verificationWarning = partial
+        ? (truncated
+            ? "Export is truncated at 50 000 rows; chain verification will report a broken chain. Export again once you have a full-chain view or use pagination."
+            : "Export is scope-restricted; chain verification will report prevHash mismatches for rows outside your view. Only super-admin full-chain exports are suitable for tamper detection.")
+        : null;
+      return {
+        envelope: envelopeJson,
+        rowCount: items.length,
+        partial,
+        truncated,
+        verificationWarning,
+      };
+    }),
 });

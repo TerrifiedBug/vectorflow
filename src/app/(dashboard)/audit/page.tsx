@@ -38,6 +38,7 @@ import { PageHeader } from "@/components/page-header";
 import { DeploymentHistory } from "./deployments/page";
 import { getAuditActionLabel } from "@/lib/audit-actions";
 import { AuditDetailDrawer } from "@/components/ui/audit-detail-drawer";
+import { AuditChainExportButton } from "./_components/audit-chain-export-button";
 
 const ALL_VALUE = "__all__";
 const SCIM_VALUE = "__SCIM__";
@@ -146,7 +147,11 @@ export default function AuditPage() {
 
   return (
     <div className="min-h-full bg-bg">
-      <PageHeader title="Audit Log" description="Track all changes and actions across your VectorFlow instance." />
+      <PageHeader
+        title="Audit Log"
+        description="Track all changes and actions across your VectorFlow instance."
+        actions={<AuditChainExportButton />}
+      />
 
       <div className="space-y-6 p-4">
 
