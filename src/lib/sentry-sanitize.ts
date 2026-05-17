@@ -183,9 +183,9 @@ export function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
 // ─── internals ──────────────────────────────────────────────────────────────
 
 function redactHeaders(
-  headers: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+  headers: { [key: string]: string },
+): { [key: string]: string } {
+  const out: { [key: string]: string } = {};
   for (const [k, v] of Object.entries(headers)) {
     if (DENY_HEADERS.has(k.toLowerCase())) {
       out[k] = REDACTED;
