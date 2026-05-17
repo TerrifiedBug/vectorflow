@@ -38,10 +38,15 @@ CREATE INDEX "BillingProviderRef_organizationId_idx"
 ALTER TABLE "BillingProviderRef" ADD CONSTRAINT "BillingProviderRef_organizationId_fkey"
   FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- RLS: same per-org pattern as every other tenant table. The Cloud-side
--- aggregator reads cross-tenant within a service-role context that
--- bypasses app.org_id (see operator-readonly role docs); customer-facing
--- procedures NEVER touch this table.
+-- RLS: same per-org pattern as every other tenant table (canonical
+-- shape from `20260516000003_phase5a_rls_strict_policies`). Admin
+-- reads happen at the role level — the OSS-side `vectorflow_app`
+-- runtime role has NOBYPASSRLS, so it CAN'T bypass even by accident;
+-- the Cloud-side admin connection (DATABASE_ADMIN_URL, owner role)
+-- has BYPASSRLS and skips RLS at the engine level. No session-level
+-- bypass GUC — that pattern was previously vulnerable because any
+-- session with DML grants could call `SET LOCAL app.bypass_rls='on'`
+-- to cross-read tenants (codex P1 finding).
 ALTER TABLE "BillingProviderRef" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "BillingProviderRef" FORCE ROW LEVEL SECURITY;
 
@@ -50,10 +55,6 @@ CREATE POLICY "BillingProviderRef_isolation" ON "BillingProviderRef"
   FOR ALL
   TO PUBLIC
   USING (
-    -- Allow operator-readonly + service-role to bypass the org filter.
-    current_setting('app.bypass_rls', true) = 'on'
-    OR
-    -- Normal per-org access: row's org matches the session's org.
     "organizationId" = current_setting('app.org_id', true)
   )
   WITH CHECK (
