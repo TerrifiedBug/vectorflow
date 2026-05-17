@@ -27,7 +27,7 @@
  * 5xx and the upstream retries. The composite key ensures that the same
  * event id arriving from two different sources is treated as two distinct
  * events (correct behaviour) rather than a duplicate (silent data loss).
-
+ */
 import { prisma } from "@/lib/prisma";
 
 const P2002_UNIQUE_CONSTRAINT = "P2002";
