@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   orgFindUnique: vi.fn(),
@@ -26,8 +26,44 @@ import {
   enforceQuotaInTx,
   withQuotaCheck,
   QuotaExceededError,
+  setQuotaPolicy,
+  resetQuotaPolicy,
+  getActivePlanQuotas,
+  DefaultUnboundedQuotaPolicy,
   type PrismaTxLike,
+  type QuotaPolicyProvider,
+  type PlanQuotas,
+  type PlanName,
 } from "../quotas";
+
+/**
+ * Test-only provider mimicking the kind of overlay the Cloud build
+ * will register. Exposes finite limits for the engine tests so the
+ * QuotaExceededError branch is exercised without baking commercial
+ * tier names into OSS.
+ */
+class FiniteTestQuotaPolicy implements QuotaPolicyProvider {
+  constructor(private readonly schedule: Record<string, PlanQuotas>) {}
+  getPlanQuotas(plan: PlanName): PlanQuotas {
+    return (
+      this.schedule[plan] ??
+      this.schedule.DEFAULT ?? {
+        agents: Number.POSITIVE_INFINITY,
+        pipelines: Number.POSITIVE_INFINITY,
+        environments: Number.POSITIVE_INFINITY,
+      }
+    );
+  }
+}
+
+const FINITE_PROVIDER = new FiniteTestQuotaPolicy({
+  DEFAULT: { agents: 5, pipelines: 10, environments: 1 },
+  UNLIMITED: {
+    agents: Number.POSITIVE_INFINITY,
+    pipelines: Number.POSITIVE_INFINITY,
+    environments: Number.POSITIVE_INFINITY,
+  },
+});
 
 function makeTxStub(): PrismaTxLike {
   return {
@@ -39,16 +75,30 @@ function makeTxStub(): PrismaTxLike {
   };
 }
 
-describe("PLAN_QUOTAS", () => {
-  it("FREE < PRO < ENTERPRISE on every numeric quota", () => {
-    for (const k of ["agents", "pipelines", "environments"] as const) {
-      expect(PLAN_QUOTAS.FREE[k]).toBeLessThan(PLAN_QUOTAS.PRO[k]);
-      expect(PLAN_QUOTAS.PRO[k]).toBeLessThanOrEqual(PLAN_QUOTAS.ENTERPRISE[k]);
+describe("DefaultUnboundedQuotaPolicy (OSS default)", () => {
+  afterEach(() => resetQuotaPolicy());
+
+  it("returns Infinity quotas for every plan name (self-hosted is unmetered)", () => {
+    const p = new DefaultUnboundedQuotaPolicy();
+    for (const plan of ["DEFAULT", "FREE", "PRO", "ENTERPRISE", "unknown"]) {
+      const q = p.getPlanQuotas(plan);
+      expect(q.agents).toBe(Number.POSITIVE_INFINITY);
+      expect(q.pipelines).toBe(Number.POSITIVE_INFINITY);
+      expect(q.environments).toBe(Number.POSITIVE_INFINITY);
     }
   });
 
-  it("ENTERPRISE has Infinity quotas for unlimited tiers", () => {
-    expect(PLAN_QUOTAS.ENTERPRISE.agents).toBe(Infinity);
+  it("`PLAN_QUOTAS.DEFAULT` reflects the active provider", () => {
+    expect(PLAN_QUOTAS.DEFAULT.agents).toBe(Number.POSITIVE_INFINITY);
+    setQuotaPolicy(FINITE_PROVIDER);
+    expect(PLAN_QUOTAS.DEFAULT.agents).toBe(5);
+  });
+
+  it("setQuotaPolicy returns the previous provider for restoration", () => {
+    const prev = setQuotaPolicy(FINITE_PROVIDER);
+    expect(prev).toBeInstanceOf(DefaultUnboundedQuotaPolicy);
+    const cur = setQuotaPolicy(prev);
+    expect(cur).toBe(FINITE_PROVIDER);
   });
 });
 
@@ -56,29 +106,38 @@ describe("checkQuota (read-only)", () => {
   beforeEach(() => {
     mocks.orgFindUnique.mockReset();
     mocks.vectorNodeCount.mockReset();
+    setQuotaPolicy(FINITE_PROVIDER);
   });
+  afterEach(() => resetQuotaPolicy());
 
   it("returns allowed=true when current < limit", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
+    mocks.orgFindUnique.mockResolvedValue({ plan: "DEFAULT" });
     mocks.vectorNodeCount.mockResolvedValue(3);
     const r = await checkQuota("org-a", "agents");
     expect(r.allowed).toBe(true);
-    expect(r.limit).toBe(PLAN_QUOTAS.FREE.agents);
+    expect(r.limit).toBe(getActivePlanQuotas("DEFAULT").agents);
     expect(r.current).toBe(3);
   });
 
   it("returns allowed=false when current == limit (no off-by-one)", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
-    mocks.vectorNodeCount.mockResolvedValue(PLAN_QUOTAS.FREE.agents);
+    mocks.orgFindUnique.mockResolvedValue({ plan: "DEFAULT" });
+    mocks.vectorNodeCount.mockResolvedValue(getActivePlanQuotas("DEFAULT").agents);
     const r = await checkQuota("org-a", "agents");
     expect(r.allowed).toBe(false);
   });
 
-  it("ENTERPRISE never exceeds (Infinity)", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ plan: "ENTERPRISE" });
+  it("UNLIMITED plan never exceeds (Infinity)", async () => {
+    mocks.orgFindUnique.mockResolvedValue({ plan: "UNLIMITED" });
     mocks.vectorNodeCount.mockResolvedValue(10_000_000);
     const r = await checkQuota("org-a", "agents");
     expect(r.allowed).toBe(true);
+  });
+
+  it("unknown plan name falls back to provider's DEFAULT", async () => {
+    mocks.orgFindUnique.mockResolvedValue({ plan: "MYSTERY_TIER" });
+    mocks.vectorNodeCount.mockResolvedValue(0);
+    const r = await checkQuota("org-a", "agents");
+    expect(r.limit).toBe(getActivePlanQuotas("DEFAULT").agents);
   });
 
   it("throws when org not found", async () => {
@@ -92,10 +151,12 @@ describe("enforceQuotaInTx (advanced API)", () => {
     mocks.orgFindUnique.mockReset();
     mocks.vectorNodeCount.mockReset();
     mocks.$executeRaw.mockClear();
+    setQuotaPolicy(FINITE_PROVIDER);
   });
+  afterEach(() => resetQuotaPolicy());
 
   it("resolves when allowed", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
+    mocks.orgFindUnique.mockResolvedValue({ plan: "DEFAULT" });
     mocks.vectorNodeCount.mockResolvedValue(1);
     await expect(
       enforceQuotaInTx(makeTxStub(), "org-a", "agents"),
@@ -103,7 +164,7 @@ describe("enforceQuotaInTx (advanced API)", () => {
   });
 
   it("acquires per-(org, quota) advisory lock BEFORE counting", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
+    mocks.orgFindUnique.mockResolvedValue({ plan: "DEFAULT" });
     let lockTakenBeforeCount = false;
     mocks.vectorNodeCount.mockImplementation(async () => {
       lockTakenBeforeCount = true;
@@ -119,8 +180,8 @@ describe("enforceQuotaInTx (advanced API)", () => {
   });
 
   it("throws QuotaExceededError with structured shape", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
-    mocks.vectorNodeCount.mockResolvedValue(PLAN_QUOTAS.FREE.agents);
+    mocks.orgFindUnique.mockResolvedValue({ plan: "DEFAULT" });
+    mocks.vectorNodeCount.mockResolvedValue(getActivePlanQuotas("DEFAULT").agents);
     try {
       await enforceQuotaInTx(makeTxStub(), "org-a", "agents");
       expect.fail("should have thrown");
@@ -128,9 +189,18 @@ describe("enforceQuotaInTx (advanced API)", () => {
       expect(err).toBeInstanceOf(QuotaExceededError);
       const qe = err as QuotaExceededError;
       expect(qe.quota).toBe("agents");
-      expect(qe.plan).toBe("FREE");
-      expect(qe.limit).toBe(PLAN_QUOTAS.FREE.agents);
+      expect(qe.plan).toBe("DEFAULT");
+      expect(qe.limit).toBe(getActivePlanQuotas("DEFAULT").agents);
     }
+  });
+
+  it("OSS default provider (unbounded) never throws", async () => {
+    resetQuotaPolicy();
+    mocks.orgFindUnique.mockResolvedValue({ plan: "DEFAULT" });
+    mocks.vectorNodeCount.mockResolvedValue(1_000_000);
+    await expect(
+      enforceQuotaInTx(makeTxStub(), "org-a", "agents"),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -140,10 +210,12 @@ describe("withQuotaCheck (canonical API)", () => {
     mocks.vectorNodeCount.mockReset();
     mocks.$transaction.mockReset();
     mocks.$executeRaw.mockClear();
+    setQuotaPolicy(FINITE_PROVIDER);
   });
+  afterEach(() => resetQuotaPolicy());
 
   it("opens a transaction, runs quota check, then create within the same tx", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
+    mocks.orgFindUnique.mockResolvedValue({ plan: "DEFAULT" });
     mocks.vectorNodeCount.mockResolvedValue(1);
     let createSawSameTx = false;
     const tx = makeTxStub();
@@ -160,8 +232,8 @@ describe("withQuotaCheck (canonical API)", () => {
   });
 
   it("does NOT invoke the create callback when quota is exceeded", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
-    mocks.vectorNodeCount.mockResolvedValue(PLAN_QUOTAS.FREE.agents);
+    mocks.orgFindUnique.mockResolvedValue({ plan: "DEFAULT" });
+    mocks.vectorNodeCount.mockResolvedValue(getActivePlanQuotas("DEFAULT").agents);
     const tx = makeTxStub();
     mocks.$transaction.mockImplementation(async (fn: (t: PrismaTxLike) => Promise<unknown>) => fn(tx));
     const create = vi.fn();
@@ -172,7 +244,7 @@ describe("withQuotaCheck (canonical API)", () => {
   });
 
   it("propagates errors from the create callback", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
+    mocks.orgFindUnique.mockResolvedValue({ plan: "DEFAULT" });
     mocks.vectorNodeCount.mockResolvedValue(1);
     const tx = makeTxStub();
     mocks.$transaction.mockImplementation(async (fn: (t: PrismaTxLike) => Promise<unknown>) => fn(tx));
@@ -184,7 +256,7 @@ describe("withQuotaCheck (canonical API)", () => {
   });
 
   it("post-check throws when the callback inserts more than headroom (defeats createMany)", async () => {
-    mocks.orgFindUnique.mockResolvedValue({ plan: "FREE" });
+    mocks.orgFindUnique.mockResolvedValue({ plan: "DEFAULT" });
     let counted = 0;
     mocks.vectorNodeCount.mockImplementation(async () => {
       counted++;
