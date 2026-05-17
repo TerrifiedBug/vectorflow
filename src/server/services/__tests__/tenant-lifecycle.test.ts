@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   organizationFindUnique: vi.fn(),
   organizationFindMany: vi.fn(),
   organizationUpdate: vi.fn(),
+  organizationUpdateMany: vi.fn(),
   auditLogCreate: vi.fn(),
 }));
 
@@ -15,6 +16,7 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: mocks.organizationFindUnique,
       findMany: mocks.organizationFindMany,
       update: mocks.organizationUpdate,
+      updateMany: mocks.organizationUpdateMany,
     },
     auditLog: { create: mocks.auditLogCreate },
   },
@@ -32,6 +34,7 @@ function makeTxStub() {
     organization: {
       findUnique: mocks.organizationFindUnique,
       update: mocks.organizationUpdate,
+      updateMany: mocks.organizationUpdateMany,
     },
     auditLog: { create: mocks.auditLogCreate },
   };
@@ -42,6 +45,7 @@ describe("requestOrgDeletion", () => {
     mocks.$transaction.mockReset();
     mocks.organizationFindUnique.mockReset();
     mocks.organizationUpdate.mockReset();
+    mocks.organizationUpdateMany.mockReset();
     mocks.auditLogCreate.mockReset();
     mocks.$transaction.mockImplementation(async (fn) => fn(makeTxStub()));
   });
@@ -51,7 +55,7 @@ describe("requestOrgDeletion", () => {
       id: "org-a",
       deletedAt: null,
     });
-    mocks.organizationUpdate.mockResolvedValue({});
+    mocks.organizationUpdateMany.mockResolvedValue({ count: 1 });
     mocks.auditLogCreate.mockResolvedValue({});
 
     const result = await requestOrgDeletion("org-a", {
@@ -66,9 +70,9 @@ describe("requestOrgDeletion", () => {
       result.deletedAt.getTime(),
     );
 
-    expect(mocks.organizationUpdate).toHaveBeenCalledWith(
+    expect(mocks.organizationUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "org-a" },
+        where: expect.objectContaining({ id: "org-a", deletedAt: null }),
         data: { deletedAt: expect.any(Date) },
       }),
     );
@@ -100,7 +104,7 @@ describe("requestOrgDeletion", () => {
 
     expect(result.alreadyPending).toBe(true);
     expect(result.deletedAt).toEqual(existingDeletedAt);
-    expect(mocks.organizationUpdate).not.toHaveBeenCalled();
+    expect(mocks.organizationUpdateMany).not.toHaveBeenCalled();
     expect(mocks.auditLogCreate).not.toHaveBeenCalled();
   });
 
@@ -109,7 +113,7 @@ describe("requestOrgDeletion", () => {
       id: "org-a",
       deletedAt: null,
     });
-    mocks.organizationUpdate.mockResolvedValue({});
+    mocks.organizationUpdateMany.mockResolvedValue({ count: 1 });
     mocks.auditLogCreate.mockResolvedValue({});
 
     await requestOrgDeletion("org-a", {
@@ -137,6 +141,7 @@ describe("cancelOrgDeletion", () => {
     mocks.$transaction.mockReset();
     mocks.organizationFindUnique.mockReset();
     mocks.organizationUpdate.mockReset();
+    mocks.organizationUpdateMany.mockReset();
     mocks.auditLogCreate.mockReset();
     mocks.$transaction.mockImplementation(async (fn) => fn(makeTxStub()));
   });
