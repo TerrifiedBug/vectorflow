@@ -1,6 +1,6 @@
 /**
  * Org data import — round-trip counterpart to `buildOrgDataExport`
- * (plan §18 / Phase 5cc).
+ *.
  *
  * Takes an `OrgDataExportEnvelope` and recreates the structural,
  * customer-portability subset of its contents inside a NEW target
@@ -39,7 +39,7 @@
  *
  * Idempotency: NOT idempotent. Re-running the import without first
  * clearing the target org duplicates every row. The caller is
- * responsible for guaranteeing the target org is empty (Cloud signup
+ * responsible for guaranteeing the target org is empty (a multi-tenant signup
  * flow does this by construction).
  *
  * Security: the import runs against the caller's Prisma client; for

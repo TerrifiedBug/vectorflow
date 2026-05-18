@@ -1,10 +1,10 @@
 /**
- * Cloud readiness probe.
+ * Multi-tenant readiness probe.
  *
  * Returns 200 with `{ status: "ok", checks: { ... } }` only when every
- * Cloud-critical subsystem is healthy. Used by the load balancer's
+ * multi-tenant-critical subsystem is healthy. Used by the load balancer's
  * health check and by SRE dashboards. Different from `/api/health/ready`
- * (DB-only) because Cloud has additional invariants:
+ * (DB-only) because multi-tenant mode has additional invariants:
  *
  *   - KMS reachability: the wrapping-key provider responds within budget.
  *   - Clock skew: NTP-bounded skew (JWT, TOTP, KMS grant token expiry).

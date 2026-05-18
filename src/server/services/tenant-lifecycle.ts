@@ -1,5 +1,5 @@
 /**
- * Tenant lifecycle — soft-delete grace window (plan §12, §16b OSS item 11).
+ * Tenant lifecycle — soft-delete grace window..
  *
  * OSS scope:
  *
@@ -14,12 +14,12 @@
  *     than `GRACE_DAYS`. Cloud's tenant-lifecycle cron uses this to
  *     drive hard-delete + `kms:ScheduleKeyDeletion`.
  *
- * Cloud-only (NOT in OSS):
+ * (NOT in OSS):
  *
  *   - The hard-delete step itself (cascade `DELETE`, KMS key
  *     destruction). That logic lives in `cloud/src/services/tenant-
  *     lifecycle-hard-delete.ts` and ships with the cloud workspace
- *     scaffolding (§16b cloud item set).
+ *     scaffolding (configuration in the overlay).
  *
  * Notes:
  *
@@ -35,7 +35,7 @@
  *     observes `deletedAt` already set and returns the original
  *     scheduled-deletion date.
  *   - `GRACE_DAYS` is env-tunable (`VF_DELETE_GRACE_DAYS`, default 30)
- *     so the Cloud build can run shorter grace windows in staging.
+ *     so thecan run shorter grace windows in staging.
  */
 
 import { prisma } from "@/lib/prisma";

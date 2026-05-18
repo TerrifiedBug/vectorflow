@@ -1,5 +1,5 @@
 /**
- * WebAuthn / passkey service layer (plan §8 / Phase 5x).
+ * WebAuthn / passkey service layer.
  *
  * Wraps `@simplewebauthn/server` with persistent challenge storage and
  * credential bookkeeping. The four public functions are the OSS-shippable

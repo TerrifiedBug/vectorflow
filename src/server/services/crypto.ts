@@ -285,7 +285,7 @@ export async function decryptForOrg(
  * The rotation counter is mixed into the HKDF `info` so the same DEK
  * yields a different key after `revokeOrgSessions` increments the
  * counter. This is the "owner-click invalidates all sessions" knob
- * from plan §8 — see `jwt-key.ts`.
+ * from the security boundary — see `jwt-key.ts`.
  *
  * Rotates automatically with the DEK too: when the DEK changes (re-wrap
  * or customer-initiated rotation), all previously issued tokens are

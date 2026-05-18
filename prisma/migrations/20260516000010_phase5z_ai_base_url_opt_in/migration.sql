@@ -3,8 +3,8 @@
 -- Backfill: every existing OrganizationSettings row inherits the conservative
 -- `false` default. OSS users targeting a custom Ollama / Azure / etc.
 -- endpoint MUST flip this flag (via the admin UI) before AI calls succeed
--- in Cloud-strict mode. Self-hosted deployments are unaffected because
--- `validateOutboundUrl` is gated by `VF_CLOUD_STRICT_OUTBOUND`.
+-- in strict-outbound mode. Self-hosted deployments are unaffected because
+-- `validateOutboundUrl` is gated by `VF_STRICT_OUTBOUND`.
 --
 -- Index: none — this is a per-row boolean, not a query target.
 --

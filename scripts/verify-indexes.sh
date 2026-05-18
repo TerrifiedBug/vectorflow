@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # verify-indexes.sh — assert composite-index coverage on tenant tables.
 #
-# Plan §3 "Composite index strategy" + §16b OSS item 6.
+# Composite-index strategy for tenant tables.
 #
 # RLS returns correct results but scans the full table if Postgres has no
 # index whose **leading column is `organizationId`**. Every tenant table
@@ -56,7 +56,7 @@ PSQL=(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tA)
 # The check still PASSES against an exempt table, but we log a note so
 # the exemption is visible in CI output.
 #
-# TODO(§16b follow-up): the tables below currently have only a single-column
+# TODO: the tables below currently have only a single-column
 # @@index([organizationId]) and need a composite index added. They are exempt
 # here so CI passes while the fix is tracked as tech debt. Remove each entry
 # once the composite migration lands.

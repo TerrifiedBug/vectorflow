@@ -227,7 +227,7 @@ describe("POST /api/agent/enroll -- per-org agents quota (Phase 5v)", () => {
     );
     prismaMock.$executeRaw.mockResolvedValue(0 as never);
 
-    // Install a Cloud-like finite-limit quota provider for this suite so
+    // Install a finite-limit quota provider for this suite so
     // the OSS default (unbounded) doesn't trivially pass the gate.
     const { setQuotaPolicy } = await import("@/server/services/quotas");
     setQuotaPolicy({

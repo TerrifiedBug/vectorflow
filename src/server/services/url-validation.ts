@@ -174,19 +174,19 @@ export function isPrivateIP(ip: string): boolean {
 }
 
 /**
- * True when the deployment is running in Cloud-strict outbound mode.
+ * True when the deployment is running in strict-outbound mode.
  *
- * In Cloud-strict mode every outbound HTTP request that points at a
+ * In strict-outbound mode every outbound HTTP request that points at a
  * user-supplied URL (Vector node fetch, AI baseUrl, …) MUST be funnelled
  * through `validateOutboundUrl` first. Self-hosted (OSS) deployments leave
  * this off so they can reach legitimate localhost / private-network
  * services like a locally-running Ollama or an in-cluster Vector agent
  * exposed on an RFC 1918 address.
  *
- * Toggle via env: `VF_CLOUD_STRICT_OUTBOUND=true`.
+ * Toggle via env: `VF_STRICT_OUTBOUND=true`.
  */
-export function isCloudStrictOutbound(): boolean {
-  return process.env.VF_CLOUD_STRICT_OUTBOUND === "true";
+export function isStrictOutboundMode(): boolean {
+  return process.env.VF_STRICT_OUTBOUND === "true";
 }
 
 /**
@@ -195,20 +195,21 @@ export function isCloudStrictOutbound(): boolean {
  * layers and route handlers that aren't tRPC procedures (Vector node
  * fetch, AI provider calls, channel deliveries, etc.).
  *
- * When `VF_CLOUD_STRICT_OUTBOUND` is unset (OSS default) and `opts.force`
+ * When `VF_STRICT_OUTBOUND` is unset (OSS default) and `opts.force`
  * is not set, validation is skipped \u2014 self-hosted users routinely target
  * localhost / private IPs and we don't want a hard SSRF policy to break
  * their config.
  *
  * Pass `{ force: true }` from callsites where the URL is *always*
- * customer-controlled (channel webhooks, OIDC discovery, BYOK KMS).
- * Those keep the existing strict behaviour regardless of the env flag.
+ * customer-controlled (channel webhooks, OIDC discovery, customer
+ * wrap-key endpoints). Those keep the existing strict behaviour
+ * regardless of the env flag.
  */
 export async function validateOutboundUrl(
   url: string,
   opts: { force?: boolean } = {},
 ): Promise<void> {
-  if (!opts.force && !isCloudStrictOutbound()) return;
+  if (!opts.force && !isStrictOutboundMode()) return;
 
   let hostname: string;
   try {

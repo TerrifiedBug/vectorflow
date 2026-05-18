@@ -536,7 +536,7 @@ async function callAiCompletion(params: {
   });
 
   // Unconditional scheme guard — `validateOutboundUrl` short-circuits when
-  // `VF_CLOUD_STRICT_OUTBOUND` is unset, so without this check an OSS
+  // `VF_STRICT_OUTBOUND` is unset, so without this check an OSS
   // caller could silently accept a `file://` or non-http(s) URL.
   let parsed: URL;
   try {
@@ -549,7 +549,7 @@ async function callAiCompletion(params: {
   }
 
   // SSRF guard: defers to the centralised `validateOutboundUrl` policy so
-  // OSS callers running a local Ollama still work and Cloud-strict
+  // OSS callers running a local Ollama still work and strict-outbound
   // deployments get unified private-IP / scheme / metadata rejection.
   await validateOutboundUrl(config.baseUrl);
   const response = await fetch(`${config.baseUrl}/chat/completions`, {

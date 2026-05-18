@@ -5,8 +5,8 @@
  * this function always returns its settings, behaving like the old
  * SystemSettings singleton.
  *
- * In Cloud mode the organizationId comes from the request context (session or
- * agent token) and each org has independent settings.
+ * In multi-tenant mode the organizationId comes from the request context
+ * (session or agent token) and each org has independent settings.
  *
  * On first access for an org that has no settings row yet (e.g. a freshly
  * created org), a row is created with all defaults — identical behaviour to

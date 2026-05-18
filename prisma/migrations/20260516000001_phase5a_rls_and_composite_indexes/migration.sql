@@ -9,19 +9,19 @@
 --    which we coerce via COALESCE so the "not set" case denies access.
 --
 --    ┌─────────────────────────────────────────────────────────────────┐
---    │ OSS / self-hosted hosts continue to work because the Prisma     │
+--    │ Single-tenant hosts continue to work because the Prisma         │
 --    │ migration role typically owns the tables, and PostgreSQL allows │
 --    │ table owners to bypass RLS unless `FORCE ROW LEVEL SECURITY` is │
---    │ set. We do NOT force RLS here; Cloud will (a) run the app under │
---    │ a non-owner role `vectorflow_app` (provisioned out-of-band) and │
---    │ (b) flip `FORCE` on as a follow-up migration once every code    │
---    │ path has been wrapped in `withOrgTx`.                           │
+--    │ set. We do NOT force RLS here; multi-tenant deployments run the │
+--    │ app under a non-owner role (`vectorflow_app`, provisioned       │
+--    │ out-of-band) and flip `FORCE` on as a follow-up migration once  │
+--    │ every code path is wrapped in `withOrgTx`.                      │
 --    └─────────────────────────────────────────────────────────────────┘
 --
--- 2. Composite `(organizationId, ...)` indexes are added on the 12 hottest
---    tenant tables identified in the plan addendum §3. RLS without the
---    leading-`organizationId` index degrades to Seq Scan; these indexes
---    keep query plans correct after policies kick in.
+-- 2. Composite `(organizationId, ...)` indexes are added on the hottest
+--    tenant tables. RLS without the leading-`organizationId` index
+--    degrades to Seq Scan; these indexes keep query plans correct after
+--    policies kick in.
 --
 -- 3. TimescaleDB hypertables with columnstore (compression) enabled CANNOT
 --    have RLS enabled at the parent level — `ALTER TABLE … ENABLE ROW LEVEL

@@ -1,20 +1,22 @@
--- OSS upgrade gap (S16b OSS-1 follow-up): backfill PlatformOperator from
--- existing super-admin Users.
+-- Backfill PlatformOperator rows from existing super-admin Users.
 --
--- Context: PR #354 flipped 35 procedures from `requireSuperAdmin()` (gates on
--- `User.isSuperAdmin = true`) to `requirePlatformOperator()` (gates on a row
--- in `PlatformOperator` matched by email). The flip was correct for Cloud
--- (operators ≠ users) but the OSS bootstrap was never updated to populate
--- `PlatformOperator`. Existing OSS deployments that pull the new image lose
--- their entire admin / settings / SCIM / OIDC / backups surface until a
--- PlatformOperator row exists for the signed-in operator's email.
+-- Context: an earlier migration flipped 35 procedures from
+-- `requireSuperAdmin()` (gates on `User.isSuperAdmin = true`) to
+-- `requirePlatformOperator()` (gates on a row in `PlatformOperator`
+-- matched by email). The flip was correct for multi-tenant deployments
+-- (operators ≠ users) but the single-tenant bootstrap was never updated
+-- to populate `PlatformOperator`. Existing single-tenant deployments
+-- that pull the new image otherwise lose their entire admin / settings
+-- / SCIM / OIDC / backups surface until a PlatformOperator row exists
+-- for the signed-in operator's email.
 --
--- This migration is the one-time cure. It creates a PlatformOperator row for
--- every `User WHERE isSuperAdmin = true` not already present (matched on the
--- unique `email` column). Role is INCIDENT — highest rank, passes every gate
--- in `requirePlatformOperator(minRole)` today and any plausible future raise.
--- OSS is single-stamp single-operator; the granularity of SUPPORT / BILLING /
--- INFRA / INCIDENT is not meaningful in that context.
+-- This migration is the one-time cure. It creates a PlatformOperator
+-- row for every `User WHERE isSuperAdmin = true` not already present
+-- (matched on the unique `email` column). Role is INCIDENT — highest
+-- rank, passes every gate in `requirePlatformOperator(minRole)` today
+-- and any plausible future raise. Single-tenant deployments typically
+-- have one operator; the granularity of SUPPORT / BILLING / INFRA /
+-- INCIDENT is not meaningful in that context.
 --
 -- ─── Idempotency ──────────────────────────────────────────────────────────
 -- `ON CONFLICT (email) DO NOTHING` makes re-runs harmless. We do NOT touch
@@ -23,9 +25,9 @@
 -- intent wins over the backfill.
 --
 -- ─── Cloud safety ─────────────────────────────────────────────────────────
--- Cloud installs do NOT set `User.isSuperAdmin = true` (operators live in a
+-- Multi-tenant deployments do NOT set `User.isSuperAdmin = true` (operators live in a
 -- separate population by design). The `WHERE isSuperAdmin = true` filter
--- matches zero rows there, so the INSERT is a no-op on Cloud. No `VF_CLOUD_BUILD`
+-- matches zero rows there, so the INSERT is a no-op in that mode. No `VF_STRICT_MULTI_TENANT`
 -- gating needed at the SQL layer.
 --
 -- ─── Id generation ────────────────────────────────────────────────────────

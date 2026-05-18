@@ -1,5 +1,5 @@
 /**
- * Magic-link request endpoint (plan §8 / §16b OSS-9).
+ * Magic-link request endpoint.
  *
  * POST { email } from the sign-in page. The server resolves the org
  * from the request host, mints a one-time token, and sends an email
@@ -109,8 +109,7 @@ export async function POST(req: NextRequest) {
 /**
  * Send a magic-link email. OSS default: log the redeem URL to the
  * server console (so a self-hosted operator can wire any mail relay
- * they want). The Cloud build overrides this via dependency injection
- * with the Resend / Postmark transport (§19 vendor decision: Resend).
+ * they want).
  */
 async function sendMagicLinkEmail(args: {
   email: string;
@@ -118,8 +117,7 @@ async function sendMagicLinkEmail(args: {
   expiresAt: Date;
 }): Promise<void> {
   // OSS default: no real send. Operators wiring magic-link locally are
-  // expected to provide their own transport. The Cloud workspace will
-  // import a Resend-backed implementation and dispatch through it.
+  // expected to provide their own transport and send the redeem URL.
   if (IS_DEV) {
     infoLog(
       "magic-link-email",
@@ -127,9 +125,9 @@ async function sendMagicLinkEmail(args: {
     );
     return;
   }
-  // Production OSS / Cloud: caller wires a transport. If none is
-  // configured the line above logs and we no-op so the request still
-  // returns 200 (the user will retry; operators see the warning).
+  // Production: caller wires a transport. If none is configured we no-op
+  // so the request still returns 200 (the user will retry; operators see
+  // the warning).
   warnLog(
     "magic-link-email",
     "no email transport configured in production — magic link not delivered",

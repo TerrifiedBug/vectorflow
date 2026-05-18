@@ -13,8 +13,8 @@
 //     exporting opaque ciphertext is theatre. Each excluded field is
 //     surfaced in the manifest with a presence flag so the customer knows
 //     a secret exists without seeing its bytes.
-//   - PII of operators (vectorflow-cloud staff). Not the customer's data.
-//   - kmsGrantToken on OrgAccessGrant rows; surface presence only.
+//   - PII of operators (not the customer's data; out of scope).
+//   - externalGrantRef on OrgAccessGrant rows; surface presence only.
 //
 // The envelope is content-addressed by a SHA-256 over a deterministic
 // canonical JSON serialization of `data`. The customer can re-compute
@@ -22,7 +22,7 @@
 //
 // Library only; the org-scoped HTTP endpoint that exposes this needs an
 // org-admin auth surface (WebAuthn/passkey + OrgMember check) that lives
-// in vectorflow-cloud — see plan §5.
+// in the operator console in the closed-surface workspace.
 
 import { createHash } from "node:crypto";
 import { ulid } from "ulid";
@@ -69,7 +69,7 @@ export interface OrgDataExportPayload {
    * (no sensitive columns); the import recreates them so per-rule
    * channel routing survives the round-trip. Without these, runtime
    * delivery falls back to broadcasting to every enabled channel in
-   * the environment (plan §11 \u2014 audit fidelity).
+   * the environment.
    */
   alertRuleChannels: Array<Record<string, unknown>>;
   webhookEndpoints: Array<Record<string, unknown>>;
@@ -181,8 +181,8 @@ export async function buildOrgDataExport(
   // Redact envelope-encryption ciphertext + KMS ARNs from the org row.
   const orgRedacted = redactKeys(organization, [
     "dataKeyCiphertext",
-    "kmsKeyArn",
-    "byokKeyArn",
+    "dekWrapKeyId",
+    "byokWrapKeyId",
   ]);
 
   checkpoint();
@@ -337,7 +337,7 @@ export async function buildOrgDataExport(
     orderBy: { createdAt: "asc" },
   });
   const orgAccessGrants = orgAccessGrantsRaw.map(
-    (g: Record<string, unknown>) => redactKeys(g, ["kmsGrantToken"]),
+    (g: Record<string, unknown>) => redactKeys(g, ["externalGrantRef"]),
   );
 
   const data: OrgDataExportPayload = {
@@ -403,7 +403,7 @@ export async function buildOrgDataExport(
 
   const excluded = [
     {
-      scope: "Organization.dataKeyCiphertext / kmsKeyArn / byokKeyArn",
+      scope: "Organization.dataKeyCiphertext / dekWrapKeyId / byokWrapKeyId",
       reason:
         "Per-org DEK ciphertext and KMS ARNs are operational metadata; not portable customer data.",
     },
@@ -418,7 +418,7 @@ export async function buildOrgDataExport(
         "Outbound-webhook signing secret encrypted with the per-org DEK. Recreate the endpoint and rotate the secret if needed.",
     },
     {
-      scope: "OrgAccessGrant.kmsGrantToken",
+      scope: "OrgAccessGrant.externalGrantRef",
       reason:
         "Live KMS decrypt-grant token; surfacing it would defeat its time-bound purpose. Presence is preserved.",
     },
@@ -435,7 +435,7 @@ export async function buildOrgDataExport(
     {
       scope: "PlatformOperator (entire model)",
       reason:
-        "Operators are vectorflow-cloud staff identities, not tenant members. Their data is out of scope for tenant-data portability.",
+        "Operators are staff identities, not tenant members. Their data is out of scope for tenant-data portability.",
     },
   ];
 

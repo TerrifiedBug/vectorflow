@@ -37,7 +37,7 @@ import {
 } from "../quotas";
 
 /**
- * Test-only provider mimicking the kind of overlay the Cloud build
+ * Test-only provider mimicking the kind of overlay the strict-multi-tenant build
  * will register. Exposes finite limits for the engine tests so the
  * QuotaExceededError branch is exercised without baking commercial
  * tier names into OSS.

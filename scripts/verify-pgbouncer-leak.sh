@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # verify-pgbouncer-leak.sh — assert that the `withOrgTx` GUC scoping
-# pattern survives a PgBouncer transaction-pooling deployment (plan §3 /
-# §18 / Phase 5dd).
+# pattern survives a PgBouncer transaction-pooling deployment.
 #
 # Why this script exists:
 #
@@ -124,7 +123,7 @@ done
 if [[ $leaks -gt 0 ]]; then
   echo "  FAIL: $leaks/$SAMPLES samples leaked app.org_id"
   echo "  → withOrgTx GUC is NOT tx-scoped on this deployment."
-  echo "  → RLS isolation is broken; do NOT ship Cloud-stamp on this DB."
+  echo "  → RLS isolation is broken; multi-tenant deployments MUST NOT use this database."
   exit 1
 fi
 echo "  OK: positive control empty across $SAMPLES samples"
@@ -161,7 +160,7 @@ if [[ $negative_hits -gt 0 ]]; then
   echo "      The positive control's empty reads above are meaningful."
 elif [[ "${VF_PGBOUNCER_REQUIRE_REUSE:-}" == "true" ]]; then
   # Codex P2 round-5: under the opt-in `VF_PGBOUNCER_REQUIRE_REUSE=true`
-  # (set on Cloud-stamp CI where we KNOW a transaction-pooled PgBouncer
+  # (set on multi-tenant CI where a transaction-pooled PgBouncer
   # sits between us and Postgres) treat a zero hit-count as a hard
   # failure \u2014 the probe couldn't actually validate the reconnect path,
   # so the positive-control empty reads above are not real evidence of

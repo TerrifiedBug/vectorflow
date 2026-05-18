@@ -1,18 +1,19 @@
--- §15a R3 remediation — generalise plan quotas so the AGPL OSS repo
--- does not ship a FREE/PRO/ENTERPRISE commercial pricing schedule.
+-- Generalise plan quotas: introduce a non-commercial `DEFAULT` plan value
+-- so the upstream repo does not ship a hardcoded commercial pricing tier
+-- schedule. The FREE/PRO/ENTERPRISE values remain on the enum so callers
+-- that need them can still use them, but the default plan for newly
+-- created orgs becomes `DEFAULT`.
 --
 -- Step 1: add a non-commercial `DEFAULT` value to the OrgPlan enum.
---   FREE/PRO/ENTERPRISE remain on the enum for Cloud preview rows;
---   the Cloud build's `QuotaPolicyProvider` (in cloud/) is responsible
---   for the commercial schedule and the names live there.
+--   The actual quota schedule per plan is a runtime-injected
+--   `QuotaPolicyProvider`; this migration only widens the enum.
 --
 -- Step 2: change the `Organization.plan` column default from FREE → DEFAULT
---   so new orgs created on a default OSS deployment are not labelled with
---   a Cloud commercial tier. Existing rows keep whatever plan they had
---   (no backfill — OSS deployments only ever had `plan = 'FREE'` from
---   Phase 1 migration, but the value is still legal on the enum and the
---   OSS quota provider treats every plan as DEFAULT-equivalent until
---   Cloud overrides).
+--   so newly created orgs on a default deployment are not labelled with
+--   a commercial tier. Existing rows keep whatever plan they had
+--   (no backfill — the value is still legal on the enum and the default
+--   quota provider treats every plan as DEFAULT-equivalent until an
+--   overriding provider is registered).
 --
 -- Postgres requires `ALTER TYPE … ADD VALUE` to run outside a
 -- transaction; Prisma migrations run each statement in its own

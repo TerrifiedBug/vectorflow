@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
 import { writeAuditLog } from "@/server/services/audit";
 import { assertManualAssignmentAllowed } from "@/server/routers/team";
-import { isCloudBuildProfile } from "@/lib/security-headers";
+import { isStrictMultiTenantMode } from "@/lib/security-headers";
 
 export const adminRouter = router({
   /** List all platform users with their team memberships */
@@ -120,10 +120,10 @@ export const adminRouter = router({
       }
 
       // OSS only: mirror the super-admin flip into PlatformOperator so the
-      // admin/settings gate (`requirePlatformOperator`, post PR #354) stays
-      // consistent with `User.isSuperAdmin` without manual SQL. Cloud uses a
-      // separate operator-provisioning surface (`User.isSuperAdmin` is not
-      // toggled there), so this branch is a no-op in Cloud.
+      // admin/settings gate (`requirePlatformOperator`) stays
+      // consistent with `User.isSuperAdmin` without manual SQL. Multi-tenant deployments use a separate operator-provisioning
+      // surface (`User.isSuperAdmin` is not toggled there), so this branch is a
+      // no-op there.
       //
       // Atomic: both writes inside one transaction so the two rows can never
       // diverge on transient failure. On re-grant after a prior revoke, the
@@ -136,7 +136,7 @@ export const adminRouter = router({
           select: { id: true, email: true, name: true, isSuperAdmin: true },
         });
 
-        if (!isCloudBuildProfile()) {
+        if (!isStrictMultiTenantMode()) {
           if (input.isSuperAdmin) {
             await tx.platformOperator.upsert({
               where: { email: updated.email },

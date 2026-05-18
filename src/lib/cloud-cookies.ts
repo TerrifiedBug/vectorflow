@@ -1,11 +1,10 @@
 /**
- * Per-subdomain `__Host-` cookie config (plan §8).
+ * Per-subdomain `__Host-` cookie config.
  *
- * Plan §8 cookie scoping decision: cookies on Cloud are host-only
- * (no `Domain=` attribute) so an XSS on `acme.vectorflow.sh` does
- * NOT leak a cookie that's valid on `beta.vectorflow.sh`. The
- * `__Host-` prefix enforces this at the browser level — a cookie
- * prefixed `__Host-` MUST:
+ * Cookie scoping decision: cookies are host-only (no `Domain=` attribute)
+ * so an XSS on `acme.vectorflow.sh` does NOT leak a cookie that's valid
+ * on `beta.vectorflow.sh`. The `__Host-` prefix enforces this at the
+ * browser level — a cookie prefixed `__Host-` MUST:
  *
  *   - be `Secure`,
  *   - have NO `Domain=` attribute (host-only),
@@ -21,7 +20,7 @@
  * set automatically based on the request scheme) so `http://localhost`
  * dev still works.
  *
- * Cloud profile (`VF_CLOUD_BUILD === "true"`) returns the override.
+ * The overlay can enable this by returning the override.
  */
 
 import type { NextAuthConfig } from "next-auth";
@@ -34,7 +33,7 @@ const COOKIE_BASE_NAME = "vf";
  * (or the per-instance NextAuth() construction).
  */
 export function cloudCookieConfig(): NextAuthConfig["cookies"] | undefined {
-  if (process.env.VF_CLOUD_BUILD !== "true") {
+  if (process.env.VF_STRICT_MULTI_TENANT !== "true") {
     return undefined;
   }
   const base = {

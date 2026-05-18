@@ -65,7 +65,7 @@ export async function generateAiRecommendations(): Promise<number> {
     try {
       config = await getTeamAiConfig(teamId);
       // SSRF guard: matches `streamCompletion` so cost-optimizer doesn't
-      // become a second AI-baseUrl escape hatch when Cloud-strict is on.
+      // become a second AI-baseUrl escape hatch when strict-outbound is on.
       await validateOutboundUrl(config.baseUrl);
       // Phase 5z: gate non-vendor URLs on the per-org opt-in.
       await enforceAiBaseUrlPolicy({

@@ -74,7 +74,7 @@ describe("writePlatformAuditLog", () => {
     mocks.platformAuditChainTailUpsert.mockResolvedValue({});
 
     const result = await writePlatformAuditLog({
-      stampId: "stamp-x",
+      deploymentId: "stamp-x",
       operatorId: "op-1",
       operatorRole: "INCIDENT",
       action: "grant.request",
@@ -98,7 +98,7 @@ describe("writePlatformAuditLog", () => {
     mocks.platformAuditChainTailUpsert.mockResolvedValue({});
 
     const result = await writePlatformAuditLog({
-      stampId: "stamp-x",
+      deploymentId: "stamp-x",
       operatorId: "op-2",
       operatorRole: "SUPPORT",
       action: "kms.unwrap",
@@ -125,7 +125,7 @@ describe("writePlatformAuditLog", () => {
     });
 
     await writePlatformAuditLog({
-      stampId: "stamp-x",
+      deploymentId: "stamp-x",
       operatorId: "op-3",
       action: "stamp.restart",
     });
@@ -139,7 +139,7 @@ describe("writePlatformAuditLog", () => {
     mocks.platformAuditLogCreate.mockImplementation(async (args) => args.data);
 
     const result = await writePlatformAuditLog({
-      stampId: "stamp-x",
+      deploymentId: "stamp-x",
       operatorId: "op-4",
       action: "org.suspend",
       organizationId: "org-c",
@@ -147,7 +147,7 @@ describe("writePlatformAuditLog", () => {
 
     expect(mocks.platformAuditChainTailUpsert).toHaveBeenCalledTimes(1);
     const upsertArgs = mocks.platformAuditChainTailUpsert.mock.calls[0]?.[0];
-    expect(upsertArgs?.where?.stampId).toBe("stamp-x");
+    expect(upsertArgs?.where?.deploymentId).toBe("stamp-x");
     expect(upsertArgs?.create?.lastHash).toBe(result.hash);
     expect(upsertArgs?.update?.lastHash).toBe(result.hash);
   });
@@ -158,7 +158,7 @@ describe("writePlatformAuditLog", () => {
 
     await expect(
       writePlatformAuditLog({
-        stampId: "stamp-x",
+        deploymentId: "stamp-x",
         operatorId: null,
         action: "stamp.restart",
         metadata: { trigger: "health-check" },
@@ -171,7 +171,7 @@ describe("verifyPlatformAuditChain", () => {
   function makeRow(
     overrides: Partial<{
       id: string;
-      stampId: string;
+      deploymentId: string;
       operatorId: string | null;
       operatorRole: string | null;
       action: string;
@@ -188,7 +188,7 @@ describe("verifyPlatformAuditChain", () => {
   ) {
     return {
       id: "r1",
-      stampId: "stamp-x",
+      deploymentId: "stamp-x",
       operatorId: "op-1",
       operatorRole: "SUPPORT",
       action: "grant.request",
@@ -219,7 +219,7 @@ describe("verifyPlatformAuditChain", () => {
     );
 
     await writePlatformAuditLog({
-      stampId: "stamp-x",
+      deploymentId: "stamp-x",
       operatorId: "op-1",
       operatorRole: "SUPPORT",
       action: "grant.request",
@@ -275,7 +275,7 @@ describe("verifyPlatformAuditChain", () => {
 
     for (const action of ["grant.request", "grant.approve", "grant.use"] as const) {
       await writePlatformAuditLog({
-        stampId: "stamp-x",
+        deploymentId: "stamp-x",
         operatorId: "op-1",
         operatorRole: "SUPPORT",
         action,

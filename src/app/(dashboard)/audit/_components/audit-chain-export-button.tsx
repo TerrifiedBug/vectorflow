@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Chain-verifiable audit log download (plan §16b OSS-10).
+ * Chain-verifiable audit log download..
  *
  * Triggers the `audit.exportChain` tRPC procedure (per-org, super-admin
  * gets the full chain; team-scoped members get a partial view marked

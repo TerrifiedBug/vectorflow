@@ -1,5 +1,7 @@
 -- OperatorApprovalRequest: generic 2-person approval primitive for
--- operator-side dual-control actions (plan §16b cloud-9).
+-- operator-side dual-control actions (e.g. backup restore, force
+-- hard-delete, key rotation). The operation type is a free-form string;
+-- the caller interprets payload.
 
 CREATE TABLE "OperatorApprovalRequest" (
     "id"                     TEXT NOT NULL,

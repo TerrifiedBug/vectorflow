@@ -7,9 +7,9 @@
 -- Each composite is chosen as `(organizationId, <hottest 2nd key>)`:
 --
 -- BillingProviderRef:        (organizationId, provider)
---   The Cloud-side aggregator scans `WHERE provider='stripe' AND status='active'`
---   per org. Adding `provider` second lets the planner narrow on both
---   org and provider with one index seek.
+--   Aggregators that scan `WHERE provider=? AND status='active'` per
+--   org benefit from a composite index. Adding `provider` second lets
+--   the planner narrow on both org and provider with one index seek.
 --
 -- OperatorApprovalRequest:   (organizationId, status)
 --   The operator-console list view queries
@@ -20,7 +20,7 @@
 -- PlatformAuditLog:          (organizationId, createdAt)
 --   The customer-facing "operator actions against my org" view orders by
 --   createdAt DESC for the most recent entries. The pre-existing
---   (stampId, createdAt) composite serves the stamp-wide operator
+--   (stampId, createdAt) composite serves the deployment-wide operator
 --   timeline; this one is the per-org cut.
 
 CREATE INDEX IF NOT EXISTS "BillingProviderRef_organizationId_provider_idx"

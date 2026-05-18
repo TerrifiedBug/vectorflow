@@ -1,5 +1,5 @@
 /**
- * Sentry event sanitization (plan §11).
+ * Sentry event sanitization.
  *
  * Strips request bodies, query params, and headers that match the
  * denylist BEFORE the event leaves the process. The standard Sentry

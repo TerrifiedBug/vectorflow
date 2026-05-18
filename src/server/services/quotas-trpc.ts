@@ -1,18 +1,17 @@
 /**
- * tRPC-flavoured quota gate (plan §10 Phase 5v).
+ * tRPC-flavoured quota gate.
  *
  * Thin wrapper around `withQuotaCheck` that converts `QuotaExceededError`
- * into a `TRPCError` with `code: "PAYMENT_REQUIRED"` (HTTP 402). The plan
- * calls out a "structured QuotaExceededError with upgrade CTA"; we attach
- * the original `QuotaExceededError` as the error `cause` so client code can
- * narrow on `err.data?.code === "PAYMENT_REQUIRED"` AND inspect the
- * underlying quota / plan / limit metadata.
+ * into a `TRPCError` with `code: "PAYMENT_REQUIRED"` (HTTP 402). The
+ * original `QuotaExceededError` is attached as the error `cause` so
+ * client code can narrow on `err.data?.code === "PAYMENT_REQUIRED"` AND
+ * inspect the underlying quota / plan / limit metadata.
  *
  * Service-layer callers (cron jobs, agent route handlers) keep using
- * `withQuotaCheck` directly and translate the error themselves — wrapping
- * the underlying create + post-check + advisory lock in a service-layer
- * helper would obscure the read-after-write semantics the tRPC layer
- * relies on.
+ * `withQuotaCheck` directly and translate the error themselves —
+ * wrapping the underlying create + post-check + advisory lock in a
+ * service-layer helper would obscure the read-after-write semantics the
+ * tRPC layer relies on.
  */
 import { TRPCError } from "@trpc/server";
 import type { Prisma } from "@/generated/prisma";

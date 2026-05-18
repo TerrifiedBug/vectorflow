@@ -1,16 +1,11 @@
--- §15a R1 remediation — rename Stripe-branded idempotency ledger to a
--- generic inbound-webhook ledger so the AGPL OSS repo doesn't ship a
--- Stripe-named primitive. The pattern is genuinely reusable: any
--- inbound webhook source that supports redelivery on 5xx (git providers,
--- PagerDuty, custom integrations) can call recordInboundWebhookOrSkip().
+-- Rename the inbound webhook idempotency ledger from a vendor-specific
+-- name to a generic one. The pattern is reusable for any inbound webhook
+-- source that supports redelivery on 5xx (git providers, PagerDuty,
+-- custom integrations) — callers map `event.id -> id`, `event.type -> type`,
+-- and set `source` to a stable identifier for the upstream system.
 --
--- Cloud-side Stripe handler maps:
---   event.id  -> id
---   event.type -> type
---   source = "stripe"
---
--- The rename is reversible: ALTER TABLE RENAME preserves data; the
--- existing StripeWebhookEvent rows (if any) move to the new table name.
+-- The rename is reversible: ALTER TABLE RENAME preserves data; any rows
+-- written under the previous table name move to the new table name.
 --
 -- Rollback:
 --   ALTER TABLE "IdempotentInboundWebhookEvent" DROP COLUMN "source";
@@ -25,12 +20,10 @@ ALTER INDEX "StripeWebhookEvent_processedAt_idx"
 ALTER INDEX "StripeWebhookEvent_type_idx"
     RENAME TO "IdempotentInboundWebhookEvent_type_idx";
 
--- Add source column with a backfill default so any existing rows (Cloud
--- preview deployments only — OSS never wrote to this table) are
--- attributed to Stripe. The default is dropped in a follow-up migration
--- once Cloud writes set source explicitly; for now it keeps inserts
--- backward-compatible with the original recordStripeEventOrSkip
--- signature during the deprecation window.
+-- Add `source` with a backfill default so any pre-existing rows from the
+-- previous (single-source) table get a non-NULL value. The default is
+-- harmless going forward — new callers always set `source` explicitly —
+-- and can be dropped in a follow-up migration once no caller relies on it.
 ALTER TABLE "IdempotentInboundWebhookEvent"
     ADD COLUMN "source" TEXT NOT NULL DEFAULT 'stripe';
 

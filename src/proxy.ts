@@ -3,16 +3,16 @@ import { authConfig } from "@/auth.config";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   contentSecurityPolicy,
-  isCloudBuildProfile,
+  isStrictMultiTenantMode,
 } from "@/lib/security-headers";
 
 /**
- * Next.js proxy (auth gate + Cloud CSP nonce).
+ * Next.js proxy (auth gate + strict-multi-tenant CSP nonce).
  *
  * Uses the lightweight auth.config.ts which does NOT import Prisma or any
  * Node.js-only modules, so it runs safely in the Edge runtime.
  *
- * When VF_CLOUD_BUILD=true, also injects a per-request CSP nonce so that
+ * When VF_STRICT_MULTI_TENANT=true, also injects a per-request CSP nonce so that
  * Server Components can use it via `headers().get("x-vf-csp-nonce")`.
  * OSS builds short-circuit before touching any headers.
  *
@@ -36,7 +36,7 @@ function generateNonce(): string {
 }
 
 export const proxy = auth(function middleware(req: NextRequest) {
-  if (!isCloudBuildProfile()) {
+  if (!isStrictMultiTenantMode()) {
     // OSS profile — leave the static CSP from next.config.ts in place.
     return NextResponse.next();
   }

@@ -74,7 +74,7 @@ async function queryDocs(libraryId: string, query: string): Promise<string> {
     // SSRF guard. BASE_URL is a hardcoded vendor URL today, but the request
     // still goes outbound from the control plane. Forcing validation means a
     // future env-driven override (test / EU mirror / proxy) inherits the
-    // unified policy and Cloud-strict rejection.
+    // unified policy and strict-outbound rejection.
     await validateOutboundUrl(url.toString(), { force: true });
 
     const response = await fetch(url.toString(), {

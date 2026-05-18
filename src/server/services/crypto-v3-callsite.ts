@@ -1,5 +1,5 @@
 /**
- * Crypto v3 callsite helpers (plan §16b OSS item 2).
+ * Crypto v3 callsite helpers..
  *
  * The v3 envelope-encryption API (`encryptForOrg`, `decryptForOrg` in
  * `crypto.ts`) requires the org's `dataKeyCiphertext` and a row

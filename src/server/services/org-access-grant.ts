@@ -5,8 +5,8 @@
 // `OrgAccessGrant` (added in Phase 1) is the persistent record of an
 // operator requesting time-bound access to a single organization for a
 // stated reason. The actual decrypt capability comes from a KMS grant
-// token that's only generated in Cloud (vectorflow-cloud private repo); in
-// OSS the `kmsGrantToken` column stays null and these helpers track only
+// token that's only generated in the closed-surface workspace; in
+// OSS the `externalGrantRef` column stays null and these helpers track only
 // the lifecycle state. The same model and the same `isActive` predicate
 // are used in both worlds, so the policy code can live in OSS.
 //
@@ -104,7 +104,7 @@ export async function requestOrgAccessGrant(
       reason: input.reason.trim(),
       expiresAt,
       // approvedByCustomerAdminId left null — request is PENDING.
-      // kmsGrantToken left null — only Cloud sets this on approval.
+      // externalGrantRef left null — only Cloud sets this on approval.
     },
   });
 }
@@ -262,7 +262,7 @@ export async function expireStaleOrgAccessGrants(
 
 /**
  * List grants for one org. Used by the customer-side admin UI: pending
- * + approved + expired/revoked, with the kmsGrantToken always projected
+ * + approved + expired/revoked, with the externalGrantRef always projected
  * to a boolean presence flag so the customer admin can see THAT a token
  * was issued without seeing the token itself.
  */
@@ -271,8 +271,8 @@ export async function listOrgAccessGrantsForOrg(
   opts: { tx?: Client; limit?: number } = {},
 ): Promise<
   Array<
-    Omit<OrgAccessGrantRow, "kmsGrantToken"> & {
-      hasKmsGrantToken: boolean;
+    Omit<OrgAccessGrantRow, "externalGrantRef"> & {
+      hasExternalGrantRef: boolean;
     }
   >
 > {
@@ -282,8 +282,8 @@ export async function listOrgAccessGrantsForOrg(
     orderBy: { createdAt: "desc" },
     take: opts.limit ?? 100,
   });
-  return rows.map(({ kmsGrantToken, ...rest }) => ({
+  return rows.map(({ externalGrantRef, ...rest }) => ({
     ...rest,
-    hasKmsGrantToken: kmsGrantToken != null,
+    hasExternalGrantRef: externalGrantRef != null,
   }));
 }

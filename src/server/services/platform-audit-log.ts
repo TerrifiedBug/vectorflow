@@ -1,12 +1,12 @@
 /**
- * Platform operator audit log writer (plan §11, §16b OSS item 5).
+ * Platform operator audit log writer..
  *
  * Mirror primitive to `writeAuditLog` in `audit-chain-insert.ts`, but
  * keyed per stamp instead of per org. Use from operator-side handlers
  * (suspend, break-glass open/approve/use, backup restore, KMS unwrap).
  *
  *   await writePlatformAuditLog({
- *     stampId: STAMP_ID,
+ *     deploymentId: DEPLOYMENT_ID,
  *     operatorId: ctx.operator.id,
  *     operatorRole: ctx.operator.role,
  *     action: "grant.approve",
@@ -21,10 +21,10 @@
  * Properties:
  *
  *   - The write happens inside an advisory-locked transaction keyed on
- *     `platform-audit:<stampId>` so concurrent operator actions don't
+ *     `platform-audit:<deploymentId>` so concurrent operator actions don't
  *     race on the chain tail.
  *   - `prevHash` is computed from `PlatformAuditChainTail.lastHash`; if
- *     empty, the genesis hash is `sha256("vf:platform-audit-genesis:" || stampId)`.
+ *     empty, the genesis hash is `sha256("vf:platform-audit-genesis:" || deploymentId)`.
  *   - When `organizationId` is set, a mirror entry is **caller's
  *     responsibility** — the writer does not auto-fan-out to customer
  *     `AuditLog` because the mirror's `action`/`metadata` shape is
@@ -34,7 +34,7 @@
  *     logs inside the same outer transaction.
  *   - The Postgres rules in the migration prevent UPDATE/DELETE, so a
  *     compromised operator role cannot tamper after the fact. The Cloud
- *     S3 Object Lock sidecar (§16b cloud-11) ships rows for WORM
+ *     S3 Object Lock sidecar ships rows for WORM
  *     long-term retention.
  */
 
@@ -44,9 +44,9 @@ import { prisma } from "@/lib/prisma";
 /**
  * Stamp identifier — the logical name of this VectorFlow Cloud
  * deployment. Single-stamp deployments default to "default"; multi-
- * stamp deployments set `VF_STAMP_ID` per stamp.
+ * stamp deployments set `VF_DEPLOYMENT_ID` per stamp.
  */
-export const STAMP_ID: string = process.env.VF_STAMP_ID ?? "default";
+export const DEPLOYMENT_ID: string = process.env.VF_DEPLOYMENT_ID ?? "default";
 
 export type PlatformActionVerb =
   | "grant.request"
@@ -70,7 +70,7 @@ export type PlatformActionVerb =
   | (string & {});
 
 export interface WritePlatformAuditLogInput {
-  stampId?: string;
+  deploymentId?: string;
   operatorId: string | null;
   operatorRole?: "SUPPORT" | "INFRA" | "BILLING" | "INCIDENT" | null;
   action: PlatformActionVerb;
@@ -92,8 +92,8 @@ export interface WritePlatformAuditLogResult {
  * Genesis hash for the platform-audit chain on a given stamp.
  * Exposed for the verifier script + tests.
  */
-export function platformAuditGenesisHash(stampId: string): string {
-  return sha256Hex(`vf:platform-audit-genesis:${stampId}`);
+export function platformAuditGenesisHash(deploymentId: string): string {
+  return sha256Hex(`vf:platform-audit-genesis:${deploymentId}`);
 }
 
 /**
@@ -130,7 +130,7 @@ function computeRowHash(
   prevHash: string,
   row: {
     id: string;
-    stampId: string;
+    deploymentId: string;
     operatorId: string | null;
     operatorRole: string | null;
     action: string;
@@ -149,7 +149,7 @@ function computeRowHash(
   // computeRowHash without first stripping the stored hash columns.
   const canonical = canonicalize({
     id: row.id,
-    stampId: row.stampId,
+    deploymentId: row.deploymentId,
     operatorId: row.operatorId,
     operatorRole: row.operatorRole,
     action: row.action,
@@ -175,14 +175,14 @@ function computeRowHash(
 export async function writePlatformAuditLog(
   input: WritePlatformAuditLogInput,
 ): Promise<WritePlatformAuditLogResult> {
-  const stampId = input.stampId ?? STAMP_ID;
+  const deploymentId = input.deploymentId ?? DEPLOYMENT_ID;
   // Note: createdAt is captured INSIDE the transaction, after the advisory
   // lock is acquired (see lock acquisition below). Do not hoist it here.
 
   return prisma.$transaction(async (tx) => {
     // Per-stamp advisory lock — keeps concurrent writers in line so
     // the chain tail is never read stale.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`platform-audit:${stampId}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`platform-audit:${deploymentId}`}))`;
 
     // Capture createdAt after the lock so row timestamps are monotonic
     // with respect to lock-grant order. Hoisting before $transaction lets
@@ -191,17 +191,17 @@ export async function writePlatformAuditLog(
     // chain-link reconstruction that relies on insertion order.
     const createdAt = new Date();
     const tail = await tx.platformAuditChainTail.findUnique({
-      where: { stampId },
+      where: { deploymentId },
       select: { lastHash: true },
     });
-    const prevHash = tail?.lastHash ?? platformAuditGenesisHash(stampId);
+    const prevHash = tail?.lastHash ?? platformAuditGenesisHash(deploymentId);
 
     // Pre-allocate the row id so the hash binds the eventual PK.
     const id = randomCuid();
 
     const row = {
       id,
-      stampId,
+      deploymentId,
       operatorId: input.operatorId,
       operatorRole: input.operatorRole ?? null,
       action: input.action,
@@ -233,8 +233,8 @@ export async function writePlatformAuditLog(
     });
 
     await tx.platformAuditChainTail.upsert({
-      where: { stampId },
-      create: { stampId, lastHash: hash, lastWriteAt: createdAt, updatedAt: createdAt },
+      where: { deploymentId },
+      create: { deploymentId, lastHash: hash, lastWriteAt: createdAt, updatedAt: createdAt },
       update: { lastHash: hash, lastWriteAt: createdAt },
     });
 
@@ -248,12 +248,12 @@ export async function writePlatformAuditLog(
  * broken link (or `null` if intact).
  *
  * Exported for the bundled verifier script that ships with the
- * platform-audit export endpoint (Cloud-only; see §16b cloud-11).
+ * platform-audit export endpoint.
  */
 export function verifyPlatformAuditChain(
   rows: Array<{
     id: string;
-    stampId: string;
+    deploymentId: string;
     operatorId: string | null;
     operatorRole: string | null;
     action: string;
@@ -343,7 +343,7 @@ export function verifyPlatformAuditChain(
  */
 function randomCuid(): string {
   // cuid2-style: short, sortable-ish, URL-safe. Not collision-free
-  // outside this scope, but the table PK + (stampId, prevHash) chain
+  // outside this scope, but the table PK + (deploymentId, prevHash) chain
   // bind detection is independent of id uniqueness across stamps.
   const t = Date.now().toString(36);
   const r1 = Math.random().toString(36).slice(2, 10);

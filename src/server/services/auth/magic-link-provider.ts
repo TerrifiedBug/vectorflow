@@ -1,5 +1,5 @@
 /**
- * Magic-link NextAuth provider (plan §8 / §16b OSS-9).
+ * Magic-link NextAuth provider.
  *
  * Wraps `@/server/services/auth/magic-link`'s `consumeMagicLink`
  * primitive in a Credentials-style provider so
@@ -19,11 +19,10 @@
  *      creates the User by email and returns the NextAuth user.
  *
  * Find-or-create: magic-link doubles as a first-time signup primitive
- * for Cloud (plan §12 step 1). The provider creates a User row with
+ * for signup. The provider creates a User row with
  * `authMethod = "MAGIC_LINK"` if no user exists for the verified
  * email. OrgMember linkage is the caller's responsibility — the
- * Cloud signup route (S16b cloud-3) handles the first-user-as-OWNER
- * bootstrap.
+ * calling overlay handles the first-user-as-OWNER bootstrap.
  *
  * Replay defence: `consumeMagicLink` atomically flips `consumedAt`
  * inside the same transaction it reads the row, so a stolen-token +

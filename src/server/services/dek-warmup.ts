@@ -1,6 +1,6 @@
 /**
- * DEK cache warm-up on stamp startup (plan §12.5 SLO assumption,
- * §16b OSS item 4).
+ * DEK cache warm-up on stamp startup (
+ * §).
  *
  * The KMS request budget in §12.5 — ~12 unwraps/hour/org at 5min TTL —
  * is comfortable in steady state. The hot path is a **reconnect storm**:

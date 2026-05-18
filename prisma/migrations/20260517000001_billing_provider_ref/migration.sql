@@ -1,10 +1,9 @@
 -- BillingProviderRef: generic mapping from Organization → external billing
 -- provider (customer + optional metered-subscription-item).
 --
--- Per §15a R1 / R3: the *table* is generic and lives in OSS; the
--- *provider-specific code* (Stripe webhook handler, Stripe metering
--- aggregator) lives in vectorflow-cloud. Self-hosted OSS installs leave
--- this table empty.
+-- The table is generic; any provider-specific webhook/metering handler is
+-- the caller's responsibility. Self-hosted deployments that do not wire a
+-- billing provider leave this table empty.
 
 CREATE TABLE "BillingProviderRef" (
     "id" TEXT NOT NULL,
@@ -33,20 +32,19 @@ CREATE INDEX "BillingProviderRef_organizationId_idx"
 
 -- FK to Organization with cascade — when an org is hard-deleted, the
 -- provider mapping evaporates with it. Provider-side cleanup (cancel
--- Stripe subscription, etc.) is the Cloud-side hard-delete runbook's
+-- subscription, etc.) is the deployment's hard-delete runbook
 -- responsibility; this table just stops carrying the stale pointer.
 ALTER TABLE "BillingProviderRef" ADD CONSTRAINT "BillingProviderRef_organizationId_fkey"
   FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- RLS: same per-org pattern as every other tenant table (canonical
--- shape from `20260516000003_phase5a_rls_strict_policies`). Admin
--- reads happen at the role level — the OSS-side `vectorflow_app`
--- runtime role has NOBYPASSRLS, so it CAN'T bypass even by accident;
--- the Cloud-side admin connection (DATABASE_ADMIN_URL, owner role)
--- has BYPASSRLS and skips RLS at the engine level. No session-level
--- bypass GUC — that pattern was previously vulnerable because any
--- session with DML grants could call `SET LOCAL app.bypass_rls='on'`
--- to cross-read tenants (codex P1 finding).
+-- shape from `20260516000003_phase5a_rls_strict_policies`). Admin reads
+-- happen at the role level — the `vectorflow_app` runtime role has
+-- NOBYPASSRLS so it CAN'T bypass even by accident; the admin
+-- connection (DATABASE_ADMIN_URL, owner role) has BYPASSRLS and skips
+-- RLS at the engine level. No session-level bypass GUC — that pattern
+-- was previously vulnerable because any session with DML grants could
+-- call `SET LOCAL app.bypass_rls='on'` to cross-read tenants.
 ALTER TABLE "BillingProviderRef" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "BillingProviderRef" FORCE ROW LEVEL SECURITY;
 

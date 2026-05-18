@@ -1,7 +1,7 @@
 -- Phase 4c — vectorflow_app non-owner Postgres role.
 --
 -- Creates the runtime role used by the application connection pool in
--- Cloud deployments. The role has NOBYPASSRLS, NOSUPERUSER, NOCREATEROLE,
+-- Multi-tenant deployments. The role has NOBYPASSRLS, NOSUPERUSER, NOCREATEROLE,
 -- NOCREATEDB so the strict RLS policy installed in 20260516000003 actually
 -- fences cross-org access at the database layer. The table-owner role
 -- bypasses RLS by default in Postgres; we explicitly do NOT use the owner
@@ -23,7 +23,7 @@
 -- intend to use vectorflow_app at all.
 --
 -- The migration therefore short-circuits with a NOTICE when the current
--- user lacks CREATEROLE/SUPERUSER. Cloud operators provision the role
+-- user lacks CREATEROLE/SUPERUSER. Operators provision the role
 -- out of band (Terraform, manual psql as the cluster admin); when this
 -- migration runs against that pre-provisioned role, the ALTER path
 -- reasserts the expected attributes idempotently.

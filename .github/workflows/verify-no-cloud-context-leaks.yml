@@ -1,0 +1,41 @@
+name: Verify No Cloud Context Leaks
+
+# Fail the build if forbidden internal-context tokens leak into committed
+# OSS source (plan-section references, closed-surface workspace names,
+# vendor decisions, pre-rename field identifiers). The full token list
+# lives in `scripts/verify-no-cloud-context-leaks.sh`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "prisma/**"
+      - "scripts/**"
+      - ".github/workflows/verify-no-cloud-context-leaks.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "prisma/**"
+      - "scripts/**"
+      - ".github/workflows/verify-no-cloud-context-leaks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-no-cloud-context-leaks:
+    name: Boundary discipline
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Need history so the optional `--diff` mode can compare
+          # against `origin/main`. The default scan walks every tracked
+          # file; this just keeps `--diff` usable for ad-hoc runs.
+          fetch-depth: 0
+
+      - name: Run boundary-discipline gate
+        run: bash scripts/verify-no-cloud-context-leaks.sh

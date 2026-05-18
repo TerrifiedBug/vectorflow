@@ -745,7 +745,7 @@ export const auditRouter = router({
     }),
 
   /**
-   * Customer-admin chain-verifiable audit export (plan §11 / §16b OSS-10).
+   * Customer-admin chain-verifiable audit export..
    *
    * Returns the full per-org `AuditExportEnvelope` — every row with a
    * non-null hash, walked in chain order. The output is what the

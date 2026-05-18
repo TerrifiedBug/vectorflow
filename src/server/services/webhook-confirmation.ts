@@ -1,5 +1,5 @@
 /**
- * Webhook destination one-time confirmation (plan §9 / Phase 5aa).
+ * Webhook destination one-time confirmation.
  *
  * A new (or URL-changed) `WebhookEndpoint` cannot deliver until an OWNER
  * of the owning organisation clicks a one-time confirmation link. Until
