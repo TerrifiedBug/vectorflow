@@ -122,6 +122,27 @@ export const DENY_VALUE_KEYS: ReadonlySet<string> = new Set(
 );
 
 /**
+ * Attach per-request log context (org id + request id) as Sentry tags
+ * so events can be filtered per tenant. Pure helper — the AsyncLocal-
+ * Storage read lives at the call-site so the function is unit-
+ * testable without standing up a context store.
+ *
+ * No-op when neither id is set.
+ */
+export function applyLogContextTags(
+  event: ErrorEvent,
+  ctx: { orgId?: string; requestId?: string } | undefined,
+): ErrorEvent {
+  if (!ctx || (!ctx.orgId && !ctx.requestId)) return event;
+  event.tags = {
+    ...(event.tags ?? {}),
+    ...(ctx.orgId ? { org_id: ctx.orgId } : {}),
+    ...(ctx.requestId ? { request_id: ctx.requestId } : {}),
+  };
+  return event;
+}
+
+/**
  * Apply the sanitizer. Returns the mutated event (callers can pass
  * directly to `beforeSend` return).
  */
