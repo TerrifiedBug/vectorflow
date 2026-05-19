@@ -1,5 +1,5 @@
 /**
- * Per-subdomain `__Host-` cookie config.
+ * Per-subdomain `__Host-` cookie config for the strict-multi-tenant profile.
  *
  * Cookie scoping decision: cookies are host-only (no `Domain=` attribute)
  * so an XSS on `acme.vectorflow.sh` does NOT leak a cookie that's valid
@@ -18,9 +18,8 @@
  *
  * OSS / dev profile keeps the NextAuth defaults (no prefix; `Secure`
  * set automatically based on the request scheme) so `http://localhost`
- * dev still works.
- *
- * The overlay can enable this by returning the override.
+ * dev still works. Set `VF_STRICT_MULTI_TENANT=true` to switch on the
+ * `__Host-` override.
  */
 
 import type { NextAuthConfig } from "next-auth";
@@ -32,7 +31,7 @@ const COOKIE_BASE_NAME = "vf";
  * to keep NextAuth defaults. Spread the result into `authConfig.cookies`
  * (or the per-instance NextAuth() construction).
  */
-export function cloudCookieConfig(): NextAuthConfig["cookies"] | undefined {
+export function strictCookieConfig(): NextAuthConfig["cookies"] | undefined {
   if (process.env.VF_STRICT_MULTI_TENANT !== "true") {
     return undefined;
   }
@@ -79,7 +78,7 @@ export function cloudCookieConfig(): NextAuthConfig["cookies"] | undefined {
  * present in every cookie name without re-running the construction
  * with a stubbed env.
  */
-export const _cloudCookieInternals = {
+export const _strictCookieInternals = {
   COOKIE_BASE_NAME,
 };
 

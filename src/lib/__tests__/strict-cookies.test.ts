@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import {
-  cloudCookieConfig,
+  strictCookieConfig,
   expireLegacyAuthCookies,
   _legacyAuthCookieNames,
-} from "../cloud-cookies";
+} from "../strict-cookies";
 
 const ORIGINAL = process.env.VF_STRICT_MULTI_TENANT;
 
@@ -13,31 +13,31 @@ afterEach(() => {
   else process.env.VF_STRICT_MULTI_TENANT = ORIGINAL;
 });
 
-describe("cloudCookieConfig", () => {
+describe("strictCookieConfig", () => {
   beforeEach(() => {
     delete process.env.VF_STRICT_MULTI_TENANT;
   });
 
   it("returns undefined under OSS / dev profile (no override)", () => {
-    expect(cloudCookieConfig()).toBeUndefined();
+    expect(strictCookieConfig()).toBeUndefined();
   });
 
   it("returns undefined for typo'd env values (defence against accidental enablement)", () => {
     for (const v of ["1", "yes", "TRUE", "True", "false"]) {
       process.env.VF_STRICT_MULTI_TENANT = v;
-      expect(cloudCookieConfig()).toBeUndefined();
+      expect(strictCookieConfig()).toBeUndefined();
     }
   });
 
   it("returns the __Host- override when VF_STRICT_MULTI_TENANT=true", () => {
     process.env.VF_STRICT_MULTI_TENANT = "true";
-    const cfg = cloudCookieConfig();
+    const cfg = strictCookieConfig();
     expect(cfg).toBeDefined();
   });
 
   it("every cookie name carries the __Host- prefix", () => {
     process.env.VF_STRICT_MULTI_TENANT = "true";
-    const cfg = cloudCookieConfig();
+    const cfg = strictCookieConfig();
     expect(cfg).toBeDefined();
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     for (const [, def] of Object.entries(cfg!)) {
@@ -47,7 +47,7 @@ describe("cloudCookieConfig", () => {
 
   it("every cookie uses Secure + HttpOnly + Path=/ and NO Domain (host-only)", () => {
     process.env.VF_STRICT_MULTI_TENANT = "true";
-    const cfg = cloudCookieConfig();
+    const cfg = strictCookieConfig();
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     for (const [, def] of Object.entries(cfg!)) {
       const opts = (def as { options?: Record<string, unknown> }).options ?? {};
@@ -62,7 +62,7 @@ describe("cloudCookieConfig", () => {
 
   it("ephemeral cookies (pkceCodeVerifier, state) carry a maxAge cap", () => {
     process.env.VF_STRICT_MULTI_TENANT = "true";
-    const cfg = cloudCookieConfig();
+    const cfg = strictCookieConfig();
     expect(cfg).toBeDefined();
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const c = cfg!;
@@ -76,7 +76,7 @@ describe("cloudCookieConfig", () => {
 
   it("includes the cookies NextAuth needs for sign-in (sessionToken, callbackUrl, csrfToken)", () => {
     process.env.VF_STRICT_MULTI_TENANT = "true";
-    const cfg = cloudCookieConfig();
+    const cfg = strictCookieConfig();
     expect(cfg).toBeDefined();
     const keys = Object.keys(cfg as object);
     expect(keys).toContain("sessionToken");

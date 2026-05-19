@@ -6,7 +6,7 @@
  *   positive  → local clock is behind the time source(s)
  *   negative  → local clock is ahead
  *
- * Used by `/api/health/cloud` to fail readiness when the host drifts too
+ * Used by `/api/health/deep` to fail readiness when the host drifts too
  * far. Several control-plane invariants (JWT expiry, TOTP windows, KMS
  * grant token expiry) silently misbehave when stamp hosts disagree on the
  * time of day.

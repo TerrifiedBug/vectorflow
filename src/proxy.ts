@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import { authConfig } from "@/auth.config";
 import { NextResponse, type NextRequest } from "next/server";
-import { expireLegacyAuthCookies } from "@/lib/cloud-cookies";
+import { expireLegacyAuthCookies } from "@/lib/strict-cookies";
 import {
   contentSecurityPolicy,
   isStrictMultiTenantMode,

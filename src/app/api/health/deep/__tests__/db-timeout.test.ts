@@ -15,7 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { getKmsProvider } from "@/server/services/kms";
 import { checkClockSkew } from "@/server/services/clock-skew";
 
-describe("/api/health/cloud — DB probe bounded by timeout (Codex P1)", () => {
+describe("/api/health/deep — DB probe bounded by timeout", () => {
   beforeEach(() => {
     vi.mocked(getKmsProvider).mockReturnValue({
       healthCheck: async () => ({ ok: true, keyId: "ok" }),
