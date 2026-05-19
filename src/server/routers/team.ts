@@ -9,6 +9,7 @@ import { encrypt } from "@/server/services/crypto";
 import { testAiConnection } from "@/server/services/ai";
 import { getOrgSettings } from "@/lib/org-settings";
 import { DEFAULT_ORG_ID } from "@/lib/org-constants";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import { isAllowlistedAiHost } from "@/server/services/ai-base-url-allowlist";
 
 /**
@@ -58,17 +59,22 @@ export const teamRouter = router({
     .query(async ({ ctx, input }) => {
       const userId = ctx.session.user!.id!;
 
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      });
-      if (user?.isSuperAdmin) return { role: "ADMIN" as const, isSuperAdmin: true };
+      // Migrated from `User.isSuperAdmin` to the org-scoped equivalent.
+      // OWNER/ADMIN of the resolved organisation gets the same team
+      // visibility super-admins previously had. The legacy
+      // `isSuperAdmin: true` shape is preserved in the return value
+      // until the UI migrates to read `isOrgAdmin`.
+      const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
+      if (orgAdmin) return { role: "ADMIN" as const, isSuperAdmin: true };
 
       const membership = await prisma.teamMember.findUnique({
         where: { userId_teamId: { userId, teamId: input.teamId } },
         select: { role: true },
       });
-      return { role: (membership?.role ?? "VIEWER") as "VIEWER" | "EDITOR" | "ADMIN", isSuperAdmin: false };
+      return {
+        role: (membership?.role ?? "VIEWER") as "VIEWER" | "EDITOR" | "ADMIN",
+        isSuperAdmin: false,
+      };
     }),
 
   list: protectedProcedure.query(async ({ ctx }) => {

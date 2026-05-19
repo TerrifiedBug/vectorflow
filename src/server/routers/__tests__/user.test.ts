@@ -98,6 +98,7 @@ describe("userRouter", () => {
         mustChangePassword: false,
         totpEnabled: false,
         isSuperAdmin: false,
+        isOrgAdmin: false,
         twoFactorRequired: false,
       });
     });
@@ -387,6 +388,172 @@ describe("userRouter", () => {
       await expect(
         caller.disableTotp({ code: "123456" }),
       ).rejects.toThrow("2FA is not enabled");
+    });
+  });
+
+  // ─── eraseSelf ────────────────────────────────────────────────────────────
+
+  describe("eraseSelf", () => {
+    function setupHappyPath(overrides: { authMethod?: string } = {}) {
+      prismaMock.user.findUnique.mockResolvedValue({
+        id: "user-1",
+        email: "test@test.com",
+        passwordHash: "hash",
+        authMethod: overrides.authMethod ?? "LOCAL",
+      } as never);
+      prismaMock.orgMember.findMany.mockResolvedValue([]);
+      prismaMock.platformOperator.findUnique.mockResolvedValue(null);
+      prismaMock.$transaction.mockImplementation(
+        async (fn: (tx: PrismaClient) => Promise<unknown>) => fn(prismaMock),
+      );
+      // Reset deleteMany/update/findMany return values.
+      prismaMock.orgMember.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.teamMember.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.scimGroupMember.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.webAuthnCredential.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.account.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.userPreference.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.dashboardView.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.auditLog.updateMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.user.update.mockResolvedValue({} as never);
+    }
+
+    it("rejects when caller is the sole OWNER of an org with other members", async () => {
+      setupHappyPath();
+      prismaMock.orgMember.findMany.mockResolvedValue([
+        { organizationId: "org-a" },
+      ] as never);
+      // count() called twice per org: other members, other owners.
+      prismaMock.orgMember.count
+        .mockResolvedValueOnce(2 as never) // other members exist
+        .mockResolvedValueOnce(0 as never); // no other owners
+
+      await expect(
+        caller.eraseSelf({
+          confirmation: "erase my account",
+          currentPassword: "secret",
+        }),
+      ).rejects.toMatchObject({
+        code: "PRECONDITION_FAILED",
+        message: expect.stringMatching(/sole OWNER/i),
+      });
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
+    });
+
+    it("requires current password for LOCAL auth", async () => {
+      setupHappyPath();
+      await expect(
+        caller.eraseSelf({ confirmation: "erase my account" }),
+      ).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: expect.stringMatching(/Current password is required/),
+      });
+    });
+
+    it("rejects when current password does not match", async () => {
+      setupHappyPath();
+      vi.mocked(bcrypt.compare).mockResolvedValueOnce(false as never);
+      await expect(
+        caller.eraseSelf({
+          confirmation: "erase my account",
+          currentPassword: "wrong",
+        }),
+      ).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: expect.stringMatching(/incorrect/i),
+      });
+    });
+
+    it("pseudonymises the user row and deletes auth-bearing relations", async () => {
+      setupHappyPath();
+
+      const result = await caller.eraseSelf({
+        confirmation: "erase my account",
+        currentPassword: "secret",
+      });
+
+      expect(result).toEqual({ id: "user-1", erased: true });
+      expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+
+      expect(prismaMock.orgMember.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "user-1" },
+      });
+      expect(prismaMock.webAuthnCredential.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "user-1" },
+      });
+      expect(prismaMock.account.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "user-1" },
+      });
+      expect(prismaMock.auditLog.updateMany).toHaveBeenCalledWith({
+        where: { userId: "user-1" },
+        data: { userId: null },
+      });
+
+      const updateCall = prismaMock.user.update.mock.calls[0][0];
+      expect(updateCall.where).toEqual({ id: "user-1" });
+      expect(updateCall.data).toMatchObject({
+        email: "erased+user-1@anon.invalid",
+        name: null,
+        image: null,
+        passwordHash: null,
+        totpEnabled: false,
+        totpSecret: null,
+        totpBackupCodes: null,
+        scimExternalId: null,
+        isSuperAdmin: false,
+        lockedBy: "erasure",
+      });
+      expect(updateCall.data.lockedAt).toBeInstanceOf(Date);
+    });
+
+    it("soft-deletes the matching PlatformOperator row", async () => {
+      setupHappyPath();
+      prismaMock.platformOperator.findUnique.mockResolvedValue({
+        id: "op-1",
+        deletedAt: null,
+      } as never);
+
+      await caller.eraseSelf({
+        confirmation: "erase my account",
+        currentPassword: "secret",
+      });
+
+      expect(prismaMock.platformOperator.update).toHaveBeenCalledWith({
+        where: { id: "op-1" },
+        data: { deletedAt: expect.any(Date) },
+      });
+    });
+
+    it("skips PlatformOperator update when row is already soft-deleted", async () => {
+      setupHappyPath();
+      prismaMock.platformOperator.findUnique.mockResolvedValue({
+        id: "op-1",
+        deletedAt: new Date("2026-01-01"),
+      } as never);
+
+      await caller.eraseSelf({
+        confirmation: "erase my account",
+        currentPassword: "secret",
+      });
+
+      expect(prismaMock.platformOperator.update).not.toHaveBeenCalled();
+    });
+
+    it("OIDC auth skips password confirmation", async () => {
+      setupHappyPath({ authMethod: "OIDC" });
+      const result = await caller.eraseSelf({
+        confirmation: "erase my account",
+      });
+      expect(result).toEqual({ id: "user-1", erased: true });
+      expect(prismaMock.user.update).toHaveBeenCalled();
+    });
+
+    it("rejects when confirmation literal is missing", async () => {
+      await expect(
+        caller.eraseSelf({ currentPassword: "secret" } as Parameters<
+          typeof caller.eraseSelf
+        >[0]),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
   });
 });

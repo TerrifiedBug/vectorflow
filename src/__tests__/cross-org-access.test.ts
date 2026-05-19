@@ -202,6 +202,15 @@ const INTENTIONALLY_UNGUARDED = new Set<string>([
   // inclusion) surfaced these existing gaps and they are fixed inline.
   "template.get",
   "template.delete",
+
+  // org.verifyDomain / org.unclaimDomain: inline auth in the handler.
+  // Both load the `OrganizationDomainClaim` by `id` and reject if
+  // `claim.organizationId !== ctx.organizationId` (404 NOT_FOUND). The
+  // input id is the claim row id, not a teamId / pipelineId, so
+  // `withTeamAccess` doesn't have a resolution path for it. Same
+  // inline-auth pattern as `template.get` / `template.delete` above.
+  "org.verifyDomain",
+  "org.unclaimDomain",
 ]);
 
 interface AuditEntry {

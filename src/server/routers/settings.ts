@@ -828,4 +828,44 @@ export const settingsRouter = router({
         aiBaseUrlOptIn: input.enabled,
       });
     }),
+
+  /**
+   * Subscribe (or unsubscribe) this organisation from sub-processor
+   * change notices. The operator dispatches the notice from a separate
+   * surface; this procedure only stores the destination address (or
+   * NULL to unsubscribe).
+   *
+   * Authorisation: caller MUST be `OrgMember.role === "OWNER"`. Notice
+   * preferences are a tenant-side decision; an operator MUST NOT flip
+   * this flag on a customer's behalf because that would invent consent
+   * the customer never gave.
+   */
+  updateSubprocessorNoticeEmail: protectedProcedure
+    .use(denyInDemo())
+    .input(
+      z.object({
+        email: z
+          .string()
+          .trim()
+          .email("Enter a valid email address.")
+          .max(320, "Email is too long.")
+          .nullable(),
+      }),
+    )
+    .use(withAudit("settings.subprocessor_notice_email_updated", "OrganizationSettings"))
+    .mutation(async ({ input, ctx }) => {
+      const orgMemberRole = (ctx as { orgMemberRole?: string }).orgMemberRole;
+      if (orgMemberRole !== "OWNER") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Subscribing to sub-processor change notices requires an org OWNER. " +
+            "Ask an OWNER of this organisation to update the address.",
+        });
+      }
+
+      return updateOrgSettings(ctx.organizationId, {
+        subprocessorNoticeEmail: input.email,
+      });
+    }),
 });

@@ -60,6 +60,7 @@ export function mockOrgSettings(
     telemetryInstanceId: string | null;
     telemetryEnabledAt: Date | null;
     aiBaseUrlOptIn: boolean;
+    subprocessorNoticeEmail: string | null;
     updatedAt: Date;
   }> = {},
 ) {
@@ -107,6 +108,7 @@ export function mockOrgSettings(
     telemetryInstanceId: null,
     telemetryEnabledAt: null,
     aiBaseUrlOptIn: false,
+    subprocessorNoticeEmail: null,
     updatedAt: new Date("2026-01-01"),
     ...overrides,
   };
