@@ -4,11 +4,11 @@
  * (`DEFAULT_ORG_ID`) as `OWNER` so that `orgProcedure` middleware can
  * resolve their org context.
  *
- * a multi-tenant signup follows a different flow in the closed `cloud/`
- * workspace: it mints a fresh `Organization` with a KMS-wrapped DEK and
- * the customer's chosen slug, then creates the OWNER and seeds Team /
- * Environment under THAT org. A multi-tenant deployment does NOT call this
- * function.
+ * A multi-tenant signup is intentionally not present here: it would mint
+ * a fresh `Organization` with a KMS-wrapped DEK and the customer's
+ * chosen slug, then create the OWNER and seed Team / Environment under
+ * THAT org. Deployments running under strict multi-tenant do NOT call
+ * this function.
  */
 
 import { prisma } from "@/lib/prisma";

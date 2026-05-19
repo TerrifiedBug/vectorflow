@@ -276,17 +276,18 @@ export const requireSuperAdmin = () =>
 /**
  * Platform-operator authorization middleware.
  *
- * The Cloud operator boundary is a hard line: operators are NEVER tenant
- * Users. `User.isSuperAdmin` (the legacy hatch) blurs that line and is
- * being phased out — `requirePlatformOperator(role)` is the replacement.
+ * The platform-operator boundary is a hard line: operators are NEVER
+ * tenant Users. `User.isSuperAdmin` (the legacy hatch) blurs that line
+ * and is being phased out — `requirePlatformOperator(role)` is the
+ * replacement.
  *
  * Resolution:
  *   1. The caller MUST have a session (UNAUTHORIZED otherwise).
  *   2. The session user's email MUST match a `PlatformOperator` row.
- *      In multi-tenant deployments, operators sign in via a separate
- *      auth surface (operator subdomain, WebAuthn-only) so the User row
- *      that lands in the session is the operator's identity, not a
- *      tenant identity.
+ *      Under strict multi-tenant, operators sign in via a separate
+ *      auth surface (operator subdomain, WebAuthn-only) so the User
+ *      row that lands in the session is the operator's identity, not
+ *      a tenant identity.
  *   3. The operator's `PlatformOperatorRole` MUST be at or above
  *      `minRole`. Roles are ranked: SUPPORT (0) < BILLING (1) <
  *      INFRA (2) < INCIDENT (3). Promote-narrowness rather than

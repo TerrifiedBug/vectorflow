@@ -17,7 +17,8 @@
  * boundary (the post-feature chain is already anchored to genesis). If a
  * customer later needs every historical row hashed, they take a downtime
  * window, drop the rows from the chain, run a single-pass rewrite, and
- * resume. That operation belongs in the cloud/ ops runbook, not here.
+ * resume. That destructive operation lives in operator runbooks, not in
+ * this module.
  */
 
 import {
@@ -44,9 +45,10 @@ export function computeAuditChainInsert(
 }
 
 /**
- * Adapter the cloud/ workspace's PlatformAuditLog writer plugs in to to
- * reuse the same hashing primitive. Each implementer fetches the chain
- * tail for the supplied logical key (e.g. `platform-audit:<stamp>`).
+ * Adapter pattern for callers that maintain a separate audit chain
+ * (e.g. the platform-operator audit table) and want to reuse the same
+ * hashing primitive. Each implementer fetches the chain tail for the
+ * supplied logical key (e.g. `platform-audit:<deploymentId>`).
  */
 export interface AuditChainTailLookup {
   /** Most recent row's `hash` value, or null when the chain is empty. */

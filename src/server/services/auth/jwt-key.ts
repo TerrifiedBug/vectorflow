@@ -2,7 +2,8 @@
  * Per-org JWT signing key resolution + revocation..
  *
  * NextAuth's `secret` option accepts a string OR an array of strings.
- * For Cloud orgs we derive the secret from the org's DEK via
+ * For orgs with a provisioned DEK (`Organization.dataKeyCiphertext` set)
+ * we derive the secret from the DEK via
  * `deriveJwtSigningKey(dek, rotationCounter)`. For OSS / self-hosted
  * orgs without a DEK we fall back to `NEXTAUTH_SECRET` so the existing
  * sign-in flow continues to work.

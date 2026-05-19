@@ -12,10 +12,10 @@ const ENCRYPTED_PREFIX = "enc:";
  *
  * Single source of policy: defers to `validateOutboundUrl`. In OSS (the
  * default) outbound validation is gated by `VF_STRICT_OUTBOUND` so a
- * self-hosted Ollama at `http://localhost:11434/v1` keeps working. In Cloud
- * (`VF_STRICT_OUTBOUND=true`) AI providers MUST be public hosts; private
- * IPs, loopback, mDNS/.internal TLDs, and cloud metadata endpoints are all
- * rejected before the request goes out.
+ * self-hosted Ollama at `http://localhost:11434/v1` keeps working. Under
+ * the strict-outbound profile (`VF_STRICT_OUTBOUND=true`) AI providers
+ * MUST be public hosts; private IPs, loopback, mDNS/.internal TLDs, and
+ * cloud-metadata endpoints are all rejected before the request goes out.
  *
  * The function also enforces the `http(s)` scheme requirement; the previous
  * in-file `validateBaseUrl` did the same with a bespoke list of CIDRs and a

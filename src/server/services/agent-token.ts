@@ -43,8 +43,9 @@ const NODE_PATTERN = /^vf_node_([a-z][a-z0-9-]{2,30})_([a-f0-9]{16})_([a-f0-9]{6
  *
  * Format: `vf_enroll_<orgSlug>_<64hex>`
  *
- * Self-hosted uses slug "default". Cloud uses the org's slug so the token
- * is tied to the org at generation time.
+ * OSS / single-tenant deployments use slug "default". Multi-tenant
+ * deployments use the org's slug so the token is tied to the org at
+ * generation time.
  */
 export async function generateEnrollmentToken(
   orgSlug: string = DEFAULT_ORG_SLUG,

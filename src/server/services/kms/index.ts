@@ -17,8 +17,8 @@ let cachedDekCache: DekCache | null = null;
  * `VF_KMS_PROVIDER`:
  *   - `local-dev` (default) — `LocalDevKmsProvider`.
  *   - `vault-transit`       — `VaultTransitKmsProvider` (requires Vault env).
- *   - `aws-kms`             — only available when the `cloud/` workspace
- *                             provides an AWS adapter; otherwise throws.
+ *   - `aws-kms`             — only available when a closed-source adapter
+ *                             is registered; otherwise throws.
  *
  * Tests use `resetKmsForTests()` to clear the singleton.
  */

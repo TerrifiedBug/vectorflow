@@ -1,11 +1,11 @@
 /**
  * Magic-link sign-in service.
  *
- * Cloud-default authentication for new orgs is "SSO or magic link". This
- * module mints a one-time random token, persists only its SHA-256 hash,
- * mails the plaintext to the user, and consumes it on redeem. The
- * NextAuth Credentials provider (added in a follow-up) calls
- * `consumeMagicLink` and creates a session if it returns `ok`.
+ * Passwordless sign-in via single-use, emailed link. The module mints a
+ * random token, persists only its SHA-256 hash, mails the plaintext to
+ * the user, and consumes it on redeem. The NextAuth Credentials provider
+ * (registered in `magic-link-provider.ts`) calls `consumeMagicLink` and
+ * creates a session if it returns `ok`.
  *
  * Security properties:
  *

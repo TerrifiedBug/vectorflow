@@ -94,9 +94,9 @@ export async function runDailyCostAnalysisForOrg(
   // they do not accept a tx or organizationId parameter, so the SET LOCAL
   // app.org_id we would set in `withOrgTx` does not propagate to their
   // queries. Under OSS the table-owner role bypasses RLS so this works
-  // identically to before. Under Cloud RLS-strict, threading the org
-  // context through each service function is a separate refactor (Phase
-  // 5b.2). The fan-out across orgs is the win this PR ships.
+  // identically to before. Under strict-multi-tenant RLS, threading the
+  // org context through each service function is a follow-up refactor.
+  // The fan-out across orgs is the win this PR ships.
   const expiredCleaned = await cleanupExpiredRecommendations();
   const results = await runCostAnalysis();
   const { created, skipped } = await storeRecommendations(results);

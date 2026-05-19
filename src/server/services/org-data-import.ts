@@ -42,8 +42,8 @@
  * responsible for guaranteeing the target org is empty (a multi-tenant signup
  * flow does this by construction).
  *
- * Security: the import runs against the caller's Prisma client; for
- * Cloud deployments that means passing the `tx` from `withOrgTx(orgB,
+ * Security: the import runs against the caller's Prisma client; under
+ * strict multi-tenant that means passing the `tx` from `withOrgTx(orgB,
  * tx => importOrgData(env, { targetOrganizationId: orgB, client: tx }))`
  * so every INSERT is fenced by RLS and `app.org_id = orgB`. The
  * `organizationId` field on each inserted row is OVERWRITTEN with

@@ -33,18 +33,18 @@
  *     intended pattern is for the calling handler to write to both
  *     logs inside the same outer transaction.
  *   - The Postgres rules in the migration prevent UPDATE/DELETE, so a
- *     compromised operator role cannot tamper after the fact. The Cloud
- *     S3 Object Lock sidecar ships rows for WORM
- *     long-term retention.
+ *     compromised operator role cannot tamper after the fact. WORM
+ *     long-term retention (e.g. S3 Object Lock) is handled by a
+ *     separate sidecar outside this module.
  */
 
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 
 /**
- * Stamp identifier — the logical name of this VectorFlow Cloud
- * deployment. Single-stamp deployments default to "default"; multi-
- * stamp deployments set `VF_DEPLOYMENT_ID` per stamp.
+ * Deployment identifier — the logical name of this VectorFlow
+ * deployment. Single-deployment installs default to "default";
+ * multi-deployment installs set `VF_DEPLOYMENT_ID` per node.
  */
 export const DEPLOYMENT_ID: string = process.env.VF_DEPLOYMENT_ID ?? "default";
 

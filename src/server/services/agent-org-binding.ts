@@ -49,16 +49,18 @@ export async function resolveAgentOrg(
     explicitToken?: string;
   },
 ): Promise<AgentOrgContext | Response> {
-  // X-VF-Org-Slug is injected by the Cloud ingress after stripping the raw
-  // Host header. Self-hosted deployments never set this header.
+  // X-VF-Org-Slug is the ingress-supplied subdomain marker. It is set by
+  // a multi-tenant ingress after stripping the raw Host header; OSS /
+  // self-hosted deployments never set this header.
   //
-  // ⚠️  DEPLOYMENT REQUIREMENT (Cloud): the ingress MUST strip any
-  // client-supplied X-VF-Org-Slug before injecting its own value derived
-  // from the authenticated subdomain. If this header can be set by agents,
-  // the hostname-based isolation knob is degraded to a no-op and the system
-  // falls back to single-factor auth (token only). The DB-layer org scope in
-  // authenticateAgentInOrg still prevents cross-tenant data access, but the
-  // defense-in-depth property is lost.
+  // ⚠️  DEPLOYMENT REQUIREMENT (strict-multi-tenant): the ingress MUST
+  // strip any client-supplied X-VF-Org-Slug before injecting its own
+  // value derived from the authenticated subdomain. If this header can
+  // be set by agents, the hostname-based isolation knob is degraded to
+  // a no-op and the system falls back to single-factor auth (token
+  // only). The DB-layer org scope in authenticateAgentInOrg still
+  // prevents cross-tenant data access, but the defense-in-depth
+  // property is lost.
   const headerSlug = request.headers.get("x-vf-org-slug");
 
   const token = opts?.explicitToken
@@ -68,7 +70,7 @@ export async function resolveAgentOrg(
     ? isLegacyNodeToken(token) || isLegacyEnrollmentToken(token)
     : false;
 
-  // ── Cloud path: ingress provided a slug header ──────────────────────────
+  // ── Subdomain-bound path: ingress provided a slug header ───────────────
   if (headerSlug) {
     if (tokenSlug && tokenSlug !== headerSlug) {
       // Token claims a different org than the subdomain it arrived on.
@@ -80,12 +82,12 @@ export async function resolveAgentOrg(
       return new Response("Unauthorized", { status: 401 });
     }
 
-    // Legacy tokens on a non-default subdomain are rejected in Cloud.
-    // They have no embedded slug so we can't verify they belong to this org.
+    // Legacy tokens on a non-default subdomain are rejected: they have
+    // no embedded slug so we can't verify they belong to this org.
     if (isLegacy && headerSlug !== DEFAULT_ORG_SLUG) {
       warnLog(
         "agent-org",
-        `legacy token rejected on cloud subdomain slug=${headerSlug}`,
+        `legacy token rejected on non-default subdomain slug=${headerSlug}`,
       );
       return new Response("Unauthorized", { status: 401 });
     }
@@ -95,8 +97,8 @@ export async function resolveAgentOrg(
       return { orgId: DEFAULT_ORG_ID, orgSlug: DEFAULT_ORG_SLUG, isLegacyToken: isLegacy };
     }
 
-    // Tokenless requests on a real Cloud subdomain cannot be attributed to
-    // any org identity — reject early before touching the DB.
+    // Tokenless requests on a non-default subdomain cannot be attributed
+    // to any org identity — reject early before touching the DB.
     if (!token) {
       return new Response("Unauthorized", { status: 401 });
     }

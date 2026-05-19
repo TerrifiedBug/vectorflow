@@ -24,7 +24,7 @@
 -- soft-deleted via `deletedAt` stays decommissioned — manual decommission
 -- intent wins over the backfill.
 --
--- ─── Cloud safety ─────────────────────────────────────────────────────────
+-- ─── Multi-tenant safety ──────────────────────────────────────────────────
 -- Multi-tenant deployments do NOT set `User.isSuperAdmin = true` (operators live in a
 -- separate population by design). The `WHERE isSuperAdmin = true` filter
 -- matches zero rows there, so the INSERT is a no-op in that mode. No `VF_STRICT_MULTI_TENANT`

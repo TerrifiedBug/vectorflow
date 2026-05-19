@@ -23,7 +23,7 @@
 -- When `app.org_id` is unset, `current_setting('app.org_id', true)`
 -- returns NULL; the equality is NULL (i.e. FALSE) so no rows are visible.
 -- OSS continues to bypass RLS because the table-owner role bypasses by
--- default; Cloud's non-owner role is properly fenced.
+-- default; the non-owner runtime role is properly fenced.
 --
 -- ─── TimescaleDB columnstore ───────────────────────────────────────────────
 -- Hypertables with columnstore enabled (PipelineLog, NodeMetric,

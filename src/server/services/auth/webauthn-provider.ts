@@ -20,7 +20,7 @@
  * RpID / origin:
  *   - `rpID` defaults to the platform apex (e.g. `vectorflow.sh`) read
  *     from `VF_WEBAUTHN_RP_ID`. OSS / dev defaults to `localhost`.
- *   - `expectedOrigin` is the request's origin header. For Cloud,
+ *   - `expectedOrigin` is the request's origin header. Under multi-tenant,
  *     subdomain origins (`acme.vectorflow.sh`) MUST be accepted; the
  *     `expectedOrigin` parameter takes a list, so we resolve from the
  *     `VF_WEBAUTHN_ORIGINS` comma-separated env or, when unset, the

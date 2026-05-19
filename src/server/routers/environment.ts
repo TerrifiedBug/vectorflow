@@ -510,8 +510,9 @@ export const environmentRouter = router({
       }
       // Derive the org slug for the token prefix from the environment's owning org.
       // Short-circuit for OSS (DEFAULT_ORG_ID) — the row is always present and we
-      // avoid an unnecessary lookup. For real Cloud orgs, fail loudly if the row
-      // is missing or soft-deleted rather than silently minting a default-scoped token.
+      // avoid an unnecessary lookup. For real multi-tenant orgs, fail loudly if
+      // the row is missing or soft-deleted rather than silently minting a
+      // default-scoped token.
       let orgSlug: string;
       if (env.organizationId === DEFAULT_ORG_ID) {
         orgSlug = DEFAULT_ORG_SLUG;

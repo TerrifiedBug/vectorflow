@@ -1,10 +1,10 @@
 /**
- * Phase 2 — Agent tenant isolation tests.
+ * Agent tenant isolation tests.
  *
  * Verification criteria from the threat model:
  * - Token from org A rejected by org B's hostname (slug mismatch → 401)
- * - Legacy token rejected on non-default Cloud subdomain
- * - Token with no embedded slug accepted on default (OSS path)
+ * - Legacy token rejected on non-default subdomain
+ * - Token with no embedded slug accepted on the default org (OSS path)
  * - Org-scoped auth never finds nodes belonging to a different org
  * - Suspended org returns 503 + Retry-After
  */
@@ -104,7 +104,7 @@ describe("token grammar", () => {
 
 // ─── resolveAgentOrg ─────────────────────────────────────────────────────────
 
-describe("resolveAgentOrg — Cloud path (X-VF-Org-Slug header present)", () => {
+describe("resolveAgentOrg — subdomain-bound path (X-VF-Org-Slug header present)", () => {
   it("returns orgContext when header slug matches token slug", async () => {
     const { token } = await generateNodeToken("acme");
 
@@ -148,7 +148,7 @@ describe("resolveAgentOrg — Cloud path (X-VF-Org-Slug header present)", () => 
     expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
   });
 
-  it("returns 401 for legacy token on non-default Cloud subdomain", async () => {
+  it("returns 401 for legacy token on non-default subdomain", async () => {
     const legacyToken = `vf_node_${"a".repeat(16)}_${"b".repeat(64)}`;
 
     const req = new Request("http://acme.agents.vectorflow.sh/api/agent/heartbeat", {

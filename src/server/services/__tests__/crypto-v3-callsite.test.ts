@@ -132,10 +132,10 @@ describe("decryptForOrgOrFallback", () => {
     expect(mocks.decrypt).not.toHaveBeenCalled();
   });
 
-  it("v3 path uses Cloud DEK even when the org has it set and ciphertext is v3", async () => {
+  it("v3 path uses the org's wrapped DEK when both the org has one set and the ciphertext is v3", async () => {
     mocks.decryptForOrg.mockResolvedValue("plain");
     await decryptForOrgOrFallback("v3:ct", {
-      orgId: "org-cloud",
+      orgId: "org-with-dek",
       dataKeyCiphertext: "wrapped-dek",
       domain: ENCRYPTION_DOMAINS.SECRETS,
       rowTable: "Secret",

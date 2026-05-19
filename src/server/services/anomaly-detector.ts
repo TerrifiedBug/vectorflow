@@ -603,13 +603,13 @@ export async function evaluatePipeline(
  *
  * When `opts.organizationId` is supplied the query is filtered to that
  * org — used by the per-org tick in `anomaly-detection-job.ts` to keep
- * one tenant's analysis from blocking another's under RLS-strict Cloud
- * deployments.
+ * one tenant's analysis from blocking another's under strict-multi-tenant
+ * RLS.
  *
  * Note: `getAnomalyConfig` still reads the DEFAULT_ORG_ID settings as
  * the source of truth. Per-org config caching is a follow-up — see
- * "config-per-org" tracking issue. For now Cloud orgs share the
- * tunable knobs of whatever org owns the default OrganizationSettings.
+ * "config-per-org" tracking issue. For now every org shares the tunable
+ * knobs of whatever org owns the default OrganizationSettings.
  */
 export async function evaluateAllPipelines(
   opts: { organizationId?: string } = {},
