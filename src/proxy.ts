@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import { authConfig } from "@/auth.config";
 import { NextResponse, type NextRequest } from "next/server";
+import { expireLegacyAuthCookies } from "@/lib/cloud-cookies";
 import {
   contentSecurityPolicy,
   isStrictMultiTenantMode,
@@ -38,7 +39,11 @@ function generateNonce(): string {
 export const proxy = auth(function middleware(req: NextRequest) {
   if (!isStrictMultiTenantMode()) {
     // OSS profile — leave the static CSP from next.config.ts in place.
-    return NextResponse.next();
+    // expireLegacyAuthCookies is a no-op when VF_STRICT_MULTI_TENANT is
+    // off, so this call is free in OSS / dev.
+    const response = NextResponse.next();
+    expireLegacyAuthCookies(req, response);
+    return response;
   }
 
   const nonce = generateNonce();
@@ -62,6 +67,11 @@ export const proxy = auth(function middleware(req: NextRequest) {
   // Mirror the nonce on the response so downstream proxies / tracing can
   // correlate without parsing the CSP value.
   response.headers.set(NONCE_HEADER, nonce);
+
+  // Evict any pre-migration NextAuth / Auth.js cookies the browser still
+  // carries. The session-token rename to `__Host-vf-session` is otherwise
+  // a soft cutover that leaves orphan cookies in place indefinitely.
+  expireLegacyAuthCookies(req, response);
 
   return response;
 });

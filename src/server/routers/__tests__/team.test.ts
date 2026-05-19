@@ -171,8 +171,8 @@ describe("team router", () => {
   // ─── teamRole ─────────────────────────────────────────────────────────────
 
   describe("teamRole", () => {
-    it("returns ADMIN with isSuperAdmin true for super admins", async () => {
-      prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    it("returns ADMIN with isSuperAdmin true when caller is an org-wide admin (OWNER)", async () => {
+      prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
 
       const result = await adminCaller.teamRole({ teamId: "team-1" });
 
@@ -180,8 +180,17 @@ describe("team router", () => {
       expect(result.isSuperAdmin).toBe(true);
     });
 
-    it("returns the membership role for regular users", async () => {
-      prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    it("returns ADMIN for an org-wide ADMIN as well", async () => {
+      prismaMock.orgMember.findUnique.mockResolvedValue({ role: "ADMIN" } as never);
+
+      const result = await adminCaller.teamRole({ teamId: "team-1" });
+
+      expect(result.role).toBe("ADMIN");
+      expect(result.isSuperAdmin).toBe(true);
+    });
+
+    it("returns the membership role for non-org-admin users", async () => {
+      prismaMock.orgMember.findUnique.mockResolvedValue({ role: "MEMBER" } as never);
       prismaMock.teamMember.findUnique.mockResolvedValue({ role: "EDITOR" } as never);
 
       const result = await adminCaller.teamRole({ teamId: "team-1" });
@@ -190,8 +199,8 @@ describe("team router", () => {
       expect(result.isSuperAdmin).toBe(false);
     });
 
-    it("defaults to VIEWER when user has no membership", async () => {
-      prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    it("defaults to VIEWER when user has no org or team membership", async () => {
+      prismaMock.orgMember.findUnique.mockResolvedValue(null);
       prismaMock.teamMember.findUnique.mockResolvedValue(null);
 
       const result = await adminCaller.teamRole({ teamId: "team-1" });

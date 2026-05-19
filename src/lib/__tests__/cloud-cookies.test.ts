@@ -1,6 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import { cloudCookieConfig } from "../cloud-cookies";
+import {
+  cloudCookieConfig,
+  expireLegacyAuthCookies,
+  _legacyAuthCookieNames,
+} from "../cloud-cookies";
 
 const ORIGINAL = process.env.VF_STRICT_MULTI_TENANT;
 
@@ -78,5 +82,93 @@ describe("cloudCookieConfig", () => {
     expect(keys).toContain("sessionToken");
     expect(keys).toContain("callbackUrl");
     expect(keys).toContain("csrfToken");
+  });
+});
+
+
+function makeRequest(present: string[]) {
+  return {
+    cookies: { getAll: () => present.map((name) => ({ name })) },
+  };
+}
+function makeResponse() {
+  const set = vi.fn();
+  return { cookies: { set }, _set: set };
+}
+
+describe("expireLegacyAuthCookies", () => {
+  beforeEach(() => {
+    delete process.env.VF_STRICT_MULTI_TENANT;
+  });
+
+  it("is a no-op when VF_STRICT_MULTI_TENANT is unset (OSS profile)", () => {
+    const req = makeRequest(["next-auth.session-token", "authjs.session-token"]);
+    const res = makeResponse();
+    const expired = expireLegacyAuthCookies(req, res);
+    expect(expired).toBe(0);
+    expect(res._set).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when no legacy cookies are present", () => {
+    process.env.VF_STRICT_MULTI_TENANT = "true";
+    const req = makeRequest(["__Host-vf-session", "__Host-vf-csrf"]);
+    const res = makeResponse();
+    const expired = expireLegacyAuthCookies(req, res);
+    expect(expired).toBe(0);
+    expect(res._set).not.toHaveBeenCalled();
+  });
+
+  it("evicts every legacy next-auth.* cookie present with Max-Age=0", () => {
+    process.env.VF_STRICT_MULTI_TENANT = "true";
+    const legacy = ["next-auth.session-token", "__Secure-next-auth.callback-url"];
+    const req = makeRequest([...legacy, "__Host-vf-session"]);
+    const res = makeResponse();
+    const expired = expireLegacyAuthCookies(req, res);
+    expect(expired).toBe(legacy.length);
+    expect(res._set).toHaveBeenCalledTimes(legacy.length);
+    for (const call of res._set.mock.calls) {
+      const opts = call[0] as Record<string, unknown>;
+      expect(opts.value).toBe("");
+      expect(opts.maxAge).toBe(0);
+      expect(opts.path).toBe("/");
+      expect(opts.httpOnly).toBe(true);
+      expect(opts.secure).toBe(true);
+      expect(opts.sameSite).toBe("lax");
+      expect(legacy).toContain(opts.name);
+    }
+  });
+
+  it("evicts legacy authjs.* cookies as well as next-auth.*", () => {
+    process.env.VF_STRICT_MULTI_TENANT = "true";
+    const legacy = [
+      "authjs.session-token",
+      "__Secure-authjs.session-token",
+      "__Host-authjs.csrf-token",
+    ];
+    const req = makeRequest(legacy);
+    const res = makeResponse();
+    const expired = expireLegacyAuthCookies(req, res);
+    expect(expired).toBe(legacy.length);
+  });
+
+  it("never evicts the modern __Host-vf-* cookies", () => {
+    process.env.VF_STRICT_MULTI_TENANT = "true";
+    const req = makeRequest([
+      "__Host-vf-session",
+      "__Host-vf-callback-url",
+      "__Host-vf-csrf",
+    ]);
+    const res = makeResponse();
+    expireLegacyAuthCookies(req, res);
+    expect(res._set).not.toHaveBeenCalled();
+  });
+
+  it("legacy cookie list covers session, callback, csrf, pkce, state for both families", () => {
+    const names = new Set<string>(_legacyAuthCookieNames);
+    for (const family of ["next-auth", "authjs"]) {
+      for (const piece of ["session-token", "callback-url", "csrf-token", "pkce.code_verifier", "state"]) {
+        expect(names.has(`${family}.${piece}`)).toBe(true);
+      }
+    }
   });
 });

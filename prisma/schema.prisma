@@ -74,6 +74,7 @@ model Organization {
   webhookConfirmations WebhookConfirmation[]
   billingProviderRefs  BillingProviderRef[]
   operatorApprovals    OperatorApprovalRequest[]
+  domainClaims        OrganizationDomainClaim[]
 }
 
 model OrgMember {
@@ -155,7 +156,69 @@ model OrganizationSettings {
   // custom `Team.aiBaseUrl` after passing `validateOutboundUrl` strict mode.
   aiBaseUrlOptIn Boolean @default(false)
 
+  /// Address that receives sub-processor change notices for this organization.
+  ///
+  /// When NULL, the organization has not subscribed to sub-processor change
+  /// notices and the operator's notice-dispatch job MUST skip the row. When
+  /// set, the address receives every notice the operator dispatches; the
+  /// transport (SMTP, marketing-platform, etc.) lives behind the operator
+  /// surface and is not modelled in this OSS schema.
+  ///
+  /// Customers manage this through the settings router (`settings.update`).
+  subprocessorNoticeEmail String?
+
   updatedAt DateTime @updatedAt
+}
+
+/// DNS-TXT verified domain claimed by an Organization.
+///
+/// Lets an org prove control of a DNS domain so the platform can drive
+/// downstream policies — auto-routing OIDC sign-ins for that domain to
+/// the org's IdP, allow-listing email domains for invite-less joining,
+/// or restricting magic-link minting to email addresses under the
+/// verified domain. Verification happens by:
+///
+///   1. `claimDomain({ domain })` mints a unique `verificationToken`
+///      and returns the TXT record the customer must publish:
+///        `_vectorflow.<domain>  IN  TXT  "vf-verify=<verificationToken>"`
+///   2. The customer publishes the record on their authoritative DNS.
+///   3. `verifyDomain({ id })` performs the lookup. On match, sets
+///      `verifiedAt` and the claim becomes load-bearing.
+///
+/// Claims do not auto-expire; verified claims can be re-verified at
+/// any time. Unique on `(organizationId, domain)`; a separate global
+/// invariant — no two orgs may hold a verified claim on the same
+/// domain — is enforced at the service layer because Postgres
+/// partial-unique indexes are not first-class in Prisma's schema
+/// language at this version.
+model OrganizationDomainClaim {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Lowercase, punycoded ASCII domain. Stored without scheme, port,
+  /// or trailing dot.
+  domain              String
+  /// Random base32 token published in the `_vectorflow.<domain>` TXT
+  /// record as `vf-verify=<verificationToken>`. Unguessable so a rival
+  /// cannot guess the value and publish it on a domain they control to
+  /// grief the legitimate owner. Rotated on re-claim.
+  verificationToken   String       @unique
+  /// Timestamp of the most recent successful DNS-TXT lookup. NULL =
+  /// unverified.
+  verifiedAt          DateTime?
+  /// Most recent verification attempt timestamp (success or failure).
+  /// Used to rate-limit DNS lookups from the verify endpoint.
+  lastCheckedAt       DateTime?
+  /// Free-text reason from the resolver when the most recent check
+  /// failed (e.g. "NXDOMAIN", "no TXT records", "value mismatch"). NULL
+  /// when no check has run or the last check succeeded.
+  lastCheckError      String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@unique([organizationId, domain])
+  @@index([domain])
+  @@index([organizationId])
 }
 
 /// Break-glass access grant. Operator can read encrypted fields only while
@@ -283,6 +346,11 @@ model User {
   accounts                 Account[]
   lockedAt                 DateTime?
   lockedBy                 String?
+  /// @deprecated Use `OrgMember.role` (OWNER/ADMIN) plus the
+  ///   `isOrgWideAdmin(userId, orgId)` helper instead. Operators
+  ///   live in `PlatformOperator`, not on `User`. This boolean is
+  ///   retained as a back-compat read alias until every router
+  ///   callsite has migrated; do not introduce new readers.
   isSuperAdmin             Boolean              @default(false)
   mustChangePassword       Boolean              @default(false)
   totpSecret               String?
@@ -1251,11 +1319,11 @@ model IdempotentInboundWebhookEvent {
   id          String
   /**
    * Provider name. Lowercase, stable identifier of the webhook
-   * source (e.g. "stripe", "github", "gitlab", "pagerduty"). Defaulted
-   * for backwards compatibility with the previous single-source schema;
-   * new callers MUST pass `source` explicitly.
+   * source (e.g. "stripe", "github", "gitlab", "pagerduty"). Callers
+   * MUST pass `source` explicitly; the previous back-compat default
+   * was dropped once all writers were migrated.
    */
-  source      String   @default("stripe")
+  source      String
   /**
    * Provider-issued event type (e.g. `customer.subscription.updated`,
    * `push`).

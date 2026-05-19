@@ -653,4 +653,79 @@ describe("settingsRouter", () => {
       );
     });
   });
+
+  // ── updateSubprocessorNoticeEmail (sub-processor change notice subscription) ─
+
+  describe("updateSubprocessorNoticeEmail", () => {
+    it("rejects when caller is not an org OWNER (ADMIN userRole alone is insufficient)", async () => {
+      await expect(
+        caller.updateSubprocessorNoticeEmail({ email: "ops@acme.test" }),
+      ).rejects.toMatchObject({
+        code: "FORBIDDEN",
+        message: expect.stringMatching(/OWNER/),
+      });
+      expect(prismaMock.organizationSettings.upsert).not.toHaveBeenCalled();
+    });
+
+    it("rejects an obviously-invalid email", async () => {
+      const ownerCaller = t.createCallerFactory(settingsRouter)({
+        session: { user: { id: "user-1", email: "owner@test.com" } },
+        userRole: "ADMIN",
+        organizationId: "default",
+        teamId: "team-1",
+        orgMemberRole: "OWNER",
+      });
+      await expect(
+        ownerCaller.updateSubprocessorNoticeEmail({ email: "not-an-email" }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(prismaMock.organizationSettings.upsert).not.toHaveBeenCalled();
+    });
+
+    it("writes the address when caller is an OWNER", async () => {
+      const ownerCaller = t.createCallerFactory(settingsRouter)({
+        session: { user: { id: "user-1", email: "owner@test.com" } },
+        userRole: "ADMIN",
+        organizationId: "default",
+        teamId: "team-1",
+        orgMemberRole: "OWNER",
+      });
+      prismaMock.organizationSettings.upsert.mockResolvedValue(
+        mockOrgSettings({ subprocessorNoticeEmail: "ops@acme.test" }) as never,
+      );
+
+      await ownerCaller.updateSubprocessorNoticeEmail({ email: "ops@acme.test" });
+
+      expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { organizationId: "default" },
+          update: expect.objectContaining({
+            subprocessorNoticeEmail: "ops@acme.test",
+          }),
+        }),
+      );
+    });
+
+    it("clears the subscription when email is null", async () => {
+      const ownerCaller = t.createCallerFactory(settingsRouter)({
+        session: { user: { id: "user-1", email: "owner@test.com" } },
+        userRole: "ADMIN",
+        organizationId: "default",
+        teamId: "team-1",
+        orgMemberRole: "OWNER",
+      });
+      prismaMock.organizationSettings.upsert.mockResolvedValue(
+        mockOrgSettings({ subprocessorNoticeEmail: null }) as never,
+      );
+
+      await ownerCaller.updateSubprocessorNoticeEmail({ email: null });
+
+      expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({
+            subprocessorNoticeEmail: null,
+          }),
+        }),
+      );
+    });
+  });
 });

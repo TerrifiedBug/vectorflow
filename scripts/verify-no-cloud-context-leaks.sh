@@ -20,12 +20,14 @@
 #   - "stampId", "STAMP_ID", "VF_STAMP_ID"        — pre-rename identifiers
 #
 # Scope:
-#   Checks every committed file under src/, prisma/, scripts/.
+#   Checks every committed file under src/, prisma/, scripts/, charts/,
+#   docker/, docs/, .github/workflows/, plus any root-level *.md file.
 #
 # Whitelist:
-#   - Root-level public files (LICENSE-CLOUD.md, SECURITY.md, CLA.md,
-#     CONTRIBUTING.md, README.md) are exempt — they exist to inform
-#     contributors about the boundary.
+#   - Root-level public meta files that exist to inform contributors
+#     about the boundary (LICENSE-CLOUD.md, SECURITY.md, CLA.md,
+#     CONTRIBUTING.md, README.md, AGENTS.md) are exempt — they describe
+#     the forbidden tokens by name.
 #   - This script (`scripts/verify-no-cloud-context-leaks.sh`) itself
 #     enumerates the tokens, so it's whitelisted from self-detection.
 #   - Historical Prisma migrations created BEFORE the field rename are
@@ -73,12 +75,34 @@ POST_RENAME_FORBIDDEN=(
   '\bVF_STAMP_ID\b'
 )
 
-# Files always excluded (the gate's own definitions live here).
-SELF_PATH="scripts/verify-no-cloud-context-leaks.sh"
+# Files always excluded — the gate's own definitions live in the script
+# (it lists every forbidden token by name), and the root-level meta
+# documents (LICENSE/SECURITY/CLA/CONTRIBUTING/README/AGENTS) are
+# whitelisted because they describe the boundary contract for human
+# contributors and necessarily mention the forbidden tokens.
+WHITELIST=(
+  "scripts/verify-no-cloud-context-leaks.sh"
+  "LICENSE-CLOUD.md"
+  "SECURITY.md"
+  "CLA.md"
+  "CONTRIBUTING.md"
+  "README.md"
+  "AGENTS.md"
+)
+
+is_whitelisted() {
+  local f="$1"
+  local w
+  for w in "${WHITELIST[@]}"; do
+    if [[ "$f" == "$w" ]]; then return 0; fi
+  done
+  return 1
+}
 
 # Paths to check. The gate runs in two phases (different exclusions per
-# token group), so we don't pre-list files here.
-SEARCH_SCOPE=(src prisma scripts)
+# token group), so we don't pre-list files here. Root-level *.md files
+# are added separately below so the pathspec stays anchored to top-level.
+SEARCH_SCOPE=(src prisma scripts charts docker docs .github/workflows)
 
 # Build the diff-only file list if --diff was passed.
 USE_DIFF=0
@@ -90,8 +114,15 @@ fi
 if [[ "$USE_DIFF" == "1" ]]; then
   ALL_FILES_RAW=$(git diff --name-only --diff-filter=ACMR origin/main...HEAD -- \
     "${SEARCH_SCOPE[@]}" 2>/dev/null || true)
+  ROOT_MD_RAW=$(git diff --name-only --diff-filter=ACMR origin/main...HEAD 2>/dev/null \
+    | awk -F/ 'NF==1 && /\.md$/' || true)
 else
   ALL_FILES_RAW=$(git ls-files -- "${SEARCH_SCOPE[@]}")
+  ROOT_MD_RAW=$(git ls-files | awk -F/ 'NF==1 && /\.md$/')
+fi
+
+if [[ -n "$ROOT_MD_RAW" ]]; then
+  ALL_FILES_RAW="${ALL_FILES_RAW}"$'\n'"${ROOT_MD_RAW}"
 fi
 
 ALL_FILES=()
@@ -122,10 +153,10 @@ scan_token() {
   return 0
 }
 
-# Always-forbidden tokens scan every file EXCEPT this script itself.
+# Always-forbidden tokens scan every file EXCEPT the whitelist.
 always_files=()
 for f in "${ALL_FILES[@]}"; do
-  if [[ "$f" == "$SELF_PATH" ]]; then continue; fi
+  if is_whitelisted "$f"; then continue; fi
   always_files+=("$f")
 done
 
@@ -137,10 +168,10 @@ if [[ ${#always_files[@]} -gt 0 ]]; then
   done
 fi
 
-# Post-rename tokens exclude historical migrations.
+# Post-rename tokens exclude the whitelist and historical migrations.
 post_files=()
 for f in "${ALL_FILES[@]}"; do
-  if [[ "$f" == "$SELF_PATH" ]]; then continue; fi
+  if is_whitelisted "$f"; then continue; fi
   if [[ "$f" == prisma/migrations/* ]]; then continue; fi
   post_files+=("$f")
 done
