@@ -149,7 +149,7 @@ export async function importOrgData(
   const db = opts.client;
   if (!db) {
     throw new Error(
-      "importOrgData: a Prisma client must be supplied (use the tx from `withOrgTx(targetOrganizationId, ...)` for Cloud)",
+      "importOrgData: a Prisma client must be supplied (use the tx from `withOrgTx(targetOrganizationId, ...)` when running under strict multi-tenant)",
     );
   }
   const signal = opts.signal;

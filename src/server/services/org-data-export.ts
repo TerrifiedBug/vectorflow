@@ -410,7 +410,7 @@ export async function buildOrgDataExport(
     {
       scope: "NotificationChannel.config",
       reason:
-        "Channel destination credentials are AES-256-GCM encrypted with the per-org DEK and cannot be decrypted outside this Cloud instance. Recreate the channel against the destination directly.",
+        "Channel destination credentials are AES-256-GCM encrypted with the per-org DEK and cannot be decrypted outside this deployment. Recreate the channel against the destination directly.",
     },
     {
       scope: "WebhookEndpoint.encryptedSecret",
