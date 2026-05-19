@@ -32,6 +32,16 @@ describe("normaliseDomain", () => {
     const longLabel = "a".repeat(64);
     expect(() => normaliseDomain(`${longLabel}.test`)).toThrow();
   });
+
+  it("punycodes IDN domains before ASCII label validation", () => {
+    // Codex P2 regression — prior order ran the ASCII regex BEFORE
+    // punycoding, so legitimate IDN inputs like `café.com` were
+    // rejected on the first non-ASCII label instead of being
+    // normalised to their `xn--` form.
+    expect(normaliseDomain("café.com")).toBe("xn--caf-dma.com");
+    expect(normaliseDomain("CAFÉ.COM")).toBe("xn--caf-dma.com");
+    expect(normaliseDomain("münchen.de")).toBe("xn--mnchen-3ya.de");
+  });
 });
 
 describe("generateVerificationToken", () => {

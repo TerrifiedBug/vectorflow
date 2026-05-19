@@ -47,5 +47,21 @@ CREATE INDEX "OrganizationDomainClaim_domain_idx"
 CREATE INDEX "OrganizationDomainClaim_organizationId_idx"
   ON "OrganizationDomainClaim" ("organizationId");
 
+-- Atomic enforcement of "no two organisations hold a verified claim
+-- on the same domain". A partial unique index on (domain) restricted
+-- to verifiedAt IS NOT NULL lets multiple orgs hold pending (un-verified)
+-- claims on the same name simultaneously, but the moment one of them
+-- becomes verified, every concurrent verify attempt for another org
+-- fails the UNIQUE constraint at commit time — no TOCTOU window between
+-- the service-layer findFirst and the update.
+--
+-- Prisma's schema language does not express partial unique indexes in
+-- this version, so the constraint lives here in raw SQL. The router's
+-- `verifyDomain` handler catches Prisma's P2002 unique-violation and
+-- maps it to TRPC CONFLICT.
+CREATE UNIQUE INDEX "OrganizationDomainClaim_domain_verified_unique"
+  ON "OrganizationDomainClaim" ("domain")
+  WHERE "verifiedAt" IS NOT NULL;
+
 COMMENT ON TABLE "OrganizationDomainClaim" IS
   'DNS-TXT verified domain ownership claimed by an Organization.';

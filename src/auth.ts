@@ -486,6 +486,42 @@ async function getAuthInstance() {
             if (account) {
               token.provider = account.provider;
             }
+            // Server-side session invalidation for permanently-locked
+            // accounts. `user.eraseSelf` sets `User.lockedAt` with
+            // `lockedBy === "erasure"` after pseudonymising the row.
+            // Without this check, the caller's already-issued JWT would
+            // keep authenticating against `user.id` for the rest of the
+            // session's natural lifetime — Codex P1 finding on the
+            // org-domain-claim PR.
+            //
+            // Cached for 60s on the token itself so we don't hit the DB
+            // on every authenticated request. The trade-off is a worst-
+            // case 60s delay between erasure and session termination,
+            // which is well inside the GDPR-erasure latency expectation.
+            // Other lockedBy values (e.g. "brute_force") are sign-in
+            // gates only — they auto-clear on the next sign-in attempt
+            // past the unlock window and we leave active sessions alone.
+            if (token.id) {
+              const lastCheckRaw = (token as { erasureCheckedAt?: unknown })
+                .erasureCheckedAt;
+              const lastCheck =
+                typeof lastCheckRaw === "number" ? lastCheckRaw : 0;
+              const nowMs = Date.now();
+              if (nowMs - lastCheck > 60_000) {
+                const u = await prisma.user.findUnique({
+                  where: { id: token.id as string },
+                  select: { lockedAt: true, lockedBy: true },
+                });
+                if (u?.lockedAt && u.lockedBy === "erasure") {
+                  // Returning an empty token forces NextAuth to treat
+                  // the request as unauthenticated. The client sees a
+                  // null session and is redirected to sign-in.
+                  return {};
+                }
+                (token as { erasureCheckedAt?: number }).erasureCheckedAt =
+                  nowMs;
+              }
+            }
             return token;
           },
           async session({ session, token }) {

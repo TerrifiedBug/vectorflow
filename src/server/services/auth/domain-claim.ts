@@ -49,10 +49,28 @@ export function normaliseDomain(input: string): string {
   if (withoutDot.length > MAX_DOMAIN_LENGTH) {
     throw new Error("Domain exceeds DNS length limit (253 octets)");
   }
-  // Reject obviously-malformed shapes: must have at least one dot and
-  // every label must be 1–63 chars of [a-z0-9-] without a leading or
-  // trailing hyphen.
-  const labels = withoutDot.split(".");
+  // Must have at least one dot to qualify as a domain.
+  if (!withoutDot.includes(".")) {
+    throw new Error("Domain must include at least one dot");
+  }
+  // Punycode IDNs FIRST so non-ASCII inputs (e.g. `café.com`) become
+  // their canonical `xn--...` form before we apply the ASCII-only DNS
+  // label regex below. Without this step, a legitimate IDN input fails
+  // the regex on its first Unicode label.
+  let ascii: string;
+  try {
+    ascii = new URL(`https://${withoutDot}`).hostname;
+  } catch {
+    throw new Error("Domain failed punycode normalisation");
+  }
+  // Re-check the post-punycode length against the DNS 253-octet cap —
+  // an IDN that fit before punycoding can blow past the limit after.
+  if (ascii.length > MAX_DOMAIN_LENGTH) {
+    throw new Error("Domain exceeds DNS length limit (253 octets) after punycode");
+  }
+  // Now validate every label against the ASCII DNS label rule: 1–63
+  // chars of [a-z0-9-] without a leading or trailing hyphen.
+  const labels = ascii.split(".");
   if (labels.length < 2) {
     throw new Error("Domain must include at least one dot");
   }
@@ -61,14 +79,7 @@ export function normaliseDomain(input: string): string {
       throw new Error(`Invalid DNS label "${label}"`);
     }
   }
-  try {
-    // URL constructor punycodes IDNs deterministically; round-trip
-    // through it to guarantee the stored form is ASCII-only.
-    const url = new URL(`https://${withoutDot}`);
-    return url.hostname;
-  } catch {
-    throw new Error("Domain failed punycode normalisation");
-  }
+  return ascii;
 }
 
 /**

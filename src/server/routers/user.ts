@@ -352,35 +352,38 @@ export const userRouter = router({
         }
       }
 
-      // Refuse if the caller is the sole OWNER of any org that has at
-      // least one other member. Erasing would orphan the org. The
-      // customer must hand off via `org.transferOwnership` first.
-      const ownedOrgMemberships = await prisma.orgMember.findMany({
-        where: { userId, role: "OWNER" },
-        select: { organizationId: true },
-      });
-      for (const { organizationId } of ownedOrgMemberships) {
-        const otherMembers = await prisma.orgMember.count({
-          where: { organizationId, NOT: { userId } },
-        });
-        const otherOwners = await prisma.orgMember.count({
-          where: { organizationId, role: "OWNER", NOT: { userId } },
-        });
-        if (otherMembers > 0 && otherOwners === 0) {
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message:
-              "You are the sole OWNER of an organisation with other members. " +
-              "Transfer ownership before erasing your account.",
-          });
-        }
-      }
-
       // Unguessable placeholder address. Length keeps the row index-able
       // and well under the 320-char RFC limit even with the cuid suffix.
       const anonEmail = `erased+${user.id}@anon.invalid`;
 
       await prisma.$transaction(async (tx) => {
+        // Sole-OWNER orphan check — run INSIDE the transaction so a
+        // concurrent OrgMember mutation between the check and the
+        // OrgMember.deleteMany below cannot orphan an organisation.
+        // Codex P2 review pointed out the prior outside-the-txn check
+        // had a TOCTOU window: another OWNER could be demoted (or the
+        // last non-OWNER member added) between the check and the delete.
+        const ownedOrgMemberships = await tx.orgMember.findMany({
+          where: { userId, role: "OWNER" },
+          select: { organizationId: true },
+        });
+        for (const { organizationId } of ownedOrgMemberships) {
+          const otherMembers = await tx.orgMember.count({
+            where: { organizationId, NOT: { userId } },
+          });
+          const otherOwners = await tx.orgMember.count({
+            where: { organizationId, role: "OWNER", NOT: { userId } },
+          });
+          if (otherMembers > 0 && otherOwners === 0) {
+            throw new TRPCError({
+              code: "PRECONDITION_FAILED",
+              message:
+                "You are the sole OWNER of an organisation with other members. " +
+                "Transfer ownership before erasing your account.",
+            });
+          }
+        }
+
         // Drop every auth-bearing or org-bearing relation. Each delete
         // is scoped to the caller; we never touch other users.
         await tx.orgMember.deleteMany({ where: { userId } });

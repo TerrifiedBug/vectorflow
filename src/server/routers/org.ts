@@ -267,7 +267,17 @@ export const orgRouter = router({
         return { id: updated.id, verified: false, error: result.error };
       }
 
-      // Enforce cross-org uniqueness for verified claims.
+      // Cross-org uniqueness for verified claims is enforced atomically
+      // by the `OrganizationDomainClaim_domain_verified_unique` partial
+      // unique index (see migration 20260519000003). A non-atomic
+      // findFirst-then-update would leave a TOCTOU window where two
+      // concurrent verifyDomain calls for the same `domain` in different
+      // orgs both pass the conflict check and both proceed to update.
+      //
+      // The findFirst probe remains as a soft pre-check so the common
+      // happy path returns a clear CONFLICT error without relying on
+      // catching a Prisma error. The try/catch below is the load-bearing
+      // enforcement.
       const conflict = await prisma.organizationDomainClaim.findFirst({
         where: {
           domain: claim.domain,
@@ -283,15 +293,30 @@ export const orgRouter = router({
         });
       }
 
-      const updated = await prisma.organizationDomainClaim.update({
-        where: { id: claim.id },
-        data: {
-          verifiedAt: now,
-          lastCheckedAt: now,
-          lastCheckError: null,
-        },
-        select: { id: true, verifiedAt: true },
-      });
+      let updated;
+      try {
+        updated = await prisma.organizationDomainClaim.update({
+          where: { id: claim.id },
+          data: {
+            verifiedAt: now,
+            lastCheckedAt: now,
+            lastCheckError: null,
+          },
+          select: { id: true, verifiedAt: true },
+        });
+      } catch (err) {
+        // Prisma surfaces partial-unique-index violations as P2002 with
+        // target = ["domain"] (the constraint name in the index above).
+        // A racing concurrent verifyDomain for another org won this race.
+        const code = (err as { code?: string } | undefined)?.code;
+        if (code === "P2002") {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Another organisation has already verified this domain.",
+          });
+        }
+        throw err;
+      }
       return { id: updated.id, verified: true };
     }),
 

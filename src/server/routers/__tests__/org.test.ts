@@ -314,6 +314,29 @@ describe("org.verifyDomain", () => {
       ownerCaller().verifyDomain({ id: "claim-1" }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
   });
+
+  it("CONFLICTs when the partial-unique index races (P2002 catch)", async () => {
+    // Codex P1 fix — the in-handler findFirst is a soft pre-check; the
+    // load-bearing enforcement is the partial unique index on
+    // (domain) WHERE verifiedAt IS NOT NULL. Two concurrent verify
+    // calls in different orgs can both pass findFirst and only the
+    // loser's update fails. We catch P2002 and surface CONFLICT.
+    prismaMock.organizationDomainClaim.findUnique.mockResolvedValue(
+      claimRow as never,
+    );
+    prismaMock.organizationDomainClaim.findFirst.mockResolvedValue(null);
+    stubResolver([["vf-verify=tok-deadbeef"]]);
+    const p2002 = Object.assign(new Error("Unique constraint failed"), {
+      code: "P2002",
+    });
+    prismaMock.organizationDomainClaim.update.mockRejectedValueOnce(
+      p2002 as never,
+    );
+
+    await expect(
+      ownerCaller().verifyDomain({ id: "claim-1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
 });
 
 describe("org.listDomains", () => {
