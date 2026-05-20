@@ -135,3 +135,32 @@ function toOrgEncryptionContext(
     rowId: ctx.rowId,
   };
 }
+
+/**
+ * Resolve an org's `dataKeyCiphertext` via a single Prisma round-trip.
+ * Returns `null` when the org has no DEK (OSS / self-hosted) — the
+ * signal to fall through to v2 in `encryptForOrgOrFallback` /
+ * `decryptForOrgOrFallback`.
+ *
+ * Returns `null` (not a thrown error) for "org row missing" so OSS /
+ * default-org callsites where the row may not yet be materialised do
+ * not 500. Production multi-tenant orgs always have the row by the
+ * time any callsite reaches this code path.
+ */
+export async function loadOrgDataKeyCiphertext(
+  prisma: {
+    organization: {
+      findUnique: (a: {
+        where: { id: string };
+        select: { dataKeyCiphertext: true };
+      }) => Promise<{ dataKeyCiphertext: string | null } | null>;
+    };
+  },
+  orgId: string,
+): Promise<string | null> {
+  const row = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { dataKeyCiphertext: true },
+  });
+  return row?.dataKeyCiphertext ?? null;
+}

@@ -4,7 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { S3Client, HeadBucketCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { router, protectedProcedure, requirePlatformOperator, denyInDemo } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
-import { encrypt, decrypt } from "@/server/services/crypto";
+import { encrypt, decrypt, ENCRYPTION_DOMAINS } from "@/server/services/crypto";
 import { withAudit } from "@/server/middleware/audit";
 import { invalidateAuthCache } from "@/auth";
 import { checkServerVersion, checkAgentVersion, checkDevAgentVersion } from "@/server/services/version-check";
@@ -19,6 +19,11 @@ import {
 import { rescheduleBackupForOrg, isValidCron } from "@/server/services/backup-scheduler";
 import { validatePublicUrl } from "@/server/services/url-validation";
 import { getOrgSettings, updateOrgSettings, type OrgSettings } from "@/lib/org-settings";
+import {
+  encryptForOrgOrFallback,
+  decryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "@/server/services/crypto-v3-callsite";
 import { assertVerifiedDomainForIssuer } from "@/server/services/auth/oidc-domain-gate";
 
 const SETTINGS_ID = "singleton";
@@ -53,11 +58,21 @@ export const settingsRouter = router({
     .query(async ({ ctx }) => {
       const settings = await getOrgSettings(ctx.organizationId);
 
-      // Decrypt clientSecret for masking
+      // Decrypt clientSecret for masking. Uses the v3-or-v2 wrapper so a
+      // ciphertext stored by an older OSS deploy (v2) and one stored after
+      // KMS provisioning (v3) both read back correctly. The org's
+      // `dataKeyCiphertext` is loaded lazily — null in OSS / self-hosted.
       let maskedClientSecret: string | null = null;
       if (settings.oidcClientSecret) {
         try {
-          const decrypted = decrypt(settings.oidcClientSecret);
+          const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+          const decrypted = await decryptForOrgOrFallback(settings.oidcClientSecret, {
+            orgId: ctx.organizationId,
+            dataKeyCiphertext,
+            domain: ENCRYPTION_DOMAINS.GENERIC,
+            rowTable: "OrganizationSettings",
+            rowId: settings.id,
+          });
           maskedClientSecret = maskSecret(decrypted);
         } catch {
           maskedClientSecret = "****";
@@ -139,6 +154,7 @@ export const settingsRouter = router({
       // verified `OrganizationDomainClaim` whose domain covers the
       // issuer hostname. Prevents a customer admin from pointing
       // their IdP at an attacker-controlled discovery endpoint.
+      //
       // PR #377 escape hatch: when the operator has flipped
       // `OrganizationSettings.allowSharedIdpHostnames = true` for this
       // org (two-person rule via `OperatorApprovalRequest`), the gate
@@ -167,7 +183,19 @@ export const settingsRouter = router({
       };
 
       if (input.clientSecret !== "unchanged") {
-        data.oidcClientSecret = encrypt(input.clientSecret);
+        // PR 9-A — wrap through `encryptForOrgOrFallback` so the column
+        // moves to v3 (envelope) for orgs that have a `dataKeyCiphertext`,
+        // and stays on v2 for OSS / self-hosted. Same `GENERIC` HKDF
+        // domain as the existing v2 calls so historical v2 ciphertexts
+        // remain decryptable on the read side.
+        const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, ctx.organizationId);
+        data.oidcClientSecret = await encryptForOrgOrFallback(input.clientSecret, {
+          orgId: ctx.organizationId,
+          dataKeyCiphertext,
+          domain: ENCRYPTION_DOMAINS.GENERIC,
+          rowTable: "OrganizationSettings",
+          rowId: orgSettings.id,
+        });
       }
 
       const result = await updateOrgSettings(ctx.organizationId, data);

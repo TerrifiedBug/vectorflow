@@ -32,8 +32,11 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/server/services/crypto", () => ({
+  ENCRYPTION_DOMAINS: { GENERIC: "generic" } as const,
   encrypt: vi.fn((val: string) => `enc:${val}`),
   decrypt: vi.fn((val: string) => val.replace("enc:", "")),
+  encryptForOrg: vi.fn(async (val: string) => `v3:${val}`),
+  decryptForOrg: vi.fn(async (val: string) => val.replace(/^v3:/, "")),
 }));
 
 vi.mock("@/server/services/backup", () => ({
@@ -211,7 +214,7 @@ describe("settingsRouter", () => {
         tokenEndpointAuthMethod: "client_secret_post",
       });
 
-      expect(encrypt).toHaveBeenCalledWith("super-secret");
+      expect(encrypt).toHaveBeenCalledWith("super-secret", "generic");
       expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { organizationId: "default" },
@@ -370,7 +373,7 @@ describe("settingsRouter", () => {
         tokenEndpointAuthMethod: "client_secret_post",
       });
 
-      expect(encrypt).toHaveBeenCalledWith("fresh-secret");
+      expect(encrypt).toHaveBeenCalledWith("fresh-secret", "generic");
       expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           update: expect.objectContaining({
@@ -378,6 +381,78 @@ describe("settingsRouter", () => {
           }),
         }),
       );
+    });
+
+    // ─── PR 9-A: v3 envelope routing ────────────────────────────────────────
+
+    it("PR 9-A: encrypts oidcClientSecret via v3 when the org has a dataKeyCiphertext", async () => {
+      mockSettings();
+      mockVerifiedClaim();
+      prismaMock.organization.findUnique.mockResolvedValue({
+        dataKeyCiphertext: "wrapped-dek",
+      } as never);
+
+      await caller.updateOidc({
+        issuer: "https://idp.example.com",
+        clientId: "client-123",
+        clientSecret: "super-secret",
+        displayName: "SSO",
+        tokenEndpointAuthMethod: "client_secret_post",
+      });
+
+      expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({
+            oidcClientSecret: "v3:super-secret",
+          }),
+        }),
+      );
+    });
+
+    it("PR 9-A: stays on v2 when the org has no dataKeyCiphertext (OSS fallback)", async () => {
+      mockSettings();
+      mockVerifiedClaim();
+      prismaMock.organization.findUnique.mockResolvedValue({
+        dataKeyCiphertext: null,
+      } as never);
+
+      await caller.updateOidc({
+        issuer: "https://idp.example.com",
+        clientId: "client-123",
+        clientSecret: "super-secret",
+        displayName: "SSO",
+        tokenEndpointAuthMethod: "client_secret_post",
+      });
+
+      expect(prismaMock.organizationSettings.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({
+            oidcClientSecret: "enc:super-secret",
+          }),
+        }),
+      );
+    });
+
+    it("PR 9-A: decrypts a v3 ciphertext on the read path", async () => {
+      mockSettings({ oidcClientSecret: "v3:my-secret-value" });
+      prismaMock.organization.findUnique.mockResolvedValue({
+        dataKeyCiphertext: "wrapped-dek",
+      } as never);
+
+      const result = await caller.get();
+
+      expect(result.oidcClientSecret).toBe("****alue");
+    });
+
+    it("PR 9-A: decrypts a v2 ciphertext on the read path (backwards compat)", async () => {
+      mockSettings({ oidcClientSecret: "enc:my-secret-value" });
+      prismaMock.organization.findUnique.mockResolvedValue({
+        dataKeyCiphertext: null,
+      } as never);
+
+      const result = await caller.get();
+
+      expect(result.oidcClientSecret).toBe("****alue");
     });
   });
 

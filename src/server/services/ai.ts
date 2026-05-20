@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { decrypt } from "./crypto";
+import { ENCRYPTION_DOMAINS } from "./crypto";
+import {
+  decryptForOrgOrFallback,
+  loadOrgDataKeyCiphertext,
+} from "./crypto-v3-callsite";
 import { checkRateLimit } from "@/lib/ai/rate-limiter";
 import { isDemoMode } from "@/lib/is-demo-mode";
 import { validateOutboundUrl } from "@/server/services/url-validation";
@@ -47,11 +51,28 @@ interface StreamCompletionParams {
   signal?: AbortSignal;
 }
 
-function decryptApiKey(encryptedKey: string): string {
-  if (encryptedKey.startsWith(ENCRYPTED_PREFIX)) {
-    return decrypt(encryptedKey.slice(ENCRYPTED_PREFIX.length));
-  }
-  return encryptedKey;
+/**
+ * Decrypt a Team.aiApiKey ciphertext through the v3-or-v2 wrapper.
+ * The DB shape is `"enc:" + <ciphertext>` so we strip the literal
+ * prefix before handing off to the wrapper, which routes on the
+ * `v3:` / `v2:` prefix embedded in the ciphertext itself.
+ */
+async function decryptTeamAiApiKey(args: {
+  encryptedKey: string;
+  organizationId: string;
+  teamId: string;
+  dataKeyCiphertext: string | null;
+}): Promise<string> {
+  const stripped = args.encryptedKey.startsWith(ENCRYPTED_PREFIX)
+    ? args.encryptedKey.slice(ENCRYPTED_PREFIX.length)
+    : args.encryptedKey;
+  return decryptForOrgOrFallback(stripped, {
+    orgId: args.organizationId,
+    dataKeyCiphertext: args.dataKeyCiphertext,
+    domain: ENCRYPTION_DOMAINS.GENERIC,
+    rowTable: "Team",
+    rowId: args.teamId,
+  });
 }
 
 function getDefaultBaseUrl(provider: string | null): string {
@@ -81,11 +102,19 @@ export async function getTeamAiConfig(teamId: string, { requireEnabled = true } 
   if (requireEnabled && !team.aiEnabled) throw new Error("AI is not enabled for this team");
   if (!team.aiApiKey) throw new Error("AI API key is not configured");
 
+  const dataKeyCiphertext = await loadOrgDataKeyCiphertext(prisma, team.organizationId);
+  const apiKey = await decryptTeamAiApiKey({
+    encryptedKey: team.aiApiKey,
+    organizationId: team.organizationId,
+    teamId,
+    dataKeyCiphertext,
+  });
+
   return {
     organizationId: team.organizationId,
     provider: team.aiProvider ?? "openai",
     baseUrl: team.aiBaseUrl || getDefaultBaseUrl(team.aiProvider),
-    apiKey: decryptApiKey(team.aiApiKey),
+    apiKey,
     model: team.aiModel ?? "gpt-4o",
   };
 }
