@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { withAudit } from "@/server/middleware/audit";
 import { prisma } from "@/lib/prisma";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import { metricStore } from "@/server/services/metric-store";
 import type { AlertMetric } from "@/generated/prisma";
 import {
@@ -104,12 +105,9 @@ export const dashboardRouter = router({
 
   recentPipelines: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session!.user!.id!;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isSuperAdmin: true },
-    });
+    const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
 
-    const teamFilter = user?.isSuperAdmin
+    const teamFilter = orgAdmin
       ? {}
       : { environment: { team: { members: { some: { userId } } } } };
 
@@ -124,18 +122,15 @@ export const dashboardRouter = router({
   recentAudit: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session!.user!.id!;
 
-    const [user, memberships] = await Promise.all([
-      prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      }),
+    const [orgAdmin, memberships] = await Promise.all([
+      isOrgWideAdmin(userId, ctx.organizationId),
       prisma.teamMember.findMany({
         where: { userId },
         select: { teamId: true },
       }),
     ]);
 
-    const teamIdFilter: { teamId?: { in: string[] } } = user?.isSuperAdmin
+    const teamIdFilter: { teamId?: { in: string[] } } = orgAdmin
       ? {}
       : { teamId: { in: memberships.map((m) => m.teamId) } };
 
@@ -149,12 +144,9 @@ export const dashboardRouter = router({
 
   nodeCards: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session!.user!.id!;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isSuperAdmin: true },
-    });
+    const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
 
-    const teamFilter = user?.isSuperAdmin
+    const teamFilter = orgAdmin
       ? {}
       : { environment: { team: { members: { some: { userId } } } } };
 
@@ -239,11 +231,8 @@ export const dashboardRouter = router({
 
     // Inline auth: super admin bypasses; otherwise must be a member of the
     // environment team.
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isSuperAdmin: true },
-    });
-    if (!user?.isSuperAdmin) {
+    const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
+    if (!orgAdmin) {
       const teamId = env.teamId;
       if (!teamId) {
         throw new TRPCError({ code: "FORBIDDEN" });
@@ -313,12 +302,9 @@ export const dashboardRouter = router({
 
   operationalOverview: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session!.user!.id!;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isSuperAdmin: true },
-    });
+    const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
 
-    const teamFilter = user?.isSuperAdmin
+    const teamFilter = orgAdmin
       ? {}
       : { environment: { team: { members: { some: { userId } } } } };
 
@@ -365,7 +351,7 @@ export const dashboardRouter = router({
           nodeId: null,
           componentId: null,
           timestamp: { gte: fiveMinAgo },
-          ...(user?.isSuperAdmin ? {} : { pipeline: teamFilter }),
+          ...(orgAdmin ? {} : { pipeline: teamFilter }),
         },
         _sum: {
           eventsIn: true,

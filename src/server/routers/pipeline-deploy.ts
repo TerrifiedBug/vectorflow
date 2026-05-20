@@ -73,7 +73,7 @@ export const pipelineDeployRouter = router({
       const userId = ctx.session.user?.id;
       if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
 
-      await assertPipelineBatchAccess(input.pipelineIds, userId, "EDITOR");
+      await assertPipelineBatchAccess(input.pipelineIds, userId, "EDITOR", ctx.organizationId);
 
       const { deployBatch: deployBatchFn } = await import(
         "@/server/services/deploy-agent"
@@ -91,7 +91,7 @@ export const pipelineDeployRouter = router({
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.session.user?.id;
       if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
-      await assertPipelineBatchAccess(input.pipelineIds, userId, "EDITOR");
+      await assertPipelineBatchAccess(input.pipelineIds, userId, "EDITOR", ctx.organizationId);
 
       const results: Array<{ pipelineId: string; success: boolean; error?: string }> = [];
 

@@ -118,7 +118,7 @@ describe("bulk operations", () => {
       const ids = where?.id?.in ?? [];
       return ids.map((id) => ({ id, environment: { teamId: "team-1" } }));
     }) as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
   });
 
   describe("deployBatch", () => {

@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { queryPipelineMetricsAggregated } from "@/server/services/metrics-query";
 import { sourceBytesRate, sourceEventsRate } from "@/lib/metrics/component-rates";
 import { isDemoMode } from "@/lib/is-demo-mode";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 
 
 interface PipelineMetricChartRow {
@@ -202,11 +203,8 @@ export const metricsRouter = router({
 
       // Inline auth: super admin bypasses; otherwise must be a member of the
       // pipeline's environment team.
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      });
-      if (!user?.isSuperAdmin) {
+      const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
+      if (!orgAdmin) {
         const teamId = pipeline.environment.teamId;
         if (!teamId) {
           throw new TRPCError({ code: "FORBIDDEN" });
@@ -332,11 +330,8 @@ export const metricsRouter = router({
 
       // Inline auth: super admin bypasses; otherwise must be a member of the
       // node's environment team.
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      });
-      if (!user?.isSuperAdmin) {
+      const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
+      if (!orgAdmin) {
         const env = await prisma.environment.findUnique({
           where: { id: node.environmentId },
           select: { teamId: true },

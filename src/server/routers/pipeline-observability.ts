@@ -9,6 +9,7 @@ import { assertPipelineBatchAccess } from "@/server/authz";
 import { withAudit } from "@/server/middleware/audit";
 import { evaluatePipelineHealth } from "@/server/services/sli-evaluator";
 import { batchEvaluatePipelineHealth } from "@/server/services/batch-health";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import {
   getPipelineCostSnapshot,
   computeCostCents,
@@ -561,7 +562,7 @@ export const pipelineObservabilityRouter = router({
     .input(z.object({ pipelineIds: z.array(z.string()).max(200) }))
     .use(withTeamAccess("VIEWER"))
     .query(async ({ ctx, input }) => {
-      await assertPipelineBatchAccess(input.pipelineIds, ctx.session.user.id, "VIEWER");
+      await assertPipelineBatchAccess(input.pipelineIds, ctx.session.user.id, "VIEWER", ctx.organizationId);
       return batchEvaluatePipelineHealth(input.pipelineIds);
     }),
 
@@ -791,11 +792,8 @@ export const pipelineObservabilityRouter = router({
       if (tap) {
         const userId = ctx.session.user?.id;
         if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { isSuperAdmin: true },
-        });
-        if (!user?.isSuperAdmin) {
+        const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
+        if (!orgAdmin) {
           const pipeline = await prisma.pipeline.findUnique({
             where: { id: tap.pipelineId },
             select: { environment: { select: { teamId: true } } },

@@ -2,11 +2,24 @@ import { TRPCError } from "@trpc/server";
 import type { Role } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { roleLevel } from "@/trpc/init";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 
+/**
+ * Asserts the caller has at least `minRole` on the (single) team
+ * resolved from the pipeline batch.
+ *
+ * Phase 7a (audit gap): the legacy `User.isSuperAdmin` global-admin
+ * shortcut is gone — callers now elevate via `isOrgWideAdmin` against
+ * the org. The optional `organizationId` argument is accepted for
+ * future strict-multi-tenant callers (every protectedProcedure ctx
+ * carries it). When omitted, `isOrgWideAdmin` falls back to the
+ * single-tenant DEFAULT_ORG_ID, preserving OSS behaviour.
+ */
 export async function assertPipelineBatchAccess(
   pipelineIds: string[],
   userId: string,
   minRole: Role,
+  organizationId?: string,
 ) {
   const uniquePipelineIds = [...new Set(pipelineIds)];
   const pipelines = await prisma.pipeline.findMany({
@@ -30,12 +43,7 @@ export async function assertPipelineBatchAccess(
   }
 
   const teamId = [...teamIds][0]!;
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { isSuperAdmin: true },
-  });
-
-  if (user?.isSuperAdmin) {
+  if (await isOrgWideAdmin(userId, organizationId)) {
     return { teamId, userRole: "ADMIN" as Role };
   }
 

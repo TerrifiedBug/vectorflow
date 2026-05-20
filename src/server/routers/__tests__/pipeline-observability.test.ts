@@ -558,7 +558,7 @@ describe("pipelineObservabilityRouter", () => {
         { id: "p-1", environment: { teamId: "team-1" } },
         { id: "p-2", environment: { teamId: "team-1" } },
       ] as never);
-      prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+      prismaMock.orgMember.findUnique.mockResolvedValue(null);
       prismaMock.teamMember.findUnique.mockResolvedValue({ role: "VIEWER" } as never);
       vi.mocked(batchEvaluatePipelineHealth).mockResolvedValue(batchResult as never);
 

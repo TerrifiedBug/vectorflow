@@ -79,15 +79,12 @@ export const teamRouter = router({
 
   list: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session.user!.id!;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isSuperAdmin: true },
-    });
+    const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
 
     const teams = await prisma.team.findMany({
       where: {
         name: { not: "__system__" },
-        ...(user?.isSuperAdmin ? {} : { members: { some: { userId } } }),
+        ...(orgAdmin ? {} : { members: { some: { userId } } }),
       },
       include: {
         _count: { select: { members: true, environments: true } },
@@ -310,13 +307,11 @@ export const teamRouter = router({
       });
       if (!member) throw new TRPCError({ code: "NOT_FOUND", message: "Team member not found" });
 
-      // Prevent team admins from locking super admin accounts
-      const targetUser = await prisma.user.findUnique({
-        where: { id: input.userId },
-        select: { isSuperAdmin: true },
-      });
-      if (targetUser?.isSuperAdmin) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot lock a super admin account" });
+      // Prevent team admins from locking the org's OWNER/ADMIN.
+      // Migrated from `User.isSuperAdmin`: refuse when target is an
+      // org-wide admin in the caller's organisation.
+      if (await isOrgWideAdmin(input.userId, ctx.organizationId)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot lock an org admin account" });
       }
 
       return prisma.user.update({
@@ -331,19 +326,15 @@ export const teamRouter = router({
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.member_unlocked", "User"))
     .input(z.object({ teamId: z.string(), userId: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const member = await prisma.teamMember.findUnique({
         where: { userId_teamId: { userId: input.userId, teamId: input.teamId } },
       });
       if (!member) throw new TRPCError({ code: "NOT_FOUND", message: "Team member not found" });
 
-      // Prevent team admins from unlocking super admin accounts
-      const targetUser = await prisma.user.findUnique({
-        where: { id: input.userId },
-        select: { isSuperAdmin: true },
-      });
-      if (targetUser?.isSuperAdmin) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot modify a super admin account" });
+      // Prevent team admins from unlocking the org's OWNER/ADMIN.
+      if (await isOrgWideAdmin(input.userId, ctx.organizationId)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot modify an org admin account" });
       }
 
       return prisma.user.update({
@@ -358,16 +349,16 @@ export const teamRouter = router({
     .use(withTeamAccess("ADMIN"))
     .use(withAudit("team.member_password_reset", "User"))
     .input(z.object({ teamId: z.string(), userId: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const member = await prisma.teamMember.findUnique({
         where: { userId_teamId: { userId: input.userId, teamId: input.teamId } },
-        include: { user: { select: { authMethod: true, isSuperAdmin: true } } },
+        include: { user: { select: { authMethod: true } } },
       });
       if (!member) throw new TRPCError({ code: "NOT_FOUND", message: "Team member not found" });
 
-      // Prevent team admins from resetting super admin passwords
-      if (member.user.isSuperAdmin) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot reset a super admin password" });
+      // Prevent team admins from resetting an org admin's password.
+      if (await isOrgWideAdmin(input.userId, ctx.organizationId)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot reset an org admin's password" });
       }
       if (member.user.authMethod === "OIDC") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot reset password for SSO-only users" });
@@ -471,11 +462,11 @@ export const teamRouter = router({
 
       const targetUser = await prisma.user.findUnique({
         where: { id: input.userId },
-        select: { authMethod: true, isSuperAdmin: true },
+        select: { authMethod: true },
       });
       if (!targetUser) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
-      if (targetUser.isSuperAdmin) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot modify a super admin account" });
+      if (await isOrgWideAdmin(input.userId, ctx.organizationId)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot modify an org admin account" });
       }
       if (targetUser.authMethod !== "LOCAL") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "User is already using SSO" });

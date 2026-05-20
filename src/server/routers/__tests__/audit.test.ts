@@ -45,11 +45,12 @@ import { auditRouter } from "@/server/routers/audit";
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(auditRouter)({
   session: { user: { id: "user-1" } },
+  organizationId: "org-default",
 });
 
 beforeEach(() => {
   mockReset(prismaMock);
-  prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+  prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
   prismaMock.teamMember.findMany.mockResolvedValue([]);
   vi.clearAllMocks();
 });

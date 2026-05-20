@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 import { prisma } from "@/lib/prisma";
 import {
   getCostSummary,
@@ -107,13 +108,10 @@ export const analyticsRouter = router({
     .query(async ({ ctx, input }) => {
       // Resolve team IDs the user has access to
       const userId = ctx.session!.user!.id!;
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      });
+      const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
 
       let teamIds: string[];
-      if (user?.isSuperAdmin) {
+      if (orgAdmin) {
         const teams = await prisma.team.findMany({ select: { id: true } });
         teamIds = teams.map((t) => t.id);
       } else {
@@ -139,13 +137,10 @@ export const analyticsRouter = router({
     .query(async ({ ctx, input }) => {
       // Get all environments the user can see in their teams
       const userId = ctx.session!.user!.id!;
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      });
+      const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
 
       let envFilter: Record<string, unknown> = {};
-      if (!user?.isSuperAdmin) {
+      if (!orgAdmin) {
         const memberships = await prisma.teamMember.findMany({
           where: { userId },
           select: { teamId: true },

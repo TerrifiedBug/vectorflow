@@ -4,6 +4,7 @@ import { Prisma } from "@/generated/prisma";
 import { router, protectedProcedure, withTeamAccess } from "@/trpc/init";
 import { prisma } from "@/lib/prisma";
 import { withAudit } from "@/server/middleware/audit";
+import { isOrgWideAdmin } from "@/lib/org-admin";
 
 const templateNodeSchema = z.object({
   id: z.string(),
@@ -74,11 +75,8 @@ export const templateRouter = router({
       if (template.teamId !== null) {
         const userId = ctx.session.user?.id;
         if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { isSuperAdmin: true },
-        });
-        if (!user?.isSuperAdmin) {
+        const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
+        if (!orgAdmin) {
           const membership = await prisma.teamMember.findUnique({
             where: { userId_teamId: { userId, teamId: template.teamId } },
             select: { role: true },
@@ -163,11 +161,8 @@ export const templateRouter = router({
       // deleted by a member of that team.
       const userId = ctx.session.user?.id;
       if (!userId) throw new TRPCError({ code: "UNAUTHORIZED" });
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isSuperAdmin: true },
-      });
-      if (!user?.isSuperAdmin) {
+      const orgAdmin = await isOrgWideAdmin(userId, ctx.organizationId);
+      if (!orgAdmin) {
         const membership = await prisma.teamMember.findUnique({
           where: { userId_teamId: { userId, teamId: existing.teamId } },
           select: { role: true },

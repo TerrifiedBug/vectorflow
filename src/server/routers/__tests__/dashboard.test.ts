@@ -162,7 +162,7 @@ describe("dashboard.stats", () => {
 
 describe("dashboard.recentPipelines", () => {
   it("returns up to 5 recently updated pipelines for a regular user", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
 
     const pipelines = Array.from({ length: 3 }, (_, i) => ({
       id: `pipe-${i}`,
@@ -179,7 +179,7 @@ describe("dashboard.recentPipelines", () => {
   });
 
   it("fetches with no teamFilter for super admin", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
     prismaMock.pipeline.findMany.mockResolvedValue([]);
 
     await caller.recentPipelines();
@@ -194,7 +194,7 @@ describe("dashboard.recentPipelines", () => {
   });
 
   it("applies team membership filter for non-super-admin", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.pipeline.findMany.mockResolvedValue([]);
 
     await caller.recentPipelines();
@@ -216,7 +216,7 @@ describe("dashboard.recentPipelines", () => {
 
 describe("dashboard.recentAudit", () => {
   it("returns up to 10 recent audit entries", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findMany.mockResolvedValue([{ teamId: "team-1" }] as never);
 
     const logs = Array.from({ length: 4 }, (_, i) => ({
@@ -233,7 +233,7 @@ describe("dashboard.recentAudit", () => {
   });
 
   it("applies no teamId filter for super admin", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
     prismaMock.auditLog.findMany.mockResolvedValue([]);
 
     await caller.recentAudit();
@@ -248,7 +248,7 @@ describe("dashboard.recentAudit", () => {
   });
 
   it("applies teamId filter for non-super-admin", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findMany.mockResolvedValue([
       { teamId: "team-1" },
       { teamId: "team-2" },
@@ -464,7 +464,7 @@ describe("dashboard.fleetHotness", () => {
 
 describe("dashboard.pipelineCards", () => {
   beforeEach(() => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
   });
 
   it("returns an empty array when the environment is unknown (stale id)", async () => {
@@ -478,7 +478,7 @@ describe("dashboard.pipelineCards", () => {
 
   it("forbids non-member access when the environment belongs to another team", async () => {
     prismaMock.environment.findUnique.mockResolvedValue({ teamId: "team-other" } as never);
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 
     await expect(

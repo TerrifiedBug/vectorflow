@@ -255,8 +255,8 @@ describe("metrics.getComponentLatencyHistory", () => {
 
 describe("metrics.getComponentMetrics", () => {
   beforeEach(() => {
-    // Super admin bypass for inline auth (membership not exercised here)
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    // Org admin bypass for inline auth (membership not exercised here)
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
   });
 
   it("returns empty components when pipeline does not exist", async () => {
@@ -268,7 +268,7 @@ describe("metrics.getComponentMetrics", () => {
   });
 
   it("forbids non-member access when pipeline belongs to another team", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.pipeline.findUnique.mockResolvedValue({
       id: "pipe-x",
       nodes: [],
@@ -360,8 +360,8 @@ describe("metrics.getComponentMetrics", () => {
 describe("metrics.getNodePipelineRates", () => {
   beforeEach(() => {
     prismaMock.vectorNode.findUnique.mockResolvedValue({ environmentId: "env-1" } as never);
-    // Super admin bypass for inline auth (membership not exercised in these tests)
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+    // Org admin bypass for inline auth (membership not exercised in these tests)
+    prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
   });
 
   it("returns empty rates when metricStore has no data for node", async () => {
@@ -382,7 +382,7 @@ describe("metrics.getNodePipelineRates", () => {
   });
 
   it("forbids non-member access when node belongs to another team", async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: false } as never);
+    prismaMock.orgMember.findUnique.mockResolvedValue(null);
     prismaMock.environment.findUnique.mockResolvedValue({ teamId: "team-other" } as never);
     prismaMock.teamMember.findUnique.mockResolvedValue(null);
 

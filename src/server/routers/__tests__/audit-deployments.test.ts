@@ -35,14 +35,15 @@ import { DEPLOYMENT_ACTIONS } from "@/server/routers/audit";
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const caller = t.createCallerFactory(auditRouter)({
   session: { user: { id: "user-1", email: "test@example.com", name: "Test User" } },
+  organizationId: "org-default",
 });
 
 beforeEach(() => {
   mockReset(prismaMock);
-  // Default: super-admin so getAuditScope returns full access. Individual
-  // tests can override prismaMock.user.findUnique / teamMember.findMany
+  // Default: org admin so getAuditScope returns full access. Individual
+  // tests can override prismaMock.orgMember.findUnique / teamMember.findMany
   // when they want to exercise tenant-scoped behavior.
-  prismaMock.user.findUnique.mockResolvedValue({ isSuperAdmin: true } as never);
+  prismaMock.orgMember.findUnique.mockResolvedValue({ role: "OWNER" } as never);
   prismaMock.teamMember.findMany.mockResolvedValue([]);
 });
 
