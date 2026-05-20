@@ -530,21 +530,65 @@ export const userRouter = router({
         throw new TRPCError({ code: "NOT_FOUND" });
       }
 
-      const anonEmail = `erased+${target.id}@anon.invalid`;
+      // Codex PR #378 P1 — the caller's authority is bounded by their
+      // organisation. Tear down EVERY membership tying the target to
+      // THIS org first; only escalate to full User-row pseudonymisation
+      // when the target has no other org memberships left after that.
+      // A caller cannot reach into another customer's data.
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Drop org-scoped relations for caller's org only.
+        await tx.orgMember.deleteMany({
+          where: { userId: target.id, organizationId },
+        });
+        await tx.teamMember.deleteMany({
+          where: { userId: target.id, team: { organizationId } },
+        });
 
-      await prisma.$transaction(async (tx) => {
-        // Drop every auth-bearing or org-bearing relation. Same set
-        // as `eraseSelf` so re-signin requires fresh credentials AND
-        // a fresh invite to any org.
-        await tx.orgMember.deleteMany({ where: { userId: target.id } });
-        await tx.teamMember.deleteMany({ where: { userId: target.id } });
+        // ScimGroup is intentionally single-tenant in the OSS schema
+        // (no organizationId column). Multi-tenant SCIM is a follow-up
+        // — for now, dropping the target's ScimGroupMember rows is
+        // scoped to this OSS install which IS one tenant.
         await tx.scimGroupMember.deleteMany({ where: { userId: target.id } });
+
+        // 2. Anonymise AuditLog rows that reference the target IN
+        //    this org only. Other orgs' audit history stays intact
+        //    and continues to attribute past actions to the target's
+        //    User row (which we may keep alive below).
+        await tx.auditLog.updateMany({
+          where: { userId: target.id, organizationId },
+          data: { userId: null },
+        });
+
+        // 3. Check whether the target still belongs to any org after
+        //    this delete. If so, we MUST NOT touch the User row,
+        //    WebAuthn credentials, accounts, or PlatformOperator —
+        //    those would corrupt the target's identity in orgs the
+        //    caller has no authority over.
+        const remainingMemberships = await tx.orgMember.count({
+          where: { userId: target.id },
+        });
+
+        if (remainingMemberships > 0) {
+          return {
+            id: target.id,
+            erasureScope: "this_org_only" as const,
+            remainingOrgMemberships: remainingMemberships,
+          };
+        }
+
+        // 4. No other memberships — the target belongs only to this
+        //    org. Pseudonymise the User row + drop user-level
+        //    relations (same shape as `eraseSelf`). This is the full
+        //    Art. 17 path.
+        const anonEmail = `erased+${target.id}@anon.invalid`;
         await tx.webAuthnCredential.deleteMany({ where: { userId: target.id } });
         await tx.account.deleteMany({ where: { userId: target.id } });
         await tx.userPreference.deleteMany({ where: { userId: target.id } });
         await tx.dashboardView.deleteMany({ where: { userId: target.id } });
 
-        // Anonymise audit trail — userId is nullable on AuditLog.
+        // Also blank cross-org audit rows now that the User itself
+        // is being pseudonymised — keeping the historical attribution
+        // would point at a row whose PII columns we're about to wipe.
         await tx.auditLog.updateMany({
           where: { userId: target.id },
           data: { userId: null },
@@ -581,13 +625,21 @@ export const userRouter = router({
             data: { deletedAt: new Date() },
           });
         }
+
+        return {
+          id: target.id,
+          erasureScope: "full" as const,
+          remainingOrgMemberships: 0,
+        };
       });
 
       return {
-        id: target.id,
+        id: result.id,
         erasedBy: callerId,
         reason: input.reason,
         erased: true,
+        erasureScope: result.erasureScope,
+        remainingOrgMemberships: result.remainingOrgMemberships,
       };
     }),
 });

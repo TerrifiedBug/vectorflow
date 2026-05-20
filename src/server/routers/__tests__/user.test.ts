@@ -582,10 +582,13 @@ describe("userRouter", () => {
   // ─── eraseUser (admin-driven Art. 17) ─────────────────────────────────────
 
   describe("eraseUser", () => {
-    function setupOwnerHappyPath(targetRole: "MEMBER" | "ADMIN" | "OWNER" = "MEMBER") {
+    function setupOwnerHappyPath(opts: {
+      targetRole?: "MEMBER" | "ADMIN" | "OWNER";
+      remainingMemberships?: number;
+    } = {}) {
       prismaMock.orgMember.findUnique.mockResolvedValue({
         id: "om-target",
-        role: targetRole,
+        role: opts.targetRole ?? "MEMBER",
       } as never);
       prismaMock.user.findUnique.mockResolvedValue({
         id: "target-1",
@@ -595,7 +598,7 @@ describe("userRouter", () => {
       prismaMock.$transaction.mockImplementation(
         async (fn: (tx: PrismaClient) => Promise<unknown>) => fn(prismaMock),
       );
-      prismaMock.orgMember.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.orgMember.deleteMany.mockResolvedValue({ count: 1 } as never);
       prismaMock.teamMember.deleteMany.mockResolvedValue({ count: 0 } as never);
       prismaMock.scimGroupMember.deleteMany.mockResolvedValue({ count: 0 } as never);
       prismaMock.webAuthnCredential.deleteMany.mockResolvedValue({ count: 0 } as never);
@@ -604,6 +607,11 @@ describe("userRouter", () => {
       prismaMock.dashboardView.deleteMany.mockResolvedValue({ count: 0 } as never);
       prismaMock.auditLog.updateMany.mockResolvedValue({ count: 0 } as never);
       prismaMock.user.update.mockResolvedValue({} as never);
+      // Default: target belongs only to caller's org (full erasure).
+      // Tests that want the "partial erasure" path override.
+      prismaMock.orgMember.count.mockResolvedValue(
+        (opts.remainingMemberships ?? 0) as never,
+      );
     }
 
     const goodInput = {
@@ -647,7 +655,7 @@ describe("userRouter", () => {
     });
 
     it("refuses when target is an OWNER (must transfer ownership first)", async () => {
-      setupOwnerHappyPath("OWNER");
+      setupOwnerHappyPath({ targetRole: "OWNER" });
       await expect(
         ownerCaller().eraseUser(goodInput),
       ).rejects.toMatchObject({
@@ -663,8 +671,8 @@ describe("userRouter", () => {
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
-    it("happy path — pseudonymises the target row and drops every relation", async () => {
-      setupOwnerHappyPath("MEMBER");
+    it("happy path (full erasure) — target only in caller's org", async () => {
+      setupOwnerHappyPath({ targetRole: "MEMBER", remainingMemberships: 0 });
 
       const result = await ownerCaller().eraseUser(goodInput);
 
@@ -672,16 +680,26 @@ describe("userRouter", () => {
         id: "target-1",
         erasedBy: "owner-1",
         erased: true,
+        erasureScope: "full",
+        remainingOrgMemberships: 0,
         reason: goodInput.reason,
       });
       expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
       expect(prismaMock.orgMember.deleteMany).toHaveBeenCalledWith({
-        where: { userId: "target-1" },
+        where: { userId: "target-1", organizationId: "org-a" },
+      });
+      expect(prismaMock.teamMember.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "target-1", team: { organizationId: "org-a" } },
       });
       expect(prismaMock.webAuthnCredential.deleteMany).toHaveBeenCalledWith({
         where: { userId: "target-1" },
       });
-      expect(prismaMock.auditLog.updateMany).toHaveBeenCalledWith({
+      // First updateMany scoped to org; second is the cross-org wipe.
+      expect(prismaMock.auditLog.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { userId: "target-1", organizationId: "org-a" },
+        data: { userId: null },
+      });
+      expect(prismaMock.auditLog.updateMany).toHaveBeenNthCalledWith(2, {
         where: { userId: "target-1" },
         data: { userId: null },
       });
@@ -697,8 +715,39 @@ describe("userRouter", () => {
       expect(updateCall.data.lockedAt).toBeInstanceOf(Date);
     });
 
-    it("soft-deletes a matching PlatformOperator row tied to target email", async () => {
-      setupOwnerHappyPath("MEMBER");
+    it("partial erasure — target belongs to other orgs, only this-org links cleared", async () => {
+      setupOwnerHappyPath({ targetRole: "MEMBER", remainingMemberships: 2 });
+
+      const result = await ownerCaller().eraseUser(goodInput);
+
+      expect(result).toMatchObject({
+        id: "target-1",
+        erasureScope: "this_org_only",
+        remainingOrgMemberships: 2,
+      });
+      // Org-scoped deletes fire.
+      expect(prismaMock.orgMember.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "target-1", organizationId: "org-a" },
+      });
+      expect(prismaMock.teamMember.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "target-1", team: { organizationId: "org-a" } },
+      });
+      // AuditLog row scoped to this org only.
+      expect(prismaMock.auditLog.updateMany).toHaveBeenCalledWith({
+        where: { userId: "target-1", organizationId: "org-a" },
+        data: { userId: null },
+      });
+      // User-level erasure paths MUST NOT fire when target has other orgs.
+      expect(prismaMock.webAuthnCredential.deleteMany).not.toHaveBeenCalled();
+      expect(prismaMock.account.deleteMany).not.toHaveBeenCalled();
+      expect(prismaMock.userPreference.deleteMany).not.toHaveBeenCalled();
+      expect(prismaMock.dashboardView.deleteMany).not.toHaveBeenCalled();
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
+      expect(prismaMock.platformOperator.update).not.toHaveBeenCalled();
+    });
+
+    it("soft-deletes a matching PlatformOperator row only on full erasure", async () => {
+      setupOwnerHappyPath({ targetRole: "MEMBER", remainingMemberships: 0 });
       prismaMock.platformOperator.findUnique.mockResolvedValue({
         id: "op-target",
         deletedAt: null,
@@ -710,6 +759,21 @@ describe("userRouter", () => {
         where: { id: "op-target" },
         data: { deletedAt: expect.any(Date) },
       });
+    });
+
+    it("skips PlatformOperator soft-delete when target has other orgs", async () => {
+      setupOwnerHappyPath({ targetRole: "MEMBER", remainingMemberships: 1 });
+      prismaMock.platformOperator.findUnique.mockResolvedValue({
+        id: "op-target",
+        deletedAt: null,
+      } as never);
+
+      await ownerCaller().eraseUser(goodInput);
+
+      // PlatformOperator stays alive — the target is still a member
+      // of another org and the operator account may correspond to
+      // their identity in that org.
+      expect(prismaMock.platformOperator.update).not.toHaveBeenCalled();
     });
   });
 });
